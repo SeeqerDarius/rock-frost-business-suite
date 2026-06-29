@@ -20,7 +20,7 @@ export function PricingCard({
   accent = "cyan",
 }: PricingCardProps) {
   return (
-    <div className={`rounded-[2rem] border p-8 shadow-[0_30px_120px_-110px_rgba(0,0,0,0.45)] ${accentStyles[accent]}`}>
+    <div className={`rounded-[2rem] glass-card border p-8 shadow-[0_30px_120px_-110px_rgba(0,0,0,0.45)] ${accentStyles[accent]}`}>
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.26em] text-cyan-200/80">{plan}</p>

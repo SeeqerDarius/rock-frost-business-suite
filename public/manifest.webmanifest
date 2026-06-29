@@ -1,0 +1,16 @@
+{
+  "name": "Rock Frost Technologies",
+  "short_name": "Rock Frost",
+  "description": "Premium enterprise SaaS for African businesses with intelligent operations, payments, and growth.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020306",
+  "theme_color": "#08b2ec",
+  "icons": [
+    {
+      "src": "/RFG.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

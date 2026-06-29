@@ -13,9 +13,10 @@ const variantStyles: Record<NonNullable<ButtonProps["variant"]>, string> = {
     "bg-transparent text-white/90 border border-white/10 hover:bg-white/5 transition duration-300",
 };
 
-export function Button({ variant = "primary", className = "", ...props }: ButtonProps) {
+export function Button({ variant = "primary", className = "", type = "button", ...props }: ButtonProps) {
   return (
     <button
+      type={type}
       className={`inline-flex items-center justify-center rounded-full px-6 py-3 text-sm font-semibold tracking-wide ${variantStyles[variant]} ${className}`}
       {...props}
     />

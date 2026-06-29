@@ -1,13 +1,10 @@
 import Link from "next/link";
-import { Navbar } from "../components/Navbar";
-import { Footer } from "../components/Footer";
+import { MarketingLayout } from "../components/MarketingLayout";
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),transparent_20%),linear-gradient(180deg,_#020617_0%,_#070b12_30%,_#05060b_100%)] text-white">
-      <Navbar />
-      <main className="mx-auto flex min-h-[calc(100vh-96px)] max-w-4xl items-center px-6 py-16 sm:px-8 lg:px-10">
-        <div className="w-full rounded-[3rem] border border-white/10 bg-white/5 p-10 shadow-[0_35px_120px_-90px_rgba(255,255,255,0.15)] sm:p-14">
+    <MarketingLayout className="flex min-h-[calc(100vh-96px)] items-center">
+        <div className="w-full rounded-[3rem] glass-card p-10 shadow-[0_35px_120px_-90px_rgba(255,255,255,0.15)] sm:p-14">
           <div className="space-y-6 text-center">
             <p className="text-sm uppercase tracking-[0.3em] text-cyan-200/80">Login</p>
             <h1 className="text-3xl font-semibold text-white sm:text-4xl">Welcome back to Rock Frost Business Suite.</h1>
@@ -34,7 +31,7 @@ export default function LoginPage() {
             </label>
             <button
               type="submit"
-              className="inline-flex w-full items-center justify-center rounded-full bg-cyan-500 px-6 py-3 text-sm font-semibold text-white transition hover:bg-cyan-400/90"
+              className="inline-flex w-full items-center justify-center rounded-full px-6 py-3 text-sm font-semibold text-white btn-blue"
             >
               Continue to dashboard
             </button>
@@ -43,8 +40,6 @@ export default function LoginPage() {
             Need help? <Link href="/contact" className="text-white underline decoration-cyan-400/80">Contact sales</Link>
           </p>
         </div>
-      </main>
-      <Footer />
-    </div>
+    </MarketingLayout>
   );
 }
