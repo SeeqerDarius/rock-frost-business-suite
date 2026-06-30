@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Route } from "next";
 import { MarketingLayout } from "./components/MarketingLayout";
 import { SectionHeader } from "./components/SectionHeader";
 import { ModuleCard } from "./components/ModuleCard";
@@ -62,7 +63,7 @@ export default function Home() {
             <div className="steel-divider" />
 
             <div className="flex flex-col gap-4 sm:flex-row">
-              <Link href="/contact" className="btn-blue inline-flex w-full items-center justify-center gap-2 rounded-full px-7 py-3.5 text-sm font-semibold text-white sm:w-auto">
+              <Link href={"/demo" as Route} className="btn-blue inline-flex w-full items-center justify-center gap-2 rounded-full px-7 py-3.5 text-sm font-semibold text-white sm:w-auto">
                 Request Demo
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
               </Link>
@@ -73,7 +74,7 @@ export default function Home() {
           </div>
 
           {/* Hero stats card */}
-          <div className="relative overflow-hidden rounded-[2rem] border border-[#1a6dff]/20 bg-[#040a14] p-8 rim-glow scan-overlay">
+          <div className="card-glow-hover relative overflow-hidden rounded-[2rem] border border-[#1a6dff]/20 bg-[#040a14] p-8 rim-glow scan-overlay">
             <div className="absolute inset-x-0 top-0 h-24"
               style={{ background: "linear-gradient(180deg, rgba(26,109,255,0.08) 0%, transparent 100%)" }} />
 
@@ -87,7 +88,7 @@ export default function Home() {
                     { label: "12+", value: "Modules in one suite" },
                     { label: "24/7", value: "Support access" },
                   ].map((item) => (
-                    <div key={item.label} className="rounded-xl border border-[#1a6dff]/10 bg-[#1a6dff]/5 p-4">
+                    <div key={item.label} className="card-glow-hover rounded-xl border border-[#1a6dff]/10 bg-[#1a6dff]/5 p-4">
                       <p className="text-2xl font-semibold text-gradient-blue">{item.label}</p>
                       <p className="mt-1.5 text-xs text-[#6b7f96]">{item.value}</p>
                     </div>
@@ -140,7 +141,7 @@ export default function Home() {
           <div className="grid gap-5 sm:grid-cols-2">
             {featureHighlights.map((feature) => (
               <div key={feature.title}
-                className="group rounded-2xl border border-[#1a6dff]/12 bg-black/60 p-6 transition hover:border-[#1a6dff]/35"
+                className="card-glow-hover group rounded-2xl border border-[#1a6dff]/12 bg-black/60 p-6 transition hover:border-[#1a6dff]/35"
                 style={{ boxShadow: "0 0 0 0 rgba(26,109,255,0)" }}>
                 <div className="mb-4 h-8 w-8 rounded-lg border border-[#1a6dff]/30 bg-[#1a6dff]/10 flex items-center justify-center">
                   <div className="h-2 w-2 rounded-full bg-[#1a6dff]" />
@@ -155,7 +156,7 @@ export default function Home() {
 
       {/* ── AI ASSISTANT ── */}
       <section className="mt-24 grid gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-stretch">
-        <div className="flex flex-col rounded-[2.5rem] border border-[#1a6dff]/15 bg-[#040a14] p-10"
+          <div className="card-glow-hover flex flex-col rounded-[2.5rem] border border-[#1a6dff]/15 bg-[#040a14] p-10"
           style={{ boxShadow: "0 30px 90px -50px rgba(26,109,255,0.2)" }}>
           <p className="text-[10px] uppercase tracking-[0.35em] text-[#3b8eff]">AI assistant</p>
           <h2 className="mt-5 text-3xl font-semibold text-white sm:text-4xl">
@@ -165,7 +166,7 @@ export default function Home() {
           <p className="mt-4 text-sm leading-7 text-[#6b7f96]">
             Use AI-driven insights to streamline planning, automate routine tasks, and keep your team focused on growth.
           </p>
-          <div className="mt-8 flex-1 space-y-3 rounded-2xl border border-[#1a6dff]/12 bg-black/60 p-6">
+          <div className="card-glow-hover mt-8 flex-1 space-y-3 rounded-2xl border border-[#1a6dff]/12 bg-black/60 p-6">
             {[
               "Automated forecasting for revenue and inventory",
               "Smart reminders for approvals, payroll, and payments",
@@ -224,10 +225,10 @@ export default function Home() {
                 <p className="text-[10px] uppercase tracking-[0.3em] text-[#3b8eff] mb-4">Performance overview</p>
                 <div className="space-y-3">
                   {[
-                    { name: "Lagos Warehouse", pct: 32, color: "#ef4444" },
+                    { name: "Nunguaa Warehouse", pct: 32, color: "#ef4444" },
                     { name: "Accra Hub", pct: 61, color: "#f59e0b" },
-                    { name: "Nairobi Branch", pct: 78, color: "#1a6dff" },
-                    { name: "Cape Town", pct: 91, color: "#22c55e" },
+                    { name: "Kumasi Branch", pct: 78, color: "#1a6dff" },
+                    { name: "Tema", pct: 91, color: "#22c55e" },
                   ].map((row) => (
                     <div key={row.name} className="flex items-center gap-3 text-xs">
                       <span className="w-28 shrink-0 text-[#6b7f96]">{row.name}</span>
@@ -254,7 +255,7 @@ export default function Home() {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {industries.map((industry) => (
             <div key={industry}
-              className="flex items-center gap-3.5 rounded-2xl border border-[#1a6dff]/12 bg-[#040a14] px-6 py-5 text-sm text-[#94a3b8] transition hover:border-[#1a6dff]/30 hover:text-white">
+              className="card-glow-hover flex items-center gap-3.5 rounded-2xl border border-[#1a6dff]/12 bg-[#040a14] px-6 py-5 text-sm text-[#94a3b8] transition hover:border-[#1a6dff]/30 hover:text-white">
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#1a6dff]" />
               {industry}
             </div>
@@ -280,7 +281,7 @@ export default function Home() {
             const isFeatured = i === 1;
             return (
               <div key={plan.plan}
-                className={`relative overflow-hidden rounded-[2rem] border p-8 text-left transition ${isFeatured
+                className={`card-glow-hover relative overflow-hidden rounded-[2rem] border p-8 text-left transition ${isFeatured
                   ? "border-[#1a6dff]/50 bg-[#1a6dff]/8"
                   : "border-[#1a6dff]/12 bg-black/60"
                 }`}
@@ -294,13 +295,14 @@ export default function Home() {
                   {plan.plan === "Enterprise" ? "Flexible pricing" : "Contact Sales"}
                 </h3>
                 <p className="mt-3 text-sm leading-7 text-[#6b7f96]">{plan.description}</p>
-                <button
+                <Link
+                  href={(plan.actionLabel === "Request Demo" ? "/demo" : "/contact") as Route}
                   className={`mt-8 inline-flex w-full items-center justify-center rounded-full px-6 py-3 text-sm font-semibold transition ${isFeatured
                     ? "btn-blue text-white"
                     : "border border-[#1a6dff]/25 bg-transparent text-[#b8c5d6] hover:border-[#1a6dff]/50 hover:text-white"
                   }`}>
                   {plan.actionLabel}
-                </button>
+                </Link>
               </div>
             );
           })}
@@ -332,7 +334,7 @@ export default function Home() {
             Join African leaders using Rock Frost Business Suite to manage growth, improve efficiency, and deliver better customer outcomes.
           </p>
           <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <Link href="/contact" className="btn-blue inline-flex w-full items-center justify-center gap-2 rounded-full px-8 py-4 text-sm font-semibold text-white sm:w-auto">
+            <Link href={"/demo" as Route} className="btn-blue inline-flex w-full items-center justify-center gap-2 rounded-full px-8 py-4 text-sm font-semibold text-white sm:w-auto">
               Request Demo
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
             </Link>

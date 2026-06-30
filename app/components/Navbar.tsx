@@ -41,7 +41,7 @@ export function Navbar() {
             Login
           </Link>
           <Link
-            href="/contact"
+            href={"/demo" as Route}
             className="hidden btn-blue rounded-full px-5 py-3 text-sm font-semibold text-white md:inline-flex"
           >
             Request Demo
@@ -85,7 +85,7 @@ export function Navbar() {
             Login
           </Link>
           <Link
-            href="/contact"
+            href={"/demo" as Route}
             className="rounded-2xl btn-blue px-4 py-3 text-sm font-semibold text-white"
             onClick={() => setOpen(false)}
           >
