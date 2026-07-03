@@ -1,0 +1,569 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum OrganizationStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum BranchStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum MemberStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+enum ModuleStatus {
+  ACTIVE
+  INACTIVE
+  COMING_SOON
+}
+
+enum NotificationChannel {
+  EMAIL
+  IN_APP
+  SMS
+  PUSH
+}
+
+enum NotificationStatus {
+  DRAFT
+  QUEUED
+  SENT
+  READ
+  FAILED
+}
+
+enum FleetVehicleStatus {
+  AVAILABLE
+  ASSIGNED
+  MAINTENANCE
+  INACTIVE
+  RETIRED
+}
+
+enum FleetDocumentStatus {
+  VALID
+  EXPIRING_SOON
+  EXPIRED
+  MISSING
+}
+
+enum FleetDriverStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum FleetMaintenanceApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum FleetMaintenanceProgressStatus {
+  REPORTED
+  REVIEWING
+  APPROVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum FleetPaymentType {
+  OWNER_PAYOUT
+  DRIVER_PAYMENT
+  MAINTENANCE
+  WORK_AND_PAY
+  OTHER
+}
+
+enum FleetPaymentStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  CANCELLED
+}
+
+enum FleetContractStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  DEFAULTED
+  CANCELLED
+}
+
+model User {
+  id            String     @id @default(cuid())
+  name          String?
+  firstName     String?
+  lastName      String?
+  email         String     @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  phone         String?
+  status        UserStatus @default(INVITED)
+  lastLoginAt   DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  accounts                Account[]
+  sessions                Session[]
+  organizationMemberships OrganizationMember[]
+  auditLogs               AuditLog[]
+  notifications           Notification[]
+  uploadedFiles           FileAsset[]
+  fleetDriverProfiles     FleetDriver[]
+  maintenanceRequests     FleetMaintenanceRequest[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Organization {
+  id           String             @id @default(cuid())
+  name         String
+  industry     String?
+  tenantCode   String             @unique
+  address      String?
+  timezone     String             @default("UTC")
+  billingEmail String?
+  status       OrganizationStatus @default(TRIAL)
+  metadata     Json?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  members             OrganizationMember[]
+  branches            Branch[]
+  roles               Role[]
+  organizationModules OrganizationModule[]
+  auditLogs           AuditLog[]
+  notifications       Notification[]
+  fileAssets          FileAsset[]
+  fleetOwners         FleetOwner[]
+  fleetDrivers        FleetDriver[]
+  fleetVehicles       FleetVehicle[]
+  maintenanceRequests FleetMaintenanceRequest[]
+  fleetPayments       FleetPayment[]
+  workAndPayContracts FleetWorkAndPayContract[]
+}
+
+model OrganizationMember {
+  id             String       @id @default(cuid())
+  organizationId String
+  userId         String
+  roleId         String?
+  branchId       String?
+  status         MemberStatus @default(INVITED)
+  joinedAt       DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         Role?        @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([branchId])
+  @@index([roleId])
+}
+
+model Branch {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  code           String
+  address        String?
+  timezone       String?
+  contactEmail   String?
+  status         BranchStatus @default(ACTIVE)
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization        Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members             OrganizationMember[]
+  auditLogs           AuditLog[]
+  fileAssets          FileAsset[]
+  fleetOwners         FleetOwner[]
+  fleetDrivers        FleetDriver[]
+  fleetVehicles       FleetVehicle[]
+  maintenanceRequests FleetMaintenanceRequest[]
+  fleetPayments       FleetPayment[]
+  workAndPayContracts FleetWorkAndPayContract[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+}
+
+model Role {
+  id             String   @id @default(cuid())
+  organizationId String?
+  name           String
+  description    String?
+  isSystem       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization    Organization?        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members         OrganizationMember[]
+  rolePermissions RolePermission[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  name        String
+  description String?
+  moduleCode  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  id           String   @id @default(cuid())
+  roleId       String
+  permissionId String
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model Module {
+  id          String       @id @default(cuid())
+  code        String       @unique
+  name        String
+  description String?
+  status      ModuleStatus @default(ACTIVE)
+  isCore      Boolean      @default(false)
+  metadata    Json?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  organizationModules OrganizationModule[]
+}
+
+model OrganizationModule {
+  id             String    @id @default(cuid())
+  organizationId String
+  moduleId       String
+  enabled        Boolean   @default(false)
+  configuration  Json?
+  enabledAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  module       Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, moduleId])
+  @@index([moduleId])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  branchId       String?
+  userId         String?
+  action         String
+  entityName     String
+  entityId       String?
+  changes        Json?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([branchId])
+  @@index([userId])
+  @@index([entityName, entityId])
+}
+
+model Notification {
+  id             String              @id @default(cuid())
+  organizationId String
+  userId         String?
+  type           String
+  channel        NotificationChannel @default(IN_APP)
+  title          String
+  message        String              @db.Text
+  status         NotificationStatus  @default(QUEUED)
+  metadata       Json?
+  sentAt         DateTime?
+  readAt         DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([userId, readAt])
+}
+
+model FileAsset {
+  id             String   @id @default(cuid())
+  organizationId String
+  branchId       String?
+  uploadedById   String?
+  fileName       String
+  mimeType       String
+  size           Int
+  storagePath    String
+  url            String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization      Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch            Branch?                   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  uploadedBy        User?                     @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  maintenancePhotos FleetMaintenanceRequest[]
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([uploadedById])
+}
+
+model FleetOwner {
+  id             String   @id @default(cuid())
+  organizationId String
+  branchId       String?
+  name           String
+  businessName   String?
+  phone          String?
+  email          String?
+  history        Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  vehicles     FleetVehicle[]
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([email])
+}
+
+model FleetDriver {
+  id                  String            @id @default(cuid())
+  organizationId      String
+  branchId            String?
+  userId              String?
+  name                String
+  licenceNumber       String?
+  licenceExpiry       DateTime?
+  phone               String?
+  email               String?
+  status              FleetDriverStatus @default(ACTIVE)
+  employmentStartDate DateTime?
+  performanceMetrics  Json?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch           Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  user             User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  assignedVehicles FleetVehicle[]
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([userId])
+  @@index([licenceNumber])
+}
+
+model FleetVehicle {
+  id               String              @id @default(cuid())
+  organizationId   String
+  branchId         String?
+  assetTag         String
+  plateNumber      String
+  type             String?
+  make             String?
+  model            String?
+  year             Int?
+  ownerId          String?
+  assignedDriverId String?
+  status           FleetVehicleStatus  @default(AVAILABLE)
+  documentStatus   FleetDocumentStatus @default(MISSING)
+  mileage          Int?
+  location         String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  organization        Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch              Branch?                   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  owner               FleetOwner?               @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  assignedDriver      FleetDriver?              @relation(fields: [assignedDriverId], references: [id], onDelete: SetNull)
+  maintenanceRequests FleetMaintenanceRequest[]
+  workAndPayContracts FleetWorkAndPayContract[]
+
+  @@unique([organizationId, assetTag])
+  @@unique([organizationId, plateNumber])
+  @@index([branchId])
+  @@index([ownerId])
+  @@index([assignedDriverId])
+}
+
+model FleetMaintenanceRequest {
+  id                  String                         @id @default(cuid())
+  organizationId      String
+  branchId            String?
+  vehicleId           String
+  requestedById       String?
+  faultDescription    String                         @db.Text
+  photoAssetId        String?
+  approvalStatus      FleetMaintenanceApprovalStatus @default(PENDING)
+  fleetManagerReview  String?                        @db.Text
+  ownerApprovalStatus FleetMaintenanceApprovalStatus @default(PENDING)
+  mechanicAssigned    String?
+  progressStatus      FleetMaintenanceProgressStatus @default(REPORTED)
+  repairCost          Decimal?                       @db.Decimal(12, 2)
+  completionVerified  Boolean                        @default(false)
+  requestedAt         DateTime                       @default(now())
+  completedAt         DateTime?
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  vehicle      FleetVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  requestedBy  User?        @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+  photoAsset   FileAsset?   @relation(fields: [photoAssetId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, progressStatus])
+  @@index([branchId])
+  @@index([vehicleId])
+  @@index([requestedById])
+  @@index([photoAssetId])
+}
+
+model FleetPayment {
+  id              String             @id @default(cuid())
+  organizationId  String
+  branchId        String?
+  reference       String
+  date            DateTime           @default(now())
+  type            FleetPaymentType
+  amount          Decimal            @db.Decimal(12, 2)
+  status          FleetPaymentStatus @default(PENDING)
+  relatedEntity   String?
+  relatedEntityId String?
+  verified        Boolean            @default(false)
+  metadata        Json?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, reference])
+  @@index([organizationId, date])
+  @@index([branchId])
+  @@index([relatedEntity, relatedEntityId])
+}
+
+model FleetWorkAndPayContract {
+  id                     String              @id @default(cuid())
+  organizationId         String
+  branchId               String?
+  contractName           String
+  vehicleId              String
+  clientName             String
+  contractAmount         Decimal             @db.Decimal(12, 2)
+  depositAmount          Decimal             @default(0) @db.Decimal(12, 2)
+  weeklyPaymentAmount    Decimal             @db.Decimal(12, 2)
+  amountPaid             Decimal             @default(0) @db.Decimal(12, 2)
+  outstandingBalance     Decimal             @default(0) @db.Decimal(12, 2)
+  remainingDurationWeeks Int?
+  completionPercentage   Decimal             @default(0) @db.Decimal(5, 2)
+  contractStatus         FleetContractStatus @default(DRAFT)
+  startsAt               DateTime?
+  endsAt                 DateTime?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  vehicle      FleetVehicle @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, contractStatus])
+  @@index([branchId])
+  @@index([vehicleId])
+}

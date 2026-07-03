@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
-import { Topbar } from "./Topbar";
+import Topbar from "./Topbar";
 
 interface DashboardShellProps {
   title: string;

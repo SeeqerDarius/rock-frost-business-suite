@@ -1,4 +1,13 @@
-export function Topbar() {
+import { getDashboardSessionInfo } from "@/lib/auth/session";
+import { ProfileMenu } from "./ProfileMenu";
+
+export default async function Topbar() {
+  const session = await getDashboardSessionInfo();
+  const organization = session?.organizationId ?? "Organization workspace";
+  const role = session?.role ?? "Member";
+  const name = session?.name ?? session?.email ?? "Guest user";
+  const email = session?.email ?? null;
+
   return (
     <div className="flex flex-col gap-4 border-b border-white/10 bg-[#03060f]/90 px-4 py-4 backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
       <div className="space-y-2">
@@ -16,8 +25,10 @@ export function Topbar() {
         </div>
         <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
           <p className="text-xs uppercase tracking-[0.24em] text-cyan-200/70">Tenant</p>
-          <p className="font-semibold text-slate-100">Organization workspace</p>
+          <p className="font-semibold text-slate-100">{organization}</p>
+          <p className="text-xs text-slate-400">Role: {role}</p>
         </div>
+        <ProfileMenu name={name} email={email} role={role} organization={organization} />
       </div>
     </div>
   );
