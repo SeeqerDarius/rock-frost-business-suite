@@ -7,7 +7,7 @@
 - `src/app/(auth)/login/page.tsx` — a real-looking form with no submit handler. Submitting it does a harmless default browser form GET; nothing is authenticated.
 - `src/app/(auth)/forgot-password/page.tsx` — same: UI only.
 - `src/components/navigation/user-menu.tsx` — shows a static "U" avatar. "Sign out" just links to `/login`; there is no session to actually clear.
-- No middleware, no route guards. Every route under `(workspace)` and `(platform)` renders for anyone regardless of auth state.
+- No middleware, no route guards. Every route under `/app/*` renders for anyone regardless of auth state.
 
 **Do not treat any of the above as a real security boundary.** Nothing in this phase should be mistaken for working authentication.
 
@@ -21,8 +21,8 @@ Authentication determines who the user is. Authorization determines what they ca
 - Invitations, account approval, password reset, and email verification — at minimum the data model and route structure for these; delivery (email sending) can lag behind if needed, but the architecture should not preclude it.
 
 **Authorization:**
-- **Platform roles** — for Rock Frost operators (`platform.super_admin`, etc.) — gate `(platform)/*`.
-- **Organization roles** — `organization.owner`, `organization.admin` — gate `(workspace)/(overview)/administration`, `/organization`, etc.
+- **Platform roles** — for Rock Frost operators (`platform.super_admin`, etc.) — gate `/app/platform/*`.
+- **Organization roles** — `organization.owner`, `organization.admin` — gate `/app/administration`, `/app/organization`, etc.
 - **Module permissions** — one permission namespace per module, e.g. `fleet.manager`, `fleet.driver`, `fleet.maintenance_officer`, `installment.manager`, `installment.staff`. **Do not reuse a Fleet role for Installment** or vice versa — this is a module-boundary rule, not just a naming convention (see `docs/MODULE_BOUNDARIES.md`).
 - **Branch-level access** where a module has branch granularity (Fleet likely will; confirm per-module during Phase 6/7).
 - **Action-level permissions** within a module where needed (e.g. `fleet.vehicles.manage` vs `fleet.vehicles.view`) — mirror the granularity the previous implementation's `lib/permissions/constants.ts` had (archived at `docs/archive/previous-implementation/`), re-validated rather than copied verbatim.

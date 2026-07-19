@@ -16,7 +16,7 @@ export default function OrganizationDashboardPage() {
         title="No modules activated yet"
         description="Once your organization activates a module, its summary will appear here. Browse the module launcher to get started."
         action={
-          <Button size="sm" nativeButton={false} render={<Link href="/modules" />}>
+          <Button size="sm" nativeButton={false} render={<Link href="/app/modules" />}>
             Browse modules
           </Button>
         }

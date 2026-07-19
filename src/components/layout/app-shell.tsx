@@ -23,7 +23,7 @@ export function AppShell({ sectionLabel, navigation, children }: AppShellProps) 
     <div className="flex min-h-screen">
       <aside className="hidden w-64 shrink-0 flex-col border-r lg:flex">
         <div className="flex h-16 items-center border-b px-4">
-          <Logo />
+          <Logo href="/app/dashboard" />
         </div>
         <p className="px-5 pt-4 pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{sectionLabel}</p>
         <div className="flex-1 overflow-y-auto py-1">

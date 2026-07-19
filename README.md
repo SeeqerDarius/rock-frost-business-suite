@@ -28,7 +28,7 @@ See `docs/ARCHITECTURE.md` for the full breakdown. Short version:
 
 ```
 src/
-  app/            App Router routes, grouped by scope: (public), (auth), (platform), (workspace)
+  app/            App Router routes, grouped by scope: (public), (auth), and app/ (everything behind sign-in, at /app/*)
   modules/        Per-module code (fleet/, installment/, ...) — navigation, and eventually components/services/etc.
   platform/       Shared platform concerns: module registry, platform-scope navigation
   components/     Genuinely reusable UI: ui/ (shadcn primitives), layout/, navigation/, feedback/, data-display/, forms/

@@ -6,9 +6,11 @@ This is the non-negotiable contract every future phase of this project must resp
 
 Every page belongs to exactly one of three scopes:
 
-1. **Platform scope** (`(platform)/*`) — Rock Frost operators managing the SaaS across every tenant organization. Organizations, subscriptions, module activation, platform-wide activity.
-2. **Organization scope** (`(workspace)/(overview)/*`) — a single organization's cross-module concerns: an overview dashboard, the module launcher, cross-module reports, notifications, organization profile, and administration (users/roles/permissions/audit).
-3. **Module scope** (`(workspace)/<module>/*`) — one module's own business data and workflows.
+1. **Platform scope** (`app/platform/*`, URL `/app/platform/*`) — Rock Frost operators managing the SaaS across every tenant organization. Organizations, subscriptions, module activation, platform-wide activity.
+2. **Organization scope** (`app/(overview)/*`, URL `/app/*`) — a single organization's cross-module concerns: an overview dashboard, the module launcher, cross-module reports, notifications, organization profile, and administration (users/roles/permissions/audit).
+3. **Module scope** (`app/<module>/*`, URL `/app/<module>/*`) — one module's own business data and workflows.
+
+(Public marketing pages — home, `/solutions`, `/modules`, `/industries`, `/company`, `/contact` — are a fourth, unauthenticated scope outside this three-way split; see `docs/ARCHITECTURE.md`'s "Why /app exists" for why the authenticated app and the public site don't share a URL namespace.)
 
 There must be no ambiguous pages — a page that shows a bit of Fleet and a bit of Installment "for convenience" does not have a home in this structure, and should not be built.
 
@@ -45,7 +47,7 @@ As modules gain real data (Phase 6 onward), this must also be enforced **server-
 
 ## Adding a new module
 
-1. Add its entry to `src/platform/modules/registry.ts` (key, name, description, icon, route prefix, status).
-2. If it has real navigation, add `src/modules/<key>/navigation.tsx` and reference it from the registry entry.
-3. Create its route tree under `src/app/(workspace)/<key>/` with its own `layout.tsx` wrapping `AppShell` with that module's navigation — copy the pattern from `(workspace)/fleet/layout.tsx` or `(workspace)/installment/layout.tsx`.
+1. Add its entry to `src/platform/modules/registry.ts` (key, name, description, icon, `routePrefix` — must be `/app`-prefixed, e.g. `/app/crm` — status).
+2. If it has real navigation, add `src/modules/<key>/navigation.tsx` and reference it from the registry entry. Every `href` in it must also be `/app`-prefixed.
+3. Create its route tree under `src/app/app/<key>/` with its own `layout.tsx` wrapping `AppShell` with that module's navigation — copy the pattern from `app/fleet/layout.tsx` or `app/installment/layout.tsx`.
 4. Do not add its nav items to `workspace-navigation.tsx` or another module's navigation file. Each module's nav lives only in its own file.

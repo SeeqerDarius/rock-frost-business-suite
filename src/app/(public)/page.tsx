@@ -16,9 +16,12 @@ export default function HomePage() {
             Activate independent management modules — fleet, installment sales, and more — from a single,
             unified workspace, without mixing unrelated business data together.
           </p>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <Button size="lg" nativeButton={false} render={<Link href="/login" />}>
               Sign in
+            </Button>
+            <Button size="lg" variant="outline" nativeButton={false} render={<Link href="/contact" />}>
+              Request a demo
             </Button>
           </div>
         </div>
@@ -26,11 +29,16 @@ export default function HomePage() {
 
       <section className="border-t bg-muted/30">
         <div className="mx-auto max-w-6xl px-6 py-20">
-          <div className="max-w-2xl space-y-2">
-            <h2 className="text-2xl font-semibold tracking-tight">Modules</h2>
-            <p className="text-muted-foreground">
-              Each module is an independent business system with its own data, navigation, and workflows.
-            </p>
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+            <div className="max-w-2xl space-y-2">
+              <h2 className="text-2xl font-semibold tracking-tight">Modules</h2>
+              <p className="text-muted-foreground">
+                Each module is an independent business system with its own data, navigation, and workflows.
+              </p>
+            </div>
+            <Link href="/modules" className="text-sm font-medium underline underline-offset-4">
+              View all modules
+            </Link>
           </div>
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {moduleRegistry.map((mod) => (
@@ -47,6 +55,23 @@ export default function HomePage() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-6 py-20">
+        <div className="flex flex-col items-start justify-between gap-6 rounded-lg border p-8 sm:flex-row sm:items-center">
+          <div className="space-y-1">
+            <h2 className="text-xl font-semibold">See how it fits your organization</h2>
+            <p className="text-muted-foreground">Read about the platform&apos;s approach, or tell us what you need.</p>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="outline" nativeButton={false} render={<Link href="/solutions" />}>
+              Solutions
+            </Button>
+            <Button nativeButton={false} render={<Link href="/contact" />}>
+              Contact us
+            </Button>
           </div>
         </div>
       </section>

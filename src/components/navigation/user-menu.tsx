@@ -23,11 +23,11 @@ export function UserMenu() {
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>Your account</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem render={<Link href="/account" />}>
+        <DropdownMenuItem render={<Link href="/app/account" />}>
           <User />
           Profile
         </DropdownMenuItem>
-        <DropdownMenuItem render={<Link href="/administration" />}>
+        <DropdownMenuItem render={<Link href="/app/administration" />}>
           <Settings />
           Settings
         </DropdownMenuItem>

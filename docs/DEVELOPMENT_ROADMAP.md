@@ -14,9 +14,14 @@ Each phase below is gated — do not start the next phase without checking in, p
 
 **Status: complete.** See `OPERATOR_HANDOFF.md` for the detailed session record.
 
-## Phase 2 — Public Website (not started)
+## Phase 2 — Public Website ✅
 
-Full marketing site: Home, Solutions, Modules, Industries, Company, Contact, Request Demo — with real content, not just the minimal shell built in Phase 1. `PublicHeader`'s navigation was deliberately kept minimal in Phase 1 because these pages don't exist yet; expand it here once they do.
+- Full marketing site: Home, Solutions, Modules, Industries, Company, Contact — real content, not just the minimal shell built in Phase 1.
+- `PublicHeader` expanded to the full primary nav now that all target pages exist.
+- Structural correction made first: authenticated routes moved under `/app/*` to eliminate a real collision between the new public `/modules` marketing page and Phase 1's authenticated `/modules` (module launcher) — see `docs/ARCHITECTURE.md`'s "Why /app exists."
+- Contact page includes a request-demo path via a reason selector (UI only, no backend — same treatment as login).
+
+**Status: complete.** See `OPERATOR_HANDOFF.md` for the detailed session record.
 
 ## Phase 3 — Authentication (not started)
 
@@ -24,7 +29,8 @@ Full marketing site: Home, Solutions, Modules, Industries, Company, Contact, Req
 - Real sessions, replacing every placeholder in `UserMenu`, the login form, and `AppShell`.
 - Invitations, account approval, password reset, email verification — at minimum the architecture for these, per `docs/AUTHENTICATION_AND_AUTHORIZATION.md`.
 - User status, organization membership.
-- Route protection: pages under `(workspace)` and `(platform)` currently render for anyone; this phase must add real guards.
+- Route protection: every page under `/app/*` currently renders for anyone; this phase must add real guards.
+- Real backend for the contact form (email delivery) is a reasonable companion task here or in Phase 2 follow-up, since it needs the same kind of server-action/email-sending work as password reset.
 
 ## Phase 4 — Platform Workspace (not started)
 
@@ -38,7 +44,7 @@ Full marketing site: Home, Solutions, Modules, Industries, Company, Contact, Req
 
 ## Phase 6 — First Complete Module: Fleet Management (not started)
 
-Build Fleet Management completely — vehicles, drivers, owners, maintenance, insurance/roadworthy, payments, work-and-pay, reports, settings — before starting Installment. Real Prisma models (organization + branch scoped), real service layer under `src/modules/fleet/`, real pages replacing the current `EmptyState` shell at `(workspace)/fleet/page.tsx`.
+Build Fleet Management completely — vehicles, drivers, owners, maintenance, insurance/roadworthy, payments, work-and-pay, reports, settings — before starting Installment. Real Prisma models (organization + branch scoped), real service layer under `src/modules/fleet/`, real pages replacing the current `EmptyState` shell at `app/fleet/page.tsx` (URL `/app/fleet`).
 
 Do not begin Installment Management work during this phase.
 

@@ -17,98 +17,87 @@ After making changes:
 
 ## Current phase
 
-**Phase 1 (Foundation and Design System) — complete.** See `docs/DEVELOPMENT_ROADMAP.md` for what comes next (Phase 2: Public Website, gated pending approval).
+**Phase 2 (Public Website) — complete.** See `docs/DEVELOPMENT_ROADMAP.md` for what comes next (Phase 3: Authentication, gated pending approval).
 
 ## Current architecture (short version — see `docs/ARCHITECTURE.md` for full detail)
 
-- Next.js 16 App Router under `src/app/`, route groups: `(public)`, `(auth)`, `(platform)`, `(workspace)/(overview)` + `(workspace)/fleet` + `(workspace)/installment`.
+- Next.js 16 App Router under `src/app/`. Public marketing site at bare paths (`/`, `/solutions`, `/modules`, `/industries`, `/company`, `/contact`) via the `(public)` route group; auth UI (`/login`, `/forgot-password`) via `(auth)`; **everything requiring sign-in lives under `/app/*`** — `app/(overview)` (organization scope: `/app/dashboard`, `/app/modules`, etc.), `app/fleet`, `app/installment`, `app/platform` (platform scope). See `docs/ARCHITECTURE.md`'s "Why /app exists" — this prefix was introduced in Phase 2 specifically to stop the new public `/modules` marketing page from colliding with the Phase 1 authenticated `/modules` (module launcher).
 - Each module (`fleet`, `installment`) has its own `layout.tsx` rendering the shared `AppShell` component with its own navigation array — this is how module isolation (`docs/MODULE_BOUNDARIES.md`) is enforced structurally, not conditionally.
-- `src/platform/modules/registry.ts` is the single source of truth for every module (available or coming-soon).
-- shadcn/ui (Base UI primitives, not Radix) + Tailwind v4 design system — see `docs/DESIGN_SYSTEM.md`.
-- **No database wiring, no real auth, no real business logic anywhere in `src/`.** Every dashboard/module page is a static `EmptyState` placeholder. This is intentional (Phase 1 scope), not an oversight.
-- `prisma/schema.prisma` is untouched from the previous implementation and matches the live Neon database exactly — the rebuild replaced application code only, not the database.
+- `src/platform/modules/registry.ts` is the single source of truth for every module (available or coming-soon); its `routePrefix` values are `/app`-prefixed.
+- shadcn/ui (Base UI primitives, not Radix) + Tailwind v4 design system — see `docs/DESIGN_SYSTEM.md`. Two real Server→Client prop-boundary bugs found and fixed this phase-pair — see `docs/ARCHITECTURE.md`'s dedicated note before passing any function (icon component, render-prop) as a prop into a Client Component.
+- **No database wiring, no real auth, no real business logic anywhere in `src/`.** Every dashboard/module page is a static `EmptyState` placeholder; the login and contact forms are real-looking UI with no backend. This is intentional (Phase 1/2 scope), not an oversight.
+- `prisma/schema.prisma` is untouched from the previous implementation and matches the live Neon database exactly — nothing has reconnected the app to it yet.
 
-## Files changed this session (Phase 1 — clean rebuild)
+## Files changed (Phase 2 — Public Website + `/app` restructure)
 
-**Removed** (git-tracked deletion, full history preserved, also snapshotted on branch `archive/pre-redesign-rfbs`):
-- `app/`, `components/`, `lib/` (entire previous implementation)
-- `public/file.svg`, `public/globe.svg`, `public/next.svg`, `public/vercel.svg`, `public/window.svg` (unused create-next-app boilerplate, confirmed zero references before removal)
-- `prisma/seed-rbac.ts`, `prisma/seed-hire-purchase.ts`, `prisma/seed-fleet-documents.ts` (moved to `docs/archive/previous-implementation/prisma/` — broken as-is since they import deleted application code, kept for reference only)
-
-**Archived** (moved with an OBSOLETE banner prepended, not deleted):
-- `docs/ARCHITECTURE_BIBLE.md`, `docs/AUTHENTICATION_PLAN.md`, `docs/DEVELOPMENT_ROADMAP.md` → `docs/archive/previous-implementation/docs/`
-- `ai/*.md` (8 files) → `docs/archive/previous-implementation/ai/` (the `ai/` directory itself was then removed, now empty)
-- root `OPERATOR_HANDOFF.md`, `README.md` → `docs/archive/previous-implementation/`
+**Moved** (git history preserved):
+- `src/app/(workspace)/(overview)/*` → `src/app/app/(overview)/*` (URL `/app/dashboard`, `/app/modules`, `/app/reports`, `/app/notifications`, `/app/organization`, `/app/administration`, `/app/account`)
+- `src/app/(workspace)/fleet/*` → `src/app/app/fleet/*` (URL `/app/fleet/*`)
+- `src/app/(workspace)/installment/*` → `src/app/app/installment/*` (URL `/app/installment/*`)
+- `src/app/(platform)/platform/*` + `src/app/(platform)/layout.tsx` → `src/app/app/platform/*` (URL `/app/platform/*`)
+- The now-empty `(workspace)` and `(platform)` route-group folders were removed after their contents moved out.
 
 **Created:**
-- `docs/DECISIONS.md`, `docs/PRODUCT_VISION.md`, `docs/ARCHITECTURE.md`, `docs/MODULE_BOUNDARIES.md`, `docs/DESIGN_SYSTEM.md`, `docs/DEVELOPMENT_ROADMAP.md` (new, supersedes archived version), `docs/DATABASE_STRATEGY.md`, `docs/AUTHENTICATION_AND_AUTHORIZATION.md`, `docs/TESTING_STRATEGY.md`
-- New `README.md`, new `OPERATOR_HANDOFF.md` (this file)
-- `components.json` (shadcn/ui config)
-- `src/app/layout.tsx`, `src/app/globals.css` (root layout + Tailwind v4 theme tokens, ThemeProvider/TooltipProvider/Toaster wired in)
-- `src/app/(public)/layout.tsx`, `src/app/(public)/page.tsx` (marketing homepage)
-- `src/app/(auth)/layout.tsx`, `src/app/(auth)/login/page.tsx`, `src/app/(auth)/forgot-password/page.tsx` (UI-only)
-- `src/app/(workspace)/(overview)/layout.tsx` + `dashboard/`, `modules/`, `reports/`, `notifications/`, `organization/`, `administration/`, `account/` pages
-- `src/app/(workspace)/fleet/layout.tsx` + `page.tsx`
-- `src/app/(workspace)/installment/layout.tsx` + `page.tsx`
-- `src/app/(platform)/layout.tsx` + `platform/dashboard/`, `platform/organizations/`, `platform/subscriptions/`, `platform/modules/`, `platform/activity/` pages
-- `src/components/ui/*` (24 shadcn/ui components: button, card, table, dialog, sheet, dropdown-menu, input, label, select, tabs, badge, separator, skeleton, sonner, avatar, textarea, checkbox, switch, tooltip, breadcrumb, alert, scroll-area, popover, command)
-- `src/components/theme-provider.tsx`, `src/components/layout/{app-shell,logo,page-header,public-header,public-footer}.tsx`, `src/components/navigation/{sidebar-nav,module-launcher,user-menu}.tsx`, `src/components/feedback/empty-state.tsx`
-- `src/lib/utils.ts` (shadcn's `cn()` helper)
-- `src/types/module.ts` (`ModuleDefinition`, `ModuleNavItem` types)
-- `src/platform/modules/{registry,workspace-navigation,platform-navigation}.tsx`
-- `src/modules/fleet/navigation.tsx`, `src/modules/installment/navigation.tsx`
+- `src/app/(public)/solutions/page.tsx`, `src/app/(public)/modules/page.tsx` (public marketing version, distinct from `/app/modules`), `src/app/(public)/industries/page.tsx`, `src/app/(public)/company/page.tsx`, `src/app/(public)/contact/page.tsx`
 
 **Modified:**
-- `tsconfig.json` (`@/*` path alias now points to `./src/*`; excludes `docs/archive`)
-- `package.json`/`package-lock.json` (added `@base-ui/react`, `@hookform/resolvers`, `@tanstack/react-table`, `class-variance-authority`, `clsx`, `cmdk`, `lucide-react`, `next-themes`, `react-hook-form`, `shadcn`, `sonner`, `tailwind-merge`, `tw-animate-css`, `zod`; `@prisma/client`/`prisma`/`next`/`next-auth`/`react`/`react-dom`/`bcryptjs`/`resend`/`@anthropic-ai/sdk` all unchanged from before)
+- `src/components/layout/public-header.tsx` — expanded from a minimal Logo+Sign-in header to the full primary nav (Solutions/Modules/Industries/Company/Contact) + a "Request demo" CTA, now that all targets exist.
+- `src/app/(public)/page.tsx` (homepage) — added a "Request a demo" secondary CTA, a "View all modules" link, and a closing Solutions/Contact CTA section.
+- `src/components/layout/logo.tsx` — now accepts an optional `href` prop (defaults to `/`) so `AppShell` can point it at `/app/dashboard` instead of the public homepage.
+- `src/components/layout/app-shell.tsx` — passes `href="/app/dashboard"` to both `Logo` instances (desktop + mobile sheet).
+- `src/components/navigation/user-menu.tsx`, `src/app/app/(overview)/dashboard/page.tsx` — internal links updated to `/app/account`, `/app/administration`, `/app/modules`.
+- `src/platform/modules/{workspace-navigation,platform-navigation}.tsx`, `src/modules/{fleet,installment}/navigation.tsx`, `src/platform/modules/registry.ts` — every `href`/`routePrefix` re-prefixed with `/app`.
+- `docs/ARCHITECTURE.md`, `docs/MODULE_BOUNDARIES.md`, `docs/DEVELOPMENT_ROADMAP.md`, `docs/AUTHENTICATION_AND_AUTHORIZATION.md`, `README.md` — path references updated for the `/app` restructure; `docs/ARCHITECTURE.md` gained a new "Why /app exists" section and a "Server → Client prop boundaries" note.
 
 ## Summary of what was done
 
-Per an explicit, detailed rebuild instruction, retired the entire previous Rock Frost Business Suite implementation and rebuilt Phase 1 (Foundation and Design System) from scratch, per the instruction's own safety rule and scope gate.
+User said "proceed to the next phase" after approving the Phase 1 report. Per `docs/DEVELOPMENT_ROADMAP.md`, that's Phase 2 (Public Website).
 
-**Backup first, per the instruction's Section 1:** committed the last pending changes, created and pushed branch `archive/pre-redesign-rfbs` (full snapshot of the previous implementation, still on GitHub), and recorded the `.env` variable names (not values) plus approved brand assets in a private, non-committed migration note before touching anything.
+**Caught a real structural collision before writing any Phase 2 content:** Phase 2 requires a public marketing page at `/modules`, but Phase 1 had already built the authenticated module launcher at that exact same bare path (`(workspace)/(overview)/modules`, no distinguishing prefix). Building the marketing page as planned would have created exactly the "ambiguous page" `docs/MODULE_BOUNDARIES.md` prohibits — two unrelated pages, one public and one requiring sign-in, at the identical URL. Fixed by moving every authenticated route under a literal `/app` URL segment (standard SaaS convention) before starting Phase 2 content, rather than compromising either page's naming. Directory renames initially failed with Windows "Permission denied" (likely a file handle held by the open editor) — worked around by moving each file individually with `git mv` rather than renaming the parent directory, which succeeded cleanly.
 
-**Root cause of the rebuild:** the previous implementation had no enforced module-boundary concept. Fleet and Installment/Hire-Purchase navigation and dashboard chrome bled into each other because a single shared dashboard shell had module pages bolted onto it, with a hardcoded "Fleet Operations" / "Rock Frost Fleet Control" heading rendered on every page regardless of module, and a flat, unsectioned sidebar nav array. Patching these one bug at a time (which happened earlier in the retired implementation's history) didn't address the structural cause.
+Built the five new marketing pages (Solutions, Modules, Industries, Company, Contact) with real, honestly-scoped copy — no fabricated metrics, no claims about features that don't exist yet (e.g. Industries and Company describe the platform's actual architecture and real module list, not invented customer counts or founding history). The Contact page doubles as the "Request a demo" destination via a reason selector, rather than building a separate near-duplicate page for what's fundamentally one lead-capture form.
 
-**New architecture:** `src/` layout per `docs/ARCHITECTURE.md`, with each module getting its own nested route-group `layout.tsx` that renders a shared `AppShell` component with that module's own navigation array. This makes module isolation a structural property of the routing tree, not a conditional check that could drift — confirmed visually in a real browser (screenshots taken, not just build-success assumed): the Fleet route tree shows only Fleet nav under a "FLEET MANAGEMENT" heading, the Installment route tree shows only Installment nav under "INSTALLMENT MANAGEMENT," and the workspace-overview route tree shows the generic cross-module nav under "WORKSPACE" — zero overlap between any of the three.
+**Two real bugs found via browser verification, not caught by `tsc`/lint/build:**
+1. The Contact page's reason `<Select>` displayed the raw value (`"demo"`) instead of its label (`"Request a demo"`) — Base UI's `Select.Value` doesn't auto-derive labels from `<SelectItem>` children the way Radix's does; it needs either an `items` map on `Select.Root` or a `children` formatter function on `Select.Value`.
+2. Tried the `children` formatter function first, which produced a completely different-looking, confusing dev error ("Encountered a script tag while rendering React component") that took real investigation to trace back to the same root cause as Phase 1's Lucide-icon bug: **a function passed as a prop from a Server Component into a Client Component doesn't work**, even when the failure mode looks unrelated on the surface. `ContactPage` has no `"use client"` directive, so the inline arrow function passed as `SelectValue`'s `children` was a function crossing the Server→Client boundary, just like the earlier icon-component-reference bug — different library, same underlying cause. Fixed by switching to `Select`'s `items` prop (a plain serializable `Record<string, ReactNode>`), which resolves labels without a callback at all. Documented the general pattern in `docs/ARCHITECTURE.md` so the next agent recognizes it faster than this session did.
 
-**UI foundation:** evaluated and chose shadcn/ui (documented in `docs/DECISIONS.md` with license/rationale) — discovered mid-implementation that the currently-installed CLI version (4.13.1, `base-nova` preset) uses **Base UI** primitives, not Radix, meaning the polymorphic composition pattern is `render={<Element />}` rather than `asChild` + nested child. Got this wrong initially (used `asChild` throughout, copying muscle-memory from Radix-based shadcn), which produced two distinct real bugs, both caught by actually building and running the app rather than trusting a clean `tsc`/lint pass:
-1. A Next.js build failure ("Functions cannot be passed directly to Client Components") from passing Lucide icon **component references** as props from Server Component layouts into the client-side `AppShell` — fixed by changing `ModuleNavItem.icon` from a `LucideIcon` component-reference type to a pre-rendered `ReactNode`, so the navigation config files instantiate icons as JSX (`<Truck className="size-4" />`) rather than passing the bare component function across the server/client boundary.
-2. A Base UI accessibility console warning ("component that acts as a button expected a native `<button>`") on every `Button` rendered as a `Link` — fixed by adding `nativeButton={false}` to those instances.
-
-**Verification:** full validation suite (lint, `tsc --noEmit`, `prisma validate`, `prisma generate`, `npm run build`) passes clean — 19 static routes. Beyond that, started the dev server, installed Playwright **temporarily**, and screenshotted every key route (home, login, dashboard, modules launcher, fleet, installment, platform dashboard, and the module-launcher dialog) — all render correctly with zero console errors after the two fixes above. Playwright was then removed surgically via `npm uninstall playwright` (not a blanket `git checkout -- package.json`, which would have reverted the many legitimate new dependencies added in the same session — this exact mistake happened at least once in the previous implementation's history, see the archived handoff for the story; checked `git diff package.json` before and after to confirm only `playwright` was reverted).
+**Verification:** full validation suite (lint, `tsc --noEmit`, `prisma validate`, `prisma generate`, `npm run build`) passes clean — 24 routes (up from 19), cleanly split between public bare paths and `/app/*`. Playwright installed **temporarily** again, screenshotted all 5 new marketing pages plus the homepage and two restructured `/app` pages (`/app/dashboard`, `/app/fleet`) to confirm the restructure didn't silently break anything — it didn't, both rendered identically to their pre-move Phase 1 screenshots. Caught the Select bug this way (a clean build doesn't catch runtime-only React errors). Removed Playwright surgically via `npm uninstall playwright` afterward, confirmed via `git diff --stat package.json` that nothing else was touched.
 
 ## Build result
 
-**Passed.** `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate`/`generate` succeed, `npm run build` succeeds — 19 routes, all static (`○`), since no dynamic data/auth is wired up yet (expected and correct for this phase).
+**Passed.** `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate`/`generate` succeed, `npm run build` succeeds — 24 routes, all static (`○`).
 
-## Known issues / deliberate gaps (Phase 1 scope, not oversights)
+## Known issues / deliberate gaps
 
-- **No database wiring, no real auth, no real business logic.** Every module/dashboard page is a static `EmptyState`. This is the explicit Phase 1 boundary — do not "helpfully" wire in real Prisma queries or auth before Phase 3/6/7 are actually reached; that would be scope creep past what was approved for this session.
-- **The public marketing site is a minimal shell**, not the full Phase 2 site — `PublicHeader` deliberately has no nav links to Solutions/Modules/Industries/Company/Contact because those pages don't exist yet; a full nav linking to 404s would be worse than an honest minimal header. Expand it when Phase 2 starts.
-- **No middleware/route guards** — every route renders for anyone. Expected until Phase 3.
-- **`prisma/schema.prisma` is inherited, not re-validated** against this new architecture's module-boundary rules. Phase 6/7 must decide whether to keep, adapt, or rebuild the existing `Fleet*` models and design fresh Installment models — see `docs/DATABASE_STRATEGY.md`.
-- **The `form` shadcn/ui registry component was not added** — `npx shadcn add form` succeeded but produced no file in this CLI version (possibly renamed/restructured in the `base-nova` preset). `react-hook-form`, `zod`, and `@hookform/resolvers` are installed and ready; a thin `Form`/`FormField`/`FormItem` wrapper (the classic shadcn pattern) will need to be hand-built or re-investigated when the first real form (Phase 3 login) is implemented.
-- **Only Fleet and Installment are marked "available"** in `platform/modules/registry.ts`; CRM, Inventory, Accounting, HR, Payroll, Procurement, Projects, and Analytics are `"coming-soon"` placeholders with no routes — correct for now, don't build routes for them without an explicit go-ahead (see `docs/DEVELOPMENT_ROADMAP.md`'s phase gating).
+- **No database wiring, no real auth, no real business logic anywhere.** Unchanged from Phase 1 — still the case, still intentional. Do not start wiring real data before Phase 3/6/7.
+- **Contact form has no backend** — same UI-only treatment as the login form. Real email delivery (likely via Resend, which was already a dependency in the previous implementation) is flagged as a reasonable Phase 3 companion task in `docs/DEVELOPMENT_ROADMAP.md`, not done here.
+- **No middleware/route guards** — every route under `/app/*` renders for anyone. Expected until Phase 3. Don't mistake the new `/app` prefix for an access boundary — it's a URL-collision fix, not a security boundary.
+- **`prisma/schema.prisma` still inherited, not re-validated** against the new architecture. Unchanged from Phase 1 — see `docs/DATABASE_STRATEGY.md`.
+- **The `form` shadcn/ui registry component still not added** — unchanged from Phase 1, still flagged for Phase 3 when the first real form (login) needs real validation.
+- **Only Fleet and Installment are marked "available"** in the registry — unchanged from Phase 1.
 
 ## Next recommended step
 
-Report back per the instruction's required final-report format (already done in this session's chat response) and get explicit approval before starting Phase 2 (Public Website) or Phase 3 (Authentication) — the instruction that drove this rebuild explicitly said not to continue past the first clean-foundation milestone without a checkpoint.
+Get explicit approval before starting Phase 3 (Authentication) — the project's own operating rule says not to continue past a completed phase without a checkpoint, and Phase 3 is a meaningfully larger, more consequential piece of work (real database reconnection, real sessions, real route protection) than Phase 2 was.
 
 ---
 
-## Handoff log template
+## Handoff log
 
-### YYYY-MM-DD — Agent Name
+### 2026-07-19 — Claude Code — Phase 2 (Public Website + `/app` restructure)
 
-**Objective:**
+See "Files changed," "Summary," "Build result," "Known issues," and "Next recommended step" above — kept in the current-state sections rather than duplicated here, since this is the most recent entry.
 
-**Files changed:**
+### 2026-07-19 — Claude Code — Phase 1 (Foundation and Design System, clean rebuild)
 
-**Summary:**
+**Objective:** Per an explicit, detailed rebuild instruction, retire the entire previous Rock Frost Business Suite implementation and rebuild Phase 1 (Foundation and Design System) from scratch, per the instruction's own safety rule and scope gate.
 
-**Build result:**
+**Files changed:** Removed the entire previous `app/`, `components/`, `lib/` implementation (full history preserved, also snapshotted on branch `archive/pre-redesign-rfbs`) plus 5 unused create-next-app boilerplate icons and 3 now-broken seed scripts (archived, not deleted). Archived all previous docs under `docs/archive/previous-implementation/` with an OBSOLETE banner. Created the full `src/` foundation: root layout with ThemeProvider/TooltipProvider/Toaster, `(public)` homepage, `(auth)` login/forgot-password (UI only), `(workspace)`/`(platform)` route groups (later restructured under `/app` in Phase 2 — see above), 24 shadcn/ui components, `AppShell`/navigation/`EmptyState` components, the module registry and type system. New authoritative docs: `DECISIONS.md`, `PRODUCT_VISION.md`, `ARCHITECTURE.md`, `MODULE_BOUNDARIES.md`, `DESIGN_SYSTEM.md`, `DEVELOPMENT_ROADMAP.md`, `DATABASE_STRATEGY.md`, `AUTHENTICATION_AND_AUTHORIZATION.md`, `TESTING_STRATEGY.md`.
 
-**Known issues:**
+**Summary:** Root cause of the rebuild: the previous implementation had no enforced module-boundary concept — Fleet and Installment navigation/dashboard chrome bled into each other (a hardcoded "Fleet Operations" / "Rock Frost Fleet Control" heading rendered on every page regardless of module, a flat unsectioned sidebar). Backed up first (branch + push + private env-var/asset migration note) per the instruction's safety rule, then rebuilt with module isolation as a structural property: each module gets its own nested route-group `layout.tsx` rendering a shared `AppShell` with its own navigation array — no shared conditional-sidebar logic that could drift. Chose shadcn/ui on Base UI primitives (documented in `DECISIONS.md`); got the `asChild`-vs-`render` prop distinction wrong initially (Base UI, not Radix), which produced two real bugs caught only by actually building and running the app: a hard build failure from passing Lucide icon component references as props across a Server→Client boundary (fixed by pre-rendering icons as JSX elements instead), and a Base UI accessibility warning on `Button`s rendered as `Link`s (fixed with `nativeButton={false}`).
 
-**Next recommended step:**
+**Build result:** Passed. Lint/tsc/prisma/build all clean — 19 static routes. Verified visually in a real browser (Playwright, temporary) with zero console errors across every route plus the module-launcher dialog.
+
+**Known issues:** See Phase 2 entry above — the "no database/auth/business-logic yet" and "form component not added" gaps carried forward unchanged into Phase 2 and are documented there.
+
+**Next recommended step (at the time):** Report per the instruction's required final-report format and get explicit approval before continuing — which the user then gave ("proceed to the next phase"), leading directly into the Phase 2 work above.
