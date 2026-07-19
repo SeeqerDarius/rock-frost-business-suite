@@ -1,10 +1,10 @@
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { SectionTable } from "@/components/fleet/SectionTable";
 import { getPayments } from "@/lib/fleet";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requirePermission, PERMISSIONS } from "@/lib/permissions";
 
 export default async function PaymentsPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requirePermission(PERMISSIONS.FLEET_PAYMENTS_MANAGE);
   const recentPayments = await getPayments(tenant.organizationId);
 
   return (

@@ -2,10 +2,10 @@ import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { SectionTable } from "@/components/fleet/SectionTable";
 import { StatusBadge } from "@/components/fleet/StatusBadge";
 import { getVehicles } from "@/lib/fleet";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requirePermission, PERMISSIONS } from "@/lib/permissions";
 
 export default async function VehiclesPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requirePermission(PERMISSIONS.FLEET_VEHICLES_MANAGE);
   const vehicleRecords = await getVehicles(tenant.organizationId);
 
   return (

@@ -1,10 +1,10 @@
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { SectionTable } from "@/components/fleet/SectionTable";
 import { getVehicleDocuments } from "@/lib/fleet";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requirePermission, PERMISSIONS } from "@/lib/permissions";
 
 export default async function InsuranceRoadworthyPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requirePermission(PERMISSIONS.FLEET_INSURANCE_MANAGE);
   const policyRecords = await getVehicleDocuments(tenant.organizationId);
 
   return (

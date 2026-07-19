@@ -46,9 +46,8 @@ Tenancy status:
 RBAC / permissions status (Phase 4):
 - `lib/permissions/constants.ts` defines the `PERMISSIONS` key catalog (plain data, no "server-only" import, so it can be imported from standalone scripts). `lib/permissions/index.ts` re-exports it plus `hasPermission()` and `requirePermission()` (redirects to `/dashboard` if the current user lacks the permission).
 - `prisma/seed-rbac.ts` is a committed, idempotent seed script (`npx tsx prisma/seed-rbac.ts`) that populates real `Permission` and `RolePermission` rows in the live database for the 6 existing system roles (Super Admin, Organization Owner, Fleet Manager, Driver, Mechanic, Investor). It has already been run against the live Neon database — the tables are populated, not just conceptual.
-- `Sidebar` now filters nav items by permission (each nav item maps to a `PermissionKey`). `/fleet/settings` and `/fleet/investor-dashboard` are also guarded server-side via `requirePermission()` — a user without the permission is redirected away even via direct URL, not just hidden from nav.
-- The other 9 Fleet pages (vehicles, drivers, owners, insurance, maintenance, work-and-pay, payments, reports, overview) are still **not individually guarded** at the route level — only their nav visibility is filtered. Still a reasonable follow-up.
-- Verified end-to-end in a real browser: logged in as Super Admin (`admin@rockfrostgroup.com`) — all 12 nav items visible, `/fleet/settings` accessible. Logged in as Driver (`driver@demo.com`, a temporary password was set the same way as the Super Admin's in the earlier handoff entry) — only Dashboard/Fleet Overview/Maintenance visible in nav, and a direct navigation to `/fleet/settings` redirected to `/dashboard`.
+- `Sidebar` now filters nav items by permission (each nav item maps to a `PermissionKey`). **All 11 Fleet pages** (not just Settings and Investor Dashboard) now call `requirePermission()` server-side — a user without the permission is redirected to `/dashboard` even via direct URL, not just hidden from nav. This was closed out on 2026-07-19 (see handoff entry below) — there is no longer a gap between nav visibility and route enforcement.
+- Verified end-to-end in a real browser: logged in as Super Admin (`admin@rockfrostgroup.com`) — every Fleet route accessible. Logged in as Driver (`driver@demo.com`) — direct navigation to `/fleet/vehicles`, `/fleet/payments`, `/fleet/reports`, `/fleet/vehicle-owners`, and `/fleet/work-and-pay` all redirected to `/dashboard`, while `/fleet` and `/fleet/maintenance` (permissions Driver actually has) remained accessible.
 
 Fleet module status (Phase 6 — real backend, no longer mock data):
 - **Fleet pages now consume real, tenant-scoped database data.** `lib/fleet/service.ts` has one function per data need (`getDashboardMetrics`, `getVehicles`, `getOwners`, `getDrivers`, `getVehicleDocuments`, `getMaintenanceRequests`, `getWorkAndPayContracts`, `getPayments`, `getReportSummary`, `getInvestorSummary`), each taking `organizationId` and querying Prisma directly — no mock arrays remain. `lib/fleet/types.ts` holds the display-shape interfaces (unchanged from the old mock module, so the UI components didn't need to change). All 11 Fleet pages + `/dashboard` were updated to `await` these functions using `requireCurrentTenant()` (or the tenant returned by `requirePermission()` on the two guarded pages).
@@ -141,6 +140,28 @@ main
 - `/organizations` (planned; not currently present)
 
 ## Latest Handoff Log
+
+### 2026-07-19 (Fleet permission gap closed) - Claude Code
+
+**Objective:**
+Close the remaining Fleet RBAC gap flagged in the Phase 4 and Phase 6 entries — 9 Fleet pages had their nav links hidden by permission but no server-side enforcement, so a user could still reach them by typing the URL directly.
+
+**Files changed:**
+- `app/(dashboard)/fleet/page.tsx`, `vehicles/page.tsx`, `vehicle-owners/page.tsx`, `drivers/page.tsx`, `insurance-roadworthy/page.tsx`, `maintenance/page.tsx`, `work-and-pay/page.tsx`, `payments/page.tsx`, `reports/page.tsx`
+
+**Summary:**
+Mechanical but important fix: each page's `const tenant = await requireCurrentTenant();` (from `@/lib/tenant`) was swapped for `const tenant = await requirePermission(PERMISSIONS.<matching key>);` (from `@/lib/permissions`) — the same one-line pattern already used on `/fleet/settings` and `/fleet/investor-dashboard` since Phase 4. Each page now maps to the same permission its Sidebar nav entry already used for visibility, so nav-hiding and route-enforcement are finally backed by the same check instead of two separate, driftable ones.
+
+Verified with a real browser test: logged in as Driver (`driver@demo.com`), confirmed direct navigation to `/fleet/vehicles`, `/fleet/payments`, `/fleet/reports`, `/fleet/vehicle-owners`, and `/fleet/work-and-pay` all now redirect to `/dashboard` (Driver's role only has `dashboard.view`, `fleet.view`, and `fleet.maintenance.manage`), while `/fleet` and `/fleet/maintenance` remain reachable. Logged in as Super Admin and confirmed every route stays accessible. All checks passed exactly as expected on the first try.
+
+**Build result:**
+Passed. `npm run build` completed successfully, 32 routes generated.
+
+**Known issues:**
+None new — this closes the specific gap noted in the two prior handoff entries.
+
+**Next recommended step:**
+Phase 9 (AI Assistant) per `docs/DEVELOPMENT_ROADMAP.md`.
 
 ### 2026-07-19 (Phase 8) - Claude Code
 

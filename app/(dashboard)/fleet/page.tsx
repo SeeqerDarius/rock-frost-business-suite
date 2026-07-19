@@ -2,10 +2,10 @@ import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { MetricCard } from "@/components/fleet/MetricCard";
 import { SectionTable } from "@/components/fleet/SectionTable";
 import { getDashboardMetrics, getDrivers, getOwners, getVehicleDocuments, getVehicles, getWorkAndPayContracts } from "@/lib/fleet";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requirePermission, PERMISSIONS } from "@/lib/permissions";
 
 export default async function FleetPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requirePermission(PERMISSIONS.FLEET_VIEW);
   const [dashboardMetrics, vehicleRecords, ownerRecords, driverRecords, policyRecords, workPayRecords] = await Promise.all([
     getDashboardMetrics(tenant.organizationId),
     getVehicles(tenant.organizationId),

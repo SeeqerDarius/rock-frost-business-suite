@@ -1,10 +1,10 @@
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { SectionTable } from "@/components/fleet/SectionTable";
 import { getMaintenanceRequests, type MaintenanceRecord } from "@/lib/fleet";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requirePermission, PERMISSIONS } from "@/lib/permissions";
 
 export default async function MaintenancePage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requirePermission(PERMISSIONS.FLEET_MAINTENANCE_MANAGE);
   const recentMaintenance = await getMaintenanceRequests(tenant.organizationId);
 
   return (
