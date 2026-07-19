@@ -1,9 +1,23 @@
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { MetricCard } from "@/components/fleet/MetricCard";
 import { SectionTable } from "@/components/fleet/SectionTable";
-import { dashboardMetrics, driverRecords, ownerRecords, policyRecords, vehicleRecords, workPayRecords } from "@/lib/fleet";
+import { getDashboardMetrics, getDrivers, getOwners, getVehicleDocuments, getVehicles, getWorkAndPayContracts } from "@/lib/fleet";
+import { requireCurrentTenant } from "@/lib/tenant";
 
-export default function FleetPage() {
+export default async function FleetPage() {
+  const tenant = await requireCurrentTenant();
+  const [dashboardMetrics, vehicleRecords, ownerRecords, driverRecords, policyRecords, workPayRecords] = await Promise.all([
+    getDashboardMetrics(tenant.organizationId),
+    getVehicles(tenant.organizationId),
+    getOwners(tenant.organizationId),
+    getDrivers(tenant.organizationId),
+    getVehicleDocuments(tenant.organizationId),
+    getWorkAndPayContracts(tenant.organizationId),
+  ]);
+
+  const ownerRows = ownerRecords.slice(0, 2).map((owner) => [owner.name, owner.business, String(owner.vehicles), "Active", owner.revenue]);
+  const driverRows = driverRecords.slice(0, 2).map((driver) => [driver.name, driver.assignedVehicle, "—", driver.status, driver.performance]);
+
   return (
     <DashboardShell
       title="Fleet overview"
@@ -36,12 +50,7 @@ export default function FleetPage() {
         <SectionTable
           title="Owner and driver snapshot"
           columns={["Owner / Driver", "Business / Assigned", "Vehicles", "Status", "Revenue / Performance"]}
-          rows={[
-            [ownerRecords[0].name, ownerRecords[0].business, String(ownerRecords[0].vehicles), "Active", ownerRecords[0].revenue],
-            [ownerRecords[1].name, ownerRecords[1].business, String(ownerRecords[1].vehicles), "Active", ownerRecords[1].revenue],
-            [driverRecords[0].name, driverRecords[0].assignedVehicle, "—", driverRecords[0].status, driverRecords[0].performance],
-            [driverRecords[1].name, driverRecords[1].assignedVehicle, "—", driverRecords[1].status, driverRecords[1].performance],
-          ]}
+          rows={[...ownerRows, ...driverRows]}
         />
       </div>
 

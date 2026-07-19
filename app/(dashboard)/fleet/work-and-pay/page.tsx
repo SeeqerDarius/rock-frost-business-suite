@@ -1,8 +1,12 @@
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { SectionTable } from "@/components/fleet/SectionTable";
-import { workPayRecords } from "@/lib/fleet";
+import { getWorkAndPayContracts } from "@/lib/fleet";
+import { requireCurrentTenant } from "@/lib/tenant";
 
-export default function WorkAndPayPage() {
+export default async function WorkAndPayPage() {
+  const tenant = await requireCurrentTenant();
+  const workPayRecords = await getWorkAndPayContracts(tenant.organizationId);
+
   return (
     <DashboardShell
       title="Work & Pay"

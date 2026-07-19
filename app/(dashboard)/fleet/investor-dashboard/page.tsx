@@ -1,10 +1,11 @@
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { SectionTable } from "@/components/fleet/SectionTable";
-import { investorSummary } from "@/lib/fleet";
+import { getInvestorSummary } from "@/lib/fleet";
 import { requirePermission, PERMISSIONS } from "@/lib/permissions";
 
 export default async function InvestorDashboardPage() {
-  await requirePermission(PERMISSIONS.FLEET_INVESTOR_VIEW);
+  const tenant = await requirePermission(PERMISSIONS.FLEET_INVESTOR_VIEW);
+  const investorSummary = await getInvestorSummary(tenant.organizationId);
 
   return (
     <DashboardShell

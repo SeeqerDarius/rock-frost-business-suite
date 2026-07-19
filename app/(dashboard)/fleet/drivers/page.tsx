@@ -1,8 +1,12 @@
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { SectionTable } from "@/components/fleet/SectionTable";
-import { driverRecords } from "@/lib/fleet";
+import { getDrivers } from "@/lib/fleet";
+import { requireCurrentTenant } from "@/lib/tenant";
 
-export default function DriversPage() {
+export default async function DriversPage() {
+  const tenant = await requireCurrentTenant();
+  const driverRecords = await getDrivers(tenant.organizationId);
+
   return (
     <DashboardShell
       title="Drivers"

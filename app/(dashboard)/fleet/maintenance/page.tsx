@@ -1,9 +1,12 @@
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { SectionTable } from "@/components/fleet/SectionTable";
-import { MaintenanceRecord } from "@/lib/fleet";
-import { recentMaintenance } from "@/lib/fleet";
+import { getMaintenanceRequests, type MaintenanceRecord } from "@/lib/fleet";
+import { requireCurrentTenant } from "@/lib/tenant";
 
-export default function MaintenancePage() {
+export default async function MaintenancePage() {
+  const tenant = await requireCurrentTenant();
+  const recentMaintenance = await getMaintenanceRequests(tenant.organizationId);
+
   return (
     <DashboardShell
       title="Maintenance"

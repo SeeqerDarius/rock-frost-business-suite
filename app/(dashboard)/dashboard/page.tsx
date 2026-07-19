@@ -1,9 +1,19 @@
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { MetricCard } from "@/components/fleet/MetricCard";
 import { SectionTable } from "@/components/fleet/SectionTable";
-import { dashboardMetrics, recentMaintenance, recentPayments } from "@/lib/fleet";
+import { getDashboardMetrics, getMaintenanceRequests, getPayments } from "@/lib/fleet";
+import { requireCurrentTenant } from "@/lib/tenant";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const tenant = await requireCurrentTenant();
+  const [dashboardMetrics, payments, maintenance] = await Promise.all([
+    getDashboardMetrics(tenant.organizationId),
+    getPayments(tenant.organizationId),
+    getMaintenanceRequests(tenant.organizationId),
+  ]);
+  const recentPayments = payments.slice(0, 3);
+  const recentMaintenance = maintenance.slice(0, 3);
+
   return (
     <DashboardShell
       title="Fleet dashboard"

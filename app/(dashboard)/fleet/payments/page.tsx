@@ -1,8 +1,12 @@
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { SectionTable } from "@/components/fleet/SectionTable";
-import { recentPayments } from "@/lib/fleet";
+import { getPayments } from "@/lib/fleet";
+import { requireCurrentTenant } from "@/lib/tenant";
 
-export default function PaymentsPage() {
+export default async function PaymentsPage() {
+  const tenant = await requireCurrentTenant();
+  const recentPayments = await getPayments(tenant.organizationId);
+
   return (
     <DashboardShell
       title="Payments"

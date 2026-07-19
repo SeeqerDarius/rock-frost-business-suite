@@ -1,8 +1,12 @@
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { SectionTable } from "@/components/fleet/SectionTable";
-import { reportSummary } from "@/lib/fleet";
+import { getReportSummary } from "@/lib/fleet";
+import { requireCurrentTenant } from "@/lib/tenant";
 
-export default function ReportsPage() {
+export default async function ReportsPage() {
+  const tenant = await requireCurrentTenant();
+  const reportSummary = await getReportSummary(tenant.organizationId);
+
   return (
     <DashboardShell
       title="Reports"

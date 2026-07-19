@@ -1,8 +1,12 @@
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { SectionTable } from "@/components/fleet/SectionTable";
-import { ownerRecords } from "@/lib/fleet";
+import { getOwners } from "@/lib/fleet";
+import { requireCurrentTenant } from "@/lib/tenant";
 
-export default function VehicleOwnersPage() {
+export default async function VehicleOwnersPage() {
+  const tenant = await requireCurrentTenant();
+  const ownerRecords = await getOwners(tenant.organizationId);
+
   return (
     <DashboardShell
       title="Vehicle owners"

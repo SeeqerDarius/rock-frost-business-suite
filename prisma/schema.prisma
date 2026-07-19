@@ -115,6 +115,12 @@ enum FleetContractStatus {
   CANCELLED
 }
 
+enum FleetDocumentRenewalStatus {
+  READY
+  DUE
+  CLEAR
+}
+
 model User {
   id            String     @id @default(cuid())
   name          String?
@@ -213,6 +219,7 @@ model Organization {
   fleetOwners         FleetOwner[]
   fleetDrivers        FleetDriver[]
   fleetVehicles       FleetVehicle[]
+  fleetVehicleDocuments FleetVehicleDocument[]
   maintenanceRequests FleetMaintenanceRequest[]
   fleetPayments       FleetPayment[]
   workAndPayContracts FleetWorkAndPayContract[]
@@ -264,6 +271,7 @@ model Branch {
   fleetOwners         FleetOwner[]
   fleetDrivers        FleetDriver[]
   fleetVehicles       FleetVehicle[]
+  fleetVehicleDocuments FleetVehicleDocument[]
   maintenanceRequests FleetMaintenanceRequest[]
   fleetPayments       FleetPayment[]
   workAndPayContracts FleetWorkAndPayContract[]
@@ -478,11 +486,14 @@ model FleetVehicle {
   documentStatus   FleetDocumentStatus @default(MISSING)
   mileage          Int?
   location         String?
+  nextServiceDueAt DateTime?
+  serviceNotes     String?
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
 
   organization        Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch              Branch?                   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  documents           FleetVehicleDocument[]
   owner               FleetOwner?               @relation(fields: [ownerId], references: [id], onDelete: SetNull)
   assignedDriver      FleetDriver?              @relation(fields: [assignedDriverId], references: [id], onDelete: SetNull)
   maintenanceRequests FleetMaintenanceRequest[]
@@ -493,6 +504,29 @@ model FleetVehicle {
   @@index([branchId])
   @@index([ownerId])
   @@index([assignedDriverId])
+}
+
+model FleetVehicleDocument {
+  id                  String                       @id @default(cuid())
+  organizationId      String
+  branchId            String?
+  vehicleId           String
+  provider            String
+  policyNumber        String
+  insuranceExpiresAt  DateTime
+  roadworthyExpiresAt DateTime
+  renewalStatus       FleetDocumentRenewalStatus   @default(CLEAR)
+  alerts              String?
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  vehicle      FleetVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([vehicleId])
 }
 
 model FleetMaintenanceRequest {

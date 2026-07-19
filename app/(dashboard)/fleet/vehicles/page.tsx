@@ -1,9 +1,13 @@
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { SectionTable } from "@/components/fleet/SectionTable";
 import { StatusBadge } from "@/components/fleet/StatusBadge";
-import { vehicleRecords } from "@/lib/fleet";
+import { getVehicles } from "@/lib/fleet";
+import { requireCurrentTenant } from "@/lib/tenant";
 
-export default function VehiclesPage() {
+export default async function VehiclesPage() {
+  const tenant = await requireCurrentTenant();
+  const vehicleRecords = await getVehicles(tenant.organizationId);
+
   return (
     <DashboardShell
       title="Vehicles"

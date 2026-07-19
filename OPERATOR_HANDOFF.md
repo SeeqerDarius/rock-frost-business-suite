@@ -41,20 +41,22 @@ Dashboard status:
 
 Tenancy status:
 - `lib/tenant/index.ts` exists (`getCurrentTenant()` / `requireCurrentTenant()`) — resolves the signed-in user's `Organization`, `Branch` (if assigned), `roleId`, and resolved `permissions` (string keys) from their `OrganizationMember` row. This is Phase 3 of `docs/DEVELOPMENT_ROADMAP.md`.
-- This only resolves/reads tenant context for display purposes so far (Topbar, profile page, and the auth-protection gate). It does **not** yet scope any actual data queries — there's nothing to scope yet since Fleet still uses mock data (Phase 6, still gated per the rule below).
+- As of Phase 6, this tenant context is now the real scoping mechanism for Fleet data — every `lib/fleet/service.ts` query filters by `tenant.organizationId`.
 
 RBAC / permissions status (Phase 4):
 - `lib/permissions/constants.ts` defines the `PERMISSIONS` key catalog (plain data, no "server-only" import, so it can be imported from standalone scripts). `lib/permissions/index.ts` re-exports it plus `hasPermission()` and `requirePermission()` (redirects to `/dashboard` if the current user lacks the permission).
 - `prisma/seed-rbac.ts` is a committed, idempotent seed script (`npx tsx prisma/seed-rbac.ts`) that populates real `Permission` and `RolePermission` rows in the live database for the 6 existing system roles (Super Admin, Organization Owner, Fleet Manager, Driver, Mechanic, Investor). It has already been run against the live Neon database — the tables are populated, not just conceptual.
 - `Sidebar` now filters nav items by permission (each nav item maps to a `PermissionKey`). `/fleet/settings` and `/fleet/investor-dashboard` are also guarded server-side via `requirePermission()` — a user without the permission is redirected away even via direct URL, not just hidden from nav.
-- The other 9 Fleet pages (vehicles, drivers, owners, insurance, maintenance, work-and-pay, payments, reports, overview) are **not yet individually guarded** at the route level — only their nav visibility is filtered. Adding `requirePermission()` to each of those (following the same one-line pattern used in settings/investor-dashboard) is a natural follow-up, likely worth doing alongside Phase 6 (Fleet Module Backend) rather than duplicating guard code across mock-data pages that will be rewritten anyway.
+- The other 9 Fleet pages (vehicles, drivers, owners, insurance, maintenance, work-and-pay, payments, reports, overview) are still **not individually guarded** at the route level — only their nav visibility is filtered. Still a reasonable follow-up.
 - Verified end-to-end in a real browser: logged in as Super Admin (`admin@rockfrostgroup.com`) — all 12 nav items visible, `/fleet/settings` accessible. Logged in as Driver (`driver@demo.com`, a temporary password was set the same way as the Super Admin's in the earlier handoff entry) — only Dashboard/Fleet Overview/Maintenance visible in nav, and a direct navigation to `/fleet/settings` redirected to `/dashboard`.
 
-Fleet module status:
-- Fleet is the first SaaS business module.
-- Fleet UI routes exist for overview, vehicles, vehicle owners, drivers, insurance/roadworthy, maintenance, work-and-pay, payments, reports, settings, and investor dashboard.
-- Fleet pages currently use mock data from `lib/fleet/index.ts`.
-- Do not replace mock data with database data until the database integration phase is explicitly approved.
+Fleet module status (Phase 6 — real backend, no longer mock data):
+- **Fleet pages now consume real, tenant-scoped database data.** `lib/fleet/service.ts` has one function per data need (`getDashboardMetrics`, `getVehicles`, `getOwners`, `getDrivers`, `getVehicleDocuments`, `getMaintenanceRequests`, `getWorkAndPayContracts`, `getPayments`, `getReportSummary`, `getInvestorSummary`), each taking `organizationId` and querying Prisma directly — no mock arrays remain. `lib/fleet/types.ts` holds the display-shape interfaces (unchanged from the old mock module, so the UI components didn't need to change). All 11 Fleet pages + `/dashboard` were updated to `await` these functions using `requireCurrentTenant()` (or the tenant returned by `requirePermission()` on the two guarded pages).
+- **The live database already had rich, real seed data** from the original 2026-07-04 setup (3 owners, 3 drivers, 4 vehicles, 3 maintenance requests, 4 payments, 3 work-and-pay contracts, all Ghana-flavored: Kwaku Transport Services, Kojo Addai, plate "GR 4216-26", "Accra Fleet Yard", etc.) — this was discovered mid-implementation and used as-is rather than overwritten with fabricated mock-replica data. Only `FleetVehicleDocument` (see below) had zero rows, since that model didn't exist before this phase.
+- **Schema addition**: `FleetVehicleDocument` model (provider, policyNumber, insuranceExpiresAt, roadworthyExpiresAt, renewalStatus, alerts) plus `FleetVehicle.nextServiceDueAt`/`serviceNotes` fields were added via migration `20260719070000_add_fleet_vehicle_documents`, because the Insurance & Roadworthy page's data (separate insurer/policy-number/expiry-date fields) had no backing model at all — only a generic `documentStatus` enum existed on `FleetVehicle`. Seeded via `prisma/seed-fleet-documents.ts` (committed, idempotent) for the 4 existing real vehicles.
+- **Currency is GHS, not USD.** The real seed data (`Organization.currency`, owner `history.revenueLabel`, etc.) is in Ghanaian Cedis, so `formatMoney()` in the service layer prefixes `GHS` rather than the mock module's `$`. This is a deliberate correction, not an oversight — using `$` on real Cedi figures would be wrong, not just a cosmetic mismatch.
+- **Investor/report metrics were adjusted, not fabricated.** The old mock had invented percentage deltas ("+12.8%", "+3.9%") and a made-up "$9.2M fleet value" with no real underlying data source. Since there's no historical/time-series data to compute real trends from, the real `getReportSummary`/`getInvestorSummary` use `"Live"` instead of a fake delta, and "Fleet value" was replaced with "Fleet size" (a real vehicle count) rather than inventing an asset valuation number.
+- Do not replace this real backend with mock data again. Fleet pages are fully DB-backed as of 2026-07-19.
 
 Auth foundation status:
 - **Auth is now real, not a demo stub.** `lib/auth/nextauth.ts`'s `authorize()` queries the `User` table, checks `status === 'ACTIVE'`, and verifies the password with `bcrypt.compare()` against `passwordHash`. It no longer accepts any email/password combination.
@@ -96,9 +98,8 @@ main
 - Do not redesign the public website unless explicitly instructed.
 - Do not change the Rock Frost branding unless explicitly instructed.
 - Do not remove existing routes without approval.
-- Do not replace mock data with database data until the database phase is approved.
+- Fleet mock data has been replaced with real database data (Phase 6, approved and completed 2026-07-19) — this rule no longer applies going forward; new business modules should be built database-backed from the start rather than mocked first.
 - Do not implement payment gateways yet.
-- Do not implement real production auth until database integration is ready.
 - Keep the SaaS dashboard and marketing website separated by route groups.
 - Every business feature must support future multi-tenancy.
 - Every business model must be designed around organizationId.
@@ -134,6 +135,43 @@ main
 - `/organizations` (planned; not currently present)
 
 ## Latest Handoff Log
+
+### 2026-07-19 (Phase 6) - Claude Code
+
+**Objective:**
+Implement Phase 6 (Fleet Module Backend) per `docs/DEVELOPMENT_ROADMAP.md`, after the user explicitly approved proceeding past the mock-data gate ("proceed into Phase 6").
+
+**Files changed:**
+- `prisma/schema.prisma` (new `FleetVehicleDocument` model, `FleetDocumentRenewalStatus` enum, `FleetVehicle.nextServiceDueAt`/`serviceNotes` fields)
+- `prisma/migrations/20260719070000_add_fleet_vehicle_documents/migration.sql` (new)
+- `prisma/seed-fleet-documents.ts` (new, committed idempotent seed script)
+- `lib/fleet/types.ts` (new — display-shape interfaces, extracted from the old mock module)
+- `lib/fleet/service.ts` (new — real Prisma-backed data functions)
+- `lib/fleet/index.ts` (now just re-exports types + service; mock arrays deleted)
+- All 11 Fleet pages under `app/(dashboard)/fleet/` + `app/(dashboard)/dashboard/page.tsx`
+
+**Summary:**
+Read through all 11 Fleet pages first to catalog the exact display shapes (`VehicleRecord`, `OwnerRecord`, etc.) they depend on, since the roadmap's acceptance criterion is "existing fleet UI appearance does not change" — the goal was swapping the data source, not redesigning anything. Found one real gap: the Insurance & Roadworthy page displays per-vehicle insurer/policy-number/separate-expiry-date data that had no backing Prisma model at all — only a generic `documentStatus` enum existed on `FleetVehicle`. Added `FleetVehicleDocument` (plus two small `FleetVehicle` fields the vehicle cards needed: `nextServiceDueAt`, `serviceNotes`) via a new migration, generated and applied the same way as the earlier baseline migration (`prisma migrate diff --from-url` against live Neon, written into a proper migration folder, applied with `prisma migrate deploy`).
+
+Built `lib/fleet/service.ts` with one function per data need (`getDashboardMetrics`, `getVehicles`, `getOwners`, `getDrivers`, `getVehicleDocuments`, `getMaintenanceRequests`, `getWorkAndPayContracts`, `getPayments`, `getReportSummary`, `getInvestorSummary`), each scoped by `organizationId` and mapping real Prisma records into the exact same display shapes the pages already expect, with enum→label mapping tables (e.g. `FleetVehicleStatus.AVAILABLE` → `"Active"`) and currency/date formatting helpers.
+
+**Important discovery mid-implementation**: assumed the database was empty of Fleet data and wrote a seed script to replicate the mock dataset (Avalon Transport, Helix Fleet, etc.) — but `prisma/seed-fleet-demo.ts`'s own idempotency check correctly refused to run, because the live database already had real, richer seed data from the original 2026-07-04 setup (3 owners, 3 drivers, 4 vehicles, 3 maintenance requests, 4 payments, 3 work-and-pay contracts — all authentically Ghana-flavored: Kwaku Transport Services, driver Kojo Addai, plate "GR 4216-26", "Accra Fleet Yard", etc., including `Json` fields like `owner.history: { summary, revenueLabel }` and `driver.performanceMetrics: { onTimeRate, completedTrips }` that the service layer had to be adjusted to parse, since the initial implementation assumed plain strings). Deleted the fabricated seed script rather than run it — only `FleetVehicleDocument` genuinely had zero rows (new model), so wrote a small, real, committed seed script for just that (`prisma/seed-fleet-documents.ts`), matching realistic Ghanaian insurers to the 4 real existing vehicles.
+
+Also corrected currency handling: the real data is in Ghanaian Cedis (`Organization.currency`, `owner.history.revenueLabel` like `"GHS 482,000"`), so `formatMoney()` now prefixes `GHS` instead of the mock module's `$` — using dollar signs on real Cedi figures would have been actively wrong, not just cosmetically different. Similarly, the mock's fabricated percentage deltas ("+12.8%") and invented "$9.2M fleet value" had no real data to back them, so the real report/investor summaries use `"Live"` as the trend label and "Fleet size" (a real count) instead of an invented valuation.
+
+Verified all 12 pages (11 Fleet + `/dashboard`) end-to-end in a real browser logged in as Super Admin: confirmed real seeded data renders correctly (screenshots of `/dashboard`, `/fleet`, and `/fleet/vehicles` showed real vehicle/owner/driver names, correct counts, GHS-formatted amounts). An automated test flagged 3 pages as "errored" but this was a bug in the test's own regex (`/500/i` matching the substring "500" inside a real mileage figure "121,500 km"), not a real application error — confirmed by direct visual inspection and a follow-up `curl` fetch showing HTTP 200 and real owner names present with no error markers.
+
+**Build result:**
+Passed. `npm run build` completed successfully, 31 routes generated, TypeScript clean.
+
+**Known issues:**
+- Only `/fleet/settings` and `/fleet/investor-dashboard` have server-side permission guards (from the Phase 4 entry); the other 9 Fleet pages still only filter nav visibility, not route access.
+- `getCurrentTenant()` is still called independently per page/component rather than cached per-request — noted in earlier entries too, now more relevant since every Fleet page also does its own data queries on top.
+- Report/investor "trend" metrics show `"Live"` rather than a real percentage change, since there's no historical/time-series data yet to compute a real delta from.
+- Two of the four seeded vehicles are missing `nextServiceDueAt`/`serviceNotes` values (they were `null` in the pre-existing 2026-07-04 seed data, added before those fields existed) — the UI correctly shows "—" / "No service history recorded" for these rather than fabricating values, but a real fleet manager would want these filled in.
+
+**Next recommended step:**
+Consider Phase 7 (Billing & Subscriptions) next per the roadmap, or close the remaining per-route permission gaps on the other 9 Fleet pages first. Either is reasonable — worth checking with the user which matters more before starting.
 
 ### 2026-07-19 (Phase 4) - Claude Code
 
