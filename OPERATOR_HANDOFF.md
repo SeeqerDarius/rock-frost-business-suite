@@ -63,6 +63,14 @@ Notifications & audit status (Phase 8):
 - `/notifications` (a real dashboard route, listed as "planned" in Key Routes before now) lists the current user's notifications with a "Mark as read" button; `app/api/notifications/[id]/read/route.ts` handles the mutation (ownership-checked — a user can only mark their own notifications read). Sidebar shows an unread-count badge next to the Notifications nav item.
 - **Only the `IN_APP` channel is actually delivered** (stored + immediately marked `SENT`). `EMAIL`/`SMS`/`PUSH` notifications would be created with `status: QUEUED` and never actually sent — there's no delivery integration wired up for them yet (Resend exists for the marketing contact form but isn't connected to the Notification model). Nothing currently creates non-IN_APP notifications, so this gap isn't exposed yet, but it would need addressing before those channels are used for anything real.
 
+AI Assistant status (Phase 9):
+- `lib/ai/client.ts` (`getAnthropicClient()`) and `lib/ai/index.ts` (`getAssistantResponse()`) — same graceful-degradation pattern as `lib/resend.ts`: returns `{ ok: false, error }` if `ANTHROPIC_API_KEY` is unset rather than throwing. **`ANTHROPIC_API_KEY` is currently empty in `.env`** — the assistant is scaffolded but not live. Set a real key to enable it; nothing else needs to change.
+- Uses `claude-opus-4-8` with adaptive thinking, non-streaming (responses are short business Q&A, well under the token range that needs streaming). System prompt is built from `TenantContext` (organization name, tenant code, branch, role) — this satisfies the roadmap's "context-aware prompt construction using tenant and module data" criterion.
+- **Deliberately not wired to live Fleet data.** The roadmap's Phase 9 acceptance criteria calls for the assistant to "remain decoupled from core business logic" — it currently answers general fleet-operations questions and explains where to find things in the dashboard, but does not query `lib/fleet/service.ts` or any real records. If asked for specific figures, it says so rather than guessing. Wiring it to real data (a proper RAG/tool-use layer) would be a deliberate follow-up decision, not something to slip in unannounced.
+- New permission `ai.assistant.use` was added and seeded for all 6 roles (everyone gets assistant access, same tier as `dashboard.view`) — see `prisma/seed-rbac.ts`.
+- `/assistant` (new dashboard route) has a simple single-question chat box; `app/api/ai/route.ts` handles the request (session + permission + tenant-checked) and logs an `ai_assistant_query` audit event on success via the Phase 8 audit service.
+- Verified end-to-end in a real browser with the key unset: submitting a question correctly shows "The AI assistant is not configured yet. Set ANTHROPIC_API_KEY to enable it." rather than an error page or silent failure. Not yet tested against a real API call — do that once a key is added.
+
 Auth foundation status:
 - **Auth is now real, not a demo stub.** `lib/auth/nextauth.ts`'s `authorize()` queries the `User` table, checks `status === 'ACTIVE'`, and verifies the password with `bcrypt.compare()` against `passwordHash`. It no longer accepts any email/password combination.
 - The session now carries the real `id`, `name`, `email`, `organizationId` (from the user's first `OrganizationMember` row), and `role` (from that membership's `Role.name`). `lastLoginAt` is updated on successful login.
@@ -140,6 +148,44 @@ main
 - `/organizations` (planned; not currently present)
 
 ## Latest Handoff Log
+
+### 2026-07-19 (Phase 9) - Claude Code
+
+**Objective:**
+Implement Phase 9 (AI Assistant) per `docs/DEVELOPMENT_ROADMAP.md`, per the user's request to continue after closing the Fleet permission gap. The roadmap's own framing for this phase is scaffolding, not a full feature: "AI assistant service boundaries," "context-aware prompt construction," "keep first AI feature minimal and extensible."
+
+**Files changed:**
+- `lib/ai/client.ts`, `lib/ai/index.ts` (new)
+- `lib/permissions/constants.ts` (new `AI_ASSISTANT_USE` permission)
+- `prisma/seed-rbac.ts` (grants the new permission to all 6 roles)
+- `app/api/ai/route.ts` (new)
+- `app/(dashboard)/assistant/page.tsx`, `app/(dashboard)/assistant/AssistantChat.tsx` (new)
+- `components/dashboard/Sidebar.tsx` (new nav item)
+- `.env` (added empty `ANTHROPIC_API_KEY=""` placeholder, matching the existing `RESEND_API_KEY=""` pattern)
+- `package.json` (added `@anthropic-ai/sdk`)
+
+**Summary:**
+Before writing any code, loaded the `claude-api` skill per its own trigger rules (the task is LLM-shaped with the provider unstated) rather than relying on training data, since Claude API specifics drift release to release. Built `lib/ai/client.ts` + `lib/ai/index.ts` following the exact graceful-degradation pattern already established by `lib/resend.ts` — `getAnthropicClient()` returns `null` if `ANTHROPIC_API_KEY` is unset, and `getAssistantResponse()` returns a `{ ok: false, error }` result rather than throwing, so the feature degrades cleanly instead of crashing when unconfigured (which it currently is — the key is empty).
+
+The system prompt is built from `TenantContext` (organization name, tenant code, branch, role) via a `buildSystemPrompt()` helper, satisfying the roadmap's "prompts are built with tenant context and module boundaries" criterion. Used `claude-opus-4-8` with adaptive thinking; kept it non-streaming since responses are short business Q&A, not long-form generation. Deliberately did **not** wire the assistant into `lib/fleet/service.ts` or any real Fleet queries — the roadmap explicitly calls for the assistant to "remain decoupled from core business logic" at this stage, and building a real RAG/tool-use layer over live data is a substantial follow-up decision that shouldn't be bundled into scaffolding work without a separate discussion.
+
+Added a new permission (`ai.assistant.use`) rather than reusing an existing one, and granted it to all 6 roles (same tier as `dashboard.view` — every user gets assistant access) via `prisma/seed-rbac.ts`, then re-ran the seed script against the live database (idempotent; counts increased by exactly 1 per role as expected). Built `/assistant` as a real dashboard route with a minimal single-question chat box, backed by `app/api/ai/route.ts`, which checks session + tenant + permission before calling the assistant and logs an `ai_assistant_query` audit event on success (reusing the Phase 8 audit service — a nice small integration between the two most recent phases).
+
+Hit one process error mid-task worth flagging: after testing, ran `git checkout -- package.json package-lock.json` intending to revert the *temporary* Playwright test dependency, but that also silently reverted the *real* `@anthropic-ai/sdk` dependency added earlier in the same session, since `git checkout` reverts the whole file regardless of which lines were meant to stay. Caught it before committing by grepping `package.json` for `anthropic` post-revert, found it missing, and reinstalled it properly. Worth remembering for future sessions: a blanket file-level `git checkout` is not safe once a file has accumulated more than one intentional change in the same session — check the diff first, or revert by editing back to the desired state rather than discarding the whole file.
+
+Verified end-to-end in a real browser: logged in as Super Admin, navigated to `/assistant`, submitted a question, and confirmed the exact "not configured" message renders in the UI (rather than an error page or a hang) — this is the only path testable right now since `ANTHROPIC_API_KEY` is empty. Did not test an actual live API call.
+
+**Build result:**
+Passed. `npm run build` completed successfully, 34 routes generated (added `/api/ai` and `/assistant`).
+
+**Known issues:**
+- `ANTHROPIC_API_KEY` is unset — the assistant is fully scaffolded but inert until a real key is added to `.env`. No code changes needed once a key exists.
+- The assistant cannot answer questions about the organization's actual fleet data (real vehicle counts, specific maintenance records, etc.) — it explains this limitation to the user rather than guessing, by design (see "decoupled from core business logic" above).
+- No conversation history/persistence — each question is a single, independent request with no memory of prior turns in the same session.
+- Live API call behavior (real Claude response quality, latency, error handling for actual rate limits/auth failures) is untested — only the "key missing" path has been verified.
+
+**Next recommended step:**
+Add a real `ANTHROPIC_API_KEY` and verify a live round-trip before considering this phase fully done. Beyond that, remaining roadmap phases are Phase 7 (Billing, still deferred pending explicit approval), Phase 10 (GLV Layaway Module), and Phase 11 (Production Hardening) — worth checking with the user on priority order.
 
 ### 2026-07-19 (Fleet permission gap closed) - Claude Code
 

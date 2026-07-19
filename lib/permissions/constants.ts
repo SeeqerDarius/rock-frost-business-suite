@@ -19,6 +19,7 @@ export const PERMISSIONS = {
   FLEET_REPORTS_VIEW: "fleet.reports.view",
   FLEET_INVESTOR_VIEW: "fleet.investor.view",
   ORG_SETTINGS_MANAGE: "org.settings.manage",
+  AI_ASSISTANT_USE: "ai.assistant.use",
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

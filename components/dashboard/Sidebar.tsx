@@ -7,6 +7,7 @@ import { getUnreadNotificationCount } from "@/lib/notifications";
 const navigation: { href: string; label: string; icon: string; permission: PermissionKey }[] = [
   { href: "/dashboard", label: "Dashboard", icon: "📈", permission: PERMISSIONS.DASHBOARD_VIEW },
   { href: "/notifications", label: "Notifications", icon: "🔔", permission: PERMISSIONS.DASHBOARD_VIEW },
+  { href: "/assistant", label: "AI Assistant", icon: "✨", permission: PERMISSIONS.AI_ASSISTANT_USE },
   { href: "/fleet", label: "Fleet Overview", icon: "🚚", permission: PERMISSIONS.FLEET_VIEW },
   { href: "/fleet/vehicles", label: "Vehicles", icon: "🛻", permission: PERMISSIONS.FLEET_VEHICLES_MANAGE },
   { href: "/fleet/vehicle-owners", label: "Vehicle Owners", icon: "👥", permission: PERMISSIONS.FLEET_OWNERS_MANAGE },
