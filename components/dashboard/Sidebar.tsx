@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { getCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS, type PermissionKey } from "@/lib/permissions";
+import { getServerAuthSession } from "@/lib/auth/session";
+import { getUnreadNotificationCount } from "@/lib/notifications";
 
 const navigation: { href: string; label: string; icon: string; permission: PermissionKey }[] = [
   { href: "/dashboard", label: "Dashboard", icon: "📈", permission: PERMISSIONS.DASHBOARD_VIEW },
+  { href: "/notifications", label: "Notifications", icon: "🔔", permission: PERMISSIONS.DASHBOARD_VIEW },
   { href: "/fleet", label: "Fleet Overview", icon: "🚚", permission: PERMISSIONS.FLEET_VIEW },
   { href: "/fleet/vehicles", label: "Vehicles", icon: "🛻", permission: PERMISSIONS.FLEET_VEHICLES_MANAGE },
   { href: "/fleet/vehicle-owners", label: "Vehicle Owners", icon: "👥", permission: PERMISSIONS.FLEET_OWNERS_MANAGE },
@@ -20,6 +23,10 @@ const navigation: { href: string; label: string; icon: string; permission: Permi
 export async function Sidebar() {
   const tenant = await getCurrentTenant();
   const visibleNavigation = navigation.filter((item) => hasPermission(tenant, item.permission));
+
+  const session = await getServerAuthSession();
+  const unreadCount =
+    tenant && session?.user?.id ? await getUnreadNotificationCount(tenant.organizationId, session.user.id) : 0;
 
   return (
     <aside className="w-full border-b border-white/10 bg-[#03050b]/95 lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:border-r lg:border-b-0 lg:bg-[#040811]/95">
@@ -46,6 +53,11 @@ export async function Sidebar() {
             >
               <span>{item.icon}</span>
               <span>{item.label}</span>
+              {item.href === "/notifications" && unreadCount > 0 ? (
+                <span className="ml-auto rounded-full bg-cyan-500 px-2 py-0.5 text-xs font-semibold text-slate-950">
+                  {unreadCount}
+                </span>
+              ) : null}
             </Link>
           ))}
         </nav>

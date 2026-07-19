@@ -58,6 +58,12 @@ Fleet module status (Phase 6 — real backend, no longer mock data):
 - **Investor/report metrics were adjusted, not fabricated.** The old mock had invented percentage deltas ("+12.8%", "+3.9%") and a made-up "$9.2M fleet value" with no real underlying data source. Since there's no historical/time-series data to compute real trends from, the real `getReportSummary`/`getInvestorSummary` use `"Live"` instead of a fake delta, and "Fleet value" was replaced with "Fleet size" (a real vehicle count) rather than inventing an asset valuation number.
 - Do not replace this real backend with mock data again. Fleet pages are fully DB-backed as of 2026-07-19.
 
+Notifications & audit status (Phase 8):
+- `lib/audit/index.ts` (`logAuditEvent()`, `getAuditLog()`) and `lib/notifications/index.ts` (`createNotification()`, `getNotificationsForUser()`, `getUnreadNotificationCount()`, `markNotificationRead()`) are real, tenant-scoped services backed by the existing `AuditLog`/`Notification` models (both already existed in the schema from the Phase 1 foundation but had zero rows/consumers until now).
+- The only real event currently in the app is login — `lib/auth/nextauth.ts` now logs a `login_succeeded`/`login_failed` audit entry and creates a "Welcome back" IN_APP notification on successful sign-in. There are no other mutation actions anywhere in the app yet (Fleet pages are still read-only displays), so no other hooks were added — adding audit/notification calls to actions that don't exist yet would be dead code.
+- `/notifications` (a real dashboard route, listed as "planned" in Key Routes before now) lists the current user's notifications with a "Mark as read" button; `app/api/notifications/[id]/read/route.ts` handles the mutation (ownership-checked — a user can only mark their own notifications read). Sidebar shows an unread-count badge next to the Notifications nav item.
+- **Only the `IN_APP` channel is actually delivered** (stored + immediately marked `SENT`). `EMAIL`/`SMS`/`PUSH` notifications would be created with `status: QUEUED` and never actually sent — there's no delivery integration wired up for them yet (Resend exists for the marketing contact form but isn't connected to the Notification model). Nothing currently creates non-IN_APP notifications, so this gap isn't exposed yet, but it would need addressing before those channels are used for anything real.
+
 Auth foundation status:
 - **Auth is now real, not a demo stub.** `lib/auth/nextauth.ts`'s `authorize()` queries the `User` table, checks `status === 'ACTIVE'`, and verifies the password with `bcrypt.compare()` against `passwordHash`. It no longer accepts any email/password combination.
 - The session now carries the real `id`, `name`, `email`, `organizationId` (from the user's first `OrganizationMember` row), and `role` (from that membership's `Role.name`). `lastLoginAt` is updated on successful login.
@@ -135,6 +141,41 @@ main
 - `/organizations` (planned; not currently present)
 
 ## Latest Handoff Log
+
+### 2026-07-19 (Phase 8) - Claude Code
+
+**Objective:**
+Implement Phase 8 (Notifications & Audit Logs) per `docs/DEVELOPMENT_ROADMAP.md`, after the user deferred Phase 7 (Billing & Subscriptions, still gated by the payment-gateway rule) and said to proceed with what's next.
+
+**Files changed:**
+- `lib/audit/index.ts` (new)
+- `lib/notifications/index.ts` (new)
+- `lib/auth/nextauth.ts` (login success/failure now logs audit events + a login notification)
+- `app/(dashboard)/notifications/page.tsx`, `app/(dashboard)/notifications/MarkNotificationReadButton.tsx` (new)
+- `app/api/notifications/[id]/read/route.ts` (new)
+- `components/dashboard/Sidebar.tsx` (Notifications nav item + unread badge)
+
+**Summary:**
+`AuditLog` and `Notification` models already existed in the schema from the Phase 1 foundation work but had zero rows and nothing writing to them. Built the two service modules the roadmap calls for: `lib/audit/` (`logAuditEvent`, append-only, `getAuditLog` for retrieval) and `lib/notifications/` (`createNotification`, `getNotificationsForUser`, `getUnreadNotificationCount`, `markNotificationRead` — the latter has the ownership check baked into its `where` clause so a user can't mark someone else's notification read).
+
+For "event generation hooks," the honest scope check first: the app currently has exactly one real user-triggered event anywhere — signing in. Fleet pages are still 100% read-only displays (Phase 6 built read queries, not mutations), and there's no signup/invite-acceptance flow wired up yet either. Rather than inventing artificial events to hook into, wired audit logging and a notification into the one real event that exists: `lib/auth/nextauth.ts`'s `authorize()` now logs `login_succeeded`/`login_failed` audit entries (skipped if the account has no organization, since `organizationId` is required on `AuditLog`) and creates a "Welcome back" `IN_APP` notification on success.
+
+Built `/notifications` as a real dashboard page (previously listed as "planned" in Key Routes) showing the signed-in user's notifications with a "Mark as read" button, backed by `app/api/notifications/[id]/read/route.ts`. Added an unread-count badge to the Sidebar's Notifications nav item so there's a visible signal without having to open the page.
+
+Deliberately did not build real delivery for `EMAIL`/`SMS`/`PUSH` channels — `createNotification()` marks `IN_APP` notifications `SENT` immediately (there's nothing further to deliver) but leaves other channels `QUEUED`, since there's no delivery integration wired to the `Notification` model yet (Resend exists but is only used by the marketing contact form). Nothing currently creates non-IN_APP notifications, so this is an honest gap, not a hidden bug — flagged for whoever adds the next channel-consuming feature.
+
+Verified end-to-end in a real browser (Playwright, installed temporarily then reverted, same pattern as prior phases): logged in as Super Admin, confirmed the Sidebar showed a "1" unread badge, `/notifications` displayed the real "Welcome back" notification with correct timestamp, clicking "Mark as read" removed the button and the badge cleared — screenshot confirmed all three.
+
+**Build result:**
+Passed. `npm run build` completed successfully, 32 routes generated (added `/notifications` and `/api/notifications/[id]/read`).
+
+**Known issues:**
+- Only login generates audit/notification events — there's nothing else in the app yet that would. This will need revisiting once Fleet gets real mutations (Phase 6 follow-up) or other features add real user actions.
+- No delivery integration for EMAIL/SMS/PUSH notification channels (see Notifications & audit status above).
+- No audit log viewer UI yet — `getAuditLog()` exists and works but nothing in the dashboard surfaces it. Would be a natural fit for a future `/admin` or settings page.
+
+**Next recommended step:**
+Phase 7 (Billing & Subscriptions) remains deferred pending explicit approval (payment gateway rule). Phase 9 (AI Assistant) or closing the remaining per-route Fleet permission guards (noted in the Phase 4 entry) are both reasonable next candidates — worth checking with the user.
 
 ### 2026-07-19 (Phase 6) - Claude Code
 

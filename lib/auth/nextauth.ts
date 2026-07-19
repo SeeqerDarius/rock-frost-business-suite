@@ -2,6 +2,8 @@ import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
+import { logAuditEvent } from "@/lib/audit";
+import { createNotification } from "@/lib/notifications";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -30,17 +32,43 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        const primaryMembership = user.organizationMemberships[0];
+
         const isValidPassword = await bcrypt.compare(credentials.password, user.passwordHash);
         if (!isValidPassword) {
+          if (primaryMembership) {
+            await logAuditEvent({
+              organizationId: primaryMembership.organizationId,
+              userId: user.id,
+              action: "login_failed",
+              entityName: "User",
+              entityId: user.id,
+            });
+          }
           return null;
         }
-
-        const primaryMembership = user.organizationMemberships[0];
 
         await db.user.update({
           where: { id: user.id },
           data: { lastLoginAt: new Date() },
         });
+
+        if (primaryMembership) {
+          await logAuditEvent({
+            organizationId: primaryMembership.organizationId,
+            userId: user.id,
+            action: "login_succeeded",
+            entityName: "User",
+            entityId: user.id,
+          });
+          await createNotification({
+            organizationId: primaryMembership.organizationId,
+            userId: user.id,
+            type: "auth.login",
+            title: "Welcome back",
+            message: `You signed in to Rock Frost Business Suite on ${new Date().toISOString().slice(0, 10)}.`,
+          });
+        }
 
         return {
           id: user.id,
