@@ -121,6 +121,36 @@ enum FleetDocumentRenewalStatus {
   CLEAR
 }
 
+enum HirePurchaseAccountStatus {
+  ACTIVE
+  COMPLETED
+  OVERDUE
+  DORMANT
+  PROBATION
+  CLOSED
+  ARCHIVED
+  SUSPENDED
+  CANCELLED
+}
+
+enum HirePurchaseDeliveryStatus {
+  PENDING
+  DELIVERED
+}
+
+enum HirePurchaseCreditStatus {
+  OPEN
+  REFUNDED
+  APPLIED
+  VOID
+}
+
+enum HirePurchaseCreditSource {
+  PAYMENT_OVERPAYMENT
+  ACCOUNT_CLOSURE_REFUND
+  MANUAL_ADJUSTMENT
+}
+
 model User {
   id            String     @id @default(cuid())
   name          String?
@@ -136,14 +166,15 @@ model User {
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
-  accounts                Account[]
-  sessions                Session[]
-  organizationMemberships OrganizationMember[]
-  auditLogs               AuditLog[]
-  notifications           Notification[]
-  uploadedFiles           FileAsset[]
-  fleetDriverProfiles     FleetDriver[]
-  maintenanceRequests     FleetMaintenanceRequest[]
+  accounts                  Account[]
+  sessions                  Session[]
+  organizationMemberships   OrganizationMember[]
+  auditLogs                 AuditLog[]
+  notifications             Notification[]
+  uploadedFiles             FileAsset[]
+  fleetDriverProfiles       FleetDriver[]
+  maintenanceRequests       FleetMaintenanceRequest[]
+  hirePurchaseStaffProfiles HirePurchaseStaff[]
 }
 
 model Account {
@@ -209,20 +240,31 @@ model Organization {
   currency                   String             @default("USD")
   defaultLanguage            String             @default("en")
 
-  members             OrganizationMember[]
-  branches            Branch[]
-  roles               Role[]
-  organizationModules OrganizationModule[]
-  auditLogs           AuditLog[]
-  notifications       Notification[]
-  fileAssets          FileAsset[]
-  fleetOwners         FleetOwner[]
-  fleetDrivers        FleetDriver[]
-  fleetVehicles       FleetVehicle[]
-  fleetVehicleDocuments FleetVehicleDocument[]
-  maintenanceRequests FleetMaintenanceRequest[]
-  fleetPayments       FleetPayment[]
-  workAndPayContracts FleetWorkAndPayContract[]
+  members                         OrganizationMember[]
+  branches                        Branch[]
+  roles                           Role[]
+  organizationModules             OrganizationModule[]
+  auditLogs                       AuditLog[]
+  notifications                   Notification[]
+  fileAssets                      FileAsset[]
+  fleetOwners                     FleetOwner[]
+  fleetDrivers                    FleetDriver[]
+  fleetVehicles                   FleetVehicle[]
+  fleetVehicleDocuments           FleetVehicleDocument[]
+  maintenanceRequests             FleetMaintenanceRequest[]
+  fleetPayments                   FleetPayment[]
+  workAndPayContracts             FleetWorkAndPayContract[]
+  hirePurchaseStaff               HirePurchaseStaff[]
+  hirePurchaseStaffSalaryPayments HirePurchaseStaffSalaryPayment[]
+  hirePurchaseStaffSalaryHistory  HirePurchaseStaffSalaryHistory[]
+  hirePurchaseProductCategories   HirePurchaseProductCategory[]
+  hirePurchaseProducts            HirePurchaseProduct[]
+  hirePurchaseStaffInventory      HirePurchaseStaffInventory[]
+  hirePurchaseCustomers           HirePurchaseCustomer[]
+  hirePurchaseAccounts            HirePurchaseAccount[]
+  hirePurchasePayments            HirePurchasePayment[]
+  hirePurchaseCredits             HirePurchaseCredit[]
+  hirePurchaseSettings            HirePurchaseSettings?
 
   @@index([industry])
   @@index([status])
@@ -264,17 +306,20 @@ model Branch {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  organization        Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  members             OrganizationMember[]
-  auditLogs           AuditLog[]
-  fileAssets          FileAsset[]
-  fleetOwners         FleetOwner[]
-  fleetDrivers        FleetDriver[]
-  fleetVehicles       FleetVehicle[]
+  organization          Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members               OrganizationMember[]
+  auditLogs             AuditLog[]
+  fileAssets            FileAsset[]
+  fleetOwners           FleetOwner[]
+  fleetDrivers          FleetDriver[]
+  fleetVehicles         FleetVehicle[]
   fleetVehicleDocuments FleetVehicleDocument[]
-  maintenanceRequests FleetMaintenanceRequest[]
-  fleetPayments       FleetPayment[]
-  workAndPayContracts FleetWorkAndPayContract[]
+  maintenanceRequests   FleetMaintenanceRequest[]
+  fleetPayments         FleetPayment[]
+  workAndPayContracts   FleetWorkAndPayContract[]
+  hirePurchaseStaff     HirePurchaseStaff[]
+  hirePurchaseCustomers HirePurchaseCustomer[]
+  hirePurchaseAccounts  HirePurchaseAccount[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -507,7 +552,7 @@ model FleetVehicle {
 }
 
 model FleetVehicleDocument {
-  id                  String                       @id @default(cuid())
+  id                  String                     @id @default(cuid())
   organizationId      String
   branchId            String?
   vehicleId           String
@@ -515,10 +560,10 @@ model FleetVehicleDocument {
   policyNumber        String
   insuranceExpiresAt  DateTime
   roadworthyExpiresAt DateTime
-  renewalStatus       FleetDocumentRenewalStatus   @default(CLEAR)
+  renewalStatus       FleetDocumentRenewalStatus @default(CLEAR)
   alerts              String?
-  createdAt           DateTime                     @default(now())
-  updatedAt           DateTime                     @updatedAt
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
@@ -614,4 +659,260 @@ model FleetWorkAndPayContract {
   @@index([organizationId, contractStatus])
   @@index([branchId])
   @@index([vehicleId])
+}
+
+model HirePurchaseStaff {
+  id             String   @id @default(cuid())
+  organizationId String
+  branchId       String?
+  userId         String?
+  code           String
+  fullName       String
+  email          String?
+  phone          String?
+  active         Boolean  @default(true)
+  monthlySalary  Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization      Organization                     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch            Branch?                          @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  user              User?                            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  customers         HirePurchaseCustomer[]
+  salaryPayments    HirePurchaseStaffSalaryPayment[]
+  salaryHistory     HirePurchaseStaffSalaryHistory[]
+  inventory         HirePurchaseStaffInventory[]
+  inventoryAccounts HirePurchaseAccount[]            @relation("HirePurchaseAccountInventoryStaff")
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([userId])
+}
+
+model HirePurchaseStaffSalaryPayment {
+  id             String   @id @default(cuid())
+  organizationId String
+  staffId        String
+  amount         Decimal  @db.Decimal(12, 2)
+  paymentDate    DateTime
+  salaryMonth    DateTime
+  notes          String?
+  paidBy         String?
+  createdAt      DateTime @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  staff        HirePurchaseStaff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([staffId, salaryMonth])
+}
+
+model HirePurchaseStaffSalaryHistory {
+  id             String   @id @default(cuid())
+  organizationId String
+  staffId        String
+  monthlySalary  Decimal  @db.Decimal(12, 2)
+  effectiveMonth DateTime
+  createdAt      DateTime @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  staff        HirePurchaseStaff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, effectiveMonth])
+  @@index([organizationId])
+}
+
+model HirePurchaseProductCategory {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  active         Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model HirePurchaseProduct {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  category       String
+  description    String?  @db.Text
+  imageUrl       String?
+  costPrice      Decimal  @db.Decimal(12, 2)
+  transportCost  Decimal  @default(0) @db.Decimal(12, 2)
+  dailyAmount    Decimal  @db.Decimal(12, 2)
+  duration       Int
+  price          Decimal  @db.Decimal(12, 2)
+  quantityOnSale Int      @default(0)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  accounts       HirePurchaseAccount[]
+  staffInventory HirePurchaseStaffInventory[]
+
+  @@index([organizationId])
+  @@index([category])
+}
+
+model HirePurchaseStaffInventory {
+  id             String   @id @default(cuid())
+  organizationId String
+  staffId        String
+  productId      String
+  quantity       Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  staff        HirePurchaseStaff   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  product      HirePurchaseProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, productId])
+  @@index([organizationId])
+  @@index([productId])
+}
+
+model HirePurchaseCustomer {
+  id             String   @id @default(cuid())
+  organizationId String
+  branchId       String?
+  customerCode   String
+  fullName       String
+  phone          String?
+  address        String?
+  nationalId     String?
+  photoUrl       String?
+  staffId        String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?               @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  staff        HirePurchaseStaff     @relation(fields: [staffId], references: [id], onDelete: Restrict)
+  accounts     HirePurchaseAccount[]
+  credits      HirePurchaseCredit[]
+
+  @@unique([organizationId, customerCode])
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([staffId])
+  @@index([phone])
+}
+
+model HirePurchaseAccount {
+  id               String                     @id @default(cuid())
+  organizationId   String
+  branchId         String?
+  customerId       String
+  productId        String
+  inventoryStaffId String?
+  startDate        DateTime
+  expectedEndDate  DateTime
+  targetAmount     Decimal                    @db.Decimal(12, 2)
+  dailyAmount      Decimal                    @db.Decimal(12, 2)
+  totalPaid        Decimal                    @default(0) @db.Decimal(12, 2)
+  balance          Decimal                    @db.Decimal(12, 2)
+  status           HirePurchaseAccountStatus  @default(ACTIVE)
+  deliveryStatus   HirePurchaseDeliveryStatus @default(PENDING)
+  deliveredAt      DateTime?
+  deliveredBy      String?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch         Branch?               @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  customer       HirePurchaseCustomer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product        HirePurchaseProduct   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  inventoryStaff HirePurchaseStaff?    @relation("HirePurchaseAccountInventoryStaff", fields: [inventoryStaffId], references: [id], onDelete: SetNull)
+  payments       HirePurchasePayment[]
+  credits        HirePurchaseCredit[]
+
+  @@index([organizationId, status])
+  @@index([branchId])
+  @@index([customerId])
+  @@index([productId])
+  @@index([inventoryStaffId])
+}
+
+model HirePurchasePayment {
+  id             String   @id @default(cuid())
+  organizationId String
+  receiptNo      String
+  accountId      String
+  amount         Decimal  @db.Decimal(12, 2)
+  paymentDate    DateTime
+  method         String
+  notes          String?
+  receivedBy     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  account      HirePurchaseAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  credit       HirePurchaseCredit?
+
+  @@unique([organizationId, receiptNo])
+  @@index([organizationId])
+  @@index([accountId])
+}
+
+model HirePurchaseCredit {
+  id              String                   @id @default(cuid())
+  organizationId  String
+  customerId      String
+  accountId       String?
+  paymentId       String?                  @unique
+  amount          Decimal                  @db.Decimal(12, 2)
+  remainingAmount Decimal                  @db.Decimal(12, 2)
+  status          HirePurchaseCreditStatus @default(OPEN)
+  source          HirePurchaseCreditSource
+  notes           String?
+  createdBy       String?
+  resolvedBy      String?
+  resolvedAt      DateTime?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     HirePurchaseCustomer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  account      HirePurchaseAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  payment      HirePurchasePayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([customerId])
+  @@index([accountId])
+}
+
+model HirePurchaseSettings {
+  id                              String   @id @default(cuid())
+  organizationId                  String   @unique
+  installmentDurationDays         Int      @default(184)
+  defaultDailyCollection          Decimal  @default(0) @db.Decimal(12, 2)
+  administrationFeePercent        Decimal  @default(0) @db.Decimal(5, 2)
+  refundDeductionPercent          Decimal  @default(32) @db.Decimal(5, 2)
+  deliveryTimeAfterCompletionDays Int      @default(2)
+  procurementThresholdPercent     Decimal  @default(70) @db.Decimal(5, 2)
+  paymentEditWindowHours          Int      @default(3)
+  minimumDeposit                  Decimal  @default(0) @db.Decimal(12, 2)
+  defaultMonthlySalary            Decimal  @default(0) @db.Decimal(12, 2)
+  defaultStaffInventoryQuantity   Int      @default(10)
+  commissionEnabled               Boolean  @default(false)
+  commissionPercentage            Decimal  @default(0) @db.Decimal(5, 2)
+  payrollDay                      Int      @default(1)
+  receiptPrefix                   String   @default("RCPT")
+  customerIdPrefix                String   @default("CUST")
+  staffCodeLength                 Int      @default(3)
+  createdAt                       DateTime @default(now())
+  updatedAt                       DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }

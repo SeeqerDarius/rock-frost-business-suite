@@ -10,6 +10,17 @@ const db = new PrismaClient();
 
 const ALL_PERMISSIONS = Object.values(PERMISSIONS);
 
+const SYSTEM_ROLES: { name: string; description: string }[] = [
+  { name: "Super Admin", description: "Platform-level administrator role reserved for Rock Frost operators." },
+  { name: "Organization Owner", description: "Tenant owner with organization administration privileges." },
+  { name: "Fleet Manager", description: "Operational fleet role for vehicles, drivers, maintenance, payments, and reports." },
+  { name: "Driver", description: "Fleet driver role for assigned vehicle access and operational updates." },
+  { name: "Mechanic", description: "Maintenance service role for assigned repair workflows." },
+  { name: "Investor", description: "Read-only stakeholder role for approved portfolio and performance visibility." },
+  { name: "Hire Purchase Manager", description: "Operational Hire Purchase role for customers, accounts, payments, products, staff, and reports." },
+  { name: "Hire Purchase Staff", description: "Field sales role scoped to managing their own assigned Hire Purchase customers, accounts, and payments." },
+];
+
 const ROLE_PERMISSIONS: Record<string, string[]> = {
   "Super Admin": ALL_PERMISSIONS,
   "Organization Owner": ALL_PERMISSIONS,
@@ -29,6 +40,27 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   Driver: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.FLEET_VIEW, PERMISSIONS.FLEET_MAINTENANCE_MANAGE, PERMISSIONS.AI_ASSISTANT_USE],
   Mechanic: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.FLEET_VIEW, PERMISSIONS.FLEET_MAINTENANCE_MANAGE, PERMISSIONS.AI_ASSISTANT_USE],
   Investor: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.FLEET_INVESTOR_VIEW, PERMISSIONS.FLEET_REPORTS_VIEW, PERMISSIONS.AI_ASSISTANT_USE],
+  "Hire Purchase Manager": [
+    PERMISSIONS.DASHBOARD_VIEW,
+    PERMISSIONS.HIREPURCHASE_VIEW,
+    PERMISSIONS.HIREPURCHASE_CUSTOMERS_MANAGE,
+    PERMISSIONS.HIREPURCHASE_ACCOUNTS_MANAGE,
+    PERMISSIONS.HIREPURCHASE_PAYMENTS_MANAGE,
+    PERMISSIONS.HIREPURCHASE_PRODUCTS_MANAGE,
+    PERMISSIONS.HIREPURCHASE_STAFF_MANAGE,
+    PERMISSIONS.HIREPURCHASE_CREDITS_MANAGE,
+    PERMISSIONS.HIREPURCHASE_REPORTS_VIEW,
+    PERMISSIONS.HIREPURCHASE_SETTINGS_MANAGE,
+    PERMISSIONS.AI_ASSISTANT_USE,
+  ],
+  "Hire Purchase Staff": [
+    PERMISSIONS.DASHBOARD_VIEW,
+    PERMISSIONS.HIREPURCHASE_VIEW,
+    PERMISSIONS.HIREPURCHASE_CUSTOMERS_MANAGE,
+    PERMISSIONS.HIREPURCHASE_ACCOUNTS_MANAGE,
+    PERMISSIONS.HIREPURCHASE_PAYMENTS_MANAGE,
+    PERMISSIONS.AI_ASSISTANT_USE,
+  ],
 };
 
 async function main() {
@@ -38,6 +70,15 @@ async function main() {
       update: {},
       create: { key, name: key },
     });
+  }
+
+  for (const role of SYSTEM_ROLES) {
+    const existing = await db.role.findFirst({ where: { organizationId: null, name: role.name } });
+    if (!existing) {
+      await db.role.create({
+        data: { name: role.name, description: role.description, isSystem: true, organizationId: null },
+      });
+    }
   }
 
   const roles = await db.role.findMany({ where: { isSystem: true } });

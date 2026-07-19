@@ -19,6 +19,15 @@ const navigation: { href: string; label: string; icon: string; permission: Permi
   { href: "/fleet/reports", label: "Reports", icon: "📊", permission: PERMISSIONS.FLEET_REPORTS_VIEW },
   { href: "/fleet/investor-dashboard", label: "Investor Dashboard", icon: "💎", permission: PERMISSIONS.FLEET_INVESTOR_VIEW },
   { href: "/fleet/settings", label: "Settings", icon: "⚙️", permission: PERMISSIONS.ORG_SETTINGS_MANAGE },
+  { href: "/hire-purchase", label: "Hire Purchase Overview", icon: "🧾", permission: PERMISSIONS.HIREPURCHASE_VIEW },
+  { href: "/hire-purchase/customers", label: "Customers", icon: "🧑‍🤝‍🧑", permission: PERMISSIONS.HIREPURCHASE_CUSTOMERS_MANAGE },
+  { href: "/hire-purchase/accounts", label: "Accounts", icon: "📄", permission: PERMISSIONS.HIREPURCHASE_ACCOUNTS_MANAGE },
+  { href: "/hire-purchase/payments", label: "Payments", icon: "💵", permission: PERMISSIONS.HIREPURCHASE_PAYMENTS_MANAGE },
+  { href: "/hire-purchase/products", label: "Products", icon: "📦", permission: PERMISSIONS.HIREPURCHASE_PRODUCTS_MANAGE },
+  { href: "/hire-purchase/staff", label: "Staff", icon: "🧑‍💼", permission: PERMISSIONS.HIREPURCHASE_STAFF_MANAGE },
+  { href: "/hire-purchase/credits", label: "Credits", icon: "💳", permission: PERMISSIONS.HIREPURCHASE_CREDITS_MANAGE },
+  { href: "/hire-purchase/reports", label: "HP Reports", icon: "📊", permission: PERMISSIONS.HIREPURCHASE_REPORTS_VIEW },
+  { href: "/hire-purchase/settings", label: "HP Settings", icon: "🛠️", permission: PERMISSIONS.HIREPURCHASE_SETTINGS_MANAGE },
 ];
 
 export async function Sidebar() {

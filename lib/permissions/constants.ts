@@ -20,6 +20,15 @@ export const PERMISSIONS = {
   FLEET_INVESTOR_VIEW: "fleet.investor.view",
   ORG_SETTINGS_MANAGE: "org.settings.manage",
   AI_ASSISTANT_USE: "ai.assistant.use",
+  HIREPURCHASE_VIEW: "hirepurchase.view",
+  HIREPURCHASE_CUSTOMERS_MANAGE: "hirepurchase.customers.manage",
+  HIREPURCHASE_ACCOUNTS_MANAGE: "hirepurchase.accounts.manage",
+  HIREPURCHASE_PAYMENTS_MANAGE: "hirepurchase.payments.manage",
+  HIREPURCHASE_PRODUCTS_MANAGE: "hirepurchase.products.manage",
+  HIREPURCHASE_STAFF_MANAGE: "hirepurchase.staff.manage",
+  HIREPURCHASE_CREDITS_MANAGE: "hirepurchase.credits.manage",
+  HIREPURCHASE_REPORTS_VIEW: "hirepurchase.reports.view",
+  HIREPURCHASE_SETTINGS_MANAGE: "hirepurchase.settings.manage",
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
