@@ -49,7 +49,7 @@ Auth foundation status:
 - The owner/Super Admin account is `admin@rockfrostgroup.com` — a real password was generated and set directly in the database (bcrypt-hashed); it was given to the user out-of-band and is not stored anywhere in this repo.
 - Auth API route exists at `app/api/auth/[...nextauth]/route.ts`.
 - Auth helpers and type augmentation exist under `lib/auth/`.
-- Login, forgot-password, reset-password, invite, and profile pages exist. The login page (`app/(auth)/login/page.tsx`) is a plain HTML form posting to `/api/auth/callback/credentials` — it did not need changes.
+- Login, forgot-password, reset-password, invite, and profile pages exist. The login page (`app/(auth)/login/page.tsx`) is now a client component using `signIn()` from `next-auth/react` (see the later 2026-07-19 handoff entry for why the earlier plain-HTML-form version didn't work).
 - Still missing for full production auth: forgot-password/reset-password flows are UI-only (no backing API), invite flow is UI-only, and there is no rate limiting or account lockout on failed login attempts.
 
 Prisma/database status:
@@ -121,6 +121,30 @@ main
 - `/organizations` (planned; not currently present)
 
 ## Latest Handoff Log
+
+### 2026-07-19 (later still) - Claude Code
+
+**Objective:**
+Fix a bug reported by the user immediately after the previous entry: logging in with the correct credentials just returned to `/login` instead of reaching `/dashboard`.
+
+**Files changed:**
+- `app/(auth)/login/page.tsx`
+
+**Summary:**
+The login page was a plain HTML `<form action="/api/auth/callback/credentials" method="post">` with no CSRF token field. NextAuth v4's credentials callback requires a `csrfToken` submitted with the POST (bound to a `next-auth.csrf-token` cookie) — without it, every submission was silently rejected and NextAuth redirected back to `pages.error: "/login"`, which looks identical to the plain login page with no visible error. This is why the "any password works" stub from the earlier handoff entry appeared to work when tested via `curl` (I manually fetched and attached a CSRF token there) but never worked from the actual browser form, which never sent one.
+
+Rather than hand-plumbing CSRF cookie forwarding through a Server Component (which has its own gotchas — an internal server-side `fetch` to `/api/auth/csrf` can't propagate its `Set-Cookie` into the page's own response), converted the login page to a `"use client"` component that calls `signIn("credentials", { email, password, callbackUrl: "/dashboard", redirect: false })` from `next-auth/react` on submit. This is the standard, well-supported approach and handles CSRF token fetching/submission internally via the browser's own fetch + cookie jar. Also added a visible error message ("Invalid email or password.") on failed login and a disabled/"Signing in..." state on the submit button, since silently doing nothing on failure was part of what made the original bug confusing.
+
+Verified with a real headless-browser test (Playwright, installed temporarily for this one test then reverted from `package.json`/`package-lock.json` — not a permanent project dependency): wrong password stays on `/login` and shows the error message; correct password (`admin@rockfrostgroup.com` / the password set in the previous entry) reaches `/dashboard` and renders the real Fleet dashboard with "Rock Frost Super Admin" / "Super Admin" in the topbar, confirmed via screenshot.
+
+**Build result:**
+Passed. `npm run build` completed successfully, 31 routes generated.
+
+**Known issues:**
+- None new. Same outstanding items as the previous entry (forgot-password/reset-password/invite are UI-only, no rate limiting on login attempts).
+
+**Next recommended step:**
+Same as previous entry — build password reset before onboarding other real users, and decide on `getMockSession()` cleanup in `lib/auth/session.ts`.
 
 ### 2026-07-19 (later) - Claude Code
 

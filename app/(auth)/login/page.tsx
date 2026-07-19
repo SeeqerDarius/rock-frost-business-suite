@@ -1,8 +1,37 @@
+"use client";
+
+import { useState } from "react";
+import { signIn } from "next-auth/react";
 import Link from "next/link";
 import type { Route } from "next";
 import { MarketingLayout } from "../../components/MarketingLayout";
 
 export default function LoginPage() {
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setIsSubmitting(true);
+
+    const formData = new FormData(event.currentTarget);
+    const result = await signIn("credentials", {
+      email: formData.get("email"),
+      password: formData.get("password"),
+      callbackUrl: "/dashboard",
+      redirect: false,
+    });
+
+    if (result?.error) {
+      setError("Invalid email or password. Please try again.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    window.location.href = result?.url ?? "/dashboard";
+  }
+
   return (
     <MarketingLayout className="flex min-h-[calc(100vh-96px)] items-center max-w-7xl">
       <div className="card-glow-hover w-full relative overflow-hidden rounded-[2.5rem] border border-[#1a6dff]/20 bg-[#000000] p-10 scan-overlay sm:p-14"
@@ -22,12 +51,18 @@ export default function LoginPage() {
           <div className="steel-divider" />
         </div>
 
-        <form action="/api/auth/callback/credentials" method="post" className="relative mt-10 space-y-6">
+        <form onSubmit={handleSubmit} className="relative mt-10 space-y-6">
+          {error ? (
+            <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              {error}
+            </div>
+          ) : null}
           <label className="block text-sm text-[#94a3b8]">
             <span className="mb-3 inline-block">Email address</span>
             <input
               name="email"
               type="email"
+              required
               className="w-full rounded-2xl border border-[#1a6dff]/15 bg-[#040a14] px-4 py-3 text-sm text-white outline-none transition focus:border-[#1a6dff]/50 focus:ring-2 focus:ring-[#1a6dff]/15"
               placeholder="you@example.com"
             />
@@ -37,6 +72,7 @@ export default function LoginPage() {
             <input
               name="password"
               type="password"
+              required
               className="w-full rounded-2xl border border-[#1a6dff]/15 bg-[#040a14] px-4 py-3 text-sm text-white outline-none transition focus:border-[#1a6dff]/50 focus:ring-2 focus:ring-[#1a6dff]/15"
               placeholder="Enter your password"
             />
@@ -47,9 +83,10 @@ export default function LoginPage() {
           </div>
           <button
             type="submit"
-            className="btn-blue inline-flex w-full items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold text-white"
+            disabled={isSubmitting}
+            className="btn-blue inline-flex w-full items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold text-white disabled:opacity-60"
           >
-            Continue to dashboard
+            {isSubmitting ? "Signing in..." : "Continue to dashboard"}
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
           </button>
         </form>
