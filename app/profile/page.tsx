@@ -1,6 +1,7 @@
 import type { Metadata, Route } from "next";
 import Link from "next/link";
 import { getDashboardSessionInfo } from "@/lib/auth/session";
+import { getCurrentTenant } from "@/lib/tenant";
 
 export const metadata: Metadata = {
   title: "Profile | Rock Frost Business Suite",
@@ -9,10 +10,11 @@ export const metadata: Metadata = {
 
 export default async function ProfilePage() {
   const session = await getDashboardSessionInfo();
+  const tenant = await getCurrentTenant();
   const name = session?.name ?? session?.email ?? "Guest user";
   const email = session?.email ?? "Not available";
   const role = session?.role ?? "Member";
-  const organization = session?.organizationId ?? "Organization workspace";
+  const organization = tenant?.organization.name ?? "Organization workspace";
 
   return (
     <div className="min-h-screen bg-[#020409] px-4 py-8 text-slate-100 sm:px-6 lg:px-8">

@@ -1,9 +1,12 @@
 import { getDashboardSessionInfo } from "@/lib/auth/session";
+import { getCurrentTenant } from "@/lib/tenant";
 import { ProfileMenu } from "./ProfileMenu";
 
 export default async function Topbar() {
   const session = await getDashboardSessionInfo();
-  const organization = session?.organizationId ?? "Organization workspace";
+  const tenant = await getCurrentTenant();
+  const organization = tenant?.organization.name ?? "Organization workspace";
+  const branch = tenant?.branch?.name;
   const role = session?.role ?? "Member";
   const name = session?.name ?? session?.email ?? "Guest user";
   const email = session?.email ?? null;
@@ -26,7 +29,9 @@ export default async function Topbar() {
         <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
           <p className="text-xs uppercase tracking-[0.24em] text-cyan-200/70">Tenant</p>
           <p className="font-semibold text-slate-100">{organization}</p>
-          <p className="text-xs text-slate-400">Role: {role}</p>
+          <p className="text-xs text-slate-400">
+            {branch ? `${branch} · ` : ""}Role: {role}
+          </p>
         </div>
         <ProfileMenu name={name} email={email} role={role} organization={organization} />
       </div>

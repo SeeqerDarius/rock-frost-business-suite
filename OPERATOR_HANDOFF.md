@@ -34,8 +34,14 @@ Marketing website status:
 Dashboard status:
 - SaaS dashboard route group exists under `app/(dashboard)`.
 - Dashboard shell, sidebar, topbar, and profile menu components exist.
-- Dashboard routes are protected through the current auth-protection foundation.
+- Dashboard routes are protected through the current auth-protection foundation, which now also enforces organization membership (see Tenancy status below) — a signed-in user with no `OrganizationMember` row sees a "No organization access" message instead of the dashboard.
+- The Topbar and profile page now show the user's real organization name and branch (via `lib/tenant/`) instead of the raw `organizationId`.
+- There is still only one dashboard view (`/dashboard`) shared by every role — it always renders the Fleet module's mock metrics regardless of who's logged in. A platform-level `/admin` view for the SaaS owner (organization list, module enablement, billing) does not exist yet; it's listed as planned in Key Routes below but not started.
 - Existing dashboard UI should remain stable while platform foundations are added.
+
+Tenancy status:
+- `lib/tenant/index.ts` exists (`getCurrentTenant()` / `requireCurrentTenant()`) — resolves the signed-in user's `Organization` and `Branch` (if assigned) from their `OrganizationMember` row. This is Phase 3 of `docs/DEVELOPMENT_ROADMAP.md`.
+- This only resolves/reads tenant context for display purposes so far (Topbar, profile page, and the auth-protection gate). It does **not** yet scope any actual data queries — there's nothing to scope yet since Fleet still uses mock data (Phase 6, still gated per the rule below).
 
 Fleet module status:
 - Fleet is the first SaaS business module.
@@ -121,6 +127,37 @@ main
 - `/organizations` (planned; not currently present)
 
 ## Latest Handoff Log
+
+### 2026-07-19 (Phase 3) - Claude Code
+
+**Objective:**
+Follow `docs/DEVELOPMENT_ROADMAP.md` and implement Phase 3 (Multi-Tenancy), per the user's request to "follow the roadmap and do what's next" — this was already flagged as the recommended next step in the two prior handoff entries.
+
+**Files changed:**
+- `lib/tenant/index.ts` (new)
+- `app/(dashboard)/auth-protection.tsx`
+- `components/dashboard/Topbar.tsx`
+- `app/profile/page.tsx`
+
+**Summary:**
+Added `lib/tenant/index.ts` with `getCurrentTenant()`/`requireCurrentTenant()`, which resolves the signed-in user's `Organization` and `Branch` (if any) by looking up their `OrganizationMember` row for the `organizationId` already on their session. This satisfies the Phase 3 acceptance criteria of "organization context available for authenticated users" and "branch support defined for fine-grained segmentation" — Organization and Branch models already existed in the schema from earlier work, so this phase was purely about the resolver layer, not new data models.
+
+Wired it into three places: `DashboardAuthProtection` now calls `getCurrentTenant()` after the session check and shows a "No organization access" message (instead of the dashboard) if a signed-in user has no `OrganizationMember` row — enforcing tenant scoping at the platform level rather than leaving it optional. `Topbar` and the profile page now show `tenant.organization.name` (and branch name, if assigned) instead of the raw `organizationId` cuid that was being displayed literally before (e.g. "cmr6kkdre000ec41oevqxvls9") — this was a visible, concrete bug the user noticed from a screenshot during an earlier conversation.
+
+Deliberately did **not** touch Fleet pages or wire any real data queries through this — Fleet backend (scoping actual business data by `organizationId`) is Phase 6 and is still explicitly gated by the project rule "Do not replace mock data with database data until the database integration phase is explicitly approved." This phase only builds the resolver capability; nothing consumes it for data scoping yet.
+
+Verified with a headless-browser test (Playwright, installed temporarily then reverted — same as the previous entry, not a permanent dependency): logged in as `admin@rockfrostgroup.com`, confirmed via screenshot that the Topbar now reads "Tenant: Rock Frost Demo Fleet" / "Accra Fleet Yard · Role: Super Admin" instead of the raw ID.
+
+**Build result:**
+Passed. `npm run build` completed successfully, 31 routes generated. Note: the local dev server in this environment is currently very slow to compile on first interaction after a restart (Turbopack "Fast Refresh" took 15-25s in several test runs) — this is an environment/performance quirk, not a code issue; be patient with dev-server-based testing here rather than assuming a hang means a bug.
+
+**Known issues:**
+- Still only one dashboard view, shared by every role (see Dashboard status above). Building a real platform/`/admin` view for the SaaS owner is a separate, not-yet-started piece of work the user asked about but hasn't approved building yet.
+- `getCurrentTenant()` does a fresh DB query on every call (Topbar, profile page, auth-protection all call it independently per request) — fine for now, but worth caching per-request (e.g. React `cache()`) if it becomes a hot path once more pages consume it.
+- Phase 4 (Roles & Permissions enforcement) is still not built — `role` is available on the session and now used for display, but nothing actually restricts access based on it.
+
+**Next recommended step:**
+Phase 4 (Roles & Permissions) is the natural next roadmap item — enforce role-based authorization in the UI/backend now that role is reliably available via session + tenant context. Alternatively, revisit the `/admin` platform dashboard question with the user now that tenant context exists to build it on top of.
 
 ### 2026-07-19 (later still) - Claude Code
 
