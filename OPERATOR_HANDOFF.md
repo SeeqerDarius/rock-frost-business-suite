@@ -40,8 +40,15 @@ Dashboard status:
 - Existing dashboard UI should remain stable while platform foundations are added.
 
 Tenancy status:
-- `lib/tenant/index.ts` exists (`getCurrentTenant()` / `requireCurrentTenant()`) — resolves the signed-in user's `Organization` and `Branch` (if assigned) from their `OrganizationMember` row. This is Phase 3 of `docs/DEVELOPMENT_ROADMAP.md`.
+- `lib/tenant/index.ts` exists (`getCurrentTenant()` / `requireCurrentTenant()`) — resolves the signed-in user's `Organization`, `Branch` (if assigned), `roleId`, and resolved `permissions` (string keys) from their `OrganizationMember` row. This is Phase 3 of `docs/DEVELOPMENT_ROADMAP.md`.
 - This only resolves/reads tenant context for display purposes so far (Topbar, profile page, and the auth-protection gate). It does **not** yet scope any actual data queries — there's nothing to scope yet since Fleet still uses mock data (Phase 6, still gated per the rule below).
+
+RBAC / permissions status (Phase 4):
+- `lib/permissions/constants.ts` defines the `PERMISSIONS` key catalog (plain data, no "server-only" import, so it can be imported from standalone scripts). `lib/permissions/index.ts` re-exports it plus `hasPermission()` and `requirePermission()` (redirects to `/dashboard` if the current user lacks the permission).
+- `prisma/seed-rbac.ts` is a committed, idempotent seed script (`npx tsx prisma/seed-rbac.ts`) that populates real `Permission` and `RolePermission` rows in the live database for the 6 existing system roles (Super Admin, Organization Owner, Fleet Manager, Driver, Mechanic, Investor). It has already been run against the live Neon database — the tables are populated, not just conceptual.
+- `Sidebar` now filters nav items by permission (each nav item maps to a `PermissionKey`). `/fleet/settings` and `/fleet/investor-dashboard` are also guarded server-side via `requirePermission()` — a user without the permission is redirected away even via direct URL, not just hidden from nav.
+- The other 9 Fleet pages (vehicles, drivers, owners, insurance, maintenance, work-and-pay, payments, reports, overview) are **not yet individually guarded** at the route level — only their nav visibility is filtered. Adding `requirePermission()` to each of those (following the same one-line pattern used in settings/investor-dashboard) is a natural follow-up, likely worth doing alongside Phase 6 (Fleet Module Backend) rather than duplicating guard code across mock-data pages that will be rewritten anyway.
+- Verified end-to-end in a real browser: logged in as Super Admin (`admin@rockfrostgroup.com`) — all 12 nav items visible, `/fleet/settings` accessible. Logged in as Driver (`driver@demo.com`, a temporary password was set the same way as the Super Admin's in the earlier handoff entry) — only Dashboard/Fleet Overview/Maintenance visible in nav, and a direct navigation to `/fleet/settings` redirected to `/dashboard`.
 
 Fleet module status:
 - Fleet is the first SaaS business module.
@@ -127,6 +134,40 @@ main
 - `/organizations` (planned; not currently present)
 
 ## Latest Handoff Log
+
+### 2026-07-19 (Phase 4) - Claude Code
+
+**Objective:**
+Continue following `docs/DEVELOPMENT_ROADMAP.md` per the user's request ("continue with the next, when done continue") — implement Phase 4 (Roles & Permissions), the next unbuilt phase after Phase 3.
+
+**Files changed:**
+- `lib/permissions/constants.ts` (new)
+- `lib/permissions/index.ts` (new)
+- `prisma/seed-rbac.ts` (new)
+- `lib/tenant/index.ts` (extended `TenantContext` with `roleId` and `permissions`)
+- `components/dashboard/Sidebar.tsx` (now an async Server Component, filters nav by permission)
+- `app/(dashboard)/fleet/settings/page.tsx` (guarded with `requirePermission`)
+- `app/(dashboard)/fleet/investor-dashboard/page.tsx` (guarded with `requirePermission`)
+
+**Summary:**
+The `Permission`/`RolePermission` tables existed in the schema since the Phase 1 foundation work but were completely empty — `SELECT * FROM "Permission"` returned `[]`. Designed a permission key catalog (`dashboard.view`, `fleet.view`, `fleet.vehicles.manage`, ... `org.settings.manage` — 12 keys total, one per sidebar nav item) and a role→permission mapping matching the 6 existing seeded roles: Super Admin and Organization Owner get everything; Fleet Manager gets all Fleet operational permissions but not investor/settings; Driver and Mechanic get a minimal set (dashboard, fleet view, maintenance); Investor gets dashboard, investor view, and reports only. Wrote this as a committed, idempotent seed script (`prisma/seed-rbac.ts`, run via `npx tsx`) rather than a one-off scratch script, since role/permission assignments are real application configuration that should be reproducible on a fresh database, not throwaway diagnostic data. Ran it against the live Neon database — output confirmed 12/12/10/3/3/3 permissions seeded per role respectively.
+
+Split `lib/permissions/` into `constants.ts` (no `"server-only"` import — just the plain `PERMISSIONS` object) and `index.ts` (the real module, with `"server-only"` plus `hasPermission()`/`requirePermission()` helpers). This split was necessary because the seed script needs to import the permission keys but runs as a plain Node/tsx script outside Next.js, and importing something that pulls in `"server-only"` fails there (`Cannot find module 'server-only'` — that package relies on bundler-specific resolution that plain Node/tsx doesn't do). Extended `lib/tenant/`'s `getCurrentTenant()` to also include the membership's `roleId` and a flattened `permissions: string[]` (via `role.rolePermissions.permission.key`), computed in the same DB query that already resolves organization/branch — avoids a second round-trip per page.
+
+Applied enforcement in two places: (1) `Sidebar` is now `async` and filters the nav array by `hasPermission(tenant, item.permission)` — a Driver literally cannot see links to Vehicles, Payments, Settings, etc. (2) The two most clearly role-restricted pages, Settings (`org.settings.manage`) and Investor Dashboard (`fleet.investor.view`), call `requirePermission()` at the top of the page component, which redirects to `/dashboard` if the check fails — this is real server-side enforcement, not just hidden UI, so a user can't bypass it by typing the URL directly. Deliberately did **not** add per-route guards to the other 9 Fleet pages yet (see Known Issues) to avoid duplicating near-identical guard boilerplate across mock-data pages that Phase 6 will rewrite anyway.
+
+Verified end-to-end with a real headless-browser test (Playwright, installed temporarily then reverted, same pattern as prior entries): logged in as Super Admin — all 12 nav items shown, `/fleet/settings` reachable. Logged in as Driver (a temporary real password was set for `driver@demo.com` the same way the Super Admin's was set in an earlier entry, using the same one-off bcrypt script pattern, not committed) — nav showed exactly 3 items (Dashboard, Fleet Overview, Maintenance), and navigating directly to `/fleet/settings` by URL redirected to `/dashboard`, confirmed by screenshot.
+
+**Build result:**
+Passed. `npm run build` completed successfully, 31 routes generated.
+
+**Known issues:**
+- Only Settings and Investor Dashboard have server-side route guards; the other 9 Fleet pages only have nav-level (visibility) filtering, not enforcement — a Driver who guesses the URL for `/fleet/payments` today would still be able to view it (with mock data) even though they can't see it in nav. Not a real data-exposure risk yet since it's all shared mock data, but should be closed before Phase 6 wires in real per-organization data.
+- `driver@demo.com` now has a known password (set during testing, not written anywhere in this repo) — same caveat as before: the other demo accounts (`owner@demo.com`, `fleet@demo.com`, `mechanic@demo.com`, `investor@demo.com`) still have unknown passwords.
+- `getCurrentTenant()` runs its DB query independently in `Sidebar`, `Topbar`, and the profile page (three separate calls per dashboard page load) — fine for now, flagged as a caching opportunity in the previous entry too.
+
+**Next recommended step:**
+Either (a) extend `requirePermission()` guards to the remaining 9 Fleet pages for consistency, or (b) move on to Phase 5/6 groundwork (Fleet Module Backend) now that both tenancy and RBAC exist — but Phase 6 remains gated behind explicit user approval per the project rules above.
 
 ### 2026-07-19 (Phase 3) - Claude Code
 

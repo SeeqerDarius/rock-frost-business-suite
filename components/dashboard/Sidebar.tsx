@@ -1,21 +1,26 @@
 import Link from "next/link";
+import { getCurrentTenant } from "@/lib/tenant";
+import { hasPermission, PERMISSIONS, type PermissionKey } from "@/lib/permissions";
 
-const navigation = [
-  { href: "/dashboard", label: "Dashboard", icon: "📈" },
-  { href: "/fleet", label: "Fleet Overview", icon: "🚚" },
-  { href: "/fleet/vehicles", label: "Vehicles", icon: "🛻" },
-  { href: "/fleet/vehicle-owners", label: "Vehicle Owners", icon: "👥" },
-  { href: "/fleet/drivers", label: "Drivers", icon: "🧑‍✈️" },
-  { href: "/fleet/insurance-roadworthy", label: "Insurance & Roadworthy", icon: "🛡️" },
-  { href: "/fleet/maintenance", label: "Maintenance", icon: "🔧" },
-  { href: "/fleet/work-and-pay", label: "Work & Pay", icon: "💼" },
-  { href: "/fleet/payments", label: "Payments", icon: "💳" },
-  { href: "/fleet/reports", label: "Reports", icon: "📊" },
-  { href: "/fleet/investor-dashboard", label: "Investor Dashboard", icon: "💎" },
-  { href: "/fleet/settings", label: "Settings", icon: "⚙️" },
+const navigation: { href: string; label: string; icon: string; permission: PermissionKey }[] = [
+  { href: "/dashboard", label: "Dashboard", icon: "📈", permission: PERMISSIONS.DASHBOARD_VIEW },
+  { href: "/fleet", label: "Fleet Overview", icon: "🚚", permission: PERMISSIONS.FLEET_VIEW },
+  { href: "/fleet/vehicles", label: "Vehicles", icon: "🛻", permission: PERMISSIONS.FLEET_VEHICLES_MANAGE },
+  { href: "/fleet/vehicle-owners", label: "Vehicle Owners", icon: "👥", permission: PERMISSIONS.FLEET_OWNERS_MANAGE },
+  { href: "/fleet/drivers", label: "Drivers", icon: "🧑‍✈️", permission: PERMISSIONS.FLEET_DRIVERS_MANAGE },
+  { href: "/fleet/insurance-roadworthy", label: "Insurance & Roadworthy", icon: "🛡️", permission: PERMISSIONS.FLEET_INSURANCE_MANAGE },
+  { href: "/fleet/maintenance", label: "Maintenance", icon: "🔧", permission: PERMISSIONS.FLEET_MAINTENANCE_MANAGE },
+  { href: "/fleet/work-and-pay", label: "Work & Pay", icon: "💼", permission: PERMISSIONS.FLEET_WORKANDPAY_MANAGE },
+  { href: "/fleet/payments", label: "Payments", icon: "💳", permission: PERMISSIONS.FLEET_PAYMENTS_MANAGE },
+  { href: "/fleet/reports", label: "Reports", icon: "📊", permission: PERMISSIONS.FLEET_REPORTS_VIEW },
+  { href: "/fleet/investor-dashboard", label: "Investor Dashboard", icon: "💎", permission: PERMISSIONS.FLEET_INVESTOR_VIEW },
+  { href: "/fleet/settings", label: "Settings", icon: "⚙️", permission: PERMISSIONS.ORG_SETTINGS_MANAGE },
 ];
 
-export function Sidebar() {
+export async function Sidebar() {
+  const tenant = await getCurrentTenant();
+  const visibleNavigation = navigation.filter((item) => hasPermission(tenant, item.permission));
+
   return (
     <aside className="w-full border-b border-white/10 bg-[#03050b]/95 lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:border-r lg:border-b-0 lg:bg-[#040811]/95">
       <div className="mx-auto flex max-w-[25rem] flex-col gap-8 px-5 py-8 lg:mx-0 lg:max-w-none">
@@ -33,7 +38,7 @@ export function Sidebar() {
         </div>
 
         <nav className="space-y-1">
-          {navigation.map((item) => (
+          {visibleNavigation.map((item) => (
             <Link
               key={item.href}
               href={item.href as any}

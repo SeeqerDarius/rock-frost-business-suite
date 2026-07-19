@@ -1,8 +1,11 @@
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { SectionTable } from "@/components/fleet/SectionTable";
 import { investorSummary } from "@/lib/fleet";
+import { requirePermission, PERMISSIONS } from "@/lib/permissions";
 
-export default function InvestorDashboardPage() {
+export default async function InvestorDashboardPage() {
+  await requirePermission(PERMISSIONS.FLEET_INVESTOR_VIEW);
+
   return (
     <DashboardShell
       title="Investor dashboard"

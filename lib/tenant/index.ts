@@ -13,6 +13,8 @@ export interface TenantContext {
     status: string;
   };
   role: string | null;
+  roleId: string | null;
+  permissions: string[];
   branch: {
     id: string;
     name: string;
@@ -37,7 +39,11 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
 
   const membership = await db.organizationMember.findFirst({
     where: { userId, organizationId },
-    include: { organization: true, branch: true },
+    include: {
+      organization: true,
+      branch: true,
+      role: { include: { rolePermissions: { include: { permission: true } } } },
+    },
   });
 
   if (!membership) {
@@ -54,6 +60,8 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
       status: membership.organization.status,
     },
     role: session?.user?.role ?? null,
+    roleId: membership.roleId,
+    permissions: membership.role?.rolePermissions.map((rp) => rp.permission.key) ?? [],
     branch: membership.branch
       ? { id: membership.branch.id, name: membership.branch.name, code: membership.branch.code }
       : null,

@@ -1,6 +1,9 @@
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { requirePermission, PERMISSIONS } from "@/lib/permissions";
 
-export default function FleetSettingsPage() {
+export default async function FleetSettingsPage() {
+  await requirePermission(PERMISSIONS.ORG_SETTINGS_MANAGE);
+
   return (
     <DashboardShell
       title="Fleet settings"
