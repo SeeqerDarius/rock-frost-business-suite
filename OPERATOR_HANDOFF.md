@@ -54,7 +54,10 @@ Prisma/database status:
 - Prisma and Prisma Client are installed.
 - `prisma/schema.prisma` exists with initial multi-tenant platform, NextAuth-compatible, RBAC, module, audit, notification, file, and fleet models.
 - `lib/db.ts` exists as a server-only Prisma Client singleton.
-- `.env.example` has database and NextAuth environment variables.
+- `.env` (not `.env.example`) has database and NextAuth environment variables populated, including a real Neon Postgres `DATABASE_URL`.
+- **The Neon database is NOT empty.** It already has the full schema (22 tables) applied and contains real seeded data: 1 `Organization` ("Rock Frost Demo Fleet") and 6 `User` rows. Do not assume the database is empty — always run `npx prisma migrate status` before making any migration decisions.
+- `prisma/migrations/20260704162000_baseline_production_schema/migration.sql` is a baseline migration reconstructing the schema that was already live in Neon (see the 2026-07-19 handoff entry for the full history of how it got there). It is marked `--applied` in the database and does not need to be (and must not be) re-run.
+- Migration history is now reconciled and clean: `npx prisma migrate status` reports "Database schema is up to date!".
 - Database pages are not connected yet, and no mock data has been removed.
 
 Documentation status:
@@ -116,6 +119,59 @@ main
 - `/organizations` (planned; not currently present)
 
 ## Latest Handoff Log
+
+### 2026-07-19 (Claude Code)
+
+**Objective:**
+Apply the pending Prisma migration to the live Neon database, following up on the 2026-07-18 handoff entry.
+
+**Files changed:**
+- `prisma/schema.prisma` (added 11 `Organization` fields and 2 indexes that were already live in production but missing locally)
+- `prisma/migrations/20260718054200_init/` (deleted — generated against a false "empty database" assumption)
+- `prisma/migrations/20260704162000_baseline_production_schema/migration.sql` (new baseline migration)
+- `OPERATOR_HANDOFF.md`
+
+**Summary:**
+The P1001 connection timeout from 2026-07-18 was diagnosed and it was NOT a Neon or credentials issue. Proton VPN was active on the machine and was silently mangling the Postgres wire protocol after the TCP handshake completed (confirmed via raw TCP test, `openssl s_client -starttls postgres`, and by disabling the VPN adapter). Once connectivity was restored, `npx prisma migrate status` revealed the Neon database was **not empty** — it already had all 22 tables built out, with real seeded data (1 Organization, 6 Users), applied via 3 migrations (`20260616060114_init_glv_v1`, `20260703051200_initial_infrastructure_foundation`, `20260703070000_add_organization_core_fields`) that exist in the DB's `_prisma_migrations` table but were **never committed to this git repository**. Those migrations were originally run by a local script, `scripts/apply-neon-migrations.ts`, that also does not exist anywhere in this repo's history — it only ever existed on whichever machine ran it on 2026-07-04. A second run of that script on 2026-07-17 failed (`relation "User" already exists`), leaving a broken `_prisma_migrations` row with `finished_at: null`.
+
+Introspecting the live database (`prisma db pull`) showed the `Organization` table has 11 real columns (`country`, `city`, `taxNumber`, `phone`, `email`, `website`, `logoUrl`, `businessRegistrationNumber`, `region`, `currency`, `defaultLanguage`) plus 2 indexes that were **not** present in this repo's `prisma/schema.prisma` — the auto-generated diff would have `DROP COLUMN`ed all of them. Confirmed with the user before proceeding (real data was at stake), then: added those fields back to `schema.prisma` (diff against live DB is now empty); deleted the stale untracked `20260718054200_init` migration (it assumed an empty DB and would have failed/conflicted); created a new migration `20260704162000_baseline_production_schema` containing the full current schema and marked it applied via `prisma migrate resolve --applied` (does not execute against the live DB, only records history); resolved the broken migration record via `prisma migrate resolve --rolled-back 20260616060114_init_glv_v1`. `npx prisma migrate status` now reports "Database schema is up to date!". No application code, mock data, or live data was touched.
+
+**Build result:**
+Passed. `npm run build` completed successfully, 31 routes generated.
+
+**Known issues:**
+- `scripts/apply-neon-migrations.ts` (the script that originally built the live schema) is not in this repository. If it still exists on another machine, it should be recovered and committed, or retired in favor of the standard `prisma migrate` workflow now that history is baselined.
+- Proton VPN interfering with Postgres (port 5432) connections is a known trap in this environment — if `P1001` errors recur, check whether the VPN tunnel adapter is up before assuming a Neon/credentials problem.
+- `DIRECT_URL` is still set to the same pooled endpoint as `DATABASE_URL` (carried over from the 2026-07-18 entry) — should be pointed at the real non-pooled endpoint once confirmed reachable.
+- No application code was wired to the database in this session; Fleet pages still use mock data.
+
+**Next recommended step:**
+Build `lib/tenant/` (Phase 3) — the tenancy models already exist in the schema and the database is now in a known-good, git-tracked state. Before any future migration work, always check `npx prisma migrate status` first rather than assuming the database's state from documentation alone.
+
+### 2026-07-18 05:42 +00:00 - Claude Code
+
+**Objective:**
+Begin Phase 5 (Database & Prisma Setup) by connecting the existing Prisma schema to a real PostgreSQL database (Neon) and producing an initial tracked migration.
+
+**Files changed:**
+- `.env` (DATABASE_URL / DIRECT_URL set to a Neon Postgres instance; not committed, gitignored)
+- `prisma/migrations/20260718054200_init/migration.sql` (generated offline via `prisma migrate diff --from-empty`, not yet applied to the live database)
+- `prisma/migrations/migration_lock.toml`
+- `OPERATOR_HANDOFF.md`
+
+**Summary:**
+User supplied a Neon `DATABASE_URL`. `.env` already existed in the working tree with `NEXTAUTH_SECRET`/`NEXTAUTH_URL`/Resend vars pre-populated; only `DATABASE_URL`/`DIRECT_URL` needed reconciling. `npx prisma validate` and `npx prisma generate` both succeeded — the schema is valid and the client builds. However, `npx prisma migrate dev` could not complete: the schema/query engine reaches TCP-level connectivity to the Neon host (confirmed via raw TCP test and `Test-NetConnection`, both succeed) but the Postgres/TLS handshake itself never completes, timing out with `P1001`. This reproduced identically against both the pooled and direct-compute hostnames, with and without `channel_binding`, so it is not a credentials or schema issue — it looks like this sandboxed shell's network path (routed through a VPN/tunnel interface) allows the TCP handshake but blocks/mangles the actual Postgres wire protocol. Worked around this by generating the init migration SQL offline (`prisma migrate diff --from-empty --to-schema-datamodel`), which does not require a live DB connection, and committing it as a proper tracked migration folder. **The migration has NOT been applied to the live Neon database yet** — no tables exist there. `lib/db.ts` and all Fleet pages still use mock data; nothing was wired to the database in application code.
+
+**Build result:**
+Passed. `npm run build` completed successfully, 30 routes generated, unchanged from baseline.
+
+**Known issues:**
+- The initial migration is generated but unapplied — the Neon database currently has no tables.
+- This execution environment appears unable to complete outbound Postgres/TLS handshakes (TCP opens, protocol handshake hangs) — needs to be applied from an environment with real DB egress (the user's own machine, a CI runner, or Neon's SQL editor/console using the contents of `prisma/migrations/20260718054200_init/migration.sql`).
+- `DIRECT_URL` is currently set to the same pooled endpoint as `DATABASE_URL` since the derived non-pooler hostname (`ep-crimson-star-ah27j3if.c-3.us-east-1.aws.neon.tech`) was unreachable from this environment too — this should be re-verified once a working connection path is confirmed.
+
+**Next recommended step:**
+Apply `prisma/migrations/20260718054200_init/migration.sql` to the Neon database from an environment with working egress (`npx prisma migrate deploy`, or paste the SQL into Neon's SQL editor). Once applied, verify with `npx prisma migrate status`, then proceed to building `lib/tenant/` (Phase 3) — the tenancy models already exist in the schema.
 
 ### 2026-07-03 04:43 +00:00 - Codex
 

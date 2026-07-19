@@ -180,17 +180,28 @@ model VerificationToken {
 }
 
 model Organization {
-  id           String             @id @default(cuid())
-  name         String
-  industry     String?
-  tenantCode   String             @unique
-  address      String?
-  timezone     String             @default("UTC")
-  billingEmail String?
-  status       OrganizationStatus @default(TRIAL)
-  metadata     Json?
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  id                         String             @id @default(cuid())
+  name                       String
+  industry                   String?
+  tenantCode                 String             @unique
+  address                    String?
+  timezone                   String             @default("UTC")
+  billingEmail               String?
+  status                     OrganizationStatus @default(TRIAL)
+  metadata                   Json?
+  createdAt                  DateTime           @default(now())
+  updatedAt                  DateTime           @updatedAt
+  businessRegistrationNumber String?
+  taxNumber                  String?
+  country                    String?
+  region                     String?
+  city                       String?
+  phone                      String?
+  email                      String?
+  website                    String?
+  logoUrl                    String?
+  currency                   String             @default("USD")
+  defaultLanguage            String             @default("en")
 
   members             OrganizationMember[]
   branches            Branch[]
@@ -205,6 +216,9 @@ model Organization {
   maintenanceRequests FleetMaintenanceRequest[]
   fleetPayments       FleetPayment[]
   workAndPayContracts FleetWorkAndPayContract[]
+
+  @@index([industry])
+  @@index([status])
 }
 
 model OrganizationMember {
