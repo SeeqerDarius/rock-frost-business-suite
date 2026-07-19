@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { submitContactForm } from "./actions";
 
 const REASON_LABELS: Record<string, string> = {
   demo: "Request a demo",
@@ -18,8 +19,18 @@ const REASON_LABELS: Record<string, string> = {
   other: "Something else",
 };
 
-/** UI shell only — form submission/email delivery is not wired up in this phase. */
-export default function ContactPage() {
+const ERROR_MESSAGES: Record<string, string> = {
+  "missing-fields": "Please fill in your name, company, and email.",
+  "send-failed": "We couldn't send your message just now. Please try again shortly.",
+};
+
+export default async function ContactPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sent?: string; error?: string }>;
+}) {
+  const { sent, error } = await searchParams;
+
   return (
     <section className="mx-auto max-w-2xl px-6 py-24">
       <div className="mb-10 space-y-3 text-center">
@@ -36,7 +47,17 @@ export default function ContactPage() {
           <CardDescription>We typically respond within one business day.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form className="space-y-4">
+          {sent ? (
+            <div className="mb-4 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
+              Thanks — your message is on its way to us. We&apos;ll be in touch soon.
+            </div>
+          ) : null}
+          {error && ERROR_MESSAGES[error] ? (
+            <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {ERROR_MESSAGES[error]}
+            </div>
+          ) : null}
+          <form action={submitContactForm} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="name">Full name</Label>

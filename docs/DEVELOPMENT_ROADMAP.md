@@ -23,14 +23,16 @@ Each phase below is gated — do not start the next phase without checking in, p
 
 **Status: complete.** See `OPERATOR_HANDOFF.md` for the detailed session record.
 
-## Phase 3 — Authentication (not started)
+## Phase 3 — Authentication ✅
 
-- NextAuth (credentials provider), Neon Postgres, Prisma — reconnect to the existing database (see `docs/DATABASE_STRATEGY.md`) rather than starting a new one.
-- Real sessions, replacing every placeholder in `UserMenu`, the login form, and `AppShell`.
-- Invitations, account approval, password reset, email verification — at minimum the architecture for these, per `docs/AUTHENTICATION_AND_AUTHORIZATION.md`.
-- User status, organization membership.
-- Route protection: every page under `/app/*` currently renders for anyone; this phase must add real guards.
-- Real backend for the contact form (email delivery) is a reasonable companion task here or in Phase 2 follow-up, since it needs the same kind of server-action/email-sending work as password reset.
+- NextAuth v4 (credentials provider, JWT sessions), Neon Postgres, Prisma — reconnected to the existing database, no schema changes.
+- Real sessions: `UserMenu`, the login form, and the `/app/*` layout guard all use `getServerSession`/`useSession` — no placeholders remain.
+- Password reset and invite-acceptance flows built on a reused `VerificationToken` model (single-use, expiring tokens) and server actions.
+- Route protection: `src/app/app/layout.tsx` redirects unauthenticated requests to `/login` and checks tenant membership for every page under `/app/*`.
+- Contact form now sends real email via Resend, with graceful degradation (logs instead of failing) when `RESEND_API_KEY` is unset.
+- Deferred to Phase 4: admin-facing "send invite" UI, public self-registration, login rate limiting/lockout.
+
+**Status: complete.** See `OPERATOR_HANDOFF.md` for the detailed session record.
 
 ## Phase 4 — Platform Workspace (not started)
 
