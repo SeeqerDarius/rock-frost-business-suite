@@ -4,35 +4,70 @@ import { hasPermission, PERMISSIONS, type PermissionKey } from "@/lib/permission
 import { getServerAuthSession } from "@/lib/auth/session";
 import { getUnreadNotificationCount } from "@/lib/notifications";
 
-const navigation: { href: string; label: string; icon: string; permission: PermissionKey }[] = [
+type NavItem = { href: string; label: string; icon: string; permission: PermissionKey };
+
+const generalNavigation: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: "📈", permission: PERMISSIONS.DASHBOARD_VIEW },
   { href: "/notifications", label: "Notifications", icon: "🔔", permission: PERMISSIONS.DASHBOARD_VIEW },
   { href: "/assistant", label: "AI Assistant", icon: "✨", permission: PERMISSIONS.AI_ASSISTANT_USE },
-  { href: "/fleet", label: "Fleet Overview", icon: "🚚", permission: PERMISSIONS.FLEET_VIEW },
-  { href: "/fleet/vehicles", label: "Vehicles", icon: "🛻", permission: PERMISSIONS.FLEET_VEHICLES_MANAGE },
-  { href: "/fleet/vehicle-owners", label: "Vehicle Owners", icon: "👥", permission: PERMISSIONS.FLEET_OWNERS_MANAGE },
-  { href: "/fleet/drivers", label: "Drivers", icon: "🧑‍✈️", permission: PERMISSIONS.FLEET_DRIVERS_MANAGE },
-  { href: "/fleet/insurance-roadworthy", label: "Insurance & Roadworthy", icon: "🛡️", permission: PERMISSIONS.FLEET_INSURANCE_MANAGE },
-  { href: "/fleet/maintenance", label: "Maintenance", icon: "🔧", permission: PERMISSIONS.FLEET_MAINTENANCE_MANAGE },
-  { href: "/fleet/work-and-pay", label: "Work & Pay", icon: "💼", permission: PERMISSIONS.FLEET_WORKANDPAY_MANAGE },
-  { href: "/fleet/payments", label: "Payments", icon: "💳", permission: PERMISSIONS.FLEET_PAYMENTS_MANAGE },
-  { href: "/fleet/reports", label: "Reports", icon: "📊", permission: PERMISSIONS.FLEET_REPORTS_VIEW },
-  { href: "/fleet/investor-dashboard", label: "Investor Dashboard", icon: "💎", permission: PERMISSIONS.FLEET_INVESTOR_VIEW },
-  { href: "/fleet/settings", label: "Settings", icon: "⚙️", permission: PERMISSIONS.ORG_SETTINGS_MANAGE },
-  { href: "/hire-purchase", label: "Hire Purchase Overview", icon: "🧾", permission: PERMISSIONS.HIREPURCHASE_VIEW },
-  { href: "/hire-purchase/customers", label: "Customers", icon: "🧑‍🤝‍🧑", permission: PERMISSIONS.HIREPURCHASE_CUSTOMERS_MANAGE },
-  { href: "/hire-purchase/accounts", label: "Accounts", icon: "📄", permission: PERMISSIONS.HIREPURCHASE_ACCOUNTS_MANAGE },
-  { href: "/hire-purchase/payments", label: "Payments", icon: "💵", permission: PERMISSIONS.HIREPURCHASE_PAYMENTS_MANAGE },
-  { href: "/hire-purchase/products", label: "Products", icon: "📦", permission: PERMISSIONS.HIREPURCHASE_PRODUCTS_MANAGE },
-  { href: "/hire-purchase/staff", label: "Staff", icon: "🧑‍💼", permission: PERMISSIONS.HIREPURCHASE_STAFF_MANAGE },
-  { href: "/hire-purchase/credits", label: "Credits", icon: "💳", permission: PERMISSIONS.HIREPURCHASE_CREDITS_MANAGE },
-  { href: "/hire-purchase/reports", label: "HP Reports", icon: "📊", permission: PERMISSIONS.HIREPURCHASE_REPORTS_VIEW },
-  { href: "/hire-purchase/settings", label: "HP Settings", icon: "🛠️", permission: PERMISSIONS.HIREPURCHASE_SETTINGS_MANAGE },
 ];
+
+const navigationSections: { title: string; items: NavItem[] }[] = [
+  {
+    title: "Fleet & Asset Management",
+    items: [
+      { href: "/fleet", label: "Fleet Overview", icon: "🚚", permission: PERMISSIONS.FLEET_VIEW },
+      { href: "/fleet/vehicles", label: "Vehicles", icon: "🛻", permission: PERMISSIONS.FLEET_VEHICLES_MANAGE },
+      { href: "/fleet/vehicle-owners", label: "Vehicle Owners", icon: "👥", permission: PERMISSIONS.FLEET_OWNERS_MANAGE },
+      { href: "/fleet/drivers", label: "Drivers", icon: "🧑‍✈️", permission: PERMISSIONS.FLEET_DRIVERS_MANAGE },
+      { href: "/fleet/insurance-roadworthy", label: "Insurance & Roadworthy", icon: "🛡️", permission: PERMISSIONS.FLEET_INSURANCE_MANAGE },
+      { href: "/fleet/maintenance", label: "Maintenance", icon: "🔧", permission: PERMISSIONS.FLEET_MAINTENANCE_MANAGE },
+      { href: "/fleet/work-and-pay", label: "Work & Pay", icon: "💼", permission: PERMISSIONS.FLEET_WORKANDPAY_MANAGE },
+      { href: "/fleet/payments", label: "Payments", icon: "💳", permission: PERMISSIONS.FLEET_PAYMENTS_MANAGE },
+      { href: "/fleet/reports", label: "Reports", icon: "📊", permission: PERMISSIONS.FLEET_REPORTS_VIEW },
+      { href: "/fleet/investor-dashboard", label: "Investor Dashboard", icon: "💎", permission: PERMISSIONS.FLEET_INVESTOR_VIEW },
+      { href: "/fleet/settings", label: "Settings", icon: "⚙️", permission: PERMISSIONS.ORG_SETTINGS_MANAGE },
+    ],
+  },
+  {
+    title: "Hire Purchase",
+    items: [
+      { href: "/hire-purchase", label: "Overview", icon: "🧾", permission: PERMISSIONS.HIREPURCHASE_VIEW },
+      { href: "/hire-purchase/customers", label: "Customers", icon: "🧑‍🤝‍🧑", permission: PERMISSIONS.HIREPURCHASE_CUSTOMERS_MANAGE },
+      { href: "/hire-purchase/accounts", label: "Accounts", icon: "📄", permission: PERMISSIONS.HIREPURCHASE_ACCOUNTS_MANAGE },
+      { href: "/hire-purchase/payments", label: "Payments", icon: "💵", permission: PERMISSIONS.HIREPURCHASE_PAYMENTS_MANAGE },
+      { href: "/hire-purchase/products", label: "Products", icon: "📦", permission: PERMISSIONS.HIREPURCHASE_PRODUCTS_MANAGE },
+      { href: "/hire-purchase/staff", label: "Staff", icon: "🧑‍💼", permission: PERMISSIONS.HIREPURCHASE_STAFF_MANAGE },
+      { href: "/hire-purchase/credits", label: "Credits", icon: "💳", permission: PERMISSIONS.HIREPURCHASE_CREDITS_MANAGE },
+      { href: "/hire-purchase/reports", label: "Reports", icon: "📊", permission: PERMISSIONS.HIREPURCHASE_REPORTS_VIEW },
+      { href: "/hire-purchase/settings", label: "Settings", icon: "🛠️", permission: PERMISSIONS.HIREPURCHASE_SETTINGS_MANAGE },
+    ],
+  },
+];
+
+function NavLink({ item, unreadCount }: { item: NavItem; unreadCount: number }) {
+  return (
+    <Link
+      href={item.href as any}
+      className="flex items-center gap-3 rounded-3xl px-4 py-3 text-sm font-medium text-slate-200 transition hover:bg-white/5 hover:text-white"
+    >
+      <span>{item.icon}</span>
+      <span>{item.label}</span>
+      {item.href === "/notifications" && unreadCount > 0 ? (
+        <span className="ml-auto rounded-full bg-cyan-500 px-2 py-0.5 text-xs font-semibold text-slate-950">
+          {unreadCount}
+        </span>
+      ) : null}
+    </Link>
+  );
+}
 
 export async function Sidebar() {
   const tenant = await getCurrentTenant();
-  const visibleNavigation = navigation.filter((item) => hasPermission(tenant, item.permission));
+  const visibleGeneral = generalNavigation.filter((item) => hasPermission(tenant, item.permission));
+  const visibleSections = navigationSections
+    .map((section) => ({ ...section, items: section.items.filter((item) => hasPermission(tenant, item.permission)) }))
+    .filter((section) => section.items.length > 0);
 
   const session = await getServerAuthSession();
   const unreadCount =
@@ -47,28 +82,27 @@ export async function Sidebar() {
             <span className="font-semibold text-slate-100">Rock Frost Suite</span>
           </div>
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-cyan-200/70">Fleet & Asset Management</p>
+            <p className="text-xs uppercase tracking-[0.28em] text-cyan-200/70">Multi-Module Business Suite</p>
             <p className="mt-2 text-sm leading-6 text-slate-300">
-              SaaS-ready fleet operations for multi-company asset management.
+              SaaS-ready operations across every module your organization has enabled.
             </p>
           </div>
         </div>
 
-        <nav className="space-y-1">
-          {visibleNavigation.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href as any}
-              className="flex items-center gap-3 rounded-3xl px-4 py-3 text-sm font-medium text-slate-200 transition hover:bg-white/5 hover:text-white"
-            >
-              <span>{item.icon}</span>
-              <span>{item.label}</span>
-              {item.href === "/notifications" && unreadCount > 0 ? (
-                <span className="ml-auto rounded-full bg-cyan-500 px-2 py-0.5 text-xs font-semibold text-slate-950">
-                  {unreadCount}
-                </span>
-              ) : null}
-            </Link>
+        <nav className="space-y-6">
+          <div className="space-y-1">
+            {visibleGeneral.map((item) => (
+              <NavLink key={item.href} item={item} unreadCount={unreadCount} />
+            ))}
+          </div>
+
+          {visibleSections.map((section) => (
+            <div key={section.title} className="space-y-1">
+              <p className="px-4 text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">{section.title}</p>
+              {section.items.map((item) => (
+                <NavLink key={item.href} item={item} unreadCount={unreadCount} />
+              ))}
+            </div>
           ))}
         </nav>
 

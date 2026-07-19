@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import DashboardAuthProtection from "./auth-protection";
 
 export const metadata: Metadata = {
-  title: "Fleet & Asset Management | Rock Frost",
-  description: "Premium fleet and asset management dashboard for Rock Frost Business Suite.",
+  title: "Dashboard | Rock Frost",
+  description: "Premium multi-module business dashboard for Rock Frost Business Suite.",
 };
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
