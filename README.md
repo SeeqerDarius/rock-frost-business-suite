@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Rock Frost Business Suite
 
-## Getting Started
+A modular business operating platform. Organizations activate independent management modules — Fleet, Installment Sales, and more — from one unified workspace, without mixing unrelated business data together.
 
-First, run the development server:
+> This is a clean rebuild started 2026-07-19. The previous implementation is archived on branch `archive/pre-redesign-rfbs` and under `docs/archive/previous-implementation/`. See `docs/DECISIONS.md` for why.
+
+## Stack
+
+- **Next.js 16** (App Router, Turbopack) — see `AGENTS.md` before writing Next.js-specific code; this project pins a version with breaking changes from what most training data assumes.
+- **TypeScript**, strict mode
+- **Tailwind CSS v4**
+- **shadcn/ui** (Base UI primitives) — see `docs/DECISIONS.md` for the license/rationale
+- **Prisma** + **Neon Postgres**
+- **NextAuth** (credentials-based auth — not yet wired up in this phase)
+
+## Getting started
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Required environment variables live in `.env` (not committed). See `docs/DATABASE_STRATEGY.md` for the database connection story and `docs/AUTHENTICATION_AND_AUTHORIZATION.md` for auth-related variables.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+See `docs/ARCHITECTURE.md` for the full breakdown. Short version:
 
-## Learn More
+```
+src/
+  app/            App Router routes, grouped by scope: (public), (auth), (platform), (workspace)
+  modules/        Per-module code (fleet/, installment/, ...) — navigation, and eventually components/services/etc.
+  platform/       Shared platform concerns: module registry, platform-scope navigation
+  components/     Genuinely reusable UI: ui/ (shadcn primitives), layout/, navigation/, feedback/, data-display/, forms/
+  lib/            Shared utilities
+  types/          Shared TypeScript types
+prisma/           Database schema (unchanged from the previous implementation; not yet wired into the new app)
+docs/             Authoritative documentation (this rebuild) + docs/archive/ (retired, non-authoritative)
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Documentation
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Start with `OPERATOR_HANDOFF.md` at the repo root for the current state and next steps. Then:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `docs/PRODUCT_VISION.md` — what this platform is and isn't
+- `docs/ARCHITECTURE.md` — folder structure, route groups, module isolation mechanics
+- `docs/MODULE_BOUNDARIES.md` — the non-negotiable isolation rules between modules
+- `docs/DESIGN_SYSTEM.md` — UI foundation, tokens, component conventions
+- `docs/DEVELOPMENT_ROADMAP.md` — phased build plan
+- `docs/DATABASE_STRATEGY.md` — Prisma/Neon status and plan
+- `docs/AUTHENTICATION_AND_AUTHORIZATION.md` — auth/RBAC plan (not implemented yet)
+- `docs/TESTING_STRATEGY.md` — how work is validated
+- `docs/DECISIONS.md` — dated log of consequential technical decisions
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`docs/archive/previous-implementation/` contains the retired implementation's docs, marked obsolete. Do not follow them.
