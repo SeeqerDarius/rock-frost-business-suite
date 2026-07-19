@@ -1,5 +1,7 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import bcrypt from "bcryptjs";
+import { db } from "@/lib/db";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -14,12 +16,38 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        const user = await db.user.findUnique({
+          where: { email: credentials.email.toLowerCase() },
+          include: {
+            organizationMemberships: {
+              include: { role: true },
+              orderBy: { createdAt: "asc" },
+            },
+          },
+        });
+
+        if (!user || !user.passwordHash || user.status !== "ACTIVE") {
+          return null;
+        }
+
+        const isValidPassword = await bcrypt.compare(credentials.password, user.passwordHash);
+        if (!isValidPassword) {
+          return null;
+        }
+
+        const primaryMembership = user.organizationMemberships[0];
+
+        await db.user.update({
+          where: { id: user.id },
+          data: { lastLoginAt: new Date() },
+        });
+
         return {
-          id: "demo-user",
-          name: "Demo User",
-          email: credentials.email,
-          organizationId: "demo-organization",
-          role: "Administrator",
+          id: user.id,
+          name: user.name ?? user.email,
+          email: user.email,
+          organizationId: primaryMembership?.organizationId,
+          role: primaryMembership?.role?.name,
         };
       },
     }),

@@ -44,11 +44,13 @@ Fleet module status:
 - Do not replace mock data with database data until the database integration phase is explicitly approved.
 
 Auth foundation status:
-- NextAuth foundation has been started with credentials-based demo authentication.
+- **Auth is now real, not a demo stub.** `lib/auth/nextauth.ts`'s `authorize()` queries the `User` table, checks `status === 'ACTIVE'`, and verifies the password with `bcrypt.compare()` against `passwordHash`. It no longer accepts any email/password combination.
+- The session now carries the real `id`, `name`, `email`, `organizationId` (from the user's first `OrganizationMember` row), and `role` (from that membership's `Role.name`). `lastLoginAt` is updated on successful login.
+- The owner/Super Admin account is `admin@rockfrostgroup.com` — a real password was generated and set directly in the database (bcrypt-hashed); it was given to the user out-of-band and is not stored anywhere in this repo.
 - Auth API route exists at `app/api/auth/[...nextauth]/route.ts`.
 - Auth helpers and type augmentation exist under `lib/auth/`.
-- Login, forgot-password, reset-password, invite, and profile pages exist.
-- This is not production auth yet; do not implement production auth until database integration is ready.
+- Login, forgot-password, reset-password, invite, and profile pages exist. The login page (`app/(auth)/login/page.tsx`) is a plain HTML form posting to `/api/auth/callback/credentials` — it did not need changes.
+- Still missing for full production auth: forgot-password/reset-password flows are UI-only (no backing API), invite flow is UI-only, and there is no rate limiting or account lockout on failed login attempts.
 
 Prisma/database status:
 - Prisma and Prisma Client are installed.
@@ -119,6 +121,34 @@ main
 - `/organizations` (planned; not currently present)
 
 ## Latest Handoff Log
+
+### 2026-07-19 (later) - Claude Code
+
+**Objective:**
+Replace the stubbed NextAuth `authorize()` (which accepted any email/password) with real credential verification, and issue the business owner a working login to their own dashboard, at the user's explicit request to move toward production auth now that the database is reconciled.
+
+**Files changed:**
+- `lib/auth/nextauth.ts` (real `authorize()` against `User`/`OrganizationMember`/`Role`)
+- `package.json` / `package-lock.json` (added `bcryptjs`, `@types/bcryptjs`)
+- Live Neon database: set a real bcrypt password hash on `admin@rockfrostgroup.com` (no schema change)
+- `OPERATOR_HANDOFF.md`
+
+**Summary:**
+`authorize()` previously returned a hardcoded `{ id: "demo-user", ... }` for any non-empty email/password. Rewrote it to look up the user by email, require `status === 'ACTIVE'` and a non-null `passwordHash`, verify the submitted password with `bcrypt.compare`, and populate the session from the user's actual first `OrganizationMember`/`Role` row rather than hardcoded `"demo-organization"`/`"Administrator"`. `lastLoginAt` is updated on success. Chose `admin@rockfrostgroup.com` (role: Super Admin, seeded already, real company domain) as the owner's login rather than one of the `*@demo.com` persona accounts, since the user asked for their own owner credentials to the business suite as a whole. Generated a secure random password, hashed it, and wrote it directly to the `User.passwordHash` column via a one-off script (not committed) — the plaintext password was given to the user directly in chat, not stored in the repo.
+
+Verified end-to-end against the real dev server (no browser automation tooling was installed, so this was driven directly through NextAuth's HTTP API, which exercises the exact same `authorize()` code path a browser form submission would): CSRF token fetched, POST to `/api/auth/callback/credentials` with the correct password returned a `200` with a session cookie, and `/api/auth/session` showed the real user (`Rock Frost Super Admin`, correct `organizationId`, `role: "Super Admin"`) — not the old hardcoded demo user. A second test with a deliberately wrong password correctly returned `401 Unauthorized` with no session created, confirming the previous "any password works" behavior is gone.
+
+**Build result:**
+Passed. `npm run build` completed successfully, 31 routes generated.
+
+**Known issues:**
+- Only `admin@rockfrostgroup.com` has a real, known password. The other 5 seeded demo accounts (`owner@demo.com`, `fleet@demo.com`, `driver@demo.com`, `mechanic@demo.com`, `investor@demo.com`) still have whatever `passwordHash` was set when they were originally seeded (by the untracked `scripts/apply-neon-migrations.ts`) — nobody currently knows those passwords. They'll need new passwords set the same way if those personas need to log in.
+- Forgot-password, reset-password, and invite flows are still UI-only placeholders with no backing logic — a user who forgets their password currently has no self-service way to recover it.
+- No rate limiting/lockout on repeated failed login attempts yet.
+- `getMockSession()` in `lib/auth/session.ts` still exists but is unused by the real auth path now in place — worth removing once confirmed nothing references it.
+
+**Next recommended step:**
+Decide whether to keep `admin@rockfrostgroup.com` as the primary login going forward or migrate the owner identity to a personal email; then build out password reset (needed for real production use) before inviting any other real users.
 
 ### 2026-07-19 (Claude Code)
 
