@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
@@ -55,6 +56,7 @@ export async function createInstallmentAccount(formData: FormData): Promise<void
     throw error;
   }
 
+  revalidatePath("/app/installment/accounts");
   redirect("/app/installment/accounts?saved=1");
 }
 
@@ -69,6 +71,7 @@ export async function markAccountDelivered(formData: FormData): Promise<void> {
 
   const session = await getServerAuthSession();
   await updateAccountDeliveryStatus(tenant.organizationId, id, session?.user?.name ?? session?.user?.email ?? "unknown");
+  revalidatePath("/app/installment/accounts");
   redirect("/app/installment/accounts?saved=1");
 }
 
@@ -83,6 +86,7 @@ export async function changeAccountStatus(formData: FormData): Promise<void> {
   if (!id || !status) return;
 
   await setAccountStatus(tenant.organizationId, id, status);
+  revalidatePath("/app/installment/accounts");
   redirect("/app/installment/accounts?saved=1");
 }
 
@@ -110,5 +114,6 @@ export async function reactivateInstallmentAccount(formData: FormData): Promise<
     throw error;
   }
 
+  revalidatePath("/app/installment/accounts");
   redirect("/app/installment/accounts?saved=1");
 }

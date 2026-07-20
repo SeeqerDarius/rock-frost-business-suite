@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { updateInstallmentSettings } from "@/modules/installment/service";
@@ -34,5 +35,6 @@ export async function saveInstallmentSettings(formData: FormData): Promise<void>
     payrollDay: Number.parseInt(clean(formData.get("payrollDay")), 10),
   });
 
+  revalidatePath("/app/installment/settings");
   redirect("/app/installment/settings?saved=1");
 }

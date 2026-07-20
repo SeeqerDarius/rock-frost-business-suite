@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
@@ -60,6 +61,7 @@ export async function createPayment(formData: FormData): Promise<void> {
     throw error;
   }
 
+  revalidatePath("/app/installment/payments");
   redirect("/app/installment/payments?saved=1");
 }
 
@@ -95,6 +97,7 @@ export async function editPayment(formData: FormData): Promise<void> {
     throw error;
   }
 
+  revalidatePath("/app/installment/payments");
   redirect("/app/installment/payments?saved=1");
 }
 
@@ -122,6 +125,7 @@ export async function resolveCredit(formData: FormData): Promise<void> {
     await markCreditRefunded(tenant.organizationId, id, resolvedBy);
   }
 
+  revalidatePath("/app/installment/payments");
   redirect("/app/installment/payments?saved=1");
 }
 
@@ -146,5 +150,6 @@ export async function applyCredit(formData: FormData): Promise<void> {
     throw error;
   }
 
+  revalidatePath("/app/installment/payments");
   redirect("/app/installment/payments?saved=1");
 }

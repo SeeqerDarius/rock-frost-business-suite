@@ -17,16 +17,25 @@ After making changes:
 
 ## Current phase
 
-**Post-Phase-7 gap-fixing pass — complete.** All seven original phases (Fleet + Installment) plus a remediation pass are done. See `docs/DEVELOPMENT_ROADMAP.md` for what comes next (Phase 8: CRM, gated pending approval; Billing/Subscriptions is deliberately scheduled last, per explicit user direction).
+**Phase 8 (CRM) — complete**, plus a systemic `revalidatePath` router-cache bug fix applied across every mutating Server Action in Fleet, Installment, and CRM. All eight original phases plus two remediation passes are done. See `docs/DEVELOPMENT_ROADMAP.md` for what comes next — the next module to build has **not yet been chosen** (candidates: Inventory, Accounting, HR/Payroll); Billing/Subscriptions remains deliberately scheduled last, per explicit user direction.
 
 ## Current architecture (short version — see `docs/ARCHITECTURE.md` for full detail)
 
-- Next.js 16 App Router under `src/app/`. Public marketing site at bare paths via `(public)`; auth UI via `(auth)`; **everything requiring sign-in lives under `/app/*`** — `app/(overview)` (organization scope), `app/fleet`, `app/installment`, `app/platform` (platform scope). See `docs/ARCHITECTURE.md`'s "Why /app exists."
-- Each module (`fleet`, `installment`) has its own `layout.tsx` rendering `AppShell` with its own navigation array, guarded on `canAccessModule()` (module enabled for the org + a permission under that module's registered `permissionPrefix`).
-- `src/platform/modules/registry.ts` is the single source of truth for every module's metadata; `src/platform/modules/dashboard-widgets.tsx` maps a module key to a real dashboard summary component — both Fleet's and Installment's are wired up now.
+- Next.js 16 App Router under `src/app/`. Public marketing site at bare paths via `(public)`; auth UI via `(auth)`; **everything requiring sign-in lives under `/app/*`** — `app/(overview)` (organization scope), `app/fleet`, `app/installment`, `app/crm`, `app/platform` (platform scope). See `docs/ARCHITECTURE.md`'s "Why /app exists."
+- Each module (`fleet`, `installment`, `crm`) has its own `layout.tsx` rendering `AppShell` with its own navigation array, guarded on `canAccessModule()` (module enabled for the org + a permission under that module's registered `permissionPrefix`).
+- `src/platform/modules/registry.ts` is the single source of truth for every module's metadata; `src/platform/modules/dashboard-widgets.tsx` maps a module key to a real dashboard summary component — Fleet's, Installment's, and CRM's are all wired up now.
 - shadcn/ui (Base UI primitives) + Tailwind v4 design system — see `docs/DESIGN_SYSTEM.md`.
-- **Both business modules are fully real, and several previously-deferred gaps are now closed.** Fleet Management (Phase 6) and Installment Management (Phase 7) are both complete. This pass on top of Phase 7 added: login rate limiting, real commission/administration-fee/minimum-deposit logic, a payroll-day indicator, a credit "apply to another account" flow, and step-up re-authentication for sensitive Installment actions. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md` and `docs/MODULE_BOUNDARIES.md` for full detail.
-- `prisma/schema.prisma` gained its first change since Phase 3's reconnection: `User.failedLoginAttempts`/`User.lockedUntil` (migration `20260720120000_add_login_lockout`), applied via `prisma migrate deploy` — **not** `prisma migrate dev`, which detected a pre-existing drift between the live database's migration history and the local `prisma/migrations/` folder (leftover from before this rebuild) and offered to reset the entire database. That offer was declined; `migrate deploy` applied the new migration cleanly without touching anything else. Anyone continuing this project should use `migrate deploy` (or hand-write the migration SQL and apply it that way) rather than `migrate dev` against this specific database.
+- **All three business modules are fully real.** Fleet Management (Phase 6), Installment Management (Phase 7), and CRM (Phase 8) are all complete. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md` and `docs/MODULE_BOUNDARIES.md` for full detail.
+- **Every mutating Server Action that redirects to a list page now calls `revalidatePath()` on that page immediately before the `redirect()`** — a systemic gap fixed this pass across all 18 action files in Fleet/Installment/CRM (see "Summary" below). This is now the required pattern for any new Server Action, not an optional optimization.
+- `prisma/schema.prisma` changes since Phase 3's reconnection: `User.failedLoginAttempts`/`User.lockedUntil` (migration `20260720120000_add_login_lockout`), and the CRM models `CrmLeadSource`/`CrmContact`/`CrmLead`/`CrmDeal`/`CrmActivity` (migration `20260720140000_add_crm_module`). Both applied via `prisma migrate deploy` — **not** `prisma migrate dev`, which detects a pre-existing drift between the live database's migration history and the local `prisma/migrations/` folder (leftover from before this rebuild) and offers to reset the entire database. That offer was declined both times; `migrate deploy` applied each migration cleanly without touching anything else. Anyone continuing this project should use `migrate deploy` (or hand-write the migration SQL and apply it that way) rather than `migrate dev` against this specific database.
+
+## Files changed (Phase 8 + revalidatePath fix)
+
+**Created:** `prisma/migrations/20260720140000_add_crm_module/migration.sql`; `src/modules/crm/{service.ts,navigation.tsx,dashboard-widget.tsx}`; `src/app/app/crm/layout.tsx`, `src/app/app/crm/page.tsx`, and six route trees (`contacts`, `leads`, `deals`, `activities`, `reports`, `settings`), each with `page.tsx` + `actions.ts`.
+
+**Modified:** `prisma/schema.prisma` (CRM models + back-relations on `User`/`Organization`/`Branch`); `src/lib/auth/permissions.ts` (6 new `CRM_*` keys); `src/platform/modules/registry.ts` (`crm` flipped from `coming-soon` to `available`); `src/platform/modules/dashboard-widgets.tsx` (CRM widget registered); all 18 mutating action files across Fleet (`vehicles`, `owners`, `drivers`, `maintenance`, `insurance-roadworthy`, `payments`, `work-and-pay`), Installment (`customers`, `products`, `staff`, `accounts`, `payments`, `settings`), and CRM (`contacts`, `leads`, `deals`, `activities`, `settings`) — each gained a `revalidatePath()` call before every `redirect()` to a list page.
+
+**Database (via one-off scripts, not committed):** seeded 6 `Permission` rows for `crm.*`, granted them to Super Admin/Organization Owner, created the "CRM Manager" system role, enabled the `crm` module for the demo organization.
 
 ## Files changed (post-Phase-7 gap-fixing pass)
 
@@ -41,7 +50,34 @@ After making changes:
 - `src/modules/installment/service.ts` — `getStaffPerformanceReport` now computes `commissionEarned` (from `commissionEnabled`/`commissionPercentage`) and folds it into `netPosition`; `createAccount` now applies `administrationFeePercent` as a one-time fee added to `targetAmount` and enforces `minimumDeposit` via an optional `initialDeposit` (recorded as a real first payment in the same transaction); `getInstallmentSummary` now returns `nextPayrollDate`/`daysUntilPayroll` from `payrollDay`; added `applyCreditToAccount()` (new — GLV has no reference implementation for this) and `MinimumDepositError`/`CreditNotApplicableError`.
 - `src/app/app/installment/{products,staff,accounts,payments,reports,settings}/page.tsx` and their `actions.ts` — wired the above into the UI; Settings dropped its "reserved for future use" section since every field is now either wired to a calculation or a genuine UI default (`defaultDailyCollection` was the last one, wired as the new-product daily-amount default). Credit refund/void and account reactivation now go through a password-confirmation `EntityDialog` instead of a single click.
 
-## Summary of what was done
+## Summary of what was done (Phase 8 + revalidatePath fix)
+
+User chose "CRM" as the next module (per the previously-agreed "fix the gaps, when done get started with the next module, and lets have billing and subscription done last" instruction). Unlike Fleet/Installment, no CRM-shaped models existed in the schema — designed `CrmLeadSource`/`CrmContact`/`CrmLead`/`CrmDeal`/`CrmActivity` from scratch, migrated via the established safe `migrate diff` + manual migration folder + `migrate deploy` workflow (confirmed purely additive — no DROP statements). Built the full module: org-scoped service layer, six permission keys, a new "CRM Manager" system role, and all six pages (Contacts, Leads, Deals, Activities, Reports, Settings) plus an overview page and dashboard widget, following the exact pattern established by Fleet (Phase 6) and Installment (Phase 7).
+
+**Major bug found during CRM's own browser verification, then found to be systemic**: moving a deal to the next pipeline stage correctly updated the database (confirmed via direct query) but the browser kept showing the pre-move stage after the action's `redirect()` landed on the same `?saved=1` URL a second time — a Next.js Router Cache staleness issue, not a server-side bug. Fixed by adding `revalidatePath()` before the `redirect()` in the affected CRM action. Then audited every other action file in the project (`grep -rL "revalidatePath"`) and found the exact same gap in **all 13 other mutating action files** across Fleet and Installment — meaning this bug had been present, silently, since Phase 6. Fixed all 18 total action files (7 Fleet + 6 Installment + 5 CRM), re-verified with a full Playwright pass: created a contact, created and converted a lead to a deal (confirming the new contact appeared correctly on the Contacts page too), moved the resulting deal through two pipeline stages in a row with a fresh page navigation after each move, logged an activity, and added a lead source — every step showed correct, non-stale data. All Playwright test-artifact records were deleted afterward via a one-off cleanup script.
+
+## Build result (Phase 8 + revalidatePath fix)
+
+**Passed.** `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate` succeeds, `npm run build` succeeds — 51 routes (up from 44; 7 new CRM routes). Playwright installed **temporarily** for browser verification, then removed surgically via `npm uninstall playwright` (confirmed via `git diff --stat package.json package-lock.json`, no output). Dev server stopped afterward, confirmed by command-line inspection first.
+
+## Known issues / deliberate gaps (current)
+
+- **CRM has no data-level scoping** analogous to Installment's field-staff restriction — every contact/lead/deal/activity is visible to anyone holding the relevant `crm.*` permission, with no per-owner restriction. Revisit if a CRM role narrower than "sees everything the org has" is ever needed.
+- **No owner-facing maintenance approval portal** (Fleet) — would need a whole new authenticated user type.
+- **No file/photo upload for maintenance requests** (Fleet) — needs a storage-provider decision first.
+- **No fuzzy duplicate-detection on customer/product/contact creation, no hard deletes** for payments/accounts/customers — deliberately deferred.
+- **No branch-level access enforcement** — still low-value with one branch platform-wide.
+- **No public self-registration** — deliberate for an invite-only B2B platform.
+- **`RESEND_API_KEY` is unset** — emails still log via `console.warn` instead of delivering.
+- **Organization switcher is real but functionally inert today** — every demo user belongs to exactly one organization.
+
+## Next recommended step
+
+Get explicit direction on which module follows CRM — candidates per `docs/DEVELOPMENT_ROADMAP.md`'s "Later phases" section are Inventory, Accounting, HR/Payroll, Procurement, Projects, or Analytics. Billing/Subscriptions remains deliberately scheduled last, per the user's own standing instruction, regardless of which of the others comes next.
+
+---
+
+## Summary of what was done (post-Phase-7 gap-fixing pass)
 
 User said "fix the gaps, when done get started with the next module, and lets have billing and subscription done last" after the Phase 7 report.
 
@@ -57,32 +93,19 @@ User said "fix the gaps, when done get started with the next module, and lets ha
 
 **Verification:** full validation suite (lint, `tsc --noEmit`, `prisma validate`, `prisma migrate status`, `npm run build`) passes clean — still 44 routes (this pass changed logic inside existing routes, not the route tree). Playwright installed **temporarily** for all of the above, then removed surgically via `npm uninstall playwright` (confirmed via `git diff --stat package.json package-lock.json`, no output). Stopped this project's own dev-server processes afterward, confirmed by command-line inspection first.
 
-## Build result
+**Build result at the time:** Passed. `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate` succeeds, `npx prisma migrate status` reports up to date, `npm run build` succeeds — 44 routes (unchanged from Phase 7).
 
-**Passed.** `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate` succeeds, `npx prisma migrate status` reports up to date, `npm run build` succeeds — 44 routes (unchanged from Phase 7).
+**Known issues at the time:** owner-facing maintenance approval portal (Fleet), file/photo upload for maintenance requests (Fleet), fuzzy duplicate-detection on create, hard deletes for financial records, branch-level access enforcement, public self-registration, unset `RESEND_API_KEY`, inert organization switcher (single-org demo data), administration fee/minimum deposit set to 0 for the demo org — all still current except where superseded above (CRM's own equivalent gaps are listed in the current "Known issues" section).
 
-## Known issues / deliberate gaps
-
-- **No owner-facing maintenance approval portal** (Fleet) — would need a whole new authenticated user type; out of scope for a gap-fixing pass.
-- **No file/photo upload for maintenance requests** (Fleet) — needs a storage-provider decision first.
-- **No fuzzy duplicate-detection on customer/product creation, no hard deletes** for payments/accounts/customers — real GLV features, deliberately deferred.
-- **No branch-level access enforcement** — still low-value with one branch platform-wide.
-- **No public self-registration** — deliberate for an invite-only B2B platform.
-- **`RESEND_API_KEY` is unset** — emails still log via `console.warn` instead of delivering.
-- **Organization switcher is real but functionally inert today** — every demo user belongs to exactly one organization.
-- **Administration fee and minimum deposit are set to 0** for the demo organization (reverted after testing) — an operator who wants these live needs to set them on `/app/installment/settings` themselves.
-
-## Next recommended step
-
-Start Phase 8 (CRM) — leads, contacts, deals, customer communication history — per the user's explicit direction, with Billing/Subscriptions deliberately scheduled after every other module.
-
-## Next recommended step
-
-All seven originally-scoped phases are now complete. Get explicit direction on what's next — candidates per `docs/DEVELOPMENT_ROADMAP.md`'s "Later phases" section are billing/subscriptions (no `Subscription` model exists yet) or additional modules (CRM, Inventory, Accounting, HR, Payroll, Procurement, Projects, Analytics) — or address one of the known gaps above (e.g. cleaning up the pre-existing test customer records, or production-hardening items like rate limiting).
+**Next recommended step (at the time):** Get explicit direction on what came after this pass — candidates were billing/subscriptions or an additional module (CRM, Inventory, Accounting, HR, Payroll, Procurement, Projects, Analytics). The user chose CRM, leading directly into the Phase 8 work above.
 
 ---
 
 ## Handoff log
+
+### 2026-07-20 — Claude Code — Phase 8 (CRM) + revalidatePath router-cache fix
+
+See "Files changed (Phase 8 + revalidatePath fix)," "Summary of what was done (Phase 8 + revalidatePath fix)," "Build result (Phase 8 + revalidatePath fix)," "Known issues / deliberate gaps (current)," and "Next recommended step" above — kept in the current-state sections rather than duplicated here, since this is the most recent entry.
 
 ### 2026-07-20 — Claude Code — Post-Phase-7 gap-fixing pass
 

@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
@@ -31,6 +32,7 @@ export async function createMaintenanceRequest(formData: FormData): Promise<void
     requestedById: session?.user?.id ?? null,
   });
 
+  revalidatePath("/app/fleet/maintenance");
   redirect("/app/fleet/maintenance?saved=1");
 }
 
@@ -65,5 +67,6 @@ export async function reviewMaintenanceRequest(formData: FormData): Promise<void
     completedAt: progressStatus === "COMPLETED" ? new Date() : undefined,
   });
 
+  revalidatePath("/app/fleet/maintenance");
   redirect("/app/fleet/maintenance?saved=1");
 }

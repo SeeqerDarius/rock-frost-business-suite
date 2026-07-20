@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createFleetPayment, updateFleetPaymentStatus } from "@/modules/fleet/service";
@@ -39,6 +40,7 @@ export async function createPayment(formData: FormData): Promise<void> {
     redirect("/app/fleet/payments?error=duplicate");
   }
 
+  revalidatePath("/app/fleet/payments");
   redirect("/app/fleet/payments?saved=1");
 }
 
@@ -58,5 +60,6 @@ export async function verifyPayment(formData: FormData): Promise<void> {
     await updateFleetPaymentStatus(tenant.organizationId, id, "VERIFIED", true);
   }
 
+  revalidatePath("/app/fleet/payments");
   redirect("/app/fleet/payments?saved=1");
 }

@@ -26,6 +26,12 @@ export const PERMISSIONS = {
   HIREPURCHASE_CREDITS_MANAGE: "hirepurchase.credits.manage",
   HIREPURCHASE_REPORTS_VIEW: "hirepurchase.reports.view",
   HIREPURCHASE_SETTINGS_MANAGE: "hirepurchase.settings.manage",
+  CRM_VIEW: "crm.view",
+  CRM_CONTACTS_MANAGE: "crm.contacts.manage",
+  CRM_LEADS_MANAGE: "crm.leads.manage",
+  CRM_DEALS_MANAGE: "crm.deals.manage",
+  CRM_REPORTS_VIEW: "crm.reports.view",
+  CRM_SETTINGS_MANAGE: "crm.settings.manage",
 } as const;
 
 export function hasPermission(tenant: TenantContext, key: string): boolean {

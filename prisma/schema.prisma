@@ -177,6 +177,10 @@ model User {
   fleetDriverProfiles       FleetDriver[]
   maintenanceRequests       FleetMaintenanceRequest[]
   hirePurchaseStaffProfiles HirePurchaseStaff[]
+  crmContactsOwned          CrmContact[]
+  crmLeadsOwned             CrmLead[]
+  crmDealsOwned             CrmDeal[]
+  crmActivitiesCreated      CrmActivity[]
 }
 
 model Account {
@@ -267,6 +271,11 @@ model Organization {
   hirePurchasePayments            HirePurchasePayment[]
   hirePurchaseCredits             HirePurchaseCredit[]
   hirePurchaseSettings            HirePurchaseSettings?
+  crmLeadSources                  CrmLeadSource[]
+  crmContacts                     CrmContact[]
+  crmLeads                        CrmLead[]
+  crmDeals                        CrmDeal[]
+  crmActivities                   CrmActivity[]
 
   @@index([industry])
   @@index([status])
@@ -322,6 +331,10 @@ model Branch {
   hirePurchaseStaff     HirePurchaseStaff[]
   hirePurchaseCustomers HirePurchaseCustomer[]
   hirePurchaseAccounts  HirePurchaseAccount[]
+  crmContacts           CrmContact[]
+  crmLeads              CrmLead[]
+  crmDeals              CrmDeal[]
+  crmActivities         CrmActivity[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -917,4 +930,155 @@ model HirePurchaseSettings {
   updatedAt                       DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+enum CrmLeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  DISQUALIFIED
+  CONVERTED
+}
+
+enum CrmDealStage {
+  NEW
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum CrmActivityType {
+  CALL
+  EMAIL
+  MEETING
+  NOTE
+  TASK
+}
+
+model CrmLeadSource {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model CrmContact {
+  id             String   @id @default(cuid())
+  organizationId String
+  branchId       String?
+  fullName       String
+  company        String?
+  email          String?
+  phone          String?
+  jobTitle       String?
+  notes          String?  @db.Text
+  ownerId        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  owner        User?         @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  leads        CrmLead[]
+  deals        CrmDeal[]
+  activities   CrmActivity[]
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([ownerId])
+  @@index([email])
+}
+
+model CrmLead {
+  id             String        @id @default(cuid())
+  organizationId String
+  branchId       String?
+  contactId      String?
+  fullName       String
+  company        String?
+  email          String?
+  phone          String?
+  source         String?
+  status         CrmLeadStatus @default(NEW)
+  ownerId        String?
+  notes          String?       @db.Text
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch        Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  contact       CrmContact?   @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  owner         User?         @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  activities    CrmActivity[]
+  convertedDeal CrmDeal?
+
+  @@index([organizationId, status])
+  @@index([branchId])
+  @@index([contactId])
+  @@index([ownerId])
+}
+
+model CrmDeal {
+  id                String       @id @default(cuid())
+  organizationId    String
+  branchId          String?
+  contactId         String?
+  leadId            String?      @unique
+  title             String
+  value             Decimal      @default(0) @db.Decimal(12, 2)
+  stage             CrmDealStage @default(NEW)
+  expectedCloseDate DateTime?
+  closedAt          DateTime?
+  ownerId           String?
+  notes             String?      @db.Text
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  contact      CrmContact?   @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  lead         CrmLead?      @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  owner        User?         @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  activities   CrmActivity[]
+
+  @@index([organizationId, stage])
+  @@index([branchId])
+  @@index([contactId])
+  @@index([ownerId])
+}
+
+model CrmActivity {
+  id             String          @id @default(cuid())
+  organizationId String
+  branchId       String?
+  type           CrmActivityType
+  subject        String
+  notes          String?         @db.Text
+  occurredAt     DateTime        @default(now())
+  contactId      String?
+  leadId         String?
+  dealId         String?
+  createdById    String?
+  createdAt      DateTime        @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  contact      CrmContact?  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  lead         CrmLead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  deal         CrmDeal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, occurredAt])
+  @@index([branchId])
+  @@index([contactId])
+  @@index([leadId])
+  @@index([dealId])
 }

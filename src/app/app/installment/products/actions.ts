@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createProduct, updateProduct, createProductCategory, ProductPriceError } from "@/modules/installment/service";
@@ -50,6 +51,7 @@ export async function upsertProduct(formData: FormData): Promise<void> {
     throw error;
   }
 
+  revalidatePath("/app/installment/products");
   redirect("/app/installment/products?saved=1");
 }
 
@@ -65,5 +67,6 @@ export async function addProductCategory(formData: FormData): Promise<void> {
   }
 
   await createProductCategory(tenant.organizationId, name);
+  revalidatePath("/app/installment/products");
   redirect("/app/installment/products?saved=1");
 }

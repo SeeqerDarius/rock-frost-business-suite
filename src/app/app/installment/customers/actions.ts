@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createCustomer, updateCustomer } from "@/modules/installment/service";
@@ -37,5 +38,6 @@ export async function upsertCustomer(formData: FormData): Promise<void> {
     await createCustomer(tenant.organizationId, data);
   }
 
+  revalidatePath("/app/installment/customers");
   redirect("/app/installment/customers?saved=1");
 }

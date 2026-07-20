@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createFleetVehicle, updateFleetVehicle } from "@/modules/fleet/service";
@@ -53,5 +54,6 @@ export async function upsertFleetVehicle(formData: FormData): Promise<void> {
     redirect("/app/fleet/vehicles?error=duplicate");
   }
 
+  revalidatePath("/app/fleet/vehicles");
   redirect("/app/fleet/vehicles?saved=1");
 }

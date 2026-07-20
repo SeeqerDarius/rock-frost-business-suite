@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createFleetVehicleDocument, updateFleetVehicleDocument } from "@/modules/fleet/service";
@@ -42,5 +43,6 @@ export async function upsertFleetVehicleDocument(formData: FormData): Promise<vo
     await createFleetVehicleDocument(tenant.organizationId, data);
   }
 
+  revalidatePath("/app/fleet/insurance-roadworthy");
   redirect("/app/fleet/insurance-roadworthy?saved=1");
 }

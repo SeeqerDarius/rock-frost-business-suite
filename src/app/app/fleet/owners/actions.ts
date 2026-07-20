@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createFleetOwner, updateFleetOwner } from "@/modules/fleet/service";
@@ -35,5 +36,6 @@ export async function upsertFleetOwner(formData: FormData): Promise<void> {
     await createFleetOwner(tenant.organizationId, data);
   }
 
+  revalidatePath("/app/fleet/owners");
   redirect("/app/fleet/owners?saved=1");
 }

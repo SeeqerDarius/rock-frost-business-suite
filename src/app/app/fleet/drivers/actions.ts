@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createFleetDriver, updateFleetDriver } from "@/modules/fleet/service";
@@ -44,5 +45,6 @@ export async function upsertFleetDriver(formData: FormData): Promise<void> {
     await createFleetDriver(tenant.organizationId, data);
   }
 
+  revalidatePath("/app/fleet/drivers");
   redirect("/app/fleet/drivers?saved=1");
 }

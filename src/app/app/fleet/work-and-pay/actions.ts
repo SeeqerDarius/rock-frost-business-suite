@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import {
@@ -49,6 +50,7 @@ export async function createWorkAndPayContract(formData: FormData): Promise<void
     startsAt: startsAtRaw ? new Date(startsAtRaw) : null,
   });
 
+  revalidatePath("/app/fleet/work-and-pay");
   redirect("/app/fleet/work-and-pay?saved=1");
 }
 
@@ -67,6 +69,7 @@ export async function recordContractPayment(formData: FormData): Promise<void> {
   }
 
   await recordFleetWorkAndPayPayment(tenant.organizationId, id, amount);
+  revalidatePath("/app/fleet/work-and-pay");
   redirect("/app/fleet/work-and-pay?saved=1");
 }
 
@@ -81,5 +84,6 @@ export async function updateContractStatus(formData: FormData): Promise<void> {
   if (!id || !status) return;
 
   await updateFleetWorkAndPayContractStatus(tenant.organizationId, id, status);
+  revalidatePath("/app/fleet/work-and-pay");
   redirect("/app/fleet/work-and-pay?saved=1");
 }

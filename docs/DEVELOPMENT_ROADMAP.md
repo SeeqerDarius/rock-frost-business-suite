@@ -81,9 +81,23 @@ Still deliberately deferred (see `docs/AUTHENTICATION_AND_AUTHORIZATION.md`'s "K
 
 **Status: complete.**
 
-## Phase 8 — CRM (next)
+## Phase 8 — CRM ✅
 
-Leads, contacts, deals, and customer communication history, per `docs/PRODUCT_VISION.md`. Not yet scoped in detail — begin by checking whether any CRM-shaped models already exist in `prisma/schema.prisma` (as Fleet's and Installment's did before their phases), then follow the same pattern established by both: an org-scoped service layer under `src/modules/crm/`, real pages replacing whatever shell exists at `/app/crm`, and permission keys following the `crm.*` naming convention.
+New models (`CrmLeadSource`, `CrmContact`, `CrmLead`, `CrmDeal`, `CrmActivity`) — nothing CRM-shaped existed in the schema before this phase, unlike Fleet/Installment. Org-scoped service layer at `src/modules/crm/service.ts`: contact/lead/deal/activity CRUD, `convertLeadToDeal` (creates or reuses a `CrmContact`, creates a linked `CrmDeal`, marks the lead `CONVERTED`), `updateDealStage` (stamps `closedAt` on WON/LOST), and `getCrmSummary` (pipeline value, win rate, stage counts) for the dashboard widget and Reports page. Six permission keys (`crm.view`, `crm.contacts.manage`, `crm.leads.manage`, `crm.deals.manage`, `crm.reports.view`, `crm.settings.manage`) plus a new system role, "CRM Manager". Registry entry flipped from `coming-soon` to `available`.
+
+**Major bug found and fixed during this phase's own verification** — see "Router-cache bug fix" below; it wasn't CRM-specific, it just happened to surface here first.
+
+**Status: complete.**
+
+## Router-cache bug fix (`revalidatePath`) ✅
+
+Discovered while browser-verifying CRM's deal pipeline: `changeDealStage` correctly updated `CrmDeal.stage` in the database (confirmed via direct query), but the browser kept rendering the pre-move stage after the action's `redirect()` landed back on the same `?saved=1` URL a second time. Root cause: Next.js's client Router Cache can serve a stale RSC payload for a URL it has already visited, even though `dynamic` staleTime defaults to 0 — a mutating Server Action that redirects to a URL it (or a sibling action) has redirected to before needs an explicit cache-bust, not just a fresh server render.
+
+**Fix**: every mutating Server Action that redirects to a list page now calls `revalidatePath("<that list page's path>")` immediately before the `redirect()` call. This was missing across essentially every action file written so far this rebuild — fixed in all 18 action files across Fleet (7), Installment (6), and CRM (5). Verified with a full Playwright pass: deal stage moved twice in a row, each move confirmed correct on a hard page reload.
+
+**Going forward**: any new mutating Server Action that redirects to a page showing data it just changed must include the matching `revalidatePath()` call — this is now the standard pattern, not a special case. See `src/app/app/crm/deals/actions.ts` for the reference shape.
+
+**Status: complete.**
 
 ## Later phases (not scoped in detail yet)
 

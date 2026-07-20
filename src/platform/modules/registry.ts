@@ -13,6 +13,7 @@ import {
 import type { ModuleDefinition } from "@/types/module";
 import { fleetNavigation } from "@/modules/fleet/navigation";
 import { installmentNavigation } from "@/modules/installment/navigation";
+import { crmNavigation } from "@/modules/crm/navigation";
 
 /**
  * The module registry. Every business module the platform can offer is declared
@@ -50,8 +51,9 @@ export const moduleRegistry: ModuleDefinition[] = [
     description: "Leads, contacts, deals, and customer communication history.",
     icon: Contact,
     routePrefix: "/app/crm",
-    navigation: [],
-    status: "coming-soon",
+    navigation: crmNavigation,
+    status: "available",
+    permissionPrefix: "crm.",
   },
   {
     key: "inventory",
