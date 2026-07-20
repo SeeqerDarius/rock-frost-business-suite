@@ -127,6 +127,28 @@ Six pages (Employees, Leave, Reviews, Reports, Settings) plus an overview page a
 
 **Status: complete.**
 
+## Phase 12 — Procurement ✅
+
+New models from scratch: `ProcurementVendor`, `ProcurementRequest`, `ProcurementOrder`/`ProcurementOrderLine`, `ProcurementSettings`. A purchase request (optionally linked to a real `InventoryItem`) can be approved, then converted into a purchase order (the request auto-flips to `CONVERTED` when an order references it via `requestId`). An order moves `DRAFT` → `SENT` → `PARTIALLY_RECEIVED`/`RECEIVED` as its lines are received; `recomputeOrderStatus()` derives the order's status from its lines' `receivedQuantity` vs `quantity` on every receipt.
+
+**Deliberate real cross-module integration** (documented in `docs/DECISIONS.md`): receiving an order line calls Inventory's own `recordMovement()` to post a genuine stock `RECEIPT` into the chosen warehouse, when the line is linked to a real `InventoryItem` — a purchase order that didn't actually move stock when received wouldn't be a real procurement flow. Procurement only calls Inventory's public service function; it never reaches into Inventory's tables directly. `ProcurementSettings.defaultWarehouseId` stores a per-organization default receiving warehouse.
+
+Orders are deliberately kept to one line per order in the UI (matching Accounting's single-amount invoices) rather than a dynamic multi-line itemized form, since no page in this codebase uses client-side repeating-fieldset input — the schema still models `lines: ProcurementOrderLine[]` as one-to-many for future extensibility.
+
+Six pages (Vendors, Requests, Orders, Reports, Settings) plus an overview page and dashboard widget. Six permission keys (`procurement.view`, `.vendors.manage`, `.requests.manage`, `.orders.manage`, `.reports.view`, `.settings.manage`) plus a new "Procurement Manager" role. Verified end-to-end: request → approval → order (auto-converts the request) → send → partial receive (6/10, confirmed live on Inventory's Stock page) → full receive (10/10) → default-warehouse setting.
+
+**Status: complete.**
+
+## Phase 13 — Payroll ✅
+
+New models from scratch: `PayrollCompensation` (one row per `HrEmployee`, referenced by id — Payroll owns its own compensation data rather than modifying HR's employee model), `PayrollRun`, `PayrollPayslip`, `PayrollSettings` (a single org-wide default tax rate). A run starts `DRAFT`; `processRun()` computes a payslip for every `ACTIVE`/`ON_LEAVE` employee with compensation on record (`grossPay` = base salary, `taxDeduction` = gross × the org's default tax rate, `netPay` = gross − tax), creating every payslip and flipping the run to `COMPLETED` inside a single `db.$transaction`. A run with no eligible compensation throws `NoCompensationError` rather than silently completing with zero payslips.
+
+**Deliberately not integrated with Accounting in this pass** (no journal entry posted when a run completes) — the same scope decision already recorded for Procurement-to-Accounting; see `OPERATOR_HANDOFF.md`'s Phase 12/13 entry.
+
+Six pages (Compensation, Runs, Payslips, Reports, Settings) plus an overview page and dashboard widget — Payslips is read-only (payslips are a computed record of a completed run, not directly editable). Six permission keys (`payroll.view`, `.compensation.manage`, `.runs.manage`, `.payslips.view`, `.reports.view`, `.settings.manage`) plus a new "Payroll Manager" role. Verified end-to-end with real payroll math: a 3000.00 base salary at a 10% default tax rate produced an exact 300.00 tax deduction and 2700.00 net pay on the processed payslip, matching the run summary and the Reports/Overview pages; a second draft run was correctly cancellable.
+
+**Status: complete.**
+
 ## Later phases (not scoped in detail yet)
 
-Additional modules (Payroll, Procurement, Projects, Analytics) per `docs/PRODUCT_VISION.md`, production hardening. **Billing/subscriptions is deliberately scheduled last**, per explicit user direction — no `Subscription` model exists yet, and it should follow every other module rather than precede them.
+Additional modules (Projects, Analytics) per `docs/PRODUCT_VISION.md`, production hardening. **Billing/subscriptions is deliberately scheduled last**, per explicit user direction — no `Subscription` model exists yet, and it should follow every other module rather than precede them.

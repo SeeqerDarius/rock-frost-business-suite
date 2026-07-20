@@ -191,6 +191,7 @@ model User {
   procurementRequestsRequested    ProcurementRequest[]      @relation("ProcurementRequestsRequested")
   procurementRequestsApproved     ProcurementRequest[]      @relation("ProcurementRequestsApproved")
   procurementOrdersCreated        ProcurementOrder[]
+  payrollRunsCreated              PayrollRun[]
 }
 
 model Account {
@@ -303,6 +304,10 @@ model Organization {
   procurementRequests             ProcurementRequest[]
   procurementOrders               ProcurementOrder[]
   procurementSettings             ProcurementSettings?
+  payrollCompensations            PayrollCompensation[]
+  payrollRuns                     PayrollRun[]
+  payrollPayslips                 PayrollPayslip[]
+  payrollSettings                 PayrollSettings?
 
   @@index([industry])
   @@index([status])
@@ -1401,13 +1406,15 @@ model HrEmployee {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
-  organization  Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch        Branch?               @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  manager       HrEmployee?           @relation("EmployeeManager", fields: [managerId], references: [id], onDelete: SetNull)
-  reports       HrEmployee[]          @relation("EmployeeManager")
-  user          User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
-  leaveRequests HrLeaveRequest[]
-  reviews       HrPerformanceReview[]
+  organization        Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch              Branch?               @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  manager             HrEmployee?           @relation("EmployeeManager", fields: [managerId], references: [id], onDelete: SetNull)
+  reports             HrEmployee[]          @relation("EmployeeManager")
+  user                User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  leaveRequests       HrLeaveRequest[]
+  reviews             HrPerformanceReview[]
+  payrollCompensation PayrollCompensation?
+  payslips            PayrollPayslip[]
 
   @@unique([organizationId, employeeNumber])
   @@index([organizationId, status])
@@ -1587,4 +1594,75 @@ model ProcurementSettings {
 
   organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   defaultWarehouse InventoryWarehouse? @relation(fields: [defaultWarehouseId], references: [id], onDelete: SetNull)
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+model PayrollCompensation {
+  id             String   @id @default(cuid())
+  organizationId String
+  employeeId     String   @unique
+  baseSalary     Decimal  @db.Decimal(12, 2)
+  payFrequency   String   @default("MONTHLY")
+  effectiveDate  DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     HrEmployee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model PayrollRun {
+  id             String           @id @default(cuid())
+  organizationId String
+  periodStart    DateTime
+  periodEnd      DateTime
+  payDate        DateTime
+  status         PayrollRunStatus @default(DRAFT)
+  createdById    String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  payslips     PayrollPayslip[]
+
+  @@index([organizationId, status])
+}
+
+model PayrollPayslip {
+  id              String   @id @default(cuid())
+  organizationId  String
+  payrollRunId    String
+  employeeId      String
+  grossPay        Decimal  @db.Decimal(12, 2)
+  taxDeduction    Decimal  @default(0) @db.Decimal(12, 2)
+  otherDeductions Decimal  @default(0) @db.Decimal(12, 2)
+  netPay          Decimal  @db.Decimal(12, 2)
+  createdAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payrollRun   PayrollRun   @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employee     HrEmployee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([payrollRunId, employeeId])
+  @@index([organizationId])
+  @@index([employeeId])
+}
+
+model PayrollSettings {
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+  defaultTaxRate Decimal  @default(0) @db.Decimal(5, 4)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }

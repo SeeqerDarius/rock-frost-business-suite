@@ -56,6 +56,12 @@ export const PERMISSIONS = {
   PROCUREMENT_ORDERS_MANAGE: "procurement.orders.manage",
   PROCUREMENT_REPORTS_VIEW: "procurement.reports.view",
   PROCUREMENT_SETTINGS_MANAGE: "procurement.settings.manage",
+  PAYROLL_VIEW: "payroll.view",
+  PAYROLL_COMPENSATION_MANAGE: "payroll.compensation.manage",
+  PAYROLL_RUNS_MANAGE: "payroll.runs.manage",
+  PAYROLL_PAYSLIPS_VIEW: "payroll.payslips.view",
+  PAYROLL_REPORTS_VIEW: "payroll.reports.view",
+  PAYROLL_SETTINGS_MANAGE: "payroll.settings.manage",
 } as const;
 
 export function hasPermission(tenant: TenantContext, key: string): boolean {

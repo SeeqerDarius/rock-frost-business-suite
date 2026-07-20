@@ -18,6 +18,7 @@ import { inventoryNavigation } from "@/modules/inventory/navigation";
 import { accountingNavigation } from "@/modules/accounting/navigation";
 import { hrNavigation } from "@/modules/hr/navigation";
 import { procurementNavigation } from "@/modules/procurement/navigation";
+import { payrollNavigation } from "@/modules/payroll/navigation";
 
 /**
  * The module registry. Every business module the platform can offer is declared
@@ -95,8 +96,9 @@ export const moduleRegistry: ModuleDefinition[] = [
     description: "Salary runs, statutory deductions, and payslips.",
     icon: Banknote,
     routePrefix: "/app/payroll",
-    navigation: [],
-    status: "coming-soon",
+    navigation: payrollNavigation,
+    status: "available",
+    permissionPrefix: "payroll.",
   },
   {
     key: "procurement",
