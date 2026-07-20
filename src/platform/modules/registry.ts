@@ -17,6 +17,7 @@ import { crmNavigation } from "@/modules/crm/navigation";
 import { inventoryNavigation } from "@/modules/inventory/navigation";
 import { accountingNavigation } from "@/modules/accounting/navigation";
 import { hrNavigation } from "@/modules/hr/navigation";
+import { procurementNavigation } from "@/modules/procurement/navigation";
 
 /**
  * The module registry. Every business module the platform can offer is declared
@@ -103,8 +104,9 @@ export const moduleRegistry: ModuleDefinition[] = [
     description: "Purchase requests, vendor management, and purchase orders.",
     icon: ShoppingCart,
     routePrefix: "/app/procurement",
-    navigation: [],
-    status: "coming-soon",
+    navigation: procurementNavigation,
+    status: "available",
+    permissionPrefix: "procurement.",
   },
   {
     key: "projects",

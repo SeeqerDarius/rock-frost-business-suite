@@ -1,0 +1,47 @@
+import { Lock } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/feedback/empty-state";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { requireCurrentTenant } from "@/lib/tenant";
+import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { getProcurementSummary } from "@/modules/procurement/service";
+
+export default async function ProcurementReportsPage() {
+  const tenant = await requireCurrentTenant();
+
+  if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_REPORTS_VIEW)) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Reports" description="Purchase request and order activity summaries." />
+        <EmptyState icon={Lock} title="You don't have access to this page" description="Procurement reports are limited to roles with reporting permissions." />
+      </div>
+    );
+  }
+
+  const summary = await getProcurementSummary(tenant.organizationId);
+
+  const stats = [
+    { label: "Pending requests", value: summary.pendingRequestCount },
+    { label: "Total requests", value: summary.totalRequestCount },
+    { label: "Open orders", value: summary.openOrderCount },
+    { label: "Open order value", value: summary.openOrderValue.toFixed(2) },
+    { label: "Received orders", value: summary.receivedOrderCount },
+    { label: "Total orders", value: summary.totalOrderCount },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Reports" description="Purchase request and order activity summaries." />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {stats.map((stat) => (
+          <Card key={stat.label}>
+            <CardHeader>
+              <p className="text-xs text-muted-foreground">{stat.label}</p>
+              <CardTitle className="text-2xl">{stat.value}</CardTitle>
+            </CardHeader>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}

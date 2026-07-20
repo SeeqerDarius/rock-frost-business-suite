@@ -4,6 +4,18 @@ This is the authoritative decision log for the rebuilt Rock Frost Business Suite
 
 ---
 
+## 2026-07-20 — Procurement receiving posts real Inventory stock movements
+
+**Decision:** When a purchase order line is received on `/app/procurement/orders`, `receiveOrderLine()` (`src/modules/procurement/service.ts`) calls Inventory's own `recordMovement()` (`src/modules/inventory/service.ts`) with `type: "RECEIPT"`, posting a real stock increase into the chosen warehouse — provided the order line is linked to a real `InventoryItem` and a warehouse is selected. This is a deliberate cross-module integration, not a boundary violation, per `docs/MODULE_BOUNDARIES.md`'s "Cross-module data" section, which requires such integrations to be deliberate and recorded here rather than silently added.
+
+**Why:** A purchase order that doesn't actually move stock when received isn't a real procurement flow — it would just be a form with no consequence, the same class of problem this rebuild exists to avoid (see the 2026-07-19 full-rebuild entry). Procurement genuinely needs Inventory's stock-movement logic; duplicating `recordMovement()`'s validation (insufficient/negative-stock checks, the `InventoryStock` upsert-or-create logic) inside Procurement would be pure duplication, not module independence.
+
+**How the boundary is preserved:** Procurement only calls Inventory's public, already-permission-agnostic service function (`recordMovement`) — it never reaches into Inventory's Prisma models directly, and Inventory has no reciprocal dependency on Procurement (it doesn't know purchase orders exist). If the order line has no linked `InventoryItem`, or no warehouse is selected at receiving time, the receipt is tracked on the `ProcurementOrderLine.receivedQuantity` alone and no Inventory call is made — receiving is not required to be tied to real inventory, since some procurement requests are for non-stocked items or services.
+
+**Not done (and deliberately so):** Procurement does not post anything to Accounting (e.g., an Accounts Payable liability when an order is received) in this pass — see `OPERATOR_HANDOFF.md`'s Phase 12 entry for the same reasoning already applied to Payroll↔Accounting.
+
+---
+
 ## 2026-07-19 — UI foundation: shadcn/ui + Radix UI + Tailwind CSS
 
 **Decision:** Use [shadcn/ui](https://ui.shadcn.com) as the component/design-system foundation, built on Radix UI primitives and Tailwind CSS v4.
