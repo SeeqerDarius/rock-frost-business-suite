@@ -63,22 +63,17 @@ Installment Management work was not started during this phase, per the roadmap's
 
 **Status: complete.** See `OPERATOR_HANDOFF.md` for the detailed session record.
 
-## Phase 7 — Installment Management Migration (not started)
+## Phase 7 — Installment Management Migration ✅
 
-Reference implementation: `C:\Users\andre\glv-management-system` (the "GLV" system) — a proven, working installment/layaway management application. Treat it as a source of validated business rules, not a template to copy wholesale:
+Reference implementation: `C:\Users\andre\glv-management-system` (the "GLV" system). Before writing any code, an Explore agent extracted GLV's *actual* behavior (not its aspirational settings UI) — see `OPERATOR_HANDOFF.md`'s Phase 7 entry for the full extraction. Key finding: several of GLV's own settings fields (commission, payroll day, administration fee, minimum deposit, delivery-after-completion) are stored and editable in its UI but **never read by any calculation** — confirmed by GLV's own operator doc ("always distinguish 'saved' from 'effective'"). This module's Settings page (`/app/installment/settings`) is upfront about the same distinction here: a "used in calculations" section and a "reserved for future use" section, rather than silently implementing untested rules GLV itself never validated.
 
-**Extract and migrate:**
-- Valid business rules and validated calculations (e.g. installment scheduling, payment allocation, product/account lifecycle logic)
-- Relevant database concepts (adapted to this platform's organization/branch-scoped schema, not copied as a standalone single-tenant schema)
-- Customer, payment, product, and account workflows
-- Reporting logic
-- Necessary historical-compatibility considerations
+**Migrated as real, validated logic** (`src/modules/installment/service.ts`): installment scheduling (product-level `duration`/`dailyAmount`/`price`, with a price-floor validation), payment allocation with automatic overpayment-credit creation, a 3-hour payment edit window with full-recalculation-on-edit, receipt/customer/staff code generation (per-year, per-staff sequences), atomic staff-inventory consumption on account creation (a hard stock gate, restored on cancellation), the account lifecycle sweep (dormant/probation/closed/archived, computed lazily on report/list reads rather than a cron), automatic closure-refund credits with a configurable service-fee percentage, dormant-account reactivation, the procurement-readiness list (product restock threshold), and the admin summary / staff performance / weekly collections reports.
 
-**Do not migrate as-is:**
-- GLV's standalone layout, authentication, or navigation — the Installment module uses this platform's shared workspace shell and (once built) shared authentication
-- Unrelated technical debt from the reference implementation
+**Deliberately not migrated** (GLV has no real reference implementation for these — confirmed dead code there, not just "not gotten to yet"): commission calculation, payroll-day-triggered payroll, an administration fee, minimum-deposit enforcement, and applying a credit to a future payment (the `APPLIED` credit status exists in the schema but no code path — in GLV or here — ever sets it). Also not migrated: GLV's step-up re-authentication pattern (re-entering a password for sensitive mutations) and its fuzzy duplicate-detection on customer/product creation — both real GLV features, deferred here as scope-control decisions rather than migration gaps.
 
-The migrated module must remain functionally accurate to the validated business rules while visually and structurally matching this platform's design system (`docs/DESIGN_SYSTEM.md`) and module boundaries (`docs/MODULE_BOUNDARIES.md`).
+**Staff scoping**: a field-staff role (holding `hirepurchase.customers.manage` etc. but not `hirepurchase.staff.manage`) sees and manages only their own assigned customers/accounts/payments/credits — a manager (holding `hirepurchase.staff.manage`) sees everything. This mirrors GLV's real staff-scoping rule.
+
+**Status: complete.** See `OPERATOR_HANDOFF.md` for the detailed session record.
 
 ## Later phases (not scoped in detail yet)
 

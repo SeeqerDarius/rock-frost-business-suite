@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import { FleetDashboardWidget } from "@/modules/fleet/dashboard-widget";
+import { InstallmentDashboardWidget } from "@/modules/installment/dashboard-widget";
 
 /**
  * Per-module dashboard summary widgets, keyed by module key. Deliberately a
@@ -14,4 +15,5 @@ import { FleetDashboardWidget } from "@/modules/fleet/dashboard-widget";
  */
 export const dashboardWidgets: Record<string, ComponentType> = {
   fleet: FleetDashboardWidget,
+  installment: InstallmentDashboardWidget,
 };

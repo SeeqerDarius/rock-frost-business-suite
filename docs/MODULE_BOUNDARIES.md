@@ -43,7 +43,7 @@ As of Phase 6 this is real for Fleet, not just aspirational — `src/modules/fle
 
 - Every module-owned database record must carry `organizationId` (and `branchId` where relevant) — see `docs/DATABASE_STRATEGY.md`. Every function in `src/modules/fleet/service.ts` takes `organizationId` as an explicit parameter and filters on it in the Prisma call itself (`where: { id, organizationId }` on updates, not just on the initial list query) — assume a user can hit any URL or call any server action directly, not just navigate through the UI.
 - Permission checks are module-specific (`fleet.vehicles.manage`, `fleet.reports.view`, etc. — see `docs/AUTHENTICATION_AND_AUTHORIZATION.md`), not one shared "can access dashboard" flag reused across modules. Fleet additionally distinguishes *viewing* a module (reachable with any permission under the module's prefix) from *mutating* a specific area (gated on that area's own `.manage` permission) — a page can be visible without its create/edit controls being visible.
-- Installment (Phase 7) has no service layer yet — build it following the same shape as Fleet's, not from scratch.
+- Installment's service layer (`src/modules/installment/service.ts`, Phase 7) follows the same shape, plus a data-level scoping helper (`resolveInstallmentStaffScope`) that Fleet doesn't need yet — a field-staff user is restricted to their own assigned customers/accounts, on top of the organization-wide filtering every function already does.
 
 ## Adding a new module
 
