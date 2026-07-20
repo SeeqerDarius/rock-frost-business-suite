@@ -14,20 +14,72 @@ After making changes:
 1. Run the full validation suite from `docs/TESTING_STRATEGY.md` (`npm run lint`, `npx tsc --noEmit`, `npx prisma validate`, `npx prisma generate`, `npm run build`) and fix all errors.
 2. Update this file: date, objective, files changed, summary, build result, known issues, next recommended step.
 3. Commit only intentional changes.
+4. **After pushing to `origin/main`, always check the Vercel deployment status and confirm it succeeds** (e.g. `vercel ls` to see the latest deployment's state, or `vercel --prod` to trigger and watch a fresh build live) — do not treat a clean local `npm run build` as proof the deployment is healthy. A real incident happened where Vercel's build cache reused a stale generated Prisma Client from before a schema change, causing a production build failure a clean local build did not catch (see `package.json`'s `postinstall` script and the Phase 8/9 boundary in the handoff log below for the fix). If a deployment shows `Error`, investigate and fix before considering the task done.
 
 ## Current phase
 
-**Phase 9 (Inventory) — complete.** All nine original phases plus two remediation passes are done. See `docs/DEVELOPMENT_ROADMAP.md` for what comes next — the next module to build has **not yet been chosen** (candidates: Accounting, HR/Payroll, Procurement, Projects, Analytics); Billing/Subscriptions remains deliberately scheduled last, per explicit user direction.
+**Phase 11 (HR) — complete.** All eleven original phases plus two remediation passes are done. See `docs/DEVELOPMENT_ROADMAP.md` for what comes next — the next module to build has **not yet been chosen** (candidates: Procurement, Projects, Analytics); Billing/Subscriptions remains deliberately scheduled last, per explicit user direction.
 
 ## Current architecture (short version — see `docs/ARCHITECTURE.md` for full detail)
 
-- Next.js 16 App Router under `src/app/`. Public marketing site at bare paths via `(public)`; auth UI via `(auth)`; **everything requiring sign-in lives under `/app/*`** — `app/(overview)` (organization scope), `app/fleet`, `app/installment`, `app/crm`, `app/inventory`, `app/platform` (platform scope). See `docs/ARCHITECTURE.md`'s "Why /app exists."
-- Each module (`fleet`, `installment`, `crm`, `inventory`) has its own `layout.tsx` rendering `AppShell` with its own navigation array, guarded on `canAccessModule()` (module enabled for the org + a permission under that module's registered `permissionPrefix`).
-- `src/platform/modules/registry.ts` is the single source of truth for every module's metadata; `src/platform/modules/dashboard-widgets.tsx` maps a module key to a real dashboard summary component — Fleet's, Installment's, CRM's, and Inventory's are all wired up now.
+- Next.js 16 App Router under `src/app/`. Public marketing site at bare paths via `(public)`; auth UI via `(auth)`; **everything requiring sign-in lives under `/app/*`** — `app/(overview)` (organization scope), `app/fleet`, `app/installment`, `app/crm`, `app/inventory`, `app/accounting`, `app/hr`, `app/platform` (platform scope). See `docs/ARCHITECTURE.md`'s "Why /app exists."
+- Each module (`fleet`, `installment`, `crm`, `inventory`, `accounting`, `hr`) has its own `layout.tsx` rendering `AppShell` with its own navigation array, guarded on `canAccessModule()` (module enabled for the org + a permission under that module's registered `permissionPrefix`).
+- `src/platform/modules/registry.ts` is the single source of truth for every module's metadata; `src/platform/modules/dashboard-widgets.tsx` maps a module key to a real dashboard summary component — all six business modules are wired up now.
 - shadcn/ui (Base UI primitives) + Tailwind v4 design system — see `docs/DESIGN_SYSTEM.md`.
-- **All four business modules are fully real.** Fleet Management (Phase 6), Installment Management (Phase 7), CRM (Phase 8), and Inventory Management (Phase 9) are all complete. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md` and `docs/MODULE_BOUNDARIES.md` for full detail.
-- **Every mutating Server Action that redirects to a list page calls `revalidatePath()` on that page immediately before the `redirect()`** — a systemic gap discovered and fixed during Phase 8 across every action file that existed at the time; Inventory's action files were written with this pattern from the start. This is the required pattern for any new Server Action, not an optional optimization.
-- `prisma/schema.prisma` changes since Phase 3's reconnection: `User.failedLoginAttempts`/`User.lockedUntil` (migration `20260720120000_add_login_lockout`); the CRM models `CrmLeadSource`/`CrmContact`/`CrmLead`/`CrmDeal`/`CrmActivity` (migration `20260720140000_add_crm_module`); the Inventory models `InventoryCategory`/`InventoryWarehouse`/`InventoryItem`/`InventoryStock`/`InventoryMovement` (migration `20260720160000_add_inventory_module`). All three applied via `prisma migrate deploy` — **not** `prisma migrate dev`, which detects a pre-existing drift between the live database's migration history and the local `prisma/migrations/` folder (leftover from before this rebuild) and offers to reset the entire database. That offer was declined every time; `migrate deploy` applied each migration cleanly without touching anything else. Anyone continuing this project should use `migrate deploy` (or hand-write the migration SQL and apply it that way) rather than `migrate dev` against this specific database.
+- **All six business modules are fully real.** Fleet Management (Phase 6), Installment Management (Phase 7), CRM (Phase 8), Inventory Management (Phase 9), Accounting (Phase 10), and Human Resources (Phase 11) are all complete. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md` and `docs/MODULE_BOUNDARIES.md` for full detail.
+- **Every mutating Server Action that redirects to a list page calls `revalidatePath()` on that page immediately before the `redirect()`** — a systemic gap discovered and fixed during Phase 8 across every action file that existed at the time; every module built since (Inventory, Accounting, HR) was written with this pattern from the start. This is the required pattern for any new Server Action, not an optional optimization.
+- **`package.json` has a `"postinstall": "prisma generate"` script** (added after Phase 9) — required because Vercel's build can reuse a cached `node_modules` (including an already-generated Prisma Client) across deployments without regenerating it, which caused a real production build failure right after Phase 8/9 shipped (`Module has no exported member 'CrmActivityType'` — the deployed client predated the CRM/Inventory schema changes). Always check deployment status after pushing (see the "After making changes" checklist above) — this is now a standing rule, not just a one-time fix.
+- `prisma/schema.prisma` changes since Phase 3's reconnection: `User.failedLoginAttempts`/`User.lockedUntil` (migration `20260720120000_add_login_lockout`); CRM (migration `20260720140000_add_crm_module`); Inventory (migration `20260720160000_add_inventory_module`); Accounting (migration `20260720180000_add_accounting_module`); HR (migration `20260720200000_add_hr_module`). All applied via `prisma migrate deploy` — **not** `prisma migrate dev`, which detects a pre-existing drift between the live database's migration history and the local `prisma/migrations/` folder (leftover from before this rebuild) and offers to reset the entire database. That offer was declined every time; `migrate deploy` applied each migration cleanly without touching anything else. Anyone continuing this project should use `migrate deploy` (or hand-write the migration SQL and apply it that way) rather than `migrate dev` against this specific database.
+
+## Files changed (Phase 10 — Accounting + Phase 11 — HR)
+
+**Accounting — Created:** `prisma/migrations/20260720180000_add_accounting_module/migration.sql`; `src/modules/accounting/{service.ts,navigation.tsx,dashboard-widget.tsx}`; `src/app/app/accounting/layout.tsx`, `src/app/app/accounting/page.tsx`, and six route trees (`accounts`, `invoices`, `expenses`, `journal`, `reports`, `settings`), each with `page.tsx` + `actions.ts`.
+
+**HR — Created:** `prisma/migrations/20260720200000_add_hr_module/migration.sql`; `src/modules/hr/{service.ts,navigation.tsx,dashboard-widget.tsx}`; `src/app/app/hr/layout.tsx`, `src/app/app/hr/page.tsx`, and five route trees (`employees`, `leave`, `reviews`, `settings` each with `page.tsx` + `actions.ts`; `reports` is read-only, `page.tsx` only).
+
+**Modified:** `prisma/schema.prisma` (Accounting + HR models and back-relations on `User`/`Organization`/`Branch`); `src/lib/auth/permissions.ts` (6 new `ACCOUNTING_*` + 6 new `HR_*` keys); `src/platform/modules/registry.ts` (`accounting` and `hr` both flipped from `coming-soon` to `available`); `src/platform/modules/dashboard-widgets.tsx` (both widgets registered); `package.json` (`postinstall` script added — see architecture note above).
+
+**Database (via one-off scripts, not committed):** seeded 6 `Permission` rows each for `accounting.*` and `hr.*`, granted them to Super Admin/Organization Owner, created the "Accounting Manager" and "HR Manager" system roles, enabled both modules for the demo organization (`Rock Frost Demo Fleet`, tenant code `rock-frost-demo-fleet`).
+
+## Summary of what was done (Phase 10 — Accounting)
+
+User asked to build Accounting and HR after Inventory, and to add a standing rule to always check Vercel deployment status after pushing (added above and to persistent memory). Immediately before this, a real Vercel build failure was reported and fixed: a stale generated Prisma Client (predating the CRM/Inventory schema) caused `Module has no exported member 'CrmActivityType'` on production — fixed with the `postinstall` script described above, verified by wiping the local generated client and confirming a fresh install+build succeeds, then confirmed on an actual `vercel --prod` deployment (`READY`).
+
+For Accounting, designed a genuinely functioning minimal double-entry ledger rather than a UI over disconnected records: `AccountingAccount`/`AccountingJournalEntry`/`AccountingJournalLine` are the real source of truth for balances, and `AccountingInvoice`/`AccountingExpense` post journal entries at realistic lifecycle points (sent/paid) via a shared `postJournalEntry()` transaction helper, validated for balance. Five default accounts (Cash, AR, AP, Revenue, General Expenses) are created lazily per organization.
+
+**Verified with real bookkeeping arithmetic**: created a custom expense account and a linked expense category, then ran invoice send (correctly posted AR 500.00 / Revenue 500.00) → invoice full payment (correctly posted Cash 500.00, zeroed AR) → expense approve → expense pay (correctly posted the custom account 200.00, reduced Cash to 300.00) → a manual balanced journal entry (Cash +50 / Revenue +50) — Reports page correctly computed revenue 550.00, expenses 200.00, net income 350.00, matching hand-calculated expectations exactly. All test fixtures deleted afterward.
+
+## Summary of what was done (Phase 11 — HR)
+
+Built immediately after Accounting per the same instruction. `HrEmployee` uses a self-relation for manager/reports (mirroring an org chart), with a status lifecycle (`ONBOARDING` → `ACTIVE` ⇄ `ON_LEAVE` → `TERMINATED`). Deliberately did not build a separate onboarding checklist/workflow — chose to treat onboarding as an employee status plus an "Activate" action, matching the project's own established precedent for not fabricating UI around a concept with nothing real behind it yet.
+
+**Verified end-to-end**: created a manager employee and activated them, created a second employee reporting to that manager (confirming the manager select only offers ACTIVE/ON_LEAVE employees), cycled it through ACTIVE → ON_LEAVE → ACTIVE, submitted a 3-day leave request (confirmed `daysBetween()` computed exactly 3 for a 3-calendar-day inclusive range) and approved it, submitted and rejected a second request, created a review with no rating and confirmed the "Complete" action correctly refuses it (`error=incomplete`), then created a second review with a rating and confirmed "Complete" succeeds and shows COMPLETED with the rating. Reports page correctly aggregated headcount by department. All test fixtures deleted afterward.
+
+## Build result (Phase 10 + 11)
+
+**Passed.** `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate` succeeds, `npm run build` succeeds — 71 routes total (58 before Phase 10; 65 after Accounting's 7 new routes; 71 after HR's 6 new routes). Playwright installed **temporarily** for each module's browser verification, then removed surgically via `npm uninstall playwright` (confirmed via `git diff --stat package.json package-lock.json`, no output) each time. Dev server stopped after each verification pass, confirmed by command-line inspection first. Accounting's deployment was additionally confirmed live via `vercel --prod` (`READY`, aliased to `www.rockfrostgroup.com`) before starting HR.
+
+## Known issues / deliberate gaps (current)
+
+- **Accounting and HR have no data-level scoping** (same shape as CRM's/Inventory's gap) — every account/invoice/expense/employee/leave request/review is visible to anyone holding the relevant module permission, no per-owner or per-department restriction.
+- **Accounting is not yet linked to Fleet or Installment** — Fleet payments and Installment payments/credits remain on their own separate ledgers rather than posting into the new general Accounting module. Integrating them is a deliberate future decision, not an oversight (see `docs/MODULE_BOUNDARIES.md`'s cross-module data rule).
+- **HR has no attendance/timesheet tracking, no payroll integration** — deliberately out of scope; Payroll is its own later phase.
+- **Inventory has no data-level scoping** (carried forward) — every item/warehouse/movement is visible to anyone holding the relevant `inventory.*` permission.
+- **Inventory is not yet linked to any other module** — Fleet parts/maintenance and Installment products remain on their own separate stock concepts (`HirePurchaseStaffInventory`).
+- **CRM has no data-level scoping** (carried forward) — every contact/lead/deal/activity is visible to anyone holding the relevant `crm.*` permission.
+- **No owner-facing maintenance approval portal** (Fleet) — would need a whole new authenticated user type.
+- **No file/photo upload for maintenance requests** (Fleet) — needs a storage-provider decision first.
+- **No fuzzy duplicate-detection on customer/product/contact/item/employee creation, no hard deletes** for payments/accounts/customers — deliberately deferred.
+- **No branch-level access enforcement** — still low-value with one branch platform-wide.
+- **No public self-registration** — deliberate for an invite-only B2B platform.
+- **`RESEND_API_KEY` is unset** — emails still log via `console.warn` instead of delivering.
+- **Organization switcher is real but functionally inert today** — every demo user belongs to exactly one organization.
+
+## Next recommended step
+
+Get explicit direction on which module follows HR — candidates per `docs/DEVELOPMENT_ROADMAP.md`'s "Later phases" section are Procurement, Projects, or Analytics. Billing/Subscriptions remains deliberately scheduled last, per the user's own standing instruction, regardless of which of the others comes next.
+
+---
 
 ## Files changed (Phase 9 — Inventory Management)
 
@@ -45,26 +97,11 @@ The one function with real logic, `recordMovement()`, runs the stock-quantity up
 
 **Verified with real arithmetic, not just "no error thrown"**: created a test item (cost price 10.50, reorder point 5) and two warehouses, then ran a full receipt → transfer → issue → adjustment sequence via Playwright, confirming exact quantities at every step — 20 received into Warehouse A, correctly 12/8 after an 8-unit transfer to Warehouse B, correctly 5 in B after a 3-unit issue, correctly 10 in A after a −2 adjustment — and confirmed a subsequent over-large issue (999 units) was rejected with `error=insufficient-stock` and left stock unchanged. Reports page correctly computed total stock value as 157.50 (15 total units × 10.50) and correctly showed zero low-stock items (15 > reorder point of 5). All test fixtures (item, both warehouses, two lead — categories) deleted afterward via a one-off cleanup script.
 
-## Build result (Phase 9 — Inventory Management)
+**Build result at the time:** Passed. `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate` succeeds, `npm run build` succeeds — 58 routes (up from 51; 7 new Inventory routes).
 
-**Passed.** `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate` succeeds, `npm run build` succeeds — 58 routes (up from 51; 7 new Inventory routes). Playwright installed **temporarily** for browser verification, then removed surgically via `npm uninstall playwright` (confirmed via `git diff --stat package.json package-lock.json`, no output). Dev server stopped afterward, confirmed by command-line inspection first.
+**Known issues at the time:** Inventory's lack of data-level scoping and cross-module linkage (both still current, see above), CRM's lack of data-level scoping (still current), owner-facing maintenance approval portal (Fleet), file/photo upload for maintenance requests (Fleet), fuzzy duplicate-detection on create, hard deletes for financial records, branch-level access enforcement, public self-registration, unset `RESEND_API_KEY`, inert organization switcher.
 
-## Known issues / deliberate gaps (current)
-
-- **Inventory has no data-level scoping** (same shape as CRM's gap) — every item/warehouse/movement is visible to anyone holding the relevant `inventory.*` permission, no per-warehouse or per-owner restriction.
-- **Inventory is not yet linked to any other module** — Fleet parts/maintenance and Installment products remain on their own separate stock concepts (`HirePurchaseStaffInventory`) rather than drawing from the new general Inventory module. Integrating them is a deliberate future decision, not an oversight — see `docs/MODULE_BOUNDARIES.md`'s cross-module data rule (any such integration needs to be recorded in `docs/DECISIONS.md`, not silently added).
-- **CRM has no data-level scoping** analogous to Installment's field-staff restriction — every contact/lead/deal/activity is visible to anyone holding the relevant `crm.*` permission, with no per-owner restriction. Revisit if a CRM role narrower than "sees everything the org has" is ever needed.
-- **No owner-facing maintenance approval portal** (Fleet) — would need a whole new authenticated user type.
-- **No file/photo upload for maintenance requests** (Fleet) — needs a storage-provider decision first.
-- **No fuzzy duplicate-detection on customer/product/contact/item creation, no hard deletes** for payments/accounts/customers — deliberately deferred.
-- **No branch-level access enforcement** — still low-value with one branch platform-wide.
-- **No public self-registration** — deliberate for an invite-only B2B platform.
-- **`RESEND_API_KEY` is unset** — emails still log via `console.warn` instead of delivering.
-- **Organization switcher is real but functionally inert today** — every demo user belongs to exactly one organization.
-
-## Next recommended step
-
-Get explicit direction on which module follows Inventory — candidates per `docs/DEVELOPMENT_ROADMAP.md`'s "Later phases" section are Accounting, HR/Payroll, Procurement, Projects, or Analytics. Billing/Subscriptions remains deliberately scheduled last, per the user's own standing instruction, regardless of which of the others comes next.
+**Next recommended step (at the time):** Get explicit direction on which module followed Inventory — candidates were Accounting, HR/Payroll, Procurement, Projects, or Analytics. The user asked for Accounting and HR (HRM) together, plus the standing deployment-check rule now in the "Mandatory instructions" section, leading directly into the Phase 10/11 work above.
 
 ---
 
@@ -127,9 +164,13 @@ User said "fix the gaps, when done get started with the next module, and lets ha
 
 ## Handoff log
 
+### 2026-07-20 — Claude Code — Phase 10 (Accounting) + Phase 11 (HR) + Vercel postinstall fix
+
+See "Files changed (Phase 10 — Accounting + Phase 11 — HR)," "Summary of what was done (Phase 10 — Accounting)," "Summary of what was done (Phase 11 — HR)," "Build result (Phase 10 + 11)," "Known issues / deliberate gaps (current)," and "Next recommended step" above — kept in the current-state sections rather than duplicated here, since this is the most recent entry.
+
 ### 2026-07-20 — Claude Code — Phase 9 (Inventory Management)
 
-See "Files changed (Phase 9 — Inventory Management)," "Summary of what was done (Phase 9 — Inventory Management)," "Build result (Phase 9 — Inventory Management)," "Known issues / deliberate gaps (current)," and "Next recommended step" above — kept in the current-state sections rather than duplicated here, since this is the most recent entry.
+See "Files changed (Phase 9 — Inventory Management)" and "Summary of what was done (Phase 9 — Inventory Management)" above, plus the "at the time" Build result/Known issues/Next recommended step notes appended to that summary.
 
 ### 2026-07-20 — Claude Code — Phase 8 (CRM) + revalidatePath router-cache fix
 

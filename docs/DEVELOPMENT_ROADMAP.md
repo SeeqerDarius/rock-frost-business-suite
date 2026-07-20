@@ -107,6 +107,26 @@ Every mutating action follows the `revalidatePath()`-before-`redirect()` pattern
 
 **Status: complete.**
 
+## Phase 10 — Accounting ✅
+
+New models from scratch: `AccountingAccount` (chart of accounts), `AccountingExpenseCategory`, `AccountingInvoice`, `AccountingExpense`, `AccountingJournalEntry`/`AccountingJournalLine`. A minimal but real double-entry ledger underpins the module — `AccountingJournalEntry`/`Line` is the source of truth for every account balance, computed as debit-minus-credit for ASSET/EXPENSE accounts and credit-minus-debit for LIABILITY/EQUITY/REVENUE accounts (`computeBalance()` in `src/modules/accounting/service.ts`). Five default system accounts (Cash, Accounts Receivable, Accounts Payable, Revenue, General Expenses) are created lazily per organization via `ensureDefaultAccounts()`.
+
+Invoices and expenses post journal entries at the points a real bookkeeper would, not at creation time: an invoice posts Debit AR / Credit Revenue only when marked **Sent** (not on creation, while still a DRAFT); a payment posts Debit Cash / Credit AR and flips status to PAID once `amountPaid` reaches the invoice total; an expense posts Debit [category's linked account, or General Expenses] / Credit Cash only once marked **Paid** (after a PENDING → APPROVED gate). A manual journal entry UI exists on the Journal page for adjustments outside the invoice/expense flow, validated for balance (`JournalNotBalancedError`).
+
+Six pages (Chart of Accounts, Invoices, Expenses, Journal, Reports, Settings) plus an overview page and dashboard widget. Six permission keys (`accounting.view`, `.accounts.manage`, `.invoices.manage`, `.expenses.manage`, `.reports.view`, `.settings.manage`) plus a new "Accounting Manager" role. Verified end-to-end with a real invoice send→pay and expense approve→pay sequence, confirming exact ledger balances and P&L figures at every step (see `OPERATOR_HANDOFF.md`'s Phase 10 entry for the exact numbers).
+
+**Status: complete.**
+
+## Phase 11 — Human Resources ✅
+
+New models from scratch: `HrEmployee` (with a self-relation for manager/reports), `HrLeaveType`, `HrLeaveRequest`, `HrPerformanceReview`. Org-scoped service layer at `src/modules/hr/service.ts`: employee CRUD with a lifecycle (`ONBOARDING` → `ACTIVE` ⇄ `ON_LEAVE` → `TERMINATED`, the last two reachable from `ACTIVE` and each other), leave-type CRUD, leave-request CRUD with approve/reject (`daysBetween()` computes an inclusive day count for display — not persisted, computed on read), and performance reviews with a `DRAFT` → `COMPLETED` lifecycle that requires a rating to be set before completion (`ReviewStateError` otherwise).
+
+Deliberately did **not** build a separate "Onboarding" page or a photo/document-checklist workflow — onboarding is handled as an employee status plus an "Activate" action on the Employees page itself, consistent with the project's own precedent (Fleet Settings was left an honest placeholder rather than fabricating a workflow with nothing behind it) for not inventing UI around a concept the schema doesn't actually model yet.
+
+Six pages (Employees, Leave, Reviews, Reports, Settings) plus an overview page and dashboard widget. Six permission keys (`hr.view`, `.employees.manage`, `.leave.manage`, `.reviews.manage`, `.reports.view`, `.settings.manage`) plus a new "HR Manager" role. Verified end-to-end: employee onboarding→active→on-leave→active transitions, manager assignment, a 3-day leave request's day count, approve/reject, and the review draft→completed lifecycle including the rating-required guard correctly rejecting an incomplete review.
+
+**Status: complete.**
+
 ## Later phases (not scoped in detail yet)
 
-Additional modules (Accounting, HR, Payroll, Procurement, Projects, Analytics) per `docs/PRODUCT_VISION.md`, production hardening. **Billing/subscriptions is deliberately scheduled last**, per explicit user direction — no `Subscription` model exists yet, and it should follow every other module rather than precede them.
+Additional modules (Payroll, Procurement, Projects, Analytics) per `docs/PRODUCT_VISION.md`, production hardening. **Billing/subscriptions is deliberately scheduled last**, per explicit user direction — no `Subscription` model exists yet, and it should follow every other module rather than precede them.

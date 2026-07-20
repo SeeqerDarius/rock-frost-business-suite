@@ -16,6 +16,7 @@ import { installmentNavigation } from "@/modules/installment/navigation";
 import { crmNavigation } from "@/modules/crm/navigation";
 import { inventoryNavigation } from "@/modules/inventory/navigation";
 import { accountingNavigation } from "@/modules/accounting/navigation";
+import { hrNavigation } from "@/modules/hr/navigation";
 
 /**
  * The module registry. Every business module the platform can offer is declared
@@ -83,8 +84,9 @@ export const moduleRegistry: ModuleDefinition[] = [
     description: "Employee records, onboarding, leave, and performance management.",
     icon: UsersRound,
     routePrefix: "/app/hr",
-    navigation: [],
-    status: "coming-soon",
+    navigation: hrNavigation,
+    status: "available",
+    permissionPrefix: "hr.",
   },
   {
     key: "payroll",

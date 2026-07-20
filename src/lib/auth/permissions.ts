@@ -44,6 +44,12 @@ export const PERMISSIONS = {
   ACCOUNTING_EXPENSES_MANAGE: "accounting.expenses.manage",
   ACCOUNTING_REPORTS_VIEW: "accounting.reports.view",
   ACCOUNTING_SETTINGS_MANAGE: "accounting.settings.manage",
+  HR_VIEW: "hr.view",
+  HR_EMPLOYEES_MANAGE: "hr.employees.manage",
+  HR_LEAVE_MANAGE: "hr.leave.manage",
+  HR_REVIEWS_MANAGE: "hr.reviews.manage",
+  HR_REPORTS_VIEW: "hr.reports.view",
+  HR_SETTINGS_MANAGE: "hr.settings.manage",
 } as const;
 
 export function hasPermission(tenant: TenantContext, key: string): boolean {
