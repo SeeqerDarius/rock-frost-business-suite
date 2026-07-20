@@ -19,6 +19,7 @@ import { accountingNavigation } from "@/modules/accounting/navigation";
 import { hrNavigation } from "@/modules/hr/navigation";
 import { procurementNavigation } from "@/modules/procurement/navigation";
 import { payrollNavigation } from "@/modules/payroll/navigation";
+import { analyticsNavigation } from "@/modules/analytics/navigation";
 
 /**
  * The module registry. Every business module the platform can offer is declared
@@ -125,8 +126,9 @@ export const moduleRegistry: ModuleDefinition[] = [
     description: "Cross-module reporting and organization-wide business intelligence.",
     icon: LineChart,
     routePrefix: "/app/analytics",
-    navigation: [],
-    status: "coming-soon",
+    navigation: analyticsNavigation,
+    status: "available",
+    permissionPrefix: "analytics.",
   },
 ];
 

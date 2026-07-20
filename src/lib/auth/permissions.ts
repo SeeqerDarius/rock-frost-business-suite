@@ -62,6 +62,12 @@ export const PERMISSIONS = {
   PAYROLL_PAYSLIPS_VIEW: "payroll.payslips.view",
   PAYROLL_REPORTS_VIEW: "payroll.reports.view",
   PAYROLL_SETTINGS_MANAGE: "payroll.settings.manage",
+  ANALYTICS_VIEW: "analytics.view",
+  ANALYTICS_FINANCIAL_VIEW: "analytics.financial.view",
+  ANALYTICS_SALES_VIEW: "analytics.sales.view",
+  ANALYTICS_OPERATIONS_VIEW: "analytics.operations.view",
+  ANALYTICS_PEOPLE_VIEW: "analytics.people.view",
+  ANALYTICS_SETTINGS_MANAGE: "analytics.settings.manage",
 } as const;
 
 export function hasPermission(tenant: TenantContext, key: string): boolean {
