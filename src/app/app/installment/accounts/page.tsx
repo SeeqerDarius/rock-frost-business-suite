@@ -18,6 +18,7 @@ import {
   listStaff,
   resolveInstallmentStaffScope,
   getEffectiveAccountStatus,
+  getInstallmentSettings,
 } from "@/modules/installment/service";
 import { createInstallmentAccount, markAccountDelivered, changeAccountStatus, reactivateInstallmentAccount } from "./actions";
 
@@ -27,6 +28,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   "future-date": "Start date can't be in the future.",
   "no-stock": "That staff member has no stock left for this product.",
   "not-eligible": "This account isn't eligible for reactivation yet.",
+  "below-minimum-deposit": "The initial deposit doesn't meet the required minimum.",
+  "wrong-password": "Incorrect password — reactivation requires re-entering your password to confirm.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
@@ -53,11 +56,12 @@ export default async function InstallmentAccountsPage({
   const isManager = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_STAFF_MANAGE);
   const scope = await resolveInstallmentStaffScope(tenant.organizationId, session?.user?.id ?? "", isManager);
 
-  const [accounts, customers, products, staffList] = await Promise.all([
+  const [accounts, customers, products, staffList, settings] = await Promise.all([
     listAccounts(tenant.organizationId, scope.staffId),
     listCustomers(tenant.organizationId, scope.staffId),
     listProducts(tenant.organizationId),
     listStaff(tenant.organizationId),
+    getInstallmentSettings(tenant.organizationId),
   ]);
 
   const customerItems: Record<string, string> = Object.fromEntries(customers.map((c) => [c.id, `${c.fullName} (${c.customerCode})`]));
@@ -132,6 +136,18 @@ export default async function InstallmentAccountsPage({
               <Label htmlFor="startDate">Start date</Label>
               <Input id="startDate" name="startDate" type="date" defaultValue={now.toISOString().slice(0, 10)} max={now.toISOString().slice(0, 10)} required />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="initialDeposit">Initial deposit (optional)</Label>
+              <Input id="initialDeposit" name="initialDeposit" type="number" step="0.01" />
+              {Number(settings.minimumDeposit) > 0 ? (
+                <p className="text-xs text-muted-foreground">Minimum required: {Number(settings.minimumDeposit).toFixed(2)}.</p>
+              ) : null}
+              {Number(settings.administrationFeePercent) > 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  A {settings.administrationFeePercent.toString()}% administration fee is added to the product price automatically.
+                </p>
+              ) : null}
+            </div>
           </EntityDialog>
         ) : null}
       </div>
@@ -193,12 +209,23 @@ export default async function InstallmentAccountsPage({
                           </form>
                         ) : null}
                         {canReactivate ? (
-                          <form action={reactivateInstallmentAccount}>
+                          <EntityDialog
+                            trigger={
+                              <Button size="sm" variant="ghost">
+                                Reactivate
+                              </Button>
+                            }
+                            title="Confirm reactivation"
+                            description="A service fee will be deducted from the amount already paid. Re-enter your password to confirm."
+                            action={reactivateInstallmentAccount}
+                            submitLabel="Confirm reactivation"
+                          >
                             <input type="hidden" name="id" value={account.id} />
-                            <Button type="submit" size="sm" variant="ghost">
-                              Reactivate
-                            </Button>
-                          </form>
+                            <div className="space-y-2">
+                              <Label htmlFor={`reactivate-password-${account.id}`}>Your password</Label>
+                              <Input id={`reactivate-password-${account.id}`} name="confirmPassword" type="password" required />
+                            </div>
+                          </EntityDialog>
                         ) : null}
                         {canSuspend ? (
                           <form action={changeAccountStatus}>

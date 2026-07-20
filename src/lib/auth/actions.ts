@@ -12,6 +12,22 @@ function clean(value: FormDataEntryValue | null) {
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
+/**
+ * NextAuth v4's credentials provider collapses every authorize() failure
+ * (including a thrown Error) to the fixed string "CredentialsSignin" —
+ * it does not forward a custom message. To show a real "too many attempts"
+ * message, the login page checks lock status here *before* calling
+ * signIn(), rather than trying to smuggle it through NextAuth's error
+ * channel.
+ */
+export async function getAccountLockStatus(email: string): Promise<{ locked: boolean; minutesLeft: number }> {
+  const user = await db.user.findUnique({ where: { email: email.toLowerCase() }, select: { lockedUntil: true } });
+  if (!user?.lockedUntil || user.lockedUntil <= new Date()) {
+    return { locked: false, minutesLeft: 0 };
+  }
+  return { locked: true, minutesLeft: Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000) };
+}
+
 export async function requestPasswordReset(formData: FormData): Promise<void> {
   const email = clean(formData.get("email")).toLowerCase();
 

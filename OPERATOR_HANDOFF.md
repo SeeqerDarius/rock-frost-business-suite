@@ -17,7 +17,7 @@ After making changes:
 
 ## Current phase
 
-**Phase 7 (Installment Management Migration) — complete.** All seven phases through Fleet + Installment are now done. See `docs/DEVELOPMENT_ROADMAP.md` for what comes next (Phase 8+ / later phases, gated pending approval).
+**Post-Phase-7 gap-fixing pass — complete.** All seven original phases (Fleet + Installment) plus a remediation pass are done. See `docs/DEVELOPMENT_ROADMAP.md` for what comes next (Phase 8: CRM, gated pending approval; Billing/Subscriptions is deliberately scheduled last, per explicit user direction).
 
 ## Current architecture (short version — see `docs/ARCHITECTURE.md` for full detail)
 
@@ -25,52 +25,56 @@ After making changes:
 - Each module (`fleet`, `installment`) has its own `layout.tsx` rendering `AppShell` with its own navigation array, guarded on `canAccessModule()` (module enabled for the org + a permission under that module's registered `permissionPrefix`).
 - `src/platform/modules/registry.ts` is the single source of truth for every module's metadata; `src/platform/modules/dashboard-widgets.tsx` maps a module key to a real dashboard summary component — both Fleet's and Installment's are wired up now.
 - shadcn/ui (Base UI primitives) + Tailwind v4 design system — see `docs/DESIGN_SYSTEM.md`.
-- **Both business modules are now fully real.** Fleet Management (Phase 6): Vehicles, Drivers, Owners, Maintenance, Insurance & Roadworthy, Payments, Work & Pay, Reports, honest Settings placeholder. Installment Management (Phase 7): Customers, Products (with a Procurement view), Staff, Customer Accounts, Payments (with a Customer Credits section), Collections, Reports, and a Settings page that's explicit about which fields drive real calculations vs. are reserved for later — both built on Prisma models (`Fleet*`, `HirePurchase*`) that already existed in the schema before this rebuild. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md` and `docs/MODULE_BOUNDARIES.md` for full detail.
-- `prisma/schema.prisma` is untouched — Phase 7, like Phase 6, only wrote/updated *rows*, never the schema itself.
+- **Both business modules are fully real, and several previously-deferred gaps are now closed.** Fleet Management (Phase 6) and Installment Management (Phase 7) are both complete. This pass on top of Phase 7 added: login rate limiting, real commission/administration-fee/minimum-deposit logic, a payroll-day indicator, a credit "apply to another account" flow, and step-up re-authentication for sensitive Installment actions. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md` and `docs/MODULE_BOUNDARIES.md` for full detail.
+- `prisma/schema.prisma` gained its first change since Phase 3's reconnection: `User.failedLoginAttempts`/`User.lockedUntil` (migration `20260720120000_add_login_lockout`), applied via `prisma migrate deploy` — **not** `prisma migrate dev`, which detected a pre-existing drift between the live database's migration history and the local `prisma/migrations/` folder (leftover from before this rebuild) and offered to reset the entire database. That offer was declined; `migrate deploy` applied the new migration cleanly without touching anything else. Anyone continuing this project should use `migrate deploy` (or hand-write the migration SQL and apply it that way) rather than `migrate dev` against this specific database.
 
-## Files changed (Phase 7 — Installment Management Migration)
+## Files changed (post-Phase-7 gap-fixing pass)
 
 **Created:**
-- `src/modules/installment/service.ts` — the org-scoped service layer (largest in the codebase): settings, staff/customer/receipt code generation, product categories/products (with price-floor validation and default staff-inventory assignment), staff CRUD + salary history/payments, staff inventory consumption/restoration, customer CRUD, account creation (atomic inventory-gated), payment recording (allocation, overpayment credits, receipt numbering) and editing (3-hour window, full recalculation), credit resolution, the account lifecycle sweep + effective-status computation + closure refunds + reactivation, the procurement-readiness list, and three report aggregates.
-- `src/modules/installment/dashboard-widget.tsx` — `InstallmentDashboardWidget`, registered in `dashboard-widgets.tsx`.
-- Eight route trees under `src/app/app/installment/`: `products`, `staff`, `customers`, `accounts`, `payments`, `collections`, `reports`, `settings` — each with `page.tsx` and (except collections/reports, read-only) `actions.ts`.
+- `prisma/migrations/20260720120000_add_login_lockout/migration.sql` — adds the two `User` columns above.
+- `src/lib/auth/verify-password.ts` — `verifyCurrentPassword()`, step-up re-authentication helper (bcrypt-compares a re-entered password against the acting user's own hash).
 
-**Rewritten:**
-- `src/app/app/installment/page.tsx` — Installment Overview now shows real counts (customers, active accounts, products, outstanding balance) instead of a static `EmptyState`.
+**Modified:**
+- `src/lib/auth/nextauth.ts` — `authorize()` checks `lockedUntil`, increments `failedLoginAttempts` on a wrong password, locks for 15 minutes after 5 failures, resets both on success.
+- `src/lib/auth/actions.ts` — added `getAccountLockStatus(email)`, a pre-check the login page calls *before* `signIn()` (see the NextAuth gotcha below).
+- `src/app/(auth)/login/page.tsx` — calls the pre-check first; shows "Too many failed attempts" only when it reports locked, otherwise the existing generic invalid-credentials message.
+- `src/modules/installment/service.ts` — `getStaffPerformanceReport` now computes `commissionEarned` (from `commissionEnabled`/`commissionPercentage`) and folds it into `netPosition`; `createAccount` now applies `administrationFeePercent` as a one-time fee added to `targetAmount` and enforces `minimumDeposit` via an optional `initialDeposit` (recorded as a real first payment in the same transaction); `getInstallmentSummary` now returns `nextPayrollDate`/`daysUntilPayroll` from `payrollDay`; added `applyCreditToAccount()` (new — GLV has no reference implementation for this) and `MinimumDepositError`/`CreditNotApplicableError`.
+- `src/app/app/installment/{products,staff,accounts,payments,reports,settings}/page.tsx` and their `actions.ts` — wired the above into the UI; Settings dropped its "reserved for future use" section since every field is now either wired to a calculation or a genuine UI default (`defaultDailyCollection` was the last one, wired as the new-product daily-amount default). Credit refund/void and account reactivation now go through a password-confirmation `EntityDialog` instead of a single click.
 
 ## Summary of what was done
 
-User said "continue" then "get it started" after the Phase 5/6 report — explicit approval for Phase 7.
+User said "fix the gaps, when done get started with the next module, and lets have billing and subscription done last" after the Phase 7 report.
 
-**Before writing any code**, spawned an Explore agent against the reference implementation (`C:\Users\andre\glv-management-system`) to extract its *actual* behavior rather than assume from its schema or settings UI. The critical finding, confirmed by GLV's own operator doc: several of its settings fields (commission, payroll day, administration fee, minimum deposit, `deliveryTimeAfterCompletionDays`-as-a-deadline) are stored and user-editable but **never read by any calculation** — dead configuration, not validated business rules. Some values that looked like real settings (`installmentDurationDays`, `refundDeductionPercent`) turned out to be hardcoded constants in GLV's actual code, with the settings field only used as a form default (or, for the refund rate, not read at all). This distinction shaped every subsequent design decision: only migrate what GLV *actually does*, not what its UI implies it does.
+**Scoped the "gaps" list deliberately rather than attempting literally everything flagged**: fixed the real security gap (login rate limiting — required the session's first schema change since Phase 3) and every Installment feature GLV's own settings fields implied should exist (commission, administration fee, minimum deposit, payroll-day visibility, credit application), plus GLV's step-up re-authentication pattern. Explicitly **not** attempted, and said so rather than silently dropping them: an owner-facing Fleet maintenance-approval portal (would require adding an entirely new authenticated user type — a much bigger initiative than a gap fix), file/photo upload for maintenance requests (needs a storage-provider decision first), fuzzy duplicate-detection on create, hard deletes for financial records, and branch-level access enforcement (still low-value with only one branch in the whole platform).
 
-**Design decisions made deliberately better than GLV, not just copied:** where GLV hardcoded a rate that happened to match a settings field already in this schema (e.g. the 32% refund/reactivation service fee), this build reads the real setting instead of hardcoding — same validated number, genuinely configurable. Procurement threshold (70%) and the payment edit window (3 hours) were already live-read in GLV and are here too. `deliveryTimeAfterCompletionDays` governs the completed→archived transition here (GLV hardcoded that as a separate constant despite having the setting). The `OVERDUE` account status is deliberately never persisted — only computed at read time — resolving an inconsistency in GLV where `OVERDUE` appeared in a stored-status filter list that no write path there ever actually produces.
+**Real bug found and fixed while verifying the rate-limiting feature**: NextAuth v4's credentials provider collapses every `authorize()` outcome — including a thrown `Error` with a custom message — to the fixed string `"CredentialsSignin"` (confirmed by reading `node_modules/next-auth/core/routes/callback.js` directly). The original implementation tried to smuggle a `"locked:15"` message through a thrown Error, which silently never reached the client — every failed attempt, locked or not, showed the same generic "Invalid email or password." Fixed by adding a separate pre-check (`getAccountLockStatus`) the login page calls *before* attempting `signIn()` at all, sidestepping NextAuth's fixed error contract entirely rather than fighting it. Re-verified end-to-end: 5 wrong passwords locks the account, and a **6th attempt using the correct password** is still correctly rejected with "Too many failed attempts. Try again in 15 minutes" — proving the lock check runs before password verification, not just after another failure.
 
-**Deliberately not migrated** (real GLV features, out of scope here as scope-control decisions, not oversights): the step-up re-authentication pattern (re-entering a password for sensitive mutations), fuzzy duplicate-detection on customer/product creation, and hard deletes for payments/accounts (GLV's admin-delete-with-strong-confirmation pattern). **Not migrated because GLV itself never implements it**, despite the schema/settings suggesting otherwise: commission calculation, payroll-day-triggered payroll runs, administration fee, minimum-deposit enforcement, and applying an `OPEN` credit to a future payment (the `APPLIED` status exists but is unreachable — in GLV and here).
+**Commission/administration-fee/minimum-deposit verified with real arithmetic, not just "no error thrown"**: set a 10% administration fee and a 500 minimum deposit via Settings, then created a real account for an existing demo customer — a 3-Seater Sofa Set (base price 3680.00) correctly became a 4048.00 target amount (3680 × 1.10), and a 600 initial deposit correctly left a 3448.00 balance (4048 − 600). A second attempt with only a 100 deposit was correctly rejected before any account was created. Settings were reverted to 0/0 afterward and the test account removed, so the org's real configuration is unchanged from before this pass — the fee/deposit mechanism works, but isn't left "on" for the organization without their own decision to enable it.
 
-**Staff scoping migrated as a real rule**: `resolveInstallmentStaffScope()` restricts a field-staff user (permissions but not `hirepurchase.staff.manage`) to their own assigned customers/accounts/payments/credits; a manager sees everyone's. GLV has this exact rule for its STAFF role.
+**Field-staff scoping verified end-to-end for the first time** (flagged as unverified in the Phase 7 report): created a temporary field-staff test user with the "Hire Purchase Staff" role (not Manager) and a `HirePurchaseStaff` row linked via `userId`, assigned to one isolated test customer. Confirmed they saw *only* that one customer on `/app/installment/customers` (not the four real ones) and were correctly denied `/app/installment/reports` (the role has no `hirepurchase.reports.view`). All test fixtures (user, org membership, staff row, customer) were deleted afterward.
 
-**Verification surfaced pre-existing state worth flagging, not a bug**: the database already contained real Installment demo data (10 customers, 3 products, 7 accounts, 10 payments) — but among the 10 customers, 5 are named "Test Customer Playwright" and 1 "Debug Customer," clearly leftover test/debug artifacts from before this session (the other 4 have realistic Ghanaian names matching Fleet's demo data pattern). These were **not created or touched by this session** and were **left in place** rather than unilaterally deleted, since — unlike the throwaway records this agent creates and cleans up each session — this looked like pre-existing seed data of ambiguous intent. Flagged for the user to decide whether to clean up.
+**Cleaned up the pre-existing test data flagged in the Phase 7 report**: deleted the 5 "Test Customer Playwright" and 1 "Debug Customer" records (and their cascade-deleted accounts/payments), restoring the staff-inventory units their fake accounts had consumed first so the demo org's stock levels stay accurate. The 4 legitimate demo customers were untouched.
 
-**Verification:** full validation suite (lint, `tsc --noEmit`, `prisma validate`, `prisma generate`, `npm run build`) passes clean — 44 routes (up from 36; eight new Installment sub-pages). Playwright installed **temporarily**, logged in as the Hire Purchase Manager (`hirepurchase@demo.com`, also the only real `HirePurchaseStaff` row, "Efua Darko"/`EFU`) and exercised the full lifecycle against real pre-existing data: recorded an overpayment against a real dormant-turned-active account (balance 360.00, paid 500.00) — confirmed the account correctly completed, a `140.00` `PAYMENT_OVERPAYMENT` credit was created, and it now shows a "Mark delivered" action; confirmed Collections' expected-vs-actual math and Reports' aggregate figures (expected receivables, total collected, open credits total of `200.00` — an exact match for the two real open credits summed) all computed correctly; confirmed the Settings page's wired/reserved split renders correctly. This real payment and its resulting credit were **left in place** afterward (a genuine, correctly-computed use of the feature, not test junk) — consistent with how Phase 3's password reset and Phase 6's payment-verify/work-and-pay actions were also left as real feature usage rather than reverted. Removed Playwright surgically via `npm uninstall playwright`, confirmed via `git diff --stat package.json package-lock.json` (no output); stopped this project's own dev-server processes afterward (confirmed by command-line inspection first).
-
-Did **not** end-to-end test the field-staff ("own customers only") scoping path in the browser — no demo account exists with a non-manager Installment role today, only the Manager. The logic was reviewed carefully during design and exercises the same simple query-filter pattern already proven correct elsewhere in the codebase, but this specific path has not been exercised by an actual non-manager session.
+**Verification:** full validation suite (lint, `tsc --noEmit`, `prisma validate`, `prisma migrate status`, `npm run build`) passes clean — still 44 routes (this pass changed logic inside existing routes, not the route tree). Playwright installed **temporarily** for all of the above, then removed surgically via `npm uninstall playwright` (confirmed via `git diff --stat package.json package-lock.json`, no output). Stopped this project's own dev-server processes afterward, confirmed by command-line inspection first.
 
 ## Build result
 
-**Passed.** `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate`/`generate` succeed, `npm run build` succeeds — 44 routes (up from 36).
+**Passed.** `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate` succeeds, `npx prisma migrate status` reports up to date, `npm run build` succeeds — 44 routes (unchanged from Phase 7).
 
 ## Known issues / deliberate gaps
 
-- **Pre-existing test-looking customer records** ("Test Customer Playwright" ×5, "Debug Customer" ×1, codes `CUST/EFU/26/005` through `010`) — predate this session, not cleaned up; flagged for the user to decide.
-- **No commission, payroll-day, administration-fee, or minimum-deposit logic** — GLV itself never implements these despite having the settings fields; this build is upfront about the same gap on `/app/installment/settings` rather than inventing untested rules.
-- **No credit-application feature** (`APPLIED` status unreachable) — GLV has no reference implementation for this either.
-- **No step-up re-authentication for sensitive mutations, no fuzzy duplicate detection on create, no hard deletes** for payments/accounts/customers — all real GLV features, deferred here.
-- **Field-staff "own customers only" scoping is unverified in the browser** — no non-manager Installment demo account exists yet.
-- **No branch-level access enforcement** — unchanged from Phase 4/6.
-- **No rate limiting, no public self-registration** — carried forward unchanged.
+- **No owner-facing maintenance approval portal** (Fleet) — would need a whole new authenticated user type; out of scope for a gap-fixing pass.
+- **No file/photo upload for maintenance requests** (Fleet) — needs a storage-provider decision first.
+- **No fuzzy duplicate-detection on customer/product creation, no hard deletes** for payments/accounts/customers — real GLV features, deliberately deferred.
+- **No branch-level access enforcement** — still low-value with one branch platform-wide.
+- **No public self-registration** — deliberate for an invite-only B2B platform.
 - **`RESEND_API_KEY` is unset** — emails still log via `console.warn` instead of delivering.
-- **Organization switcher is real but functionally inert today** — unchanged, every demo user belongs to exactly one organization.
+- **Organization switcher is real but functionally inert today** — every demo user belongs to exactly one organization.
+- **Administration fee and minimum deposit are set to 0** for the demo organization (reverted after testing) — an operator who wants these live needs to set them on `/app/installment/settings` themselves.
+
+## Next recommended step
+
+Start Phase 8 (CRM) — leads, contacts, deals, customer communication history — per the user's explicit direction, with Billing/Subscriptions deliberately scheduled after every other module.
 
 ## Next recommended step
 
@@ -80,9 +84,21 @@ All seven originally-scoped phases are now complete. Get explicit direction on w
 
 ## Handoff log
 
-### 2026-07-20 — Claude Code — Phase 7 (Installment Management Migration)
+### 2026-07-20 — Claude Code — Post-Phase-7 gap-fixing pass
 
 See "Files changed," "Summary," "Build result," "Known issues," and "Next recommended step" above — kept in the current-state sections rather than duplicated here, since this is the most recent entry.
+
+### 2026-07-20 — Claude Code — Phase 7 (Installment Management Migration)
+
+**Files changed:** Created `src/modules/installment/service.ts` (the org-scoped service layer — settings, staff/customer/receipt code generation, products, staff, customers, accounts, payments, credits, the lifecycle sweep, procurement, and reports), `src/modules/installment/dashboard-widget.tsx`, and eight route trees under `src/app/app/installment/` (`products`, `staff`, `customers`, `accounts`, `payments`, `collections`, `reports`, `settings`). Rewrote `src/app/app/installment/page.tsx`.
+
+**Summary:** Spawned an Explore agent against the GLV reference implementation (`C:\Users\andre\glv-management-system`) to extract its *actual* behavior before writing any code — the key finding, confirmed by GLV's own operator doc, was that several of its settings fields (commission, payroll day, administration fee, minimum deposit) are stored and editable but never read by any calculation. Migrated only what GLV actually validates: installment scheduling, payment allocation with overpayment credits, a 3-hour payment edit window with full recalculation, code generation, atomic inventory consumption, the lifecycle sweep, closure refunds, reactivation, procurement readiness, and the report aggregates. Deliberately left commission/admin-fee/minimum-deposit/credit-application/step-up-auth unimplemented, matching GLV's own real (non-)behavior — all later revisited and built in the gap-fixing pass above. Discovered real pre-existing Installment demo data with no UI ever built to show it, including some clearly-test-artifact customer records ("Test Customer Playwright" ×5, "Debug Customer" ×1) flagged for the user rather than deleted unilaterally — later cleaned up in the gap-fixing pass once the user confirmed via "fix the gaps."
+
+**Build result:** Passed. Lint/tsc/prisma/build all clean — 44 routes (up from 36).
+
+**Known issues:** Commission/admin-fee/minimum-deposit/credit-apply/step-up-auth all unimplemented (matching GLV), field-staff scoping unverified in browser, pre-existing test customer records not yet cleaned up, no rate limiting. All resolved in the gap-fixing pass entry above.
+
+**Next recommended step (at the time):** Get explicit approval before continuing — which the user then gave ("fix the gaps, when done get started with the next module, and lets have billing and subscription done last"), leading directly into the gap-fixing pass above.
 
 ### 2026-07-20 — Claude Code — Phase 5 (Module Framework) + Phase 6 (Fleet Management)
 

@@ -34,9 +34,9 @@ export default async function InstallmentSettingsPage() {
           <CardHeader>
             <div className="flex items-center gap-2">
               <SettingsIcon className="size-5 text-muted-foreground" />
-              <CardTitle>Used in calculations</CardTitle>
+              <CardTitle>Installment configuration</CardTitle>
             </div>
-            <CardDescription>These fields actively drive real business logic — changing them changes behavior.</CardDescription>
+            <CardDescription>Every field here actively drives real business logic — changing them changes behavior.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -89,32 +89,30 @@ export default async function InstallmentSettingsPage() {
               <Input id="staffCodeLength" name="staffCodeLength" type="number" defaultValue={settings.staffCodeLength} />
               <p className="text-xs text-muted-foreground">Letters taken from a new staff member&apos;s first name, e.g. 3 → &quot;EFU&quot;.</p>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Reserved for future use</CardTitle>
-            <CardDescription>
-              Stored and editable, but not yet read by any calculation — same honest state as the reference implementation these were migrated from. Set them now if you want values ready once the corresponding feature is built.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="defaultDailyCollection">Default daily amount</Label>
+              <Input id="defaultDailyCollection" name="defaultDailyCollection" type="number" step="0.01" defaultValue={settings.defaultDailyCollection.toString()} />
+              <p className="text-xs text-muted-foreground">Pre-fills the daily amount field when creating a new product.</p>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="minimumDeposit">Minimum deposit</Label>
               <Input id="minimumDeposit" name="minimumDeposit" type="number" step="0.01" defaultValue={settings.minimumDeposit.toString()} />
+              <p className="text-xs text-muted-foreground">If set above zero, opening an account requires an initial deposit at least this much.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="administrationFeePercent">Administration fee (%)</Label>
               <Input id="administrationFeePercent" name="administrationFeePercent" type="number" step="0.01" defaultValue={settings.administrationFeePercent.toString()} />
+              <p className="text-xs text-muted-foreground">Added on top of the product price as a one-time origination fee when an account is opened.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="commissionPercentage">Commission (%)</Label>
               <Input id="commissionPercentage" name="commissionPercentage" type="number" step="0.01" defaultValue={settings.commissionPercentage.toString()} />
+              <p className="text-xs text-muted-foreground">Share of a staff member&apos;s weekly collections paid as commission, shown in Reports (only if enabled below).</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="payrollDay">Payroll day of month</Label>
               <Input id="payrollDay" name="payrollDay" type="number" min={1} max={28} defaultValue={settings.payrollDay} />
+              <p className="text-xs text-muted-foreground">Shown in Reports as the next payroll due date — there is no automated payroll run.</p>
             </div>
             <label className="flex items-center gap-2 text-sm">
               <Checkbox name="commissionEnabled" defaultChecked={settings.commissionEnabled} />

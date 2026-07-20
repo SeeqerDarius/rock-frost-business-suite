@@ -33,9 +33,10 @@ interface ProductFieldsProps {
   };
   categoryItems: Record<string, string>;
   defaultDuration: number;
+  defaultDailyAmount: string;
 }
 
-function ProductFields({ product, categoryItems, defaultDuration }: ProductFieldsProps) {
+function ProductFields({ product, categoryItems, defaultDuration, defaultDailyAmount }: ProductFieldsProps) {
   const idSuffix = product ? "-edit" : "";
   return (
     <>
@@ -71,7 +72,7 @@ function ProductFields({ product, categoryItems, defaultDuration }: ProductField
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor={`dailyAmount${idSuffix}`}>Daily amount</Label>
-          <Input id={`dailyAmount${idSuffix}`} name="dailyAmount" type="number" step="0.01" defaultValue={product?.dailyAmount} required />
+          <Input id={`dailyAmount${idSuffix}`} name="dailyAmount" type="number" step="0.01" defaultValue={product?.dailyAmount ?? defaultDailyAmount} required />
         </div>
         <div className="space-y-2">
           <Label htmlFor={`duration${idSuffix}`}>Duration (days)</Label>
@@ -124,7 +125,7 @@ export default async function InstallmentProductsPage({
             title="New product"
             action={upsertProduct}
           >
-            <ProductFields categoryItems={categoryItems} defaultDuration={settings.installmentDurationDays} />
+            <ProductFields categoryItems={categoryItems} defaultDuration={settings.installmentDurationDays} defaultDailyAmount={settings.defaultDailyCollection.toString()} />
           </EntityDialog>
         ) : null}
       </div>
@@ -240,6 +241,7 @@ export default async function InstallmentProductsPage({
                         }}
                         categoryItems={categoryItems}
                         defaultDuration={settings.installmentDurationDays}
+                        defaultDailyAmount={settings.defaultDailyCollection.toString()}
                       />
                     </EntityDialog>
                   </TableCell>

@@ -20,7 +20,7 @@ import {
   getInstallmentSettings,
   canEditPayment,
 } from "@/modules/installment/service";
-import { createPayment, editPayment, resolveCredit } from "./actions";
+import { createPayment, editPayment, resolveCredit, applyCredit } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission for this action.",
@@ -29,6 +29,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   blocked: "This account can't accept new payments in its current state.",
   "edit-window": "This payment can only be edited within the settings edit window of when it was recorded.",
   "credit-locked": "This payment has a resolved or partially used credit and can't have its amount edited.",
+  "credit-not-applicable": "That credit can't be applied to the selected account.",
+  "wrong-password": "Incorrect password — this action requires re-entering your password to confirm.",
 };
 
 const CREDIT_BADGE: Record<string, "default" | "outline" | "destructive"> = {
@@ -207,39 +209,98 @@ export default async function InstallmentPaymentsPage({
             <p className="text-sm text-muted-foreground">No credits recorded.</p>
           ) : (
             <div className="space-y-2">
-              {credits.map((credit) => (
-                <div key={credit.id} className="flex items-center justify-between rounded-lg border p-3">
-                  <div>
-                    <p className="text-sm font-medium">
-                      {credit.customer.fullName} — {Number(credit.remainingAmount).toFixed(2)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {credit.source.replaceAll("_", " ")} · {credit.notes}
-                    </p>
+              {credits.map((credit) => {
+                const applicableAccounts = accounts.filter((a) => a.customerId === credit.customerId && Number(a.balance) > 0);
+                const applicableAccountItems: Record<string, string> = Object.fromEntries(
+                  applicableAccounts.map((a) => [a.id, `${a.product.name} (bal. ${Number(a.balance).toFixed(2)})`])
+                );
+
+                return (
+                  <div key={credit.id} className="flex items-center justify-between rounded-lg border p-3">
+                    <div>
+                      <p className="text-sm font-medium">
+                        {credit.customer.fullName} — {Number(credit.remainingAmount).toFixed(2)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {credit.source.replaceAll("_", " ")} · {credit.notes}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={CREDIT_BADGE[credit.status]}>{credit.status}</Badge>
+                      {canManageCredits && credit.status === "OPEN" ? (
+                        <div className="flex gap-1">
+                          {applicableAccounts.length > 0 ? (
+                            <EntityDialog
+                              trigger={
+                                <Button size="sm" variant="ghost">
+                                  Apply
+                                </Button>
+                              }
+                              title="Apply credit to an account"
+                              description={`Apply up to ${Number(credit.remainingAmount).toFixed(2)} toward another account for this customer.`}
+                              action={applyCredit}
+                              submitLabel="Apply"
+                            >
+                              <input type="hidden" name="creditId" value={credit.id} />
+                              <div className="space-y-2">
+                                <Label htmlFor={`targetAccountId-${credit.id}`}>Account</Label>
+                                <Select name="targetAccountId" items={applicableAccountItems}>
+                                  <SelectTrigger id={`targetAccountId-${credit.id}`} className="w-full">
+                                    <SelectValue placeholder="Select an account" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {Object.entries(applicableAccountItems).map(([value, label]) => (
+                                      <SelectItem key={value} value={value}>
+                                        {label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </EntityDialog>
+                          ) : null}
+                          <EntityDialog
+                            trigger={
+                              <Button size="sm" variant="ghost">
+                                Mark refunded
+                              </Button>
+                            }
+                            title="Confirm refund"
+                            description="Re-enter your password to confirm this pays the customer out in cash."
+                            action={resolveCredit}
+                            submitLabel="Confirm refund"
+                          >
+                            <input type="hidden" name="id" value={credit.id} />
+                            <input type="hidden" name="decision" value="refund" />
+                            <div className="space-y-2">
+                              <Label htmlFor={`refund-password-${credit.id}`}>Your password</Label>
+                              <Input id={`refund-password-${credit.id}`} name="confirmPassword" type="password" required />
+                            </div>
+                          </EntityDialog>
+                          <EntityDialog
+                            trigger={
+                              <Button size="sm" variant="ghost">
+                                Void
+                              </Button>
+                            }
+                            title="Confirm void"
+                            description="Re-enter your password to confirm this credit should be discarded."
+                            action={resolveCredit}
+                            submitLabel="Confirm void"
+                          >
+                            <input type="hidden" name="id" value={credit.id} />
+                            <input type="hidden" name="decision" value="void" />
+                            <div className="space-y-2">
+                              <Label htmlFor={`void-password-${credit.id}`}>Your password</Label>
+                              <Input id={`void-password-${credit.id}`} name="confirmPassword" type="password" required />
+                            </div>
+                          </EntityDialog>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={CREDIT_BADGE[credit.status]}>{credit.status}</Badge>
-                    {canManageCredits && credit.status === "OPEN" ? (
-                      <div className="flex gap-1">
-                        <form action={resolveCredit}>
-                          <input type="hidden" name="id" value={credit.id} />
-                          <input type="hidden" name="decision" value="refund" />
-                          <Button type="submit" size="sm" variant="ghost">
-                            Mark refunded
-                          </Button>
-                        </form>
-                        <form action={resolveCredit}>
-                          <input type="hidden" name="id" value={credit.id} />
-                          <input type="hidden" name="decision" value="void" />
-                          <Button type="submit" size="sm" variant="ghost">
-                            Void
-                          </Button>
-                        </form>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>

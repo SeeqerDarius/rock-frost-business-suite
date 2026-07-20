@@ -4,14 +4,17 @@ import { redirect } from "next/navigation";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
+import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import {
   recordPayment,
   updatePayment,
   markCreditRefunded,
   voidCredit,
+  applyCreditToAccount,
   PaymentBlockedError,
   PaymentEditWindowError,
   PaymentCreditLockedError,
+  CreditNotApplicableError,
 } from "@/modules/installment/service";
 
 function clean(value: FormDataEntryValue | null) {
@@ -103,15 +106,44 @@ export async function resolveCredit(formData: FormData): Promise<void> {
 
   const id = clean(formData.get("id"));
   const decision = clean(formData.get("decision"));
+  const confirmPassword = clean(formData.get("confirmPassword"));
   if (!id) return;
 
   const session = await getServerAuthSession();
-  const resolvedBy = session?.user?.name ?? session?.user?.email ?? "unknown";
+  if (!session?.user?.id || !confirmPassword || !(await verifyCurrentPassword(session.user.id, confirmPassword))) {
+    redirect("/app/installment/payments?error=wrong-password");
+  }
+
+  const resolvedBy = session.user.name ?? session.user.email ?? "unknown";
 
   if (decision === "void") {
     await voidCredit(tenant.organizationId, id, resolvedBy);
   } else {
     await markCreditRefunded(tenant.organizationId, id, resolvedBy);
+  }
+
+  redirect("/app/installment/payments?saved=1");
+}
+
+export async function applyCredit(formData: FormData): Promise<void> {
+  const tenant = await requireCurrentTenant();
+  if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_CREDITS_MANAGE)) {
+    redirect("/app/installment/payments?error=forbidden");
+  }
+
+  const creditId = clean(formData.get("creditId"));
+  const targetAccountId = clean(formData.get("targetAccountId"));
+  if (!creditId || !targetAccountId) {
+    redirect("/app/installment/payments?error=missing-fields");
+  }
+
+  try {
+    await applyCreditToAccount(tenant.organizationId, creditId, targetAccountId);
+  } catch (error) {
+    if (error instanceof CreditNotApplicableError) {
+      redirect("/app/installment/payments?error=credit-not-applicable");
+    }
+    throw error;
   }
 
   redirect("/app/installment/payments?saved=1");

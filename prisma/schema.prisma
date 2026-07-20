@@ -152,19 +152,21 @@ enum HirePurchaseCreditSource {
 }
 
 model User {
-  id            String     @id @default(cuid())
-  name          String?
-  firstName     String?
-  lastName      String?
-  email         String     @unique
-  emailVerified DateTime?
-  image         String?
-  passwordHash  String?
-  phone         String?
-  status        UserStatus @default(INVITED)
-  lastLoginAt   DateTime?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  id                  String     @id @default(cuid())
+  name                String?
+  firstName           String?
+  lastName            String?
+  email               String     @unique
+  emailVerified       DateTime?
+  image               String?
+  passwordHash        String?
+  phone               String?
+  status              UserStatus @default(INVITED)
+  lastLoginAt         DateTime?
+  failedLoginAttempts Int        @default(0)
+  lockedUntil         DateTime?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
 
   accounts                  Account[]
   sessions                  Session[]

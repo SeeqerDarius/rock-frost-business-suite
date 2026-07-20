@@ -11,6 +11,7 @@
 - `getServerAuthSession()` (`src/lib/auth/session.ts`) wraps `getServerSession(authOptions)` for server components/actions.
 - `src/components/session-provider.tsx` wraps the app in NextAuth's client `SessionProvider` (mounted in `src/app/layout.tsx`).
 - `src/app/(auth)/login/page.tsx` is a real client-side form (`signIn("credentials", ...)`, `redirect: false`, manual redirect on success, visible error on failure).
+- **Login rate limiting**: `User.failedLoginAttempts`/`User.lockedUntil` (migration `20260720120000_add_login_lockout`). Five wrong passwords locks the account for 15 minutes; a correct password resets the counter. **Important NextAuth v4 gotcha, confirmed in `node_modules/next-auth/core/routes/callback.js`**: the credentials provider collapses every `authorize()` failure — including a thrown `Error` — to the fixed string `"CredentialsSignin"`; a custom message thrown from `authorize()` never reaches the client. The lock message is therefore surfaced via a separate pre-check, `getAccountLockStatus(email)` in `src/lib/auth/actions.ts`, called by the login page *before* invoking `signIn()` — not by trying to smuggle a message through NextAuth's error channel.
 - `src/components/navigation/user-menu.tsx` uses `useSession()` for real name/email/initials and `signOut({ callbackUrl: "/login" })`.
 
 **Password reset and invitations:**
@@ -39,6 +40,7 @@ Authentication determines who the user is. Authorization determines what they ca
 - **Branch-level access** — still not enforced anywhere; Fleet records carry an optional `branchId` (populated on create where relevant) but nothing gates on it yet. Revisit once branch-scoped workflows actually matter (multiple active branches).
 - **Action-level permissions within a module** — real for both Fleet (Phase 6) and Installment (Phase 7). Every page's create/edit controls are gated on that specific area's `.manage` permission (`fleet.vehicles.manage`, `hirepurchase.products.manage`, etc.), and each module's Reports page is gated separately on its own `.reports.view` permission — deliberately distinct from module access, since e.g. Fleet's Driver/Mechanic can enter Fleet but don't hold the reports permission. Viewing a list itself only requires reaching the module (`canAccessModule`); only mutations require the specific `.manage` permission.
 - **Data-level scoping within a module (Installment only, so far)** — `resolveInstallmentStaffScope()` restricts a field-staff user (holding `hirepurchase.customers.manage` etc. but not `hirepurchase.staff.manage`) to only their own assigned customers/accounts/payments/credits; a manager (`hirepurchase.staff.manage`) sees everyone's. This is a real data-scoping rule migrated from GLV, one level narrower than the module-wide permission checks above — worth applying to Fleet too if a similarly staff-owned data model emerges there.
+- **Step-up re-authentication** — `verifyCurrentPassword()` (`src/lib/auth/verify-password.ts`) requires the acting user to re-enter their own current password, checked via `bcrypt.compare` against their own hash, for a short list of irreversible/financial Installment actions: marking a credit refunded or void, and reactivating a dormant/probation/closed account (which deducts a service fee). This is separate from session auth and from the permission check that already gates who can reach the action — migrated from GLV's admin-password-confirmation pattern, generalized to any signed-in user since the permission model already controls who can attempt these actions.
 
 **Enforcement surface — all three real, and now demonstrated at the page level too:**
 1. **Permission-aware navigation** — `getWorkspaceNavigation(tenant)` filters Administration/Organization by `org.settings.manage`. The module launcher and `/app/modules` render three real states (open / not enabled for your org / coming soon) driven by `tenant.enabledModuleKeys`, not a hardcoded "available" flag.
@@ -47,9 +49,9 @@ Authentication determines who the user is. Authorization determines what they ca
 
 ## Known gaps carried forward
 
-- No rate limiting or account lockout on failed logins.
-- No public self-registration/signup flow (the Phase 4 invite UI covers admin-initiated onboarding, not self-signup).
+- No public self-registration/signup flow (the Phase 4 invite UI covers admin-initiated onboarding, not self-signup) — a deliberate choice for an invite-only B2B platform, not an oversight.
 - No email verification UI (moot until a registration flow exists).
 - No branch-level access enforcement yet (see above).
-- No owner-facing approval portal — `FleetOwner` has no login/session concept in this schema, so `FleetMaintenanceRequest.ownerApprovalStatus` is tracked but never set by anyone; only the fleet-manager-side `approvalStatus` is wired to the UI.
+- No owner-facing approval portal — `FleetOwner` has no login/session concept in this schema, so `FleetMaintenanceRequest.ownerApprovalStatus` is tracked but never set by anyone; only the fleet-manager-side `approvalStatus` is wired to the UI. Building this would mean adding an entirely new authenticated user type, not a small fix.
+- No fuzzy duplicate-detection on customer/product creation, no hard deletes for financial records (payments/accounts/customers) — both real GLV features, deliberately deferred as scope-control decisions.
 - `RESEND_API_KEY` is unset in this environment — reset/invite/contact emails log via `console.warn` instead of delivering. Set the key to enable real delivery; no code changes required.

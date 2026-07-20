@@ -26,6 +26,7 @@ export async function saveInstallmentSettings(formData: FormData): Promise<void>
     staffCodeLength: Number.parseInt(clean(formData.get("staffCodeLength")), 10),
     defaultStaffInventoryQuantity: Number.parseInt(clean(formData.get("defaultStaffInventoryQuantity")), 10),
     defaultMonthlySalary: clean(formData.get("defaultMonthlySalary")),
+    defaultDailyCollection: clean(formData.get("defaultDailyCollection")),
     minimumDeposit: clean(formData.get("minimumDeposit")),
     administrationFeePercent: clean(formData.get("administrationFeePercent")),
     commissionEnabled: formData.get("commissionEnabled") === "on",

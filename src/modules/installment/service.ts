@@ -393,21 +393,41 @@ export function listAccounts(organizationId: string, staffId: string | null) {
   });
 }
 
+export class MinimumDepositError extends Error {}
+
+/**
+ * `administrationFeePercent` and `minimumDeposit` are real, enforced rules
+ * here — unlike GLV, which stores both but never reads either. The admin
+ * fee is added on top of the product price as a one-time origination fee;
+ * the minimum deposit (if set) must be met by an optional initial payment
+ * collected at account opening.
+ */
 export async function createAccount(
   organizationId: string,
-  data: { customerId: string; productId: string; inventoryStaffId: string; startDate: Date }
+  data: { customerId: string; productId: string; inventoryStaffId: string; startDate: Date; initialDeposit?: string }
 ) {
   const product = await db.hirePurchaseProduct.findFirst({ where: { id: data.productId, organizationId } });
   if (!product) throw new Error("Product not found.");
 
-  const targetAmount = product.price;
+  const settings = await getInstallmentSettings(organizationId);
+  const minimumDeposit = Number(settings.minimumDeposit);
+  const depositAmount = data.initialDeposit ? Number(data.initialDeposit) : 0;
+
+  if (minimumDeposit > 0 && depositAmount < minimumDeposit) {
+    throw new MinimumDepositError(`A minimum deposit of ${minimumDeposit.toFixed(2)} is required to open this account.`);
+  }
+
+  const adminFeeRate = Number(settings.administrationFeePercent) / 100;
+  const adminFee = Number(product.price) * adminFeeRate;
+  const targetAmount = (Number(product.price) + adminFee).toFixed(2);
   const dailyAmount = product.dailyAmount;
   const expectedEndDate = addDays(data.startDate, product.duration);
+  const receiptNo = depositAmount > 0 ? await generateReceiptNo(organizationId, settings.receiptPrefix) : null;
 
   return db.$transaction(async (tx) => {
     await consumeStaffInventory(tx, data.inventoryStaffId, data.productId);
 
-    return tx.hirePurchaseAccount.create({
+    const account = await tx.hirePurchaseAccount.create({
       data: {
         organizationId,
         customerId: data.customerId,
@@ -423,6 +443,31 @@ export async function createAccount(
         deliveryStatus: "PENDING",
       },
     });
+
+    if (depositAmount > 0 && receiptNo) {
+      const nextBalance = Math.max(Number(targetAmount) - depositAmount, 0);
+      await tx.hirePurchasePayment.create({
+        data: {
+          organizationId,
+          accountId: account.id,
+          receiptNo,
+          amount: depositAmount.toFixed(2),
+          paymentDate: data.startDate,
+          method: "Initial deposit",
+          notes: "Deposit collected at account opening",
+        },
+      });
+      await tx.hirePurchaseAccount.update({
+        where: { id: account.id },
+        data: {
+          totalPaid: depositAmount.toFixed(2),
+          balance: nextBalance.toFixed(2),
+          status: nextBalance <= 0 ? "COMPLETED" : "ACTIVE",
+        },
+      });
+    }
+
+    return account;
   });
 }
 
@@ -665,6 +710,69 @@ export function voidCredit(organizationId: string, id: string, resolvedBy: strin
   });
 }
 
+export class CreditNotApplicableError extends Error {}
+
+/**
+ * Applies an OPEN credit toward another account belonging to the same
+ * customer, reducing that account's balance as if it were a payment. GLV
+ * has no reference implementation for this — the `APPLIED` status exists in
+ * its schema but no code path there ever sets it. Designed fresh here:
+ * partial application is allowed (a credit larger than the target
+ * account's balance only applies up to that balance, leaving the rest
+ * OPEN), recorded as a real payment row so the account's totalPaid stays
+ * consistent with "sum of its payments."
+ */
+export async function applyCreditToAccount(organizationId: string, creditId: string, targetAccountId: string) {
+  const credit = await db.hirePurchaseCredit.findFirst({ where: { id: creditId, organizationId, status: "OPEN" } });
+  if (!credit) throw new CreditNotApplicableError("This credit is no longer open.");
+
+  const targetAccount = await db.hirePurchaseAccount.findFirst({
+    where: { id: targetAccountId, organizationId, customerId: credit.customerId },
+  });
+  if (!targetAccount) throw new CreditNotApplicableError("The target account must belong to the same customer as the credit.");
+  if (Number(targetAccount.balance) <= 0) {
+    throw new CreditNotApplicableError("That account has no outstanding balance to apply a credit to.");
+  }
+
+  const applyAmount = Math.min(Number(credit.remainingAmount), Number(targetAccount.balance));
+  const remainingCredit = Number(credit.remainingAmount) - applyAmount;
+  const nextBalance = Number(targetAccount.balance) - applyAmount;
+  const nextTotalPaid = Number(targetAccount.totalPaid) + applyAmount;
+  const nextStatus: HirePurchaseAccountStatus =
+    nextBalance <= 0
+      ? "COMPLETED"
+      : targetAccount.status === "DORMANT" || targetAccount.status === "PROBATION"
+        ? "ACTIVE"
+        : targetAccount.status;
+
+  const settings = await getInstallmentSettings(organizationId);
+  const receiptNo = await generateReceiptNo(organizationId, settings.receiptPrefix);
+
+  return db.$transaction(async (tx) => {
+    await tx.hirePurchasePayment.create({
+      data: {
+        organizationId,
+        accountId: targetAccountId,
+        receiptNo,
+        amount: applyAmount.toFixed(2),
+        paymentDate: new Date(),
+        method: "Credit applied",
+        notes: `Applied from credit ${credit.id} (${credit.source})`,
+      },
+    });
+
+    await tx.hirePurchaseAccount.update({
+      where: { id: targetAccountId },
+      data: { totalPaid: nextTotalPaid.toFixed(2), balance: nextBalance.toFixed(2), status: nextStatus },
+    });
+
+    await tx.hirePurchaseCredit.update({
+      where: { id: creditId },
+      data: { remainingAmount: remainingCredit.toFixed(2), status: remainingCredit <= 0 ? "APPLIED" : "OPEN" },
+    });
+  });
+}
+
 // --- Lifecycle sweep ---
 
 const DORMANT_AFTER_DAYS = 21;
@@ -675,6 +783,15 @@ function monthsAgo(date: Date, months: number) {
   const result = new Date(date);
   result.setMonth(result.getMonth() - months);
   return result;
+}
+
+/** Next occurrence of `payrollDay` (day-of-month) on/after `from` — informational only, no automated payroll run exists. */
+function getNextPayrollDate(payrollDay: number, from: Date): Date {
+  const candidate = new Date(from.getFullYear(), from.getMonth(), payrollDay);
+  if (candidate < from) {
+    candidate.setMonth(candidate.getMonth() + 1);
+  }
+  return candidate;
 }
 
 async function getLastActivityDate(organizationId: string, account: { id: string; startDate: Date }) {
@@ -878,6 +995,10 @@ export async function getInstallmentSummary(organizationId: string) {
   const openCreditsTotal = openCredits.reduce((sum, c) => sum + Number(c.remainingAmount), 0);
   const openClosureRefunds = openCredits.filter((c) => c.source === "ACCOUNT_CLOSURE_REFUND").length;
 
+  const settings = await getInstallmentSettings(organizationId);
+  const nextPayrollDate = getNextPayrollDate(settings.payrollDay, now);
+  const daysUntilPayroll = Math.ceil((nextPayrollDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
   return {
     expectedReceivables,
     totalCollected,
@@ -889,6 +1010,8 @@ export async function getInstallmentSummary(organizationId: string) {
     outstandingSalaries,
     netProfitSoFar,
     projectedNetProfit,
+    nextPayrollDate,
+    daysUntilPayroll,
     openCreditsCount: openCredits.length,
     openCreditsTotal,
     openClosureRefunds,
@@ -907,6 +1030,9 @@ export async function getStaffPerformanceReport(organizationId: string) {
   weekStart.setHours(0, 0, 0, 0);
   const weekEnd = addDays(weekStart, 7);
 
+  const settings = await getInstallmentSettings(organizationId);
+  const commissionRate = settings.commissionEnabled ? Number(settings.commissionPercentage) / 100 : 0;
+
   const staffList = await db.hirePurchaseStaff.findMany({ where: { organizationId } });
   const rows = [];
 
@@ -920,6 +1046,7 @@ export async function getStaffPerformanceReport(organizationId: string) {
       where: { organizationId, accountId: { in: accountIds }, paymentDate: { gte: weekStart, lt: weekEnd } },
       _sum: { amount: true },
     });
+    const weeklyCollection = Number(weeklyCollectionAgg._sum.amount ?? 0);
 
     const contractValue = accounts.reduce((sum, a) => sum + Number(a.targetAmount), 0);
     const outstandingBalance = accounts.reduce((sum, a) => sum + Number(a.balance), 0);
@@ -931,6 +1058,7 @@ export async function getStaffPerformanceReport(organizationId: string) {
     });
     const salaryPaid = Number(salaryPaidAgg._sum.amount ?? 0);
     const monthlySalary = await getEffectiveMonthlySalary(staff.id, organizationId, now);
+    const commissionEarned = weeklyCollection * commissionRate;
 
     rows.push({
       staffId: staff.id,
@@ -938,14 +1066,15 @@ export async function getStaffPerformanceReport(organizationId: string) {
       staffCode: staff.code,
       customerCount: customerIds.length,
       accountCount: accounts.length,
-      weeklyCollection: Number(weeklyCollectionAgg._sum.amount ?? 0),
+      weeklyCollection,
       contractValue,
       outstandingBalance,
       totalCollected,
       salaryPaid,
       monthlySalary,
       salaryBalance: Math.max(monthlySalary - salaryPaid, 0),
-      netPosition: totalCollected - salaryPaid,
+      commissionEarned,
+      netPosition: totalCollected - salaryPaid - commissionEarned,
     });
   }
 

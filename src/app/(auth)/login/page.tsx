@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { getAccountLockStatus } from "@/lib/auth/actions";
 
 const NOTICE_MESSAGES: Record<string, string> = {
   reset: "Your password has been reset. Sign in with your new password.",
@@ -54,8 +55,17 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     const formData = new FormData(event.currentTarget);
+    const email = String(formData.get("email") ?? "");
+
+    const lockStatus = await getAccountLockStatus(email);
+    if (lockStatus.locked) {
+      setError(`Too many failed attempts. Try again in ${lockStatus.minutesLeft} minute${lockStatus.minutesLeft === 1 ? "" : "s"}.`);
+      setIsSubmitting(false);
+      return;
+    }
+
     const result = await signIn("credentials", {
-      email: formData.get("email"),
+      email,
       password: formData.get("password"),
       callbackUrl: "/app/dashboard",
       redirect: false,

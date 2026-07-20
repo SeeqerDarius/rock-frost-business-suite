@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
+import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import {
   createAccount,
   updateAccountDeliveryStatus,
@@ -11,6 +12,7 @@ import {
   reactivateAccount,
   InsufficientInventoryError,
   ReactivationNotEligibleError,
+  MinimumDepositError,
 } from "@/modules/installment/service";
 import type { HirePurchaseAccountStatus } from "@prisma/client";
 
@@ -39,11 +41,16 @@ export async function createInstallmentAccount(formData: FormData): Promise<void
     redirect("/app/installment/accounts?error=future-date");
   }
 
+  const initialDeposit = clean(formData.get("initialDeposit")) ?? undefined;
+
   try {
-    await createAccount(tenant.organizationId, { customerId, productId, inventoryStaffId, startDate });
+    await createAccount(tenant.organizationId, { customerId, productId, inventoryStaffId, startDate, initialDeposit });
   } catch (error) {
     if (error instanceof InsufficientInventoryError) {
       redirect("/app/installment/accounts?error=no-stock");
+    }
+    if (error instanceof MinimumDepositError) {
+      redirect("/app/installment/accounts?error=below-minimum-deposit");
     }
     throw error;
   }
@@ -86,7 +93,13 @@ export async function reactivateInstallmentAccount(formData: FormData): Promise<
   }
 
   const id = clean(formData.get("id"));
+  const confirmPassword = clean(formData.get("confirmPassword"));
   if (!id) return;
+
+  const session = await getServerAuthSession();
+  if (!session?.user?.id || !confirmPassword || !(await verifyCurrentPassword(session.user.id, confirmPassword))) {
+    redirect("/app/installment/accounts?error=wrong-password");
+  }
 
   try {
     await reactivateAccount(tenant.organizationId, id);

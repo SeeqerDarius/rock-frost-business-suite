@@ -65,16 +65,26 @@ Installment Management work was not started during this phase, per the roadmap's
 
 ## Phase 7 — Installment Management Migration ✅
 
-Reference implementation: `C:\Users\andre\glv-management-system` (the "GLV" system). Before writing any code, an Explore agent extracted GLV's *actual* behavior (not its aspirational settings UI) — see `OPERATOR_HANDOFF.md`'s Phase 7 entry for the full extraction. Key finding: several of GLV's own settings fields (commission, payroll day, administration fee, minimum deposit, delivery-after-completion) are stored and editable in its UI but **never read by any calculation** — confirmed by GLV's own operator doc ("always distinguish 'saved' from 'effective'"). This module's Settings page (`/app/installment/settings`) is upfront about the same distinction here: a "used in calculations" section and a "reserved for future use" section, rather than silently implementing untested rules GLV itself never validated.
+Reference implementation: `C:\Users\andre\glv-management-system` (the "GLV" system). Before writing any code, an Explore agent extracted GLV's *actual* behavior (not its aspirational settings UI) — see `OPERATOR_HANDOFF.md`'s Phase 7 entry for the full extraction. Key finding: several of GLV's own settings fields (commission, payroll day, administration fee, minimum deposit, delivery-after-completion) are stored and editable in its UI but **never read by any calculation** — confirmed by GLV's own operator doc ("always distinguish 'saved' from 'effective'").
 
 **Migrated as real, validated logic** (`src/modules/installment/service.ts`): installment scheduling (product-level `duration`/`dailyAmount`/`price`, with a price-floor validation), payment allocation with automatic overpayment-credit creation, a 3-hour payment edit window with full-recalculation-on-edit, receipt/customer/staff code generation (per-year, per-staff sequences), atomic staff-inventory consumption on account creation (a hard stock gate, restored on cancellation), the account lifecycle sweep (dormant/probation/closed/archived, computed lazily on report/list reads rather than a cron), automatic closure-refund credits with a configurable service-fee percentage, dormant-account reactivation, the procurement-readiness list (product restock threshold), and the admin summary / staff performance / weekly collections reports.
-
-**Deliberately not migrated** (GLV has no real reference implementation for these — confirmed dead code there, not just "not gotten to yet"): commission calculation, payroll-day-triggered payroll, an administration fee, minimum-deposit enforcement, and applying a credit to a future payment (the `APPLIED` credit status exists in the schema but no code path — in GLV or here — ever sets it). Also not migrated: GLV's step-up re-authentication pattern (re-entering a password for sensitive mutations) and its fuzzy duplicate-detection on customer/product creation — both real GLV features, deferred here as scope-control decisions rather than migration gaps.
 
 **Staff scoping**: a field-staff role (holding `hirepurchase.customers.manage` etc. but not `hirepurchase.staff.manage`) sees and manages only their own assigned customers/accounts/payments/credits — a manager (holding `hirepurchase.staff.manage`) sees everything. This mirrors GLV's real staff-scoping rule.
 
 **Status: complete.** See `OPERATOR_HANDOFF.md` for the detailed session record.
 
+## Post-Phase-7 gap-fixing pass ✅
+
+Immediately after Phase 7, several of its own deliberately-deferred items were revisited and actually built (unlike GLV, which never implements them): commission calculation (wired into staff performance reporting), an administration fee (a real one-time origination fee added at account creation), minimum-deposit enforcement (required at account creation via an optional initial-deposit field), a payroll-day due-date indicator in Reports, and the credit "apply to another account" flow (`APPLIED` status is now reachable — GLV never implements this at all, so it was designed fresh). Also added: GLV's step-up re-authentication pattern (re-entering your own password) for credit refund/void and account reactivation, and login rate limiting (`User.failedLoginAttempts`/`lockedUntil`, migration `20260720120000_add_login_lockout`) — the first schema change since Phase 3's reconnection.
+
+Still deliberately deferred (see `docs/AUTHENTICATION_AND_AUTHORIZATION.md`'s "Known gaps"): public self-registration, an owner-facing maintenance approval portal, fuzzy duplicate-detection on create, and hard deletes for financial records.
+
+**Status: complete.**
+
+## Phase 8 — CRM (next)
+
+Leads, contacts, deals, and customer communication history, per `docs/PRODUCT_VISION.md`. Not yet scoped in detail — begin by checking whether any CRM-shaped models already exist in `prisma/schema.prisma` (as Fleet's and Installment's did before their phases), then follow the same pattern established by both: an org-scoped service layer under `src/modules/crm/`, real pages replacing whatever shell exists at `/app/crm`, and permission keys following the `crm.*` naming convention.
+
 ## Later phases (not scoped in detail yet)
 
-Billing/subscriptions, additional modules (CRM, Inventory, Accounting, HR, Payroll, Procurement, Projects, Analytics) per `docs/PRODUCT_VISION.md`, production hardening.
+Additional modules (Inventory, Accounting, HR, Payroll, Procurement, Projects, Analytics) per `docs/PRODUCT_VISION.md`, production hardening. **Billing/subscriptions is deliberately scheduled last**, per explicit user direction — no `Subscription` model exists yet, and it should follow every other module rather than precede them.

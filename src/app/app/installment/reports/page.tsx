@@ -64,6 +64,12 @@ export default async function InstallmentReportsPage() {
             <p className="text-xs text-muted-foreground">Outstanding</p>
             <p className="text-lg font-medium">{summary.outstandingSalaries.toFixed(2)}</p>
           </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Next payroll due</p>
+            <p className="text-lg font-medium">
+              {summary.nextPayrollDate.toLocaleDateString()} ({summary.daysUntilPayroll} day{summary.daysUntilPayroll === 1 ? "" : "s"})
+            </p>
+          </div>
         </CardContent>
       </Card>
 
@@ -100,6 +106,7 @@ export default async function InstallmentReportsPage() {
                 <TableHead>Customers</TableHead>
                 <TableHead>Weekly collection</TableHead>
                 <TableHead>Outstanding balance</TableHead>
+                <TableHead>Commission</TableHead>
                 <TableHead>Net position</TableHead>
               </TableRow>
             </TableHeader>
@@ -110,6 +117,7 @@ export default async function InstallmentReportsPage() {
                   <TableCell className="text-muted-foreground">{row.customerCount}</TableCell>
                   <TableCell className="text-muted-foreground">{row.weeklyCollection.toFixed(2)}</TableCell>
                   <TableCell className="text-muted-foreground">{row.outstandingBalance.toFixed(2)}</TableCell>
+                  <TableCell className="text-muted-foreground">{row.commissionEarned.toFixed(2)}</TableCell>
                   <TableCell className="text-muted-foreground">{row.netPosition.toFixed(2)}</TableCell>
                 </TableRow>
               ))}
