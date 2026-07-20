@@ -32,6 +32,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     routePrefix: "/app/fleet",
     navigation: fleetNavigation,
     status: "available",
+    permissionPrefix: "fleet.",
   },
   {
     key: "installment",
@@ -41,6 +42,7 @@ export const moduleRegistry: ModuleDefinition[] = [
     routePrefix: "/app/installment",
     navigation: installmentNavigation,
     status: "available",
+    permissionPrefix: "hirepurchase.",
   },
   {
     key: "crm",

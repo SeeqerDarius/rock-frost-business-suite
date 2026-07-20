@@ -26,4 +26,12 @@ export interface ModuleDefinition {
   navigation: ModuleNavItem[];
   /** Whether this module has real functionality yet, or is a placeholder shell. */
   status: "available" | "coming-soon";
+  /**
+   * Permission-key prefix that grants entry to this module's section (e.g. "fleet.").
+   * Deliberately a prefix rather than a single ".view" permission — a role can hold a
+   * narrower permission under the prefix (e.g. Investor's fleet.investor.view) without
+   * holding fleet.view itself, and should still reach the module. Required once a module
+   * is "available"; omitted for "coming-soon" placeholders that have no permissions yet.
+   */
+  permissionPrefix?: string;
 }

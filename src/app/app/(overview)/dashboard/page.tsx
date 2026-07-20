@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { moduleRegistry } from "@/platform/modules/registry";
+import { dashboardWidgets } from "@/platform/modules/dashboard-widgets";
 import { requireCurrentTenant } from "@/lib/tenant";
 
 export default async function OrganizationDashboardPage() {
@@ -30,20 +31,27 @@ export default async function OrganizationDashboardPage() {
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {enabledModules.map((mod) => (
-            <Card key={mod.key}>
-              <CardHeader>
-                <mod.icon className="size-6 text-muted-foreground" />
-                <CardTitle className="mt-3">{mod.name}</CardTitle>
-                <CardDescription>{mod.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button size="sm" variant="outline" nativeButton={false} render={<Link href={mod.routePrefix as never} />}>
-                  Open {mod.name}
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+          {enabledModules.map((mod) => {
+            const Widget = dashboardWidgets[mod.key];
+            if (Widget) {
+              return <Widget key={mod.key} />;
+            }
+
+            return (
+              <Card key={mod.key}>
+                <CardHeader>
+                  <mod.icon className="size-6 text-muted-foreground" />
+                  <CardTitle className="mt-3">{mod.name}</CardTitle>
+                  <CardDescription>{mod.description}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button size="sm" variant="outline" nativeButton={false} render={<Link href={mod.routePrefix as never} />}>
+                    Open {mod.name}
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 # Authentication and Authorization
 
-**Status: authentication (Phase 3) and role/module-level authorization (Phase 4) are both real and enforced.** Action-level permission checks inside a module's own pages (e.g. `fleet.vehicles.manage` vs `fleet.vehicles.view` on a single Fleet page) remain a Phase 6/7 concern, since those pages don't exist yet.
+**Status: authentication (Phase 3), role/module-level authorization (Phase 4), and Fleet's own action-level permissions (Phase 6) are all real and enforced.** Installment has no real pages yet (Phase 7), so its action-level checks remain a future concern.
 
 ## Current implementation (Phase 3 authentication + Phase 4 authorization)
 
@@ -36,19 +36,19 @@ Authentication determines who the user is. Authorization determines what they ca
 - **Organization-admin permission** — `org.settings.manage` gates `/app/administration` and `/app/organization`, both at the page level and by filtering them out of the workspace sidebar nav (`src/platform/modules/workspace-navigation.tsx`'s `getWorkspaceNavigation(tenant)`).
 - **Module permissions** — 22 permission keys seeded across two prefixes, `fleet.*` and `hirepurchase.*` (see `src/lib/auth/permissions.ts`'s `PERMISSIONS` object for the full list — it mirrors the previous implementation's `lib/permissions/constants.ts`, archived at `docs/archive/previous-implementation/`, re-validated against the live database rather than copied blindly). **Do not reuse a Fleet permission for Installment** or vice versa — this is a module-boundary rule, not just a naming convention (see `docs/MODULE_BOUNDARIES.md`).
 - **Module access is prefix-based, not a single ".view" permission** — `canAccessModule(tenant, moduleKey)` requires the module enabled for the organization (`OrganizationModule.enabled`) AND at least one permission starting with that module's prefix. This matters concretely for the Investor role: it holds `fleet.investor.view` and `fleet.reports.view` but not `fleet.view`, and still needs to reach the Fleet module shell.
-- **Branch-level access** — not yet enforced anywhere; revisit per-module during Phase 6/7 once Fleet/Installment have real branch-scoped data to query.
-- **Action-level permissions** within a module (e.g. `fleet.vehicles.manage` vs `fleet.vehicles.view` on a single page) — deferred to Phase 6/7, since neither module has real pages yet to gate.
+- **Branch-level access** — still not enforced anywhere; Fleet records carry an optional `branchId` (populated on create where relevant) but nothing gates on it yet. Revisit once branch-scoped workflows actually matter (multiple active branches).
+- **Action-level permissions within a module** — real for Fleet as of Phase 6: every page's create/edit controls are gated on that specific area's `.manage` permission (`fleet.vehicles.manage`, `fleet.owners.manage`, `fleet.drivers.manage`, `fleet.maintenance.manage`, `fleet.insurance.manage`, `fleet.payments.manage`, `fleet.workandpay.manage`), and `/app/fleet/reports` is gated separately on `fleet.reports.view` — deliberately distinct from module access, since Driver/Mechanic can enter Fleet but don't hold the reports permission. Viewing a list itself only requires reaching the module (`canAccessModule`); only mutations require the specific `.manage` permission. Installment has no pages yet, so this doesn't apply there (Phase 7).
 
-**Enforcement surface — all three now real:**
+**Enforcement surface — all three real, and now demonstrated at the page level too:**
 1. **Permission-aware navigation** — `getWorkspaceNavigation(tenant)` filters Administration/Organization by `org.settings.manage`. The module launcher and `/app/modules` render three real states (open / not enabled for your org / coming soon) driven by `tenant.enabledModuleKeys`, not a hardcoded "available" flag.
-2. **Permission-aware server actions** — `inviteMember` and `toggleOrganizationModule` both re-check the relevant permission/role server-side (never trust the page-level guard alone, since server actions are directly callable).
-3. **Permission-aware page-level guards** — `/app/platform/*`, `/app/administration`, `/app/organization`, `/app/fleet`, `/app/installment` all redirect/block server-side for a user who reaches the URL directly without the right access, not just "not linked to" in the nav.
+2. **Permission-aware server actions** — every Fleet action (e.g. `upsertFleetVehicle`, `reviewMaintenanceRequest`, `verifyPayment`) as well as `inviteMember` and `toggleOrganizationModule` re-check the relevant permission/role server-side (never trust the page-level guard alone, since server actions are directly callable).
+3. **Permission-aware page-level guards** — `/app/platform/*`, `/app/administration`, `/app/organization`, `/app/fleet`, `/app/installment` all redirect/block server-side for a user who reaches the URL directly without the right access. Within Fleet, each page additionally hides its own manage controls (buttons, edit links) from a signed-in user who can view but not mutate that area — verified via browser testing across Fleet Manager (full access), Driver (maintenance-only manage, no reports), and Investor (reports-only, no manage anywhere).
 
-## Known gaps carried forward into Phase 5+
+## Known gaps carried forward into Phase 7+
 
 - No rate limiting or account lockout on failed logins.
 - No public self-registration/signup flow (the Phase 4 invite UI covers admin-initiated onboarding, not self-signup).
 - No email verification UI (moot until a registration flow exists).
-- No action-level (in-page) permission checks yet — Fleet and Installment have no real pages to check against (Phase 6/7).
-- No branch-level access enforcement yet.
+- No branch-level access enforcement yet (see above).
+- No owner-facing approval portal — `FleetOwner` has no login/session concept in this schema, so `FleetMaintenanceRequest.ownerApprovalStatus` is tracked but never set by anyone; only the fleet-manager-side `approvalStatus` is wired to the UI.
 - `RESEND_API_KEY` is unset in this environment — reset/invite/contact emails log via `console.warn` instead of delivering. Set the key to enable real delivery; no code changes required.

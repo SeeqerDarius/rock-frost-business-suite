@@ -1,5 +1,6 @@
 import "server-only";
 import type { TenantContext } from "@/lib/tenant";
+import { getModule } from "@/platform/modules/registry";
 
 /** Every permission key currently seeded in the database (see the archived seed-rbac.ts). */
 export const PERMISSIONS = {
@@ -27,26 +28,22 @@ export const PERMISSIONS = {
   HIREPURCHASE_SETTINGS_MANAGE: "hirepurchase.settings.manage",
 } as const;
 
-/**
- * Module access is deliberately keyed on a permission *prefix*, not a single
- * ".view" permission — e.g. the Investor role has fleet.investor.view and
- * fleet.reports.view but not fleet.view, and still needs to reach the Fleet
- * module shell. Any permission under a module's prefix grants entry to that
- * module's section; page-level features inside it are gated more narrowly
- * once those pages have real functionality (Phase 6/7).
- */
-export const MODULE_PERMISSION_PREFIX: Record<string, string> = {
-  fleet: "fleet.",
-  installment: "hirepurchase.",
-};
-
 export function hasPermission(tenant: TenantContext, key: string): boolean {
   return tenant.permissions.includes(key);
 }
 
+/**
+ * Module access is deliberately keyed on the module's registered permission
+ * *prefix* (see `ModuleDefinition.permissionPrefix` in `src/types/module.ts`),
+ * not a single ".view" permission — e.g. the Investor role has
+ * fleet.investor.view and fleet.reports.view but not fleet.view, and still
+ * needs to reach the Fleet module shell. Any permission under the prefix
+ * grants entry to that module's section; page-level features inside it are
+ * gated more narrowly per page (see each module's own permission checks).
+ */
 export function canAccessModule(tenant: TenantContext, moduleKey: string): boolean {
   if (!tenant.enabledModuleKeys.includes(moduleKey)) return false;
-  const prefix = MODULE_PERMISSION_PREFIX[moduleKey];
+  const prefix = getModule(moduleKey)?.permissionPrefix;
   if (!prefix) return false;
   return tenant.permissions.some((permission) => permission.startsWith(prefix));
 }

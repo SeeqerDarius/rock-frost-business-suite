@@ -45,15 +45,23 @@ Each phase below is gated — do not start the next phase without checking in, p
 
 **Status: complete.** See `OPERATOR_HANDOFF.md` for the detailed session record.
 
-## Phase 5 — Module Framework (partially started in Phase 1)
+## Phase 5 — Module Framework ✅
 
-`src/platform/modules/registry.ts` already exists as the module registration system (key, name, description, icon, route prefix, navigation, status). This phase extends it with what Phase 1 didn't need yet: required permissions per module, dashboard widget registration, subscription/billing gating.
+- `ModuleDefinition` (`src/types/module.ts`) gained `permissionPrefix` — the single source of truth for which permission prefix grants entry to a module, consumed by `canAccessModule()` in `src/lib/auth/permissions.ts` (previously a separate, duplicated map).
+- Dashboard widget registration: `src/platform/modules/dashboard-widgets.tsx` maps a module key to a real Server Component that fetches its own org-scoped summary data, rendered by the organization dashboard for any enabled module that has one. Deliberately a file separate from `registry.ts`, since `registry.ts` is also imported by the client-side `ModuleLauncher` and a widget's server-only data fetching must not leak into that bundle.
+- Subscription/billing gating: still correctly out of scope — no `Subscription`/billing model exists in the schema. Module activation itself (which is the actual gating mechanism today) was already built in Phase 4.
 
-## Phase 6 — First Complete Module: Fleet Management (not started)
+**Status: complete.** See `OPERATOR_HANDOFF.md` for the detailed session record.
 
-Build Fleet Management completely — vehicles, drivers, owners, maintenance, insurance/roadworthy, payments, work-and-pay, reports, settings — before starting Installment. Real Prisma models (organization + branch scoped), real service layer under `src/modules/fleet/`, real pages replacing the current `EmptyState` shell at `app/fleet/page.tsx` (URL `/app/fleet`).
+## Phase 6 — First Complete Module: Fleet Management ✅
 
-Do not begin Installment Management work during this phase.
+Full CRUD across all nine Fleet areas — Vehicles, Drivers, Owners, Maintenance, Insurance & Roadworthy, Payments, Work & Pay, Reports, Settings — built on the Prisma models that already existed in the schema (`FleetVehicle`, `FleetDriver`, `FleetOwner`, `FleetVehicleDocument`, `FleetMaintenanceRequest`, `FleetPayment`, `FleetWorkAndPayContract`). Real org-scoped service layer at `src/modules/fleet/service.ts`; every query and mutation filters by `organizationId`, per `docs/MODULE_BOUNDARIES.md`. Each page gates its create/edit controls on the specific `fleet.*.manage` permission for that area (view access is implied by reaching the module at all); Reports is gated separately on `fleet.reports.view` since Driver/Mechanic don't hold it.
+
+Fleet Settings is a deliberate honest placeholder — there's no fleet-wide configuration concept in the schema yet, so the page says so rather than fabricating options with nothing behind them.
+
+Installment Management work was not started during this phase, per the roadmap's own sequencing rule.
+
+**Status: complete.** See `OPERATOR_HANDOFF.md` for the detailed session record.
 
 ## Phase 7 — Installment Management Migration (not started)
 

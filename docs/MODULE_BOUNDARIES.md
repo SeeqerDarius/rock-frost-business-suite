@@ -39,11 +39,11 @@ CRM data must not appear inside Fleet or Installment pages unless there is a del
 
 Structurally, via nested layouts — see `docs/ARCHITECTURE.md`'s "How module isolation is enforced structurally" section. Each module route tree has its own `layout.tsx` with its own `AppShell` instance and its own navigation array; there is no shared conditional-sidebar logic that could drift.
 
-As modules gain real data (Phase 6 onward), this must also be enforced **server-side**, not just in navigation:
+As of Phase 6 this is real for Fleet, not just aspirational — `src/modules/fleet/service.ts` is the pattern every future module's service layer should follow:
 
-- Every module-owned database record must carry `organizationId` (and `branchId` where relevant) — see `docs/DATABASE_STRATEGY.md`.
-- Every query and mutation in a module's service layer must filter by the current organization. Do not rely on the UI simply not showing a link to unauthorized data — assume a user can hit any URL directly.
-- Permission checks are module-specific (`fleet.vehicles.manage`, `installment.customers.manage`, etc. — see `docs/AUTHENTICATION_AND_AUTHORIZATION.md`), not one shared "can access dashboard" flag reused across modules.
+- Every module-owned database record must carry `organizationId` (and `branchId` where relevant) — see `docs/DATABASE_STRATEGY.md`. Every function in `src/modules/fleet/service.ts` takes `organizationId` as an explicit parameter and filters on it in the Prisma call itself (`where: { id, organizationId }` on updates, not just on the initial list query) — assume a user can hit any URL or call any server action directly, not just navigate through the UI.
+- Permission checks are module-specific (`fleet.vehicles.manage`, `fleet.reports.view`, etc. — see `docs/AUTHENTICATION_AND_AUTHORIZATION.md`), not one shared "can access dashboard" flag reused across modules. Fleet additionally distinguishes *viewing* a module (reachable with any permission under the module's prefix) from *mutating* a specific area (gated on that area's own `.manage` permission) — a page can be visible without its create/edit controls being visible.
+- Installment (Phase 7) has no service layer yet — build it following the same shape as Fleet's, not from scratch.
 
 ## Adding a new module
 
