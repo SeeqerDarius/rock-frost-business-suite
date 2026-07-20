@@ -149,6 +149,28 @@ Six pages (Compensation, Runs, Payslips, Reports, Settings) plus an overview pag
 
 **Status: complete.**
 
+## Phase 14 — Analytics ✅
+
+Unlike every prior module, Analytics owns **no database tables of its own** — no migration was needed for this phase. `src/modules/analytics/service.ts` is a pure read-only aggregation layer that calls every other enabled module's own summary function (`getAccountingSummary`, `getPayrollSummary`, `getCrmSummary`, `getInstallmentSummary`, `getFleetSummary`, `getInventorySummary`, `getProcurementSummary`, `getHrSummary`) and combines the results — never reaching into any module's Prisma models directly. A module the organization hasn't enabled is simply omitted from the aggregate rather than erroring.
+
+Five pages (Financial, Sales & CRM, Operations, People, Settings) plus an overview page — Settings is an honest placeholder (Analytics has no configuration of its own to manage; each source module's own Settings page controls what shows up here). The pre-existing organization-scope `/app/reports` placeholder (which claimed cross-module reporting "is not built yet") was updated to point to the new Analytics module instead. Six permission keys (`analytics.view`, `.financial.view`, `.sales.view`, `.operations.view`, `.people.view`, `.settings.manage`) plus a new "Analytics Manager" role — note only `.settings.manage` is a mutate-style key, since every other Analytics permission gates a read-only view, a deliberate deviation from the "always has manage verbs" shape of every prior module given Analytics' fundamentally different (aggregation-only) nature.
+
+Verified against real current data across all eight other modules — every figure on every Analytics page matched each source module's own reports exactly.
+
+**Status: complete.**
+
+## Phase 15 — Point of Sale ✅
+
+New models from scratch: `PosRegister`, `PosSession` (a cash-drawer open/close lifecycle per register), `PosSale`/`PosSaleLine`, `PosSettings`. Not part of the original module list in `docs/PRODUCT_VISION.md` — added by explicit user request after Analytics.
+
+**Deliberate real cross-module integration** (documented in `docs/DECISIONS.md`, same pattern as Procurement→Inventory): completing a sale with a line linked to a real `InventoryItem`, on a register with a linked `InventoryWarehouse`, calls Inventory's own `recordMovement()` with `type: "ISSUE"` to post a genuine stock decrease; refunding that sale reverses it with a `type: "RECEIPT"`. A sale can only be recorded against a register's currently open session; only one session can be open per register at a time.
+
+Sales are kept to three fixed line slots in the UI (matching Procurement's/Accounting's precedent of avoiding dynamic client-side repeating-fieldset forms) rather than an unbounded cart. Six pages (Registers, Sell, Sales, Reports, Settings) plus an overview page and dashboard widget — Settings holds one genuinely useful option (a configurable receipt footer). Six permission keys (`pos.view`, `.registers.manage`, `.sessions.manage`, `.sales.manage`, `.reports.view`, `.settings.manage`) plus a new "POS Cashier" role.
+
+Verified end-to-end with real stock arithmetic: opened a session, sold 3 units of a tracked item (confirmed Inventory stock dropped from 20 to 17), refunded the sale (confirmed stock returned to exactly 20), and confirmed the Reports page correctly excluded the refunded sale from completed-sales totals while counting it under refunds.
+
+**Status: complete.**
+
 ## Later phases (not scoped in detail yet)
 
-Additional modules (Projects, Analytics) per `docs/PRODUCT_VISION.md`, production hardening. **Billing/subscriptions is deliberately scheduled last**, per explicit user direction — no `Subscription` model exists yet, and it should follow every other module rather than precede them.
+Additional modules (Projects) per `docs/PRODUCT_VISION.md`, a possible future Billing/Subscriptions module (deliberately scheduled last, per explicit user direction — no `Subscription` model exists yet), and production hardening.

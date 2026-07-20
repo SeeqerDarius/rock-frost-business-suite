@@ -9,6 +9,7 @@ import {
   ShoppingCart,
   KanbanSquare,
   LineChart,
+  Store,
 } from "lucide-react";
 import type { ModuleDefinition } from "@/types/module";
 import { fleetNavigation } from "@/modules/fleet/navigation";
@@ -20,15 +21,16 @@ import { hrNavigation } from "@/modules/hr/navigation";
 import { procurementNavigation } from "@/modules/procurement/navigation";
 import { payrollNavigation } from "@/modules/payroll/navigation";
 import { analyticsNavigation } from "@/modules/analytics/navigation";
+import { posNavigation } from "@/modules/pos/navigation";
 
 /**
  * The module registry. Every business module the platform can offer is declared
  * here — this is the single source of truth the module launcher, workspace
  * navigation, and (eventually) organization module-activation records read from.
  *
- * Only Fleet and Installment are "available" in this phase. The rest are
- * declared as "coming-soon" placeholders so the launcher communicates the
- * platform's intended breadth honestly, without pretending they're built yet.
+ * All modules except Projects are "available" as of Phase 15 (POS). Projects
+ * remains a "coming-soon" placeholder so the launcher communicates the
+ * platform's intended breadth honestly, without pretending it's built yet.
  */
 export const moduleRegistry: ModuleDefinition[] = [
   {
@@ -129,6 +131,16 @@ export const moduleRegistry: ModuleDefinition[] = [
     navigation: analyticsNavigation,
     status: "available",
     permissionPrefix: "analytics.",
+  },
+  {
+    key: "pos",
+    name: "Point of Sale",
+    description: "Registers, checkout, and same-day retail sales.",
+    icon: Store,
+    routePrefix: "/app/pos",
+    navigation: posNavigation,
+    status: "available",
+    permissionPrefix: "pos.",
   },
 ];
 

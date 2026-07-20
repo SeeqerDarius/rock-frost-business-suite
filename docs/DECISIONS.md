@@ -4,6 +4,20 @@ This is the authoritative decision log for the rebuilt Rock Frost Business Suite
 
 ---
 
+## 2026-07-20 — POS sales post real Inventory stock movements (ISSUE on sale, RECEIPT on refund)
+
+**Decision:** When a POS sale includes a line linked to a real `InventoryItem`, and the selling register has a linked `InventoryWarehouse`, `createSale()` (`src/modules/pos/service.ts`) calls Inventory's own `recordMovement()` with `type: "ISSUE"` to post a real stock decrease. Refunding that sale (`refundSale()`) reverses it with a `type: "RECEIPT"` call. This is the same deliberate, documented cross-module integration pattern established for Procurement's receiving flow (see this file's Procurement entry above) — a checkout that doesn't actually move stock isn't a real point-of-sale flow.
+
+**Why:** Same reasoning as Procurement: duplicating Inventory's stock-quantity and validation logic inside POS would be pure duplication, not module independence, and a sale with no real inventory consequence would just be a form.
+
+**How the boundary is preserved:** POS only calls Inventory's public service functions (`recordMovement`, `getStockGrid`) — it never touches Inventory's Prisma models directly. A register without a linked warehouse, or a sale line without a linked `InventoryItem`, skips the Inventory call entirely (POS supports selling untracked items/services, same as Procurement supports ordering them).
+
+**Known limitation, accepted for this pass:** a multi-line sale checks stock availability for every line up front (via `getStockGrid`) before posting any movement, but each line's `recordMovement()` call is still its own independent transaction — under concurrent access to the same item, a race between the pre-check and the actual decrement is possible. This mirrors the same class of limitation already accepted for Procurement's receiving flow; a single cross-module transaction spanning two modules' services was judged not worth the coupling it would require.
+
+**Not done (and deliberately so):** POS does not post anything to Accounting (e.g. Debit Cash / Credit Revenue on a completed sale) in this pass — the same scope decision already recorded for Procurement and Payroll not integrating with Accounting.
+
+---
+
 ## 2026-07-20 — Procurement receiving posts real Inventory stock movements
 
 **Decision:** When a purchase order line is received on `/app/procurement/orders`, `receiveOrderLine()` (`src/modules/procurement/service.ts`) calls Inventory's own `recordMovement()` (`src/modules/inventory/service.ts`) with `type: "RECEIPT"`, posting a real stock increase into the chosen warehouse — provided the order line is linked to a real `InventoryItem` and a warehouse is selected. This is a deliberate cross-module integration, not a boundary violation, per `docs/MODULE_BOUNDARIES.md`'s "Cross-module data" section, which requires such integrations to be deliberate and recorded here rather than silently added.

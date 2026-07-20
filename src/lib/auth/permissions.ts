@@ -68,6 +68,12 @@ export const PERMISSIONS = {
   ANALYTICS_OPERATIONS_VIEW: "analytics.operations.view",
   ANALYTICS_PEOPLE_VIEW: "analytics.people.view",
   ANALYTICS_SETTINGS_MANAGE: "analytics.settings.manage",
+  POS_VIEW: "pos.view",
+  POS_REGISTERS_MANAGE: "pos.registers.manage",
+  POS_SESSIONS_MANAGE: "pos.sessions.manage",
+  POS_SALES_MANAGE: "pos.sales.manage",
+  POS_REPORTS_VIEW: "pos.reports.view",
+  POS_SETTINGS_MANAGE: "pos.settings.manage",
 } as const;
 
 export function hasPermission(tenant: TenantContext, key: string): boolean {
