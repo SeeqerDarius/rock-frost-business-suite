@@ -22,15 +22,18 @@ import { procurementNavigation } from "@/modules/procurement/navigation";
 import { payrollNavigation } from "@/modules/payroll/navigation";
 import { analyticsNavigation } from "@/modules/analytics/navigation";
 import { posNavigation } from "@/modules/pos/navigation";
+import { projectsNavigation } from "@/modules/projects/navigation";
 
 /**
  * The module registry. Every business module the platform can offer is declared
  * here — this is the single source of truth the module launcher, workspace
  * navigation, and (eventually) organization module-activation records read from.
  *
- * All modules except Projects are "available" as of Phase 15 (POS). Projects
- * remains a "coming-soon" placeholder so the launcher communicates the
- * platform's intended breadth honestly, without pretending it's built yet.
+ * Every module is "available" as of Phase 16 (Projects) — the last one from
+ * the original docs/PRODUCT_VISION.md list, plus POS added by explicit
+ * request. Billing/Subscriptions remains unbuilt and deliberately scheduled
+ * last; add it here as "coming-soon" if a placeholder is ever wanted before
+ * it's actually built.
  */
 export const moduleRegistry: ModuleDefinition[] = [
   {
@@ -119,8 +122,9 @@ export const moduleRegistry: ModuleDefinition[] = [
     description: "Projects, tasks, milestones, and team workload.",
     icon: KanbanSquare,
     routePrefix: "/app/projects",
-    navigation: [],
-    status: "coming-soon",
+    navigation: projectsNavigation,
+    status: "available",
+    permissionPrefix: "projects.",
   },
   {
     key: "analytics",

@@ -18,20 +18,70 @@ After making changes:
 
 ## Current phase
 
-**Phase 15 (POS) — complete.** All fifteen original/added phases plus two remediation passes are done. See `docs/DEVELOPMENT_ROADMAP.md` for what comes next — the next module to build has **not yet been chosen** (candidate: Projects); Billing/Subscriptions remains deliberately scheduled last, per explicit user direction.
+**Phase 16 (Projects) — complete.** All sixteen original/added phases plus two remediation passes are done — every module from the original `docs/PRODUCT_VISION.md` list, plus POS (added by explicit request), is now built. See `docs/DEVELOPMENT_ROADMAP.md` for what comes next. Only Billing/Subscriptions remains, deliberately scheduled last per explicit user direction — no `Subscription` model exists yet.
 
 ## Current architecture (short version — see `docs/ARCHITECTURE.md` for full detail)
 
-- Next.js 16 App Router under `src/app/`. Public marketing site at bare paths via `(public)`; auth UI via `(auth)`; **everything requiring sign-in lives under `/app/*`** — `app/(overview)` (organization scope), `app/fleet`, `app/installment`, `app/crm`, `app/inventory`, `app/accounting`, `app/hr`, `app/procurement`, `app/payroll`, `app/analytics`, `app/pos`, `app/platform` (platform scope). See `docs/ARCHITECTURE.md`'s "Why /app exists."
-- Each module (`fleet`, `installment`, `crm`, `inventory`, `accounting`, `hr`, `procurement`, `payroll`, `analytics`, `pos`) has its own `layout.tsx` rendering `AppShell` with its own navigation array, guarded on `canAccessModule()` (module enabled for the org + a permission under that module's registered `permissionPrefix`).
+- Next.js 16 App Router under `src/app/`. Public marketing site at bare paths via `(public)`; auth UI via `(auth)`; **everything requiring sign-in lives under `/app/*`** — `app/(overview)` (organization scope), `app/fleet`, `app/installment`, `app/crm`, `app/inventory`, `app/accounting`, `app/hr`, `app/procurement`, `app/payroll`, `app/analytics`, `app/pos`, `app/projects`, `app/platform` (platform scope). See `docs/ARCHITECTURE.md`'s "Why /app exists."
+- Each module (`fleet`, `installment`, `crm`, `inventory`, `accounting`, `hr`, `procurement`, `payroll`, `analytics`, `pos`, `projects`) has its own `layout.tsx` rendering `AppShell` with its own navigation array, guarded on `canAccessModule()` (module enabled for the org + a permission under that module's registered `permissionPrefix`).
 - `src/platform/modules/registry.ts` is the single source of truth for every module's metadata; `src/platform/modules/dashboard-widgets.tsx` maps a module key to a real dashboard summary component — every business module except Analytics (which has no natural summary distinct from its own pages) is wired up.
 - shadcn/ui (Base UI primitives) + Tailwind v4 design system — see `docs/DESIGN_SYSTEM.md`.
-- **All ten business modules are fully real.** Fleet Management (Phase 6), Installment Management (Phase 7), CRM (Phase 8), Inventory Management (Phase 9), Accounting (Phase 10), Human Resources (Phase 11), Procurement (Phase 12), Payroll (Phase 13), Analytics (Phase 14), and Point of Sale (Phase 15) are all complete. Only Projects (from the original vision doc) and any future Billing/Subscriptions remain unbuilt. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md` and `docs/MODULE_BOUNDARIES.md` for full detail.
-- **Every mutating Server Action that redirects to a list page calls `revalidatePath()` on that page immediately before the `redirect()`** — a systemic gap discovered and fixed during Phase 8 across every action file that existed at the time; every module built since (Inventory, Accounting, HR, Procurement, Payroll, POS) was written with this pattern from the start.
+- **All eleven business modules are fully real.** Fleet Management (Phase 6), Installment Management (Phase 7), CRM (Phase 8), Inventory Management (Phase 9), Accounting (Phase 10), Human Resources (Phase 11), Procurement (Phase 12), Payroll (Phase 13), Analytics (Phase 14), Point of Sale (Phase 15), and Project Management (Phase 16) are all complete — every module from the original `docs/PRODUCT_VISION.md` list, plus POS added by explicit request. Only a future Billing/Subscriptions module remains unbuilt. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md` and `docs/MODULE_BOUNDARIES.md` for full detail.
+- **Every mutating Server Action that redirects to a list page calls `revalidatePath()` on that page immediately before the `redirect()`** — a systemic gap discovered and fixed during Phase 8 across every action file that existed at the time; every module built since (Inventory, Accounting, HR, Procurement, Payroll, POS, Projects) was written with this pattern from the start.
 - **`package.json` has a `"postinstall": "prisma generate"` script** (added after Phase 9) — required because Vercel's build can reuse a cached `node_modules` (including an already-generated Prisma Client) across deployments without regenerating it, which caused a real production build failure right after Phase 8/9 shipped. **Always check deployment status after pushing** (see the "After making changes" checklist above) — this is a standing rule, checked after every phase since (Accounting through POS all confirmed `READY` via `vercel --prod`).
 - **Two modules now call directly into a second module's service function as real, load-bearing behavior** (not just a UI shell): Procurement's receiving flow and POS's checkout/refund flow both call Inventory's own `recordMovement()` — receiving posts a stock `RECEIPT`, a POS sale posts an `ISSUE` and a refund reverses it with a `RECEIPT`. Both are deliberate, documented cross-module integrations (see `docs/DECISIONS.md`'s two 2026-07-20 entries, and `docs/MODULE_BOUNDARIES.md`) — the template for any future integration of this kind is the same: call the other module's public service function, never its Prisma models directly, and record the decision.
 - **Analytics owns no database tables** — it's the one module built without a migration, a pure aggregation layer over every other enabled module's own summary function.
-- `prisma/schema.prisma` changes since Phase 3's reconnection: `User.failedLoginAttempts`/`User.lockedUntil` (migration `20260720120000_add_login_lockout`); CRM (migration `20260720140000_add_crm_module`); Inventory (migration `20260720160000_add_inventory_module`); Accounting (migration `20260720180000_add_accounting_module`); HR (migration `20260720200000_add_hr_module`); Procurement (migrations `20260720220000_add_procurement_module` and `20260720230000_add_procurement_settings`); Payroll (migration `20260720240000_add_payroll_module`); Analytics (no migration — owns no tables); POS (migration `20260720260000_add_pos_module`). All applied via `prisma migrate deploy` — **not** `prisma migrate dev`, which detects a pre-existing drift between the live database's migration history and the local `prisma/migrations/` folder (leftover from before this rebuild) and offers to reset the entire database. That offer was declined every time; `migrate deploy` applied each migration cleanly without touching anything else. Anyone continuing this project should use `migrate deploy` (or hand-write the migration SQL and apply it that way) rather than `migrate dev` against this specific database.
+- `prisma/schema.prisma` changes since Phase 3's reconnection: `User.failedLoginAttempts`/`User.lockedUntil` (migration `20260720120000_add_login_lockout`); CRM (migration `20260720140000_add_crm_module`); Inventory (migration `20260720160000_add_inventory_module`); Accounting (migration `20260720180000_add_accounting_module`); HR (migration `20260720200000_add_hr_module`); Procurement (migrations `20260720220000_add_procurement_module` and `20260720230000_add_procurement_settings`); Payroll (migration `20260720240000_add_payroll_module`); Analytics (no migration — owns no tables); POS (migration `20260720260000_add_pos_module`); Projects (migration `20260720280000_add_projects_module`). All applied via `prisma migrate deploy` — **not** `prisma migrate dev`, which detects a pre-existing drift between the live database's migration history and the local `prisma/migrations/` folder (leftover from before this rebuild) and offers to reset the entire database. That offer was declined every time; `migrate deploy` applied each migration cleanly without touching anything else. Anyone continuing this project should use `migrate deploy` (or hand-write the migration SQL and apply it that way) rather than `migrate dev` against this specific database.
+
+## Files changed (Phase 16 — Projects)
+
+**Created:** `prisma/migrations/20260720280000_add_projects_module/migration.sql`; `src/modules/projects/{service.ts,navigation.tsx,dashboard-widget.tsx}`; `src/app/app/projects/layout.tsx`, `src/app/app/projects/page.tsx`, and five route trees (`projects`, `tasks`, `milestones` each with `page.tsx` + `actions.ts`; `reports` and `settings` are read-only, `page.tsx` only).
+
+**Modified:** `prisma/schema.prisma` (Projects models — `Project`, `ProjectMember`, `ProjectMilestone`, `ProjectTask` — and back-relations on `User`/`Organization`/`Branch`); `src/lib/auth/permissions.ts` (6 new `PROJECTS_*` keys); `src/platform/modules/registry.ts` (`projects` flipped from `coming-soon` to `available` — the last module from the original `docs/PRODUCT_VISION.md` list); `src/platform/modules/dashboard-widgets.tsx` (Projects widget registered).
+
+**Database (via a one-off script, not committed):** seeded 6 `Permission` rows for `projects.*`, granted them to Super Admin/Organization Owner, created the "Projects Manager" system role, enabled the `projects` module for the demo organization (`Rock Frost Demo Fleet`, tenant code `rock-frost-demo-fleet`).
+
+## Summary of what was done (Phase 16 — Projects)
+
+Built after POS, following the user's "ok do the next" instruction — the last module remaining from the original `docs/PRODUCT_VISION.md` list. Designed four models from scratch: `Project`, `ProjectMember` (many-to-many join to `User` with an optional free-text `role`), `ProjectMilestone`, and `ProjectTask`. No cross-module service calls were needed or added — Projects is self-contained.
+
+Two real guard-rail state transitions, matching the "genuine validation logic, not just CRUD" precedent set by HR's rating-required-before-review-completion: `completeMilestone()` throws `MilestoneStateError` if any task under it isn't `DONE`; `completeProject()` throws `ProjectStateError` if any milestone on it isn't `COMPLETED`. Both surface as an `?error=not-ready` redirect on their respective list pages.
+
+**Verified end-to-end via Playwright**: created a project, added a member, created a milestone with two tasks under it, confirmed the milestone-completion guard correctly rejected completion while a task was still open, progressed both tasks through `TODO → IN_PROGRESS → IN_REVIEW → DONE`, confirmed the milestone then completed successfully, and confirmed the project itself completed successfully once its only milestone was `COMPLETED`. Reports and Overview pages both reflected the resulting state correctly. All four test projects created during this and earlier failed verification attempts (`PRJ-0001` through `PRJ-0004`, all named `QA Project <timestamp>`) were deleted afterward via a one-off cleanup script (cascading to their members/milestones/tasks).
+
+## Build result (Phase 16)
+
+**Passed.** `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate` succeeds, `npm run build` succeeds — 101 routes total (95 before Phase 16; 101 after Projects's 6 new routes). Playwright installed **temporarily** for browser verification, then removed surgically via `npm uninstall playwright` (confirmed via `git diff --stat package.json package-lock.json`, no output). Dev server stopped afterward, confirmed by command-line inspection first.
+
+## Known issues / deliberate gaps (current)
+
+- **Projects has no data-level scoping** (same shape as every other module's gap) — every project/task/milestone is visible to anyone holding the relevant `projects.*` permission.
+- **Projects is not yet linked to Accounting, HR, or Payroll** — no journal entries for project budgets, no linkage between `ProjectTask.assigneeId`/`Project.ownerId` and `HrEmployee` beyond both referencing the same `User` model. Same class of scope decision already recorded for Procurement/Payroll/POS not integrating with Accounting.
+- **Projects Settings is an honest placeholder** — project codes are auto-generated and task/milestone statuses and priorities are fixed enums, so there is genuinely nothing to configure yet.
+- **POS has no data-level scoping** (carried forward) — every register/session/sale is visible to anyone holding the relevant `pos.*` permission.
+- **POS is not yet linked to Accounting** (carried forward) — a completed sale doesn't post a journal entry (e.g. Debit Cash / Credit Revenue).
+- **POS sales are limited to three fixed line slots in the UI** (carried forward) — the schema supports unlimited lines per sale, but no page in this codebase uses a dynamic repeating-fieldset form (same constraint already accepted for Procurement's single-line orders).
+- **POS's stock-availability pre-check has a theoretical race window** (carried forward) — each line's `recordMovement()` call is its own transaction, so concurrent sales against the same item could both pass the pre-check before either posts. Documented in `docs/DECISIONS.md`.
+- **Analytics has no way to drill into per-branch or per-date-range figures** (carried forward) — every summary function it calls reflects each source module's own "current state" aggregate, not a historical time-series.
+- **Procurement and Payroll have no data-level scoping** (carried forward) — every vendor/request/order/compensation/run/payslip is visible to anyone holding the relevant module permission.
+- **Payroll and Procurement are not yet linked to Accounting** (carried forward) — see their own known-issues entries in the historical Phase 12/13 summary below.
+- **Accounting and HR have no data-level scoping** (carried forward).
+- **Accounting is not yet linked to Fleet or Installment** (carried forward).
+- **HR has no attendance/timesheet tracking** — deliberately out of scope.
+- **Inventory and CRM have no data-level scoping** (carried forward).
+- **No owner-facing maintenance approval portal** (Fleet) — would need a whole new authenticated user type.
+- **No file/photo upload for maintenance requests** (Fleet) — needs a storage-provider decision first.
+- **No fuzzy duplicate-detection on create, no hard deletes** for financial records — deliberately deferred.
+- **No branch-level access enforcement** — still low-value with one branch platform-wide.
+- **No public self-registration** — deliberate for an invite-only B2B platform.
+- **`RESEND_API_KEY` is unset** — emails still log via `console.warn` instead of delivering.
+- **Organization switcher is real but functionally inert today** — every demo user belongs to exactly one organization.
+
+## Next recommended step
+
+With Projects complete, every module from the original `docs/PRODUCT_VISION.md` list — plus POS, added by explicit request — is now built. The only remaining candidate is a future Billing/Subscriptions module, deliberately scheduled last per the user's own standing instruction; get explicit direction before starting it, since it implies real payment-provider integration decisions (no `Subscription` model exists yet). Otherwise, the next natural work is production hardening: data-level scoping across every module (carried forward from every phase so far), the deferred Accounting/HR/Payroll/POS/Procurement cross-module journal-entry integrations, and the `RESEND_API_KEY` email delivery gap.
+
+---
 
 ## Files changed (Phase 14 — Analytics + Phase 15 — POS)
 
@@ -57,34 +107,11 @@ Built immediately after Analytics per the same instruction. POS was not part of 
 
 **Verified with real stock arithmetic**: created a warehouse and item with 20 units on hand, opened a register session, sold 3 units (confirmed stock dropped to exactly 17 on Inventory's own Stock page), refunded the sale (confirmed stock returned to exactly 20), and confirmed the Reports page correctly excluded the refunded sale from the completed-sales totals while counting it separately under refunds. All test fixtures — including the Inventory warehouse/item created solely for this test — deleted afterward.
 
-## Build result (Phase 14 + 15)
+**Build result at the time:** Passed — 95 routes total (83 before Phase 14; 89 after Analytics's 6 new routes; 95 after POS's 6 new routes). Both deployments confirmed `READY` via `vercel --prod`.
 
-**Passed.** `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate` succeeds, `npm run build` succeeds — 95 routes total (83 before Phase 14; 89 after Analytics's 6 new routes; 95 after POS's 6 new routes). Playwright installed **temporarily** for each module's browser verification, then removed surgically via `npm uninstall playwright` (confirmed via `git diff --stat package.json package-lock.json`, no output) each time. Dev server stopped after each verification pass, confirmed by command-line inspection first. Both Analytics's and POS's deployments were confirmed live via `vercel --prod` (`READY`, aliased to `www.rockfrostgroup.com`) immediately after each push.
+**Known issues at the time:** POS's/Analytics's lack of data-level scoping and Accounting linkage (still current), POS sales limited to three fixed UI line slots (still current), POS's theoretical stock-availability race window (still current), plus all previously carried-forward gaps.
 
-## Known issues / deliberate gaps (current)
-
-- **POS has no data-level scoping** (same shape as every other module's gap) — every register/session/sale is visible to anyone holding the relevant `pos.*` permission.
-- **POS is not yet linked to Accounting** — a completed sale doesn't post a journal entry (e.g. Debit Cash / Credit Revenue). Same scope decision already recorded for Procurement and Payroll not integrating with Accounting.
-- **POS sales are limited to three fixed line slots in the UI** — the schema supports unlimited lines per sale, but no page in this codebase uses a dynamic repeating-fieldset form (same constraint already accepted for Procurement's single-line orders).
-- **POS's stock-availability pre-check has a theoretical race window** — each line's `recordMovement()` call is its own transaction, so concurrent sales against the same item could both pass the pre-check before either posts. Documented in `docs/DECISIONS.md`, accepted as the same class of limitation already present in Procurement's receiving flow.
-- **Analytics has no way to drill into per-branch or per-date-range figures** — every summary function it calls reflects each source module's own "current state" aggregate, not a historical time-series.
-- **Procurement and Payroll have no data-level scoping** (carried forward) — every vendor/request/order/compensation/run/payslip is visible to anyone holding the relevant module permission.
-- **Payroll and Procurement are not yet linked to Accounting** (carried forward) — see their own known-issues entries in the historical Phase 12/13 summary below.
-- **Accounting and HR have no data-level scoping** (carried forward).
-- **Accounting is not yet linked to Fleet or Installment** (carried forward).
-- **HR has no attendance/timesheet tracking** — deliberately out of scope.
-- **Inventory and CRM have no data-level scoping** (carried forward).
-- **No owner-facing maintenance approval portal** (Fleet) — would need a whole new authenticated user type.
-- **No file/photo upload for maintenance requests** (Fleet) — needs a storage-provider decision first.
-- **No fuzzy duplicate-detection on create, no hard deletes** for financial records — deliberately deferred.
-- **No branch-level access enforcement** — still low-value with one branch platform-wide.
-- **No public self-registration** — deliberate for an invite-only B2B platform.
-- **`RESEND_API_KEY` is unset** — emails still log via `console.warn` instead of delivering.
-- **Organization switcher is real but functionally inert today** — every demo user belongs to exactly one organization.
-
-## Next recommended step
-
-Get explicit direction on what comes after POS — the only remaining candidate from the original `docs/PRODUCT_VISION.md` list is Projects. The user has also asked, separately, whether a full ERP system or a cloud-hosting change is warranted — answered inline in conversation (short version: this platform already functions as a modular ERP once Projects ships; the current Vercel + Neon stack scales fine for growth, the main levers being plan tier and Postgres connection pooling, not a re-architecture). Billing/Subscriptions remains deliberately scheduled last, per the user's own standing instruction.
+**Next recommended step (at the time):** Get explicit direction on what came after POS — the only remaining candidate from the original `docs/PRODUCT_VISION.md` list was Projects. The user also asked, separately, whether a full ERP system or a cloud-hosting change was warranted — answered inline in conversation (short version: this platform already functions as a modular ERP once Projects ships; the current Vercel + Neon stack scales fine for growth, the main levers being plan tier and Postgres connection pooling, not a re-architecture). The user then said "ok do the next," leading directly into the Phase 16 work above.
 
 ---
 
@@ -219,9 +246,13 @@ User said "fix the gaps, when done get started with the next module, and lets ha
 
 ## Handoff log
 
+### 2026-07-20 — Claude Code — Phase 16 (Projects)
+
+See "Files changed (Phase 16 — Projects)," "Summary of what was done (Phase 16 — Projects)," "Build result (Phase 16)," "Known issues / deliberate gaps (current)," and "Next recommended step" above — kept in the current-state sections rather than duplicated here, since this is the most recent entry.
+
 ### 2026-07-20 — Claude Code — Phase 14 (Analytics) + Phase 15 (POS)
 
-See "Files changed (Phase 14 — Analytics + Phase 15 — POS)," "Summary of what was done (Phase 14 — Analytics)," "Summary of what was done (Phase 15 — POS)," "Build result (Phase 14 + 15)," "Known issues / deliberate gaps (current)," and "Next recommended step" above — kept in the current-state sections rather than duplicated here, since this is the most recent entry.
+See "Files changed (Phase 14 — Analytics + Phase 15 — POS)," "Summary of what was done (Phase 14 — Analytics)," "Summary of what was done (Phase 15 — POS)," plus the "at the time" Build result/Known issues/Next recommended step notes appended.
 
 ### 2026-07-20 — Claude Code — Phase 12 (Procurement) + Phase 13 (Payroll)
 

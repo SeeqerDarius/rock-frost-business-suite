@@ -74,6 +74,12 @@ export const PERMISSIONS = {
   POS_SALES_MANAGE: "pos.sales.manage",
   POS_REPORTS_VIEW: "pos.reports.view",
   POS_SETTINGS_MANAGE: "pos.settings.manage",
+  PROJECTS_VIEW: "projects.view",
+  PROJECTS_PROJECTS_MANAGE: "projects.projects.manage",
+  PROJECTS_TASKS_MANAGE: "projects.tasks.manage",
+  PROJECTS_MILESTONES_MANAGE: "projects.milestones.manage",
+  PROJECTS_REPORTS_VIEW: "projects.reports.view",
+  PROJECTS_SETTINGS_MANAGE: "projects.settings.manage",
 } as const;
 
 export function hasPermission(tenant: TenantContext, key: string): boolean {

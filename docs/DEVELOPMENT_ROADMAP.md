@@ -171,6 +171,18 @@ Verified end-to-end with real stock arithmetic: opened a session, sold 3 units o
 
 **Status: complete.**
 
+## Phase 16 — Project Management ✅
+
+New models from scratch: `Project`, `ProjectMember` (many-to-many join to `User` with an optional free-text `role`), `ProjectMilestone`, `ProjectTask`. The last module from the original `docs/PRODUCT_VISION.md` list.
+
+Two real guard-rail state transitions (not just CRUD), matching the "genuine validation logic" precedent set by HR's rating-required-before-review-completion: `completeMilestone()` throws `MilestoneStateError` if any task under that milestone isn't `DONE`; `completeProject()` throws `ProjectStateError` if any milestone on that project isn't `COMPLETED`. Both surface as a `?error=not-ready` redirect rather than a silent no-op or a generic 500.
+
+Six pages (Projects, Tasks, Milestones, Reports, Settings) plus an overview page and dashboard widget — Settings is an honest placeholder (project codes are auto-generated, statuses/priorities are fixed enums; no module-wide configuration exists yet). Six permission keys (`projects.view`, `.projects.manage`, `.tasks.manage`, `.milestones.manage`, `.reports.view`, `.settings.manage`) plus a new "Projects Manager" role.
+
+Verified end-to-end: created a project, added a member, created a milestone with two tasks under it, confirmed the milestone-completion guard correctly rejected completion while tasks were still open, progressed both tasks through `TODO → IN_PROGRESS → IN_REVIEW → DONE`, confirmed the milestone then completed successfully, and confirmed the project itself completed successfully once its only milestone was `COMPLETED`. Reports and Overview pages both reflected the resulting counts correctly.
+
+**Status: complete.**
+
 ## Later phases (not scoped in detail yet)
 
-Additional modules (Projects) per `docs/PRODUCT_VISION.md`, a possible future Billing/Subscriptions module (deliberately scheduled last, per explicit user direction — no `Subscription` model exists yet), and production hardening.
+A possible future Billing/Subscriptions module (deliberately scheduled last, per explicit user direction — no `Subscription` model exists yet), and production hardening. With Projects complete, every module from the original `docs/PRODUCT_VISION.md` list — plus POS, added by explicit request — is now built.

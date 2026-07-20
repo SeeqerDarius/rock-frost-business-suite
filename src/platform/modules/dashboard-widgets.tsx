@@ -8,6 +8,7 @@ import { HrDashboardWidget } from "@/modules/hr/dashboard-widget";
 import { ProcurementDashboardWidget } from "@/modules/procurement/dashboard-widget";
 import { PayrollDashboardWidget } from "@/modules/payroll/dashboard-widget";
 import { PosDashboardWidget } from "@/modules/pos/dashboard-widget";
+import { ProjectsDashboardWidget } from "@/modules/projects/dashboard-widget";
 
 /**
  * Per-module dashboard summary widgets, keyed by module key. Deliberately a
@@ -30,4 +31,5 @@ export const dashboardWidgets: Record<string, ComponentType> = {
   procurement: ProcurementDashboardWidget,
   payroll: PayrollDashboardWidget,
   pos: PosDashboardWidget,
+  projects: ProjectsDashboardWidget,
 };
