@@ -1,0 +1,165 @@
+import { FileText, Plus } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/feedback/empty-state";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { EntityDialog } from "@/components/forms/entity-dialog";
+import { requireCurrentTenant } from "@/lib/tenant";
+import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { listInvoices } from "@/modules/accounting/service";
+import { createNewInvoice, sendInvoice, payInvoice, voidExistingInvoice } from "./actions";
+
+const ERROR_MESSAGES: Record<string, string> = {
+  forbidden: "You don't have permission to manage invoices.",
+  "missing-fields": "All required fields must be filled in.",
+  "invalid-state": "That action isn't valid for this invoice's current status.",
+  "has-payment": "Cannot void an invoice that has already received payment.",
+};
+
+const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
+  DRAFT: "outline",
+  SENT: "secondary",
+  PAID: "default",
+  OVERDUE: "destructive",
+  VOID: "outline",
+};
+
+export default async function AccountingInvoicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ saved?: string; error?: string }>;
+}) {
+  const { saved, error } = await searchParams;
+  const tenant = await requireCurrentTenant();
+  const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_INVOICES_MANAGE);
+  const invoices = await listInvoices(tenant.organizationId);
+  const today = new Date().toISOString().slice(0, 10);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4">
+        <PageHeader title="Invoices" description="Amounts owed to your organization by customers." />
+        {canManage ? (
+          <EntityDialog trigger={<Button size="sm"><Plus />New invoice</Button>} title="New invoice" action={createNewInvoice}>
+            <div className="space-y-2">
+              <Label htmlFor="customerName">Customer name</Label>
+              <Input id="customerName" name="customerName" required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customerEmail">Customer email</Label>
+              <Input id="customerEmail" name="customerEmail" type="email" />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="amount">Amount</Label>
+                <Input id="amount" name="amount" type="number" step="0.01" required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="issueDate">Issue date</Label>
+                <Input id="issueDate" name="issueDate" type="date" defaultValue={today} required />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="dueDate">Due date</Label>
+              <Input id="dueDate" name="dueDate" type="date" required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea id="description" name="description" rows={3} />
+            </div>
+          </EntityDialog>
+        ) : null}
+      </div>
+
+      {saved ? (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
+          Saved.
+        </div>
+      ) : null}
+      {error && ERROR_MESSAGES[error] ? (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {ERROR_MESSAGES[error]}
+        </div>
+      ) : null}
+
+      {invoices.length === 0 ? (
+        <EmptyState icon={FileText} title="No invoices yet" description="Invoices you create will appear here." />
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Number</TableHead>
+              <TableHead>Customer</TableHead>
+              <TableHead>Amount</TableHead>
+              <TableHead>Paid</TableHead>
+              <TableHead>Due</TableHead>
+              <TableHead>Status</TableHead>
+              {canManage ? <TableHead /> : null}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {invoices.map((invoice) => (
+              <TableRow key={invoice.id}>
+                <TableCell className="font-mono text-xs">{invoice.invoiceNumber}</TableCell>
+                <TableCell className="font-medium">{invoice.customerName}</TableCell>
+                <TableCell className="text-muted-foreground">{Number(invoice.amount).toFixed(2)}</TableCell>
+                <TableCell className="text-muted-foreground">{Number(invoice.amountPaid).toFixed(2)}</TableCell>
+                <TableCell className="text-muted-foreground">{invoice.dueDate.toLocaleDateString()}</TableCell>
+                <TableCell>
+                  <Badge variant={STATUS_BADGE[invoice.status]}>{invoice.status}</Badge>
+                </TableCell>
+                {canManage ? (
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      {invoice.status === "DRAFT" ? (
+                        <form action={sendInvoice}>
+                          <input type="hidden" name="id" value={invoice.id} />
+                          <Button type="submit" size="sm" variant="ghost">Send</Button>
+                        </form>
+                      ) : null}
+                      {invoice.status === "SENT" || invoice.status === "OVERDUE" ? (
+                        <EntityDialog
+                          trigger={<Button size="sm" variant="ghost">Record payment</Button>}
+                          title={`Record payment for ${invoice.invoiceNumber}`}
+                          action={payInvoice}
+                          submitLabel="Record payment"
+                        >
+                          <input type="hidden" name="id" value={invoice.id} />
+                          <div className="space-y-2">
+                            <Label htmlFor={`pay-amount-${invoice.id}`}>Amount</Label>
+                            <Input
+                              id={`pay-amount-${invoice.id}`}
+                              name="amount"
+                              type="number"
+                              step="0.01"
+                              defaultValue={(Number(invoice.amount) - Number(invoice.amountPaid)).toFixed(2)}
+                              required
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`pay-date-${invoice.id}`}>Payment date</Label>
+                            <Input id={`pay-date-${invoice.id}`} name="paymentDate" type="date" defaultValue={today} required />
+                          </div>
+                        </EntityDialog>
+                      ) : null}
+                      {invoice.status === "DRAFT" ? (
+                        <form action={voidExistingInvoice}>
+                          <input type="hidden" name="id" value={invoice.id} />
+                          <Button type="submit" size="sm" variant="ghost">Void</Button>
+                        </form>
+                      ) : null}
+                    </div>
+                  </TableCell>
+                ) : null}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
+  );
+}

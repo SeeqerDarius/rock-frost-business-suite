@@ -15,6 +15,7 @@ import { fleetNavigation } from "@/modules/fleet/navigation";
 import { installmentNavigation } from "@/modules/installment/navigation";
 import { crmNavigation } from "@/modules/crm/navigation";
 import { inventoryNavigation } from "@/modules/inventory/navigation";
+import { accountingNavigation } from "@/modules/accounting/navigation";
 
 /**
  * The module registry. Every business module the platform can offer is declared
@@ -72,8 +73,9 @@ export const moduleRegistry: ModuleDefinition[] = [
     description: "Ledgers, invoices, expenses, and financial statements.",
     icon: Calculator,
     routePrefix: "/app/accounting",
-    navigation: [],
-    status: "coming-soon",
+    navigation: accountingNavigation,
+    status: "available",
+    permissionPrefix: "accounting.",
   },
   {
     key: "hr",

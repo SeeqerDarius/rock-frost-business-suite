@@ -38,6 +38,12 @@ export const PERMISSIONS = {
   INVENTORY_MOVEMENTS_MANAGE: "inventory.movements.manage",
   INVENTORY_REPORTS_VIEW: "inventory.reports.view",
   INVENTORY_SETTINGS_MANAGE: "inventory.settings.manage",
+  ACCOUNTING_VIEW: "accounting.view",
+  ACCOUNTING_ACCOUNTS_MANAGE: "accounting.accounts.manage",
+  ACCOUNTING_INVOICES_MANAGE: "accounting.invoices.manage",
+  ACCOUNTING_EXPENSES_MANAGE: "accounting.expenses.manage",
+  ACCOUNTING_REPORTS_VIEW: "accounting.reports.view",
+  ACCOUNTING_SETTINGS_MANAGE: "accounting.settings.manage",
 } as const;
 
 export function hasPermission(tenant: TenantContext, key: string): boolean {
