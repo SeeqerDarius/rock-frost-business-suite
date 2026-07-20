@@ -1,9 +1,32 @@
+import { Lock } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
+import { EmptyState } from "@/components/feedback/empty-state";
 import { installmentNavigation } from "@/modules/installment/navigation";
+import { requireCurrentTenant } from "@/lib/tenant";
+import { canAccessModule } from "@/lib/auth/permissions";
 
-export default function InstallmentLayout({ children }: { children: React.ReactNode }) {
+export default async function InstallmentLayout({ children }: { children: React.ReactNode }) {
+  const tenant = await requireCurrentTenant();
+
+  if (!canAccessModule(tenant, "installment")) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-6">
+        <EmptyState
+          icon={Lock}
+          title="Installment Management isn't available to you"
+          description="Either your organization hasn't enabled this module, or your role doesn't include Installment access. Contact an administrator if you believe this is a mistake."
+        />
+      </div>
+    );
+  }
+
   return (
-    <AppShell sectionLabel="Installment Management" navigation={installmentNavigation}>
+    <AppShell
+      sectionLabel="Installment Management"
+      navigation={installmentNavigation}
+      enabledModuleKeys={tenant.enabledModuleKeys}
+      organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
+    >
       {children}
     </AppShell>
   );

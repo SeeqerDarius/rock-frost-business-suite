@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Badge } from "@/components/ui/badge";
 import { moduleRegistry } from "@/platform/modules/registry";
 
-export function ModuleLauncher() {
+export function ModuleLauncher({ enabledModuleKeys = [] }: { enabledModuleKeys?: string[] }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -22,21 +22,29 @@ export function ModuleLauncher() {
           <DialogDescription>Switch to any module enabled for your organization.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-2 sm:grid-cols-2">
-          {moduleRegistry.map((mod) =>
-            mod.status === "available" ? (
-              <Link
-                key={mod.key}
-                href={mod.routePrefix as never}
-                onClick={() => setOpen(false)}
-                className="flex items-start gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-secondary/50"
-              >
-                <mod.icon className="mt-0.5 size-5 text-muted-foreground" />
-                <div>
-                  <p className="text-sm font-medium">{mod.name}</p>
-                  <p className="text-xs text-muted-foreground">{mod.description}</p>
-                </div>
-              </Link>
-            ) : (
+          {moduleRegistry.map((mod) => {
+            const isEnabled = mod.status === "available" && enabledModuleKeys.includes(mod.key);
+
+            if (isEnabled) {
+              return (
+                <Link
+                  key={mod.key}
+                  href={mod.routePrefix as never}
+                  onClick={() => setOpen(false)}
+                  className="flex items-start gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-secondary/50"
+                >
+                  <mod.icon className="mt-0.5 size-5 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm font-medium">{mod.name}</p>
+                    <p className="text-xs text-muted-foreground">{mod.description}</p>
+                  </div>
+                </Link>
+              );
+            }
+
+            const badgeLabel = mod.status === "coming-soon" ? "Coming soon" : "Not enabled";
+
+            return (
               <div
                 key={mod.key}
                 className="flex items-start gap-3 rounded-lg border border-dashed p-3 text-left opacity-60"
@@ -46,14 +54,14 @@ export function ModuleLauncher() {
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium">{mod.name}</p>
                     <Badge variant="outline" className="text-[10px]">
-                      Coming soon
+                      {badgeLabel}
                     </Badge>
                   </div>
                   <p className="text-xs text-muted-foreground">{mod.description}</p>
                 </div>
               </div>
-            )
-          )}
+            );
+          })}
         </div>
       </DialogContent>
     </Dialog>

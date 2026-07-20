@@ -34,11 +34,16 @@ Each phase below is gated — do not start the next phase without checking in, p
 
 **Status: complete.** See `OPERATOR_HANDOFF.md` for the detailed session record.
 
-## Phase 4 — Platform Workspace (not started)
+## Phase 4 — Platform Workspace ✅
 
-- Wire the organization switcher, notifications, and administration pages to real data.
-- Role-based access control wired into navigation (hide/guard nav items a role can't use) and into every module's server-side queries.
-- Module activation: an organization's actually-enabled modules (not just "available" vs "coming soon" globally) should drive what the module launcher and workspace dashboard show.
+- Organization switcher (cookie-based active-organization selection, real for any user with more than one membership — today every demo user has exactly one, so it renders as a plain label rather than a fake single-item dropdown), Notifications, Organization, and Administration pages all wired to real data.
+- Role-based access control: `/app/platform/*` gated to the "Super Admin" system role; Administration/Organization gated on `org.settings.manage`; Fleet/Installment gated on module enablement plus any permission under that module's prefix (`fleet.*` / `hirepurchase.*`) — this prefix-based check specifically so roles like Investor (which holds `fleet.investor.view` but not `fleet.view`) still reach the module. Workspace navigation filters Administration/Organization out for roles without `org.settings.manage`.
+- Module activation: `OrganizationModule.enabled` (real DB state, not a global "available" flag) drives the module launcher, `/app/modules`, and the dashboard's enabled-module summary — three real states: open (built + enabled), not enabled (built but organization hasn't activated it), coming soon (not built yet). Platform operators can toggle activation per organization from `/app/platform/organizations`.
+- Admin-facing "send an invite" UI (deferred from Phase 3) now exists on `/app/administration`, reusing the Phase 3 invite-token/email infrastructure. "Super Admin" is deliberately excluded from the invitable-role list — it's Rock Frost's own operator role, not something a tenant should be able to grant.
+- Platform Activity now reads real `AuditLog` rows (member invited, module enabled/disabled) instead of a placeholder.
+- One data reconciliation performed as part of this phase: the `Module` table had a legacy `layaway` code that didn't match the `installment` key used everywhere in code, several modules were marked `ACTIVE` despite having no real pages, and an orphaned `pos` module row existed with no registry counterpart. All three fixed to match the current registry (see `OPERATOR_HANDOFF.md`'s Phase 4 entry for exact detail).
+
+**Status: complete.** See `OPERATOR_HANDOFF.md` for the detailed session record.
 
 ## Phase 5 — Module Framework (partially started in Phase 1)
 

@@ -6,6 +6,7 @@ import { Logo } from "@/components/layout/logo";
 import { SidebarNav } from "@/components/navigation/sidebar-nav";
 import { ModuleLauncher } from "@/components/navigation/module-launcher";
 import { UserMenu } from "@/components/navigation/user-menu";
+import { OrganizationSwitcher } from "@/components/navigation/organization-switcher";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import type { ModuleNavItem } from "@/types/module";
@@ -14,9 +15,14 @@ interface AppShellProps {
   sectionLabel: string;
   navigation: ModuleNavItem[];
   children: React.ReactNode;
+  enabledModuleKeys?: string[];
+  organization?: {
+    organizationId: string;
+    memberships: { organizationId: string; name: string; tenantCode: string }[];
+  };
 }
 
-export function AppShell({ sectionLabel, navigation, children }: AppShellProps) {
+export function AppShell({ sectionLabel, navigation, children, enabledModuleKeys = [], organization }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   return (
@@ -25,6 +31,9 @@ export function AppShell({ sectionLabel, navigation, children }: AppShellProps) 
         <div className="flex h-16 items-center border-b px-4">
           <Logo href="/app/dashboard" />
         </div>
+        {organization ? (
+          <OrganizationSwitcher currentOrganizationId={organization.organizationId} memberships={organization.memberships} />
+        ) : null}
         <p className="px-5 pt-4 pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{sectionLabel}</p>
         <div className="flex-1 overflow-y-auto py-1">
           <SidebarNav items={navigation} />
@@ -37,6 +46,9 @@ export function AppShell({ sectionLabel, navigation, children }: AppShellProps) 
           <div className="flex h-16 items-center border-b px-4">
             <Logo />
           </div>
+          {organization ? (
+            <OrganizationSwitcher currentOrganizationId={organization.organizationId} memberships={organization.memberships} />
+          ) : null}
           <p className="px-5 pt-4 pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{sectionLabel}</p>
           <div className="flex-1 overflow-y-auto py-1" onClick={() => setMobileNavOpen(false)}>
             <SidebarNav items={navigation} />
@@ -51,7 +63,7 @@ export function AppShell({ sectionLabel, navigation, children }: AppShellProps) 
           </Button>
           <div className="flex-1" />
           <div className="flex items-center gap-1">
-            <ModuleLauncher />
+            <ModuleLauncher enabledModuleKeys={enabledModuleKeys} />
             <UserMenu />
           </div>
         </header>

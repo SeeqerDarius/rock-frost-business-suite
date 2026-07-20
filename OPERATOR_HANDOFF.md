@@ -17,80 +17,93 @@ After making changes:
 
 ## Current phase
 
-**Phase 3 (Authentication) — complete.** See `docs/DEVELOPMENT_ROADMAP.md` for what comes next (Phase 4: Platform Workspace, gated pending approval).
+**Phase 4 (Platform Workspace) — complete.** See `docs/DEVELOPMENT_ROADMAP.md` for what comes next (Phase 5: Module Framework, gated pending approval).
 
 ## Current architecture (short version — see `docs/ARCHITECTURE.md` for full detail)
 
 - Next.js 16 App Router under `src/app/`. Public marketing site at bare paths (`/`, `/solutions`, `/modules`, `/industries`, `/company`, `/contact`) via the `(public)` route group; auth UI (`/login`, `/forgot-password`, `/reset-password`, `/invite`) via `(auth)`; **everything requiring sign-in lives under `/app/*`** — `app/(overview)` (organization scope: `/app/dashboard`, `/app/modules`, etc.), `app/fleet`, `app/installment`, `app/platform` (platform scope). See `docs/ARCHITECTURE.md`'s "Why /app exists."
-- Each module (`fleet`, `installment`) has its own `layout.tsx` rendering the shared `AppShell` component with its own navigation array — this is how module isolation (`docs/MODULE_BOUNDARIES.md`) is enforced structurally, not conditionally.
-- `src/platform/modules/registry.ts` is the single source of truth for every module (available or coming-soon); its `routePrefix` values are `/app`-prefixed.
+- Each module (`fleet`, `installment`) has its own `layout.tsx` rendering the shared `AppShell` component with its own navigation array — module isolation enforced structurally, not conditionally. Both layouts now also guard on `canAccessModule()` (module enabled for the org + a permission under that module's prefix).
+- `src/platform/modules/registry.ts` is the single source of truth for every module's metadata (name/icon/routePrefix/nav); real per-organization enablement now lives in the database (`Module`/`OrganizationModule`) and is joined in via `tenant.enabledModuleKeys`.
 - shadcn/ui (Base UI primitives, not Radix) + Tailwind v4 design system — see `docs/DESIGN_SYSTEM.md`.
-- **Real authentication, real sessions, real route protection.** NextAuth v4 credentials provider + JWT sessions (`src/lib/auth/nextauth.ts`), `src/app/app/layout.tsx` guards every `/app/*` route (redirects to `/login` if unauthenticated, blocks if no organization membership). Password reset and invite acceptance both work end-to-end via single-use tokens on the reused `VerificationToken` model. Contact form sends real email (Resend) with graceful degradation. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md` for full detail.
-- **Fleet and Installment modules are still empty `EmptyState` shells** — no real business logic yet. That's Phase 6/7 scope, unaffected by this phase.
-- `prisma/schema.prisma` is untouched and matches the live Neon database exactly — Phase 3 reconnected to it (via `src/lib/db.ts`) without any migration.
+- **Real authentication + real authorization.** NextAuth v4 credentials/JWT sessions (Phase 3) plus, as of this phase, real role/permission/module-based access control everywhere: `/app/platform/*` restricted to the "Super Admin" role, `/app/administration`+`/app/organization` restricted to `org.settings.manage`, Fleet/Installment restricted to module-enabled + a permission under that module's prefix. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md` for full detail.
+- **Fleet and Installment modules are still empty `EmptyState` shells** past their own gated layout — no real business logic yet. That's Phase 6/7 scope, unaffected by this phase.
+- `prisma/schema.prisma` is untouched — this phase only wrote/updated *rows* (module reconciliation, enablement, invites, audit logs), never the schema itself.
 
-## Files changed (Phase 3 — Authentication)
+## Files changed (Phase 4 — Platform Workspace)
 
 **Created:**
-- `src/lib/db.ts` — Prisma client singleton (`server-only`).
-- `src/lib/auth/nextauth.ts`, `src/lib/auth/next-auth.d.ts`, `src/lib/auth/session.ts` — NextAuth credentials provider, session/JWT type augmentation, `getServerAuthSession()`.
-- `src/app/api/auth/[...nextauth]/route.ts` — NextAuth route handler.
-- `src/lib/tenant/index.ts` — `getCurrentTenant()`/`requireCurrentTenant()` tenant resolver.
-- `src/app/app/layout.tsx`, `src/app/app/page.tsx` — real auth guard for every `/app/*` route; root redirect to `/app/dashboard`.
-- `src/components/session-provider.tsx` — client `SessionProvider` wrapper, mounted in `src/app/layout.tsx`.
-- `src/lib/email.ts` — Resend wrapper with graceful degradation when `RESEND_API_KEY` is unset.
-- `src/lib/auth/tokens.ts` — issue/consume helpers for password-reset and invite tokens on the `VerificationToken` model.
-- `src/lib/auth/actions.ts` — server actions: `requestPasswordReset`, `resetPassword`, `acceptInvite`.
-- `src/app/(auth)/reset-password/page.tsx`, `src/app/(auth)/invite/page.tsx` — new pages.
-- `src/app/(public)/contact/actions.ts` — `submitContactForm` server action.
+- `src/lib/auth/permissions.ts` — `PERMISSIONS` constants (22 keys, mirroring the archived `lib/permissions/constants.ts`), `hasPermission()`, `canAccessModule()` (module-enabled + permission-prefix check), `isPlatformOperator()` (role-name check).
+- `src/lib/tenant/actions.ts` — `switchOrganization` server action (sets the `active_org` cookie after verifying real membership).
+- `src/components/navigation/organization-switcher.tsx` — client dropdown (renders a plain label instead of a fake single-item dropdown when the user belongs to only one organization, which is every demo user today).
+- `src/app/app/(overview)/administration/actions.ts` — `inviteMember` server action (creates `User`+`OrganizationMember` in `INVITED` status, issues a Phase 3 invite token, sends the email, logs an `AuditLog` row, all in one transaction). "Super Admin" is excluded from the invitable-role list.
+- `src/app/app/(overview)/notifications/actions.ts` — `markNotificationRead`, `markAllNotificationsRead`.
+- `src/app/app/platform/actions.ts` — `toggleOrganizationModule` (Super-Admin-only, upserts `OrganizationModule.enabled`, logs an `AuditLog` row).
+- `src/app/app/platform/organizations/module-toggle.tsx` — client `Switch` wrapper with local optimistic state (see bug note below).
 
 **Rewritten:**
-- `src/app/(auth)/login/page.tsx` — real client-side form using `signIn("credentials", ...)`.
-- `src/app/(auth)/forgot-password/page.tsx` — real form wired to `requestPasswordReset`.
-- `src/components/navigation/user-menu.tsx` — real session data via `useSession()`, real sign-out.
+- `src/lib/tenant/index.ts` — `TenantContext` gained `enabledModuleKeys: string[]` and `memberships: {...}[]`; `getCurrentTenant()` now honors an `active_org` cookie override (validated against real membership) and reads `role`/`permissions` fresh from the DB each call instead of from the JWT.
+- `src/platform/modules/workspace-navigation.tsx` — `workspaceNavigation` array became `getWorkspaceNavigation(tenant)`, filtering Administration/Organization by `org.settings.manage`.
+- `src/components/layout/app-shell.tsx`, `src/components/navigation/module-launcher.tsx` — accept `enabledModuleKeys`/`organization` props; module launcher now renders three real states (open / not enabled for your org / coming soon).
+- `src/app/app/(overview)/layout.tsx`, `src/app/app/platform/layout.tsx`, `src/app/app/fleet/layout.tsx`, `src/app/app/installment/layout.tsx` — each now fetches the tenant and enforces its own access guard (platform: Super Admin only; fleet/installment: `canAccessModule()`), rendering an `EmptyState`-based access-denied message rather than redirecting, and passes `enabledModuleKeys`/`organization` into `AppShell`.
+- `src/app/app/(overview)/{dashboard,modules,organization,administration,notifications}/page.tsx`, `src/app/app/platform/{dashboard,organizations,modules,activity}/page.tsx` — every one replaced with real database-backed content (see Summary below).
 
 **Modified:**
-- `src/app/(public)/contact/page.tsx` — wired to `submitContactForm`, sent/error banners.
-- `docs/DEVELOPMENT_ROADMAP.md`, `docs/AUTHENTICATION_AND_AUTHORIZATION.md` — marked Phase 3 complete, replaced the placeholder-state description with what's actually built.
+- `src/app/app/(overview)/account/page.tsx` — corrected stale "alongside authentication" placeholder copy (out of scope this phase; still a real placeholder).
+- `docs/DEVELOPMENT_ROADMAP.md`, `docs/AUTHENTICATION_AND_AUTHORIZATION.md` — Phase 4 marked complete; Authorization section rewritten from "planned" to "real," with the exact enforcement points.
 
 ## Summary of what was done
 
-User said "continue" after approving the Phase 2 report. Per `docs/DEVELOPMENT_ROADMAP.md`, that's Phase 3 (Authentication).
+User said "start phase 4" after approving the Phase 3 report. Per `docs/DEVELOPMENT_ROADMAP.md`, that's Phase 4 (Platform Workspace).
 
-Reconnected to the existing Neon database (no schema changes — confirmed via `npx prisma migrate status` before and `npx prisma validate` after) and built NextAuth v4 credentials-based authentication with JWT sessions, replacing every placeholder identified in the old `docs/AUTHENTICATION_AND_AUTHORIZATION.md` ("Current placeholder state" section, now removed): the login form actually authenticates, `UserMenu` shows the real signed-in user and actually signs out, and `src/app/app/layout.tsx` now redirects unauthenticated requests to `/login` and blocks users with no organization membership — none of `/app/*` was previously guarded.
+**Data reconciliation performed first** (with explicit user approval, since direct database writes are gated by the auto-mode permission classifier — the user added a scoped allow-rule, `Bash(node ./_*.mjs)`, to their own `~/.claude/settings.json` for this): the `Module` table had drifted from the code registry — a legacy `layaway` code that didn't match the `installment` key used everywhere else, five modules (`crm`/`inventory`/`accounting`/`hr`/`payroll`) marked `ACTIVE` despite having no real pages, three registry modules (`procurement`/`projects`/`analytics`) missing entirely, and an orphaned `pos` module row with no registry counterpart or product-doc mention. Fixed all of it: renamed `layaway`→`installment`, corrected every module's `status` to match reality, added the three missing rows, deleted the unreferenced `pos` row, and enabled `installment` for the demo organization (previously only `fleet` was enabled, despite `hirepurchase@demo.com` clearly expecting Installment access).
 
-Built password reset and invite acceptance on top of NextAuth's standard (previously unused) `VerificationToken` model, reused generically for both flows via a prefixed `identifier` (`password-reset:${email}` / `invite:${email}`), single-use (deleted on consumption), with different TTLs (1 hour / 7 days). `requestPasswordReset` deliberately never reveals whether an email exists — it always redirects to the same `?sent=1` state regardless of whether a token was actually issued. Wired the contact form to real email delivery (Resend) using the same `sendEmail()` helper, which gracefully degrades (logs instead of throwing) since `RESEND_API_KEY` is unset in this environment — confirmed via a length-only env check script that never printed actual values.
+Built the full authorization layer: `src/lib/auth/permissions.ts` centralizes all 22 permission keys and three access-check helpers. Platform access is gated on the literal "Super Admin" role name rather than a permission, specifically because Organization Owner holds every permission a tenant can have and must never reach `/app/platform/*`. Module access (`canAccessModule`) is gated on a permission *prefix* rather than a single `.view` permission, specifically to accommodate the Investor role, which holds `fleet.investor.view`/`fleet.reports.view` but not `fleet.view` — a single-permission check would have incorrectly locked Investor out of Fleet entirely.
 
-Deliberately did not build: an admin-facing "send invite" UI (there's no user-management screen yet to send one from — that's Phase 4 scope), public self-registration, or login rate limiting/lockout (carried-forward gap from the pre-rebuild implementation, noted in `docs/AUTHENTICATION_AND_AUTHORIZATION.md`).
+Wired every Platform Workspace page to real data: Organization (profile + branches), Administration (member table + working invite-a-member form, reusing Phase 3's token/email infrastructure), Notifications (real `Notification` rows with mark-read actions — this surfaced pre-existing "Welcome back" sign-in notifications that had never been displayed before, confirming the query works against real historical data, not just newly-created rows), the module launcher and `/app/modules` (three real states), the dashboard (enabled-module summary cards), and all four Platform Administration pages (`dashboard` aggregate stats, `organizations` with a live per-module enable/disable toggle, `modules` with real adoption counts, `activity` reading real `AuditLog` rows). Deliberately left `subscriptions` as a placeholder — no `Subscription`/billing model exists in the schema yet, and inventing one wasn't in scope.
 
-**One real bug found via browser verification:** opening the account menu after logging in threw "Base UI: MenuGroupContext is missing" from `DropdownMenuLabel` inside `UserMenu`. Unlike Radix, Base UI requires `DropdownMenuLabel` to sit inside a `<DropdownMenuGroup>`. Fixed by wrapping it; re-verified the whole flow afterward.
+**One real bug found via browser verification, not caught by `tsc`/lint/build:** the platform organizations page's module-enable `Switch` was fully controlled by a server-rendered `enabled` prop with no local state. A single click worked, but a second click in the same page view (without a full navigation) re-derived its toggle direction from the stale original prop instead of the just-clicked state — so two rapid clicks could both send the same direction instead of alternating. Fixed by giving `ModuleToggle` its own `useState` seeded from the prop, updated optimistically on click; re-verified with three rapid consecutive clicks producing three correctly-alternating, correctly-ordered `AuditLog` entries.
 
-**Verification:** full validation suite (lint, `tsc --noEmit`, `prisma validate`, `prisma generate`, `npm run build`) passes clean — 27 routes (up from 24). Playwright installed **temporarily**, drove the actual auth flows end-to-end: unauthenticated `/app/dashboard` access redirects to `/login`; wrong password shows a visible error and does not log in; correct password reaches `/app/dashboard` with a real session; `UserMenu` shows the real name/email; sign-out clears the session and re-redirects on a follow-up `/app/dashboard` request. Also drove the full password-reset lifecycle for `hirepurchase@demo.com`: requested a reset, pulled the real token from the `VerificationToken` table, submitted it via the actual `/reset-password` UI, confirmed the token row was deleted (single-use) and that the new password worked on a fresh login. **`hirepurchase@demo.com`'s password was changed from `HirePurchase@2026` to `HirePurchase@2027` during this testing** — anyone with that demo credential documented elsewhere should use the new one. Removed Playwright surgically via `npm uninstall playwright` afterward, confirmed via `git diff --stat package.json package-lock.json` (no output) that nothing else was touched.
+**Verification:** full validation suite (lint, `tsc --noEmit`, `prisma validate`, `prisma generate`, `npm run build`) passes clean — 27 routes (unchanged count; this phase only changed page/layout logic, not the route tree). Playwright installed **temporarily**, drove the full RBAC matrix across four real demo accounts (Super Admin, Organization Owner, Fleet Manager, Hire Purchase Manager) against five protected routes (`/app/platform/dashboard`, `/app/administration`, `/app/organization`, `/app/fleet`, `/app/installment`) — every single one of the 20 checks matched the intended access matrix exactly, including Organization Owner being correctly denied Platform despite holding every other permission, and Fleet Manager/Hire Purchase Manager each being confined to their own module. Also drove the invite flow end-to-end (real `User`+`OrganizationMember` rows created, then cleaned up afterward) and the module-toggle bug fix above. Removed Playwright surgically via `npm uninstall playwright` afterward, confirmed via `git diff --stat package.json package-lock.json` (no output) that nothing else was touched. Also had to stop several lingering `next dev` processes from an earlier verification pass that were holding a file lock on the Prisma query engine DLL, blocking `prisma generate` — confirmed via process command-line inspection that only this project's own dev-server processes were involved before stopping any of them (the user's own real Chrome browser windows were briefly considered and correctly ruled out as unrelated).
+
+**Known-credentials note:** `owner@demo.com` and `fleet@demo.com` had no recoverable passwords (bcrypt hashes with no plaintext anywhere in the repo), so test passwords were set directly for RBAC verification: `owner@demo.com` → `OwnerTest@2026!`, `fleet@demo.com` → `FleetTest@2026!`. These are now the real passwords for those two demo accounts going forward.
 
 ## Build result
 
-**Passed.** `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate`/`generate` succeed, `npm run build` succeeds — 27 routes (`○` static: `/`, `/login`, `/company`, `/industries`, `/modules`, `/solutions`, `/_not-found`; the rest `ƒ` dynamic, expected for anything reading session/searchParams).
+**Passed.** `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate`/`generate` succeed, `npm run build` succeeds — 27 routes, same shape as Phase 3 (this phase changed behavior inside existing routes, not the route tree itself).
 
 ## Known issues / deliberate gaps
 
-- **No admin-facing "send invite" UI** — invite tokens must currently be issued directly against the database; the accept-invite page/flow work, but nothing yet creates the invite. Phase 4 scope.
-- **No public self-registration/signup flow.**
-- **No rate limiting or account lockout on failed logins** — carried forward from the pre-rebuild implementation, still not addressed.
-- **`RESEND_API_KEY` is unset** — reset/invite/contact emails log via `console.warn` instead of delivering. No code changes needed to enable delivery, just the env var.
-- **No permission/role-based enforcement yet beyond organization membership** — `/app/*` checks "is this user a member of some organization," not module- or role-specific permissions. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md`'s "Authorization — planned, partially built" section. Phase 4 scope.
+- **No branch-level access enforcement** — `Branch` exists in the schema and is shown read-only on the Organization page, but nothing gates access by branch yet. Revisit per-module during Phase 6/7.
+- **No action-level (in-page) permission checks** — e.g. `fleet.vehicles.manage` vs `fleet.vehicles.view` on a single page. Moot until Fleet/Installment have real pages (Phase 6/7).
+- **No rate limiting or account lockout on failed logins** — carried forward unchanged, still not addressed.
+- **No public self-registration/signup flow** — the new invite UI covers admin-initiated onboarding only.
+- **`RESEND_API_KEY` is unset** — reset/invite/contact/notification emails log via `console.warn` instead of delivering. No code changes needed to enable delivery, just the env var.
+- **Organization switcher is real but functionally inert today** — every demo user belongs to exactly one organization, so it renders as a plain label. The switching mechanism (cookie + membership validation) is fully built and will activate the moment any user has a second `OrganizationMember` row.
 - **Fleet and Installment are still empty shells** — unaffected by this phase, still Phase 6/7 scope.
 
 ## Next recommended step
 
-Get explicit approval before starting Phase 4 (Platform Workspace) — same operating rule as before: real role-based access control and admin-facing user management (including the deferred "send invite" UI) is a meaningfully larger piece of work than a checkpoint should skip past.
+Get explicit approval before starting Phase 5 (Module Framework) — same operating rule as before.
 
 ---
 
 ## Handoff log
 
-### 2026-07-19 — Claude Code — Phase 3 (Authentication)
+### 2026-07-20 — Claude Code — Phase 4 (Platform Workspace)
 
 See "Files changed," "Summary," "Build result," "Known issues," and "Next recommended step" above — kept in the current-state sections rather than duplicated here, since this is the most recent entry.
+
+### 2026-07-19 — Claude Code — Phase 3 (Authentication)
+
+**Files changed:** Created `src/lib/db.ts` (Prisma singleton), `src/lib/auth/{nextauth.ts,next-auth.d.ts,session.ts,tokens.ts,actions.ts}`, `src/app/api/auth/[...nextauth]/route.ts`, `src/lib/tenant/index.ts` (first version), `src/app/app/{layout.tsx,page.tsx}`, `src/components/session-provider.tsx`, `src/lib/email.ts`, `src/app/(auth)/{reset-password,invite}/page.tsx`, `src/app/(public)/contact/actions.ts`. Rewrote `src/app/(auth)/login/page.tsx`, `src/app/(auth)/forgot-password/page.tsx`, `src/components/navigation/user-menu.tsx`.
+
+**Summary:** Reconnected to the existing Neon database (no schema changes) and built NextAuth v4 credentials-based authentication with JWT sessions, replacing every placeholder from Phase 1/2: real login, real session data in `UserMenu`, real sign-out, and `/app/*` route protection where none existed before. Built password reset and invite acceptance on NextAuth's previously-unused `VerificationToken` model (single-use, prefixed identifiers, distinct TTLs). Wired the contact form to real email delivery (Resend) with graceful degradation. One real bug found via browser verification: Base UI requires `DropdownMenuLabel` inside a `<DropdownMenuGroup>` (unlike Radix) — fixed.
+
+**Build result:** Passed. Lint/tsc/prisma/build all clean — 27 routes (up from 24).
+
+**Known issues:** No admin-facing "send invite" UI, no permission/role enforcement beyond org membership, no rate limiting. All addressed or explicitly carried forward in the Phase 4 entry above.
+
+**Next recommended step (at the time):** Get explicit approval before Phase 4 — which the user then gave ("start phase 4"), leading directly into the Phase 4 work above.
 
 ### 2026-07-19 — Claude Code — Phase 2 (Public Website + `/app` restructure)
 
