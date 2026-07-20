@@ -17,17 +17,56 @@ After making changes:
 
 ## Current phase
 
-**Phase 8 (CRM) — complete**, plus a systemic `revalidatePath` router-cache bug fix applied across every mutating Server Action in Fleet, Installment, and CRM. All eight original phases plus two remediation passes are done. See `docs/DEVELOPMENT_ROADMAP.md` for what comes next — the next module to build has **not yet been chosen** (candidates: Inventory, Accounting, HR/Payroll); Billing/Subscriptions remains deliberately scheduled last, per explicit user direction.
+**Phase 9 (Inventory) — complete.** All nine original phases plus two remediation passes are done. See `docs/DEVELOPMENT_ROADMAP.md` for what comes next — the next module to build has **not yet been chosen** (candidates: Accounting, HR/Payroll, Procurement, Projects, Analytics); Billing/Subscriptions remains deliberately scheduled last, per explicit user direction.
 
 ## Current architecture (short version — see `docs/ARCHITECTURE.md` for full detail)
 
-- Next.js 16 App Router under `src/app/`. Public marketing site at bare paths via `(public)`; auth UI via `(auth)`; **everything requiring sign-in lives under `/app/*`** — `app/(overview)` (organization scope), `app/fleet`, `app/installment`, `app/crm`, `app/platform` (platform scope). See `docs/ARCHITECTURE.md`'s "Why /app exists."
-- Each module (`fleet`, `installment`, `crm`) has its own `layout.tsx` rendering `AppShell` with its own navigation array, guarded on `canAccessModule()` (module enabled for the org + a permission under that module's registered `permissionPrefix`).
-- `src/platform/modules/registry.ts` is the single source of truth for every module's metadata; `src/platform/modules/dashboard-widgets.tsx` maps a module key to a real dashboard summary component — Fleet's, Installment's, and CRM's are all wired up now.
+- Next.js 16 App Router under `src/app/`. Public marketing site at bare paths via `(public)`; auth UI via `(auth)`; **everything requiring sign-in lives under `/app/*`** — `app/(overview)` (organization scope), `app/fleet`, `app/installment`, `app/crm`, `app/inventory`, `app/platform` (platform scope). See `docs/ARCHITECTURE.md`'s "Why /app exists."
+- Each module (`fleet`, `installment`, `crm`, `inventory`) has its own `layout.tsx` rendering `AppShell` with its own navigation array, guarded on `canAccessModule()` (module enabled for the org + a permission under that module's registered `permissionPrefix`).
+- `src/platform/modules/registry.ts` is the single source of truth for every module's metadata; `src/platform/modules/dashboard-widgets.tsx` maps a module key to a real dashboard summary component — Fleet's, Installment's, CRM's, and Inventory's are all wired up now.
 - shadcn/ui (Base UI primitives) + Tailwind v4 design system — see `docs/DESIGN_SYSTEM.md`.
-- **All three business modules are fully real.** Fleet Management (Phase 6), Installment Management (Phase 7), and CRM (Phase 8) are all complete. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md` and `docs/MODULE_BOUNDARIES.md` for full detail.
-- **Every mutating Server Action that redirects to a list page now calls `revalidatePath()` on that page immediately before the `redirect()`** — a systemic gap fixed this pass across all 18 action files in Fleet/Installment/CRM (see "Summary" below). This is now the required pattern for any new Server Action, not an optional optimization.
-- `prisma/schema.prisma` changes since Phase 3's reconnection: `User.failedLoginAttempts`/`User.lockedUntil` (migration `20260720120000_add_login_lockout`), and the CRM models `CrmLeadSource`/`CrmContact`/`CrmLead`/`CrmDeal`/`CrmActivity` (migration `20260720140000_add_crm_module`). Both applied via `prisma migrate deploy` — **not** `prisma migrate dev`, which detects a pre-existing drift between the live database's migration history and the local `prisma/migrations/` folder (leftover from before this rebuild) and offers to reset the entire database. That offer was declined both times; `migrate deploy` applied each migration cleanly without touching anything else. Anyone continuing this project should use `migrate deploy` (or hand-write the migration SQL and apply it that way) rather than `migrate dev` against this specific database.
+- **All four business modules are fully real.** Fleet Management (Phase 6), Installment Management (Phase 7), CRM (Phase 8), and Inventory Management (Phase 9) are all complete. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md` and `docs/MODULE_BOUNDARIES.md` for full detail.
+- **Every mutating Server Action that redirects to a list page calls `revalidatePath()` on that page immediately before the `redirect()`** — a systemic gap discovered and fixed during Phase 8 across every action file that existed at the time; Inventory's action files were written with this pattern from the start. This is the required pattern for any new Server Action, not an optional optimization.
+- `prisma/schema.prisma` changes since Phase 3's reconnection: `User.failedLoginAttempts`/`User.lockedUntil` (migration `20260720120000_add_login_lockout`); the CRM models `CrmLeadSource`/`CrmContact`/`CrmLead`/`CrmDeal`/`CrmActivity` (migration `20260720140000_add_crm_module`); the Inventory models `InventoryCategory`/`InventoryWarehouse`/`InventoryItem`/`InventoryStock`/`InventoryMovement` (migration `20260720160000_add_inventory_module`). All three applied via `prisma migrate deploy` — **not** `prisma migrate dev`, which detects a pre-existing drift between the live database's migration history and the local `prisma/migrations/` folder (leftover from before this rebuild) and offers to reset the entire database. That offer was declined every time; `migrate deploy` applied each migration cleanly without touching anything else. Anyone continuing this project should use `migrate deploy` (or hand-write the migration SQL and apply it that way) rather than `migrate dev` against this specific database.
+
+## Files changed (Phase 9 — Inventory Management)
+
+**Created:** `prisma/migrations/20260720160000_add_inventory_module/migration.sql`; `src/modules/inventory/{service.ts,navigation.tsx,dashboard-widget.tsx}`; `src/app/app/inventory/layout.tsx`, `src/app/app/inventory/page.tsx`, and six route trees (`items`, `warehouses`, `stock`, `movements`, `reports`, `settings`) — `stock` is read-only (no `actions.ts`), the other five each have `page.tsx` + `actions.ts`.
+
+**Modified:** `prisma/schema.prisma` (Inventory models + back-relations on `User`/`Organization`/`Branch`); `src/lib/auth/permissions.ts` (6 new `INVENTORY_*` keys); `src/platform/modules/registry.ts` (`inventory` flipped from `coming-soon` to `available`); `src/platform/modules/dashboard-widgets.tsx` (Inventory widget registered).
+
+**Database (via one-off scripts, not committed):** seeded 6 `Permission` rows for `inventory.*`, granted them to Super Admin/Organization Owner, created the "Inventory Manager" system role, enabled the `inventory` module for the demo organization (`Rock Frost Demo Fleet`, tenant code `rock-frost-demo-fleet` — note this is *not* `demo`, worth remembering if a future script needs to target it directly).
+
+## Summary of what was done (Phase 9 — Inventory Management)
+
+User chose "Inventory" as the next module after CRM (via an AskUserQuestion offering Inventory / Accounting / HR-Payroll). Like CRM, no inventory-shaped models existed in the schema (Installment's `HirePurchaseStaffInventory` is a narrow per-staff-member unit counter, not a general warehouse/stock system, so it wasn't reused). Designed five new models from scratch — `InventoryCategory`, `InventoryWarehouse`, `InventoryItem`, `InventoryStock` (a per item×warehouse quantity row), and `InventoryMovement` (an audit-trail row for every receipt/issue/adjustment/transfer) — migrated via the established safe `migrate diff` + manual migration folder + `migrate deploy` workflow (confirmed purely additive).
+
+The one function with real logic, `recordMovement()`, runs the stock-quantity update and the audit-trail row inside a single `db.$transaction`: `RECEIPT` adds to one warehouse, `ISSUE` subtracts (rejecting if insufficient), `ADJUSTMENT` applies a signed delta (rejecting if it would go negative), and `TRANSFER` subtracts from a source warehouse and adds to a distinct destination warehouse in the same transaction (rejecting insufficient stock or a same-warehouse transfer). Built all six pages (Items, Warehouses, Stock, Movements, Reports, Settings) plus an overview page and dashboard widget, following the exact pattern established by Fleet/Installment/CRM. Every action file was written with the `revalidatePath()`-before-`redirect()` pattern from the start — no repeat of Phase 8's discovery needed.
+
+**Verified with real arithmetic, not just "no error thrown"**: created a test item (cost price 10.50, reorder point 5) and two warehouses, then ran a full receipt → transfer → issue → adjustment sequence via Playwright, confirming exact quantities at every step — 20 received into Warehouse A, correctly 12/8 after an 8-unit transfer to Warehouse B, correctly 5 in B after a 3-unit issue, correctly 10 in A after a −2 adjustment — and confirmed a subsequent over-large issue (999 units) was rejected with `error=insufficient-stock` and left stock unchanged. Reports page correctly computed total stock value as 157.50 (15 total units × 10.50) and correctly showed zero low-stock items (15 > reorder point of 5). All test fixtures (item, both warehouses, two lead — categories) deleted afterward via a one-off cleanup script.
+
+## Build result (Phase 9 — Inventory Management)
+
+**Passed.** `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate` succeeds, `npm run build` succeeds — 58 routes (up from 51; 7 new Inventory routes). Playwright installed **temporarily** for browser verification, then removed surgically via `npm uninstall playwright` (confirmed via `git diff --stat package.json package-lock.json`, no output). Dev server stopped afterward, confirmed by command-line inspection first.
+
+## Known issues / deliberate gaps (current)
+
+- **Inventory has no data-level scoping** (same shape as CRM's gap) — every item/warehouse/movement is visible to anyone holding the relevant `inventory.*` permission, no per-warehouse or per-owner restriction.
+- **Inventory is not yet linked to any other module** — Fleet parts/maintenance and Installment products remain on their own separate stock concepts (`HirePurchaseStaffInventory`) rather than drawing from the new general Inventory module. Integrating them is a deliberate future decision, not an oversight — see `docs/MODULE_BOUNDARIES.md`'s cross-module data rule (any such integration needs to be recorded in `docs/DECISIONS.md`, not silently added).
+- **CRM has no data-level scoping** analogous to Installment's field-staff restriction — every contact/lead/deal/activity is visible to anyone holding the relevant `crm.*` permission, with no per-owner restriction. Revisit if a CRM role narrower than "sees everything the org has" is ever needed.
+- **No owner-facing maintenance approval portal** (Fleet) — would need a whole new authenticated user type.
+- **No file/photo upload for maintenance requests** (Fleet) — needs a storage-provider decision first.
+- **No fuzzy duplicate-detection on customer/product/contact/item creation, no hard deletes** for payments/accounts/customers — deliberately deferred.
+- **No branch-level access enforcement** — still low-value with one branch platform-wide.
+- **No public self-registration** — deliberate for an invite-only B2B platform.
+- **`RESEND_API_KEY` is unset** — emails still log via `console.warn` instead of delivering.
+- **Organization switcher is real but functionally inert today** — every demo user belongs to exactly one organization.
+
+## Next recommended step
+
+Get explicit direction on which module follows Inventory — candidates per `docs/DEVELOPMENT_ROADMAP.md`'s "Later phases" section are Accounting, HR/Payroll, Procurement, Projects, or Analytics. Billing/Subscriptions remains deliberately scheduled last, per the user's own standing instruction, regardless of which of the others comes next.
+
+---
 
 ## Files changed (Phase 8 + revalidatePath fix)
 
@@ -56,26 +95,11 @@ User chose "CRM" as the next module (per the previously-agreed "fix the gaps, wh
 
 **Major bug found during CRM's own browser verification, then found to be systemic**: moving a deal to the next pipeline stage correctly updated the database (confirmed via direct query) but the browser kept showing the pre-move stage after the action's `redirect()` landed on the same `?saved=1` URL a second time — a Next.js Router Cache staleness issue, not a server-side bug. Fixed by adding `revalidatePath()` before the `redirect()` in the affected CRM action. Then audited every other action file in the project (`grep -rL "revalidatePath"`) and found the exact same gap in **all 13 other mutating action files** across Fleet and Installment — meaning this bug had been present, silently, since Phase 6. Fixed all 18 total action files (7 Fleet + 6 Installment + 5 CRM), re-verified with a full Playwright pass: created a contact, created and converted a lead to a deal (confirming the new contact appeared correctly on the Contacts page too), moved the resulting deal through two pipeline stages in a row with a fresh page navigation after each move, logged an activity, and added a lead source — every step showed correct, non-stale data. All Playwright test-artifact records were deleted afterward via a one-off cleanup script.
 
-## Build result (Phase 8 + revalidatePath fix)
+**Build result at the time:** Passed. `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate` succeeds, `npm run build` succeeds — 51 routes (up from 44; 7 new CRM routes). Playwright installed temporarily for browser verification, then removed surgically. Dev server stopped afterward.
 
-**Passed.** `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate` succeeds, `npm run build` succeeds — 51 routes (up from 44; 7 new CRM routes). Playwright installed **temporarily** for browser verification, then removed surgically via `npm uninstall playwright` (confirmed via `git diff --stat package.json package-lock.json`, no output). Dev server stopped afterward, confirmed by command-line inspection first.
+**Known issues at the time:** CRM's lack of data-level scoping (still current, see above), owner-facing maintenance approval portal (Fleet), file/photo upload for maintenance requests (Fleet), fuzzy duplicate-detection on create, hard deletes for financial records, branch-level access enforcement, public self-registration, unset `RESEND_API_KEY`, inert organization switcher — all still current except where superseded above (Inventory's own equivalent gaps are listed in the current "Known issues" section).
 
-## Known issues / deliberate gaps (current)
-
-- **CRM has no data-level scoping** analogous to Installment's field-staff restriction — every contact/lead/deal/activity is visible to anyone holding the relevant `crm.*` permission, with no per-owner restriction. Revisit if a CRM role narrower than "sees everything the org has" is ever needed.
-- **No owner-facing maintenance approval portal** (Fleet) — would need a whole new authenticated user type.
-- **No file/photo upload for maintenance requests** (Fleet) — needs a storage-provider decision first.
-- **No fuzzy duplicate-detection on customer/product/contact creation, no hard deletes** for payments/accounts/customers — deliberately deferred.
-- **No branch-level access enforcement** — still low-value with one branch platform-wide.
-- **No public self-registration** — deliberate for an invite-only B2B platform.
-- **`RESEND_API_KEY` is unset** — emails still log via `console.warn` instead of delivering.
-- **Organization switcher is real but functionally inert today** — every demo user belongs to exactly one organization.
-
-## Next recommended step
-
-Get explicit direction on which module follows CRM — candidates per `docs/DEVELOPMENT_ROADMAP.md`'s "Later phases" section are Inventory, Accounting, HR/Payroll, Procurement, Projects, or Analytics. Billing/Subscriptions remains deliberately scheduled last, per the user's own standing instruction, regardless of which of the others comes next.
-
----
+**Next recommended step (at the time):** Get explicit direction on which module followed CRM — candidates were Inventory, Accounting, HR/Payroll, Procurement, Projects, or Analytics. The user chose Inventory, leading directly into the Phase 9 work above.
 
 ## Summary of what was done (post-Phase-7 gap-fixing pass)
 
@@ -103,9 +127,13 @@ User said "fix the gaps, when done get started with the next module, and lets ha
 
 ## Handoff log
 
+### 2026-07-20 — Claude Code — Phase 9 (Inventory Management)
+
+See "Files changed (Phase 9 — Inventory Management)," "Summary of what was done (Phase 9 — Inventory Management)," "Build result (Phase 9 — Inventory Management)," "Known issues / deliberate gaps (current)," and "Next recommended step" above — kept in the current-state sections rather than duplicated here, since this is the most recent entry.
+
 ### 2026-07-20 — Claude Code — Phase 8 (CRM) + revalidatePath router-cache fix
 
-See "Files changed (Phase 8 + revalidatePath fix)," "Summary of what was done (Phase 8 + revalidatePath fix)," "Build result (Phase 8 + revalidatePath fix)," "Known issues / deliberate gaps (current)," and "Next recommended step" above — kept in the current-state sections rather than duplicated here, since this is the most recent entry.
+See "Files changed (Phase 8 + revalidatePath fix)" and "Summary of what was done (Phase 8 + revalidatePath fix)" above, plus the "at the time" Build result/Known issues/Next recommended step notes appended to that summary.
 
 ### 2026-07-20 — Claude Code — Post-Phase-7 gap-fixing pass
 

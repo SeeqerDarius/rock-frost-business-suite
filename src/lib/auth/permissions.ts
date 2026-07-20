@@ -32,6 +32,12 @@ export const PERMISSIONS = {
   CRM_DEALS_MANAGE: "crm.deals.manage",
   CRM_REPORTS_VIEW: "crm.reports.view",
   CRM_SETTINGS_MANAGE: "crm.settings.manage",
+  INVENTORY_VIEW: "inventory.view",
+  INVENTORY_ITEMS_MANAGE: "inventory.items.manage",
+  INVENTORY_WAREHOUSES_MANAGE: "inventory.warehouses.manage",
+  INVENTORY_MOVEMENTS_MANAGE: "inventory.movements.manage",
+  INVENTORY_REPORTS_VIEW: "inventory.reports.view",
+  INVENTORY_SETTINGS_MANAGE: "inventory.settings.manage",
 } as const;
 
 export function hasPermission(tenant: TenantContext, key: string): boolean {

@@ -181,6 +181,7 @@ model User {
   crmLeadsOwned             CrmLead[]
   crmDealsOwned             CrmDeal[]
   crmActivitiesCreated      CrmActivity[]
+  inventoryMovementsCreated InventoryMovement[]
 }
 
 model Account {
@@ -276,6 +277,10 @@ model Organization {
   crmLeads                        CrmLead[]
   crmDeals                        CrmDeal[]
   crmActivities                   CrmActivity[]
+  inventoryCategories             InventoryCategory[]
+  inventoryWarehouses             InventoryWarehouse[]
+  inventoryItems                  InventoryItem[]
+  inventoryMovements              InventoryMovement[]
 
   @@index([industry])
   @@index([status])
@@ -335,6 +340,7 @@ model Branch {
   crmLeads              CrmLead[]
   crmDeals              CrmDeal[]
   crmActivities         CrmActivity[]
+  inventoryWarehouses   InventoryWarehouse[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -1081,4 +1087,108 @@ model CrmActivity {
   @@index([contactId])
   @@index([leadId])
   @@index([dealId])
+}
+
+enum InventoryMovementType {
+  RECEIPT
+  ISSUE
+  ADJUSTMENT
+  TRANSFER
+}
+
+model InventoryCategory {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  items        InventoryItem[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model InventoryWarehouse {
+  id             String   @id @default(cuid())
+  organizationId String
+  branchId       String?
+  name           String
+  location       String?
+  isDefault      Boolean  @default(false)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch        Branch?             @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  stock         InventoryStock[]
+  movementsFrom InventoryMovement[] @relation("MovementWarehouse")
+  movementsTo   InventoryMovement[] @relation("MovementToWarehouse")
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([branchId])
+}
+
+model InventoryItem {
+  id             String   @id @default(cuid())
+  organizationId String
+  sku            String
+  name           String
+  categoryId     String?
+  unit           String   @default("unit")
+  costPrice      Decimal  @default(0) @db.Decimal(12, 2)
+  reorderPoint   Int      @default(0)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     InventoryCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  stock        InventoryStock[]
+  movements    InventoryMovement[]
+
+  @@unique([organizationId, sku])
+  @@index([organizationId])
+  @@index([categoryId])
+}
+
+model InventoryStock {
+  id          String   @id @default(cuid())
+  itemId      String
+  warehouseId String
+  quantity    Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  item      InventoryItem      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  warehouse InventoryWarehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, warehouseId])
+  @@index([warehouseId])
+}
+
+model InventoryMovement {
+  id             String                @id @default(cuid())
+  organizationId String
+  itemId         String
+  type           InventoryMovementType
+  quantity       Int
+  warehouseId    String
+  toWarehouseId  String?
+  reference      String?
+  notes          String?               @db.Text
+  createdById    String?
+  occurredAt     DateTime              @default(now())
+  createdAt      DateTime              @default(now())
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  item         InventoryItem       @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  warehouse    InventoryWarehouse  @relation("MovementWarehouse", fields: [warehouseId], references: [id], onDelete: Cascade)
+  toWarehouse  InventoryWarehouse? @relation("MovementToWarehouse", fields: [toWarehouseId], references: [id], onDelete: SetNull)
+  createdBy    User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, occurredAt])
+  @@index([itemId])
+  @@index([warehouseId])
+  @@index([toWarehouseId])
 }

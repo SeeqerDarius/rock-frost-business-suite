@@ -14,6 +14,7 @@ import type { ModuleDefinition } from "@/types/module";
 import { fleetNavigation } from "@/modules/fleet/navigation";
 import { installmentNavigation } from "@/modules/installment/navigation";
 import { crmNavigation } from "@/modules/crm/navigation";
+import { inventoryNavigation } from "@/modules/inventory/navigation";
 
 /**
  * The module registry. Every business module the platform can offer is declared
@@ -61,8 +62,9 @@ export const moduleRegistry: ModuleDefinition[] = [
     description: "Stock levels, warehouses, transfers, and stock adjustments.",
     icon: Boxes,
     routePrefix: "/app/inventory",
-    navigation: [],
-    status: "coming-soon",
+    navigation: inventoryNavigation,
+    status: "available",
+    permissionPrefix: "inventory.",
   },
   {
     key: "accounting",
