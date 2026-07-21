@@ -5,7 +5,14 @@ import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { createRun, processRun, cancelRun, RunStateError, NoCompensationError } from "@/modules/payroll/service";
+import {
+  createRun,
+  processRun,
+  cancelRun,
+  RunStateError,
+  NoCompensationError,
+  NotFoundError,
+} from "@/modules/payroll/service";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -50,6 +57,7 @@ export async function processExistingRun(formData: FormData): Promise<void> {
   } catch (error) {
     if (error instanceof RunStateError) redirect("/app/payroll/runs?error=invalid-state");
     if (error instanceof NoCompensationError) redirect("/app/payroll/runs?error=no-compensation");
+    if (error instanceof NotFoundError) redirect("/app/payroll/runs?error=not-found");
     throw error;
   }
 
@@ -70,6 +78,7 @@ export async function cancelExistingRun(formData: FormData): Promise<void> {
     await cancelRun(tenant.organizationId, id);
   } catch (error) {
     if (error instanceof RunStateError) redirect("/app/payroll/runs?error=invalid-state");
+    if (error instanceof NotFoundError) redirect("/app/payroll/runs?error=not-found");
     throw error;
   }
 

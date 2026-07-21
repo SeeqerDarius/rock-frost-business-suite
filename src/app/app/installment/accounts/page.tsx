@@ -30,6 +30,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "not-eligible": "This account isn't eligible for reactivation yet.",
   "below-minimum-deposit": "The initial deposit doesn't meet the required minimum.",
   "wrong-password": "Incorrect password — reactivation requires re-entering your password to confirm.",
+  "not-found": "That customer, product, or staff member could not be found.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {

@@ -44,8 +44,14 @@ interface CompensationInput {
 
 /** Thrown when a caller-supplied id doesn't resolve inside the calling organization. */
 export class NotFoundError extends Error {}
+export class InvalidCompensationError extends Error {}
 
 export async function setCompensation(organizationId: string, data: CompensationInput) {
+  const salary = Number(data.baseSalary);
+  if (!Number.isFinite(salary) || salary <= 0) {
+    throw new InvalidCompensationError("Base salary must be a positive number.");
+  }
+
   const employee = await db.hrEmployee.findFirst({ where: { id: data.employeeId, organizationId } });
   if (!employee) throw new NotFoundError("Employee not found.");
 
@@ -65,6 +71,10 @@ export async function getSettings(organizationId: string) {
 }
 
 export function updateSettings(organizationId: string, defaultTaxRate: string) {
+  const rate = Number(defaultTaxRate);
+  if (!Number.isFinite(rate) || rate < 0 || rate > 1) {
+    throw new InvalidCompensationError("Default tax rate must be between 0% and 100%.");
+  }
   return db.payrollSettings.upsert({
     where: { organizationId },
     update: { defaultTaxRate },
@@ -96,10 +106,19 @@ export function createRun(organizationId: string, data: RunInput) {
 export class RunStateError extends Error {}
 export class NoCompensationError extends Error {}
 
+/**
+ * Claims the run (DRAFT -> COMPLETED) with a guarded updateMany as the
+ * first statement inside the transaction — two concurrent "process" clicks
+ * on the same draft run previously could both pass a stale status check and
+ * both generate a full set of payslips before either commit. Now the second
+ * caller's claim matches zero rows and throws before creating anything.
+ * Every payslip creation shares this same transaction, so a failure partway
+ * through rolls back the claim too, rather than leaving the run COMPLETED
+ * with only some employees paid.
+ */
 export async function processRun(organizationId: string, runId: string) {
   const run = await db.payrollRun.findFirst({ where: { id: runId, organizationId } });
-  if (!run) throw new Error("Payroll run not found.");
-  if (run.status !== "DRAFT") throw new RunStateError("Only draft runs can be processed.");
+  if (!run) throw new NotFoundError("Payroll run not found.");
 
   const [settings, compensations] = await Promise.all([
     getSettings(organizationId),
@@ -115,6 +134,9 @@ export async function processRun(organizationId: string, runId: string) {
   const taxRate = Number(settings.defaultTaxRate);
 
   return db.$transaction(async (tx) => {
+    const claimed = await tx.payrollRun.updateMany({ where: { id: runId, status: "DRAFT" }, data: { status: "COMPLETED" } });
+    if (claimed.count === 0) throw new RunStateError("Only draft runs can be processed.");
+
     for (const comp of compensations) {
       const grossPay = Number(comp.baseSalary);
       const taxDeduction = grossPay * taxRate;
@@ -130,15 +152,16 @@ export async function processRun(organizationId: string, runId: string) {
         },
       });
     }
-    return tx.payrollRun.update({ where: { id: runId }, data: { status: "COMPLETED" } });
+    return tx.payrollRun.findUniqueOrThrow({ where: { id: runId } });
   });
 }
 
 export async function cancelRun(organizationId: string, runId: string) {
   const run = await db.payrollRun.findFirst({ where: { id: runId, organizationId } });
-  if (!run) throw new Error("Payroll run not found.");
-  if (run.status !== "DRAFT") throw new RunStateError("Only draft runs can be cancelled.");
-  return db.payrollRun.update({ where: { id: runId }, data: { status: "CANCELLED" } });
+  if (!run) throw new NotFoundError("Payroll run not found.");
+  const claimed = await db.payrollRun.updateMany({ where: { id: runId, status: "DRAFT" }, data: { status: "CANCELLED" } });
+  if (claimed.count === 0) throw new RunStateError("Only draft runs can be cancelled.");
+  return db.payrollRun.findUniqueOrThrow({ where: { id: runId } });
 }
 
 // --- Payslips ---

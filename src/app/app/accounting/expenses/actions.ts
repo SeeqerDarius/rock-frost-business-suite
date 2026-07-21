@@ -5,7 +5,14 @@ import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { createExpense, approveExpense, rejectExpense, payExpense, ExpenseStateError } from "@/modules/accounting/service";
+import {
+  createExpense,
+  approveExpense,
+  rejectExpense,
+  payExpense,
+  ExpenseStateError,
+  NotFoundError,
+} from "@/modules/accounting/service";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -54,6 +61,7 @@ export async function approveExistingExpense(formData: FormData): Promise<void> 
     await approveExpense(tenant.organizationId, id);
   } catch (error) {
     if (error instanceof ExpenseStateError) redirect("/app/accounting/expenses?error=invalid-state");
+    if (error instanceof NotFoundError) redirect("/app/accounting/expenses?error=not-found");
     throw error;
   }
 
@@ -73,6 +81,7 @@ export async function rejectExistingExpense(formData: FormData): Promise<void> {
     await rejectExpense(tenant.organizationId, id);
   } catch (error) {
     if (error instanceof ExpenseStateError) redirect("/app/accounting/expenses?error=invalid-state");
+    if (error instanceof NotFoundError) redirect("/app/accounting/expenses?error=not-found");
     throw error;
   }
 
@@ -95,6 +104,7 @@ export async function payExistingExpense(formData: FormData): Promise<void> {
     await payExpense(tenant.organizationId, id, new Date(`${paymentDateRaw}T00:00:00`));
   } catch (error) {
     if (error instanceof ExpenseStateError) redirect("/app/accounting/expenses?error=invalid-state");
+    if (error instanceof NotFoundError) redirect("/app/accounting/expenses?error=not-found");
     throw error;
   }
 

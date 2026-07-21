@@ -16,6 +16,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "missing-fields": "All fields are required.",
   "same-account": "The debit and credit accounts must be different.",
   "not-balanced": "Debits and credits must be equal.",
+  "not-found": "One or more of those accounts could not be found.",
 };
 
 export default async function AccountingJournalPage({

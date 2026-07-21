@@ -19,6 +19,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "missing-fields": "All required fields must be filled in.",
   "session-open": "This register already has an open session.",
   "session-closed": "This session is already closed.",
+  "not-found": "That register could not be found.",
 };
 
 interface RegisterFieldsProps {

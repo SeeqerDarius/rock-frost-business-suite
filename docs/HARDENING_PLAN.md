@@ -10,19 +10,23 @@ not the audit text verbatim.
 **Scope note:** Billing/Subscriptions is not part of this plan. It was never
 implemented scope — see the "Billing/Subscriptions" section at the bottom.
 
-## Pass 1 (this pass) — scope
+## Status
 
-Per explicit instruction, Pass 1 covers exactly:
+**Pass 1 — complete** (2026-07-21): central active-tenant guard, session
+revocation, dashboard/module permission leak, and the Administration/Projects/
+Payroll IDOR paths that didn't require the broader transaction-atomicity work.
 
-1. Central active-tenant guard
-2. Session revalidation/revocation
-3. Dashboard/module permission leak
-4. The confirmed highest-risk IDOR paths that don't require the broader
-   financial/inventory transaction-atomicity rework (Administration role
-   assignment, Projects members/milestones/tasks, Payroll compensation)
+**Pass 2 — complete** (2026-07-21): financial/inventory transaction integrity
+across POS, Inventory, Procurement, Accounting, and Payroll, Installment's
+core payment-recording path, and every IDOR path that was entangled with that
+atomicity work (vendor/request/item ids in Procurement, warehouse ids in
+Inventory/POS, journal account ids in Accounting, customer/staff ids in
+Installment's account creation).
 
-Everything else below is scoped for a **future Pass 2+** and is documented here
-so that work doesn't need to be rediscovered.
+**Pass 3 — not started.** See the "Remaining work (Pass 3)" section near the
+bottom for the full list: invitation redesign, formal Zod validation, broader
+IDOR audit of CRM/HR/Fleet, Decimal-precision hygiene, reproducible seeding/CI,
+and the narrow residual concurrency races documented per-fix below.
 
 ---
 
@@ -252,38 +256,188 @@ role id rejected for invitation, same-org paths still succeed.
 
 ---
 
-## Pass 2 (not started this pass) — remaining confirmed findings
+## Pass 2 — financial/inventory transaction integrity (complete)
 
-Documented now so this doesn't need rediscovery. **Do not implement in Pass 1.**
+**Status: fixed**, across every module the audit named. All fixes follow the
+same two primitives established in Pass 1's Inventory work: (a) an **atomic
+guarded update** (`updateMany` with the invariant expressed in its `WHERE`
+clause, checked via the returned `count`) instead of a JS read-then-absolute-write,
+so concurrent requests can never both pass a stale check and both act; and
+(b) **claim-then-act** for state transitions (flip the status atomically
+*first*, inside the same transaction, before doing anything the flip guards) —
+so double-submission of a "process/send/refund/receive" action is rejected by
+the second caller's zero-row update, not merely made "unlikely."
 
-### Remaining IDOR paths (confirmed, deferred — overlaps with atomicity rework below)
+### Inventory (`src/modules/inventory/service.ts`)
 
-| Domain | Issue | File |
-|---|---|---|
-| Procurement | Vendor, request, item, and default warehouse ids not consistently tenant-validated | `src/modules/procurement/service.ts` |
-| Accounting | Manual journal lines accept arbitrary account ids | `src/modules/accounting/service.ts` |
-| Inventory | Item is tenant-checked; source/destination warehouses are not | `src/modules/inventory/service.ts` |
-| POS | Session open accepts a register by bare id | `src/modules/pos/service.ts` |
-| CRM, HR, Fleet, Installment | Same unchecked-foreign-id pattern likely present; not yet individually audited line-by-line | various `src/modules/*/service.ts` |
+- `recordMovement()` now validates: quantity is a non-zero integer, positive
+  for RECEIPT/ISSUE/TRANSFER (only ADJUSTMENT may be signed), and both the
+  source warehouse and (for TRANSFER) destination warehouse belong to the
+  calling organization — previously only the item was tenant-checked.
+- Stock mutations use atomic `increment`/`decrement` instead of a
+  read-then-absolute-write; ISSUE/TRANSFER-out use a new `decrementGuarded()`
+  helper (`updateMany` with `quantity: { gte: n }` in the WHERE) so two
+  concurrent issues against the same row can never both pass and oversell.
+- `getOrCreateStockRow()` uses `upsert` (atomic get-or-create) instead of
+  find-then-create, closing a race where two concurrent first-time movements
+  against the same item/warehouse could both see "no row" and one throws a
+  unique-constraint error instead of both succeeding quietly.
+- `recordMovement()` now optionally accepts an existing transaction client
+  (`tx?: Tx`, exported as `Tx`) — this is what lets POS's `createSale()`/
+  `refundSale()` commit a sale and every line's stock movement as one
+  all-or-nothing unit while still calling Inventory's own public service
+  function, never its Prisma models directly (the module-boundary rule in
+  `docs/MODULE_BOUNDARIES.md`).
 
-### Financial / inventory transaction integrity (not started)
+### POS (`src/modules/pos/service.ts`)
 
-- POS: negative/zero quantity validation, atomic sale+stock-deduction (single
-  transaction), atomic refund (claim-then-return, not return-then-claim),
-  duplicate-submission guards, safe receipt numbering.
-- Inventory: atomic guarded increment/decrement instead of read-then-write,
-  same-warehouse transfer rejection, concurrent-issue oversell prevention.
-- Procurement: receiving must commit the inventory receipt and the order
-  quantity update together; retries must not duplicate a receipt.
-- Accounting: prevent double-posting invoices/payments/expenses, reject
-  negative/excessive payments, voiding must post a reversing entry instead of
-  only flipping status, posted journals must become immutable, preserve
-  `Decimal` precision instead of converting to `Number`.
-- Payroll: prevent duplicate run processing / duplicate payslips, reject
-  negative salary or deductions.
-- Installment: non-positive payment guard, duplicate-payment guard, atomic
-  balance updates, Decimal precision, consistent staff-inventory/account
-  updates.
+- `openSession()` now validates the register belongs to the organization
+  (previously a bare id).
+- `createSale()` validates every line has a positive whole-number quantity
+  and a finite, non-negative unit price (new `InvalidSaleInputError`) before
+  touching the database, and now commits the sale row and every line's
+  Inventory `ISSUE` as one transaction — previously these were separate
+  statements, so a failure partway through left a "completed" sale with only
+  some of its stock actually deducted.
+- `refundSale()` atomically claims the sale (`COMPLETED` → `REFUNDED` via a
+  guarded `updateMany`) *before* posting any stock `RECEIPT`, inside the same
+  transaction — two concurrent refund requests for the same sale can no
+  longer both pass a stale status check and both return stock.
+
+### Procurement (`src/modules/procurement/service.ts`)
+
+- `createOrder()` now validates the vendor, the request (if given), and every
+  line's item belong to the organization (previously all three were unchecked
+  — new `NotFoundError`).
+- `createRequest()` validates its optional item id the same way.
+- `receiveOrderLine()` now commits the atomic guarded `receivedQuantity`
+  increment, the Inventory `RECEIPT` movement, and the order's recomputed
+  status as one transaction — previously these were three separate
+  statements (posts Inventory first, updates the order afterward), so a
+  failure after the stock movement left real stock received with no record
+  of it on the order, and a retry would receive it again. The
+  `receivedQuantity` increment is itself guarded (`WHERE receivedQuantity <=
+  quantity - input.quantity`), not a JS-computed sum, closing a lost-update
+  race between two concurrent receives on the same line.
+- `approveRequest()`/`rejectRequest()`/`sendOrder()`/`cancelOrder()` all now
+  use the same atomic claim-then-act pattern for their status transitions.
+
+### Accounting (`src/modules/accounting/service.ts`)
+
+- `postJournalEntry()` — the single choke point every journal-posting call
+  site goes through (invoice send, invoice payment, expense payment, manual
+  entries) — now validates every line's `accountId` belongs to the
+  organization (new `NotFoundError`), closing "manual journal lines accept
+  arbitrary account ids" for every caller at once, not just
+  `createManualJournalEntry()`.
+- `markInvoiceSent()` and `payExpense()` now atomically claim their status
+  transition (`DRAFT`→`SENT`, `APPROVED`→`PAID`) *before* posting a journal
+  entry, inside the same transaction — closing the confirmed "concurrent
+  invoice sends / expense payments can post twice" double-posting bug.
+- `recordInvoicePayment()` rejects non-positive amounts and amounts exceeding
+  the remaining balance (new `InvalidPaymentError`), and updates `amountPaid`
+  via an atomic `increment` instead of a JS-computed absolute write — closing
+  the confirmed "concurrent payments can duplicate journal entries while
+  losing one amountPaid update" bug. A narrower residual race remains (see
+  "Documented residual concurrency risks" below).
+- `voidInvoice()` now posts a reversing journal entry (Debit Revenue / Credit
+  AR) when voiding a `SENT`/`OVERDUE` invoice, instead of only flipping
+  status — closing the confirmed "voiding doesn't reverse the original AR/
+  Revenue entry" bug that permanently overstated revenue for voided invoices.
+  A `DRAFT` invoice never had anything posted, so it needs no reversal. The
+  status flip itself is now an atomic guarded claim too.
+- `approveExpense()`/`rejectExpense()` use the same atomic claim pattern.
+- **Not done**: full `Decimal`-precision arithmetic throughout (the module
+  still converts to JS `Number` for most calculations) and immutable posted
+  journals (already true today only because no code path exists to edit
+  one — not enforced). See "Remaining work (Pass 3)".
+
+### Payroll (`src/modules/payroll/service.ts`)
+
+- `processRun()` atomically claims the run (`DRAFT`→`COMPLETED`) as the first
+  statement inside its transaction, before creating any payslips — closing
+  the confirmed "duplicate run processing" risk: two concurrent "process"
+  clicks previously could both pass a stale status check and both generate a
+  full set of payslips.
+- `cancelRun()` uses the same atomic claim.
+- `setCompensation()` rejects a non-positive base salary (new
+  `InvalidCompensationError`); `updateSettings()` rejects a default tax rate
+  outside 0–100%. Both were previously unvalidated, so a negative salary or a
+  negative/over-100% tax rate could silently corrupt payroll math (e.g. a
+  negative tax rate produces `netPay > grossPay`).
+
+### Installment (`src/modules/installment/service.ts`)
+
+- `recordPayment()` rejects non-positive amounts (new
+  `InvalidPaymentAmountError`) and now updates `totalPaid`/`balance` via one
+  atomic multi-field `increment`/`decrement` (a single UPDATE statement, both
+  columns together) instead of a JS-computed absolute write — closing the
+  confirmed "concurrent balance corruption" bug where two simultaneous
+  payments on the same account could lose one payment's contribution to the
+  running total even though both payment rows were created for real.
+  Overpayment/credit-amount detection now reads the true atomically-decremented
+  balance, not a stale pre-transaction snapshot.
+- `createAccount()` now validates `customerId` and `inventoryStaffId` belong
+  to the organization (previously only `productId` was checked) — the
+  `inventoryStaffId` gap was a real cross-tenant **write**: a foreign staff id
+  would have had *another organization's* staff-inventory row consumed.
+- `updateCustomer()` now validates the reassigned `staffId` belongs to the
+  organization.
+- `refreshAccountLifecycleStatuses()`'s CLOSED-transition now atomically
+  claims the status change before creating an `ACCOUNT_CLOSURE_REFUND`
+  credit — closing a confirmed "duplicate lifecycle processing" bug where two
+  concurrent sweeps (e.g. two users loading a report at the same moment)
+  could both pass a stale "no existing refund" check and both create a
+  duplicate refund credit for the same account.
+- **Not done this pass** (documented residual, see below): `updatePayment()`'s
+  recompute-from-all-payments path, and `applyCreditToAccount()`'s
+  read-then-write balance/credit updates, retain the same class of race the
+  fixes above closed elsewhere in this module — narrower in practice (both
+  require two specific actions racing on the *same* account within a short
+  window) but not yet closed. Full per-function IDOR coverage (every
+  `staffId`/`productId`/`accountId` reference across all ~40 functions in this
+  1100+-line file) was also not exhaustively re-audited; `createAccount()` and
+  `updateCustomer()`'s confirmed gaps were fixed, others may remain.
+
+### Documented residual concurrency risks (accepted, not full serializable protection)
+
+None of these can corrupt the *primary* financial figure (the atomic
+increment/decrement always accumulates correctly); each is a narrower
+edge case where a *derived* field (a status flip, a balance-guard rejection)
+could theoretically be based on a snapshot that's gone stale by the time a
+second, near-simultaneous request completes:
+
+- Accounting `recordInvoicePayment()`: the "payment exceeds remaining
+  balance" guard reads a snapshot before the transaction; two concurrent
+  payments that each individually fit the remaining balance based on their
+  own stale read could together slightly overpay (the `amountPaid` figure
+  itself is never wrong, since it's an atomic increment).
+- Installment `recordPayment()`: if a *third* payment interleaves precisely
+  between the atomic balance decrement and the immediately-following
+  clamp-to-zero-and-flip-status step, that third payment's status/clamp
+  write could be based on a value one payment out of date. `totalPaid` and
+  `balance` themselves are never wrong.
+- POS's stock-availability pre-check (unchanged from its original design,
+  documented in `docs/DECISIONS.md`) is a fast UX helper, not the actual
+  safety mechanism — the atomic guarded decrement inside `recordMovement()`
+  is what actually prevents overselling.
+
+Closing these fully would require either Postgres `SELECT ... FOR UPDATE`
+row locking (raw SQL, avoided so far in this codebase) or serializable
+transaction isolation (a broader performance/retry-handling change). Given
+these are real business amounts, not internal counters, this residual is
+worth closing in a future pass but was judged disproportionate to hold up
+this one.
+
+## Remaining work (Pass 3, not started)
+
+### Remaining IDOR audit surface
+
+CRM, HR, and Fleet have not been individually audited line-by-line for the
+same unchecked-foreign-id pattern fixed elsewhere in this file — the audit
+flagged this as likely present but unconfirmed. POS register/session setup
+beyond what Pass 2 fixed, and Installment's ~40 functions beyond
+`createAccount()`/`updateCustomer()`, also warrant a full pass.
 
 ### Invitation redesign (not started)
 
@@ -316,13 +470,20 @@ started this pass.
 
 ### Automated tests / reproducible setup (partially started)
 
-Pass 1 adds a real Vitest suite (see `test/`) covering exactly the Pass-1
-fixes — this is the first committed automated test suite in the project
-(previously zero, per `docs/TESTING_STRATEGY.md`). Broader coverage (financial
-invariants, concurrent-write tests, full auth-lifecycle tests) is Pass 2+, once
-the underlying atomicity/validation fixes exist to test. Reproducible platform
-seeding (`.env.example`, committed RBAC/module seed script, CI workflow, Node
-version pin) is also Pass 2+.
+Pass 1 added the project's first committed Vitest suite (tenant guard,
+session revocation, dashboard leak, Administration/Projects/Payroll IDOR).
+Pass 2 extended it with `test/pass2-financial-inventory-integrity.test.ts` —
+18 tests covering the atomic-guard and validation behavior added across
+Inventory, POS, Procurement, Accounting, Payroll, and Installment (45 tests
+total across 5 files). These are still mocked-`db` tests, not integration
+tests against a real database transaction under actual concurrent load — they
+verify the *code* takes the atomic-updateMany-with-guard shape and rejects
+correctly when a mocked `count: 0` simulates a lost race, not that Postgres
+itself behaves as reasoned about above under real concurrent connections. A
+real concurrency integration test (two actual concurrent requests against a
+test database, asserting the final total is correct) is Pass 3 work.
+Reproducible platform seeding (`.env.example`, committed RBAC/module seed
+script, CI workflow, Node version pin) is also Pass 3.
 
 ### Audit logging, email/public-form hardening, performance, accessibility, documentation accuracy
 

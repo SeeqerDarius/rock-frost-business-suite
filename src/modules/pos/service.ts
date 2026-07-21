@@ -1,10 +1,10 @@
 import "server-only";
 
 import { db } from "@/lib/db";
-import { recordMovement, getStockGrid, InsufficientStockError } from "@/modules/inventory/service";
+import { recordMovement, getStockGrid, InsufficientStockError, NotFoundError } from "@/modules/inventory/service";
 import type { PosPaymentMethod } from "@prisma/client";
 
-export { InsufficientStockError };
+export { InsufficientStockError, NotFoundError };
 
 /**
  * Fresh module (no reference implementation to migrate from). Every function
@@ -50,6 +50,9 @@ export async function openSession(
   organizationId: string,
   data: { registerId: string; openingFloat: string; openedById?: string | null },
 ) {
+  const register = await db.posRegister.findFirst({ where: { id: data.registerId, organizationId } });
+  if (!register) throw new NotFoundError("Register not found.");
+
   const existingOpen = await db.posSession.findFirst({ where: { registerId: data.registerId, status: "OPEN" } });
   if (existingOpen) throw new SessionStateError("This register already has an open session.");
   return db.posSession.create({ data: { organizationId, ...data } });
@@ -109,18 +112,44 @@ interface SaleInput {
 }
 
 export class SaleStateError extends Error {}
+export class InvalidSaleInputError extends Error {}
 
+function validateLines(lines: SaleLineInput[]) {
+  for (const line of lines) {
+    if (!Number.isInteger(line.quantity) || line.quantity <= 0) {
+      throw new InvalidSaleInputError(`"${line.description}" must have a positive whole-number quantity.`);
+    }
+    const price = Number(line.unitPrice);
+    if (!Number.isFinite(price) || price < 0) {
+      throw new InvalidSaleInputError(`"${line.description}" has an invalid unit price.`);
+    }
+  }
+}
+
+/**
+ * A sale and every line's stock deduction commit as one all-or-nothing
+ * transaction: if any line's stock movement fails (insufficient stock,
+ * concurrent depletion), the whole sale — including lines that would have
+ * succeeded — rolls back rather than leaving a "completed" sale with only
+ * some of its stock actually deducted.
+ */
 export async function createSale(organizationId: string, data: SaleInput) {
+  validateLines(data.lines);
+
   const session = await db.posSession.findFirst({ where: { id: data.sessionId, organizationId } });
-  if (!session) throw new Error("Session not found.");
+  if (!session) throw new NotFoundError("Session not found.");
   if (session.status !== "OPEN") {
     throw new SaleStateError("Sales can only be recorded against a currently open session.");
   }
 
   const register = await db.posRegister.findFirst({ where: { id: session.registerId, organizationId } });
-  if (!register) throw new Error("Register not found.");
+  if (!register) throw new NotFoundError("Register not found.");
 
   if (register.warehouseId) {
+    // Fast, friendly pre-check outside the transaction — not the safety
+    // mechanism itself. The actual guarantee against overselling is the
+    // atomic guarded decrement inside Inventory's recordMovement(), run
+    // below inside the same transaction as the sale row.
     const stockGrid = await getStockGrid(organizationId);
     for (const line of data.lines) {
       if (!line.itemId) continue;
@@ -136,63 +165,89 @@ export async function createSale(organizationId: string, data: SaleInput) {
   const subtotal = lineTotals.reduce((sum, l) => sum + Number(l.lineTotal), 0);
   const saleNumber = await generateSaleNumber(organizationId);
 
-  const sale = await db.posSale.create({
-    data: {
-      organizationId,
-      registerId: session.registerId,
-      sessionId: data.sessionId,
-      saleNumber,
-      customerName: data.customerName,
-      paymentMethod: data.paymentMethod,
-      soldById: data.soldById,
-      subtotal: subtotal.toFixed(2),
-      total: subtotal.toFixed(2),
-      lines: { create: lineTotals },
-    },
-  });
+  return db.$transaction(async (tx) => {
+    const sale = await tx.posSale.create({
+      data: {
+        organizationId,
+        registerId: session.registerId,
+        sessionId: data.sessionId,
+        saleNumber,
+        customerName: data.customerName,
+        paymentMethod: data.paymentMethod,
+        soldById: data.soldById,
+        subtotal: subtotal.toFixed(2),
+        total: subtotal.toFixed(2),
+        lines: { create: lineTotals },
+      },
+    });
 
-  if (register.warehouseId) {
-    for (const line of data.lines) {
-      if (!line.itemId) continue;
-      await recordMovement(organizationId, {
-        itemId: line.itemId,
-        warehouseId: register.warehouseId,
-        type: "ISSUE",
-        quantity: line.quantity,
-        reference: saleNumber,
-        notes: `Sold via POS sale ${saleNumber}`,
-        createdById: data.soldById,
-      });
+    if (register.warehouseId) {
+      for (const line of data.lines) {
+        if (!line.itemId) continue;
+        await recordMovement(
+          organizationId,
+          {
+            itemId: line.itemId,
+            warehouseId: register.warehouseId,
+            type: "ISSUE",
+            quantity: line.quantity,
+            reference: saleNumber,
+            notes: `Sold via POS sale ${saleNumber}`,
+            createdById: data.soldById,
+          },
+          tx,
+        );
+      }
     }
-  }
 
-  return sale;
+    return sale;
+  });
 }
 
+/**
+ * Atomically "claims" the sale for refund (COMPLETED -> REFUNDED in a
+ * single guarded UPDATE) before posting any stock movement. Two concurrent
+ * refund requests for the same sale can therefore never both pass — the
+ * second's updateMany matches zero rows because the first already flipped
+ * the status, so it throws SaleStateError instead of double-returning stock.
+ */
 export async function refundSale(organizationId: string, saleId: string, refundedById?: string | null) {
   const sale = await db.posSale.findFirst({
     where: { id: saleId, organizationId },
     include: { lines: true, register: true },
   });
-  if (!sale) throw new Error("Sale not found.");
-  if (sale.status !== "COMPLETED") throw new SaleStateError("Only completed sales can be refunded.");
+  if (!sale) throw new NotFoundError("Sale not found.");
 
-  if (sale.register.warehouseId) {
-    for (const line of sale.lines) {
-      if (!line.itemId) continue;
-      await recordMovement(organizationId, {
-        itemId: line.itemId,
-        warehouseId: sale.register.warehouseId,
-        type: "RECEIPT",
-        quantity: line.quantity,
-        reference: sale.saleNumber,
-        notes: `Refund of POS sale ${sale.saleNumber}`,
-        createdById: refundedById,
-      });
+  return db.$transaction(async (tx) => {
+    const claimed = await tx.posSale.updateMany({
+      where: { id: saleId, status: "COMPLETED" },
+      data: { status: "REFUNDED" },
+    });
+    if (claimed.count === 0) {
+      throw new SaleStateError("Only completed sales can be refunded.");
     }
-  }
 
-  return db.posSale.update({ where: { id: saleId }, data: { status: "REFUNDED" } });
+    if (sale.register.warehouseId) {
+      for (const line of sale.lines) {
+        if (!line.itemId) continue;
+        await recordMovement(
+          organizationId,
+          {
+            itemId: line.itemId,
+            warehouseId: sale.register.warehouseId,
+            type: "RECEIPT",
+            quantity: line.quantity,
+            reference: sale.saleNumber,
+            notes: `Refund of POS sale ${sale.saleNumber}`,
+            createdById: refundedById,
+          },
+          tx,
+        );
+      }
+    }
+
+    return tx.posSale.findUniqueOrThrow({ where: { id: saleId } });
+  });
 }
 
 // --- Settings ---

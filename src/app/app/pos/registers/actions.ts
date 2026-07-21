@@ -5,7 +5,14 @@ import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { createRegister, updateRegister, openSession, closeSession, SessionStateError } from "@/modules/pos/service";
+import {
+  createRegister,
+  updateRegister,
+  openSession,
+  closeSession,
+  SessionStateError,
+  NotFoundError,
+} from "@/modules/pos/service";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -55,6 +62,7 @@ export async function openRegisterSession(formData: FormData): Promise<void> {
     await openSession(tenant.organizationId, { registerId, openingFloat, openedById: session?.user?.id ?? null });
   } catch (error) {
     if (error instanceof SessionStateError) redirect("/app/pos/registers?error=session-open");
+    if (error instanceof NotFoundError) redirect("/app/pos/registers?error=not-found");
     throw error;
   }
 

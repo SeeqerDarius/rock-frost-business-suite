@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { updateSettings } from "@/modules/payroll/service";
+import { updateSettings, InvalidCompensationError } from "@/modules/payroll/service";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -23,7 +23,12 @@ export async function saveDefaultTaxRate(formData: FormData): Promise<void> {
   }
 
   const rate = (Number.parseFloat(percentRaw) / 100).toFixed(4);
-  await updateSettings(tenant.organizationId, rate);
+  try {
+    await updateSettings(tenant.organizationId, rate);
+  } catch (error) {
+    if (error instanceof InvalidCompensationError) redirect("/app/payroll/settings?error=invalid-rate");
+    throw error;
+  }
   revalidatePath("/app/payroll/settings");
   redirect("/app/payroll/settings?saved=1");
 }

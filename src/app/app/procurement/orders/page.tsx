@@ -20,6 +20,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-state": "That action isn't valid for this order's current status.",
   "invalid-quantity": "Quantity received must be between 1 and the remaining quantity.",
   "inventory-error": "There isn't enough capacity to record that receipt.",
+  "not-found": "That vendor, request, item, order, or warehouse could not be found.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {

@@ -109,7 +109,18 @@ export function createExpenseCategory(organizationId: string, data: { name: stri
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
 export class JournalNotBalancedError extends Error {}
+export class NotFoundError extends Error {}
 
+/**
+ * The single choke point every journal-posting call site (invoice send,
+ * invoice payment, expense payment, manual entries) goes through — so the
+ * account-ownership check here closes the "manual journal lines accept
+ * arbitrary account ids" gap for every caller at once, not just
+ * createManualJournalEntry(). Callers that fetch their accounts via
+ * getDefaultAccount() are already guaranteed org-scoped; this re-checks
+ * them too, which is redundant but harmless defense-in-depth for a function
+ * this central.
+ */
 async function postJournalEntry(
   tx: TxClient,
   organizationId: string,
@@ -127,6 +138,12 @@ async function postJournalEntry(
   const totalCredit = input.lines.reduce((sum, l) => sum + Number(l.credit ?? 0), 0);
   if (Math.abs(totalDebit - totalCredit) > 0.005) {
     throw new JournalNotBalancedError("Journal entry debits and credits must be equal.");
+  }
+
+  const accountIds = [...new Set(input.lines.map((l) => l.accountId))];
+  const ownedCount = await tx.accountingAccount.count({ where: { id: { in: accountIds }, organizationId } });
+  if (ownedCount !== accountIds.length) {
+    throw new NotFoundError("One or more accounts could not be found.");
   }
 
   return tx.accountingJournalEntry.create({
@@ -203,11 +220,18 @@ export async function createInvoice(organizationId: string, data: InvoiceInput, 
 }
 
 export class InvoiceStateError extends Error {}
+export class InvalidPaymentError extends Error {}
 
+/**
+ * Claims the invoice (DRAFT -> SENT) with a guarded updateMany before
+ * posting anything, inside the same transaction — two concurrent "send"
+ * requests can no longer both pass a stale status check and both post an
+ * AR/Revenue entry, since the second's updateMany matches zero rows once
+ * the first commits.
+ */
 export async function markInvoiceSent(organizationId: string, id: string) {
   const invoice = await db.accountingInvoice.findFirst({ where: { id, organizationId } });
-  if (!invoice) throw new Error("Invoice not found.");
-  if (invoice.status !== "DRAFT") throw new InvoiceStateError("Only draft invoices can be sent.");
+  if (!invoice) throw new NotFoundError("Invoice not found.");
 
   const [ar, revenue] = await Promise.all([
     getDefaultAccount(organizationId, "1100"),
@@ -215,6 +239,12 @@ export async function markInvoiceSent(organizationId: string, id: string) {
   ]);
 
   return db.$transaction(async (tx) => {
+    const claimed = await tx.accountingInvoice.updateMany({
+      where: { id, status: "DRAFT" },
+      data: { status: "SENT" },
+    });
+    if (claimed.count === 0) throw new InvoiceStateError("Only draft invoices can be sent.");
+
     await postJournalEntry(tx, organizationId, {
       entryDate: invoice.issueDate,
       description: `Invoice ${invoice.invoiceNumber} sent to ${invoice.customerName}`,
@@ -225,24 +255,41 @@ export async function markInvoiceSent(organizationId: string, id: string) {
         { accountId: revenue.id, credit: invoice.amount.toString() },
       ],
     });
-    return tx.accountingInvoice.update({ where: { id }, data: { status: "SENT" } });
+    return tx.accountingInvoice.findUniqueOrThrow({ where: { id } });
   });
 }
 
+/**
+ * amountPaid is updated with an atomic increment, not a JS-computed
+ * absolute value — the previous read-then-write could lose one of two
+ * concurrent payments' contribution to the running total even though both
+ * payments' journal entries posted for real. The remaining-balance guard
+ * still reads a snapshot before the transaction (a narrow race between two
+ * simultaneous payments that each individually fit the remaining balance
+ * but together slightly overpay is a documented, accepted residual — see
+ * docs/HARDENING_PLAN.md); the amountPaid figure itself can never be wrong.
+ */
 export async function recordInvoicePayment(organizationId: string, id: string, amount: string, paymentDate: Date) {
+  const paymentAmount = Number(amount);
+  if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+    throw new InvalidPaymentError("Payment amount must be a positive number.");
+  }
+
   const invoice = await db.accountingInvoice.findFirst({ where: { id, organizationId } });
-  if (!invoice) throw new Error("Invoice not found.");
+  if (!invoice) throw new NotFoundError("Invoice not found.");
   if (invoice.status !== "SENT" && invoice.status !== "OVERDUE") {
     throw new InvoiceStateError("Only sent or overdue invoices can receive a payment.");
+  }
+
+  const remaining = Number(invoice.amount) - Number(invoice.amountPaid);
+  if (paymentAmount - remaining > 0.005) {
+    throw new InvalidPaymentError(`Payment of ${paymentAmount.toFixed(2)} exceeds the remaining balance of ${remaining.toFixed(2)}.`);
   }
 
   const [cash, ar] = await Promise.all([
     getDefaultAccount(organizationId, "1000"),
     getDefaultAccount(organizationId, "1100"),
   ]);
-
-  const newAmountPaid = Number(invoice.amountPaid) + Number(amount);
-  const isFullyPaid = newAmountPaid >= Number(invoice.amount) - 0.005;
 
   return db.$transaction(async (tx) => {
     await postJournalEntry(tx, organizationId, {
@@ -255,22 +302,63 @@ export async function recordInvoicePayment(organizationId: string, id: string, a
         { accountId: ar.id, credit: amount },
       ],
     });
+
+    const updated = await tx.accountingInvoice.update({
+      where: { id },
+      data: { amountPaid: { increment: paymentAmount } },
+    });
+
+    const isFullyPaid = Number(updated.amountPaid) >= Number(updated.amount) - 0.005;
+    if (!isFullyPaid) return updated;
+
     return tx.accountingInvoice.update({
       where: { id },
-      data: {
-        amountPaid: newAmountPaid,
-        status: isFullyPaid ? "PAID" : "SENT",
-        paidAt: isFullyPaid ? paymentDate : null,
-      },
+      data: { status: "PAID", paidAt: paymentDate },
     });
   });
 }
 
+/**
+ * Voiding a SENT/OVERDUE invoice now posts a reversing journal entry
+ * (Debit Revenue / Credit AR — the exact opposite of the entry
+ * markInvoiceSent() posted) instead of only flipping the status, so the
+ * ledger no longer permanently overstates revenue/AR for an invoice that
+ * was voided before any payment came in. A DRAFT invoice never had
+ * anything posted, so voiding it needs no reversal.
+ */
 export async function voidInvoice(organizationId: string, id: string) {
   const invoice = await db.accountingInvoice.findFirst({ where: { id, organizationId } });
-  if (!invoice) throw new Error("Invoice not found.");
+  if (!invoice) throw new NotFoundError("Invoice not found.");
   if (Number(invoice.amountPaid) > 0) throw new InvoiceStateError("Cannot void an invoice that has received payment.");
-  return db.accountingInvoice.update({ where: { id }, data: { status: "VOID" } });
+
+  const needsReversal = invoice.status === "SENT" || invoice.status === "OVERDUE";
+  const accounts = needsReversal
+    ? await Promise.all([getDefaultAccount(organizationId, "1100"), getDefaultAccount(organizationId, "4000")])
+    : null;
+
+  return db.$transaction(async (tx) => {
+    const claimed = await tx.accountingInvoice.updateMany({
+      where: { id, status: { in: ["DRAFT", "SENT", "OVERDUE"] } },
+      data: { status: "VOID" },
+    });
+    if (claimed.count === 0) throw new InvoiceStateError("This invoice can no longer be voided.");
+
+    if (accounts) {
+      const [ar, revenue] = accounts;
+      await postJournalEntry(tx, organizationId, {
+        entryDate: new Date(),
+        description: `Void of invoice ${invoice.invoiceNumber} (reversal)`,
+        sourceType: "INVOICE_VOID",
+        sourceId: invoice.id,
+        lines: [
+          { accountId: revenue.id, debit: invoice.amount.toString() },
+          { accountId: ar.id, credit: invoice.amount.toString() },
+        ],
+      });
+    }
+
+    return tx.accountingInvoice.findUniqueOrThrow({ where: { id } });
+  });
 }
 
 // --- Expenses ---
@@ -305,22 +393,24 @@ export class ExpenseStateError extends Error {}
 
 export async function approveExpense(organizationId: string, id: string) {
   const expense = await db.accountingExpense.findFirst({ where: { id, organizationId } });
-  if (!expense) throw new Error("Expense not found.");
-  if (expense.status !== "PENDING") throw new ExpenseStateError("Only pending expenses can be approved.");
-  return db.accountingExpense.update({ where: { id }, data: { status: "APPROVED" } });
+  if (!expense) throw new NotFoundError("Expense not found.");
+  const claimed = await db.accountingExpense.updateMany({ where: { id, status: "PENDING" }, data: { status: "APPROVED" } });
+  if (claimed.count === 0) throw new ExpenseStateError("Only pending expenses can be approved.");
+  return db.accountingExpense.findUniqueOrThrow({ where: { id } });
 }
 
 export async function rejectExpense(organizationId: string, id: string) {
   const expense = await db.accountingExpense.findFirst({ where: { id, organizationId } });
-  if (!expense) throw new Error("Expense not found.");
-  if (expense.status !== "PENDING") throw new ExpenseStateError("Only pending expenses can be rejected.");
-  return db.accountingExpense.update({ where: { id }, data: { status: "REJECTED" } });
+  if (!expense) throw new NotFoundError("Expense not found.");
+  const claimed = await db.accountingExpense.updateMany({ where: { id, status: "PENDING" }, data: { status: "REJECTED" } });
+  if (claimed.count === 0) throw new ExpenseStateError("Only pending expenses can be rejected.");
+  return db.accountingExpense.findUniqueOrThrow({ where: { id } });
 }
 
+/** Claims the expense (APPROVED -> PAID) atomically before posting, same reasoning as markInvoiceSent(). */
 export async function payExpense(organizationId: string, id: string, paymentDate: Date) {
   const expense = await db.accountingExpense.findFirst({ where: { id, organizationId }, include: { category: true } });
-  if (!expense) throw new Error("Expense not found.");
-  if (expense.status !== "APPROVED") throw new ExpenseStateError("Only approved expenses can be paid.");
+  if (!expense) throw new NotFoundError("Expense not found.");
 
   const [cash, defaultExpense] = await Promise.all([
     getDefaultAccount(organizationId, "1000"),
@@ -329,6 +419,12 @@ export async function payExpense(organizationId: string, id: string, paymentDate
   const expenseAccountId = expense.category?.expenseAccountId ?? defaultExpense.id;
 
   return db.$transaction(async (tx) => {
+    const claimed = await tx.accountingExpense.updateMany({
+      where: { id, status: "APPROVED" },
+      data: { status: "PAID", paidAt: paymentDate },
+    });
+    if (claimed.count === 0) throw new ExpenseStateError("Only approved expenses can be paid.");
+
     await postJournalEntry(tx, organizationId, {
       entryDate: paymentDate,
       description: `Expense ${expense.expenseNumber} paid to ${expense.vendorName}`,
@@ -339,7 +435,7 @@ export async function payExpense(organizationId: string, id: string, paymentDate
         { accountId: cash.id, credit: expense.amount.toString() },
       ],
     });
-    return tx.accountingExpense.update({ where: { id }, data: { status: "PAID", paidAt: paymentDate } });
+    return tx.accountingExpense.findUniqueOrThrow({ where: { id } });
   });
 }
 

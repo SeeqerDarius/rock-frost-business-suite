@@ -105,20 +105,45 @@ export function getStockGrid(organizationId: string) {
   });
 }
 
-async function getOrCreateStockRow(
-  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
-  itemId: string,
-  warehouseId: string,
-) {
-  const existing = await tx.inventoryStock.findUnique({ where: { itemId_warehouseId: { itemId, warehouseId } } });
-  if (existing) return existing;
-  return tx.inventoryStock.create({ data: { itemId, warehouseId, quantity: 0 } });
+export type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+/**
+ * Atomic get-or-create: upsert with a no-op update on conflict avoids the
+ * race a plain findUnique-then-create has under concurrent first-time
+ * movements against the same item/warehouse (both would see "no row" and
+ * both attempt create, one throwing a unique-constraint error instead of
+ * quietly succeeding).
+ */
+async function getOrCreateStockRow(tx: Tx, itemId: string, warehouseId: string) {
+  return tx.inventoryStock.upsert({
+    where: { itemId_warehouseId: { itemId, warehouseId } },
+    update: {},
+    create: { itemId, warehouseId, quantity: 0 },
+  });
+}
+
+/**
+ * Atomic guarded decrement: a single UPDATE with the sufficiency check in
+ * its WHERE clause, not a separate read-then-write. Under Postgres's default
+ * READ COMMITTED isolation, a concurrent UPDATE blocked on the same row's
+ * lock re-evaluates its WHERE clause against the just-committed row once
+ * unblocked (EvalPlanQual) — so two concurrent issues against the same
+ * stock row can never both pass the guard and oversell, the way the
+ * previous read-then-absolute-write pattern could.
+ */
+async function decrementGuarded(tx: Tx, stockId: string, quantity: number) {
+  const result = await tx.inventoryStock.updateMany({
+    where: { id: stockId, quantity: { gte: quantity } },
+    data: { quantity: { decrement: quantity } },
+  });
+  return result.count > 0;
 }
 
 // --- Movements ---
 
 export class InsufficientStockError extends Error {}
 export class InvalidTransferError extends Error {}
+export class NotFoundError extends Error {}
 
 interface MovementInput {
   itemId: string;
@@ -132,51 +157,83 @@ interface MovementInput {
   occurredAt?: Date;
 }
 
-export async function recordMovement(organizationId: string, input: MovementInput) {
+async function recordMovementInTx(tx: Tx, organizationId: string, input: MovementInput) {
+  const source = await getOrCreateStockRow(tx, input.itemId, input.warehouseId);
+
+  if (input.type === "RECEIPT") {
+    await tx.inventoryStock.update({ where: { id: source.id }, data: { quantity: { increment: input.quantity } } });
+  } else if (input.type === "ISSUE") {
+    const ok = await decrementGuarded(tx, source.id, input.quantity);
+    if (!ok) throw new InsufficientStockError("Not enough stock at this warehouse to issue that quantity.");
+  } else if (input.type === "ADJUSTMENT") {
+    if (input.quantity > 0) {
+      await tx.inventoryStock.update({ where: { id: source.id }, data: { quantity: { increment: input.quantity } } });
+    } else {
+      const ok = await decrementGuarded(tx, source.id, -input.quantity);
+      if (!ok) throw new InsufficientStockError("Adjustment would result in negative stock.");
+    }
+  } else if (input.type === "TRANSFER") {
+    const ok = await decrementGuarded(tx, source.id, input.quantity);
+    if (!ok) throw new InsufficientStockError("Not enough stock at the source warehouse to transfer that quantity.");
+    const destination = await getOrCreateStockRow(tx, input.itemId, input.toWarehouseId!);
+    await tx.inventoryStock.update({ where: { id: destination.id }, data: { quantity: { increment: input.quantity } } });
+  }
+
+  return tx.inventoryMovement.create({
+    data: {
+      organizationId,
+      itemId: input.itemId,
+      warehouseId: input.warehouseId,
+      toWarehouseId: input.type === "TRANSFER" ? input.toWarehouseId : null,
+      type: input.type,
+      quantity: input.quantity,
+      reference: input.reference,
+      notes: input.notes,
+      createdById: input.createdById,
+      occurredAt: input.occurredAt ?? new Date(),
+    },
+  });
+}
+
+/**
+ * Records a stock movement. Validation and the organization-scoped item/
+ * warehouse lookups always run against the top-level `db` (a lookup doesn't
+ * need to be inside another caller's transaction), but the actual stock
+ * mutation + audit row can optionally run inside a transaction a caller
+ * already holds open (`tx`) — this is what lets POS's createSale()/
+ * refundSale() commit a sale and every line's stock movement as one
+ * all-or-nothing unit, while still going through Inventory's own public
+ * service function rather than touching InventoryStock directly (see
+ * docs/MODULE_BOUNDARIES.md). Omit `tx` for a standalone call, which opens
+ * its own transaction exactly as before.
+ */
+export async function recordMovement(organizationId: string, input: MovementInput, tx?: Tx) {
+  if (!Number.isInteger(input.quantity) || input.quantity === 0) {
+    throw new Error("Quantity must be a non-zero whole number.");
+  }
+  if (input.type !== "ADJUSTMENT" && input.quantity < 0) {
+    throw new Error("Quantity must be positive for this movement type.");
+  }
+
   const item = await db.inventoryItem.findFirst({ where: { id: input.itemId, organizationId } });
-  if (!item) throw new Error("Item not found.");
+  if (!item) throw new NotFoundError("Item not found.");
+
+  const warehouse = await db.inventoryWarehouse.findFirst({ where: { id: input.warehouseId, organizationId } });
+  if (!warehouse) throw new NotFoundError("Warehouse not found.");
 
   if (input.type === "TRANSFER") {
     if (!input.toWarehouseId) throw new InvalidTransferError("A destination warehouse is required for transfers.");
     if (input.toWarehouseId === input.warehouseId) {
       throw new InvalidTransferError("Source and destination warehouses must be different.");
     }
+    const destinationWarehouse = await db.inventoryWarehouse.findFirst({
+      where: { id: input.toWarehouseId, organizationId },
+    });
+    if (!destinationWarehouse) throw new NotFoundError("Destination warehouse not found.");
   }
 
-  return db.$transaction(async (tx) => {
-    const source = await getOrCreateStockRow(tx, input.itemId, input.warehouseId);
-
-    if (input.type === "RECEIPT") {
-      await tx.inventoryStock.update({ where: { id: source.id }, data: { quantity: source.quantity + input.quantity } });
-    } else if (input.type === "ISSUE") {
-      if (source.quantity < input.quantity) throw new InsufficientStockError("Not enough stock at this warehouse to issue that quantity.");
-      await tx.inventoryStock.update({ where: { id: source.id }, data: { quantity: source.quantity - input.quantity } });
-    } else if (input.type === "ADJUSTMENT") {
-      const nextQuantity = source.quantity + input.quantity;
-      if (nextQuantity < 0) throw new InsufficientStockError("Adjustment would result in negative stock.");
-      await tx.inventoryStock.update({ where: { id: source.id }, data: { quantity: nextQuantity } });
-    } else if (input.type === "TRANSFER") {
-      if (source.quantity < input.quantity) throw new InsufficientStockError("Not enough stock at the source warehouse to transfer that quantity.");
-      const destination = await getOrCreateStockRow(tx, input.itemId, input.toWarehouseId!);
-      await tx.inventoryStock.update({ where: { id: source.id }, data: { quantity: source.quantity - input.quantity } });
-      await tx.inventoryStock.update({ where: { id: destination.id }, data: { quantity: destination.quantity + input.quantity } });
-    }
-
-    return tx.inventoryMovement.create({
-      data: {
-        organizationId,
-        itemId: input.itemId,
-        warehouseId: input.warehouseId,
-        toWarehouseId: input.type === "TRANSFER" ? input.toWarehouseId : null,
-        type: input.type,
-        quantity: input.quantity,
-        reference: input.reference,
-        notes: input.notes,
-        createdById: input.createdById,
-        occurredAt: input.occurredAt ?? new Date(),
-      },
-    });
-  });
+  if (tx) return recordMovementInTx(tx, organizationId, input);
+  return db.$transaction((innerTx) => recordMovementInTx(innerTx, organizationId, input));
 }
 
 export function listMovements(organizationId: string) {

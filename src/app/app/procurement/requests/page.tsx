@@ -19,6 +19,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage requests.",
   "missing-fields": "Description and quantity are required.",
   "invalid-state": "That action isn't valid for this request's current status.",
+  "not-found": "That item or request could not be found.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {

@@ -12,6 +12,7 @@ import {
   receiveOrderLine,
   OrderStateError,
   ReceiveQuantityError,
+  NotFoundError,
 } from "@/modules/procurement/service";
 import { InsufficientStockError } from "@/modules/inventory/service";
 
@@ -39,22 +40,27 @@ export async function createNewOrder(formData: FormData): Promise<void> {
   const session = await getServerAuthSession();
   const expectedDateRaw = clean(formData.get("expectedDate"));
 
-  await createOrder(tenant.organizationId, {
-    vendorId,
-    requestId: clean(formData.get("requestId")),
-    orderDate: new Date(`${orderDateRaw}T00:00:00`),
-    expectedDate: expectedDateRaw ? new Date(`${expectedDateRaw}T00:00:00`) : null,
-    notes: clean(formData.get("notes")),
-    createdById: session?.user?.id ?? null,
-    lines: [
-      {
-        itemId: clean(formData.get("itemId")),
-        description,
-        quantity: Number.parseInt(quantityRaw, 10),
-        unitCost,
-      },
-    ],
-  });
+  try {
+    await createOrder(tenant.organizationId, {
+      vendorId,
+      requestId: clean(formData.get("requestId")),
+      orderDate: new Date(`${orderDateRaw}T00:00:00`),
+      expectedDate: expectedDateRaw ? new Date(`${expectedDateRaw}T00:00:00`) : null,
+      notes: clean(formData.get("notes")),
+      createdById: session?.user?.id ?? null,
+      lines: [
+        {
+          itemId: clean(formData.get("itemId")),
+          description,
+          quantity: Number.parseInt(quantityRaw, 10),
+          unitCost,
+        },
+      ],
+    });
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/procurement/orders?error=not-found");
+    throw error;
+  }
 
   revalidatePath("/app/procurement/orders");
   revalidatePath("/app/procurement/requests");
@@ -73,6 +79,7 @@ export async function sendExistingOrder(formData: FormData): Promise<void> {
     await sendOrder(tenant.organizationId, id);
   } catch (error) {
     if (error instanceof OrderStateError) redirect("/app/procurement/orders?error=invalid-state");
+    if (error instanceof NotFoundError) redirect("/app/procurement/orders?error=not-found");
     throw error;
   }
 
@@ -92,6 +99,7 @@ export async function cancelExistingOrder(formData: FormData): Promise<void> {
     await cancelOrder(tenant.organizationId, id);
   } catch (error) {
     if (error instanceof OrderStateError) redirect("/app/procurement/orders?error=invalid-state");
+    if (error instanceof NotFoundError) redirect("/app/procurement/orders?error=not-found");
     throw error;
   }
 
@@ -126,6 +134,7 @@ export async function receiveExistingOrderLine(formData: FormData): Promise<void
     if (error instanceof ReceiveQuantityError) redirect("/app/procurement/orders?error=invalid-quantity");
     if (error instanceof OrderStateError) redirect("/app/procurement/orders?error=invalid-state");
     if (error instanceof InsufficientStockError) redirect("/app/procurement/orders?error=inventory-error");
+    if (error instanceof NotFoundError) redirect("/app/procurement/orders?error=not-found");
     throw error;
   }
 

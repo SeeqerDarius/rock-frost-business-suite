@@ -12,6 +12,7 @@ import { refundExistingSale } from "./actions";
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage sales.",
   "invalid-state": "Only completed sales can be refunded.",
+  "not-found": "That sale could not be found.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {

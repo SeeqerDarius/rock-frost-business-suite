@@ -31,6 +31,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   "credit-locked": "This payment has a resolved or partially used credit and can't have its amount edited.",
   "credit-not-applicable": "That credit can't be applied to the selected account.",
   "wrong-password": "Incorrect password — this action requires re-entering your password to confirm.",
+  "invalid-amount": "Payment amount must be a positive number.",
+  "not-found": "That account could not be found.",
 };
 
 const CREDIT_BADGE: Record<string, "default" | "outline" | "destructive"> = {

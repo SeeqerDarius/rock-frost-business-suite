@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { createRequest, approveRequest, rejectRequest, RequestStateError } from "@/modules/procurement/service";
+import { createRequest, approveRequest, rejectRequest, RequestStateError, NotFoundError } from "@/modules/procurement/service";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -25,14 +25,19 @@ export async function createNewRequest(formData: FormData): Promise<void> {
   }
 
   const session = await getServerAuthSession();
-  await createRequest(tenant.organizationId, {
-    itemId: clean(formData.get("itemId")),
-    description,
-    quantity: Number.parseInt(quantityRaw, 10),
-    estimatedCost: clean(formData.get("estimatedCost")),
-    notes: clean(formData.get("notes")),
-    requestedById: session?.user?.id ?? null,
-  });
+  try {
+    await createRequest(tenant.organizationId, {
+      itemId: clean(formData.get("itemId")),
+      description,
+      quantity: Number.parseInt(quantityRaw, 10),
+      estimatedCost: clean(formData.get("estimatedCost")),
+      notes: clean(formData.get("notes")),
+      requestedById: session?.user?.id ?? null,
+    });
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/procurement/requests?error=not-found");
+    throw error;
+  }
 
   revalidatePath("/app/procurement/requests");
   redirect("/app/procurement/requests?saved=1");
@@ -51,6 +56,7 @@ export async function approveExistingRequest(formData: FormData): Promise<void> 
     await approveRequest(tenant.organizationId, id, session?.user?.id ?? null);
   } catch (error) {
     if (error instanceof RequestStateError) redirect("/app/procurement/requests?error=invalid-state");
+    if (error instanceof NotFoundError) redirect("/app/procurement/requests?error=not-found");
     throw error;
   }
 
@@ -71,6 +77,7 @@ export async function rejectExistingRequest(formData: FormData): Promise<void> {
     await rejectRequest(tenant.organizationId, id, session?.user?.id ?? null);
   } catch (error) {
     if (error instanceof RequestStateError) redirect("/app/procurement/requests?error=invalid-state");
+    if (error instanceof NotFoundError) redirect("/app/procurement/requests?error=not-found");
     throw error;
   }
 

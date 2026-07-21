@@ -16,6 +16,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "missing-fields": "Period start, period end, and pay date are required.",
   "invalid-state": "That action isn't valid for this run's current status.",
   "no-compensation": "No active employees have compensation set up yet — add compensation before processing.",
+  "not-found": "That payroll run could not be found.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {

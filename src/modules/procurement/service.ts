@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { recordMovement } from "@/modules/inventory/service";
 import type { ProcurementRequestStatus, ProcurementOrderStatus } from "@prisma/client";
 
+export class NotFoundError extends Error {}
+
 /**
  * Fresh module (no reference implementation to migrate from). Every function
  * takes organizationId explicitly and filters on it, per docs/MODULE_BOUNDARIES.md.
@@ -63,6 +65,11 @@ interface RequestInput {
 }
 
 export async function createRequest(organizationId: string, data: RequestInput) {
+  if (data.itemId) {
+    const item = await db.inventoryItem.findFirst({ where: { id: data.itemId, organizationId } });
+    if (!item) throw new NotFoundError("Item not found.");
+  }
+
   const requestNumber = await generateRequestNumber(organizationId);
   return db.procurementRequest.create({ data: { organizationId, requestNumber, ...data } });
 }
@@ -71,16 +78,24 @@ export class RequestStateError extends Error {}
 
 export async function approveRequest(organizationId: string, id: string, approvedById?: string | null) {
   const request = await db.procurementRequest.findFirst({ where: { id, organizationId } });
-  if (!request) throw new Error("Request not found.");
-  if (request.status !== "PENDING") throw new RequestStateError("Only pending requests can be approved.");
-  return db.procurementRequest.update({ where: { id }, data: { status: "APPROVED", approvedById, approvedAt: new Date() } });
+  if (!request) throw new NotFoundError("Request not found.");
+  const claimed = await db.procurementRequest.updateMany({
+    where: { id, status: "PENDING" },
+    data: { status: "APPROVED", approvedById, approvedAt: new Date() },
+  });
+  if (claimed.count === 0) throw new RequestStateError("Only pending requests can be approved.");
+  return db.procurementRequest.findUniqueOrThrow({ where: { id } });
 }
 
 export async function rejectRequest(organizationId: string, id: string, approvedById?: string | null) {
   const request = await db.procurementRequest.findFirst({ where: { id, organizationId } });
-  if (!request) throw new Error("Request not found.");
-  if (request.status !== "PENDING") throw new RequestStateError("Only pending requests can be rejected.");
-  return db.procurementRequest.update({ where: { id }, data: { status: "REJECTED", approvedById, approvedAt: new Date() } });
+  if (!request) throw new NotFoundError("Request not found.");
+  const claimed = await db.procurementRequest.updateMany({
+    where: { id, status: "PENDING" },
+    data: { status: "REJECTED", approvedById, approvedAt: new Date() },
+  });
+  if (claimed.count === 0) throw new RequestStateError("Only pending requests can be rejected.");
+  return db.procurementRequest.findUniqueOrThrow({ where: { id } });
 }
 
 // --- Orders ---
@@ -116,95 +131,139 @@ interface OrderInput {
 }
 
 export async function createOrder(organizationId: string, data: OrderInput) {
-  const orderNumber = await generateOrderNumber(organizationId);
-  const order = await db.procurementOrder.create({
-    data: {
-      organizationId,
-      orderNumber,
-      vendorId: data.vendorId,
-      requestId: data.requestId,
-      orderDate: data.orderDate,
-      expectedDate: data.expectedDate,
-      notes: data.notes,
-      createdById: data.createdById,
-      lines: { create: data.lines },
-    },
-  });
+  const vendor = await db.procurementVendor.findFirst({ where: { id: data.vendorId, organizationId } });
+  if (!vendor) throw new NotFoundError("Vendor not found.");
 
   if (data.requestId) {
-    await db.procurementRequest.update({ where: { id: data.requestId }, data: { status: "CONVERTED" } });
+    const request = await db.procurementRequest.findFirst({ where: { id: data.requestId, organizationId } });
+    if (!request) throw new NotFoundError("Request not found.");
   }
 
-  return order;
+  for (const line of data.lines) {
+    if (!line.itemId) continue;
+    const item = await db.inventoryItem.findFirst({ where: { id: line.itemId, organizationId } });
+    if (!item) throw new NotFoundError("Item not found.");
+  }
+
+  const orderNumber = await generateOrderNumber(organizationId);
+
+  return db.$transaction(async (tx) => {
+    const order = await tx.procurementOrder.create({
+      data: {
+        organizationId,
+        orderNumber,
+        vendorId: data.vendorId,
+        requestId: data.requestId,
+        orderDate: data.orderDate,
+        expectedDate: data.expectedDate,
+        notes: data.notes,
+        createdById: data.createdById,
+        lines: { create: data.lines },
+      },
+    });
+
+    if (data.requestId) {
+      await tx.procurementRequest.update({ where: { id: data.requestId }, data: { status: "CONVERTED" } });
+    }
+
+    return order;
+  });
 }
 
 export class OrderStateError extends Error {}
 
 export async function sendOrder(organizationId: string, id: string) {
   const order = await db.procurementOrder.findFirst({ where: { id, organizationId } });
-  if (!order) throw new Error("Order not found.");
-  if (order.status !== "DRAFT") throw new OrderStateError("Only draft orders can be sent.");
-  return db.procurementOrder.update({ where: { id }, data: { status: "SENT" } });
+  if (!order) throw new NotFoundError("Order not found.");
+  const claimed = await db.procurementOrder.updateMany({ where: { id, status: "DRAFT" }, data: { status: "SENT" } });
+  if (claimed.count === 0) throw new OrderStateError("Only draft orders can be sent.");
+  return db.procurementOrder.findUniqueOrThrow({ where: { id } });
 }
 
 export async function cancelOrder(organizationId: string, id: string) {
   const order = await db.procurementOrder.findFirst({ where: { id, organizationId }, include: { lines: true } });
-  if (!order) throw new Error("Order not found.");
+  if (!order) throw new NotFoundError("Order not found.");
   if (order.lines.some((l) => l.receivedQuantity > 0)) {
     throw new OrderStateError("Cannot cancel an order that has already received stock.");
   }
-  if (order.status === "RECEIVED" || order.status === "CANCELLED") {
-    throw new OrderStateError("This order can no longer be cancelled.");
-  }
-  return db.procurementOrder.update({ where: { id }, data: { status: "CANCELLED" } });
+  const claimed = await db.procurementOrder.updateMany({
+    where: { id, status: { notIn: ["RECEIVED", "CANCELLED"] } },
+    data: { status: "CANCELLED" },
+  });
+  if (claimed.count === 0) throw new OrderStateError("This order can no longer be cancelled.");
+  return db.procurementOrder.findUniqueOrThrow({ where: { id } });
 }
 
-async function recomputeOrderStatus(orderId: string) {
-  const lines = await db.procurementOrderLine.findMany({ where: { orderId } });
+async function recomputeOrderStatus(tx: Parameters<Parameters<typeof db.$transaction>[0]>[0], orderId: string) {
+  const lines = await tx.procurementOrderLine.findMany({ where: { orderId } });
   const allReceived = lines.every((l) => l.receivedQuantity >= l.quantity);
   const anyReceived = lines.some((l) => l.receivedQuantity > 0);
   const status: ProcurementOrderStatus = allReceived ? "RECEIVED" : anyReceived ? "PARTIALLY_RECEIVED" : "SENT";
-  await db.procurementOrder.update({ where: { id: orderId }, data: { status } });
+  await tx.procurementOrder.update({ where: { id: orderId }, data: { status } });
 }
 
 export class ReceiveQuantityError extends Error {}
 
+/**
+ * Receiving a line, posting its Inventory stock movement, and recomputing
+ * the order's overall status now commit as one all-or-nothing transaction —
+ * previously these were three separate statements, so a failure after the
+ * stock movement posted (but before the line/order updated) left real stock
+ * received with no record of it on the order, and a retry would receive it
+ * again. The receivedQuantity update is also an atomic guarded increment
+ * (WHERE receivedQuantity <= quantity - input.quantity), not a
+ * read-then-absolute-write, so two concurrent receives against the same
+ * line can't lose an update the way the previous JS-computed sum could.
+ */
 export async function receiveOrderLine(
   organizationId: string,
   input: { orderId: string; lineId: string; quantity: number; warehouseId?: string | null; createdById?: string | null },
 ) {
+  if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
+    throw new ReceiveQuantityError("Quantity must be a positive whole number.");
+  }
+
   const order = await db.procurementOrder.findFirst({ where: { id: input.orderId, organizationId } });
-  if (!order) throw new Error("Order not found.");
+  if (!order) throw new NotFoundError("Order not found.");
   if (order.status !== "SENT" && order.status !== "PARTIALLY_RECEIVED") {
     throw new OrderStateError("Only sent or partially received orders can receive stock.");
   }
 
   const line = await db.procurementOrderLine.findFirst({ where: { id: input.lineId, orderId: input.orderId } });
-  if (!line) throw new Error("Order line not found.");
+  if (!line) throw new NotFoundError("Order line not found.");
 
   const remaining = line.quantity - line.receivedQuantity;
-  if (input.quantity <= 0 || input.quantity > remaining) {
+  if (input.quantity > remaining) {
     throw new ReceiveQuantityError(`Quantity must be between 1 and ${remaining}.`);
   }
 
-  if (line.itemId && input.warehouseId) {
-    await recordMovement(organizationId, {
-      itemId: line.itemId,
-      warehouseId: input.warehouseId,
-      type: "RECEIPT",
-      quantity: input.quantity,
-      reference: order.orderNumber,
-      notes: `Received against purchase order ${order.orderNumber}`,
-      createdById: input.createdById,
+  return db.$transaction(async (tx) => {
+    const claimed = await tx.procurementOrderLine.updateMany({
+      where: { id: line.id, receivedQuantity: { lte: line.quantity - input.quantity } },
+      data: { receivedQuantity: { increment: input.quantity } },
     });
-  }
+    if (claimed.count === 0) {
+      throw new ReceiveQuantityError("This line no longer has that much quantity remaining to receive.");
+    }
 
-  await db.procurementOrderLine.update({
-    where: { id: line.id },
-    data: { receivedQuantity: line.receivedQuantity + input.quantity },
+    if (line.itemId && input.warehouseId) {
+      await recordMovement(
+        organizationId,
+        {
+          itemId: line.itemId,
+          warehouseId: input.warehouseId,
+          type: "RECEIPT",
+          quantity: input.quantity,
+          reference: order.orderNumber,
+          notes: `Received against purchase order ${order.orderNumber}`,
+          createdById: input.createdById,
+        },
+        tx,
+      );
+    }
+
+    await recomputeOrderStatus(tx, input.orderId);
   });
-
-  await recomputeOrderStatus(input.orderId);
 }
 
 // --- Settings ---

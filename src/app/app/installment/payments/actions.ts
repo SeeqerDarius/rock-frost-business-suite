@@ -16,6 +16,8 @@ import {
   PaymentEditWindowError,
   PaymentCreditLockedError,
   CreditNotApplicableError,
+  InvalidPaymentAmountError,
+  NotFoundError,
 } from "@/modules/installment/service";
 
 function clean(value: FormDataEntryValue | null) {
@@ -58,6 +60,8 @@ export async function createPayment(formData: FormData): Promise<void> {
     if (error instanceof PaymentBlockedError) {
       redirect("/app/installment/payments?error=blocked");
     }
+    if (error instanceof InvalidPaymentAmountError) redirect("/app/installment/payments?error=invalid-amount");
+    if (error instanceof NotFoundError) redirect("/app/installment/payments?error=not-found");
     throw error;
   }
 

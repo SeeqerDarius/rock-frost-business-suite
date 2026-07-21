@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { createSale, SaleStateError, InsufficientStockError } from "@/modules/pos/service";
+import { createSale, SaleStateError, InsufficientStockError, InvalidSaleInputError, NotFoundError } from "@/modules/pos/service";
 import type { PosPaymentMethod } from "@prisma/client";
 
 function clean(value: FormDataEntryValue | null) {
@@ -56,6 +56,8 @@ export async function completeSale(formData: FormData): Promise<void> {
   } catch (error) {
     if (error instanceof InsufficientStockError) redirect("/app/pos/sell?error=insufficient-stock");
     if (error instanceof SaleStateError) redirect("/app/pos/sell?error=no-open-session");
+    if (error instanceof InvalidSaleInputError) redirect("/app/pos/sell?error=invalid-line");
+    if (error instanceof NotFoundError) redirect("/app/pos/sell?error=not-found");
     throw error;
   }
 

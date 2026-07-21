@@ -369,11 +369,13 @@ export async function createCustomer(
   return db.hirePurchaseCustomer.create({ data: { organizationId, customerCode, ...data } });
 }
 
-export function updateCustomer(
+export async function updateCustomer(
   organizationId: string,
   id: string,
   data: { fullName: string; phone?: string | null; address?: string | null; nationalId?: string | null; staffId: string }
 ) {
+  const staff = await db.hirePurchaseStaff.findFirst({ where: { id: data.staffId, organizationId } });
+  if (!staff) throw new NotFoundError("Staff member not found.");
   return db.hirePurchaseCustomer.update({ where: { id, organizationId }, data });
 }
 
@@ -394,6 +396,7 @@ export function listAccounts(organizationId: string, staffId: string | null) {
 }
 
 export class MinimumDepositError extends Error {}
+export class NotFoundError extends Error {}
 
 /**
  * `administrationFeePercent` and `minimumDeposit` are real, enforced rules
@@ -407,7 +410,13 @@ export async function createAccount(
   data: { customerId: string; productId: string; inventoryStaffId: string; startDate: Date; initialDeposit?: string }
 ) {
   const product = await db.hirePurchaseProduct.findFirst({ where: { id: data.productId, organizationId } });
-  if (!product) throw new Error("Product not found.");
+  if (!product) throw new NotFoundError("Product not found.");
+
+  const customer = await db.hirePurchaseCustomer.findFirst({ where: { id: data.customerId, organizationId } });
+  if (!customer) throw new NotFoundError("Customer not found.");
+
+  const inventoryStaff = await db.hirePurchaseStaff.findFirst({ where: { id: data.inventoryStaffId, organizationId } });
+  if (!inventoryStaff) throw new NotFoundError("Staff member not found.");
 
   const settings = await getInstallmentSettings(organizationId);
   const minimumDeposit = Number(settings.minimumDeposit);
@@ -538,13 +547,33 @@ export function listPayments(organizationId: string, staffId: string | null) {
 const BLOCKED_PAYMENT_STATUSES: HirePurchaseAccountStatus[] = ["CANCELLED", "SUSPENDED", "CLOSED", "ARCHIVED", "COMPLETED"];
 
 export class PaymentBlockedError extends Error {}
+export class InvalidPaymentAmountError extends Error {}
 
+/**
+ * totalPaid and balance are updated with one atomic multi-field
+ * increment/decrement (a single UPDATE statement), not a JS-computed
+ * absolute write from a pre-transaction read — the previous version could
+ * lose one of two concurrent payments' contribution to the running total
+ * even though both payment rows got created for real. Overpayment is
+ * detected from the atomically-decremented balance's true (possibly
+ * negative) result, so the credit amount created for the excess is always
+ * correct even under concurrent payments on the same account. The
+ * subsequent clamp-to-zero + status write is derived from that same fresh
+ * result, not a stale read — a narrower residual race remains only if a
+ * third payment interleaves between the decrement and this clamp step; see
+ * docs/HARDENING_PLAN.md.
+ */
 export async function recordPayment(
   organizationId: string,
   data: { accountId: string; amount: string; paymentDate: Date; method: string; notes?: string | null; receivedBy?: string | null }
 ) {
+  const amount = Number(data.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new InvalidPaymentAmountError("Payment amount must be a positive number.");
+  }
+
   const account = await db.hirePurchaseAccount.findFirst({ where: { id: data.accountId, organizationId } });
-  if (!account) throw new Error("Account not found.");
+  if (!account) throw new NotFoundError("Account not found.");
   if (BLOCKED_PAYMENT_STATUSES.includes(account.status) || Number(account.balance) <= 0) {
     throw new PaymentBlockedError("This account can't accept new payments in its current state.");
   }
@@ -552,28 +581,33 @@ export async function recordPayment(
   const settings = await getInstallmentSettings(organizationId);
   const receiptNo = await generateReceiptNo(organizationId, settings.receiptPrefix);
 
-  const amount = Number(data.amount);
-  const rawBalance = Number(account.balance) - amount;
-  const nextTotalPaid = Number(account.totalPaid) + amount;
-  const isOverpaid = rawBalance < 0;
-  const nextBalance = Math.max(rawBalance, 0);
-
-  let nextStatus: HirePurchaseAccountStatus = account.status;
-  if (rawBalance <= 0) {
-    nextStatus = "COMPLETED";
-  } else if (account.status === "DORMANT" || account.status === "PROBATION") {
-    nextStatus = "ACTIVE";
-  }
-
   return db.$transaction(async (tx) => {
     const payment = await tx.hirePurchasePayment.create({
       data: { organizationId, receiptNo, ...data },
     });
 
-    await tx.hirePurchaseAccount.update({
+    const updated = await tx.hirePurchaseAccount.update({
       where: { id: account.id },
-      data: { totalPaid: nextTotalPaid.toFixed(2), balance: nextBalance.toFixed(2), status: nextStatus },
+      data: { totalPaid: { increment: amount }, balance: { decrement: amount } },
     });
+
+    const rawBalance = Number(updated.balance);
+    const isOverpaid = rawBalance < 0;
+    const clampedBalance = Math.max(rawBalance, 0);
+
+    let nextStatus = updated.status;
+    if (rawBalance <= 0) {
+      nextStatus = "COMPLETED";
+    } else if (updated.status === "DORMANT" || updated.status === "PROBATION") {
+      nextStatus = "ACTIVE";
+    }
+
+    if (isOverpaid || nextStatus !== updated.status) {
+      await tx.hirePurchaseAccount.update({
+        where: { id: account.id },
+        data: { balance: clampedBalance.toFixed(2), status: nextStatus },
+      });
+    }
 
     if (isOverpaid) {
       const creditAmount = Math.abs(rawBalance);
@@ -837,7 +871,17 @@ export async function refreshAccountLifecycleStatuses(organizationId: string, no
 
     if (nextStatus === account.status) continue;
 
-    await db.hirePurchaseAccount.update({ where: { id: account.id }, data: { status: nextStatus } });
+    // Claims the status transition atomically before creating anything —
+    // two concurrent sweeps (e.g. two users loading a report at once)
+    // previously could both pass the same "no existing refund" check for
+    // the same newly-CLOSED account and both create a duplicate refund
+    // credit. Now only whichever sweep's updateMany actually flips the
+    // status (matches a row) proceeds to create the one refund credit.
+    const claimed = await db.hirePurchaseAccount.updateMany({
+      where: { id: account.id, status: account.status },
+      data: { status: nextStatus },
+    });
+    if (claimed.count === 0) continue;
 
     if (nextStatus === "CLOSED" && Number(account.totalPaid) > 0) {
       const existingRefund = await db.hirePurchaseCredit.findFirst({

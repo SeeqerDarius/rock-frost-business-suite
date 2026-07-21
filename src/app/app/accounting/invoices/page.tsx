@@ -18,6 +18,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   "missing-fields": "All required fields must be filled in.",
   "invalid-state": "That action isn't valid for this invoice's current status.",
   "has-payment": "Cannot void an invoice that has already received payment.",
+  "invalid-payment": "That payment amount is invalid or exceeds the remaining balance.",
+  "not-found": "That invoice could not be found.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {

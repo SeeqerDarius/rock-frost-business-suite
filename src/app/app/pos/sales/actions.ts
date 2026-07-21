@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { refundSale, SaleStateError } from "@/modules/pos/service";
+import { refundSale, SaleStateError, NotFoundError } from "@/modules/pos/service";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -26,6 +26,7 @@ export async function refundExistingSale(formData: FormData): Promise<void> {
     await refundSale(tenant.organizationId, id, session?.user?.id ?? null);
   } catch (error) {
     if (error instanceof SaleStateError) redirect("/app/pos/sales?error=invalid-state");
+    if (error instanceof NotFoundError) redirect("/app/pos/sales?error=not-found");
     throw error;
   }
 

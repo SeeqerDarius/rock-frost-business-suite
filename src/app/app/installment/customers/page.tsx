@@ -16,6 +16,7 @@ import { upsertCustomer } from "./actions";
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage customers.",
   "missing-fields": "Full name and assigned staff are required.",
+  "not-found": "That staff member could not be found.",
 };
 
 interface CustomerFieldsProps {

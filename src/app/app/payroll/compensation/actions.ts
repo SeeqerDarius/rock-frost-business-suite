@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { setCompensation, NotFoundError } from "@/modules/payroll/service";
+import { setCompensation, NotFoundError, InvalidCompensationError } from "@/modules/payroll/service";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -33,6 +33,7 @@ export async function saveCompensation(formData: FormData): Promise<void> {
     });
   } catch (error) {
     if (error instanceof NotFoundError) redirect("/app/payroll/compensation?error=not-found");
+    if (error instanceof InvalidCompensationError) redirect("/app/payroll/compensation?error=invalid-salary");
     throw error;
   }
 

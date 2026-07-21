@@ -13,6 +13,7 @@ import { saveDefaultTaxRate } from "./actions";
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage Payroll settings.",
   "missing-fields": "A tax rate is required.",
+  "invalid-rate": "Tax rate must be between 0% and 100%.",
 };
 
 export default async function PayrollSettingsPage({

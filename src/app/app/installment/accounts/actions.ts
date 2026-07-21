@@ -14,6 +14,7 @@ import {
   InsufficientInventoryError,
   ReactivationNotEligibleError,
   MinimumDepositError,
+  NotFoundError,
 } from "@/modules/installment/service";
 import type { HirePurchaseAccountStatus } from "@prisma/client";
 
@@ -53,6 +54,7 @@ export async function createInstallmentAccount(formData: FormData): Promise<void
     if (error instanceof MinimumDepositError) {
       redirect("/app/installment/accounts?error=below-minimum-deposit");
     }
+    if (error instanceof NotFoundError) redirect("/app/installment/accounts?error=not-found");
     throw error;
   }
 

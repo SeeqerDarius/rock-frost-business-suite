@@ -11,6 +11,8 @@ import {
   recordInvoicePayment,
   voidInvoice,
   InvoiceStateError,
+  InvalidPaymentError,
+  NotFoundError,
 } from "@/modules/accounting/service";
 
 function clean(value: FormDataEntryValue | null) {
@@ -66,6 +68,7 @@ export async function sendInvoice(formData: FormData): Promise<void> {
     if (error instanceof InvoiceStateError) {
       redirect("/app/accounting/invoices?error=invalid-state");
     }
+    if (error instanceof NotFoundError) redirect("/app/accounting/invoices?error=not-found");
     throw error;
   }
 
@@ -93,6 +96,8 @@ export async function payInvoice(formData: FormData): Promise<void> {
     if (error instanceof InvoiceStateError) {
       redirect("/app/accounting/invoices?error=invalid-state");
     }
+    if (error instanceof InvalidPaymentError) redirect("/app/accounting/invoices?error=invalid-payment");
+    if (error instanceof NotFoundError) redirect("/app/accounting/invoices?error=not-found");
     throw error;
   }
 
@@ -116,6 +121,7 @@ export async function voidExistingInvoice(formData: FormData): Promise<void> {
     if (error instanceof InvoiceStateError) {
       redirect("/app/accounting/invoices?error=has-payment");
     }
+    if (error instanceof NotFoundError) redirect("/app/accounting/invoices?error=not-found");
     throw error;
   }
 

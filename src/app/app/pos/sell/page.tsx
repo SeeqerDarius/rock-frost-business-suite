@@ -18,6 +18,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   "no-lines": "Add at least one line with a description, quantity, and unit price.",
   "insufficient-stock": "There isn't enough stock of one of these items at this register's warehouse.",
   "no-open-session": "That session is no longer open.",
+  "invalid-line": "Every line needs a positive whole-number quantity and a valid unit price.",
+  "not-found": "That session or register could not be found.",
 };
 
 const PAYMENT_METHODS: Record<string, string> = { CASH: "Cash", CARD: "Card", MOBILE_MONEY: "Mobile Money", OTHER: "Other" };

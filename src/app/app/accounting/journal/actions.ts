@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { createManualJournalEntry, JournalNotBalancedError } from "@/modules/accounting/service";
+import { createManualJournalEntry, JournalNotBalancedError, NotFoundError } from "@/modules/accounting/service";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -48,6 +48,7 @@ export async function createJournalEntry(formData: FormData): Promise<void> {
     if (error instanceof JournalNotBalancedError) {
       redirect("/app/accounting/journal?error=not-balanced");
     }
+    if (error instanceof NotFoundError) redirect("/app/accounting/journal?error=not-found");
     throw error;
   }
 

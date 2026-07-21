@@ -17,6 +17,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage compensation.",
   "missing-fields": "Employee, base salary, and effective date are required.",
   "not-found": "That employee could not be found.",
+  "invalid-salary": "Base salary must be a positive number.",
 };
 
 const FREQUENCY_ITEMS: Record<string, string> = { MONTHLY: "Monthly", BIWEEKLY: "Bi-weekly", WEEKLY: "Weekly" };

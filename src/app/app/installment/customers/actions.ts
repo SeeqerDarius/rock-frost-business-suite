@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createCustomer, updateCustomer } from "@/modules/installment/service";
+import { createCustomer, updateCustomer, NotFoundError } from "@/modules/installment/service";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -32,10 +32,15 @@ export async function upsertCustomer(formData: FormData): Promise<void> {
     nationalId: clean(formData.get("nationalId")),
   };
 
-  if (id) {
-    await updateCustomer(tenant.organizationId, id, data);
-  } else {
-    await createCustomer(tenant.organizationId, data);
+  try {
+    if (id) {
+      await updateCustomer(tenant.organizationId, id, data);
+    } else {
+      await createCustomer(tenant.organizationId, data);
+    }
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/installment/customers?error=not-found");
+    throw error;
   }
 
   revalidatePath("/app/installment/customers");
