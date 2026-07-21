@@ -15,6 +15,10 @@ export default async function PlatformDashboardPage() {
     }),
   ]);
 
+  // Only modules at least one organization has actually enabled — a module
+  // nobody uses yet has no adoption to report.
+  const adoptedModules = moduleAdoption.filter((mod) => mod.organizationModules.length > 0);
+
   const stats = [
     { label: "Organizations", value: organizationCount, icon: Building2 },
     { label: "Active members", value: activeMemberCount, icon: Users },
@@ -45,17 +49,21 @@ export default async function PlatformDashboardPage() {
             <Activity className="size-5 text-muted-foreground" />
             <CardTitle>Module adoption</CardTitle>
           </div>
-          <CardDescription>How many organizations have each available module enabled.</CardDescription>
+          <CardDescription>How many organizations have each module enabled.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
-          {moduleAdoption.map((mod) => (
-            <div key={mod.name} className="flex items-center justify-between rounded-lg border p-3">
-              <p className="text-sm font-medium">{mod.name}</p>
-              <p className="text-sm text-muted-foreground">
-                {mod.organizationModules.length} organization{mod.organizationModules.length === 1 ? "" : "s"}
-              </p>
-            </div>
-          ))}
+          {adoptedModules.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No organization has enabled any module yet.</p>
+          ) : (
+            adoptedModules.map((mod) => (
+              <div key={mod.name} className="flex items-center justify-between rounded-lg border p-3">
+                <p className="text-sm font-medium">{mod.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  {mod.organizationModules.length} organization{mod.organizationModules.length === 1 ? "" : "s"}
+                </p>
+              </div>
+            ))
+          )}
         </CardContent>
       </Card>
     </div>
