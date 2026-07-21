@@ -183,6 +183,10 @@ Verified end-to-end: created a project, added a member, created a milestone with
 
 **Status: complete.**
 
+## Production hardening track (started 2026-07-21)
+
+With every product module built, a full-project audit (2026-07-20) found the platform is a strong feature-complete beta but not yet safe for external multi-tenant onboarding or real financial operations. Rather than a numbered phase, this is now tracked as a series of hardening passes in **`docs/HARDENING_PLAN.md`** — read that file for the authoritative current status. **Pass 1** (central active-tenant guard, session revocation, dashboard permission leak, and the Administration/Projects/Payroll IDOR paths) is complete. **Pass 2** (remaining IDOR paths, financial/inventory transaction atomicity, invitation redesign, runtime validation, broader test/CI coverage) has not started.
+
 ## Later phases (not scoped in detail yet)
 
-A possible future Billing/Subscriptions module (deliberately scheduled last, per explicit user direction — no `Subscription` model exists yet), and production hardening. With Projects complete, every module from the original `docs/PRODUCT_VISION.md` list — plus POS, added by explicit request — is now built.
+A possible future Billing/Subscriptions module — **not implemented scope**; the `/app/platform/subscriptions` placeholder is explicitly labeled "Planned — requirements not yet defined" and is not part of the hardening track. No `Subscription` model exists, and none is planned until requirements are defined.

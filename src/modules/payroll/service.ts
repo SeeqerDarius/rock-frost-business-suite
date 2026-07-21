@@ -42,7 +42,13 @@ interface CompensationInput {
   effectiveDate: Date;
 }
 
-export function setCompensation(organizationId: string, data: CompensationInput) {
+/** Thrown when a caller-supplied id doesn't resolve inside the calling organization. */
+export class NotFoundError extends Error {}
+
+export async function setCompensation(organizationId: string, data: CompensationInput) {
+  const employee = await db.hrEmployee.findFirst({ where: { id: data.employeeId, organizationId } });
+  if (!employee) throw new NotFoundError("Employee not found.");
+
   return db.payrollCompensation.upsert({
     where: { employeeId: data.employeeId },
     update: { baseSalary: data.baseSalary, payFrequency: data.payFrequency ?? "MONTHLY", effectiveDate: data.effectiveDate },

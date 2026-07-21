@@ -24,7 +24,7 @@ export default async function InventoryLayout({ children }: { children: React.Re
     <AppShell
       sectionLabel="Inventory Management"
       navigation={inventoryNavigation}
-      enabledModuleKeys={tenant.enabledModuleKeys}
+      enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
     >
       {children}

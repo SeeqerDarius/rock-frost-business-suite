@@ -24,7 +24,7 @@ export default async function ProcurementLayout({ children }: { children: React.
     <AppShell
       sectionLabel="Procurement"
       navigation={procurementNavigation}
-      enabledModuleKeys={tenant.enabledModuleKeys}
+      enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
     >
       {children}

@@ -24,7 +24,7 @@ export default async function InstallmentLayout({ children }: { children: React.
     <AppShell
       sectionLabel="Installment Management"
       navigation={installmentNavigation}
-      enabledModuleKeys={tenant.enabledModuleKeys}
+      enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
     >
       {children}

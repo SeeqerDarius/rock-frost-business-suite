@@ -10,7 +10,7 @@ import { requireCurrentTenant } from "@/lib/tenant";
 
 export default async function OrganizationDashboardPage() {
   const tenant = await requireCurrentTenant();
-  const enabledModules = moduleRegistry.filter((mod) => tenant.enabledModuleKeys.includes(mod.key));
+  const enabledModules = moduleRegistry.filter((mod) => tenant.accessibleModuleKeys.includes(mod.key));
 
   return (
     <div className="space-y-6">

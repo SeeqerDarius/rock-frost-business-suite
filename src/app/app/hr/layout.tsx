@@ -24,7 +24,7 @@ export default async function HrLayout({ children }: { children: React.ReactNode
     <AppShell
       sectionLabel="Human Resources"
       navigation={hrNavigation}
-      enabledModuleKeys={tenant.enabledModuleKeys}
+      enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
     >
       {children}

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { setCompensation } from "@/modules/payroll/service";
+import { setCompensation, NotFoundError } from "@/modules/payroll/service";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -24,12 +24,17 @@ export async function saveCompensation(formData: FormData): Promise<void> {
     redirect("/app/payroll/compensation?error=missing-fields");
   }
 
-  await setCompensation(tenant.organizationId, {
-    employeeId,
-    baseSalary,
-    payFrequency: clean(formData.get("payFrequency")) ?? "MONTHLY",
-    effectiveDate: new Date(`${effectiveDateRaw}T00:00:00`),
-  });
+  try {
+    await setCompensation(tenant.organizationId, {
+      employeeId,
+      baseSalary,
+      payFrequency: clean(formData.get("payFrequency")) ?? "MONTHLY",
+      effectiveDate: new Date(`${effectiveDateRaw}T00:00:00`),
+    });
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/payroll/compensation?error=not-found");
+    throw error;
+  }
 
   revalidatePath("/app/payroll/compensation");
   redirect("/app/payroll/compensation?saved=1");

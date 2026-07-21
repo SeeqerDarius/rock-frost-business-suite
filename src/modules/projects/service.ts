@@ -71,7 +71,20 @@ export function setProjectStatus(organizationId: string, id: string, status: "PL
 
 // --- Members ---
 
-export function addProjectMember(projectId: string, userId: string, role?: string | null) {
+/** Thrown when a caller-supplied id doesn't resolve inside the calling organization. Callers should treat this as a generic not-found, not reveal whether the foreign record exists elsewhere. */
+export class NotFoundError extends Error {}
+
+async function requireProjectInOrg(organizationId: string, projectId: string) {
+  const project = await db.project.findFirst({ where: { id: projectId, organizationId } });
+  if (!project) throw new NotFoundError("Project not found.");
+  return project;
+}
+
+export async function addProjectMember(organizationId: string, projectId: string, userId: string, role?: string | null) {
+  await requireProjectInOrg(organizationId, projectId);
+  const member = await db.organizationMember.findFirst({ where: { userId, organizationId, status: "ACTIVE" } });
+  if (!member) throw new NotFoundError("User not found.");
+
   return db.projectMember.upsert({
     where: { projectId_userId: { projectId, userId } },
     update: { role },
@@ -79,7 +92,8 @@ export function addProjectMember(projectId: string, userId: string, role?: strin
   });
 }
 
-export function removeProjectMember(projectId: string, userId: string) {
+export async function removeProjectMember(organizationId: string, projectId: string, userId: string) {
+  await requireProjectInOrg(organizationId, projectId);
   return db.projectMember.delete({ where: { projectId_userId: { projectId, userId } } });
 }
 
@@ -99,7 +113,8 @@ interface MilestoneInput {
   dueDate?: Date | null;
 }
 
-export function createMilestone(data: MilestoneInput) {
+export async function createMilestone(organizationId: string, data: MilestoneInput) {
+  await requireProjectInOrg(organizationId, data.projectId);
   return db.projectMilestone.create({ data });
 }
 
@@ -140,7 +155,23 @@ interface TaskInput {
   createdById?: string | null;
 }
 
-export function createTask(organizationId: string, data: TaskInput) {
+export async function createTask(organizationId: string, data: TaskInput) {
+  await requireProjectInOrg(organizationId, data.projectId);
+
+  if (data.milestoneId) {
+    const milestone = await db.projectMilestone.findFirst({
+      where: { id: data.milestoneId, projectId: data.projectId },
+    });
+    if (!milestone) throw new NotFoundError("Milestone not found.");
+  }
+
+  if (data.assigneeId) {
+    const assignee = await db.organizationMember.findFirst({
+      where: { userId: data.assigneeId, organizationId, status: "ACTIVE" },
+    });
+    if (!assignee) throw new NotFoundError("Assignee not found.");
+  }
+
   return db.projectTask.create({ data: { organizationId, ...data } });
 }
 

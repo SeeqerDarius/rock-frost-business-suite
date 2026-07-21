@@ -24,7 +24,7 @@ export default async function PayrollLayout({ children }: { children: React.Reac
     <AppShell
       sectionLabel="Payroll"
       navigation={payrollNavigation}
-      enabledModuleKeys={tenant.enabledModuleKeys}
+      enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
     >
       {children}

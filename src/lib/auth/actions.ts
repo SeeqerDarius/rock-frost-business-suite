@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
 import { issuePasswordResetToken, consumePasswordResetToken, consumeInviteToken } from "@/lib/auth/tokens";
+import { revokeUserSessions } from "@/lib/auth/session-revocation";
 
 function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
@@ -73,7 +74,8 @@ export async function resetPassword(formData: FormData): Promise<void> {
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  await db.user.update({ where: { email }, data: { passwordHash } });
+  const updated = await db.user.update({ where: { email }, data: { passwordHash } });
+  await revokeUserSessions(updated.id);
 
   redirect("/login?reset=1");
 }
@@ -107,7 +109,10 @@ export async function acceptInvite(formData: FormData): Promise<void> {
   const passwordHash = await bcrypt.hash(password, 10);
 
   await db.$transaction(async (tx) => {
-    await tx.user.update({ where: { id: user!.id }, data: { passwordHash, status: "ACTIVE" } });
+    await tx.user.update({
+      where: { id: user!.id },
+      data: { passwordHash, status: "ACTIVE", sessionVersion: { increment: 1 } },
+    });
     await tx.organizationMember.updateMany({
       where: { userId: user!.id, status: "INVITED" },
       data: { status: "ACTIVE", joinedAt: new Date() },

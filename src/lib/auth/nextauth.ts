@@ -64,6 +64,7 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           organizationId: primaryMembership?.organizationId,
           role: primaryMembership?.role?.name,
+          sessionVersion: user.sessionVersion,
         };
       },
     }),
@@ -84,8 +85,28 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           organizationId: user.organizationId,
           role: user.role,
+          sessionVersion: user.sessionVersion ?? 0,
         };
+        return token;
       }
+
+      // Every subsequent request (NextAuth v4 re-runs jwt() on every
+      // getServerSession() call, not just at sign-in) re-validates the token
+      // against the live database: a since-suspended/deleted user, or a
+      // sessionVersion bumped by a password reset / invite acceptance
+      // (see src/lib/auth/session-revocation.ts), clears the session here
+      // rather than trusting a stale JWT for up to its full 30-day lifetime.
+      if (token.user?.id) {
+        const current = await db.user.findUnique({
+          where: { id: token.user.id },
+          select: { status: true, sessionVersion: true },
+        });
+
+        if (!current || current.status !== "ACTIVE" || current.sessionVersion !== token.user.sessionVersion) {
+          token.user = undefined;
+        }
+      }
+
       return token;
     },
     async session({ session, token }) {

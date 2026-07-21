@@ -12,6 +12,7 @@ import {
   addProjectMember,
   removeProjectMember,
   ProjectStateError,
+  NotFoundError,
 } from "@/modules/projects/service";
 
 function clean(value: FormDataEntryValue | null) {
@@ -100,7 +101,12 @@ export async function addMemberToProject(formData: FormData): Promise<void> {
     redirect("/app/projects/projects?error=missing-fields");
   }
 
-  await addProjectMember(projectId, userId, clean(formData.get("role")));
+  try {
+    await addProjectMember(tenant.organizationId, projectId, userId, clean(formData.get("role")));
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/projects/projects?error=not-found");
+    throw error;
+  }
   revalidatePath("/app/projects/projects");
   redirect("/app/projects/projects?saved=1");
 }
@@ -115,7 +121,12 @@ export async function removeMemberFromProject(formData: FormData): Promise<void>
   const userId = clean(formData.get("userId"));
   if (!projectId || !userId) return;
 
-  await removeProjectMember(projectId, userId);
+  try {
+    await removeProjectMember(tenant.organizationId, projectId, userId);
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/projects/projects?error=not-found");
+    throw error;
+  }
   revalidatePath("/app/projects/projects");
   redirect("/app/projects/projects?saved=1");
 }

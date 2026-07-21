@@ -16,6 +16,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage milestones.",
   "missing-fields": "Project and name are required.",
   "not-ready": "Every task under this milestone must be done before it can be completed.",
+  "not-found": "That project could not be found.",
 };
 
 export default async function ProjectsMilestonesPage({

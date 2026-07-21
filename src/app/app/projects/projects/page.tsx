@@ -23,6 +23,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage projects.",
   "missing-fields": "All required fields must be filled in.",
   "not-ready": "This project can't be completed until every milestone is completed.",
+  "not-found": "That project, member, or role could not be found.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {

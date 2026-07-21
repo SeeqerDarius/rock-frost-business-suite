@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createMilestone, completeMilestone, MilestoneStateError } from "@/modules/projects/service";
+import { createMilestone, completeMilestone, MilestoneStateError, NotFoundError } from "@/modules/projects/service";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -24,7 +24,16 @@ export async function createNewMilestone(formData: FormData): Promise<void> {
   }
 
   const dueDateRaw = clean(formData.get("dueDate"));
-  await createMilestone({ projectId, name, dueDate: dueDateRaw ? new Date(`${dueDateRaw}T00:00:00`) : null });
+  try {
+    await createMilestone(tenant.organizationId, {
+      projectId,
+      name,
+      dueDate: dueDateRaw ? new Date(`${dueDateRaw}T00:00:00`) : null,
+    });
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/projects/milestones?error=not-found");
+    throw error;
+  }
 
   revalidatePath("/app/projects/milestones");
   redirect("/app/projects/milestones?saved=1");

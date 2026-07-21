@@ -6,7 +6,11 @@ export default function PlatformSubscriptionsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Subscriptions" description="Billing plans and subscription status across all organizations." />
-      <EmptyState icon={CreditCard} title="Not built yet" description="Subscription and billing management is a future roadmap phase." />
+      <EmptyState
+        icon={CreditCard}
+        title="Planned — requirements not yet defined"
+        description="Billing and subscriptions were never part of this project's implemented scope. No pricing tiers, checkout, usage metering, or payment-provider integration exist yet, and none are planned until requirements are defined."
+      />
     </div>
   );
 }

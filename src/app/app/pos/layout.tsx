@@ -24,7 +24,7 @@ export default async function PosLayout({ children }: { children: React.ReactNod
     <AppShell
       sectionLabel="Point of Sale"
       navigation={posNavigation}
-      enabledModuleKeys={tenant.enabledModuleKeys}
+      enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
     >
       {children}

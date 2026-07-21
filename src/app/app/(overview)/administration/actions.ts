@@ -35,7 +35,9 @@ export async function inviteMember(formData: FormData): Promise<void> {
     redirect("/app/administration?error=missing-fields");
   }
 
-  const role = await db.role.findUnique({ where: { id: roleId } });
+  const role = await db.role.findFirst({
+    where: { id: roleId, OR: [{ organizationId: tenant.organizationId }, { isSystem: true }] },
+  });
   if (!role || NOT_INVITABLE_ROLES.has(role.name)) {
     redirect("/app/administration?error=invalid-role");
   }

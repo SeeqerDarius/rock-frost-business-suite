@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { ACTIVE_ORG_COOKIE } from "@/lib/tenant";
+import { ACTIVE_ORG_COOKIE, ACTIVE_ORGANIZATION_STATUSES } from "@/lib/tenant";
 
 export async function switchOrganization(formData: FormData): Promise<void> {
   const organizationId = String(formData.get("organizationId") ?? "");
@@ -16,10 +16,11 @@ export async function switchOrganization(formData: FormData): Promise<void> {
   }
 
   const membership = await db.organizationMember.findFirst({
-    where: { userId, organizationId },
+    where: { userId, organizationId, status: "ACTIVE" },
+    include: { organization: true },
   });
 
-  if (!membership) {
+  if (!membership || !ACTIVE_ORGANIZATION_STATUSES.has(membership.organization.status)) {
     return;
   }
 

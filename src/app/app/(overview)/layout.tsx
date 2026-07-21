@@ -9,7 +9,7 @@ export default async function OverviewLayout({ children }: { children: React.Rea
     <AppShell
       sectionLabel="Workspace"
       navigation={getWorkspaceNavigation(tenant)}
-      enabledModuleKeys={tenant.enabledModuleKeys}
+      enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
     >
       {children}

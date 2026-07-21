@@ -11,7 +11,7 @@ import { getCurrentTenant } from "@/lib/tenant";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerAuthSession();
 
-  if (!session) {
+  if (!session || !session.user?.id) {
     redirect("/login");
   }
 

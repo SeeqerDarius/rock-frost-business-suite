@@ -24,7 +24,7 @@ export default async function AnalyticsLayout({ children }: { children: React.Re
     <AppShell
       sectionLabel="Analytics"
       navigation={analyticsNavigation}
-      enabledModuleKeys={tenant.enabledModuleKeys}
+      enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
     >
       {children}

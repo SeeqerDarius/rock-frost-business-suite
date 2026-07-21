@@ -24,7 +24,7 @@ export default async function FleetLayout({ children }: { children: React.ReactN
     <AppShell
       sectionLabel="Fleet Management"
       navigation={fleetNavigation}
-      enabledModuleKeys={tenant.enabledModuleKeys}
+      enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
     >
       {children}

@@ -17,6 +17,7 @@ import { createNewTask, changeTaskStatus } from "./actions";
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage tasks.",
   "missing-fields": "Project and title are required.",
+  "not-found": "That project, milestone, or assignee could not be found.",
 };
 
 const STATUS_LABELS: Record<string, string> = { TODO: "To do", IN_PROGRESS: "In progress", IN_REVIEW: "In review", DONE: "Done" };
