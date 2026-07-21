@@ -162,8 +162,8 @@ export default async function CrmLeadsPage({
             {leads.map((lead) => (
               <TableRow key={lead.id}>
                 <TableCell className="font-medium">{lead.fullName}</TableCell>
-                <TableCell className="text-muted-foreground">{lead.company ?? "—"}</TableCell>
-                <TableCell className="text-muted-foreground">{lead.source ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{lead.company ?? "-"}</TableCell>
+                <TableCell className="text-muted-foreground">{lead.source ?? "-"}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[lead.status]}>{lead.status}</Badge>
                 </TableCell>
@@ -184,7 +184,7 @@ export default async function CrmLeadsPage({
                           <input type="hidden" name="leadId" value={lead.id} />
                           <div className="space-y-2">
                             <Label htmlFor={`deal-title-${lead.id}`}>Deal title</Label>
-                            <Input id={`deal-title-${lead.id}`} name="title" defaultValue={`${lead.fullName}${lead.company ? ` — ${lead.company}` : ""}`} required />
+                            <Input id={`deal-title-${lead.id}`} name="title" defaultValue={`${lead.fullName}${lead.company ? ` (${lead.company})` : ""}`} required />
                           </div>
                           <div className="space-y-2">
                             <Label htmlFor={`deal-value-${lead.id}`}>Estimated value</Label>

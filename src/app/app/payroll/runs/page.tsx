@@ -15,7 +15,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage payroll runs.",
   "missing-fields": "Period start, period end, and pay date are required.",
   "invalid-state": "That action isn't valid for this run's current status.",
-  "no-compensation": "No active employees have compensation set up yet — add compensation before processing.",
+  "no-compensation": "No active employees have compensation set up yet. Add compensation before processing.",
   "not-found": "That payroll run could not be found.",
 };
 
@@ -40,7 +40,7 @@ export default async function PayrollRunsPage({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <PageHeader title="Runs" description="Payroll runs — each processes every active employee with compensation on record." />
+        <PageHeader title="Runs" description="Payroll runs: each processes every active employee with compensation on record." />
         {canManage ? (
           <EntityDialog trigger={<Button size="sm"><Plus />New run</Button>} title="New payroll run" action={createNewRun}>
             <div className="grid gap-4 sm:grid-cols-2">

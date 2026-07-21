@@ -135,7 +135,7 @@ export default async function InventoryItemsPage({
                 <TableRow key={item.id}>
                   <TableCell className="font-mono text-xs">{item.sku}</TableCell>
                   <TableCell className="font-medium">{item.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{item.category?.name ?? "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">{item.category?.name ?? "-"}</TableCell>
                   <TableCell className="text-muted-foreground">{Number(item.costPrice).toFixed(2)}</TableCell>
                   <TableCell>
                     <Badge variant={lowStock ? "destructive" : "outline"}>

@@ -212,10 +212,10 @@ export default async function FleetVehiclesPage({
                 <TableCell className="font-medium">{vehicle.assetTag}</TableCell>
                 <TableCell className="text-muted-foreground">{vehicle.plateNumber}</TableCell>
                 <TableCell className="text-muted-foreground">
-                  {[vehicle.make, vehicle.model].filter(Boolean).join(" ") || "—"}
+                  {[vehicle.make, vehicle.model].filter(Boolean).join(" ") || "-"}
                 </TableCell>
-                <TableCell className="text-muted-foreground">{vehicle.owner?.name ?? "—"}</TableCell>
-                <TableCell className="text-muted-foreground">{vehicle.assignedDriver?.name ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{vehicle.owner?.name ?? "-"}</TableCell>
+                <TableCell className="text-muted-foreground">{vehicle.assignedDriver?.name ?? "-"}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE_VARIANT[vehicle.status]}>{STATUS_OPTIONS[vehicle.status]}</Badge>
                 </TableCell>

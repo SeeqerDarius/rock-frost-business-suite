@@ -178,7 +178,7 @@ export default async function CrmDealsPage({
               return (
                 <TableRow key={deal.id}>
                   <TableCell className="font-medium">{deal.title}</TableCell>
-                  <TableCell className="text-muted-foreground">{deal.contact?.fullName ?? "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">{deal.contact?.fullName ?? "-"}</TableCell>
                   <TableCell className="text-muted-foreground">{Number(deal.value).toFixed(2)}</TableCell>
                   <TableCell>
                     <Badge variant={STAGE_BADGE[deal.stage]}>{STAGE_LABELS[deal.stage]}</Badge>

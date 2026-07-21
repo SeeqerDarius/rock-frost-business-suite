@@ -31,7 +31,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "edit-window": "This payment can only be edited within the settings edit window of when it was recorded.",
   "credit-locked": "This payment has a resolved or partially used credit and can't have its amount edited.",
   "credit-not-applicable": "That credit can't be applied to the selected account.",
-  "wrong-password": "Incorrect password — this action requires re-entering your password to confirm.",
+  "wrong-password": "Incorrect password. This action requires re-entering your password to confirm.",
   "invalid-amount": "Payment amount must be a positive number.",
   "not-found": "That account could not be found.",
 };
@@ -65,7 +65,7 @@ export default async function InstallmentPaymentsPage({
 
   const payableAccounts = accounts.filter((a) => a.status !== "CANCELLED" && a.status !== "SUSPENDED" && a.status !== "CLOSED" && a.status !== "ARCHIVED" && Number(a.balance) > 0);
   const accountItems: Record<string, string> = Object.fromEntries(
-    payableAccounts.map((a) => [a.id, `${a.customer.fullName} — ${a.product.name} (bal. ${Number(a.balance).toFixed(2)})`])
+    payableAccounts.map((a) => [a.id, `${a.customer.fullName} - ${a.product.name} (bal. ${Number(a.balance).toFixed(2)})`])
   );
 
   return (
@@ -164,7 +164,7 @@ export default async function InstallmentPaymentsPage({
                               Edit
                             </Button>
                           }
-                          title={`Edit payment — ${payment.receiptNo}`}
+                          title={`Edit payment: ${payment.receiptNo}`}
                           description={`Editable for ${settings.paymentEditWindowHours} hour(s) after recording.`}
                           action={editPayment}
                           submitLabel="Save changes"
@@ -222,7 +222,7 @@ export default async function InstallmentPaymentsPage({
                   <div key={credit.id} className="flex items-center justify-between rounded-lg border p-3">
                     <div>
                       <p className="text-sm font-medium">
-                        {credit.customer.fullName} — {Number(credit.remainingAmount).toFixed(2)}
+                        {credit.customer.fullName} - {Number(credit.remainingAmount).toFixed(2)}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {credit.source.replaceAll("_", " ")} · {credit.notes}

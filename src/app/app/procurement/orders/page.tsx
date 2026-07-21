@@ -48,7 +48,7 @@ export default async function ProcurementOrdersPage({
   ]);
   const vendorItems: Record<string, string> = Object.fromEntries(vendors.map((v) => [v.id, v.name]));
   const approvedRequestItems: Record<string, string> = Object.fromEntries(
-    requests.filter((r) => r.status === "APPROVED").map((r) => [r.id, `${r.requestNumber} — ${r.description}`]),
+    requests.filter((r) => r.status === "APPROVED").map((r) => [r.id, `${r.requestNumber} - ${r.description}`]),
   );
   const itemItems: Record<string, string> = Object.fromEntries(items.map((i) => [i.id, `${i.name} (${i.sku})`]));
   const warehouseItems: Record<string, string> = Object.fromEntries(warehouses.map((w) => [w.id, w.name]));
@@ -159,7 +159,7 @@ export default async function ProcurementOrdersPage({
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-sm font-medium">
-                    {order.orderNumber} — {order.vendor.name}
+                    {order.orderNumber} - {order.vendor.name}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Ordered {order.orderDate.toLocaleDateString()}

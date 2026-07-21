@@ -18,7 +18,7 @@ export default async function WorkspaceReportsPage() {
         title="Cross-module reporting lives in the Analytics module"
         description={
           hasAnalytics
-            ? "Analytics aggregates data across every module your organization has enabled — financial, sales, operations, and people, all in one place."
+            ? "Analytics aggregates data across every module your organization has enabled: financial, sales, operations, and people, all in one place."
             : "Your organization hasn't enabled the Analytics module yet, or your role doesn't include Analytics access. Ask an administrator to enable it from Platform → Organizations."
         }
         action={

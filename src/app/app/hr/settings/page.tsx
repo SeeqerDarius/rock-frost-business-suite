@@ -60,7 +60,7 @@ export default async function HrSettingsPage({
         </CardHeader>
         <CardContent className="space-y-4">
           {leaveTypes.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No leave types yet — add one before employees can request leave.</p>
+            <p className="text-sm text-muted-foreground">No leave types yet. Add one before employees can request leave.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {leaveTypes.map((type) => (

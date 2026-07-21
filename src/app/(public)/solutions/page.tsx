@@ -8,13 +8,13 @@ const pillars = [
     icon: Layers,
     title: "One workspace, every module",
     description:
-      "Sign in once and switch between the business systems your organization runs on — Fleet Management, Installment Sales, and more as they come online — without juggling separate logins or tools.",
+      "Sign in once and switch between the business systems your organization runs on: Fleet Management, Installment Sales, and more as they come online, without juggling separate logins or tools.",
   },
   {
     icon: Blocks,
     title: "Modules stay independent",
     description:
-      "Each module owns its own data, navigation, and workflows. Activating Installment Management never surfaces Fleet data, and vice versa — there's no bleed between unrelated parts of your business.",
+      "Each module owns its own data, navigation, and workflows. Activating Installment Management never surfaces Fleet data, and vice versa: there's no bleed between unrelated parts of your business.",
   },
   {
     icon: ShieldCheck,
@@ -26,7 +26,7 @@ const pillars = [
     icon: Building2,
     title: "Grows with you",
     description:
-      "Start with the modules you need today. The platform is designed so new modules — CRM, Inventory, Accounting, HR, and more — can be added later without disrupting what's already running.",
+      "Start with the modules you need today. The platform is designed so new modules, such as CRM, Inventory, Accounting, and HR, can be added later without disrupting what's already running.",
   },
 ];
 

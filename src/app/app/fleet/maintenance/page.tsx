@@ -55,7 +55,7 @@ export default async function FleetMaintenancePage({
   ]);
 
   const vehicleItems: Record<string, string> = Object.fromEntries(
-    vehicles.map((v) => [v.id, `${v.assetTag} — ${v.plateNumber}`])
+    vehicles.map((v) => [v.id, `${v.assetTag} - ${v.plateNumber}`])
   );
 
   return (
@@ -126,7 +126,7 @@ export default async function FleetMaintenancePage({
               <TableRow key={request.id}>
                 <TableCell className="font-medium">{request.vehicle.assetTag}</TableCell>
                 <TableCell className="max-w-xs truncate text-muted-foreground">{request.faultDescription}</TableCell>
-                <TableCell className="text-muted-foreground">{request.requestedBy?.name ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{request.requestedBy?.name ?? "-"}</TableCell>
                 <TableCell>
                   <Badge variant={PROGRESS_BADGE[request.progressStatus]}>{PROGRESS_LABELS[request.progressStatus]}</Badge>
                 </TableCell>

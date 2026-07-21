@@ -14,7 +14,7 @@ const industries = [
     icon: Wallet,
     name: "Retail & Consumer Finance",
     description:
-      "Businesses selling on installment or layaway terms — tracking customer accounts, collections, product performance, and staff activity across a distributed sales team.",
+      "Businesses selling on installment or layaway terms, tracking customer accounts, collections, product performance, and staff activity across a distributed sales team.",
   },
   {
     icon: Building2,
@@ -58,7 +58,7 @@ export default function IndustriesPage() {
         <div className="flex flex-col items-start justify-between gap-6 rounded-lg border p-8 sm:flex-row sm:items-center">
           <div className="space-y-1">
             <h2 className="text-xl font-semibold">Not seeing your industry?</h2>
-            <p className="text-muted-foreground">The module system is built to extend beyond these — tell us what you need.</p>
+            <p className="text-muted-foreground">The module system is built to extend beyond these. Tell us what you need.</p>
           </div>
           <Button nativeButton={false} render={<Link href="/contact" />}>
             Get in touch

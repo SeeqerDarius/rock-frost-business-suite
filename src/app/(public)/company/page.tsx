@@ -22,7 +22,7 @@ export default function CompanyPage() {
               <h2 className="text-xl font-semibold">What we believe</h2>
               <p className="text-muted-foreground">
                 Most businesses end up running several unrelated systems that were never designed to share a
-                platform — and the usual fix is either a pile of disconnected tools, or one monolithic app where
+                platform, and the usual fix is either a pile of disconnected tools, or one monolithic app where
                 everything gets tangled together. We think there&apos;s a better way: one platform, with real
                 boundaries between the systems it hosts.
               </p>
@@ -31,7 +31,7 @@ export default function CompanyPage() {
               <h2 className="text-xl font-semibold">How we build</h2>
               <p className="text-muted-foreground">
                 Every module we ship is built and shipped as its own complete system, with its own data and
-                navigation, on shared infrastructure — authentication, organizations, roles, and reporting — that
+                navigation, on shared infrastructure (authentication, organizations, roles, and reporting) that
                 every module gets for free. See our <Link href="/solutions" className="underline underline-offset-4">Solutions</Link> page for how that plays out in practice.
               </p>
             </div>

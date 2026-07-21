@@ -92,9 +92,9 @@ export default async function FleetOwnersPage({
             {owners.map((owner) => (
               <TableRow key={owner.id}>
                 <TableCell className="font-medium">{owner.name}</TableCell>
-                <TableCell className="text-muted-foreground">{owner.businessName ?? "—"}</TableCell>
-                <TableCell className="text-muted-foreground">{owner.phone ?? "—"}</TableCell>
-                <TableCell className="text-muted-foreground">{owner.email ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{owner.businessName ?? "-"}</TableCell>
+                <TableCell className="text-muted-foreground">{owner.phone ?? "-"}</TableCell>
+                <TableCell className="text-muted-foreground">{owner.email ?? "-"}</TableCell>
                 {canManage ? (
                   <TableCell className="text-right">
                     <EntityDialog

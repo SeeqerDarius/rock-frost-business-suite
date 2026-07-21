@@ -52,7 +52,7 @@ export default function PublicModulesPage() {
         <div className="flex flex-col items-start justify-between gap-6 rounded-lg border p-8 sm:flex-row sm:items-center">
           <div className="space-y-1">
             <h2 className="text-xl font-semibold">Don&apos;t see the module you need?</h2>
-            <p className="text-muted-foreground">Tell us what your organization runs on — it helps shape what we build next.</p>
+            <p className="text-muted-foreground">Tell us what your organization runs on. It helps shape what we build next.</p>
           </div>
           <Button nativeButton={false} render={<Link href="/contact" />}>
             Get in touch

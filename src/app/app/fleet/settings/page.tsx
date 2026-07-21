@@ -9,7 +9,7 @@ export default function FleetSettingsPage() {
       <EmptyState
         icon={Settings}
         title="No fleet-wide settings yet"
-        description="There's no fleet-specific configuration to manage yet — vehicles, drivers, and owners are all configured directly on their own pages. This page is a placeholder for future settings (e.g. default maintenance approval thresholds) rather than fabricated options with nothing behind them."
+        description="There's no fleet-specific configuration to manage yet. Vehicles, drivers, and owners are all configured directly on their own pages. This page is a placeholder for future settings (e.g. default maintenance approval thresholds) rather than fabricated options with nothing behind them."
       />
     </div>
   );

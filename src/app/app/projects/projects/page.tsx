@@ -137,7 +137,7 @@ export default async function ProjectsListPage({
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-sm font-medium">
-                      {project.code} — {project.name}
+                      {project.code} - {project.name}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {project.owner ? `Owner: ${project.owner.name ?? project.owner.email}` : "No owner"} · {openTasks} open task{openTasks === 1 ? "" : "s"} · {project.milestones.length} milestone{project.milestones.length === 1 ? "" : "s"}

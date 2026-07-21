@@ -153,9 +153,9 @@ export default async function HrEmployeesPage({
               <TableRow key={employee.id}>
                 <TableCell className="font-mono text-xs">{employee.employeeNumber}</TableCell>
                 <TableCell className="font-medium">{employee.fullName}</TableCell>
-                <TableCell className="text-muted-foreground">{employee.jobTitle ?? "—"}</TableCell>
-                <TableCell className="text-muted-foreground">{employee.department ?? "—"}</TableCell>
-                <TableCell className="text-muted-foreground">{employee.manager?.fullName ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{employee.jobTitle ?? "-"}</TableCell>
+                <TableCell className="text-muted-foreground">{employee.department ?? "-"}</TableCell>
+                <TableCell className="text-muted-foreground">{employee.manager?.fullName ?? "-"}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[employee.status]}>{employee.status.replace("_", " ")}</Badge>
                 </TableCell>

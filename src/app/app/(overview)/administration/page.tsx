@@ -17,7 +17,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to invite members.",
   "missing-fields": "Please fill in the member's name, email, and role.",
   "invalid-role": "That role can't be assigned from here.",
-  "delivery-failed": "The invitation was created, but the email failed to send — use Resend to try again, or share the link manually.",
+  "delivery-failed": "The invitation was created, but the email failed to send. Use Resend to try again, or share the link manually.",
   "not-found": "That member could not be found.",
   "resend-failed": "That invitation can no longer be resent or revoked.",
 };
@@ -108,9 +108,9 @@ export default async function AdministrationPage({
 
                 return (
                   <TableRow key={member.id}>
-                    <TableCell className="font-medium">{member.user.name ?? "—"}</TableCell>
+                    <TableCell className="font-medium">{member.user.name ?? "-"}</TableCell>
                     <TableCell className="text-muted-foreground">{member.user.email}</TableCell>
-                    <TableCell>{member.role?.name ?? "—"}</TableCell>
+                    <TableCell>{member.role?.name ?? "-"}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Badge variant={member.status === "ACTIVE" ? "default" : "outline"}>{member.status}</Badge>

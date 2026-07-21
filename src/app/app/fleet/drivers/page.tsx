@@ -141,8 +141,8 @@ export default async function FleetDriversPage({
             {drivers.map((driver) => (
               <TableRow key={driver.id}>
                 <TableCell className="font-medium">{driver.name}</TableCell>
-                <TableCell className="text-muted-foreground">{driver.licenceNumber ?? "—"}</TableCell>
-                <TableCell className="text-muted-foreground">{driver.phone ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{driver.licenceNumber ?? "-"}</TableCell>
+                <TableCell className="text-muted-foreground">{driver.phone ?? "-"}</TableCell>
                 <TableCell>
                   <Badge variant={driver.status === "ACTIVE" ? "default" : "outline"}>{STATUS_OPTIONS[driver.status]}</Badge>
                 </TableCell>

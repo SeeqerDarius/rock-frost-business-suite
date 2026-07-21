@@ -39,7 +39,7 @@ export default async function AccountingSettingsPage({
     listAccounts(tenant.organizationId),
   ]);
   const expenseAccountItems: Record<string, string> = Object.fromEntries(
-    accounts.filter((a) => a.type === "EXPENSE").map((a) => [a.id, `${a.code} — ${a.name}`]),
+    accounts.filter((a) => a.type === "EXPENSE").map((a) => [a.id, `${a.code} - ${a.name}`]),
   );
 
   return (

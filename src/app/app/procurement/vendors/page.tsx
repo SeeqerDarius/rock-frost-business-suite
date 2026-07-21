@@ -108,9 +108,9 @@ export default async function ProcurementVendorsPage({
             {vendors.map((vendor) => (
               <TableRow key={vendor.id}>
                 <TableCell className="font-medium">{vendor.name}</TableCell>
-                <TableCell className="text-muted-foreground">{vendor.contactName ?? "—"}</TableCell>
-                <TableCell className="text-muted-foreground">{vendor.email ?? "—"}</TableCell>
-                <TableCell className="text-muted-foreground">{vendor.phone ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{vendor.contactName ?? "-"}</TableCell>
+                <TableCell className="text-muted-foreground">{vendor.email ?? "-"}</TableCell>
+                <TableCell className="text-muted-foreground">{vendor.phone ?? "-"}</TableCell>
                 <TableCell>
                   <Badge variant={vendor.active ? "default" : "outline"}>{vendor.active ? "Active" : "Inactive"}</Badge>
                 </TableCell>

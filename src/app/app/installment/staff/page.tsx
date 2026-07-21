@@ -36,7 +36,7 @@ function StaffFields({ staff, showCode, defaultMonthlySalary }: StaffFieldsProps
       </div>
       {showCode ? (
         <div className="space-y-2">
-          <Label htmlFor="code">Staff code (optional — auto-generated if left blank)</Label>
+          <Label htmlFor="code">Staff code (optional, auto-generated if left blank)</Label>
           <Input id="code" name="code" placeholder="e.g. EFU" />
         </div>
       ) : null}
@@ -128,7 +128,7 @@ export default async function InstallmentStaffPage({
               <TableRow key={staff.id}>
                 <TableCell className="font-medium">{staff.code}</TableCell>
                 <TableCell>{staff.fullName}</TableCell>
-                <TableCell className="text-muted-foreground">{staff.phone ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{staff.phone ?? "-"}</TableCell>
                 <TableCell className="text-muted-foreground">{effectiveSalaries[index].toFixed(2)}</TableCell>
                 <TableCell>
                   <Badge variant={staff.active ? "default" : "outline"}>{staff.active ? "Active" : "Inactive"}</Badge>
@@ -142,7 +142,7 @@ export default async function InstallmentStaffPage({
                             Pay salary
                           </Button>
                         }
-                        title={`Record salary payment — ${staff.fullName}`}
+                        title={`Record salary payment: ${staff.fullName}`}
                         action={recordSalaryPayment}
                         submitLabel="Record"
                       >

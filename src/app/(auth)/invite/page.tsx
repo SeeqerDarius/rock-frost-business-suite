@@ -14,7 +14,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "already-accepted": "This invitation has already been accepted.",
   revoked: "This invitation has been revoked.",
   expired: "This invitation link has expired. Ask whoever invited you to send a new one.",
-  "existing-account": "This invitation is for an account that already exists — log in and try the link again.",
+  "existing-account": "This invitation is for an account that already exists. Log in and try the link again.",
   "not-active": "This invitation's account isn't active yet.",
   "wrong-account": "You're signed in as a different account than this invitation was sent to. Sign out and try again.",
 };

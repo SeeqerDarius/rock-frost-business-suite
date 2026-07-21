@@ -57,7 +57,7 @@ export default async function InstallmentSettingsPage({
               <SettingsIcon className="size-5 text-muted-foreground" />
               <CardTitle>Installment configuration</CardTitle>
             </div>
-            <CardDescription>Every field here actively drives real business logic — changing them changes behavior.</CardDescription>
+            <CardDescription>Every field here actively drives real business logic; changing them changes behavior.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -133,7 +133,7 @@ export default async function InstallmentSettingsPage({
             <div className="space-y-2">
               <Label htmlFor="payrollDay">Payroll day of month</Label>
               <Input id="payrollDay" name="payrollDay" type="number" min={1} max={28} defaultValue={settings.payrollDay} />
-              <p className="text-xs text-muted-foreground">Shown in Reports as the next payroll due date — there is no automated payroll run.</p>
+              <p className="text-xs text-muted-foreground">Shown in Reports as the next payroll due date; there is no automated payroll run.</p>
             </div>
             <label className="flex items-center gap-2 text-sm">
               <Checkbox name="commissionEnabled" defaultChecked={settings.commissionEnabled} />

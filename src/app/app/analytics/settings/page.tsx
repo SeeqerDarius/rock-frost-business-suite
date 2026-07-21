@@ -22,7 +22,7 @@ export default async function AnalyticsSettingsPage() {
       <EmptyState
         icon={SettingsIcon}
         title="Nothing to configure yet"
-        description="Analytics is a read-only aggregation layer over every other enabled module's own data — it has no settings of its own. Each source module's own Settings page controls what Analytics reflects here."
+        description="Analytics is a read-only aggregation layer over every other enabled module's own data. It has no settings of its own; each source module's own Settings page controls what Analytics reflects here."
       />
     </div>
   );

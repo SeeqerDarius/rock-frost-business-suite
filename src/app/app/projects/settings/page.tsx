@@ -22,7 +22,7 @@ export default async function ProjectsSettingsPage() {
       <EmptyState
         icon={SettingsIcon}
         title="Nothing to configure yet"
-        description="Project codes are generated automatically, and task/milestone statuses and priorities are fixed. There are no module-wide settings to manage yet — this page is reserved for future configuration."
+        description="Project codes are generated automatically, and task/milestone statuses and priorities are fixed. There are no module-wide settings to manage yet; this page is reserved for future configuration."
       />
     </div>
   );

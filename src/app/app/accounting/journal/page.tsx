@@ -31,13 +31,13 @@ export default async function AccountingJournalPage({
     listJournalEntries(tenant.organizationId),
     listAccounts(tenant.organizationId),
   ]);
-  const accountItems: Record<string, string> = Object.fromEntries(accounts.map((a) => [a.id, `${a.code} — ${a.name}`]));
+  const accountItems: Record<string, string> = Object.fromEntries(accounts.map((a) => [a.id, `${a.code} - ${a.name}`]));
   const today = new Date().toISOString().slice(0, 10);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <PageHeader title="Journal" description="Every posted transaction — automatic and manual." />
+        <PageHeader title="Journal" description="Every posted transaction, automatic and manual." />
         {canManage ? (
           <EntityDialog trigger={<Button size="sm"><Plus />New entry</Button>} title="New manual journal entry" action={createJournalEntry}>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -116,7 +116,7 @@ export default async function AccountingJournalPage({
               <div className="mt-2 space-y-1">
                 {entry.lines.map((line) => (
                   <div key={line.id} className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{line.account.code} — {line.account.name}</span>
+                    <span>{line.account.code} - {line.account.name}</span>
                     <span>
                       {Number(line.debit) > 0 ? `Dr ${Number(line.debit).toFixed(2)}` : `Cr ${Number(line.credit).toFixed(2)}`}
                     </span>

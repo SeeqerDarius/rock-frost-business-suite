@@ -136,7 +136,7 @@ export default async function InstallmentCustomersPage({
               <TableRow key={customer.id}>
                 <TableCell className="font-medium">{customer.customerCode}</TableCell>
                 <TableCell>{customer.fullName}</TableCell>
-                <TableCell className="text-muted-foreground">{customer.phone ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{customer.phone ?? "-"}</TableCell>
                 <TableCell className="text-muted-foreground">{customer.staff.fullName}</TableCell>
                 {canManage ? (
                   <TableCell className="text-right">

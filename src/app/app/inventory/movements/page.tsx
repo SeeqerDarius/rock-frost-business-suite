@@ -175,8 +175,8 @@ export default async function InventoryMovementsPage({
                   {movement.toWarehouse ? ` → ${movement.toWarehouse.name}` : ""}
                 </TableCell>
                 <TableCell>{movement.quantity}</TableCell>
-                <TableCell className="text-muted-foreground">{movement.reference ?? "—"}</TableCell>
-                <TableCell className="text-muted-foreground">{movement.createdBy?.name ?? movement.createdBy?.email ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{movement.reference ?? "-"}</TableCell>
+                <TableCell className="text-muted-foreground">{movement.createdBy?.name ?? movement.createdBy?.email ?? "-"}</TableCell>
               </TableRow>
             ))}
           </TableBody>

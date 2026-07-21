@@ -31,7 +31,7 @@ export default async function ProjectsMilestonesPage({
     listMilestones(tenant.organizationId),
     listProjects(tenant.organizationId),
   ]);
-  const projectItems: Record<string, string> = Object.fromEntries(projects.map((p) => [p.id, `${p.code} — ${p.name}`]));
+  const projectItems: Record<string, string> = Object.fromEntries(projects.map((p) => [p.id, `${p.code} - ${p.name}`]));
 
   return (
     <div className="space-y-6">

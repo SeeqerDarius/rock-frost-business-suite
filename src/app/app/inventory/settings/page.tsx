@@ -56,7 +56,7 @@ export default async function InventorySettingsPage({
             <Tag className="size-5 text-muted-foreground" />
             <CardTitle>Item categories</CardTitle>
           </div>
-          <CardDescription>Used to group items — shown as a dropdown when creating a new item.</CardDescription>
+          <CardDescription>Used to group items; shown as a dropdown when creating a new item.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {categories.length === 0 ? (

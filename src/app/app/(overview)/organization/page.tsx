@@ -80,7 +80,7 @@ export default async function OrganizationSettingsPage() {
                 <div key={branch.id} className="flex items-center justify-between rounded-lg border p-3">
                   <div>
                     <p className="text-sm font-medium">{branch.name}</p>
-                    <p className="text-xs text-muted-foreground">{branch.code}{branch.address ? ` — ${branch.address}` : ""}</p>
+                    <p className="text-xs text-muted-foreground">{branch.code}{branch.address ? ` (${branch.address})` : ""}</p>
                   </div>
                   <Badge variant={branch.status === "ACTIVE" ? "default" : "outline"}>{branch.status}</Badge>
                 </div>

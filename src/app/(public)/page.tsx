@@ -13,7 +13,7 @@ export default function HomePage() {
             One platform. Every business system your organization runs on.
           </h1>
           <p className="text-lg text-muted-foreground">
-            Activate independent management modules — fleet, installment sales, and more — from a single,
+            Activate independent management modules, including fleet and installment sales, from a single,
             unified workspace, without mixing unrelated business data together.
           </p>
           <div className="flex flex-wrap gap-3">

@@ -21,7 +21,7 @@ export default async function AnalyticsOverviewPage() {
     <div className="space-y-6">
       <PageHeader
         title="Analytics Overview"
-        description={`Cross-module business intelligence — ${summary.enabledModuleCount} module${summary.enabledModuleCount === 1 ? "" : "s"} contributing data.`}
+        description={`Cross-module business intelligence: ${summary.enabledModuleCount} module${summary.enabledModuleCount === 1 ? "" : "s"} contributing data.`}
       />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (

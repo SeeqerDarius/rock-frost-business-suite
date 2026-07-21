@@ -41,7 +41,7 @@ export default async function FleetWorkAndPayPage({
     listFleetWorkAndPayContracts(tenant.organizationId),
     listFleetVehicles(tenant.organizationId),
   ]);
-  const vehicleItems: Record<string, string> = Object.fromEntries(vehicles.map((v) => [v.id, `${v.assetTag} — ${v.plateNumber}`]));
+  const vehicleItems: Record<string, string> = Object.fromEntries(vehicles.map((v) => [v.id, `${v.assetTag} - ${v.plateNumber}`]));
 
   return (
     <div className="space-y-6">
@@ -157,7 +157,7 @@ export default async function FleetWorkAndPayPage({
                               Record payment
                             </Button>
                           }
-                          title={`Record payment — ${contract.contractName}`}
+                          title={`Record payment: ${contract.contractName}`}
                           action={recordContractPayment}
                           submitLabel="Record"
                         >

@@ -56,7 +56,7 @@ export async function submitContactForm(formData: FormData): Promise<void> {
 
   const toAddress = process.env.RESEND_TO_EMAIL;
   if (!toAddress) {
-    console.warn("[contact] RESEND_TO_EMAIL not configured — submission persisted, not emailed:", { name, company, email, reason });
+    console.warn("[contact] RESEND_TO_EMAIL not configured, submission persisted but not emailed:", { name, company, email, reason });
     redirect("/contact?sent=1");
   }
 

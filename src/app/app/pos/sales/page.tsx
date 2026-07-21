@@ -66,7 +66,7 @@ export default async function PosSalesPage({
               <TableRow key={sale.id}>
                 <TableCell className="font-mono text-xs">{sale.saleNumber}</TableCell>
                 <TableCell className="text-muted-foreground">{sale.register.name}</TableCell>
-                <TableCell className="text-muted-foreground">{sale.customerName ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{sale.customerName ?? "-"}</TableCell>
                 <TableCell className="font-medium">{Number(sale.total).toFixed(2)}</TableCell>
                 <TableCell className="text-muted-foreground">{sale.paymentMethod}</TableCell>
                 <TableCell>

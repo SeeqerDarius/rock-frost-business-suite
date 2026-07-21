@@ -56,11 +56,11 @@ export default async function CrmSettingsPage({
             <Tag className="size-5 text-muted-foreground" />
             <CardTitle>Lead sources</CardTitle>
           </div>
-          <CardDescription>Where your leads come from — shown as a dropdown when creating a new lead.</CardDescription>
+          <CardDescription>Where your leads come from; shown as a dropdown when creating a new lead.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {sources.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No lead sources yet — new leads will use a free-text field until you add one.</p>
+            <p className="text-sm text-muted-foreground">No lead sources yet. New leads will use a free-text field until you add one.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {sources.map((source) => (

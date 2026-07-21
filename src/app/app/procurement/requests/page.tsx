@@ -115,7 +115,7 @@ export default async function ProcurementRequestsPage({
                 <TableCell className="font-mono text-xs">{request.requestNumber}</TableCell>
                 <TableCell className="font-medium">{request.description}</TableCell>
                 <TableCell className="text-muted-foreground">{request.quantity}</TableCell>
-                <TableCell className="text-muted-foreground">{request.estimatedCost ? Number(request.estimatedCost).toFixed(2) : "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{request.estimatedCost ? Number(request.estimatedCost).toFixed(2) : "-"}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[request.status]}>{request.status}</Badge>
                 </TableCell>

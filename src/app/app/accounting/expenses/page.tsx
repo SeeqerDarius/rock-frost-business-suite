@@ -117,7 +117,7 @@ export default async function AccountingExpensesPage({
               <TableRow key={expense.id}>
                 <TableCell className="font-mono text-xs">{expense.expenseNumber}</TableCell>
                 <TableCell className="font-medium">{expense.vendorName}</TableCell>
-                <TableCell className="text-muted-foreground">{expense.category?.name ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{expense.category?.name ?? "-"}</TableCell>
                 <TableCell className="text-muted-foreground">{Number(expense.amount).toFixed(2)}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[expense.status]}>{expense.status}</Badge>

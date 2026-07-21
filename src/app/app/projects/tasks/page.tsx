@@ -50,7 +50,7 @@ export default async function ProjectsTasksPage({
     listMilestones(tenant.organizationId),
     listAssignableUsers(tenant.organizationId),
   ]);
-  const projectItems: Record<string, string> = Object.fromEntries(projects.map((p) => [p.id, `${p.code} — ${p.name}`]));
+  const projectItems: Record<string, string> = Object.fromEntries(projects.map((p) => [p.id, `${p.code} - ${p.name}`]));
   const milestoneItems: Record<string, string> = Object.fromEntries(milestones.map((m) => [m.id, `${m.project.code}: ${m.name}`]));
   const assigneeItems: Record<string, string> = Object.fromEntries(users.map((u) => [u.id, u.name ?? u.email]));
 
@@ -173,11 +173,11 @@ export default async function ProjectsTasksPage({
                 <TableRow key={task.id}>
                   <TableCell className="font-medium">{task.title}</TableCell>
                   <TableCell className="text-muted-foreground">{task.project.code}</TableCell>
-                  <TableCell className="text-muted-foreground">{task.assignee?.name ?? task.assignee?.email ?? "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">{task.assignee?.name ?? task.assignee?.email ?? "-"}</TableCell>
                   <TableCell>
                     <Badge variant={PRIORITY_BADGE[task.priority]}>{PRIORITY_LABELS[task.priority]}</Badge>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{task.dueDate ? task.dueDate.toLocaleDateString() : "—"}</TableCell>
+                  <TableCell className="text-muted-foreground">{task.dueDate ? task.dueDate.toLocaleDateString() : "-"}</TableCell>
                   <TableCell>
                     <Badge variant={STATUS_BADGE[task.status]}>{STATUS_LABELS[task.status]}</Badge>
                   </TableCell>

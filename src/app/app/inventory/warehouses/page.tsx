@@ -95,7 +95,7 @@ export default async function InventoryWarehousesPage({
             {warehouses.map((warehouse) => (
               <TableRow key={warehouse.id}>
                 <TableCell className="font-medium">{warehouse.name}</TableCell>
-                <TableCell className="text-muted-foreground">{warehouse.location ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{warehouse.location ?? "-"}</TableCell>
                 <TableCell>{warehouse.isDefault ? <Badge>Default</Badge> : null}</TableCell>
                 <TableCell>
                   <Badge variant={warehouse.active ? "default" : "outline"}>{warehouse.active ? "Active" : "Inactive"}</Badge>

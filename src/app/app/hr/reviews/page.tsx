@@ -20,7 +20,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "not-found": "That employee could not be found.",
 };
 
-const RATING_ITEMS: Record<string, string> = { "1": "1 — Needs improvement", "2": "2 — Below expectations", "3": "3 — Meets expectations", "4": "4 — Exceeds expectations", "5": "5 — Outstanding" };
+const RATING_ITEMS: Record<string, string> = { "1": "1: Needs improvement", "2": "2: Below expectations", "3": "3: Meets expectations", "4": "4: Exceeds expectations", "5": "5: Outstanding" };
 
 export default async function HrReviewsPage({
   searchParams,

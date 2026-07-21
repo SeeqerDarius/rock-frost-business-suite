@@ -143,9 +143,9 @@ export default async function CrmContactsPage({
             {contacts.map((contact) => (
               <TableRow key={contact.id}>
                 <TableCell className="font-medium">{contact.fullName}</TableCell>
-                <TableCell className="text-muted-foreground">{contact.company ?? "—"}</TableCell>
-                <TableCell className="text-muted-foreground">{contact.email ?? "—"}</TableCell>
-                <TableCell className="text-muted-foreground">{contact.owner?.name ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{contact.company ?? "-"}</TableCell>
+                <TableCell className="text-muted-foreground">{contact.email ?? "-"}</TableCell>
+                <TableCell className="text-muted-foreground">{contact.owner?.name ?? "-"}</TableCell>
                 {canManage ? (
                   <TableCell className="text-right">
                     <EntityDialog

@@ -30,7 +30,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "no-stock": "That staff member has no stock left for this product.",
   "not-eligible": "This account isn't eligible for reactivation yet.",
   "below-minimum-deposit": "The initial deposit doesn't meet the required minimum.",
-  "wrong-password": "Incorrect password — reactivation requires re-entering your password to confirm.",
+  "wrong-password": "Incorrect password. Reactivation requires re-entering your password to confirm.",
   "not-found": "That customer, product, or staff member could not be found.",
 };
 
@@ -68,7 +68,7 @@ export default async function InstallmentAccountsPage({
 
   const customerItems: Record<string, string> = Object.fromEntries(customers.map((c) => [c.id, `${c.fullName} (${c.customerCode})`]));
   const activeProducts = products.filter((p) => p.active);
-  const productItems: Record<string, string> = Object.fromEntries(activeProducts.map((p) => [p.id, `${p.name} — ${Number(p.price).toFixed(2)}`]));
+  const productItems: Record<string, string> = Object.fromEntries(activeProducts.map((p) => [p.id, `${p.name} - ${Number(p.price).toFixed(2)}`]));
   const staffItems: Record<string, string> = Object.fromEntries(staffList.map((s) => [s.id, `${s.fullName} (${s.code})`]));
 
   const now = new Date();
