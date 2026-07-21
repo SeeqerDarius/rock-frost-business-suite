@@ -20,34 +20,16 @@ const ERROR_MESSAGES: Record<string, string> = {
   "expired-invite": "That invitation link has expired or was already used.",
 };
 
-function LoginNotices() {
+function LoginForm() {
   const searchParams = useSearchParams();
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const noticeKey = searchParams.get("reset") ? "reset" : searchParams.get("activated") ? "activated" : null;
   const notice = noticeKey ? NOTICE_MESSAGES[noticeKey] : null;
   const urlError = searchParams.get("error");
   const urlErrorMessage = urlError ? ERROR_MESSAGES[urlError] : null;
-
-  if (!notice && !urlErrorMessage) return null;
-
-  return (
-    <>
-      {notice ? (
-        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
-          {notice}
-        </div>
-      ) : null}
-      {urlErrorMessage ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {urlErrorMessage}
-        </div>
-      ) : null}
-    </>
-  );
-}
-
-export default function LoginPage() {
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const callbackUrl = searchParams.get("callbackUrl") || "/app/dashboard";
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -67,7 +49,7 @@ export default function LoginPage() {
     const result = await signIn("credentials", {
       email,
       password: formData.get("password"),
-      callbackUrl: "/app/dashboard",
+      callbackUrl,
       redirect: false,
     });
 
@@ -77,9 +59,47 @@ export default function LoginPage() {
       return;
     }
 
-    window.location.href = result?.url ?? "/app/dashboard";
+    window.location.href = result?.url ?? callbackUrl;
   }
 
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {notice ? (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
+          {notice}
+        </div>
+      ) : null}
+      {urlErrorMessage ? (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {urlErrorMessage}
+        </div>
+      ) : null}
+      {error ? (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
+      <div className="space-y-2">
+        <Label htmlFor="email">Email</Label>
+        <Input id="email" name="email" type="email" placeholder="you@company.com" autoComplete="email" required />
+      </div>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="password">Password</Label>
+          <Link href="/forgot-password" className="text-xs text-muted-foreground hover:text-foreground">
+            Forgot password?
+          </Link>
+        </div>
+        <Input id="password" name="password" type="password" autoComplete="current-password" required />
+      </div>
+      <Button type="submit" disabled={isSubmitting} className="w-full">
+        {isSubmitting ? "Signing in..." : "Sign in"}
+      </Button>
+    </form>
+  );
+}
+
+export default function LoginPage() {
   return (
     <Card>
       <CardHeader>
@@ -87,32 +107,9 @@ export default function LoginPage() {
         <CardDescription>Enter your credentials to access your workspace.</CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <Suspense fallback={null}>
-            <LoginNotices />
-          </Suspense>
-          {error ? (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
-            </div>
-          ) : null}
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" placeholder="you@company.com" autoComplete="email" required />
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
-              <Link href="/forgot-password" className="text-xs text-muted-foreground hover:text-foreground">
-                Forgot password?
-              </Link>
-            </div>
-            <Input id="password" name="password" type="password" autoComplete="current-password" required />
-          </div>
-          <Button type="submit" disabled={isSubmitting} className="w-full">
-            {isSubmitting ? "Signing in..." : "Sign in"}
-          </Button>
-        </form>
+        <Suspense fallback={null}>
+          <LoginForm />
+        </Suspense>
       </CardContent>
     </Card>
   );

@@ -23,10 +23,16 @@ atomicity work (vendor/request/item ids in Procurement, warehouse ids in
 Inventory/POS, journal account ids in Accounting, customer/staff ids in
 Installment's account creation).
 
-**Pass 3 — not started.** See the "Remaining work (Pass 3)" section near the
-bottom for the full list: invitation redesign, formal Zod validation, broader
-IDOR audit of CRM/HR/Fleet, Decimal-precision hygiene, reproducible seeding/CI,
-and the narrow residual concurrency races documented per-fix below.
+**Pass 3a (invitation redesign) — complete** (2026-07-21): invites are now
+bound to one specific membership via a hashed token, never activate more than
+the intended membership, never replace an existing user's password, and
+support resend/revoke with basic rate limiting. See the "Pass 3a" section
+below for full detail.
+
+**Pass 3b+ — not started.** See "Remaining work (Pass 3b+)" near the bottom
+for the full list: formal Zod validation, broader IDOR audit of CRM/HR/Fleet,
+Decimal-precision hygiene, reproducible seeding/CI, and the narrow residual
+concurrency races documented per-fix in the Pass 2 section above.
 
 ---
 
@@ -429,7 +435,88 @@ these are real business amounts, not internal counters, this residual is
 worth closing in a future pass but was judged disproportionate to hold up
 this one.
 
-## Remaining work (Pass 3, not started)
+## Pass 3a — Invitation redesign (complete)
+
+**Status: fixed.** Previous design (`src/lib/auth/tokens.ts`'s `issueInviteToken`/
+`consumeInviteToken`, keyed by `invite:<email>`) confirmed three real problems:
+accepting one token activated **every** `INVITED` membership for that user
+(a second organization's invite could be accepted through a first
+organization's link); an existing active user's password was unconditionally
+replaced by `acceptInvite()`; a later invite for the same email deleted any
+earlier organization's outstanding token (`issueToken()`'s `deleteMany` by
+identifier).
+
+**Fix — new `Invitation` model** (migration `20260721010000_add_invitations`),
+bound to one specific `OrganizationMember` via a `membershipId` **unique**
+foreign key, not an email:
+- `tokenHash` stores a SHA-256 digest, never the raw token — `src/lib/auth/invitations.ts`'s
+  `createInvitation()` generates the raw token, hashes it for storage, and
+  returns the raw value only long enough to build the email link.
+- **Accepting activates only `invitation.membershipId`** — `acceptInvitationNewUser()`
+  and `acceptInvitationExistingUser()` both call a scoped
+  `organizationMember.update({ where: { id: membershipId } })`, never an
+  `updateMany` across every membership a user might have.
+- **An existing active user's password is never touched.** Two distinct
+  accept paths: `acceptInvitationNewUser()` (the invited user has never set a
+  password — collects one) vs. `acceptInvitationExistingUser()` (the user is
+  already `ACTIVE` — requires the *currently authenticated session* to match
+  the invitation's target user id, and only ever writes the membership row).
+  The `/invite` page (`src/app/(auth)/invite/page.tsx`) branches on
+  `previewInvitation()`'s `isNewUser` flag to decide which path to render; for
+  an existing user with no active session, it links to
+  `/login?callbackUrl=/invite?token=...` rather than collecting credentials
+  itself. The login page (`src/app/(auth)/login/page.tsx`) was refactored to
+  actually honor a `callbackUrl` query param (previously hardcoded to
+  `/app/dashboard`, silently dropping any return-to destination) — extracted
+  into a `useSearchParams()`-reading component under `<Suspense>`, matching
+  the pattern the page already used for its notice banner.
+- **Status support**: `PENDING`/`ACCEPTED`/`REVOKED` are stored; `EXPIRED` is
+  deliberately derived from `expiresAt < now` at accept time rather than
+  stored (the same "compute don't store" choice Installment makes for
+  `OVERDUE`). `lastDeliveryFailed` is a separate boolean, not conflated with
+  `status`, so a failed send doesn't invalidate an otherwise-valid token — an
+  admin can still resend or share the link manually.
+- **Resend/revoke with basic rate limiting**: `resendInvitation()` issues a
+  fresh token (old one invalidated) but rejects a second resend within 60
+  seconds of the last send; `revokeInvitation()` atomically claims
+  `PENDING`→`REVOKED` (a guarded `updateMany`, the same pattern as every Pass
+  2 state transition) so a concurrent accept-vs-revoke race resolves to
+  exactly one winner. Both are wired into new buttons on the Administration
+  page's Members table, shown only for `INVITED` members with a `PENDING`
+  invitation.
+- **Delivery failure is never reported as success**: `inviteMember()` (and
+  the new `resendMemberInvitation()`) now check `sendEmail()`'s real result;
+  a failed send marks `lastDeliveryFailed: true` (surfaced as an "Email
+  failed" badge in the Members table) and redirects with
+  `?error=delivery-failed` instead of the success banner.
+
+**Files changed:** `prisma/schema.prisma` (+migration); `src/lib/auth/invitations.ts`
+(new); `src/lib/auth/tokens.ts` (invite-specific functions removed, password-reset
+untouched); `src/lib/auth/actions.ts` (`acceptInvite` rewritten, new
+`acceptInviteExisting`); `src/app/(auth)/invite/page.tsx` (rewritten for both
+accept paths); `src/app/(auth)/login/page.tsx` (respects `callbackUrl`);
+`src/app/app/(overview)/administration/actions.ts` (`inviteMember` uses
+`createInvitation()`, new `resendMemberInvitation`/`revokeMemberInvitation`);
+`src/app/app/(overview)/administration/page.tsx` (invitation status column,
+resend/revoke buttons); `test/invitation-redesign.test.ts` (new, 13 tests).
+
+**Verified end-to-end via Playwright**: normal login still works after the
+login-page refactor; an invalid token, an expired token, and an
+already-accepted token each show the correct distinct message; a brand-new
+invitee sets a password, is redirected to `login?activated=1`, logs in, and
+reaches the dashboard with the invited organization actually active; the
+Administration page's Resend/Revoke buttons render correctly and Revoke
+performs a real atomic state change. All test users/memberships/invitations
+created for this were deleted afterward via a one-off cleanup script.
+
+**Not done this pass** (documented, low-risk): the existing-user accept path
+(`acceptInvitationExistingUser`) was verified via Vitest but not
+browser-verified end-to-end (it requires a second real user account already
+active in the system to exercise realistically) — the unit tests cover its
+core invariants (never calls `user.update`, rejects a mismatched session)
+directly against the service function.
+
+## Remaining work (Pass 3b+, not started)
 
 ### Remaining IDOR audit surface
 
@@ -438,26 +525,6 @@ same unchecked-foreign-id pattern fixed elsewhere in this file — the audit
 flagged this as likely present but unconfirmed. POS register/session setup
 beyond what Pass 2 fixed, and Installment's ~40 functions beyond
 `createAccount()`/`updateCustomer()`, also warrant a full pass.
-
-### Invitation redesign (not started)
-
-Current design (`src/lib/auth/tokens.ts`, `acceptInvite()` in
-`src/lib/auth/actions.ts`) keys invite tokens by email only
-(`invite:<email>`), not by membership. Confirmed real problems:
-- Accepting one token activates **every** `INVITED` membership for that user
-  (`updateMany` with no organization scoping) — a second organization's invite
-  can be accepted through a first organization's link.
-- An existing active user's password is unconditionally replaced by
-  `acceptInvite()`.
-- A later invite for the same email deletes any earlier organization's
-  outstanding invite token (`issueToken()` does `deleteMany` by identifier).
-
-Full fix requires a new `Invitation` model (organization + membership + role +
-email + hashed token + expiry + status + creator + acceptance time) and a
-rewritten accept flow that: for an existing user, requires authentication or
-verified email ownership rather than replacing the password, and activates only
-the one intended membership. This is a schema change and a full flow rewrite —
-correctly out of scope for a "confirmed IDOR path" fix.
 
 ### Runtime validation (not started)
 

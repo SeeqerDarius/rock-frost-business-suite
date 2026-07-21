@@ -11,12 +11,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { db } from "@/lib/db";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { inviteMember } from "./actions";
+import { inviteMember, resendMemberInvitation, revokeMemberInvitation } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to invite members.",
   "missing-fields": "Please fill in the member's name, email, and role.",
   "invalid-role": "That role can't be assigned from here.",
+  "delivery-failed": "The invitation was created, but the email failed to send — use Resend to try again, or share the link manually.",
+  "not-found": "That member could not be found.",
+  "resend-failed": "That invitation can no longer be resent or revoked.",
 };
 
 const INVITABLE_ROLE_NAMES = [
@@ -32,9 +35,9 @@ const INVITABLE_ROLE_NAMES = [
 export default async function AdministrationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ invited?: string; error?: string }>;
+  searchParams: Promise<{ invited?: string; revoked?: string; error?: string }>;
 }) {
-  const { invited, error } = await searchParams;
+  const { invited, revoked, error } = await searchParams;
   const tenant = await requireCurrentTenant();
 
   if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) {
@@ -53,7 +56,7 @@ export default async function AdministrationPage({
   const [members, roles] = await Promise.all([
     db.organizationMember.findMany({
       where: { organizationId: tenant.organizationId },
-      include: { user: true, role: true },
+      include: { user: true, role: true, invitation: true },
       orderBy: { createdAt: "asc" },
     }),
     db.role.findMany({ where: { name: { in: INVITABLE_ROLE_NAMES } }, orderBy: { name: "asc" } }),
@@ -66,6 +69,11 @@ export default async function AdministrationPage({
       {invited ? (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
           Invitation sent.
+        </div>
+      ) : null}
+      {revoked ? (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
+          Invitation revoked.
         </div>
       ) : null}
       {error && ERROR_MESSAGES[error] ? (
@@ -90,19 +98,50 @@ export default async function AdministrationPage({
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {members.map((member) => (
-                <TableRow key={member.id}>
-                  <TableCell className="font-medium">{member.user.name ?? "—"}</TableCell>
-                  <TableCell className="text-muted-foreground">{member.user.email}</TableCell>
-                  <TableCell>{member.role?.name ?? "—"}</TableCell>
-                  <TableCell>
-                    <Badge variant={member.status === "ACTIVE" ? "default" : "outline"}>{member.status}</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {members.map((member) => {
+                const invitation = member.invitation;
+                const canManageInvite = member.status === "INVITED" && invitation?.status === "PENDING";
+
+                return (
+                  <TableRow key={member.id}>
+                    <TableCell className="font-medium">{member.user.name ?? "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">{member.user.email}</TableCell>
+                    <TableCell>{member.role?.name ?? "—"}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={member.status === "ACTIVE" ? "default" : "outline"}>{member.status}</Badge>
+                        {invitation?.lastDeliveryFailed ? (
+                          <Badge variant="destructive" className="text-[10px]">
+                            Email failed
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {canManageInvite ? (
+                        <div className="flex justify-end gap-1">
+                          <form action={resendMemberInvitation}>
+                            <input type="hidden" name="membershipId" value={member.id} />
+                            <Button type="submit" size="sm" variant="ghost">
+                              Resend
+                            </Button>
+                          </form>
+                          <form action={revokeMemberInvitation}>
+                            <input type="hidden" name="membershipId" value={member.id} />
+                            <Button type="submit" size="sm" variant="ghost">
+                              Revoke
+                            </Button>
+                          </form>
+                        </div>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>

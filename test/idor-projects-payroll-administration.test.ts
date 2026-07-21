@@ -17,7 +17,7 @@ const mockDb = {
 const mockRequireCurrentTenant = vi.fn();
 const mockGetServerAuthSession = vi.fn();
 const mockSendEmail = vi.fn();
-const mockIssueInviteToken = vi.fn();
+const mockCreateInvitation = vi.fn();
 
 class RedirectSignal extends Error {
   constructor(public url: string) {
@@ -29,7 +29,14 @@ vi.mock("@/lib/db", () => ({ db: mockDb }));
 vi.mock("@/lib/tenant", () => ({ requireCurrentTenant: mockRequireCurrentTenant }));
 vi.mock("@/lib/auth/session", () => ({ getServerAuthSession: mockGetServerAuthSession }));
 vi.mock("@/lib/email", () => ({ sendEmail: mockSendEmail }));
-vi.mock("@/lib/auth/tokens", () => ({ issueInviteToken: mockIssueInviteToken }));
+vi.mock("@/lib/auth/invitations", () => ({
+  createInvitation: mockCreateInvitation,
+  resendInvitation: vi.fn(),
+  revokeInvitation: vi.fn(),
+  markInvitationDeliveryFailed: vi.fn(),
+  InvitationError: class InvitationError extends Error {},
+}));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({
   redirect: (url: string) => {
     throw new RedirectSignal(url);
@@ -212,9 +219,13 @@ describe("Administration inviteMember() — cross-tenant role IDOR fix", () => {
     mockDb.user.upsert.mockResolvedValue({ id: "user-new" });
     mockDb.organizationMember.upsert.mockResolvedValue({ id: "mem-new" });
     mockDb.auditLog.create.mockResolvedValue({});
-    mockIssueInviteToken.mockResolvedValue("tok-1");
+    mockCreateInvitation.mockResolvedValue("tok-1");
+    mockSendEmail.mockResolvedValue({ ok: true });
 
     await expect(inviteMember(formData("role-1"))).rejects.toThrow("?invited=1");
     expect(mockDb.user.upsert).toHaveBeenCalled();
+    expect(mockCreateInvitation).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: ORG, membershipId: "mem-new" }),
+    );
   });
 });

@@ -172,6 +172,7 @@ model User {
   accounts                        Account[]
   sessions                        Session[]
   organizationMemberships         OrganizationMember[]
+  invitationsCreated              Invitation[]              @relation("InvitationsCreated")
   auditLogs                       AuditLog[]
   notifications                   Notification[]
   uploadedFiles                   FileAsset[]
@@ -266,6 +267,7 @@ model Organization {
   defaultLanguage            String             @default("en")
 
   members                         OrganizationMember[]
+  invitations                     Invitation[]
   branches                        Branch[]
   roles                           Role[]
   organizationModules             OrganizationModule[]
@@ -342,12 +344,53 @@ model OrganizationMember {
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   role         Role?        @relation(fields: [roleId], references: [id], onDelete: SetNull)
   branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  invitation   Invitation?
 
   @@unique([organizationId, userId])
   @@index([organizationId])
   @@index([userId])
   @@index([branchId])
   @@index([roleId])
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
+/**
+ * Bound to one specific OrganizationMember (via a unique membershipId), not
+ * just an email — this is what lets accepting one invitation activate only
+ * the membership it was issued for, never every INVITED membership a user
+ * happens to have. tokenHash is a SHA-256 digest; the raw token is only ever
+ * held in memory long enough to build the email link and is never persisted.
+ * EXPIRED is deliberately not a stored status — it's derived from
+ * `expiresAt < now` at accept time, the same "compute don't store" pattern
+ * Installment uses for OVERDUE.
+ */
+model Invitation {
+  id                 String           @id @default(cuid())
+  organizationId     String
+  membershipId       String           @unique
+  email              String
+  tokenHash          String           @unique
+  status             InvitationStatus @default(PENDING)
+  expiresAt          DateTime
+  createdById        String?
+  acceptedAt         DateTime?
+  resentCount        Int              @default(0)
+  lastSentAt         DateTime?
+  lastDeliveryFailed Boolean          @default(false)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  membership   OrganizationMember @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  createdBy    User?              @relation("InvitationsCreated", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([email])
 }
 
 model Branch {

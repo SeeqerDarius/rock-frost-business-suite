@@ -4,8 +4,10 @@ import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
-import { issuePasswordResetToken, consumePasswordResetToken, consumeInviteToken } from "@/lib/auth/tokens";
+import { issuePasswordResetToken, consumePasswordResetToken } from "@/lib/auth/tokens";
 import { revokeUserSessions } from "@/lib/auth/session-revocation";
+import { acceptInvitationNewUser, acceptInvitationExistingUser, InvitationAcceptError } from "@/lib/auth/invitations";
+import { getServerAuthSession } from "@/lib/auth/session";
 
 function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
@@ -80,44 +82,66 @@ export async function resetPassword(formData: FormData): Promise<void> {
   redirect("/login?reset=1");
 }
 
+/**
+ * Accepts an invitation for a brand-new user (one who has never set a
+ * password). Only the specific membership the invitation was issued for is
+ * activated — never every INVITED membership the user might have, which was
+ * the confirmed cross-tenant bug in the previous email-keyed token design
+ * (see docs/HARDENING_PLAN.md's invitation-redesign section).
+ */
 export async function acceptInvite(formData: FormData): Promise<void> {
-  const email = clean(formData.get("email")).toLowerCase();
   const token = clean(formData.get("token"));
   const password = clean(formData.get("password"));
   const confirmPassword = clean(formData.get("confirmPassword"));
 
-  if (!email || !token) {
+  if (!token) {
     redirect("/login?error=invalid-invite");
   }
   if (password.length < 8) {
-    redirect(`/invite?email=${encodeURIComponent(email)}&token=${token}&error=too-short`);
+    redirect(`/invite?token=${token}&error=too-short`);
   }
   if (password !== confirmPassword) {
-    redirect(`/invite?email=${encodeURIComponent(email)}&token=${token}&error=mismatch`);
-  }
-
-  const isValid = await consumeInviteToken(email, token);
-  if (!isValid) {
-    redirect("/login?error=expired-invite");
-  }
-
-  const user = await db.user.findUnique({ where: { email } });
-  if (!user) {
-    redirect("/login?error=invalid-invite");
+    redirect(`/invite?token=${token}&error=mismatch`);
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
 
-  await db.$transaction(async (tx) => {
-    await tx.user.update({
-      where: { id: user!.id },
-      data: { passwordHash, status: "ACTIVE", sessionVersion: { increment: 1 } },
-    });
-    await tx.organizationMember.updateMany({
-      where: { userId: user!.id, status: "INVITED" },
-      data: { status: "ACTIVE", joinedAt: new Date() },
-    });
-  });
+  try {
+    await acceptInvitationNewUser(token, passwordHash);
+  } catch (error) {
+    if (error instanceof InvitationAcceptError) {
+      redirect(`/invite?token=${token}&error=${error.reason}`);
+    }
+    throw error;
+  }
 
   redirect("/login?activated=1");
+}
+
+/**
+ * Accepts an invitation for an existing, already-active user — never
+ * touches their password. Requires the current session to already belong
+ * to the exact user the invitation targets; the /invite page only renders
+ * this form's button when that's true, and redirects to /login first
+ * otherwise.
+ */
+export async function acceptInviteExisting(formData: FormData): Promise<void> {
+  const token = clean(formData.get("token"));
+  if (!token) redirect("/login?error=invalid-invite");
+
+  const session = await getServerAuthSession();
+  if (!session?.user?.id) {
+    redirect(`/login?callbackUrl=${encodeURIComponent(`/invite?token=${token}`)}`);
+  }
+
+  try {
+    await acceptInvitationExistingUser(token, session!.user.id);
+  } catch (error) {
+    if (error instanceof InvitationAcceptError) {
+      redirect(`/invite?token=${token}&error=${error.reason}`);
+    }
+    throw error;
+  }
+
+  redirect("/app/dashboard?joined=1");
 }
