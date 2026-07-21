@@ -17,6 +17,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage leads.",
   "missing-fields": "Please fill in all required fields.",
   "already-converted": "This lead has already been converted to a deal.",
+  "not-found": "That owner could not be found.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {

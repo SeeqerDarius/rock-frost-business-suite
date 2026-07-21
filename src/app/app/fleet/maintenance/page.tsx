@@ -18,6 +18,7 @@ import { createMaintenanceRequest, reviewMaintenanceRequest } from "./actions";
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage maintenance requests.",
   "missing-fields": "A vehicle and fault description are required.",
+  "not-found": "That vehicle could not be found.",
 };
 
 const PROGRESS_LABELS: Record<string, string> = {

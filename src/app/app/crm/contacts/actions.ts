@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createContact, updateContact } from "@/modules/crm/service";
+import { createContact, updateContact, NotFoundError } from "@/modules/crm/service";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -33,10 +33,15 @@ export async function upsertContact(formData: FormData): Promise<void> {
     ownerId: clean(formData.get("ownerId")),
   };
 
-  if (id) {
-    await updateContact(tenant.organizationId, id, data);
-  } else {
-    await createContact(tenant.organizationId, data);
+  try {
+    if (id) {
+      await updateContact(tenant.organizationId, id, data);
+    } else {
+      await createContact(tenant.organizationId, data);
+    }
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/crm/contacts?error=not-found");
+    throw error;
   }
 
   revalidatePath("/app/crm/contacts");

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { createReview, completeReview, ReviewStateError } from "@/modules/hr/service";
+import { createReview, completeReview, ReviewStateError, NotFoundError } from "@/modules/hr/service";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -28,14 +28,19 @@ export async function createNewReview(formData: FormData): Promise<void> {
   const ratingRaw = clean(formData.get("rating"));
   const session = await getServerAuthSession();
 
-  await createReview(tenant.organizationId, {
-    employeeId,
-    reviewPeriodStart: new Date(`${reviewPeriodStartRaw}T00:00:00`),
-    reviewPeriodEnd: new Date(`${reviewPeriodEndRaw}T00:00:00`),
-    rating: ratingRaw ? Number.parseInt(ratingRaw, 10) : null,
-    summary: clean(formData.get("summary")),
-    reviewedById: session?.user?.id ?? null,
-  });
+  try {
+    await createReview(tenant.organizationId, {
+      employeeId,
+      reviewPeriodStart: new Date(`${reviewPeriodStartRaw}T00:00:00`),
+      reviewPeriodEnd: new Date(`${reviewPeriodEndRaw}T00:00:00`),
+      rating: ratingRaw ? Number.parseInt(ratingRaw, 10) : null,
+      summary: clean(formData.get("summary")),
+      reviewedById: session?.user?.id ?? null,
+    });
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/hr/reviews?error=not-found");
+    throw error;
+  }
 
   revalidatePath("/app/hr/reviews");
   redirect("/app/hr/reviews?saved=1");

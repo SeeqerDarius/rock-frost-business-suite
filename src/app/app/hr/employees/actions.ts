@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createEmployee, updateEmployee, activateEmployee, setEmployeeStatus, EmployeeStateError } from "@/modules/hr/service";
+import { createEmployee, updateEmployee, activateEmployee, setEmployeeStatus, EmployeeStateError, NotFoundError } from "@/modules/hr/service";
 import type { HrEmployeeStatus } from "@prisma/client";
 
 function clean(value: FormDataEntryValue | null) {
@@ -36,10 +36,15 @@ export async function upsertEmployee(formData: FormData): Promise<void> {
     notes: clean(formData.get("notes")),
   };
 
-  if (id) {
-    await updateEmployee(tenant.organizationId, id, data);
-  } else {
-    await createEmployee(tenant.organizationId, data);
+  try {
+    if (id) {
+      await updateEmployee(tenant.organizationId, id, data);
+    } else {
+      await createEmployee(tenant.organizationId, data);
+    }
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/hr/employees?error=not-found");
+    throw error;
   }
 
   revalidatePath("/app/hr/employees");

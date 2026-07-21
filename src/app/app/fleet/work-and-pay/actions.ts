@@ -8,6 +8,8 @@ import {
   createFleetWorkAndPayContract,
   recordFleetWorkAndPayPayment,
   updateFleetWorkAndPayContractStatus,
+  NotFoundError,
+  InvalidPaymentAmountError,
 } from "@/modules/fleet/service";
 import type { FleetContractStatus } from "@prisma/client";
 
@@ -39,16 +41,21 @@ export async function createWorkAndPayContract(formData: FormData): Promise<void
 
   const startsAtRaw = clean(formData.get("startsAt"));
 
-  await createFleetWorkAndPayContract(tenant.organizationId, {
-    contractName,
-    vehicleId,
-    clientName,
-    contractAmount,
-    depositAmount: clean(formData.get("depositAmount")) ?? "0",
-    weeklyPaymentAmount,
-    remainingDurationWeeks: cleanInt(formData.get("remainingDurationWeeks")),
-    startsAt: startsAtRaw ? new Date(startsAtRaw) : null,
-  });
+  try {
+    await createFleetWorkAndPayContract(tenant.organizationId, {
+      contractName,
+      vehicleId,
+      clientName,
+      contractAmount,
+      depositAmount: clean(formData.get("depositAmount")) ?? "0",
+      weeklyPaymentAmount,
+      remainingDurationWeeks: cleanInt(formData.get("remainingDurationWeeks")),
+      startsAt: startsAtRaw ? new Date(startsAtRaw) : null,
+    });
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/fleet/work-and-pay?error=not-found");
+    throw error;
+  }
 
   revalidatePath("/app/fleet/work-and-pay");
   redirect("/app/fleet/work-and-pay?saved=1");
@@ -68,7 +75,13 @@ export async function recordContractPayment(formData: FormData): Promise<void> {
     redirect("/app/fleet/work-and-pay?error=invalid-amount");
   }
 
-  await recordFleetWorkAndPayPayment(tenant.organizationId, id, amount);
+  try {
+    await recordFleetWorkAndPayPayment(tenant.organizationId, id, amount);
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/fleet/work-and-pay?error=not-found");
+    if (error instanceof InvalidPaymentAmountError) redirect("/app/fleet/work-and-pay?error=invalid-amount");
+    throw error;
+  }
   revalidatePath("/app/fleet/work-and-pay");
   redirect("/app/fleet/work-and-pay?saved=1");
 }

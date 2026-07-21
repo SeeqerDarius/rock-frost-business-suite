@@ -16,6 +16,7 @@ import { logActivity } from "./actions";
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to log activities.",
   "missing-fields": "Type, subject, and date are required.",
+  "not-found": "That related contact, lead, or deal could not be found.",
 };
 
 const TYPE_LABELS: Record<string, string> = { CALL: "Call", EMAIL: "Email", MEETING: "Meeting", NOTE: "Note", TASK: "Task" };

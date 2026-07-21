@@ -2,12 +2,14 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { db } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
 import { createInvitation, resendInvitation, revokeInvitation, markInvitationDeliveryFailed, InvitationError } from "@/lib/auth/invitations";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
+import { shortText, email as emailSchema, parseWithSchema } from "@/lib/validation";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -32,13 +34,19 @@ export async function inviteMember(formData: FormData): Promise<void> {
     redirect("/app/administration?error=forbidden");
   }
 
-  const name = clean(formData.get("name"));
-  const email = clean(formData.get("email")).toLowerCase();
   const roleId = clean(formData.get("roleId"));
-
-  if (!name || !email || !roleId) {
+  if (!roleId) {
     redirect("/app/administration?error=missing-fields");
   }
+
+  const parsed = parseWithSchema(
+    z.object({ name: shortText, email: emailSchema }),
+    { name: clean(formData.get("name")), email: clean(formData.get("email")) },
+  );
+  if (!parsed.success) {
+    redirect("/app/administration?error=missing-fields");
+  }
+  const { name, email } = parsed.data;
 
   const role = await db.role.findFirst({
     where: { id: roleId, OR: [{ organizationId: tenant.organizationId }, { isSystem: true }] },

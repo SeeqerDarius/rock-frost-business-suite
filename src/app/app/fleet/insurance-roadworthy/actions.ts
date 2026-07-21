@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createFleetVehicleDocument, updateFleetVehicleDocument } from "@/modules/fleet/service";
+import { createFleetVehicleDocument, updateFleetVehicleDocument, NotFoundError } from "@/modules/fleet/service";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -37,10 +37,15 @@ export async function upsertFleetVehicleDocument(formData: FormData): Promise<vo
     alerts: clean(formData.get("alerts")),
   };
 
-  if (id) {
-    await updateFleetVehicleDocument(tenant.organizationId, id, data);
-  } else {
-    await createFleetVehicleDocument(tenant.organizationId, data);
+  try {
+    if (id) {
+      await updateFleetVehicleDocument(tenant.organizationId, id, data);
+    } else {
+      await createFleetVehicleDocument(tenant.organizationId, data);
+    }
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/fleet/insurance-roadworthy?error=not-found");
+    throw error;
   }
 
   revalidatePath("/app/fleet/insurance-roadworthy");

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createDeal, updateDeal, updateDealStage } from "@/modules/crm/service";
+import { createDeal, updateDeal, updateDealStage, NotFoundError } from "@/modules/crm/service";
 import type { CrmDealStage } from "@prisma/client";
 
 function clean(value: FormDataEntryValue | null) {
@@ -35,10 +35,15 @@ export async function upsertDeal(formData: FormData): Promise<void> {
     expectedCloseDate: expectedCloseDateRaw ? new Date(`${expectedCloseDateRaw}T00:00:00`) : null,
   };
 
-  if (id) {
-    await updateDeal(tenant.organizationId, id, data);
-  } else {
-    await createDeal(tenant.organizationId, data);
+  try {
+    if (id) {
+      await updateDeal(tenant.organizationId, id, data);
+    } else {
+      await createDeal(tenant.organizationId, data);
+    }
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/crm/deals?error=not-found");
+    throw error;
   }
 
   revalidatePath("/app/crm/deals");

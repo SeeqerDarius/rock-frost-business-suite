@@ -16,6 +16,7 @@ import { upsertFleetVehicleDocument } from "./actions";
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage insurance and roadworthy records.",
   "missing-fields": "Vehicle, provider, policy number, and both expiry dates are required.",
+  "not-found": "That vehicle could not be found.",
 };
 
 const RENEWAL_LABELS: Record<string, string> = { CLEAR: "Clear", READY: "Renewal due soon", DUE: "Overdue" };

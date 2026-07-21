@@ -17,6 +17,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage work & pay contracts.",
   "missing-fields": "Contract name, vehicle, client name, contract amount, and weekly amount are required.",
   "invalid-amount": "Enter a valid payment amount.",
+  "not-found": "That vehicle or contract could not be found.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {

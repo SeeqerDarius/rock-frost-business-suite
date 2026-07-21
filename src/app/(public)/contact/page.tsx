@@ -20,8 +20,9 @@ const REASON_LABELS: Record<string, string> = {
 };
 
 const ERROR_MESSAGES: Record<string, string> = {
-  "missing-fields": "Please fill in your name, company, and email.",
+  "missing-fields": "Please double-check your name, company, and a valid email address.",
   "send-failed": "We couldn't send your message just now. Please try again shortly.",
+  "too-soon": "You've already sent a message recently. Please wait a moment before sending another.",
 };
 
 export default async function ContactPage({
@@ -49,7 +50,7 @@ export default async function ContactPage({
         <CardContent>
           {sent ? (
             <div className="mb-4 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
-              Thanks — your message is on its way to us. We&apos;ll be in touch soon.
+              Thanks your message is on its way to us. We&apos;ll be in touch soon.
             </div>
           ) : null}
           {error && ERROR_MESSAGES[error] ? (

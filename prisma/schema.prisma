@@ -531,6 +531,25 @@ model AuditLog {
   @@index([entityName, entityId])
 }
 
+/**
+ * Public marketing-site contact form submissions — not tenant-scoped (there
+ * is no organization context before a lead becomes a customer). Persisting
+ * these (rather than only emailing and forgetting, as the previous
+ * implementation did whenever RESEND_TO_EMAIL was unset) also enables a
+ * simple per-email rate-limit check on new submissions.
+ */
+model ContactSubmission {
+  id        String   @id @default(cuid())
+  name      String
+  company   String
+  email     String
+  reason    String
+  message   String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+}
+
 model Notification {
   id             String              @id @default(cuid())
   organizationId String

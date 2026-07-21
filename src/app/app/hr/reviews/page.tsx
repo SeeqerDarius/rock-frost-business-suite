@@ -17,6 +17,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage performance reviews.",
   "missing-fields": "Employee and review period are required.",
   incomplete: "A rating is required before completing a review.",
+  "not-found": "That employee could not be found.",
 };
 
 const RATING_ITEMS: Record<string, string> = { "1": "1 — Needs improvement", "2": "2 — Below expectations", "3": "3 — Meets expectations", "4": "4 — Exceeds expectations", "5": "5 — Outstanding" };

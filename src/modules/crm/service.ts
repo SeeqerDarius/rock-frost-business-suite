@@ -3,6 +3,18 @@ import "server-only";
 import { db } from "@/lib/db";
 import type { CrmDealStage, CrmActivityType, CrmLeadStatus } from "@prisma/client";
 
+export class NotFoundError extends Error {}
+
+async function requireActiveMember(organizationId: string, userId: string) {
+  const member = await db.organizationMember.findFirst({ where: { userId, organizationId, status: "ACTIVE" } });
+  if (!member) throw new NotFoundError("User not found.");
+}
+
+async function requireContact(organizationId: string, contactId: string) {
+  const contact = await db.crmContact.findFirst({ where: { id: contactId, organizationId } });
+  if (!contact) throw new NotFoundError("Contact not found.");
+}
+
 /**
  * Fresh module (no reference implementation to migrate from) — first CRM
  * built for this platform. Every function takes organizationId explicitly
@@ -46,11 +58,13 @@ interface ContactInput {
   ownerId?: string | null;
 }
 
-export function createContact(organizationId: string, data: ContactInput) {
+export async function createContact(organizationId: string, data: ContactInput) {
+  if (data.ownerId) await requireActiveMember(organizationId, data.ownerId);
   return db.crmContact.create({ data: { organizationId, ...data } });
 }
 
-export function updateContact(organizationId: string, id: string, data: ContactInput) {
+export async function updateContact(organizationId: string, id: string, data: ContactInput) {
+  if (data.ownerId) await requireActiveMember(organizationId, data.ownerId);
   return db.crmContact.update({ where: { id, organizationId }, data });
 }
 
@@ -70,11 +84,13 @@ interface LeadInput {
   ownerId?: string | null;
 }
 
-export function createLead(organizationId: string, data: LeadInput) {
+export async function createLead(organizationId: string, data: LeadInput) {
+  if (data.ownerId) await requireActiveMember(organizationId, data.ownerId);
   return db.crmLead.create({ data: { organizationId, ...data } });
 }
 
-export function updateLead(organizationId: string, id: string, data: LeadInput & { status?: CrmLeadStatus }) {
+export async function updateLead(organizationId: string, id: string, data: LeadInput & { status?: CrmLeadStatus }) {
+  if (data.ownerId) await requireActiveMember(organizationId, data.ownerId);
   return db.crmLead.update({ where: { id, organizationId }, data });
 }
 
@@ -144,11 +160,15 @@ interface DealInput {
   notes?: string | null;
 }
 
-export function createDeal(organizationId: string, data: DealInput) {
+export async function createDeal(organizationId: string, data: DealInput) {
+  if (data.contactId) await requireContact(organizationId, data.contactId);
+  if (data.ownerId) await requireActiveMember(organizationId, data.ownerId);
   return db.crmDeal.create({ data: { organizationId, ...data, stage: "NEW" } });
 }
 
-export function updateDeal(organizationId: string, id: string, data: DealInput) {
+export async function updateDeal(organizationId: string, id: string, data: DealInput) {
+  if (data.contactId) await requireContact(organizationId, data.contactId);
+  if (data.ownerId) await requireActiveMember(organizationId, data.ownerId);
   return db.crmDeal.update({ where: { id, organizationId }, data });
 }
 
@@ -181,7 +201,16 @@ interface ActivityInput {
   createdById?: string | null;
 }
 
-export function createActivity(organizationId: string, data: ActivityInput) {
+export async function createActivity(organizationId: string, data: ActivityInput) {
+  if (data.contactId) await requireContact(organizationId, data.contactId);
+  if (data.leadId) {
+    const lead = await db.crmLead.findFirst({ where: { id: data.leadId, organizationId } });
+    if (!lead) throw new NotFoundError("Lead not found.");
+  }
+  if (data.dealId) {
+    const deal = await db.crmDeal.findFirst({ where: { id: data.dealId, organizationId } });
+    if (!deal) throw new NotFoundError("Deal not found.");
+  }
   return db.crmActivity.create({ data: { organizationId, ...data } });
 }
 

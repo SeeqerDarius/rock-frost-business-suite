@@ -17,6 +17,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage vehicles.",
   "missing-fields": "Asset tag and plate number are required.",
   duplicate: "A vehicle with that asset tag or plate number already exists.",
+  "not-found": "That owner or driver could not be found.",
 };
 
 const STATUS_OPTIONS: Record<string, string> = {

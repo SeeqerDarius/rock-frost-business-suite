@@ -19,6 +19,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "missing-fields": "All required fields must be filled in.",
   "invalid-dates": "End date must be on or after the start date.",
   "invalid-state": "That action isn't valid for this leave request's current status.",
+  "not-found": "That employee or leave type could not be found.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {

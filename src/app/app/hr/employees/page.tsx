@@ -18,6 +18,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage employees.",
   "missing-fields": "Full name and hire date are required.",
   "invalid-state": "Only employees in onboarding can be activated.",
+  "not-found": "That manager could not be found.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {

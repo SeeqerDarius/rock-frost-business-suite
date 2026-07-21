@@ -18,7 +18,7 @@ After making changes:
 
 ## Current phase
 
-**All sixteen product phases are feature-complete (see `docs/DEVELOPMENT_ROADMAP.md`), but a 2026-07-20 full-project audit found the platform is only production-ready for controlled/internal use, not external multi-tenant onboarding or real financial operations — see `docs/HARDENING_PLAN.md`.** The project is in a dedicated **production-hardening track**, run in numbered passes rather than feature phases. **Hardening Pass 1** (tenant guard, session revocation, dashboard permission leak, Administration/Projects/Payroll IDOR), **Pass 2** (financial/inventory transaction integrity across POS, Inventory, Procurement, Accounting, Payroll, and Installment's core payment path, plus the IDOR paths entangled with that work), **and Pass 3a** (invitation redesign — bound to one membership via a hashed token, never activates more than the intended membership, never replaces an existing user's password, resend/revoke with rate limiting) **are all complete.** See `docs/HARDENING_PLAN.md` for full detail and Pass 3b+'s remaining scope (formal Zod validation, remaining CRM/HR/Fleet IDOR audit, Decimal-precision hygiene, reproducible seeding/CI). Billing/Subscriptions remains an explicit "Planned — requirements not yet defined" placeholder; it was never implemented scope and is not part of the hardening track.
+**All sixteen product phases are feature-complete (see `docs/DEVELOPMENT_ROADMAP.md`), but a 2026-07-20 full-project audit found the platform is only production-ready for controlled/internal use, not external multi-tenant onboarding or real financial operations — see `docs/HARDENING_PLAN.md`.** The project is in a dedicated **production-hardening track**, run in numbered passes rather than feature phases. **Hardening Pass 1** (tenant guard, session revocation, dashboard permission leak, Administration/Projects/Payroll IDOR), **Pass 2** (financial/inventory transaction integrity across POS, Inventory, Procurement, Accounting, Payroll, and Installment's core payment path, plus the IDOR paths entangled with that work), **Pass 3a** (invitation redesign), **and Pass 3b** (a shared Zod validation library applied to the public contact form and Administration's invite form, plus a full CRM/HR/Fleet cross-tenant IDOR audit — finding and fixing real gaps in all three) **are all complete.** See `docs/HARDENING_PLAN.md` for full detail and Pass 3c+'s remaining scope (Zod validation for the other ~45 Server Action files, Decimal-precision hygiene, reproducible seeding/CI). Billing/Subscriptions remains an explicit "Planned — requirements not yet defined" placeholder; it was never implemented scope and is not part of the hardening track.
 
 ## Current architecture (short version — see `docs/ARCHITECTURE.md` for full detail)
 
@@ -39,6 +39,8 @@ After making changes:
 - **`Inventory.recordMovement()` optionally accepts an existing transaction client** (`tx?: Tx`, `Tx` exported from `src/modules/inventory/service.ts`) so callers like POS's `createSale()`/`refundSale()` and Procurement's `receiveOrderLine()` can commit their own row changes and Inventory's stock movement as one all-or-nothing transaction while still calling Inventory's public service function, never its Prisma models directly (the module-boundary rule in `docs/MODULE_BOUNDARIES.md`). Omitting `tx` opens a standalone transaction exactly as before — this is backward compatible for every pre-existing caller.
 - **Invitations are bound to one specific `OrganizationMember`, not an email** (hardening Pass 3a) — `src/lib/auth/invitations.ts`'s `Invitation` model stores a SHA-256 `tokenHash` (never the raw token) with a unique `membershipId`, so accepting one invitation can only ever activate that one membership. Two distinct accept paths exist: `acceptInvitationNewUser()` for a user who's never set a password, `acceptInvitationExistingUser()` for an already-active user being added to an additional organization (never touches their password; requires the currently authenticated session to already belong to that exact user). The login page (`src/app/(auth)/login/page.tsx`) now honors a `callbackUrl` query param so "log in, then come back and accept" works — it previously hardcoded the post-login destination.
 - **`src/lib/auth/tokens.ts` now only handles password-reset tokens** — the invite-specific `issueInviteToken`/`consumeInviteToken` functions were removed entirely (Pass 3a), replaced by the `Invitation` model above. Don't reintroduce an email-keyed invite token; the whole point of the redesign was binding to a membership instead.
+- **`src/lib/validation.ts` is the shared Zod primitives library** (hardening Pass 3b) — `moneyAmount`, `positiveInt`, `percent0to100`, `email`, `shortText`/`longText`, `dateInput`, `escapeHtml()`, `parseWithSchema()`. Only wired into the public contact form and Administration's invite form so far — see `docs/HARDENING_PLAN.md`'s Pass 3b section for exactly which files use it and which of the ~45 remaining Server Action files still rely on ad-hoc `String()`/`parseInt()` parsing. Use this library, don't invent a parallel one, when validating new untrusted input.
+- **Every module's `service.ts` is expected to validate every foreign id a caller supplies against the organization** — Pass 1/2 fixed this for Administration/Projects/Payroll/POS/Inventory/Procurement/Accounting/Installment; Pass 3b audited and fixed the same pattern in CRM (`ownerId`/`contactId`/`leadId`/`dealId`), HR (`managerId`/`employeeId`/`leaveTypeId`), and Fleet (`ownerId`/`assignedDriverId`/`vehicleId`). A new function accepting a relation id from a caller must resolve it with `findFirst({ where: { id, organizationId } })` (or equivalent) before writing — never trust a bare id.
 
 ## Files changed (Hardening Pass 3a — Invitation redesign)
 
@@ -60,22 +62,49 @@ Continuation of the same 2026-07-20 audit-driven hardening track, per explicit "
 
 **Verified end-to-end via Playwright**: normal login still works after the login-page refactor (regression check); an invalid token, an expired token, and an already-accepted token each render their own distinct message; a brand-new invitee sets a password, lands on `login?activated=1`, logs in, and reaches the dashboard with the invited organization genuinely active (confirmed via the org switcher/dashboard, not just a redirect); the Administration page's Resend/Revoke buttons render and Revoke performs a real atomic state change. All test users/memberships/invitations were deleted afterward via a one-off cleanup script. The existing-user accept path was verified via Vitest (13 tests covering both accept functions, resend cooldown, and revoke's atomic claim) but not separately browser-verified — it needs a second real active account to exercise realistically, and its core invariants (never touches `user.update`, rejects a session/target mismatch) are directly asserted against the service function instead.
 
-## Build result (Hardening Pass 3a)
+**Build result at the time:** Passed — `npm run test` 58/58 passing across 6 files, 101 routes (unchanged).
 
-**Passed.** `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate` succeeds, `npm run test` — 58/58 passing across 6 files (45 from Pass 1+2 + 13 new), `npm run build` succeeds — 101 routes (unchanged; no new pages, only rewritten existing ones).
+**Known issues at the time:** Pass 3b+ not started (Zod validation, CRM/HR/Fleet IDOR audit — since addressed, see Pass 3b below), no rate limiting on invite creation itself (still current), documented residual concurrency races from Pass 2 (still current), Installment's `updatePayment()`/`applyCreditToAccount()` races (still current), plus all previously carried-forward gaps.
+
+**Next recommended step (at the time):** Get explicit direction before starting Pass 3b. The user replied "continue," leading directly into the Pass 3b work above.
+
+---
+
+## Files changed (Hardening Pass 3b — Zod validation foundation, public contact form, CRM/HR/Fleet IDOR audit)
+
+**Created:** `src/lib/validation.ts` (shared Zod primitives); `prisma/migrations/20260721020000_add_contact_submission/migration.sql`; `test/validation.test.ts`, `test/contact-form.test.ts`, `test/idor-crm-hr-fleet.test.ts` (28 tests total).
+
+**Modified:** `prisma/schema.prisma` (`ContactSubmission` model); `src/app/(public)/contact/{actions.ts,page.tsx}` (Zod validation, HTML escaping, persistence, per-email rate limit); `src/app/app/(overview)/administration/actions.ts` (email/name validation on invite); `src/modules/crm/service.ts` (`ownerId`/`contactId`/`leadId`/`dealId` IDOR fixes, new `NotFoundError`); `src/modules/hr/service.ts` (`managerId`/`employeeId`/`leaveTypeId` IDOR fixes, new `NotFoundError`); `src/modules/fleet/service.ts` (`ownerId`/`assignedDriverId`/`vehicleId` IDOR fixes, `recordFleetWorkAndPayPayment()` atomicity fix, new `NotFoundError`/`InvalidPaymentAmountError`); every CRM (`contacts`/`leads`/`deals`/`activities`), HR (`employees`/`leave`/`reviews`), and Fleet (`vehicles`/`insurance-roadworthy`/`maintenance`/`work-and-pay`) action file + their `page.tsx` error maps.
+
+**Migration impact:** additive only (`ContactSubmission` table) — zero-downtime.
+
+## Summary of what was done (Hardening Pass 3b)
+
+Continuation of the same 2026-07-20 audit-driven hardening track, per "continue" following Pass 3a's review checkpoint. Two distinct workstreams, deliberately scoped rather than attempting a blanket retrofit of every Server Action in the app (~49 files) in one pass.
+
+**Public contact form hardening**: the audit's most acute *remaining* finding — no email/length validation, no rate limiting, and submitted fields interpolated unescaped directly into an HTML email sent to Rock Frost staff (a real markup-injection vector into outbound mail), plus a submission silently dropped whenever `RESEND_TO_EMAIL` wasn't configured. Fixed with the new shared `src/lib/validation.ts` library, `escapeHtml()` before every field reaches the email template, and a new `ContactSubmission` model that persists every submission regardless of delivery outcome and powers a basic 60-second per-email rate limit. The same library was applied to Administration's invite form (email format + name length, previously unchecked).
+
+**CRM/HR/Fleet cross-tenant IDOR audit**: the audit flagged these three modules as "likely present but unconfirmed" for the unchecked-foreign-id pattern fixed in Pass 1/2 — audited line-by-line and confirmed real gaps in all three. CRM: `ownerId` on contacts/leads/deals, `contactId`/`leadId`/`dealId` on deals/activities. HR: `managerId` on employees, `employeeId`/`leaveTypeId` on leave requests, `employeeId` on reviews. Fleet (the most gaps): `ownerId`/`assignedDriverId` on vehicles, `vehicleId` on documents/maintenance requests/work-and-pay contracts. **Also found while auditing, not originally in scope**: Fleet's `recordFleetWorkAndPayPayment()` had the exact same read-then-absolute-write race Pass 2 fixed everywhere else — fixed with the same atomic multi-field increment/decrement pattern, plus a positive-amount check that didn't exist before.
+
+**Verified**: 28 new Vitest tests (validation primitives, contact-form validation/rate-limiting/escaping, CRM/HR/Fleet IDOR rejections, Fleet payment atomicity) — 86 total across 9 files. The contact form was also browser-verified end-to-end (validation, persistence, rate-limiting); outbound email delivery itself fails in this sandboxed dev environment due to no network egress to Resend — a pre-existing environment limitation confirmed unrelated to this fix, with the escaping behavior verified directly via Vitest against the constructed email body instead.
+
+## Build result (Hardening Pass 3b)
+
+**Passed.** `npm run lint` clean, `npx tsc --noEmit` clean, `npx prisma validate` succeeds, `npm run test` — 86/86 passing across 9 files (58 from Pass 1+2+3a + 28 new), `npm run build` succeeds — 101 routes (unchanged).
 
 ## Known issues / deliberate gaps (current)
 
-- **Pass 3b+ not started**: formal Zod runtime validation (still none), full line-by-line IDOR audit of CRM/HR/Fleet, Decimal-precision arithmetic throughout Accounting/Payroll/Installment, reproducible seeding/CI.
-- **No rate limiting on invite creation itself** (only on resend) — an admin (or a compromised admin account) could still create many invitations back-to-back. Low priority: creating an invitation requires `org.settings.manage`, already a privileged action.
-- **Documented residual concurrency races from Pass 2** remain (see `docs/HARDENING_PLAN.md`'s "Documented residual concurrency risks" section) — none corrupt a primary financial figure.
-- **Installment's `updatePayment()`/`applyCreditToAccount()`** (carried forward from Pass 2) retain the same narrower read-then-write race class fixed elsewhere in that module.
+- **Pass 3c+ not started**: Zod validation for the ~45 remaining Server Action files (Pass 3b covered only the contact form and invite form — the two highest-risk unauthenticated/admin surfaces; every financial module already has service-layer validation from Pass 2, so this is lower urgency than it sounds), Decimal-precision arithmetic throughout Accounting/Payroll/Installment, reproducible seeding/CI.
+- **Remaining IDOR audit surface**: POS register/session setup beyond Pass 2, and Installment's ~40 functions beyond `createAccount()`/`updateCustomer()` — Installment is the largest, oldest service file in the codebase and warrants its own dedicated pass.
+- **Documented residual concurrency races from Pass 2** remain (see `docs/HARDENING_PLAN.md`) — none corrupt a primary financial figure.
+- **Installment's `updatePayment()`/`applyCreditToAccount()`** (carried forward from Pass 2) retain the same narrower read-then-write race class fixed elsewhere.
+- **No rate limiting on invite creation itself** (carried forward from Pass 3a, only resend is rate-limited).
 - **`src/app/app/(overview)/modules/page.tsx` still uses `enabledModuleKeys`** instead of `accessibleModuleKeys` (carried forward from Pass 1) — a dead-end-link UX inconsistency, not a data leak.
-- Every gap carried forward from Pass 1/2 and earlier remains true and is unaffected by this pass: no data-level scoping in any module, several modules not yet linked to Accounting, POS's three-fixed-line UI, Analytics' lack of time-series drilldown, Fleet's missing owner portal/file uploads, no branch-level enforcement, no public self-registration, unset `RESEND_API_KEY`, functionally inert (single-org) organization switcher. Full list in `docs/HARDENING_PLAN.md`.
+- Every gap carried forward from earlier passes remains true and is unaffected by this pass: no data-level scoping in any module, several modules not yet linked to Accounting, POS's three-fixed-line UI, Analytics' lack of time-series drilldown, Fleet's missing owner portal/file uploads, no branch-level enforcement, no public self-registration, unset `RESEND_API_KEY` (confirmed still an issue in this sandboxed environment specifically — no network egress to Resend at all), functionally inert (single-org) organization switcher. Full list in `docs/HARDENING_PLAN.md`.
 
 ## Next recommended step
 
-Get explicit direction before starting Pass 3b, per the same review-checkpoint discipline used between every pass so far. Suggested order per `docs/HARDENING_PLAN.md`: formal Zod validation across every mutating Server Action next (large and cross-cutting, worth doing once rather than piecemeal), then the remaining CRM/HR/Fleet IDOR audit, then Decimal-precision hygiene and reproducible seeding/CI.
+Get explicit direction before starting Pass 3c, per the same review-checkpoint discipline used between every pass so far. Suggested order per `docs/HARDENING_PLAN.md`: the remaining Installment IDOR audit and POS register/session setup next (bounded, concrete), then Decimal-precision hygiene, then reproducible seeding/CI, then (lowest urgency, since service-layer validation already exists) Zod validation for the remaining Server Action files.
 
 ---
 
@@ -320,9 +349,13 @@ User said "fix the gaps, when done get started with the next module, and lets ha
 
 ## Handoff log
 
+### 2026-07-21 — Claude Code — Hardening Pass 3b (Zod validation foundation, public contact form, CRM/HR/Fleet IDOR audit)
+
+See "Files changed (Hardening Pass 3b...)," "Summary of what was done (Hardening Pass 3b)," "Build result (Hardening Pass 3b)," "Known issues / deliberate gaps (current)," and "Next recommended step" above — kept in the current-state sections rather than duplicated here, since this is the most recent entry. Full plan and Pass 3c+ scope in `docs/HARDENING_PLAN.md`.
+
 ### 2026-07-21 — Claude Code — Hardening Pass 3a (invitation redesign)
 
-See "Files changed (Hardening Pass 3a...)," "Summary of what was done (Hardening Pass 3a)," "Build result (Hardening Pass 3a)," "Known issues / deliberate gaps (current)," and "Next recommended step" above — kept in the current-state sections rather than duplicated here, since this is the most recent entry. Full plan and Pass 3b+ scope in `docs/HARDENING_PLAN.md`.
+See "Files changed (Hardening Pass 3a...)" and "Summary of what was done (Hardening Pass 3a)" above, plus the "at the time" Build result/Known issues/Next recommended step notes appended.
 
 ### 2026-07-21 — Claude Code — Hardening Pass 2 (financial/inventory transaction integrity)
 

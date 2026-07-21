@@ -16,6 +16,7 @@ import { upsertDeal, changeDealStage } from "./actions";
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage deals.",
   "missing-fields": "A deal title is required.",
+  "not-found": "That contact or owner could not be found.",
 };
 
 const STAGE_LABELS: Record<string, string> = {

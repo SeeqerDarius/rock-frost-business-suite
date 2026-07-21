@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { createActivity } from "@/modules/crm/service";
+import { createActivity, NotFoundError } from "@/modules/crm/service";
 import type { CrmActivityType } from "@prisma/client";
 
 function clean(value: FormDataEntryValue | null) {
@@ -34,16 +34,21 @@ export async function logActivity(formData: FormData): Promise<void> {
 
   const session = await getServerAuthSession();
 
-  await createActivity(tenant.organizationId, {
-    type,
-    subject,
-    notes: clean(formData.get("notes")),
-    occurredAt: new Date(`${occurredAtRaw}T00:00:00`),
-    contactId: relatedKind === "contact" ? relatedId : null,
-    leadId: relatedKind === "lead" ? relatedId : null,
-    dealId: relatedKind === "deal" ? relatedId : null,
-    createdById: session?.user?.id ?? null,
-  });
+  try {
+    await createActivity(tenant.organizationId, {
+      type,
+      subject,
+      notes: clean(formData.get("notes")),
+      occurredAt: new Date(`${occurredAtRaw}T00:00:00`),
+      contactId: relatedKind === "contact" ? relatedId : null,
+      leadId: relatedKind === "lead" ? relatedId : null,
+      dealId: relatedKind === "deal" ? relatedId : null,
+      createdById: session?.user?.id ?? null,
+    });
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/crm/activities?error=not-found");
+    throw error;
+  }
 
   revalidatePath("/app/crm/activities");
   redirect("/app/crm/activities?saved=1");

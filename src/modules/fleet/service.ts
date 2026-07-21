@@ -17,6 +17,13 @@ import type {
  * the UI alone to keep one organization's data from another's.
  */
 
+export class NotFoundError extends Error {}
+
+async function requireVehicle(organizationId: string, vehicleId: string) {
+  const vehicle = await db.fleetVehicle.findFirst({ where: { id: vehicleId, organizationId } });
+  if (!vehicle) throw new NotFoundError("Vehicle not found.");
+}
+
 // --- Owners ---
 
 export function listFleetOwners(organizationId: string) {
@@ -91,7 +98,18 @@ export function getFleetVehicle(organizationId: string, id: string) {
   return db.fleetVehicle.findFirst({ where: { id, organizationId }, include: { owner: true, assignedDriver: true } });
 }
 
-export function createFleetVehicle(
+async function validateVehicleRefs(organizationId: string, data: { ownerId?: string | null; assignedDriverId?: string | null }) {
+  if (data.ownerId) {
+    const owner = await db.fleetOwner.findFirst({ where: { id: data.ownerId, organizationId } });
+    if (!owner) throw new NotFoundError("Owner not found.");
+  }
+  if (data.assignedDriverId) {
+    const driver = await db.fleetDriver.findFirst({ where: { id: data.assignedDriverId, organizationId } });
+    if (!driver) throw new NotFoundError("Driver not found.");
+  }
+}
+
+export async function createFleetVehicle(
   organizationId: string,
   data: {
     assetTag: string;
@@ -108,10 +126,11 @@ export function createFleetVehicle(
     branchId?: string | null;
   }
 ) {
+  await validateVehicleRefs(organizationId, data);
   return db.fleetVehicle.create({ data: { organizationId, ...data } });
 }
 
-export function updateFleetVehicle(
+export async function updateFleetVehicle(
   organizationId: string,
   id: string,
   data: {
@@ -129,6 +148,7 @@ export function updateFleetVehicle(
     branchId?: string | null;
   }
 ) {
+  await validateVehicleRefs(organizationId, data);
   return db.fleetVehicle.update({ where: { id, organizationId }, data });
 }
 
@@ -142,7 +162,7 @@ export function listFleetVehicleDocuments(organizationId: string) {
   });
 }
 
-export function createFleetVehicleDocument(
+export async function createFleetVehicleDocument(
   organizationId: string,
   data: {
     vehicleId: string;
@@ -154,10 +174,11 @@ export function createFleetVehicleDocument(
     branchId?: string | null;
   }
 ) {
+  await requireVehicle(organizationId, data.vehicleId);
   return db.fleetVehicleDocument.create({ data: { organizationId, ...data, renewalStatus: computeRenewalStatus(data) } });
 }
 
-export function updateFleetVehicleDocument(
+export async function updateFleetVehicleDocument(
   organizationId: string,
   id: string,
   data: {
@@ -170,6 +191,7 @@ export function updateFleetVehicleDocument(
     branchId?: string | null;
   }
 ) {
+  await requireVehicle(organizationId, data.vehicleId);
   return db.fleetVehicleDocument.update({
     where: { id, organizationId },
     data: { ...data, renewalStatus: computeRenewalStatus(data) },
@@ -194,10 +216,11 @@ export function listFleetMaintenanceRequests(organizationId: string) {
   });
 }
 
-export function createFleetMaintenanceRequest(
+export async function createFleetMaintenanceRequest(
   organizationId: string,
   data: { vehicleId: string; faultDescription: string; requestedById?: string | null; branchId?: string | null }
 ) {
+  await requireVehicle(organizationId, data.vehicleId);
   return db.fleetMaintenanceRequest.create({ data: { organizationId, ...data } });
 }
 
@@ -253,7 +276,7 @@ export function listFleetWorkAndPayContracts(organizationId: string) {
   });
 }
 
-export function createFleetWorkAndPayContract(
+export async function createFleetWorkAndPayContract(
   organizationId: string,
   data: {
     contractName: string;
@@ -267,26 +290,45 @@ export function createFleetWorkAndPayContract(
     branchId?: string | null;
   }
 ) {
+  await requireVehicle(organizationId, data.vehicleId);
   return db.fleetWorkAndPayContract.create({
     data: { organizationId, ...data, contractStatus: "ACTIVE" },
   });
 }
 
-export async function recordFleetWorkAndPayPayment(organizationId: string, id: string, amount: number) {
-  const contract = await db.fleetWorkAndPayContract.findFirst({ where: { id, organizationId } });
-  if (!contract) return null;
+export class InvalidPaymentAmountError extends Error {}
 
-  const amountPaid = Number(contract.amountPaid) + amount;
-  const contractAmount = Number(contract.contractAmount);
-  const outstandingBalance = Math.max(contractAmount - amountPaid, 0);
-  const completionPercentage = contractAmount > 0 ? Math.min((amountPaid / contractAmount) * 100, 100) : 0;
-  const contractStatus: FleetContractStatus = outstandingBalance <= 0 ? "COMPLETED" : contract.contractStatus;
+/**
+ * amountPaid/outstandingBalance are updated via one atomic multi-field
+ * increment/decrement (a single UPDATE statement), not a JS-computed
+ * absolute write from a pre-read snapshot — the same lost-update race
+ * Pass 2 fixed in Installment's recordPayment() applied here too: two
+ * concurrent payments on the same contract could otherwise lose one
+ * payment's contribution to the running total.
+ */
+export async function recordFleetWorkAndPayPayment(organizationId: string, id: string, amount: number) {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new InvalidPaymentAmountError("Payment amount must be a positive number.");
+  }
+
+  const contract = await db.fleetWorkAndPayContract.findFirst({ where: { id, organizationId } });
+  if (!contract) throw new NotFoundError("Contract not found.");
+
+  const updated = await db.fleetWorkAndPayContract.update({
+    where: { id, organizationId },
+    data: { amountPaid: { increment: amount }, outstandingBalance: { decrement: amount } },
+  });
+
+  const rawBalance = Number(updated.outstandingBalance);
+  const contractAmount = Number(updated.contractAmount);
+  const clampedBalance = Math.max(rawBalance, 0);
+  const completionPercentage = contractAmount > 0 ? Math.min((Number(updated.amountPaid) / contractAmount) * 100, 100) : 0;
+  const contractStatus: FleetContractStatus = rawBalance <= 0 ? "COMPLETED" : updated.contractStatus;
 
   return db.fleetWorkAndPayContract.update({
     where: { id, organizationId },
     data: {
-      amountPaid: amountPaid.toFixed(2),
-      outstandingBalance: outstandingBalance.toFixed(2),
+      outstandingBalance: clampedBalance.toFixed(2),
       completionPercentage: completionPercentage.toFixed(2),
       contractStatus,
     },

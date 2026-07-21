@@ -3,6 +3,13 @@ import "server-only";
 import { db } from "@/lib/db";
 import type { HrEmployeeStatus } from "@prisma/client";
 
+export class NotFoundError extends Error {}
+
+async function requireEmployee(organizationId: string, employeeId: string) {
+  const employee = await db.hrEmployee.findFirst({ where: { id: employeeId, organizationId } });
+  if (!employee) throw new NotFoundError("Employee not found.");
+}
+
 /**
  * Fresh module (no reference implementation to migrate from). Every function
  * takes organizationId explicitly and filters on it, per docs/MODULE_BOUNDARIES.md.
@@ -42,11 +49,13 @@ interface EmployeeInput {
 }
 
 export async function createEmployee(organizationId: string, data: EmployeeInput) {
+  if (data.managerId) await requireEmployee(organizationId, data.managerId);
   const employeeNumber = await generateEmployeeNumber(organizationId);
   return db.hrEmployee.create({ data: { organizationId, employeeNumber, ...data } });
 }
 
-export function updateEmployee(organizationId: string, id: string, data: EmployeeInput) {
+export async function updateEmployee(organizationId: string, id: string, data: EmployeeInput) {
+  if (data.managerId) await requireEmployee(organizationId, data.managerId);
   return db.hrEmployee.update({ where: { id, organizationId }, data });
 }
 
@@ -101,8 +110,11 @@ interface LeaveRequestInput {
 
 export class LeaveDateError extends Error {}
 
-export function createLeaveRequest(organizationId: string, data: LeaveRequestInput) {
+export async function createLeaveRequest(organizationId: string, data: LeaveRequestInput) {
   if (data.endDate < data.startDate) throw new LeaveDateError("End date must be on or after the start date.");
+  await requireEmployee(organizationId, data.employeeId);
+  const leaveType = await db.hrLeaveType.findFirst({ where: { id: data.leaveTypeId, organizationId } });
+  if (!leaveType) throw new NotFoundError("Leave type not found.");
   return db.hrLeaveRequest.create({ data: { organizationId, ...data } });
 }
 
@@ -141,7 +153,8 @@ interface ReviewInput {
   reviewedById?: string | null;
 }
 
-export function createReview(organizationId: string, data: ReviewInput) {
+export async function createReview(organizationId: string, data: ReviewInput) {
+  await requireEmployee(organizationId, data.employeeId);
   return db.hrPerformanceReview.create({ data: { organizationId, ...data, status: "DRAFT" } });
 }
 

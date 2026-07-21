@@ -29,10 +29,23 @@ the intended membership, never replace an existing user's password, and
 support resend/revoke with basic rate limiting. See the "Pass 3a" section
 below for full detail.
 
-**Pass 3b+ — not started.** See "Remaining work (Pass 3b+)" near the bottom
-for the full list: formal Zod validation, broader IDOR audit of CRM/HR/Fleet,
-Decimal-precision hygiene, reproducible seeding/CI, and the narrow residual
-concurrency races documented per-fix in the Pass 2 section above.
+**Pass 3b — complete** (2026-07-21): a shared Zod validation library, applied
+to the public contact form (previously the most acute remaining gap — no
+email/length validation, no HTML escaping, no rate limiting, and a
+silently-dropped submission whenever email wasn't configured) and to
+Administration's invite form; a full IDOR audit of CRM, HR, and Fleet
+(the three modules the audit flagged as "likely present but unconfirmed"),
+finding and fixing real unchecked-foreign-id gaps in all three, plus one
+lost-update race in Fleet's Work & Pay payment recording matching the exact
+pattern Pass 2 fixed elsewhere. See the "Pass 3b" section below for full
+detail.
+
+**Pass 3c+ — not started.** See "Remaining work (Pass 3c+)" near the bottom
+for the full list: Zod validation for the remaining ~45 Server Action files
+(Pass 3b covered the two highest-risk unauthenticated/admin surfaces, not
+every mutating action in the app), Decimal-precision hygiene, reproducible
+seeding/CI, and the narrow residual concurrency races documented per-fix in
+the Pass 2 section above.
 
 ---
 
@@ -516,47 +529,138 @@ active in the system to exercise realistically) — the unit tests cover its
 core invariants (never calls `user.update`, rejects a mismatched session)
 directly against the service function.
 
-## Remaining work (Pass 3b+, not started)
+## Pass 3b — Zod validation foundation + public contact form + CRM/HR/Fleet IDOR audit (complete)
+
+**Status: fixed**, scoped to the two highest-value targets rather than a
+blanket retrofit of all ~49 Server Action files in the app (see "Remaining
+work" below for why that's explicitly not claimed as done).
+
+### Shared Zod validation library
+
+New `src/lib/validation.ts`: reusable primitives for untrusted input —
+`moneyAmount`/`moneyAmountNonNegative` (positive/non-negative decimal strings,
+≤2 decimal places), `positiveInt`, `percent0to100`, `email` (format + case
+normalization), `shortText`/`longText` (length-bounded strings), `dateInput`
+(HTML date-input parsing), `cuid`, `escapeHtml()`, and a `parseWithSchema()`
+helper that returns either typed data or a single readable error message. Not
+yet wired into every mutating Server Action — see "Remaining work" for exactly
+which files use it today.
+
+### Public contact form (`src/app/(public)/contact/actions.ts`)
+
+The audit's most acute remaining finding: no email format or length
+validation, no rate limiting, and user-submitted fields interpolated
+**unescaped** directly into an HTML email sent to Rock Frost staff (a real
+HTML/markup-injection vector into outbound mail). Also: a submission was
+silently dropped (only `console.warn`-logged) whenever `RESEND_TO_EMAIL`
+wasn't configured — no record of it existed anywhere.
+
+Fixed: Zod validation via the new library (name/company: `shortText`; email:
+format-checked and normalized; message: length-capped); every field is passed
+through `escapeHtml()` before being embedded in the notification email; a new
+`ContactSubmission` model (migration `20260721020000_add_contact_submission`)
+persists every submission regardless of email delivery outcome, and doubles as
+the source for a basic per-email rate limit (rejects a resubmission from the
+same email within 60 seconds).
+
+### Administration invite form
+
+`inviteMember()`'s `email`/`name` fields had no format or length validation at
+all (a malformed email would create a `User` row that could never receive its
+invite). Now validated via the shared `email`/`shortText` schemas.
+
+### CRM / HR / Fleet cross-tenant IDOR audit
+
+The audit flagged these three modules as "likely present but unconfirmed" for
+the same unchecked-foreign-id pattern fixed in Pass 1/2. Audited line-by-line;
+all three had real, confirmed gaps:
+
+- **CRM** (`src/modules/crm/service.ts`): `createContact`/`updateContact`/
+  `createLead`/`updateLead`/`createDeal`/`updateDeal`'s `ownerId` was never
+  checked against the organization; `createDeal`/`updateDeal`'s `contactId`
+  and `createActivity`'s `contactId`/`leadId`/`dealId` were never checked
+  either. All now resolve through an organization-scoped lookup (new
+  `NotFoundError`).
+- **HR** (`src/modules/hr/service.ts`): `createEmployee`/`updateEmployee`'s
+  `managerId`, and `createLeaveRequest`'s `employeeId`/`leaveTypeId`, and
+  `createReview`'s `employeeId` were all unchecked. Same fix pattern.
+- **Fleet** (`src/modules/fleet/service.ts`) — the most gaps of the three:
+  `createFleetVehicle`/`updateFleetVehicle`'s `ownerId`/`assignedDriverId`;
+  `createFleetVehicleDocument`/`updateFleetVehicleDocument`'s `vehicleId`;
+  `createFleetMaintenanceRequest`'s `vehicleId`; `createFleetWorkAndPayContract`'s
+  `vehicleId` — all unchecked, all now validated. **Also found and fixed
+  while auditing**: `recordFleetWorkAndPayPayment()` used the exact
+  read-then-absolute-write pattern Pass 2 fixed everywhere else — two
+  concurrent payments on the same contract could lose one payment's
+  contribution to `amountPaid`/`outstandingBalance`. Now uses one atomic
+  multi-field `increment`/`decrement`, the same fix shape as Installment's
+  `recordPayment()`, plus a positive-amount check (new
+  `InvalidPaymentAmountError`).
+
+**Files changed:** `src/lib/validation.ts` (new); `prisma/schema.prisma`
+(+`ContactSubmission` model, migration `20260721020000_add_contact_submission`);
+`src/app/(public)/contact/{actions.ts,page.tsx}`; `src/app/app/(overview)/administration/actions.ts`;
+`src/modules/{crm,hr,fleet}/service.ts`; every CRM/HR/Fleet action file that
+calls the now-validating service functions (`contacts`/`leads`/`deals`/`activities`
+for CRM; `employees`/`leave`/`reviews` for HR; `vehicles`/`insurance-roadworthy`/
+`maintenance`/`work-and-pay` for Fleet) plus their `page.tsx` error maps;
+`test/validation.test.ts`, `test/contact-form.test.ts`, `test/idor-crm-hr-fleet.test.ts`
+(new, 28 tests total).
+
+**Migration impact:** additive only (`ContactSubmission` table) — zero-downtime.
+
+**Verified end-to-end via Playwright**: the contact form rejects a malformed
+email, HTML-escapes an injected `<script>` tag before it would reach the
+outbound email (confirmed directly via Vitest against the constructed email
+body — outbound send itself fails in this sandboxed dev environment due to no
+network egress to Resend, a pre-existing environment limitation unrelated to
+this fix), persists every submission regardless of delivery outcome, and
+rate-limits an immediate resubmission from the same email. Test data cleaned
+up afterward via a one-off script.
+
+## Remaining work (Pass 3c+, not started)
+
+### Remaining Zod validation surface
+
+Pass 3b applied the shared validation library to exactly two targets: the
+public contact form and the Administration invite form — the highest-risk
+unauthenticated and admin-privileged surfaces. The other ~45 mutating Server
+Action files across every module still rely on `String(...).trim()`/
+`parseInt`/`parseFloat`/`new Date(...)`/enum casts with no Zod schema. This is
+lower urgency than it first appears: Pass 2 already added targeted numeric/
+amount validation *inside the service layer* for every financial module
+(POS, Inventory, Procurement, Accounting, Payroll, Installment, and now
+Fleet's Work & Pay), so the load-bearing correctness guarantee already exists
+there — what's missing is the friendlier, earlier rejection and general input
+hygiene (string length limits, enum membership, email format) a Zod schema at
+the Server Action boundary would add. Worth doing eventually; not a
+distinct open vulnerability the way the IDOR/atomicity gaps were.
 
 ### Remaining IDOR audit surface
 
-CRM, HR, and Fleet have not been individually audited line-by-line for the
-same unchecked-foreign-id pattern fixed elsewhere in this file — the audit
-flagged this as likely present but unconfirmed. POS register/session setup
-beyond what Pass 2 fixed, and Installment's ~40 functions beyond
-`createAccount()`/`updateCustomer()`, also warrant a full pass.
-
-### Runtime validation (not started)
-
-Zod is an installed but unused dependency. Server Actions rely on
-`String(...).trim()`, `parseInt`/`parseFloat`, `new Date(...)`, and TypeScript
-enum casts — none of which validate untrusted input at runtime. Needs shared
-Zod schemas for amounts, quantities, percentages, dates, emails, and relation
-ids, applied across every mutating Server Action. Large, cross-cutting; not
-started this pass.
+POS register/session setup beyond what Pass 2 fixed, and Installment's ~40
+functions beyond `createAccount()`/`updateCustomer()`, still warrant a
+line-by-line pass — Installment is the largest, oldest, most complex service
+file in the codebase (1100+ lines) and was only partially covered in Pass 2.
 
 ### Automated tests / reproducible setup (partially started)
 
-Pass 1 added the project's first committed Vitest suite (tenant guard,
-session revocation, dashboard leak, Administration/Projects/Payroll IDOR).
-Pass 2 extended it with `test/pass2-financial-inventory-integrity.test.ts` —
-18 tests covering the atomic-guard and validation behavior added across
-Inventory, POS, Procurement, Accounting, Payroll, and Installment (45 tests
-total across 5 files). These are still mocked-`db` tests, not integration
-tests against a real database transaction under actual concurrent load — they
-verify the *code* takes the atomic-updateMany-with-guard shape and rejects
-correctly when a mocked `count: 0` simulates a lost race, not that Postgres
-itself behaves as reasoned about above under real concurrent connections. A
-real concurrency integration test (two actual concurrent requests against a
-test database, asserting the final total is correct) is Pass 3 work.
-Reproducible platform seeding (`.env.example`, committed RBAC/module seed
-script, CI workflow, Node version pin) is also Pass 3.
+86 tests across 9 files as of Pass 3b (27 Pass 1, 18 Pass 2, 13 Pass 3a, 28
+Pass 3b). Still mocked-`db` tests, not integration tests against a real
+database transaction under actual concurrent load — see Pass 2's note above,
+unchanged. Reproducible platform seeding (`.env.example`, committed RBAC/module
+seed script, CI workflow, Node version pin) remains untouched.
 
-### Audit logging, email/public-form hardening, performance, accessibility, documentation accuracy
+### Audit logging, performance, accessibility, documentation accuracy
 
 All confirmed in the audit, all deferred to a later pass — none are blocking
 correctness or safety in the way tenant isolation, session revocation, and the
-IDOR/financial-integrity issues are.
+IDOR/financial-integrity issues were.
+
+### Decimal precision
+
+Accounting/Payroll/Installment still convert `Decimal` fields to JS `Number`
+throughout for arithmetic. A large, cross-cutting refactor; not started.
 
 ---
 

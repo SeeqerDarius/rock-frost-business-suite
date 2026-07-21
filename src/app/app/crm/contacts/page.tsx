@@ -16,6 +16,7 @@ import { upsertContact } from "./actions";
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage contacts.",
   "missing-fields": "Full name is required.",
+  "not-found": "That owner could not be found.",
 };
 
 interface ContactFieldsProps {

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createFleetVehicle, updateFleetVehicle } from "@/modules/fleet/service";
+import { createFleetVehicle, updateFleetVehicle, NotFoundError } from "@/modules/fleet/service";
 import type { FleetVehicleStatus } from "@prisma/client";
 
 function clean(value: FormDataEntryValue | null) {
@@ -50,7 +50,8 @@ export async function upsertFleetVehicle(formData: FormData): Promise<void> {
     } else {
       await createFleetVehicle(tenant.organizationId, data);
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/fleet/vehicles?error=not-found");
     redirect("/app/fleet/vehicles?error=duplicate");
   }
 

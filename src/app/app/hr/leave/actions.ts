@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { createLeaveRequest, approveLeaveRequest, rejectLeaveRequest, LeaveDateError, LeaveStateError } from "@/modules/hr/service";
+import { createLeaveRequest, approveLeaveRequest, rejectLeaveRequest, LeaveDateError, LeaveStateError, NotFoundError } from "@/modules/hr/service";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -36,6 +36,7 @@ export async function createNewLeaveRequest(formData: FormData): Promise<void> {
     });
   } catch (error) {
     if (error instanceof LeaveDateError) redirect("/app/hr/leave?error=invalid-dates");
+    if (error instanceof NotFoundError) redirect("/app/hr/leave?error=not-found");
     throw error;
   }
 

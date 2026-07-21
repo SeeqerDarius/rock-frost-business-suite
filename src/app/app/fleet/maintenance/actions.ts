@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { createFleetMaintenanceRequest, updateFleetMaintenanceRequest } from "@/modules/fleet/service";
+import { createFleetMaintenanceRequest, updateFleetMaintenanceRequest, NotFoundError } from "@/modules/fleet/service";
 import type { FleetMaintenanceApprovalStatus, FleetMaintenanceProgressStatus } from "@prisma/client";
 
 function clean(value: FormDataEntryValue | null) {
@@ -26,11 +26,16 @@ export async function createMaintenanceRequest(formData: FormData): Promise<void
   }
 
   const session = await getServerAuthSession();
-  await createFleetMaintenanceRequest(tenant.organizationId, {
-    vehicleId,
-    faultDescription,
-    requestedById: session?.user?.id ?? null,
-  });
+  try {
+    await createFleetMaintenanceRequest(tenant.organizationId, {
+      vehicleId,
+      faultDescription,
+      requestedById: session?.user?.id ?? null,
+    });
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/fleet/maintenance?error=not-found");
+    throw error;
+  }
 
   revalidatePath("/app/fleet/maintenance");
   redirect("/app/fleet/maintenance?saved=1");
