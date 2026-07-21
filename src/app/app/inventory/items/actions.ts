@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createItem, updateItem, ItemSkuTakenError } from "@/modules/inventory/service";
+import { createItem, updateItem, ItemSkuTakenError, NotFoundError } from "@/modules/inventory/service";
 import { shortText, moneyAmount, cuid, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
@@ -63,6 +63,9 @@ export async function upsertItem(formData: FormData): Promise<void> {
   } catch (error) {
     if (error instanceof ItemSkuTakenError) {
       redirect("/app/inventory/items?error=sku-taken");
+    }
+    if (error instanceof NotFoundError) {
+      redirect("/app/inventory/items?error=not-found");
     }
     throw error;
   }

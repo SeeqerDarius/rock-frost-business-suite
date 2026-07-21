@@ -1,0 +1,302 @@
+/**
+ * Pure platform-bootstrap data and logic, with zero import-time side
+ * effects (no PrismaClient construction, no top-level execution) — safe to
+ * import from anywhere, including test fixtures that need the same
+ * permissions/roles/modules seeded into a disposable test database.
+ * `prisma/seed.ts` is the thin CLI wrapper around `seedPlatform()` below;
+ * `test/integration/setup/fixtures.ts` is the other caller.
+ *
+ * The permission key list is intentionally duplicated from
+ * src/lib/auth/permissions.ts rather than imported from it — that file has
+ * `import "server-only"` at the top (a Next.js bundler intrinsic, not a
+ * real resolvable package outside Next's own build), which a plain `tsx`/
+ * Vitest execution can't resolve without the alias workaround
+ * vitest.config.ts already uses for other test files. If you add a new
+ * permission key to permissions.ts, add it here too.
+ */
+import type { PrismaClient } from "@prisma/client";
+
+export const PERMISSIONS = {
+  DASHBOARD_VIEW: "dashboard.view",
+  ORG_SETTINGS_MANAGE: "org.settings.manage",
+  AI_ASSISTANT_USE: "ai.assistant.use",
+  FLEET_VIEW: "fleet.view",
+  FLEET_VEHICLES_MANAGE: "fleet.vehicles.manage",
+  FLEET_OWNERS_MANAGE: "fleet.owners.manage",
+  FLEET_DRIVERS_MANAGE: "fleet.drivers.manage",
+  FLEET_INSURANCE_MANAGE: "fleet.insurance.manage",
+  FLEET_MAINTENANCE_MANAGE: "fleet.maintenance.manage",
+  FLEET_WORKANDPAY_MANAGE: "fleet.workandpay.manage",
+  FLEET_PAYMENTS_MANAGE: "fleet.payments.manage",
+  FLEET_REPORTS_VIEW: "fleet.reports.view",
+  FLEET_INVESTOR_VIEW: "fleet.investor.view",
+  HIREPURCHASE_VIEW: "hirepurchase.view",
+  HIREPURCHASE_CUSTOMERS_MANAGE: "hirepurchase.customers.manage",
+  HIREPURCHASE_ACCOUNTS_MANAGE: "hirepurchase.accounts.manage",
+  HIREPURCHASE_PAYMENTS_MANAGE: "hirepurchase.payments.manage",
+  HIREPURCHASE_PRODUCTS_MANAGE: "hirepurchase.products.manage",
+  HIREPURCHASE_STAFF_MANAGE: "hirepurchase.staff.manage",
+  HIREPURCHASE_CREDITS_MANAGE: "hirepurchase.credits.manage",
+  HIREPURCHASE_REPORTS_VIEW: "hirepurchase.reports.view",
+  HIREPURCHASE_SETTINGS_MANAGE: "hirepurchase.settings.manage",
+  CRM_VIEW: "crm.view",
+  CRM_CONTACTS_MANAGE: "crm.contacts.manage",
+  CRM_LEADS_MANAGE: "crm.leads.manage",
+  CRM_DEALS_MANAGE: "crm.deals.manage",
+  CRM_REPORTS_VIEW: "crm.reports.view",
+  CRM_SETTINGS_MANAGE: "crm.settings.manage",
+  INVENTORY_VIEW: "inventory.view",
+  INVENTORY_ITEMS_MANAGE: "inventory.items.manage",
+  INVENTORY_WAREHOUSES_MANAGE: "inventory.warehouses.manage",
+  INVENTORY_MOVEMENTS_MANAGE: "inventory.movements.manage",
+  INVENTORY_REPORTS_VIEW: "inventory.reports.view",
+  INVENTORY_SETTINGS_MANAGE: "inventory.settings.manage",
+  ACCOUNTING_VIEW: "accounting.view",
+  ACCOUNTING_ACCOUNTS_MANAGE: "accounting.accounts.manage",
+  ACCOUNTING_INVOICES_MANAGE: "accounting.invoices.manage",
+  ACCOUNTING_EXPENSES_MANAGE: "accounting.expenses.manage",
+  ACCOUNTING_REPORTS_VIEW: "accounting.reports.view",
+  ACCOUNTING_SETTINGS_MANAGE: "accounting.settings.manage",
+  HR_VIEW: "hr.view",
+  HR_EMPLOYEES_MANAGE: "hr.employees.manage",
+  HR_LEAVE_MANAGE: "hr.leave.manage",
+  HR_REVIEWS_MANAGE: "hr.reviews.manage",
+  HR_REPORTS_VIEW: "hr.reports.view",
+  HR_SETTINGS_MANAGE: "hr.settings.manage",
+  PROCUREMENT_VIEW: "procurement.view",
+  PROCUREMENT_VENDORS_MANAGE: "procurement.vendors.manage",
+  PROCUREMENT_REQUESTS_MANAGE: "procurement.requests.manage",
+  PROCUREMENT_ORDERS_MANAGE: "procurement.orders.manage",
+  PROCUREMENT_REPORTS_VIEW: "procurement.reports.view",
+  PROCUREMENT_SETTINGS_MANAGE: "procurement.settings.manage",
+  PAYROLL_VIEW: "payroll.view",
+  PAYROLL_COMPENSATION_MANAGE: "payroll.compensation.manage",
+  PAYROLL_RUNS_MANAGE: "payroll.runs.manage",
+  PAYROLL_PAYSLIPS_VIEW: "payroll.payslips.view",
+  PAYROLL_REPORTS_VIEW: "payroll.reports.view",
+  PAYROLL_SETTINGS_MANAGE: "payroll.settings.manage",
+  ANALYTICS_VIEW: "analytics.view",
+  ANALYTICS_FINANCIAL_VIEW: "analytics.financial.view",
+  ANALYTICS_SALES_VIEW: "analytics.sales.view",
+  ANALYTICS_OPERATIONS_VIEW: "analytics.operations.view",
+  ANALYTICS_PEOPLE_VIEW: "analytics.people.view",
+  ANALYTICS_SETTINGS_MANAGE: "analytics.settings.manage",
+  POS_VIEW: "pos.view",
+  POS_REGISTERS_MANAGE: "pos.registers.manage",
+  POS_SESSIONS_MANAGE: "pos.sessions.manage",
+  POS_SALES_MANAGE: "pos.sales.manage",
+  POS_REPORTS_VIEW: "pos.reports.view",
+  POS_SETTINGS_MANAGE: "pos.settings.manage",
+  PROJECTS_VIEW: "projects.view",
+  PROJECTS_PROJECTS_MANAGE: "projects.projects.manage",
+  PROJECTS_TASKS_MANAGE: "projects.tasks.manage",
+  PROJECTS_MILESTONES_MANAGE: "projects.milestones.manage",
+  PROJECTS_REPORTS_VIEW: "projects.reports.view",
+  PROJECTS_SETTINGS_MANAGE: "projects.settings.manage",
+} as const;
+
+export const ALL_PERMISSIONS = Object.values(PERMISSIONS);
+
+export const SYSTEM_ROLES: { name: string; description: string }[] = [
+  { name: "Super Admin", description: "Platform-level administrator role reserved for Rock Frost operators." },
+  { name: "Organization Owner", description: "Tenant owner with organization administration privileges." },
+  { name: "Fleet Manager", description: "Operational fleet role for vehicles, drivers, maintenance, payments, and reports." },
+  { name: "Driver", description: "Fleet driver role for assigned vehicle access and operational updates." },
+  { name: "Mechanic", description: "Maintenance service role for assigned repair workflows." },
+  { name: "Investor", description: "Read-only stakeholder role for approved portfolio and performance visibility." },
+  { name: "Hire Purchase Manager", description: "Operational Installment role for customers, accounts, payments, products, staff, and reports." },
+  { name: "Hire Purchase Staff", description: "Field sales role scoped to managing their own assigned Installment customers, accounts, and payments." },
+  { name: "CRM Manager", description: "Operational CRM role for contacts, leads, deals, and reports." },
+  { name: "Inventory Manager", description: "Operational Inventory role for items, warehouses, movements, and reports." },
+  { name: "Accounting Manager", description: "Operational Accounting role for the ledger, invoices, expenses, and reports." },
+  { name: "HR Manager", description: "Operational HR role for employees, leave, reviews, and reports." },
+  { name: "Procurement Manager", description: "Operational Procurement role for vendors, requests, orders, and reports." },
+  { name: "Payroll Manager", description: "Operational Payroll role for compensation, runs, payslips, and reports." },
+  { name: "Analytics Manager", description: "Read-only cross-module reporting role." },
+  { name: "POS Cashier", description: "Operational Point of Sale role for registers, sessions, and sales." },
+  { name: "Projects Manager", description: "Operational Project Management role for projects, tasks, and milestones." },
+];
+
+function moduleRolePermissions(keys: (typeof ALL_PERMISSIONS)[number][]) {
+  return [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.AI_ASSISTANT_USE, ...keys];
+}
+
+export const ROLE_PERMISSIONS: Record<string, string[]> = {
+  "Super Admin": ALL_PERMISSIONS,
+  "Organization Owner": ALL_PERMISSIONS,
+  "Fleet Manager": moduleRolePermissions([
+    PERMISSIONS.FLEET_VIEW,
+    PERMISSIONS.FLEET_VEHICLES_MANAGE,
+    PERMISSIONS.FLEET_OWNERS_MANAGE,
+    PERMISSIONS.FLEET_DRIVERS_MANAGE,
+    PERMISSIONS.FLEET_INSURANCE_MANAGE,
+    PERMISSIONS.FLEET_MAINTENANCE_MANAGE,
+    PERMISSIONS.FLEET_WORKANDPAY_MANAGE,
+    PERMISSIONS.FLEET_PAYMENTS_MANAGE,
+    PERMISSIONS.FLEET_REPORTS_VIEW,
+  ]),
+  Driver: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.FLEET_VIEW, PERMISSIONS.FLEET_MAINTENANCE_MANAGE, PERMISSIONS.AI_ASSISTANT_USE],
+  Mechanic: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.FLEET_VIEW, PERMISSIONS.FLEET_MAINTENANCE_MANAGE, PERMISSIONS.AI_ASSISTANT_USE],
+  Investor: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.FLEET_INVESTOR_VIEW, PERMISSIONS.FLEET_REPORTS_VIEW, PERMISSIONS.AI_ASSISTANT_USE],
+  "Hire Purchase Manager": moduleRolePermissions([
+    PERMISSIONS.HIREPURCHASE_VIEW,
+    PERMISSIONS.HIREPURCHASE_CUSTOMERS_MANAGE,
+    PERMISSIONS.HIREPURCHASE_ACCOUNTS_MANAGE,
+    PERMISSIONS.HIREPURCHASE_PAYMENTS_MANAGE,
+    PERMISSIONS.HIREPURCHASE_PRODUCTS_MANAGE,
+    PERMISSIONS.HIREPURCHASE_STAFF_MANAGE,
+    PERMISSIONS.HIREPURCHASE_CREDITS_MANAGE,
+    PERMISSIONS.HIREPURCHASE_REPORTS_VIEW,
+    PERMISSIONS.HIREPURCHASE_SETTINGS_MANAGE,
+  ]),
+  "Hire Purchase Staff": [
+    PERMISSIONS.DASHBOARD_VIEW,
+    PERMISSIONS.HIREPURCHASE_VIEW,
+    PERMISSIONS.HIREPURCHASE_CUSTOMERS_MANAGE,
+    PERMISSIONS.HIREPURCHASE_ACCOUNTS_MANAGE,
+    PERMISSIONS.HIREPURCHASE_PAYMENTS_MANAGE,
+    PERMISSIONS.AI_ASSISTANT_USE,
+  ],
+  "CRM Manager": moduleRolePermissions([
+    PERMISSIONS.CRM_VIEW,
+    PERMISSIONS.CRM_CONTACTS_MANAGE,
+    PERMISSIONS.CRM_LEADS_MANAGE,
+    PERMISSIONS.CRM_DEALS_MANAGE,
+    PERMISSIONS.CRM_REPORTS_VIEW,
+    PERMISSIONS.CRM_SETTINGS_MANAGE,
+  ]),
+  "Inventory Manager": moduleRolePermissions([
+    PERMISSIONS.INVENTORY_VIEW,
+    PERMISSIONS.INVENTORY_ITEMS_MANAGE,
+    PERMISSIONS.INVENTORY_WAREHOUSES_MANAGE,
+    PERMISSIONS.INVENTORY_MOVEMENTS_MANAGE,
+    PERMISSIONS.INVENTORY_REPORTS_VIEW,
+    PERMISSIONS.INVENTORY_SETTINGS_MANAGE,
+  ]),
+  "Accounting Manager": moduleRolePermissions([
+    PERMISSIONS.ACCOUNTING_VIEW,
+    PERMISSIONS.ACCOUNTING_ACCOUNTS_MANAGE,
+    PERMISSIONS.ACCOUNTING_INVOICES_MANAGE,
+    PERMISSIONS.ACCOUNTING_EXPENSES_MANAGE,
+    PERMISSIONS.ACCOUNTING_REPORTS_VIEW,
+    PERMISSIONS.ACCOUNTING_SETTINGS_MANAGE,
+  ]),
+  "HR Manager": moduleRolePermissions([
+    PERMISSIONS.HR_VIEW,
+    PERMISSIONS.HR_EMPLOYEES_MANAGE,
+    PERMISSIONS.HR_LEAVE_MANAGE,
+    PERMISSIONS.HR_REVIEWS_MANAGE,
+    PERMISSIONS.HR_REPORTS_VIEW,
+    PERMISSIONS.HR_SETTINGS_MANAGE,
+  ]),
+  "Procurement Manager": moduleRolePermissions([
+    PERMISSIONS.PROCUREMENT_VIEW,
+    PERMISSIONS.PROCUREMENT_VENDORS_MANAGE,
+    PERMISSIONS.PROCUREMENT_REQUESTS_MANAGE,
+    PERMISSIONS.PROCUREMENT_ORDERS_MANAGE,
+    PERMISSIONS.PROCUREMENT_REPORTS_VIEW,
+    PERMISSIONS.PROCUREMENT_SETTINGS_MANAGE,
+  ]),
+  "Payroll Manager": moduleRolePermissions([
+    PERMISSIONS.PAYROLL_VIEW,
+    PERMISSIONS.PAYROLL_COMPENSATION_MANAGE,
+    PERMISSIONS.PAYROLL_RUNS_MANAGE,
+    PERMISSIONS.PAYROLL_PAYSLIPS_VIEW,
+    PERMISSIONS.PAYROLL_REPORTS_VIEW,
+    PERMISSIONS.PAYROLL_SETTINGS_MANAGE,
+  ]),
+  "Analytics Manager": moduleRolePermissions([
+    PERMISSIONS.ANALYTICS_VIEW,
+    PERMISSIONS.ANALYTICS_FINANCIAL_VIEW,
+    PERMISSIONS.ANALYTICS_SALES_VIEW,
+    PERMISSIONS.ANALYTICS_OPERATIONS_VIEW,
+    PERMISSIONS.ANALYTICS_PEOPLE_VIEW,
+    PERMISSIONS.ANALYTICS_SETTINGS_MANAGE,
+  ]),
+  "POS Cashier": moduleRolePermissions([
+    PERMISSIONS.POS_VIEW,
+    PERMISSIONS.POS_REGISTERS_MANAGE,
+    PERMISSIONS.POS_SESSIONS_MANAGE,
+    PERMISSIONS.POS_SALES_MANAGE,
+    PERMISSIONS.POS_REPORTS_VIEW,
+    PERMISSIONS.POS_SETTINGS_MANAGE,
+  ]),
+  "Projects Manager": moduleRolePermissions([
+    PERMISSIONS.PROJECTS_VIEW,
+    PERMISSIONS.PROJECTS_PROJECTS_MANAGE,
+    PERMISSIONS.PROJECTS_TASKS_MANAGE,
+    PERMISSIONS.PROJECTS_MILESTONES_MANAGE,
+    PERMISSIONS.PROJECTS_REPORTS_VIEW,
+    PERMISSIONS.PROJECTS_SETTINGS_MANAGE,
+  ]),
+};
+
+/** Matches the `key`/`name` pairs in src/platform/modules/registry.ts. Keep in sync when adding a module. */
+export const MODULES: { code: string; name: string }[] = [
+  { code: "fleet", name: "Fleet Management" },
+  { code: "installment", name: "Installment Management" },
+  { code: "crm", name: "Customer Relationship Management" },
+  { code: "inventory", name: "Inventory Management" },
+  { code: "accounting", name: "Accounting" },
+  { code: "hr", name: "Human Resources" },
+  { code: "payroll", name: "Payroll" },
+  { code: "procurement", name: "Procurement" },
+  { code: "projects", name: "Project Management" },
+  { code: "analytics", name: "Analytics" },
+  { code: "pos", name: "Point of Sale" },
+];
+
+/**
+ * Seeds every Permission row, every system Role with its permission grants,
+ * and every Module row (marked ACTIVE). Idempotent — safe to call
+ * repeatedly against the same database (used both by the one-shot CLI seed
+ * and, per-suite, by integration test fixtures against the disposable test
+ * database).
+ */
+export async function seedPlatform(db: PrismaClient, options: { log?: boolean } = {}) {
+  const log = options.log ?? true;
+
+  for (const key of ALL_PERMISSIONS) {
+    await db.permission.upsert({ where: { key }, update: {}, create: { key, name: key } });
+  }
+  if (log) console.log(`Upserted ${ALL_PERMISSIONS.length} permissions.`);
+
+  for (const role of SYSTEM_ROLES) {
+    const existing = await db.role.findFirst({ where: { organizationId: null, name: role.name } });
+    if (!existing) {
+      await db.role.create({ data: { name: role.name, description: role.description, isSystem: true, organizationId: null } });
+    }
+  }
+
+  const roles = await db.role.findMany({ where: { isSystem: true, organizationId: null } });
+  const permissions = await db.permission.findMany();
+  const permissionByKey = new Map(permissions.map((p) => [p.key, p]));
+
+  for (const role of roles) {
+    const keys = ROLE_PERMISSIONS[role.name];
+    if (!keys) {
+      if (log) console.warn(`No permission mapping defined for role "${role.name}", skipping.`);
+      continue;
+    }
+
+    for (const key of keys) {
+      const permission = permissionByKey.get(key);
+      if (!permission) continue;
+      await db.rolePermission.upsert({
+        where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } },
+        update: {},
+        create: { roleId: role.id, permissionId: permission.id },
+      });
+    }
+    if (log) console.log(`Seeded ${keys.length} permission grants for role "${role.name}".`);
+  }
+
+  for (const mod of MODULES) {
+    await db.module.upsert({
+      where: { code: mod.code },
+      update: { name: mod.name, status: "ACTIVE" },
+      create: { code: mod.code, name: mod.name, status: "ACTIVE", isCore: false },
+    });
+  }
+  if (log) console.log(`Upserted ${MODULES.length} modules (all ACTIVE).`);
+}

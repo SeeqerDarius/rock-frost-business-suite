@@ -10,6 +10,11 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["test/**/*.test.ts"],
+    // Non-recursive: only picks up test/*.test.ts (the mocked-db unit
+    // suite), never test/integration/**/*.test.ts or test/e2e/**/*.test.ts
+    // — those are real-database suites with their own configs
+    // (vitest.integration.config.ts) and must never run as a side effect
+    // of a plain `npm run test`.
+    include: ["test/*.test.ts"],
   },
 });

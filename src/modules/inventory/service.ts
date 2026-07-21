@@ -73,7 +73,13 @@ interface ItemInput {
 
 export class ItemSkuTakenError extends Error {}
 
+async function requireCategory(organizationId: string, categoryId: string) {
+  const category = await db.inventoryCategory.findFirst({ where: { id: categoryId, organizationId } });
+  if (!category) throw new NotFoundError("Category not found.");
+}
+
 export async function createItem(organizationId: string, data: ItemInput) {
+  if (data.categoryId) await requireCategory(organizationId, data.categoryId);
   try {
     return await db.inventoryItem.create({ data: { organizationId, ...data } });
   } catch (error) {
@@ -85,6 +91,7 @@ export async function createItem(organizationId: string, data: ItemInput) {
 }
 
 export async function updateItem(organizationId: string, id: string, data: ItemInput) {
+  if (data.categoryId) await requireCategory(organizationId, data.categoryId);
   try {
     return await db.inventoryItem.update({ where: { id, organizationId }, data });
   } catch (error) {

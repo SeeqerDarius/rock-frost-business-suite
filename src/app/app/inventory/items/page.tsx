@@ -18,6 +18,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage items.",
   "missing-fields": "SKU, name, and cost price are required.",
   "sku-taken": "That SKU is already in use by another item.",
+  "not-found": "That category could not be found.",
 };
 
 interface ItemFieldsProps {

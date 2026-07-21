@@ -11,7 +11,11 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "test:integration": "cross-env ALLOW_INTEGRATION_TESTS=1 vitest run --config vitest.integration.config.ts",
+    "test:all": "npm run test && npm run test:integration",
     "db:seed": "tsx prisma/seed.ts",
+    "db:test:migrate": "cross-env ALLOW_INTEGRATION_TESTS=1 tsx scripts/test-db-migrate.ts",
+    "db:test:seed": "cross-env ALLOW_INTEGRATION_TESTS=1 tsx scripts/test-db-seed.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {
@@ -48,6 +52,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "cross-env": "^7.0.3",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",

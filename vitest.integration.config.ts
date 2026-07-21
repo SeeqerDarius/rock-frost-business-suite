@@ -1,0 +1,34 @@
+import { defineConfig } from "vitest/config";
+import path from "node:path";
+
+/**
+ * Real-PostgreSQL integration/concurrency test config — separate from
+ * vitest.config.ts (the mocked-db unit suite) on purpose. Run via
+ * `npm run test:integration`, which sets ALLOW_INTEGRATION_TESTS=1;
+ * test/integration/setup/guard.ts refuses to run without it.
+ *
+ * Single fork, no file parallelism: every suite writes real rows to one
+ * shared disposable database, and while each suite creates its own
+ * isolated organization, running whole test *files* concurrently against
+ * one Postgres instance adds connection-pool pressure and cross-file
+ * interleaving that isn't worth the speed here. Concurrency *within* a
+ * single test (the actual thing being tested) still uses real
+ * Promise.all() against real overlapping transactions.
+ */
+export default defineConfig({
+  resolve: {
+    alias: {
+      "server-only": path.resolve(__dirname, "test/stubs/server-only.ts"),
+      "@": path.resolve(__dirname, "src"),
+    },
+  },
+  test: {
+    environment: "node",
+    include: ["test/integration/**/*.test.ts"],
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
+    pool: "forks",
+    poolOptions: { forks: { singleFork: true } },
+    fileParallelism: false,
+  },
+});

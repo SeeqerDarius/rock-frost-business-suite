@@ -6,22 +6,21 @@ on:
   pull_request:
     branches: [main]
 
-# A placeholder, unreachable DATABASE_URL/DIRECT_URL is intentional here —
-# `prisma validate` and `prisma generate` only need the schema file and a
-# syntactically-present datasource url; neither actually connects to a
-# database. Do not point these at a real database from CI. If a future step
-# ever needs a live connection (e.g. `prisma migrate deploy` against a
-# disposable CI database), add it as a separate job with a real service
-# container rather than changing what these placeholders point at.
-env:
-  DATABASE_URL: postgresql://ci:ci@localhost:5432/ci_placeholder
-  DIRECT_URL: postgresql://ci:ci@localhost:5432/ci_placeholder
-  NEXTAUTH_URL: http://localhost:3000
-  NEXTAUTH_SECRET: ci-placeholder-secret-not-for-real-use
-
 jobs:
+  # Fast checks that don't need a live database: lint, types, schema shape,
+  # the mocked-db unit suite, and the production build. A placeholder,
+  # unreachable DATABASE_URL/DIRECT_URL is intentional here — `prisma
+  # validate`/`generate` only need the schema file and a syntactically
+  # present datasource url, never an actual connection, and the mocked-db
+  # unit suite (vitest.config.ts, test/*.test.ts) never touches Postgres
+  # either. Real-database checks live in the `integration` job below.
   validate:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci_placeholder
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/ci_placeholder
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ci-placeholder-secret-not-for-real-use
     steps:
       - uses: actions/checkout@v4
 
@@ -42,8 +41,58 @@ jobs:
       - name: Validate Prisma schema
         run: npx prisma validate
 
-      - name: Unit/integration tests
+      - name: Unit tests (mocked database)
         run: npm run test
 
       - name: Production build
         run: npm run build
+
+  # Real-PostgreSQL integration/concurrency suite (test/integration/**),
+  # against a genuinely disposable database that exists only for the
+  # lifetime of this job — a fresh Postgres service container, not any
+  # persistent instance. test/integration/setup/guard.ts independently
+  # refuses to run unless TEST_DATABASE_URL's database name contains
+  # "test" and differs from DATABASE_URL, so even a misconfigured job here
+  # cannot point these tests at anything but this container.
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rockfrost_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Deliberately NOT used by the integration suite itself (it only ever
+      # reads TEST_DATABASE_URL) — set here only because `prisma generate`
+      # runs during `npm ci`'s postinstall and needs a syntactically valid
+      # datasource url present, same as the validate job above.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci_placeholder
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/ci_placeholder
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rockfrost_test
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ci-placeholder-secret-not-for-real-use
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Migrate the disposable test database
+        run: npm run db:test:migrate
+
+      - name: Real-PostgreSQL integration and concurrency tests
+        run: npm run test:integration
