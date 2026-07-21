@@ -21,7 +21,7 @@ export async function sendEmail(args: { to: string; subject: string; html: strin
   const from = process.env.RESEND_FROM_EMAIL;
 
   if (!resend || !from) {
-    console.warn(`[email] Not configured — would have sent "${args.subject}" to ${args.to}`);
+    console.warn(`[email] Not configured, would have sent "${args.subject}" to ${args.to}`);
     return { ok: false, error: "Email delivery is not configured yet." };
   }
 
