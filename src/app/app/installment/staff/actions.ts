@@ -4,7 +4,13 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createStaff, updateStaff, recordStaffSalaryPayment } from "@/modules/installment/service";
+import {
+  createStaff,
+  updateStaff,
+  recordStaffSalaryPayment,
+  NotFoundError,
+  InvalidPaymentAmountError,
+} from "@/modules/installment/service";
 import { getServerAuthSession } from "@/lib/auth/session";
 
 function clean(value: FormDataEntryValue | null) {
@@ -63,14 +69,20 @@ export async function recordSalaryPayment(formData: FormData): Promise<void> {
   }
 
   const session = await getServerAuthSession();
-  await recordStaffSalaryPayment(tenant.organizationId, {
-    staffId,
-    amount,
-    paymentDate: new Date(paymentDateRaw),
-    salaryMonth: new Date(`${salaryMonthRaw}-01`),
-    notes: clean(formData.get("notes")),
-    paidBy: session?.user?.name ?? session?.user?.email ?? null,
-  });
+  try {
+    await recordStaffSalaryPayment(tenant.organizationId, {
+      staffId,
+      amount,
+      paymentDate: new Date(paymentDateRaw),
+      salaryMonth: new Date(`${salaryMonthRaw}-01`),
+      notes: clean(formData.get("notes")),
+      paidBy: session?.user?.name ?? session?.user?.email ?? null,
+    });
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/installment/staff?error=not-found");
+    if (error instanceof InvalidPaymentAmountError) redirect("/app/installment/staff?error=invalid-amount");
+    throw error;
+  }
 
   revalidatePath("/app/installment/staff");
   redirect("/app/installment/staff?saved=1");

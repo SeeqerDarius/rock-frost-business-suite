@@ -2,14 +2,19 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createLeaveType } from "@/modules/hr/service";
+import { shortText, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
   return str.length > 0 ? str : null;
 }
+
+/** Days-per-year is a small non-negative whole number — `positiveInt` doesn't fit since 0 (no default allotment) is valid. */
+const nonNegativeInt = z.coerce.number().int().min(0);
 
 export async function addLeaveType(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
@@ -17,16 +22,19 @@ export async function addLeaveType(formData: FormData): Promise<void> {
     redirect("/app/hr/settings?error=forbidden");
   }
 
-  const name = clean(formData.get("name"));
-  const defaultDaysPerYearRaw = clean(formData.get("defaultDaysPerYear"));
-  if (!name) {
+  const parsed = parseWithSchema(
+    z.object({ name: shortText, defaultDaysPerYear: nonNegativeInt }),
+    {
+      name: clean(formData.get("name")) ?? "",
+      defaultDaysPerYear: clean(formData.get("defaultDaysPerYear")) ?? "0",
+    },
+  );
+  if (!parsed.success) {
     redirect("/app/hr/settings?error=missing-fields");
   }
+  const { name, defaultDaysPerYear } = parsed.data;
 
-  await createLeaveType(tenant.organizationId, {
-    name,
-    defaultDaysPerYear: defaultDaysPerYearRaw ? Number.parseInt(defaultDaysPerYearRaw, 10) : 0,
-  });
+  await createLeaveType(tenant.organizationId, { name, defaultDaysPerYear });
   revalidatePath("/app/hr/settings");
   revalidatePath("/app/hr/leave");
   redirect("/app/hr/settings?saved=1");

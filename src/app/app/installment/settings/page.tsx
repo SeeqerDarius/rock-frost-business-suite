@@ -11,7 +11,17 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getInstallmentSettings } from "@/modules/installment/service";
 import { saveInstallmentSettings } from "./actions";
 
-export default async function InstallmentSettingsPage() {
+const ERROR_MESSAGES: Record<string, string> = {
+  forbidden: "You don't have permission to manage Installment settings.",
+  "invalid-settings": "Percentages must be between 0 and 100, and money defaults must be zero or positive.",
+};
+
+export default async function InstallmentSettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ saved?: string; error?: string }>;
+}) {
+  const { saved, error } = await searchParams;
   const tenant = await requireCurrentTenant();
 
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_SETTINGS_MANAGE)) {
@@ -28,6 +38,17 @@ export default async function InstallmentSettingsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Installment Settings" description="Module-wide configuration for Installment Management." />
+
+      {saved ? (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
+          Saved.
+        </div>
+      ) : null}
+      {error && ERROR_MESSAGES[error] ? (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {ERROR_MESSAGES[error]}
+        </div>
+      ) : null}
 
       <form action={saveInstallmentSettings} className="space-y-6">
         <Card>

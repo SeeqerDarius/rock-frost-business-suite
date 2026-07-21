@@ -1,16 +1,27 @@
 "use server";
 
+import { z } from "zod";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { createManualJournalEntry, JournalNotBalancedError, NotFoundError } from "@/modules/accounting/service";
+import { moneyAmount, shortText, longText, cuid, dateInput, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
   return str.length > 0 ? str : null;
 }
+
+const journalEntrySchema = z.object({
+  entryDate: dateInput,
+  description: shortText,
+  debitAccountId: cuid,
+  creditAccountId: cuid,
+  amount: moneyAmount,
+  reference: longText.nullable().optional(),
+});
 
 export async function createJournalEntry(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
@@ -18,15 +29,19 @@ export async function createJournalEntry(formData: FormData): Promise<void> {
     redirect("/app/accounting/journal?error=forbidden");
   }
 
-  const entryDateRaw = clean(formData.get("entryDate"));
-  const description = clean(formData.get("description"));
-  const debitAccountId = clean(formData.get("debitAccountId"));
-  const creditAccountId = clean(formData.get("creditAccountId"));
-  const amount = clean(formData.get("amount"));
-
-  if (!entryDateRaw || !description || !debitAccountId || !creditAccountId || !amount) {
+  const parsed = parseWithSchema(journalEntrySchema, {
+    entryDate: clean(formData.get("entryDate")),
+    description: clean(formData.get("description")),
+    debitAccountId: clean(formData.get("debitAccountId")),
+    creditAccountId: clean(formData.get("creditAccountId")),
+    amount: clean(formData.get("amount")),
+    reference: clean(formData.get("reference")),
+  });
+  if (!parsed.success) {
     redirect("/app/accounting/journal?error=missing-fields");
   }
+  const { entryDate, description, debitAccountId, creditAccountId, amount, reference } = parsed.data;
+
   if (debitAccountId === creditAccountId) {
     redirect("/app/accounting/journal?error=same-account");
   }
@@ -35,9 +50,9 @@ export async function createJournalEntry(formData: FormData): Promise<void> {
 
   try {
     await createManualJournalEntry(tenant.organizationId, {
-      entryDate: new Date(`${entryDateRaw}T00:00:00`),
+      entryDate,
       description,
-      reference: clean(formData.get("reference")),
+      reference: reference ?? null,
       createdById: session?.user?.id ?? null,
       lines: [
         { accountId: debitAccountId, debit: amount },

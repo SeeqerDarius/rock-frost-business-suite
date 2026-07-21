@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
@@ -13,11 +14,18 @@ import {
   NoCompensationError,
   NotFoundError,
 } from "@/modules/payroll/service";
+import { cuid, dateInput, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
   return str.length > 0 ? str : null;
 }
+
+const createRunSchema = z.object({
+  periodStart: dateInput,
+  periodEnd: dateInput,
+  payDate: dateInput,
+});
 
 export async function createNewRun(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
@@ -25,18 +33,21 @@ export async function createNewRun(formData: FormData): Promise<void> {
     redirect("/app/payroll/runs?error=forbidden");
   }
 
-  const periodStartRaw = clean(formData.get("periodStart"));
-  const periodEndRaw = clean(formData.get("periodEnd"));
-  const payDateRaw = clean(formData.get("payDate"));
-  if (!periodStartRaw || !periodEndRaw || !payDateRaw) {
+  const parsed = parseWithSchema(createRunSchema, {
+    periodStart: clean(formData.get("periodStart")),
+    periodEnd: clean(formData.get("periodEnd")),
+    payDate: clean(formData.get("payDate")),
+  });
+  if (!parsed.success) {
     redirect("/app/payroll/runs?error=missing-fields");
   }
+  const { periodStart, periodEnd, payDate } = parsed.data;
 
   const session = await getServerAuthSession();
   await createRun(tenant.organizationId, {
-    periodStart: new Date(`${periodStartRaw}T00:00:00`),
-    periodEnd: new Date(`${periodEndRaw}T00:00:00`),
-    payDate: new Date(`${payDateRaw}T00:00:00`),
+    periodStart,
+    periodEnd,
+    payDate,
     createdById: session?.user?.id ?? null,
   });
 
@@ -44,13 +55,16 @@ export async function createNewRun(formData: FormData): Promise<void> {
   redirect("/app/payroll/runs?saved=1");
 }
 
+const idSchema = z.object({ id: cuid });
+
 export async function processExistingRun(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
   if (!hasPermission(tenant, PERMISSIONS.PAYROLL_RUNS_MANAGE)) {
     redirect("/app/payroll/runs?error=forbidden");
   }
-  const id = clean(formData.get("id"));
-  if (!id) return;
+  const parsed = parseWithSchema(idSchema, { id: clean(formData.get("id")) });
+  if (!parsed.success) return;
+  const { id } = parsed.data;
 
   try {
     await processRun(tenant.organizationId, id);
@@ -71,8 +85,9 @@ export async function cancelExistingRun(formData: FormData): Promise<void> {
   if (!hasPermission(tenant, PERMISSIONS.PAYROLL_RUNS_MANAGE)) {
     redirect("/app/payroll/runs?error=forbidden");
   }
-  const id = clean(formData.get("id"));
-  if (!id) return;
+  const parsed = parseWithSchema(idSchema, { id: clean(formData.get("id")) });
+  if (!parsed.success) return;
+  const { id } = parsed.data;
 
   try {
     await cancelRun(tenant.organizationId, id);

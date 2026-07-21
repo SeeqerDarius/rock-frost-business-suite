@@ -5,11 +5,23 @@ import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createProduct, updateProduct, createProductCategory, ProductPriceError } from "@/modules/installment/service";
+import { shortText, longText, moneyAmount, moneyAmountNonNegative, positiveInt, parseWithSchema } from "@/lib/validation";
+import { z } from "zod";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
   return str.length > 0 ? str : null;
 }
+
+const productSchema = z.object({
+  name: shortText,
+  category: shortText,
+  description: longText.optional(),
+  costPrice: moneyAmount,
+  transportCost: moneyAmountNonNegative,
+  dailyAmount: moneyAmount,
+  duration: positiveInt,
+});
 
 export async function upsertProduct(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
@@ -28,14 +40,27 @@ export async function upsertProduct(formData: FormData): Promise<void> {
     redirect("/app/installment/products?error=missing-fields");
   }
 
-  const input = {
+  const parsed = parseWithSchema(productSchema, {
     name,
     category,
-    description: clean(formData.get("description")),
+    description: clean(formData.get("description")) ?? undefined,
     costPrice,
     transportCost: clean(formData.get("transportCost")) ?? "0",
     dailyAmount,
-    duration: Number.parseInt(durationRaw, 10),
+    duration: durationRaw,
+  });
+  if (!parsed.success) {
+    redirect("/app/installment/products?error=invalid-input");
+  }
+
+  const input = {
+    name: parsed.data.name,
+    category: parsed.data.category,
+    description: parsed.data.description ?? null,
+    costPrice: parsed.data.costPrice,
+    transportCost: parsed.data.transportCost,
+    dailyAmount: parsed.data.dailyAmount,
+    duration: parsed.data.duration,
   };
 
   try {

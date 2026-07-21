@@ -2,15 +2,18 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { refundSale, SaleStateError, NotFoundError } from "@/modules/pos/service";
+import { cuid, parseWithSchema } from "@/lib/validation";
 
-function clean(value: FormDataEntryValue | null) {
-  const str = String(value ?? "").trim();
-  return str.length > 0 ? str : null;
+function clean(value: FormDataEntryValue | null): string {
+  return String(value ?? "").trim();
 }
+
+const idSchema = z.object({ id: cuid });
 
 export async function refundExistingSale(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
@@ -18,8 +21,9 @@ export async function refundExistingSale(formData: FormData): Promise<void> {
     redirect("/app/pos/sales?error=forbidden");
   }
 
-  const id = clean(formData.get("id"));
-  if (!id) return;
+  const parsedId = parseWithSchema(idSchema, { id: clean(formData.get("id")) });
+  if (!parsedId.success) return;
+  const { id } = parsedId.data;
 
   const session = await getServerAuthSession();
   try {

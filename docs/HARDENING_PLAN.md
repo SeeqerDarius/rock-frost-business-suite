@@ -40,12 +40,22 @@ lost-update race in Fleet's Work & Pay payment recording matching the exact
 pattern Pass 2 fixed elsewhere. See the "Pass 3b" section below for full
 detail.
 
-**Pass 3c+ — not started.** See "Remaining work (Pass 3c+)" near the bottom
-for the full list: Zod validation for the remaining ~45 Server Action files
-(Pass 3b covered the two highest-risk unauthenticated/admin surfaces, not
-every mutating action in the app), Decimal-precision hygiene, reproducible
-seeding/CI, and the narrow residual concurrency races documented per-fix in
-the Pass 2 section above.
+**Pass 3c — complete** (2026-07-21): full IDOR audit of Installment's
+remaining ~40 functions and POS register/session setup; Zod validation
+rolled out across the remaining ~45 Server Action files; bounded
+Decimal-precision hygiene in Accounting/Payroll/Installment (every derived
+monetary value that gets written to the database, plus the ledger's core
+debit=credit invariant, now uses `Prisma.Decimal` instead of JS `Number`);
+reproducible seeding/CI (`.env.example`, `.nvmrc`, GitHub Actions workflow,
+committed idempotent `prisma/seed.ts`); stale Phase-1-era documentation
+(`README.md`, `docs/ARCHITECTURE.md`, `docs/DATABASE_STRATEGY.md`)
+corrected to reflect current reality. See the "Pass 3c" section below for
+full detail.
+
+**Pass 4+ — not started.** See "Remaining work" near the bottom for what's
+left: the residual concurrency races documented per-fix in Pass 2 (never
+fully closed — would need row-level locking or serializable transactions),
+audit logging, performance, and accessibility.
 
 ---
 
@@ -618,49 +628,155 @@ this fix), persists every submission regardless of delivery outcome, and
 rate-limits an immediate resubmission from the same email. Test data cleaned
 up afterward via a one-off script.
 
-## Remaining work (Pass 3c+, not started)
+## Pass 3c — remaining IDOR audit, full Zod rollout, Decimal hygiene, reproducible seeding/CI (complete)
 
-### Remaining Zod validation surface
+**Status: fixed**, closing out every item Pass 3b's "Remaining work" section
+listed as still open.
 
-Pass 3b applied the shared validation library to exactly two targets: the
-public contact form and the Administration invite form — the highest-risk
-unauthenticated and admin-privileged surfaces. The other ~45 mutating Server
-Action files across every module still rely on `String(...).trim()`/
-`parseInt`/`parseFloat`/`new Date(...)`/enum casts with no Zod schema. This is
-lower urgency than it first appears: Pass 2 already added targeted numeric/
-amount validation *inside the service layer* for every financial module
-(POS, Inventory, Procurement, Accounting, Payroll, Installment, and now
-Fleet's Work & Pay), so the load-bearing correctness guarantee already exists
-there — what's missing is the friendlier, earlier rejection and general input
-hygiene (string length limits, enum membership, email format) a Zod schema at
-the Server Action boundary would add. Worth doing eventually; not a
-distinct open vulnerability the way the IDOR/atomicity gaps were.
+### Installment full IDOR audit + POS register/session audit
 
-### Remaining IDOR audit surface
+Line-by-line audit of every function in `src/modules/installment/service.ts`
+(the largest, oldest service file in the codebase) beyond the two functions
+Pass 2 already covered (`createAccount`, `updateCustomer`). Found and fixed:
+`recordStaffSalaryPayment()` (unchecked `staffId`, unvalidated amount),
+`adjustStaffInventory()` (unchecked `staffId`/`productId` — zero real callers
+today, fixed anyway for defense-in-depth since it's an exported service
+function), and `updateInstallmentSettings()` (no bounds checking at all on
+percentage/money settings that feed directly into admin-fee/refund/commission
+math — new `InvalidSettingsError`). POS's `createRegister()`/`updateRegister()`
+now validate `warehouseId` belongs to the organization (new
+`validateWarehouseRef()` helper in `src/modules/pos/service.ts`).
 
-POS register/session setup beyond what Pass 2 fixed, and Installment's ~40
-functions beyond `createAccount()`/`updateCustomer()`, still warrant a
-line-by-line pass — Installment is the largest, oldest, most complex service
-file in the codebase (1100+ lines) and was only partially covered in Pass 2.
+### Zod validation — full rollout
 
-### Automated tests / reproducible setup (partially started)
+Every remaining mutating Server Action file (all ~45 Pass 3b left
+unconverted, across Accounting, Payroll, Procurement, POS, Inventory,
+Projects, Fleet, Installment, Platform, Notifications, and the untouched
+exports of `src/lib/tenant/actions.ts`/`src/lib/auth/actions.ts`) now
+validates its FormData input through the shared schemas in
+`src/lib/validation.ts` before calling into the service layer — money fields
+via `moneyAmount`/`moneyAmountNonNegative`, quantities via `positiveInt`,
+percentages via `percent0to100`, emails via `email`, names/titles via
+`shortText`, notes/descriptions via `longText`, date-picker fields via
+`dateInput`, and foreign-id fields via `cuid` for well-formedness (the actual
+IDOR protection remains the organization-scoped `service.ts` lookup — `cuid`
+here is defense-in-depth, not the security boundary). Most files reused an
+existing `?error=` slug already in the page's error map (typically
+`missing-fields`); a handful of pages that previously had no generic
+validation-failure slug gained a new `invalid-input` entry.
 
-86 tests across 9 files as of Pass 3b (27 Pass 1, 18 Pass 2, 13 Pass 3a, 28
-Pass 3b). Still mocked-`db` tests, not integration tests against a real
-database transaction under actual concurrent load — see Pass 2's note above,
-unchanged. Reproducible platform seeding (`.env.example`, committed RBAC/module
-seed script, CI workflow, Node version pin) remains untouched.
+### Decimal-precision hygiene (bounded, not a blanket rewrite)
 
-### Audit logging, performance, accessibility, documentation accuracy
+Rather than converting every `Number(...)` call site across Accounting,
+Payroll, and Installment (~80 sites, many of them read-only reporting/
+dashboard aggregations recomputed fresh on every request — no compounding
+risk, low value to touch), this pass converted specifically the sites where
+a JS-float-computed value gets **written to the database** or decides a
+**core business invariant**, since those are the two places float rounding
+error becomes a real, persisted, or safety-relevant problem:
 
-All confirmed in the audit, all deferred to a later pass — none are blocking
-correctness or safety in the way tenant isolation, session revocation, and the
-IDOR/financial-integrity issues were.
+- **Accounting** (`src/modules/accounting/service.ts`): `postJournalEntry()`'s
+  debit=credit balance check — the core double-entry invariant for the whole
+  ledger — now compares `Prisma.Decimal` sums exactly, replacing a `Math.abs(...)
+  > 0.005` epsilon fudge-factor that existed specifically to work around float
+  error. `computeBalance()` (every account's displayed balance) sums its
+  journal lines via `Decimal` rather than `Number`, since an account can
+  accumulate thousands of lines over its lifetime and summation error
+  compounds across many terms in a way a single arithmetic op doesn't.
+  `recordInvoicePayment()`'s remaining-balance guard and fully-paid check are
+  now exact `Decimal` comparisons, removing another `0.005` epsilon hack.
+- **Payroll** (`src/modules/payroll/service.ts`): `processRun()`'s
+  grossPay/taxDeduction/netPay computation (written straight into each
+  `PayrollPayslip` row) now uses `Prisma.Decimal` arithmetic throughout.
+- **Installment** (`src/modules/installment/service.ts`): every derived value
+  that gets persisted now uses `Decimal` — `createAccount()`'s
+  targetAmount/adminFee/initial-balance computation, `recordPayment()`'s
+  overpayment-clamp and credit-amount derivation, `applyCreditToAccount()`'s
+  partial-application math, the closure-refund and reactivation service-fee
+  calculations, and `computeProductPrice()`'s price-floor check.
+- **Deliberately left as `Number`**: read-only reporting/dashboard
+  aggregations in all three modules (outstanding totals, win-rate
+  percentages, collection summaries) — these are recomputed fresh from the
+  database on every request rather than accumulated over time, so there's no
+  compounding-error risk, and converting them adds review surface for no
+  correctness benefit.
 
-### Decimal precision
+### Reproducible seeding/CI
 
-Accounting/Payroll/Installment still convert `Decimal` fields to JS `Number`
-throughout for arithmetic. A large, cross-cutting refactor; not started.
+- `.env.example` documents every required environment variable with
+  placeholder values and explanatory comments (including that Resend email
+  degrades gracefully to console-logging when unconfigured).
+- `.nvmrc` + `package.json`'s `engines.node` pin the Node version.
+- `prisma/seed.ts` (new, committed, idempotent): upserts every `Permission`
+  row, every system `Role` with its permission grants, and every `Module`
+  row — verified via two real runs against the live database confirming
+  identical output (76 permissions, correct per-role grant counts, 11
+  modules, no errors) on the second run. Wired up via `npm run db:seed` and
+  the `prisma.seed` config key (so `npx prisma db seed` also works). Does
+  *not* create tenant-level data (a demo organization/users) — that remains a
+  separate concern from platform-level RBAC/module bootstrap.
+- `.github/workflows/ci.yml`: lint → typecheck → `prisma validate` → test →
+  build, using placeholder env vars (documented as intentionally fake, since
+  `prisma validate`/`generate` don't require live database connectivity) —
+  not yet verified against a real GitHub Actions run (no way to trigger one
+  from this environment).
+- Stale Phase-1-era claims in `README.md`, `docs/ARCHITECTURE.md`, and
+  `docs/DATABASE_STRATEGY.md` (all still describing a UI-only shell with "no
+  Prisma," "no real auth," "database not yet touched") replaced with accurate
+  current-state sections.
+
+**Files changed:** `.env.example`, `.nvmrc`, `.github/workflows/ci.yml`
+(all new); `prisma/seed.ts` (new); `package.json` (`engines`, `db:seed`
+script, `prisma.seed` config, `tsx` devDependency); `README.md`,
+`docs/ARCHITECTURE.md`, `docs/DATABASE_STRATEGY.md`; every remaining Server
+Action file across Accounting/Payroll/Procurement/POS/Inventory/Projects/
+Fleet/Installment/Platform/Notifications plus their `page.tsx` error maps;
+`src/lib/tenant/actions.ts`, `src/lib/auth/actions.ts`; `src/modules/
+{accounting,payroll,installment,pos}/service.ts`; `test/pass3c-installment-
+pos-decimal.test.ts` (new, 15 tests).
+
+**Migration impact:** none this pass (no schema change — the Decimal work is
+pure arithmetic-library substitution against existing `Decimal`-typed
+columns).
+
+**Verification:** `npx tsc --noEmit`, `npm run lint`, `npx prisma validate`,
+`npx vitest run` (101 tests across 10 files, all passing), and `npm run
+build` (full production build, all 101 routes) all pass clean.
+
+## Remaining work (Pass 4+, not started)
+
+### Documented residual concurrency risks
+
+Unchanged from Pass 2 (see that section above) — `recordInvoicePayment()`'s
+remaining-balance guard and `recordPayment()`'s clamp-then-flip step still
+read a pre-transaction snapshot for their *derived* checks (the primary
+`amountPaid`/`totalPaid`/`balance` figures themselves are never wrong, since
+those are atomic increments/decrements). Closing this fully needs row-level
+locking (`SELECT ... FOR UPDATE`) or serializable transaction isolation —
+judged disproportionate to hold up Pass 2, still true after Pass 3c.
+
+### Automated tests: still mocked-`db`, not real-transaction integration tests
+
+101 tests across 10 files as of Pass 3c (27 Pass 1, 18 Pass 2, 13 Pass 3a, 28
+Pass 3b, 15 Pass 3c). All mock `@/lib/db` rather than exercising a real
+Postgres transaction under actual concurrent load — the atomic-`updateMany`/
+`increment`/`decrement` patterns are verified structurally (the right SQL
+shape gets sent) but not under genuine race conditions. A future pass could
+add a small integration suite against a real (test) database with actual
+concurrent requests to validate the residual-race analysis above empirically.
+
+### Audit logging, performance, accessibility
+
+All confirmed in the original audit, all deferred — none are blocking
+correctness or safety in the way tenant isolation, session revocation, and
+the IDOR/financial-integrity issues were.
+
+### CI workflow — unverified against a real run
+
+`.github/workflows/ci.yml` was added and reasoned through carefully but has
+never actually executed on GitHub's infrastructure (this environment can't
+trigger one). Worth confirming on the next real push before relying on it as
+a merge gate.
 
 ---
 

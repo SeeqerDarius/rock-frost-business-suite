@@ -4,6 +4,12 @@ import { db } from "@/lib/db";
 import { recordMovement, getStockGrid, InsufficientStockError, NotFoundError } from "@/modules/inventory/service";
 import type { PosPaymentMethod } from "@prisma/client";
 
+async function validateWarehouseRef(organizationId: string, warehouseId?: string | null) {
+  if (!warehouseId) return;
+  const warehouse = await db.inventoryWarehouse.findFirst({ where: { id: warehouseId, organizationId } });
+  if (!warehouse) throw new NotFoundError("Warehouse not found.");
+}
+
 export { InsufficientStockError, NotFoundError };
 
 /**
@@ -34,11 +40,13 @@ interface RegisterInput {
   active?: boolean;
 }
 
-export function createRegister(organizationId: string, data: RegisterInput) {
+export async function createRegister(organizationId: string, data: RegisterInput) {
+  await validateWarehouseRef(organizationId, data.warehouseId);
   return db.posRegister.create({ data: { organizationId, ...data } });
 }
 
-export function updateRegister(organizationId: string, id: string, data: RegisterInput) {
+export async function updateRegister(organizationId: string, id: string, data: RegisterInput) {
+  await validateWarehouseRef(organizationId, data.warehouseId);
   return db.posRegister.update({ where: { id, organizationId }, data });
 }
 

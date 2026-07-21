@@ -2,27 +2,35 @@
 
 ## Current state
 
-**The live Neon Postgres database was not touched by this rebuild.** Only application code was replaced (see `docs/DECISIONS.md`). `prisma/schema.prisma` still reflects the previous implementation's schema exactly, and the actual database still holds that schema and its data.
+`prisma/schema.prisma` is the real, live-in-use schema for this rebuild — 70+ models across every business module, all reconnected/redesigned since Phase 3. This document described Phase 1's "not yet touched" state (2026-07-19); none of it has been true since. For the current authoritative model-by-model breakdown, read the schema file directly and `docs/MODULE_BOUNDARIES.md` for the isolation rules every model follows, rather than this document — the sections below now describe *process*, not a stale inventory.
 
-`src/` currently contains **zero** references to Prisma or the database — no page queries anything, no service layer exists yet. This is intentional: Phase 1 (see `docs/DEVELOPMENT_ROADMAP.md`) is UI shells only.
+## Migration workflow (mandatory)
 
-## What's in the existing schema (inherited, not yet re-validated against the new architecture)
+**Always use the safe, read-only-diff workflow — never `npx prisma migrate dev` against the shared Neon database.** `migrate dev` detects a pre-existing drift between the live database's migration history and older/removed local state and offers to reset the entire database; that offer must never be accepted.
 
-Multi-tenant platform models (`Organization`, `Branch`, `OrganizationMember`, `Role`, `Permission`, `RolePermission`, `AuditLog`, `Notification`, `FileAsset`, NextAuth-compatible `User`/`Account`/`Session`), plus the previous Fleet module's models (`FleetOwner`, `FleetDriver`, `FleetVehicle`, `FleetVehicleDocument`, `FleetMaintenanceRequest`, `FleetPayment`, `FleetWorkAndPayContract`). No Installment/Hire-Purchase models exist in the schema — that module was never migrated to a real database in the previous implementation.
+1. Edit `prisma/schema.prisma`.
+2. `npx prisma format && npx prisma validate`.
+3. `npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --script > <tempfile>.sql` — this is read-only against the live database, safe to run freely.
+4. Read the generated SQL. Confirm it contains no unexpected `DROP` statements before proceeding.
+5. Create `prisma/migrations/<YYYYMMDDHHMMSS>_<name>/migration.sql` with that SQL.
+6. `npx prisma migrate deploy` (applies cleanly, tracked, no drift-reset prompt).
+7. `npx prisma generate` (regenerates the Prisma Client — also runs automatically via the `postinstall` script after `npm install`).
 
-## Plan going forward
+A transient `P1001` connection error from Neon during step 3 is usually just a cold-start blip — retry the exact same command before assuming something is actually wrong.
 
-1. **Phase 3 (Authentication)**: reconnect the new app to this same Neon database (or a fresh one — not yet decided, see Known Issues in `OPERATOR_HANDOFF.md`) via `DATABASE_URL`/`DIRECT_URL`. Re-validate the existing multi-tenant/RBAC models against the new architecture rather than assuming they're still correct as-is — the previous implementation's RBAC seed script (`docs/archive/previous-implementation/prisma/seed-rbac.ts`) is archived for reference, not for direct reuse (it imports from application code that no longer exists).
-2. **Phase 6 (Fleet)**: decide whether to keep the existing `Fleet*` models or redesign them against this rebuild's actual module-boundary rules (`docs/MODULE_BOUNDARIES.md`) before writing any new Fleet queries.
-3. **Phase 7 (Installment)**: design fresh, organization/branch-scoped models translating the reference GLV system's validated business rules — do not port GLV's own single-tenant schema directly. See `docs/DEVELOPMENT_ROADMAP.md` Phase 7 for the extraction approach.
+## Seeding
 
-## Non-negotiable rules for any future schema work
+`prisma/seed.ts` (run via `npm run db:seed`, or automatically via `npx prisma db seed`) is the committed, idempotent platform bootstrap — every `Permission` row, every system `Role` with its permission grants, and every `Module` row (marked `ACTIVE`). Safe to re-run at any time; every write is an upsert or an existence check first. It deliberately does **not** create a demo organization, demo users, or enable modules for a specific organization — that's tenant-level bootstrap data (creating an `Organization` + its first `Organization Owner`), a separate concern from platform-level RBAC/module registry seeding.
+
+The permission key list inside `prisma/seed.ts` is intentionally duplicated from `src/lib/auth/permissions.ts` rather than imported from it (that file has a Next.js-bundler-only `import "server-only"` a plain `tsx` execution can't resolve — the same reason `vitest.config.ts` needs a module alias for it). If you add a new permission key, add it in both places.
+
+`docs/archive/previous-implementation/prisma/` holds the retired implementation's `seed-rbac.ts`/`seed-hire-purchase.ts`/`seed-fleet-documents.ts` for historical reference only — not runnable as-is (they import from deleted application code), and superseded by the current `prisma/seed.ts`.
+
+## Non-negotiable rules for schema work
 
 - Every module-owned record must include `organizationId` (and `branchId` where the module has branch-level granularity).
+- **Every foreign id a Server Action or service function accepts from a caller must be resolved through an organization-scoped lookup before being written anywhere** — never trust a bare id. This is the single most common defect class found across the 2026-07-20 audit and its hardening passes (see `docs/HARDENING_PLAN.md`); a new relation field on any model needs this check the moment a function accepts that id from outside the service layer.
 - Tenant isolation is enforced in server-side queries and mutations — never rely on the frontend to filter what a user sees.
 - No generic catch-all models (e.g. a `ManagementRecord` or `BusinessItem` table used across unrelated modules). Use explicit, named domain models per module.
-- Migrations are tracked in `prisma/migrations/` and applied via the standard `prisma migrate` workflow — do not hand-run untracked SQL against the live database (this happened at least twice in the previous implementation's history and caused real confusion; see the archived `OPERATOR_HANDOFF.md` for the full story if curious).
-
-## Old seed scripts
-
-`docs/archive/previous-implementation/prisma/` holds `seed-rbac.ts`, `seed-hire-purchase.ts`, and `seed-fleet-documents.ts` from the retired implementation — archived for reference on data shape and seeding patterns, not runnable as-is (they import from deleted application code).
+- Any state transition on a shared row (a status flip, a running total like `balance`/`totalPaid`/`amountPaid`) must be atomic — a guarded `updateMany` (invariant in the `WHERE` clause) for transitions that must reject a stale/duplicate request, or Prisma's `increment`/`decrement` for totals that must always accumulate correctly under concurrent writers. Never a `findFirst` read followed by a JS-computed absolute `update` — see `docs/HARDENING_PLAN.md`'s Pass 2 section for the fixes this replaced.
+- Migrations are tracked in `prisma/migrations/` and applied via `prisma migrate deploy` only (see workflow above) — never hand-run untracked SQL against the live database.

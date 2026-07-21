@@ -2,15 +2,31 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { createRequest, approveRequest, rejectRequest, RequestStateError, NotFoundError } from "@/modules/procurement/service";
+import { shortText, positiveInt, moneyAmountNonNegative, longText, cuid, parseWithSchema } from "@/lib/validation";
 
-function clean(value: FormDataEntryValue | null) {
-  const str = String(value ?? "").trim();
-  return str.length > 0 ? str : null;
+function clean(value: FormDataEntryValue | null): string {
+  return String(value ?? "").trim();
 }
+
+/** Wraps a schema so an empty form field (missing/blank input) parses to null instead of failing validation. */
+function optional<T extends z.ZodTypeAny>(schema: T) {
+  return z.union([schema, z.literal("")]).transform((value) => (value === "" ? null : value));
+}
+
+const idSchema = z.object({ id: cuid });
+
+const createRequestSchema = z.object({
+  description: shortText,
+  quantity: positiveInt,
+  itemId: optional(cuid),
+  estimatedCost: optional(moneyAmountNonNegative),
+  notes: optional(longText),
+});
 
 export async function createNewRequest(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
@@ -18,20 +34,26 @@ export async function createNewRequest(formData: FormData): Promise<void> {
     redirect("/app/procurement/requests?error=forbidden");
   }
 
-  const description = clean(formData.get("description"));
-  const quantityRaw = clean(formData.get("quantity"));
-  if (!description || !quantityRaw) {
+  const parsed = parseWithSchema(createRequestSchema, {
+    description: clean(formData.get("description")),
+    quantity: clean(formData.get("quantity")),
+    itemId: clean(formData.get("itemId")),
+    estimatedCost: clean(formData.get("estimatedCost")),
+    notes: clean(formData.get("notes")),
+  });
+  if (!parsed.success) {
     redirect("/app/procurement/requests?error=missing-fields");
   }
+  const { description, quantity, itemId, estimatedCost, notes } = parsed.data;
 
   const session = await getServerAuthSession();
   try {
     await createRequest(tenant.organizationId, {
-      itemId: clean(formData.get("itemId")),
+      itemId,
       description,
-      quantity: Number.parseInt(quantityRaw, 10),
-      estimatedCost: clean(formData.get("estimatedCost")),
-      notes: clean(formData.get("notes")),
+      quantity,
+      estimatedCost,
+      notes,
       requestedById: session?.user?.id ?? null,
     });
   } catch (error) {
@@ -48,8 +70,9 @@ export async function approveExistingRequest(formData: FormData): Promise<void> 
   if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_REQUESTS_MANAGE)) {
     redirect("/app/procurement/requests?error=forbidden");
   }
-  const id = clean(formData.get("id"));
-  if (!id) return;
+  const parsedId = parseWithSchema(idSchema, { id: clean(formData.get("id")) });
+  if (!parsedId.success) return;
+  const { id } = parsedId.data;
 
   const session = await getServerAuthSession();
   try {
@@ -69,8 +92,9 @@ export async function rejectExistingRequest(formData: FormData): Promise<void> {
   if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_REQUESTS_MANAGE)) {
     redirect("/app/procurement/requests?error=forbidden");
   }
-  const id = clean(formData.get("id"));
-  if (!id) return;
+  const parsedId = parseWithSchema(idSchema, { id: clean(formData.get("id")) });
+  if (!parsedId.success) return;
+  const { id } = parsedId.data;
 
   const session = await getServerAuthSession();
   try {

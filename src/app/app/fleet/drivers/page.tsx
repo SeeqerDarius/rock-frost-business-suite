@@ -16,6 +16,7 @@ import { upsertFleetDriver } from "./actions";
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage drivers.",
   "missing-fields": "Driver name is required.",
+  "invalid-input": "Please check that the email and dates are valid.",
 };
 
 const STATUS_OPTIONS: Record<string, string> = { ACTIVE: "Active", INACTIVE: "Inactive", SUSPENDED: "Suspended" };

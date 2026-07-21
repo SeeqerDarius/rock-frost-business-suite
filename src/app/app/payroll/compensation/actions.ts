@@ -1,15 +1,26 @@
 "use server";
 
+import { z } from "zod";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { setCompensation, NotFoundError, InvalidCompensationError } from "@/modules/payroll/service";
+import { moneyAmount, cuid, dateInput, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
   return str.length > 0 ? str : null;
 }
+
+const PAY_FREQUENCIES = ["MONTHLY", "BIWEEKLY", "WEEKLY"] as const;
+
+const compensationSchema = z.object({
+  employeeId: cuid,
+  baseSalary: moneyAmount,
+  payFrequency: z.enum(PAY_FREQUENCIES).optional(),
+  effectiveDate: dateInput,
+});
 
 export async function saveCompensation(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
@@ -17,19 +28,23 @@ export async function saveCompensation(formData: FormData): Promise<void> {
     redirect("/app/payroll/compensation?error=forbidden");
   }
 
-  const employeeId = clean(formData.get("employeeId"));
-  const baseSalary = clean(formData.get("baseSalary"));
-  const effectiveDateRaw = clean(formData.get("effectiveDate"));
-  if (!employeeId || !baseSalary || !effectiveDateRaw) {
+  const parsed = parseWithSchema(compensationSchema, {
+    employeeId: clean(formData.get("employeeId")),
+    baseSalary: clean(formData.get("baseSalary")),
+    payFrequency: clean(formData.get("payFrequency")),
+    effectiveDate: clean(formData.get("effectiveDate")),
+  });
+  if (!parsed.success) {
     redirect("/app/payroll/compensation?error=missing-fields");
   }
+  const { employeeId, baseSalary, payFrequency, effectiveDate } = parsed.data;
 
   try {
     await setCompensation(tenant.organizationId, {
       employeeId,
       baseSalary,
-      payFrequency: clean(formData.get("payFrequency")) ?? "MONTHLY",
-      effectiveDate: new Date(`${effectiveDateRaw}T00:00:00`),
+      payFrequency: payFrequency ?? "MONTHLY",
+      effectiveDate,
     });
   } catch (error) {
     if (error instanceof NotFoundError) redirect("/app/payroll/compensation?error=not-found");

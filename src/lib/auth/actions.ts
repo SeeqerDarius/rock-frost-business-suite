@@ -8,6 +8,7 @@ import { issuePasswordResetToken, consumePasswordResetToken } from "@/lib/auth/t
 import { revokeUserSessions } from "@/lib/auth/session-revocation";
 import { acceptInvitationNewUser, acceptInvitationExistingUser, InvitationAcceptError } from "@/lib/auth/invitations";
 import { getServerAuthSession } from "@/lib/auth/session";
+import { email as emailSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
@@ -24,7 +25,12 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
  * channel.
  */
 export async function getAccountLockStatus(email: string): Promise<{ locked: boolean; minutesLeft: number }> {
-  const user = await db.user.findUnique({ where: { email: email.toLowerCase() }, select: { lockedUntil: true } });
+  const parsedEmail = emailSchema.safeParse(email);
+  if (!parsedEmail.success) {
+    return { locked: false, minutesLeft: 0 };
+  }
+
+  const user = await db.user.findUnique({ where: { email: parsedEmail.data }, select: { lockedUntil: true } });
   if (!user?.lockedUntil || user.lockedUntil <= new Date()) {
     return { locked: false, minutesLeft: 0 };
   }
@@ -32,9 +38,10 @@ export async function getAccountLockStatus(email: string): Promise<{ locked: boo
 }
 
 export async function requestPasswordReset(formData: FormData): Promise<void> {
-  const email = clean(formData.get("email")).toLowerCase();
+  const parsedEmail = emailSchema.safeParse(clean(formData.get("email")));
 
-  if (email) {
+  if (parsedEmail.success) {
+    const email = parsedEmail.data;
     const user = await db.user.findUnique({ where: { email } });
 
     // Only issue a token (and only report success) if the account exists and can sign in —

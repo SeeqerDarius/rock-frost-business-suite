@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createCategory } from "@/modules/inventory/service";
+import { shortText, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -17,10 +18,11 @@ export async function addCategory(formData: FormData): Promise<void> {
     redirect("/app/inventory/settings?error=forbidden");
   }
 
-  const name = clean(formData.get("name"));
-  if (!name) {
+  const parsed = parseWithSchema(shortText, clean(formData.get("name")) ?? "");
+  if (!parsed.success) {
     redirect("/app/inventory/settings?error=missing-fields");
   }
+  const name = parsed.data;
 
   await createCategory(tenant.organizationId, name);
   revalidatePath("/app/inventory/settings");

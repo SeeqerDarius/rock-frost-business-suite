@@ -18,6 +18,7 @@ import { upsertProduct, addProductCategory } from "./actions";
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage products.",
   "missing-fields": "Name, category, cost price, daily amount, and duration are required.",
+  "invalid-input": "Please check that all fields are valid (prices and duration must be positive numbers).",
   "price-floor": "Daily amount × duration cannot be lower than cost price.",
 };
 

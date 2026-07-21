@@ -5,15 +5,21 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { ACTIVE_ORG_COOKIE, ACTIVE_ORGANIZATION_STATUSES } from "@/lib/tenant";
+import { cuid, parseWithSchema } from "@/lib/validation";
 
 export async function switchOrganization(formData: FormData): Promise<void> {
-  const organizationId = String(formData.get("organizationId") ?? "");
   const session = await getServerAuthSession();
   const userId = session?.user?.id;
 
-  if (!userId || !organizationId) {
+  if (!userId) {
     return;
   }
+
+  const parsedOrgId = parseWithSchema(cuid, String(formData.get("organizationId") ?? "").trim());
+  if (!parsedOrgId.success) {
+    return;
+  }
+  const organizationId = parsedOrgId.data;
 
   const membership = await db.organizationMember.findFirst({
     where: { userId, organizationId, status: "ACTIVE" },

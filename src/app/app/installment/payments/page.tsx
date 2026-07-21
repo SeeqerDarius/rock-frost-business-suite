@@ -25,6 +25,7 @@ import { createPayment, editPayment, resolveCredit, applyCredit } from "./action
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission for this action.",
   "missing-fields": "Please fill in all required fields.",
+  "invalid-input": "Please check that the amount, date, and method are valid.",
   "future-date": "Payment date can't be in the future.",
   blocked: "This account can't accept new payments in its current state.",
   "edit-window": "This payment can only be edited within the settings edit window of when it was recorded.",

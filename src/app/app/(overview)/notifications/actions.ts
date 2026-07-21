@@ -4,11 +4,16 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { getServerAuthSession } from "@/lib/auth/session";
+import { cuid, parseWithSchema } from "@/lib/validation";
 
 export async function markNotificationRead(formData: FormData): Promise<void> {
-  const notificationId = String(formData.get("notificationId") ?? "");
+  const notificationIdRaw = String(formData.get("notificationId") ?? "").trim();
   const tenant = await requireCurrentTenant();
-  if (!notificationId) return;
+  if (!notificationIdRaw) return;
+
+  const parsed = parseWithSchema(cuid, notificationIdRaw);
+  if (!parsed.success) return;
+  const notificationId = parsed.data;
 
   await db.notification.updateMany({
     where: { id: notificationId, organizationId: tenant.organizationId },

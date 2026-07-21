@@ -16,6 +16,8 @@ import { upsertStaff, recordSalaryPayment } from "./actions";
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage staff.",
   "missing-fields": "Please fill in all required fields.",
+  "not-found": "That staff member could not be found.",
+  "invalid-amount": "Payment amount must be a positive number.",
 };
 
 interface StaffFieldsProps {

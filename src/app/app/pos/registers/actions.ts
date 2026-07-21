@@ -13,6 +13,8 @@ import {
   SessionStateError,
   NotFoundError,
 } from "@/modules/pos/service";
+import { shortText, moneyAmountNonNegative, cuid, parseWithSchema } from "@/lib/validation";
+import { z } from "zod";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -31,16 +33,29 @@ export async function upsertRegister(formData: FormData): Promise<void> {
     redirect("/app/pos/registers?error=missing-fields");
   }
 
-  const data = {
+  const parsed = parseWithSchema(z.object({ name: shortText, warehouseId: cuid.nullable() }), {
     name,
     warehouseId: clean(formData.get("warehouseId")),
+  });
+  if (!parsed.success) {
+    redirect("/app/pos/registers?error=invalid-input");
+  }
+
+  const data = {
+    name: parsed.data.name,
+    warehouseId: parsed.data.warehouseId,
     active: formData.get("active") === "on",
   };
 
-  if (id) {
-    await updateRegister(tenant.organizationId, id, data);
-  } else {
-    await createRegister(tenant.organizationId, data);
+  try {
+    if (id) {
+      await updateRegister(tenant.organizationId, id, data);
+    } else {
+      await createRegister(tenant.organizationId, data);
+    }
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/pos/registers?error=not-found");
+    throw error;
   }
 
   revalidatePath("/app/pos/registers");
@@ -54,12 +69,16 @@ export async function openRegisterSession(formData: FormData): Promise<void> {
   }
 
   const registerId = clean(formData.get("registerId"));
-  const openingFloat = clean(formData.get("openingFloat")) ?? "0";
   if (!registerId) return;
+
+  const parsed = parseWithSchema(moneyAmountNonNegative, clean(formData.get("openingFloat")) ?? "0");
+  if (!parsed.success) {
+    redirect("/app/pos/registers?error=invalid-input");
+  }
 
   const session = await getServerAuthSession();
   try {
-    await openSession(tenant.organizationId, { registerId, openingFloat, openedById: session?.user?.id ?? null });
+    await openSession(tenant.organizationId, { registerId, openingFloat: parsed.data, openedById: session?.user?.id ?? null });
   } catch (error) {
     if (error instanceof SessionStateError) redirect("/app/pos/registers?error=session-open");
     if (error instanceof NotFoundError) redirect("/app/pos/registers?error=not-found");
@@ -82,9 +101,14 @@ export async function closeRegisterSession(formData: FormData): Promise<void> {
     redirect("/app/pos/registers?error=missing-fields");
   }
 
+  const parsed = parseWithSchema(moneyAmountNonNegative, closingCash);
+  if (!parsed.success) {
+    redirect("/app/pos/registers?error=invalid-input");
+  }
+
   const authSession = await getServerAuthSession();
   try {
-    await closeSession(tenant.organizationId, sessionId, { closingCash, closedById: authSession?.user?.id ?? null });
+    await closeSession(tenant.organizationId, sessionId, { closingCash: parsed.data, closedById: authSession?.user?.id ?? null });
   } catch (error) {
     if (error instanceof SessionStateError) redirect("/app/pos/registers?error=session-closed");
     throw error;

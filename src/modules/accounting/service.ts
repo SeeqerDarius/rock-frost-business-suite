@@ -1,6 +1,7 @@
 import "server-only";
 
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import type { AccountingAccountType, AccountingInvoiceStatus } from "@prisma/client";
 
 /**
@@ -56,11 +57,14 @@ export async function listAccounts(organizationId: string) {
   }));
 }
 
-function computeBalance(type: AccountingAccountType, lines: { debit: unknown; credit: unknown }[]) {
-  const totalDebit = lines.reduce((sum, l) => sum + Number(l.debit), 0);
-  const totalCredit = lines.reduce((sum, l) => sum + Number(l.credit), 0);
+function computeBalance(type: AccountingAccountType, lines: { debit: Prisma.Decimal.Value; credit: Prisma.Decimal.Value }[]) {
+  // Decimal summation, not JS Number — an account can accumulate thousands
+  // of journal lines over its lifetime, and float rounding error compounds
+  // across a sum in a way a single arithmetic op doesn't.
+  const totalDebit = lines.reduce((sum, l) => sum.plus(l.debit), new Prisma.Decimal(0));
+  const totalCredit = lines.reduce((sum, l) => sum.plus(l.credit), new Prisma.Decimal(0));
   const isDebitNormal = type === "ASSET" || type === "EXPENSE";
-  return isDebitNormal ? totalDebit - totalCredit : totalCredit - totalDebit;
+  return (isDebitNormal ? totalDebit.minus(totalCredit) : totalCredit.minus(totalDebit)).toNumber();
 }
 
 export class AccountCodeTakenError extends Error {}
@@ -134,9 +138,12 @@ async function postJournalEntry(
     lines: { accountId: string; debit?: string | number; credit?: string | number }[];
   },
 ) {
-  const totalDebit = input.lines.reduce((sum, l) => sum + Number(l.debit ?? 0), 0);
-  const totalCredit = input.lines.reduce((sum, l) => sum + Number(l.credit ?? 0), 0);
-  if (Math.abs(totalDebit - totalCredit) > 0.005) {
+  // Decimal equality, not a JS Number epsilon fudge-factor — this is the
+  // core double-entry invariant for the whole ledger, so exact arithmetic
+  // matters more here than almost anywhere else in the codebase.
+  const totalDebit = input.lines.reduce((sum, l) => sum.plus(l.debit ?? 0), new Prisma.Decimal(0));
+  const totalCredit = input.lines.reduce((sum, l) => sum.plus(l.credit ?? 0), new Prisma.Decimal(0));
+  if (!totalDebit.equals(totalCredit)) {
     throw new JournalNotBalancedError("Journal entry debits and credits must be equal.");
   }
 
@@ -270,8 +277,13 @@ export async function markInvoiceSent(organizationId: string, id: string) {
  * docs/HARDENING_PLAN.md); the amountPaid figure itself can never be wrong.
  */
 export async function recordInvoicePayment(organizationId: string, id: string, amount: string, paymentDate: Date) {
-  const paymentAmount = Number(amount);
-  if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+  // Prisma.Decimal throughout — this is a comparison against a database
+  // Decimal column and a value that gets atomically incremented into it, so
+  // exact arithmetic matters; JS Number comparison previously needed a 0.005
+  // epsilon fudge-factor to work around float rounding, which Decimal makes
+  // unnecessary.
+  const paymentAmount = new Prisma.Decimal(amount);
+  if (!paymentAmount.isFinite() || paymentAmount.lessThanOrEqualTo(0)) {
     throw new InvalidPaymentError("Payment amount must be a positive number.");
   }
 
@@ -281,8 +293,8 @@ export async function recordInvoicePayment(organizationId: string, id: string, a
     throw new InvoiceStateError("Only sent or overdue invoices can receive a payment.");
   }
 
-  const remaining = Number(invoice.amount) - Number(invoice.amountPaid);
-  if (paymentAmount - remaining > 0.005) {
+  const remaining = new Prisma.Decimal(invoice.amount).minus(invoice.amountPaid);
+  if (paymentAmount.greaterThan(remaining)) {
     throw new InvalidPaymentError(`Payment of ${paymentAmount.toFixed(2)} exceeds the remaining balance of ${remaining.toFixed(2)}.`);
   }
 
@@ -308,7 +320,7 @@ export async function recordInvoicePayment(organizationId: string, id: string, a
       data: { amountPaid: { increment: paymentAmount } },
     });
 
-    const isFullyPaid = Number(updated.amountPaid) >= Number(updated.amount) - 0.005;
+    const isFullyPaid = new Prisma.Decimal(updated.amountPaid).greaterThanOrEqualTo(updated.amount);
     if (!isFullyPaid) return updated;
 
     return tx.accountingInvoice.update({

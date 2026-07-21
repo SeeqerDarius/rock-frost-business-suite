@@ -19,11 +19,21 @@ import {
   InvalidPaymentAmountError,
   NotFoundError,
 } from "@/modules/installment/service";
+import { moneyAmount, shortText, longText, dateInput, parseWithSchema } from "@/lib/validation";
+import { z } from "zod";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
   return str.length > 0 ? str : null;
 }
+
+const paymentSchema = z.object({
+  accountId: shortText,
+  amount: moneyAmount,
+  paymentDate: dateInput,
+  method: shortText,
+  notes: longText.optional(),
+});
 
 export async function createPayment(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
@@ -40,8 +50,18 @@ export async function createPayment(formData: FormData): Promise<void> {
     redirect("/app/installment/payments?error=missing-fields");
   }
 
-  const paymentDate = new Date(`${paymentDateRaw}T00:00:00`);
-  if (paymentDate > new Date()) {
+  const parsed = parseWithSchema(paymentSchema, {
+    accountId,
+    amount,
+    paymentDate: paymentDateRaw,
+    method,
+    notes: clean(formData.get("notes")) ?? undefined,
+  });
+  if (!parsed.success) {
+    redirect("/app/installment/payments?error=invalid-input");
+  }
+
+  if (parsed.data.paymentDate > new Date()) {
     redirect("/app/installment/payments?error=future-date");
   }
 
@@ -49,11 +69,11 @@ export async function createPayment(formData: FormData): Promise<void> {
 
   try {
     await recordPayment(tenant.organizationId, {
-      accountId,
-      amount,
-      paymentDate,
-      method,
-      notes: clean(formData.get("notes")),
+      accountId: parsed.data.accountId,
+      amount: parsed.data.amount,
+      paymentDate: parsed.data.paymentDate,
+      method: parsed.data.method,
+      notes: parsed.data.notes ?? null,
       receivedBy: session?.user?.name ?? session?.user?.email ?? null,
     });
   } catch (error) {
@@ -84,12 +104,22 @@ export async function editPayment(formData: FormData): Promise<void> {
     redirect("/app/installment/payments?error=missing-fields");
   }
 
+  const parsed = parseWithSchema(paymentSchema.omit({ accountId: true }), {
+    amount,
+    paymentDate: paymentDateRaw,
+    method,
+    notes: clean(formData.get("notes")) ?? undefined,
+  });
+  if (!parsed.success) {
+    redirect("/app/installment/payments?error=invalid-input");
+  }
+
   try {
     await updatePayment(tenant.organizationId, id, {
-      amount,
-      paymentDate: new Date(`${paymentDateRaw}T00:00:00`),
-      method,
-      notes: clean(formData.get("notes")),
+      amount: parsed.data.amount,
+      paymentDate: parsed.data.paymentDate,
+      method: parsed.data.method,
+      notes: parsed.data.notes ?? null,
     });
   } catch (error) {
     if (error instanceof PaymentEditWindowError) {

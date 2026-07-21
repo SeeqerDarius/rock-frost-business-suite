@@ -13,6 +13,7 @@ import { updateDefaultWarehouse } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage Procurement settings.",
+  "invalid-input": "That warehouse selection isn't valid.",
 };
 
 export default async function ProcurementSettingsPage({

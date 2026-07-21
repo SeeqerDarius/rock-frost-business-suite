@@ -1,6 +1,7 @@
 import "server-only";
 
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import type {
   HirePurchaseAccountStatus,
   HirePurchaseCreditSource,
@@ -43,7 +44,36 @@ export async function getInstallmentSettings(organizationId: string) {
   return db.hirePurchaseSettings.create({ data: { organizationId, ...DEFAULT_SETTINGS } });
 }
 
+export class InvalidSettingsError extends Error {}
+
+const PERCENT_FIELDS = ["refundDeductionPercent", "procurementThresholdPercent", "administrationFeePercent", "commissionPercentage"] as const;
+const NON_NEGATIVE_MONEY_FIELDS = ["defaultMonthlySalary", "defaultDailyCollection", "minimumDeposit"] as const;
+
+/**
+ * These settings feed directly into real business math (admin fee, refund
+ * deduction, commission, minimum deposit, procurement threshold) with no
+ * validation at all previously — a negative or >100% value would silently
+ * corrupt every calculation that reads it. Percentages must be 0-100;
+ * money-like defaults must be non-negative.
+ */
 export async function updateInstallmentSettings(organizationId: string, data: Record<string, unknown>) {
+  for (const field of PERCENT_FIELDS) {
+    if (field in data) {
+      const value = Number(data[field]);
+      if (!Number.isFinite(value) || value < 0 || value > 100) {
+        throw new InvalidSettingsError(`${field} must be between 0 and 100.`);
+      }
+    }
+  }
+  for (const field of NON_NEGATIVE_MONEY_FIELDS) {
+    if (field in data) {
+      const value = Number(data[field]);
+      if (!Number.isFinite(value) || value < 0) {
+        throw new InvalidSettingsError(`${field} must be zero or a positive number.`);
+      }
+    }
+  }
+
   await getInstallmentSettings(organizationId); // ensure a row exists
   return db.hirePurchaseSettings.update({ where: { organizationId }, data });
 }
@@ -153,8 +183,8 @@ interface ProductInput {
 }
 
 function computeProductPrice(input: ProductInput) {
-  const price = Number(input.dailyAmount) * input.duration;
-  if (price < Number(input.costPrice)) {
+  const price = new Prisma.Decimal(input.dailyAmount).times(input.duration);
+  if (price.lessThan(input.costPrice)) {
     throw new ProductPriceError("Daily amount × duration cannot be lower than cost price.");
   }
   return price.toFixed(2);
@@ -265,10 +295,18 @@ export async function updateStaff(
   });
 }
 
-export function recordStaffSalaryPayment(
+export async function recordStaffSalaryPayment(
   organizationId: string,
   data: { staffId: string; amount: string; paymentDate: Date; salaryMonth: Date; notes?: string | null; paidBy?: string | null }
 ) {
+  const amount = Number(data.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new InvalidPaymentAmountError("Payment amount must be a positive number.");
+  }
+
+  const staff = await db.hirePurchaseStaff.findFirst({ where: { id: data.staffId, organizationId } });
+  if (!staff) throw new NotFoundError("Staff member not found.");
+
   return db.hirePurchaseStaffSalaryPayment.create({ data: { organizationId, ...data } });
 }
 
@@ -338,7 +376,12 @@ async function restoreStaffInventory(
   });
 }
 
-export function adjustStaffInventory(organizationId: string, staffId: string, productId: string, quantity: number) {
+export async function adjustStaffInventory(organizationId: string, staffId: string, productId: string, quantity: number) {
+  const staff = await db.hirePurchaseStaff.findFirst({ where: { id: staffId, organizationId } });
+  if (!staff) throw new NotFoundError("Staff member not found.");
+  const product = await db.hirePurchaseProduct.findFirst({ where: { id: productId, organizationId } });
+  if (!product) throw new NotFoundError("Product not found.");
+
   return db.hirePurchaseStaffInventory.upsert({
     where: { staffId_productId: { staffId, productId } },
     update: { quantity },
@@ -419,19 +462,24 @@ export async function createAccount(
   if (!inventoryStaff) throw new NotFoundError("Staff member not found.");
 
   const settings = await getInstallmentSettings(organizationId);
-  const minimumDeposit = Number(settings.minimumDeposit);
-  const depositAmount = data.initialDeposit ? Number(data.initialDeposit) : 0;
+  // Prisma.Decimal (arbitrary-precision) rather than JS Number arithmetic —
+  // targetAmount/balance are derived values written straight to the
+  // database at account opening, so float rounding error here would be a
+  // real, persisted discrepancy rather than a transient display artifact.
+  const minimumDeposit = new Prisma.Decimal(settings.minimumDeposit);
+  const depositAmount = data.initialDeposit ? new Prisma.Decimal(data.initialDeposit) : new Prisma.Decimal(0);
 
-  if (minimumDeposit > 0 && depositAmount < minimumDeposit) {
+  if (minimumDeposit.greaterThan(0) && depositAmount.lessThan(minimumDeposit)) {
     throw new MinimumDepositError(`A minimum deposit of ${minimumDeposit.toFixed(2)} is required to open this account.`);
   }
 
-  const adminFeeRate = Number(settings.administrationFeePercent) / 100;
-  const adminFee = Number(product.price) * adminFeeRate;
-  const targetAmount = (Number(product.price) + adminFee).toFixed(2);
+  const adminFeeRate = new Prisma.Decimal(settings.administrationFeePercent).div(100);
+  const productPrice = new Prisma.Decimal(product.price);
+  const adminFee = productPrice.times(adminFeeRate);
+  const targetAmount = productPrice.plus(adminFee).toFixed(2);
   const dailyAmount = product.dailyAmount;
   const expectedEndDate = addDays(data.startDate, product.duration);
-  const receiptNo = depositAmount > 0 ? await generateReceiptNo(organizationId, settings.receiptPrefix) : null;
+  const receiptNo = depositAmount.greaterThan(0) ? await generateReceiptNo(organizationId, settings.receiptPrefix) : null;
 
   return db.$transaction(async (tx) => {
     await consumeStaffInventory(tx, data.inventoryStaffId, data.productId);
@@ -453,8 +501,8 @@ export async function createAccount(
       },
     });
 
-    if (depositAmount > 0 && receiptNo) {
-      const nextBalance = Math.max(Number(targetAmount) - depositAmount, 0);
+    if (depositAmount.greaterThan(0) && receiptNo) {
+      const nextBalance = Prisma.Decimal.max(new Prisma.Decimal(targetAmount).minus(depositAmount), 0);
       await tx.hirePurchasePayment.create({
         data: {
           organizationId,
@@ -471,7 +519,7 @@ export async function createAccount(
         data: {
           totalPaid: depositAmount.toFixed(2),
           balance: nextBalance.toFixed(2),
-          status: nextBalance <= 0 ? "COMPLETED" : "ACTIVE",
+          status: nextBalance.lessThanOrEqualTo(0) ? "COMPLETED" : "ACTIVE",
         },
       });
     }
@@ -567,14 +615,14 @@ export async function recordPayment(
   organizationId: string,
   data: { accountId: string; amount: string; paymentDate: Date; method: string; notes?: string | null; receivedBy?: string | null }
 ) {
-  const amount = Number(data.amount);
-  if (!Number.isFinite(amount) || amount <= 0) {
+  const amount = new Prisma.Decimal(data.amount);
+  if (!amount.isFinite() || amount.lessThanOrEqualTo(0)) {
     throw new InvalidPaymentAmountError("Payment amount must be a positive number.");
   }
 
   const account = await db.hirePurchaseAccount.findFirst({ where: { id: data.accountId, organizationId } });
   if (!account) throw new NotFoundError("Account not found.");
-  if (BLOCKED_PAYMENT_STATUSES.includes(account.status) || Number(account.balance) <= 0) {
+  if (BLOCKED_PAYMENT_STATUSES.includes(account.status) || new Prisma.Decimal(account.balance).lessThanOrEqualTo(0)) {
     throw new PaymentBlockedError("This account can't accept new payments in its current state.");
   }
 
@@ -588,15 +636,15 @@ export async function recordPayment(
 
     const updated = await tx.hirePurchaseAccount.update({
       where: { id: account.id },
-      data: { totalPaid: { increment: amount }, balance: { decrement: amount } },
+      data: { totalPaid: { increment: amount.toNumber() }, balance: { decrement: amount.toNumber() } },
     });
 
-    const rawBalance = Number(updated.balance);
-    const isOverpaid = rawBalance < 0;
-    const clampedBalance = Math.max(rawBalance, 0);
+    const rawBalance = new Prisma.Decimal(updated.balance);
+    const isOverpaid = rawBalance.lessThan(0);
+    const clampedBalance = Prisma.Decimal.max(rawBalance, 0);
 
     let nextStatus = updated.status;
-    if (rawBalance <= 0) {
+    if (rawBalance.lessThanOrEqualTo(0)) {
       nextStatus = "COMPLETED";
     } else if (updated.status === "DORMANT" || updated.status === "PROBATION") {
       nextStatus = "ACTIVE";
@@ -610,7 +658,7 @@ export async function recordPayment(
     }
 
     if (isOverpaid) {
-      const creditAmount = Math.abs(rawBalance);
+      const creditAmount = rawBalance.abs();
       await tx.hirePurchaseCredit.create({
         data: {
           organizationId,
@@ -764,16 +812,18 @@ export async function applyCreditToAccount(organizationId: string, creditId: str
     where: { id: targetAccountId, organizationId, customerId: credit.customerId },
   });
   if (!targetAccount) throw new CreditNotApplicableError("The target account must belong to the same customer as the credit.");
-  if (Number(targetAccount.balance) <= 0) {
+  const targetBalance = new Prisma.Decimal(targetAccount.balance);
+  if (targetBalance.lessThanOrEqualTo(0)) {
     throw new CreditNotApplicableError("That account has no outstanding balance to apply a credit to.");
   }
 
-  const applyAmount = Math.min(Number(credit.remainingAmount), Number(targetAccount.balance));
-  const remainingCredit = Number(credit.remainingAmount) - applyAmount;
-  const nextBalance = Number(targetAccount.balance) - applyAmount;
-  const nextTotalPaid = Number(targetAccount.totalPaid) + applyAmount;
+  const creditRemaining = new Prisma.Decimal(credit.remainingAmount);
+  const applyAmount = Prisma.Decimal.min(creditRemaining, targetBalance);
+  const remainingCredit = creditRemaining.minus(applyAmount);
+  const nextBalance = targetBalance.minus(applyAmount);
+  const nextTotalPaid = new Prisma.Decimal(targetAccount.totalPaid).plus(applyAmount);
   const nextStatus: HirePurchaseAccountStatus =
-    nextBalance <= 0
+    nextBalance.lessThanOrEqualTo(0)
       ? "COMPLETED"
       : targetAccount.status === "DORMANT" || targetAccount.status === "PROBATION"
         ? "ACTIVE"
@@ -802,7 +852,7 @@ export async function applyCreditToAccount(organizationId: string, creditId: str
 
     await tx.hirePurchaseCredit.update({
       where: { id: creditId },
-      data: { remainingAmount: remainingCredit.toFixed(2), status: remainingCredit <= 0 ? "APPLIED" : "OPEN" },
+      data: { remainingAmount: remainingCredit.toFixed(2), status: remainingCredit.lessThanOrEqualTo(0) ? "APPLIED" : "OPEN" },
     });
   });
 }
@@ -883,14 +933,15 @@ export async function refreshAccountLifecycleStatuses(organizationId: string, no
     });
     if (claimed.count === 0) continue;
 
-    if (nextStatus === "CLOSED" && Number(account.totalPaid) > 0) {
+    if (nextStatus === "CLOSED" && new Prisma.Decimal(account.totalPaid).greaterThan(0)) {
       const existingRefund = await db.hirePurchaseCredit.findFirst({
         where: { accountId: account.id, source: "ACCOUNT_CLOSURE_REFUND", status: { not: "VOID" } },
       });
       if (!existingRefund) {
-        const feePercent = Number(settings.refundDeductionPercent);
-        const serviceFee = (Number(account.totalPaid) * feePercent) / 100;
-        const refundAmount = Math.max(Number(account.totalPaid) - serviceFee, 0);
+        const feePercent = new Prisma.Decimal(settings.refundDeductionPercent);
+        const totalPaid = new Prisma.Decimal(account.totalPaid);
+        const serviceFee = totalPaid.times(feePercent).div(100);
+        const refundAmount = Prisma.Decimal.max(totalPaid.minus(serviceFee), 0);
         await db.hirePurchaseCredit.create({
           data: {
             organizationId,
@@ -922,11 +973,12 @@ export async function reactivateAccount(organizationId: string, id: string) {
   }
 
   const settings = await getInstallmentSettings(organizationId);
-  const feePercent = Number(settings.refundDeductionPercent);
-  const serviceFee = (Number(account.totalPaid) * feePercent) / 100;
-  const nextTotalPaid = Math.max(Number(account.totalPaid) - serviceFee, 0);
-  const nextBalance = Math.max(Number(account.targetAmount) - nextTotalPaid, 0);
-  const nextStatus: HirePurchaseAccountStatus = nextBalance <= 0 ? "COMPLETED" : "ACTIVE";
+  const feePercent = new Prisma.Decimal(settings.refundDeductionPercent);
+  const totalPaid = new Prisma.Decimal(account.totalPaid);
+  const serviceFee = totalPaid.times(feePercent).div(100);
+  const nextTotalPaid = Prisma.Decimal.max(totalPaid.minus(serviceFee), 0);
+  const nextBalance = Prisma.Decimal.max(new Prisma.Decimal(account.targetAmount).minus(nextTotalPaid), 0);
+  const nextStatus: HirePurchaseAccountStatus = nextBalance.lessThanOrEqualTo(0) ? "COMPLETED" : "ACTIVE";
 
   return db.$transaction(async (tx) => {
     await tx.hirePurchaseCredit.updateMany({

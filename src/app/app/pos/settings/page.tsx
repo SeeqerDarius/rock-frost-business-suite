@@ -12,6 +12,7 @@ import { saveReceiptFooter } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage POS settings.",
+  "invalid-input": "Footer text must be 5000 characters or fewer.",
 };
 
 export default async function PosSettingsPage({

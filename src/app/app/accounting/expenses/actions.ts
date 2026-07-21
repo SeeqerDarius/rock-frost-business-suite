@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
@@ -13,11 +14,20 @@ import {
   ExpenseStateError,
   NotFoundError,
 } from "@/modules/accounting/service";
+import { moneyAmount, shortText, longText, cuid, dateInput, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
   return str.length > 0 ? str : null;
 }
+
+const createExpenseSchema = z.object({
+  vendorName: shortText,
+  categoryId: cuid.nullable().optional(),
+  amount: moneyAmount,
+  expenseDate: dateInput,
+  notes: longText.nullable().optional(),
+});
 
 export async function createNewExpense(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
@@ -25,22 +35,27 @@ export async function createNewExpense(formData: FormData): Promise<void> {
     redirect("/app/accounting/expenses?error=forbidden");
   }
 
-  const vendorName = clean(formData.get("vendorName"));
-  const amount = clean(formData.get("amount"));
-  const expenseDateRaw = clean(formData.get("expenseDate"));
-  if (!vendorName || !amount || !expenseDateRaw) {
+  const parsed = parseWithSchema(createExpenseSchema, {
+    vendorName: clean(formData.get("vendorName")),
+    categoryId: clean(formData.get("categoryId")),
+    amount: clean(formData.get("amount")),
+    expenseDate: clean(formData.get("expenseDate")),
+    notes: clean(formData.get("notes")),
+  });
+  if (!parsed.success) {
     redirect("/app/accounting/expenses?error=missing-fields");
   }
+  const { vendorName, categoryId, amount, expenseDate, notes } = parsed.data;
 
   const session = await getServerAuthSession();
   await createExpense(
     tenant.organizationId,
     {
       vendorName,
-      categoryId: clean(formData.get("categoryId")),
+      categoryId: categoryId ?? null,
       amount,
-      expenseDate: new Date(`${expenseDateRaw}T00:00:00`),
-      notes: clean(formData.get("notes")),
+      expenseDate,
+      notes: notes ?? null,
     },
     session?.user?.id ?? null,
   );
@@ -49,13 +64,16 @@ export async function createNewExpense(formData: FormData): Promise<void> {
   redirect("/app/accounting/expenses?saved=1");
 }
 
+const idSchema = z.object({ id: cuid });
+
 export async function approveExistingExpense(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
   if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_EXPENSES_MANAGE)) {
     redirect("/app/accounting/expenses?error=forbidden");
   }
-  const id = clean(formData.get("id"));
-  if (!id) return;
+  const parsed = parseWithSchema(idSchema, { id: clean(formData.get("id")) });
+  if (!parsed.success) return;
+  const { id } = parsed.data;
 
   try {
     await approveExpense(tenant.organizationId, id);
@@ -74,8 +92,9 @@ export async function rejectExistingExpense(formData: FormData): Promise<void> {
   if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_EXPENSES_MANAGE)) {
     redirect("/app/accounting/expenses?error=forbidden");
   }
-  const id = clean(formData.get("id"));
-  if (!id) return;
+  const parsed = parseWithSchema(idSchema, { id: clean(formData.get("id")) });
+  if (!parsed.success) return;
+  const { id } = parsed.data;
 
   try {
     await rejectExpense(tenant.organizationId, id);
@@ -89,19 +108,25 @@ export async function rejectExistingExpense(formData: FormData): Promise<void> {
   redirect("/app/accounting/expenses?saved=1");
 }
 
+const payExpenseSchema = z.object({ id: cuid, paymentDate: dateInput });
+
 export async function payExistingExpense(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
   if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_EXPENSES_MANAGE)) {
     redirect("/app/accounting/expenses?error=forbidden");
   }
-  const id = clean(formData.get("id"));
-  const paymentDateRaw = clean(formData.get("paymentDate"));
-  if (!id || !paymentDateRaw) {
+
+  const parsed = parseWithSchema(payExpenseSchema, {
+    id: clean(formData.get("id")),
+    paymentDate: clean(formData.get("paymentDate")),
+  });
+  if (!parsed.success) {
     redirect("/app/accounting/expenses?error=missing-fields");
   }
+  const { id, paymentDate } = parsed.data;
 
   try {
-    await payExpense(tenant.organizationId, id, new Date(`${paymentDateRaw}T00:00:00`));
+    await payExpense(tenant.organizationId, id, paymentDate);
   } catch (error) {
     if (error instanceof ExpenseStateError) redirect("/app/accounting/expenses?error=invalid-state");
     if (error instanceof NotFoundError) redirect("/app/accounting/expenses?error=not-found");

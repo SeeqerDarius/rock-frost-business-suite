@@ -17,6 +17,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage payments.",
   "missing-fields": "Reference, amount, and type are required.",
   duplicate: "A payment with that reference already exists.",
+  "invalid-input": "Please check that the reference, amount, and type are valid.",
 };
 
 const TYPE_LABELS: Record<string, string> = {

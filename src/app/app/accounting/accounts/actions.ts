@@ -1,16 +1,26 @@
 "use server";
 
+import { z } from "zod";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createAccount, updateAccount, AccountCodeTakenError } from "@/modules/accounting/service";
-import type { AccountingAccountType } from "@prisma/client";
+import { shortText, cuid, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
   return str.length > 0 ? str : null;
 }
+
+const ACCOUNT_TYPES = ["ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"] as const;
+
+const accountSchema = z.object({
+  id: cuid.nullable().optional(),
+  code: shortText,
+  name: shortText,
+  type: z.enum(ACCOUNT_TYPES),
+});
 
 export async function upsertAccount(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
@@ -18,14 +28,16 @@ export async function upsertAccount(formData: FormData): Promise<void> {
     redirect("/app/accounting/accounts?error=forbidden");
   }
 
-  const id = clean(formData.get("id"));
-  const code = clean(formData.get("code"));
-  const name = clean(formData.get("name"));
-  const type = clean(formData.get("type")) as AccountingAccountType | null;
-
-  if (!code || !name || !type) {
+  const parsed = parseWithSchema(accountSchema, {
+    id: clean(formData.get("id")),
+    code: clean(formData.get("code")),
+    name: clean(formData.get("name")),
+    type: clean(formData.get("type")),
+  });
+  if (!parsed.success) {
     redirect("/app/accounting/accounts?error=missing-fields");
   }
+  const { id, code, name, type } = parsed.data;
 
   const data = { code, name, type, active: formData.get("active") === "on" };
 

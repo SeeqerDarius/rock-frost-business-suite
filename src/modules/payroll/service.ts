@@ -1,6 +1,7 @@
 import "server-only";
 
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 
 /**
  * Fresh module (no reference implementation to migrate from). Every function
@@ -131,16 +132,20 @@ export async function processRun(organizationId: string, runId: string) {
     throw new NoCompensationError("No active employees have compensation set up.");
   }
 
-  const taxRate = Number(settings.defaultTaxRate);
+  // Prisma.Decimal (arbitrary-precision) rather than JS Number arithmetic —
+  // grossPay/taxDeduction/netPay are derived values written straight to the
+  // database, so any float rounding error here would be a real, persisted
+  // discrepancy rather than a transient display artifact.
+  const taxRate = new Prisma.Decimal(settings.defaultTaxRate);
 
   return db.$transaction(async (tx) => {
     const claimed = await tx.payrollRun.updateMany({ where: { id: runId, status: "DRAFT" }, data: { status: "COMPLETED" } });
     if (claimed.count === 0) throw new RunStateError("Only draft runs can be processed.");
 
     for (const comp of compensations) {
-      const grossPay = Number(comp.baseSalary);
-      const taxDeduction = grossPay * taxRate;
-      const netPay = grossPay - taxDeduction;
+      const grossPay = new Prisma.Decimal(comp.baseSalary);
+      const taxDeduction = grossPay.times(taxRate);
+      const netPay = grossPay.minus(taxDeduction);
       await tx.payrollPayslip.create({
         data: {
           organizationId,

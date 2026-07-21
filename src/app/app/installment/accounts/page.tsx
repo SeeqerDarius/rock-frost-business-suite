@@ -25,6 +25,7 @@ import { createInstallmentAccount, markAccountDelivered, changeAccountStatus, re
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage accounts.",
   "missing-fields": "Customer, product, staff, and start date are required.",
+  "invalid-input": "Please check that the start date and deposit amount are valid.",
   "future-date": "Start date can't be in the future.",
   "no-stock": "That staff member has no stock left for this product.",
   "not-eligible": "This account isn't eligible for reactivation yet.",

@@ -2,14 +2,22 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createMilestone, completeMilestone, MilestoneStateError, NotFoundError } from "@/modules/projects/service";
+import { cuid, shortText, dateInput, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
   return str.length > 0 ? str : null;
 }
+
+const milestoneSchema = z.object({
+  projectId: cuid,
+  name: shortText,
+  dueDate: dateInput.nullable(),
+});
 
 export async function createNewMilestone(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
@@ -17,19 +25,17 @@ export async function createNewMilestone(formData: FormData): Promise<void> {
     redirect("/app/projects/milestones?error=forbidden");
   }
 
-  const projectId = clean(formData.get("projectId"));
-  const name = clean(formData.get("name"));
-  if (!projectId || !name) {
+  const parsed = parseWithSchema(milestoneSchema, {
+    projectId: clean(formData.get("projectId")) ?? "",
+    name: clean(formData.get("name")) ?? "",
+    dueDate: clean(formData.get("dueDate")),
+  });
+  if (!parsed.success) {
     redirect("/app/projects/milestones?error=missing-fields");
   }
 
-  const dueDateRaw = clean(formData.get("dueDate"));
   try {
-    await createMilestone(tenant.organizationId, {
-      projectId,
-      name,
-      dueDate: dueDateRaw ? new Date(`${dueDateRaw}T00:00:00`) : null,
-    });
+    await createMilestone(tenant.organizationId, parsed.data);
   } catch (error) {
     if (error instanceof NotFoundError) redirect("/app/projects/milestones?error=not-found");
     throw error;

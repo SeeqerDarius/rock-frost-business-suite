@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
@@ -15,11 +16,30 @@ import {
   NotFoundError,
 } from "@/modules/procurement/service";
 import { InsufficientStockError } from "@/modules/inventory/service";
+import { shortText, positiveInt, moneyAmount, longText, dateInput, cuid, parseWithSchema } from "@/lib/validation";
 
-function clean(value: FormDataEntryValue | null) {
-  const str = String(value ?? "").trim();
-  return str.length > 0 ? str : null;
+function clean(value: FormDataEntryValue | null): string {
+  return String(value ?? "").trim();
 }
+
+/** Wraps a schema so an empty form field (missing/blank input) parses to null instead of failing validation. */
+function optional<T extends z.ZodTypeAny>(schema: T) {
+  return z.union([schema, z.literal("")]).transform((value) => (value === "" ? null : value));
+}
+
+const idSchema = z.object({ id: cuid });
+
+const createOrderSchema = z.object({
+  vendorId: cuid,
+  requestId: optional(cuid),
+  itemId: optional(cuid),
+  description: shortText,
+  quantity: positiveInt,
+  unitCost: moneyAmount,
+  orderDate: dateInput,
+  expectedDate: optional(dateInput),
+  notes: optional(longText),
+});
 
 export async function createNewOrder(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
@@ -27,32 +47,37 @@ export async function createNewOrder(formData: FormData): Promise<void> {
     redirect("/app/procurement/orders?error=forbidden");
   }
 
-  const vendorId = clean(formData.get("vendorId"));
-  const orderDateRaw = clean(formData.get("orderDate"));
-  const description = clean(formData.get("description"));
-  const quantityRaw = clean(formData.get("quantity"));
-  const unitCost = clean(formData.get("unitCost"));
-
-  if (!vendorId || !orderDateRaw || !description || !quantityRaw || !unitCost) {
+  const parsed = parseWithSchema(createOrderSchema, {
+    vendorId: clean(formData.get("vendorId")),
+    requestId: clean(formData.get("requestId")),
+    itemId: clean(formData.get("itemId")),
+    description: clean(formData.get("description")),
+    quantity: clean(formData.get("quantity")),
+    unitCost: clean(formData.get("unitCost")),
+    orderDate: clean(formData.get("orderDate")),
+    expectedDate: clean(formData.get("expectedDate")),
+    notes: clean(formData.get("notes")),
+  });
+  if (!parsed.success) {
     redirect("/app/procurement/orders?error=missing-fields");
   }
+  const { vendorId, requestId, itemId, description, quantity, unitCost, orderDate, expectedDate, notes } = parsed.data;
 
   const session = await getServerAuthSession();
-  const expectedDateRaw = clean(formData.get("expectedDate"));
 
   try {
     await createOrder(tenant.organizationId, {
       vendorId,
-      requestId: clean(formData.get("requestId")),
-      orderDate: new Date(`${orderDateRaw}T00:00:00`),
-      expectedDate: expectedDateRaw ? new Date(`${expectedDateRaw}T00:00:00`) : null,
-      notes: clean(formData.get("notes")),
+      requestId,
+      orderDate,
+      expectedDate,
+      notes,
       createdById: session?.user?.id ?? null,
       lines: [
         {
-          itemId: clean(formData.get("itemId")),
+          itemId,
           description,
-          quantity: Number.parseInt(quantityRaw, 10),
+          quantity,
           unitCost,
         },
       ],
@@ -72,8 +97,9 @@ export async function sendExistingOrder(formData: FormData): Promise<void> {
   if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_ORDERS_MANAGE)) {
     redirect("/app/procurement/orders?error=forbidden");
   }
-  const id = clean(formData.get("id"));
-  if (!id) return;
+  const parsedId = parseWithSchema(idSchema, { id: clean(formData.get("id")) });
+  if (!parsedId.success) return;
+  const { id } = parsedId.data;
 
   try {
     await sendOrder(tenant.organizationId, id);
@@ -92,8 +118,9 @@ export async function cancelExistingOrder(formData: FormData): Promise<void> {
   if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_ORDERS_MANAGE)) {
     redirect("/app/procurement/orders?error=forbidden");
   }
-  const id = clean(formData.get("id"));
-  if (!id) return;
+  const parsedId = parseWithSchema(idSchema, { id: clean(formData.get("id")) });
+  if (!parsedId.success) return;
+  const { id } = parsedId.data;
 
   try {
     await cancelOrder(tenant.organizationId, id);
@@ -107,18 +134,29 @@ export async function cancelExistingOrder(formData: FormData): Promise<void> {
   redirect("/app/procurement/orders?saved=1");
 }
 
+const receiveLineSchema = z.object({
+  orderId: cuid,
+  lineId: cuid,
+  quantity: positiveInt,
+  warehouseId: optional(cuid),
+});
+
 export async function receiveExistingOrderLine(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
   if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_ORDERS_MANAGE)) {
     redirect("/app/procurement/orders?error=forbidden");
   }
 
-  const orderId = clean(formData.get("orderId"));
-  const lineId = clean(formData.get("lineId"));
-  const quantityRaw = clean(formData.get("quantity"));
-  if (!orderId || !lineId || !quantityRaw) {
+  const parsed = parseWithSchema(receiveLineSchema, {
+    orderId: clean(formData.get("orderId")),
+    lineId: clean(formData.get("lineId")),
+    quantity: clean(formData.get("quantity")),
+    warehouseId: clean(formData.get("warehouseId")),
+  });
+  if (!parsed.success) {
     redirect("/app/procurement/orders?error=missing-fields");
   }
+  const { orderId, lineId, quantity, warehouseId } = parsed.data;
 
   const session = await getServerAuthSession();
 
@@ -126,8 +164,8 @@ export async function receiveExistingOrderLine(formData: FormData): Promise<void
     await receiveOrderLine(tenant.organizationId, {
       orderId,
       lineId,
-      quantity: Number.parseInt(quantityRaw, 10),
-      warehouseId: clean(formData.get("warehouseId")),
+      quantity,
+      warehouseId,
       createdById: session?.user?.id ?? null,
     });
   } catch (error) {

@@ -71,8 +71,11 @@ Two real bugs this rebuild hit so far share one root cause: **passing a function
 
 **The pattern to watch for:** if a Client Component's prop type accepts a function (an icon component, a render-prop, a formatter callback) and the component using it lives in a Server Component file (no `"use client"` at the top), don't pass a live function — pass already-rendered JSX or plain data instead. If the error message doesn't obviously mention "Client Component" or "function," that's not proof the cause is different — check for a function crossing that boundary first.
 
-## What's deliberately not here yet
+## Current state (superseding the "not here yet" list this section originally had at Phase 1)
 
-- No Prisma client usage anywhere in `src/` — no page queries the database. That's intentional; Phase 1/2 are UI only (see `docs/DEVELOPMENT_ROADMAP.md`).
-- No real session/auth — `UserMenu`, the login form, the contact form, and every "signed in as" placeholder are static UI. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md`.
-- No middleware / route protection — every route currently renders for anyone, since there's no session to check yet. This includes everything under `/app/*` — do not assume it's actually gated.
+This section described Phase 1's UI-only shell (2026-07-19). None of it has been true since Phase 3. For the record, current reality:
+
+- **Prisma is used throughout `src/`** — every module's `service.ts` queries the database, always scoped by `organizationId`. See `docs/MODULE_BOUNDARIES.md`.
+- **Real session/auth exists**: NextAuth v4 credentials provider, bcrypt password hashing, JWT sessions revalidated against the database on every request (a `sessionVersion` mismatch or non-`ACTIVE` user clears the session immediately — see `docs/HARDENING_PLAN.md`). `UserMenu`, login, password reset, and invitation acceptance are all real, not static UI.
+- **Route protection is real**: `src/app/app/layout.tsx` redirects to `/login` for any unauthenticated or revoked session; `src/lib/tenant/index.ts`'s `getCurrentTenant()` is the single authoritative tenant-state check re-run on every request (not just at layout time), filtering to `ACTIVE` memberships in `ACTIVE`/`TRIAL` organizations before any fallback selection. See `docs/HARDENING_PLAN.md`'s Pass 1 section for the full design.
+- **RBAC is real and enforced**: 76 permission keys across 11 business modules plus platform/org-level keys, checked via `hasPermission()`/`canAccessModule()` at both the page and Server Action layer. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md`.

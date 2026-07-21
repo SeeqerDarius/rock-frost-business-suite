@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createLeadSource } from "@/modules/crm/service";
+import { shortText, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
@@ -16,10 +17,11 @@ export async function addLeadSource(formData: FormData): Promise<void> {
     redirect("/app/crm/settings?error=forbidden");
   }
 
-  const name = clean(formData.get("name"));
-  if (!name) {
+  const parsed = parseWithSchema(shortText, clean(formData.get("name")));
+  if (!parsed.success) {
     redirect("/app/crm/settings?error=missing-fields");
   }
+  const name = parsed.data;
 
   await createLeadSource(tenant.organizationId, name);
   revalidatePath("/app/crm/settings");

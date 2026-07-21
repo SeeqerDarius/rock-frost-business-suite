@@ -14,6 +14,7 @@ import { upsertFleetOwner } from "./actions";
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage owners.",
   "missing-fields": "Owner name is required.",
+  "invalid-input": "Please check that the email is valid.",
 };
 
 export default async function FleetOwnersPage({

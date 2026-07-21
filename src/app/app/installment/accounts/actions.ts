@@ -17,11 +17,18 @@ import {
   NotFoundError,
 } from "@/modules/installment/service";
 import type { HirePurchaseAccountStatus } from "@prisma/client";
+import { dateInput, moneyAmountNonNegative, parseWithSchema } from "@/lib/validation";
+import { z } from "zod";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
   return str.length > 0 ? str : null;
 }
+
+const accountSchema = z.object({
+  startDate: dateInput,
+  initialDeposit: moneyAmountNonNegative.optional(),
+});
 
 export async function createInstallmentAccount(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
@@ -38,12 +45,19 @@ export async function createInstallmentAccount(formData: FormData): Promise<void
     redirect("/app/installment/accounts?error=missing-fields");
   }
 
-  const startDate = new Date(`${startDateRaw}T00:00:00`);
-  if (startDate > new Date()) {
+  const parsed = parseWithSchema(accountSchema, {
+    startDate: startDateRaw,
+    initialDeposit: clean(formData.get("initialDeposit")) ?? undefined,
+  });
+  if (!parsed.success) {
+    redirect("/app/installment/accounts?error=invalid-input");
+  }
+
+  if (parsed.data.startDate > new Date()) {
     redirect("/app/installment/accounts?error=future-date");
   }
 
-  const initialDeposit = clean(formData.get("initialDeposit")) ?? undefined;
+  const { startDate, initialDeposit } = parsed.data;
 
   try {
     await createAccount(tenant.organizationId, { customerId, productId, inventoryStaffId, startDate, initialDeposit });
