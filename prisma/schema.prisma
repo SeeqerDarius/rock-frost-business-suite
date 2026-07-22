@@ -345,6 +345,7 @@ model OrganizationMember {
   role         Role?        @relation(fields: [roleId], references: [id], onDelete: SetNull)
   branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
   invitation   Invitation?
+  auditLogs    AuditLog[]
 
   @@unique([organizationId, userId])
   @@index([organizationId])
@@ -508,27 +509,54 @@ model OrganizationModule {
   @@index([moduleId])
 }
 
+enum AuditEventStatus {
+  SUCCESS
+  FAILURE
+}
+
+/**
+ * Append-only through application logic (no update/delete path is ever
+ * exposed — see docs/HARDENING_PLAN.md's Pass 4 audit-logging section).
+ * `module` is the source module key (e.g. "accounting", "auth",
+ * "administration" — matching the registry's module keys where
+ * applicable, plus a few cross-cutting ones that aren't real modules).
+ * `changes` is the existing generic structured-metadata field (kept its
+ * original name for backward compatibility with the handful of call
+ * sites that already write to it) — never put passwords, hashes, session
+ * tokens, raw invitation tokens, or full request bodies in it.
+ * `organizationId` is nullable — most events are tenant-scoped, but a
+ * failed login for an email that matches no user (or a user with zero
+ * organization memberships) genuinely has no organization to attach to.
+ */
 model AuditLog {
-  id             String   @id @default(cuid())
-  organizationId String
+  id             String           @id @default(cuid())
+  organizationId String?
   branchId       String?
   userId         String?
+  membershipId   String?
+  module         String?
   action         String
   entityName     String
   entityId       String?
+  status         AuditEventStatus @default(SUCCESS)
+  correlationId  String?
   changes        Json?
   ipAddress      String?
   userAgent      String?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime         @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?             @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  user         User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  membership   OrganizationMember? @relation(fields: [membershipId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, createdAt])
   @@index([branchId])
   @@index([userId])
+  @@index([membershipId])
   @@index([entityName, entityId])
+  @@index([module])
+  @@index([correlationId])
 }
 
 /**

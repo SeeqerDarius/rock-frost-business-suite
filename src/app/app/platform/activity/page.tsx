@@ -34,7 +34,7 @@ export default async function PlatformActivityPage() {
                 <p className="text-sm">
                   <span className="font-medium">{entry.user?.name ?? entry.user?.email ?? "System"}</span>{" "}
                   {ACTION_LABELS[entry.action] ?? entry.action}
-                  {" "}in <span className="font-medium">{entry.organization.name}</span>
+                  {" "}in <span className="font-medium">{entry.organization?.name ?? "the platform"}</span>
                 </p>
                 <p className="text-xs text-muted-foreground">{entry.entityName}{entry.entityId ? ` · ${entry.entityId}` : ""}</p>
               </div>
