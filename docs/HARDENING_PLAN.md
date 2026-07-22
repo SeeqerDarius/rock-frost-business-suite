@@ -52,10 +52,29 @@ committed idempotent `prisma/seed.ts`); stale Phase-1-era documentation
 corrected to reflect current reality. See the "Pass 3c" section below for
 full detail.
 
-**Pass 4+ — not started.** See "Remaining work" near the bottom for what's
-left: the residual concurrency races documented per-fix in Pass 2 (never
-fully closed — would need row-level locking or serializable transactions),
-audit logging, performance, and accessibility.
+**Pass 4, Milestone A — complete** (2026-07-22): real-PostgreSQL integration
+test infrastructure (a genuinely disposable test database, never
+production, guarded from three independent directions) and a tenant-
+isolation integration suite across all 11 modules, proving the IDOR fixes
+from Passes 1–3c against real Postgres, not mocks. Found and fixed one new
+gap along the way (`InventoryItem.categoryId` had no cross-tenant check).
+See the "Pass 4, Milestone A" section below.
+
+**Pass 4, Milestone B — complete** (2026-07-22): closed the two previously-
+documented residual concurrency races (Accounting's `recordInvoicePayment`,
+Installment's `recordPayment`/`updatePayment`/`applyCreditToAccount`) using
+`SELECT ... FOR UPDATE` row locking; found and fixed two more real races
+while writing the concurrency test suite (`cancelOrder()`'s partially-
+received-order gap, and a systemic `count()`-then-format document-number
+collision affecting six different number-generation functions); added a
+real concurrency test suite (`Promise.allSettled` against genuinely
+overlapping Postgres transactions) covering Inventory, POS, Procurement,
+Accounting, Payroll, and Installment. See the "Pass 4, Milestone B" section
+below.
+
+**Pass 4, Milestones C/D — not started.** Audit logging + viewer,
+observability, performance, resilience/accessibility, and the branch-access
+design doc remain. See "Remaining work" near the bottom.
 
 ---
 
@@ -743,27 +762,174 @@ columns).
 `npx vitest run` (101 tests across 10 files, all passing), and `npm run
 build` (full production build, all 101 routes) all pass clean.
 
-## Remaining work (Pass 4+, not started)
+## Pass 4, Milestone A — real-Postgres integration tests (complete)
 
-### Documented residual concurrency risks
+**Status: fixed.** Adds a second, independent test layer alongside the
+mocked-`db` unit suite: real Prisma queries against a genuinely disposable
+database, never production.
 
-Unchanged from Pass 2 (see that section above) — `recordInvoicePayment()`'s
-remaining-balance guard and `recordPayment()`'s clamp-then-flip step still
-read a pre-transaction snapshot for their *derived* checks (the primary
-`amountPaid`/`totalPaid`/`balance` figures themselves are never wrong, since
-those are atomic increments/decrements). Closing this fully needs row-level
-locking (`SELECT ... FOR UPDATE`) or serializable transaction isolation —
-judged disproportionate to hold up Pass 2, still true after Pass 3c.
+### Test-database safety
 
-### Automated tests: still mocked-`db`, not real-transaction integration tests
+`test/integration/setup/guard.ts`'s `assertSafeTestDatabase()` refuses to run
+unless: `TEST_DATABASE_URL` is set; its database name contains `"test"`; it
+differs from `DATABASE_URL`/`DIRECT_URL`; `ALLOW_INTEGRATION_TESTS=1` is
+explicitly set (so the suite can never run as a side effect of a plain
+`npm test`); and `NODE_ENV`/`VERCEL_ENV` isn't `production`. Verified
+working directly — running `npm run test:integration` with no
+`TEST_DATABASE_URL` set fails closed with an actionable error, touching
+nothing. `test/integration/setup/{db,fixtures}.ts` provide the real
+`PrismaClient` and per-suite isolated-organization fixtures
+(`createTestOrg`/`cleanupTestOrg`). `prisma/seed-data.ts` was extracted from
+`prisma/seed.ts` (now a thin CLI wrapper) so the same platform-bootstrap
+logic seeds the test database too, without any risk of `seed.ts`'s own
+import accidentally running against a wrong `DATABASE_URL`.
 
-101 tests across 10 files as of Pass 3c (27 Pass 1, 18 Pass 2, 13 Pass 3a, 28
-Pass 3b, 15 Pass 3c). All mock `@/lib/db` rather than exercising a real
-Postgres transaction under actual concurrent load — the atomic-`updateMany`/
-`increment`/`decrement` patterns are verified structurally (the right SQL
-shape gets sent) but not under genuine race conditions. A future pass could
-add a small integration suite against a real (test) database with actual
-concurrent requests to validate the residual-race analysis above empirically.
+`.github/workflows/ci.yml` gained a second `integration` job: a genuinely
+ephemeral `postgres:16` service container (no external secrets needed),
+migrated via `npm run db:test:migrate`, then `npm run test:integration`
+against it. The `validate` job is otherwise unchanged.
+
+### Tenant-isolation integration suite
+
+`test/integration/tenant-isolation/*.test.ts` — one file per module
+(Administration, Projects, Fleet, Installment, CRM, Inventory, Accounting,
+HR, Procurement, Payroll, POS) — each creates two real, fully isolated
+organizations and proves Organization A can never read or write
+Organization B's records through that module's real service-layer
+functions, against real Postgres. This is the real-database counterpart to
+the mocked `test/idor-*.test.ts` suite from Passes 1–3c.
+
+**Found and fixed while writing these:** `createItem()`/`updateItem()` in
+`src/modules/inventory/service.ts` had no cross-tenant check on
+`categoryId` — a category belonging to another organization could be
+attached to an item. Fixed with a `requireCategory()` helper matching every
+other module's IDOR-fix pattern, with a regression test.
+
+**Files changed:** `test/integration/setup/{guard,db,fixtures}.ts` (new);
+`test/integration/tenant-isolation/*.test.ts` (new, 11 files);
+`prisma/seed-data.ts` (new); `prisma/seed.ts` (now a thin wrapper);
+`scripts/test-db-migrate.ts`, `scripts/test-db-seed.ts` (new);
+`vitest.integration.config.ts` (new); `vitest.config.ts` (scoped to
+`test/*.test.ts` only, non-recursive, so it can never pick up the
+integration suite); `package.json` (`test:integration`, `test:all`,
+`db:test:migrate`, `db:test:seed` scripts, `cross-env` devDependency);
+`.github/workflows/ci.yml` (new `integration` job); `.env.example`
+(`TEST_DATABASE_URL`); `docs/TESTING_STRATEGY.md`, `docs/DATABASE_STRATEGY.md`;
+`src/modules/inventory/service.ts` + `src/app/app/inventory/items/{actions,page}.tsx`
+(the categoryId fix above).
+
+**Migration impact:** none.
+
+**Honest verification limits:** this sandbox has no local Postgres, Docker,
+or GitHub Actions access. Everything above was verified via `tsc`/`lint`/the
+existing mocked suite/production build — all clean — plus the safety
+guard's refusal behavior, which was actually exercised. The integration
+suite's tests themselves have **not** been executed against a real
+database by me; they need a real disposable Postgres (locally or in CI) to
+confirm they pass for real.
+
+## Pass 4, Milestone B — closing residual concurrency races (complete)
+
+**Status: fixed** for the two previously-documented races, plus two more
+found while writing this milestone's test suite.
+
+### Accounting `recordInvoicePayment()`
+
+The remaining-balance guard now runs *inside* the transaction against the
+invoice row locked with `SELECT ... FOR UPDATE` (raw SQL via `tx.$queryRaw`
+— this codebase's first use of raw SQL, chosen because Prisma's query
+builder can't express a same-row field-to-field comparison like
+`amountPaid + payment <= amount` any other way), instead of a
+pre-transaction snapshot. A second concurrent payment on the same invoice
+now blocks on the row lock until the first commits, then re-reads the true
+committed `amountPaid` before deciding whether it still fits.
+
+### Installment `recordPayment()` / `applyCreditToAccount()` / `updatePayment()`
+
+- `applyCreditToAccount()`: both the credit and the target account are now
+  read via `SELECT ... FOR UPDATE` inside the transaction, replacing two
+  pre-transaction `findFirst` reads.
+- `recalculateAccountAfterPaymentChange()` (called by `updatePayment()`,
+  a full recompute-from-every-payment, not an increment — can't use the
+  guarded-`updateMany` pattern): now locks the account row with
+  `SELECT ... FOR UPDATE` before its read, serializing it against
+  `recordPayment()`/`applyCreditToAccount()` on the same account.
+- `recordPayment()` itself needed no code change — on closer analysis its
+  two same-transaction updates were never actually racy against each other
+  (Postgres holds the row lock from the first `UPDATE` until commit); the
+  real gap was the other two functions reading stale data with no lock at
+  all. Its docstring was corrected to stop claiming a residual race that
+  isn't real.
+
+### Found while writing the concurrency tests (not in the original list)
+
+- **`generateInvoiceNumber`/`generateExpenseNumber`/`generateEmployeeNumber`/
+  `generateSaleNumber`/`generateRequestNumber`/`generateOrderNumber`/
+  `generateProjectCode`** (Accounting, HR, POS, Procurement ×2, Projects):
+  all `count()`-then-format, racy under real concurrency — two simultaneous
+  creates can read the same count and compute the same number. The
+  `@@unique` constraint prevented an actual duplicate row, but the second
+  caller previously got an unhandled `P2002` crash instead of a usable
+  record. Fixed with a shared `createWithUniqueRetry()` helper
+  (`src/lib/unique-retry.ts`) that retries the whole create (or whole
+  transaction, for POS/Procurement's multi-statement creates) with a freshly
+  regenerated number on a unique-constraint collision.
+- **Procurement `cancelOrder()`**: the atomic status claim only excluded
+  `RECEIVED`/`CANCELLED`, relying on a separate *stale pre-transaction read*
+  of the order's lines to reject cancelling a partially-received order. A
+  concurrent `receiveOrderLine()` landing between that read and the claim
+  could move the order to `PARTIALLY_RECEIVED` without the cancel noticing —
+  the claim's own `WHERE` clause still matched, incorrectly cancelling an
+  order with real received stock against it. Fixed by restricting the claim
+  itself to `status IN (DRAFT, SENT)`, removing the stale pre-check
+  entirely (the atomic claim now *is* the correct-and-only guard).
+
+### Real concurrency test suite
+
+`test/integration/concurrency/*.test.ts` (6 files: inventory, pos,
+procurement, accounting, payroll, installment) — genuine `Promise.allSettled`
+firing truly concurrent requests into the same service function against
+real overlapping Postgres transactions, asserting on final totals, final
+status, exact row counts, and absence of duplicates. Covers: competing
+stock issues/receipts/transfers, competing POS sales/refunds, competing
+purchase-order receives (and a receive-vs-cancel race), competing invoice
+payments (both the overpay-rejection and the exact-fit case) and invoice
+sends, competing payroll-run processing (and a process-vs-cancel race), and
+competing installment payments/credit-applications.
+
+**Files changed:** `src/modules/accounting/service.ts` (`recordInvoicePayment`
+row lock, `createWithUniqueRetry` for invoice/expense numbers);
+`src/modules/installment/service.ts` (`applyCreditToAccount`/
+`recalculateAccountAfterPaymentChange` row locks, `createWithUniqueRetry`
+for receipt numbers in `recordPayment`); `src/modules/procurement/service.ts`
+(`cancelOrder` fix, `createWithUniqueRetry` for request/order numbers);
+`src/modules/{hr,pos,projects}/service.ts` (`createWithUniqueRetry` for
+employee/sale/project numbers); `src/lib/unique-retry.ts` (new, shared
+helper); `test/integration/concurrency/*.test.ts` (new, 6 files);
+`test/pass2-financial-inventory-integrity.test.ts`,
+`test/pass3c-installment-pos-decimal.test.ts` (updated mocks for the new
+`$queryRaw` row-lock calls).
+
+**Migration impact:** none (no schema change — every fix is query/logic
+shape, using the existing `Decimal`-typed columns from earlier passes).
+
+**Deliberately not fixed this pass:** `createAccount()`'s deposit-receipt
+and `applyCreditToAccount()`'s receipt-number generation retain the same
+`count()`-then-format race as the seven functions fixed above — judged
+lower priority (account creation and credit application are much lower-
+frequency concurrent hot paths than regular payment recording) and
+deferred rather than expanding this milestone further. Worth a quick
+follow-up fix using the same `createWithUniqueRetry()` helper.
+
+**Verification:** `npx tsc --noEmit`, `npm run lint`, `npx prisma validate`,
+`npx vitest run` (101 tests across 10 files, all still passing, mocks
+updated for the new raw-query call sites), and `npm run build` (full
+production build, all 101 routes) all pass clean. Same honest limit as
+Milestone A: the concurrency tests themselves need a real disposable
+Postgres to actually execute — verified here via `tsc` and careful manual
+review of each fixed function's current code, not by watching them run.
+
+## Remaining work (Pass 4, Milestones C/D+, not started)
 
 ### Audit logging, performance, accessibility
 
@@ -777,6 +943,12 @@ the IDOR/financial-integrity issues were.
 never actually executed on GitHub's infrastructure (this environment can't
 trigger one). Worth confirming on the next real push before relying on it as
 a merge gate.
+
+### Minor deferred item from Milestone B
+
+`createAccount()`'s deposit-receipt and `applyCreditToAccount()`'s
+receipt-number generation still use the pre-`createWithUniqueRetry`
+pattern — see Milestone B's "Deliberately not fixed this pass" note above.
 
 ---
 

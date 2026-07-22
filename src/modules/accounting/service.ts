@@ -3,6 +3,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import type { AccountingAccountType, AccountingInvoiceStatus } from "@prisma/client";
+import { createWithUniqueRetry } from "@/lib/unique-retry";
 
 /**
  * Fresh module (no reference implementation to migrate from). Every function
@@ -222,8 +223,10 @@ interface InvoiceInput {
 }
 
 export async function createInvoice(organizationId: string, data: InvoiceInput, createdById?: string | null) {
-  const invoiceNumber = await generateInvoiceNumber(organizationId);
-  return db.accountingInvoice.create({ data: { organizationId, invoiceNumber, createdById, ...data } });
+  return createWithUniqueRetry(async () => {
+    const invoiceNumber = await generateInvoiceNumber(organizationId);
+    return db.accountingInvoice.create({ data: { organizationId, invoiceNumber, createdById, ...data } });
+  });
 }
 
 export class InvoiceStateError extends Error {}
@@ -266,15 +269,22 @@ export async function markInvoiceSent(organizationId: string, id: string) {
   });
 }
 
+type LockedInvoiceRow = { id: string; amount: Prisma.Decimal | string; amountPaid: Prisma.Decimal | string; status: string };
+
 /**
  * amountPaid is updated with an atomic increment, not a JS-computed
- * absolute value — the previous read-then-write could lose one of two
- * concurrent payments' contribution to the running total even though both
- * payments' journal entries posted for real. The remaining-balance guard
- * still reads a snapshot before the transaction (a narrow race between two
- * simultaneous payments that each individually fit the remaining balance
- * but together slightly overpay is a documented, accepted residual — see
- * docs/HARDENING_PLAN.md); the amountPaid figure itself can never be wrong.
+ * absolute value — two concurrent payments can never lose one's
+ * contribution to the running total.
+ *
+ * The remaining-balance guard now runs inside the transaction against a
+ * row locked with `SELECT ... FOR UPDATE`, not a pre-transaction snapshot
+ * — this closes the previously-documented residual race where two
+ * simultaneous payments could each individually pass a stale
+ * remaining-balance check and together overpay. A second concurrent call
+ * on the same invoice now blocks on the row lock until the first
+ * transaction commits (or rolls back), then re-reads the true committed
+ * amountPaid before deciding whether it still fits — see
+ * docs/HARDENING_PLAN.md's Pass 4 section.
  */
 export async function recordInvoicePayment(organizationId: string, id: string, amount: string, paymentDate: Date) {
   // Prisma.Decimal throughout — this is a comparison against a database
@@ -289,21 +299,32 @@ export async function recordInvoicePayment(organizationId: string, id: string, a
 
   const invoice = await db.accountingInvoice.findFirst({ where: { id, organizationId } });
   if (!invoice) throw new NotFoundError("Invoice not found.");
-  if (invoice.status !== "SENT" && invoice.status !== "OVERDUE") {
-    throw new InvoiceStateError("Only sent or overdue invoices can receive a payment.");
-  }
-
-  const remaining = new Prisma.Decimal(invoice.amount).minus(invoice.amountPaid);
-  if (paymentAmount.greaterThan(remaining)) {
-    throw new InvalidPaymentError(`Payment of ${paymentAmount.toFixed(2)} exceeds the remaining balance of ${remaining.toFixed(2)}.`);
-  }
-
-  const [cash, ar] = await Promise.all([
-    getDefaultAccount(organizationId, "1000"),
-    getDefaultAccount(organizationId, "1100"),
-  ]);
 
   return db.$transaction(async (tx) => {
+    const [locked] = await tx.$queryRaw<LockedInvoiceRow[]>`
+      SELECT id, amount, "amountPaid", status
+      FROM "AccountingInvoice"
+      WHERE id = ${id} AND "organizationId" = ${organizationId}
+      FOR UPDATE
+    `;
+    if (!locked) throw new NotFoundError("Invoice not found.");
+    if (locked.status !== "SENT" && locked.status !== "OVERDUE") {
+      throw new InvoiceStateError("Only sent or overdue invoices can receive a payment.");
+    }
+
+    const remaining = new Prisma.Decimal(locked.amount).minus(locked.amountPaid);
+    if (paymentAmount.greaterThan(remaining)) {
+      throw new InvalidPaymentError(`Payment of ${paymentAmount.toFixed(2)} exceeds the remaining balance of ${remaining.toFixed(2)}.`);
+    }
+
+    // Only fetched once the payment is actually valid — no point creating
+    // the default chart-of-accounts rows for a payment that's about to be
+    // rejected.
+    const [cash, ar] = await Promise.all([
+      getDefaultAccount(organizationId, "1000"),
+      getDefaultAccount(organizationId, "1100"),
+    ]);
+
     await postJournalEntry(tx, organizationId, {
       entryDate: paymentDate,
       description: `Payment received for invoice ${invoice.invoiceNumber}`,
@@ -397,8 +418,10 @@ interface ExpenseInput {
 }
 
 export async function createExpense(organizationId: string, data: ExpenseInput, createdById?: string | null) {
-  const expenseNumber = await generateExpenseNumber(organizationId);
-  return db.accountingExpense.create({ data: { organizationId, expenseNumber, createdById, ...data } });
+  return createWithUniqueRetry(async () => {
+    const expenseNumber = await generateExpenseNumber(organizationId);
+    return db.accountingExpense.create({ data: { organizationId, expenseNumber, createdById, ...data } });
+  });
 }
 
 export class ExpenseStateError extends Error {}

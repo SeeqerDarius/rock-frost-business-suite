@@ -3,6 +3,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { recordMovement } from "@/modules/inventory/service";
 import type { ProcurementRequestStatus, ProcurementOrderStatus } from "@prisma/client";
+import { createWithUniqueRetry } from "@/lib/unique-retry";
 
 export class NotFoundError extends Error {}
 
@@ -70,8 +71,10 @@ export async function createRequest(organizationId: string, data: RequestInput) 
     if (!item) throw new NotFoundError("Item not found.");
   }
 
-  const requestNumber = await generateRequestNumber(organizationId);
-  return db.procurementRequest.create({ data: { organizationId, requestNumber, ...data } });
+  return createWithUniqueRetry(async () => {
+    const requestNumber = await generateRequestNumber(organizationId);
+    return db.procurementRequest.create({ data: { organizationId, requestNumber, ...data } });
+  });
 }
 
 export class RequestStateError extends Error {}
@@ -145,28 +148,31 @@ export async function createOrder(organizationId: string, data: OrderInput) {
     if (!item) throw new NotFoundError("Item not found.");
   }
 
-  const orderNumber = await generateOrderNumber(organizationId);
+  // The whole transaction attempt is retried on an order-number collision
+  // (not just the create call), regenerating orderNumber fresh each time.
+  return createWithUniqueRetry(async () => {
+    const orderNumber = await generateOrderNumber(organizationId);
+    return db.$transaction(async (tx) => {
+      const order = await tx.procurementOrder.create({
+        data: {
+          organizationId,
+          orderNumber,
+          vendorId: data.vendorId,
+          requestId: data.requestId,
+          orderDate: data.orderDate,
+          expectedDate: data.expectedDate,
+          notes: data.notes,
+          createdById: data.createdById,
+          lines: { create: data.lines },
+        },
+      });
 
-  return db.$transaction(async (tx) => {
-    const order = await tx.procurementOrder.create({
-      data: {
-        organizationId,
-        orderNumber,
-        vendorId: data.vendorId,
-        requestId: data.requestId,
-        orderDate: data.orderDate,
-        expectedDate: data.expectedDate,
-        notes: data.notes,
-        createdById: data.createdById,
-        lines: { create: data.lines },
-      },
+      if (data.requestId) {
+        await tx.procurementRequest.update({ where: { id: data.requestId }, data: { status: "CONVERTED" } });
+      }
+
+      return order;
     });
-
-    if (data.requestId) {
-      await tx.procurementRequest.update({ where: { id: data.requestId }, data: { status: "CONVERTED" } });
-    }
-
-    return order;
   });
 }
 
@@ -180,14 +186,21 @@ export async function sendOrder(organizationId: string, id: string) {
   return db.procurementOrder.findUniqueOrThrow({ where: { id } });
 }
 
+/**
+ * The atomic claim's WHERE clause only allows DRAFT/SENT — not
+ * PARTIALLY_RECEIVED — so a concurrent receiveOrderLine() that's already
+ * moved the order to PARTIALLY_RECEIVED can never lose this race. A prior
+ * version guarded only against RECEIVED/CANCELLED here and relied on a
+ * separate stale pre-transaction read of `order.lines` to reject a
+ * partially-received order, which a concurrent receive landing between
+ * that read and this claim could slip past — found while writing Pass 4's
+ * concurrency tests (see docs/HARDENING_PLAN.md).
+ */
 export async function cancelOrder(organizationId: string, id: string) {
-  const order = await db.procurementOrder.findFirst({ where: { id, organizationId }, include: { lines: true } });
+  const order = await db.procurementOrder.findFirst({ where: { id, organizationId } });
   if (!order) throw new NotFoundError("Order not found.");
-  if (order.lines.some((l) => l.receivedQuantity > 0)) {
-    throw new OrderStateError("Cannot cancel an order that has already received stock.");
-  }
   const claimed = await db.procurementOrder.updateMany({
-    where: { id, status: { notIn: ["RECEIVED", "CANCELLED"] } },
+    where: { id, status: { in: ["DRAFT", "SENT"] } },
     data: { status: "CANCELLED" },
   });
   if (claimed.count === 0) throw new OrderStateError("This order can no longer be cancelled.");

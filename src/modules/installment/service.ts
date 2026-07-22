@@ -6,6 +6,7 @@ import type {
   HirePurchaseAccountStatus,
   HirePurchaseCreditSource,
 } from "@prisma/client";
+import { createWithUniqueRetry } from "@/lib/unique-retry";
 
 /**
  * Business logic migrated from the GLV reference implementation
@@ -600,16 +601,18 @@ export class InvalidPaymentAmountError extends Error {}
 /**
  * totalPaid and balance are updated with one atomic multi-field
  * increment/decrement (a single UPDATE statement), not a JS-computed
- * absolute write from a pre-transaction read — the previous version could
- * lose one of two concurrent payments' contribution to the running total
- * even though both payment rows got created for real. Overpayment is
+ * absolute write from a pre-transaction read — two concurrent payments can
+ * never lose one's contribution to the running total. Overpayment is
  * detected from the atomically-decremented balance's true (possibly
  * negative) result, so the credit amount created for the excess is always
  * correct even under concurrent payments on the same account. The
- * subsequent clamp-to-zero + status write is derived from that same fresh
- * result, not a stale read — a narrower residual race remains only if a
- * third payment interleaves between the decrement and this clamp step; see
- * docs/HARDENING_PLAN.md.
+ * subsequent clamp-to-zero + status write reads that same fresh result
+ * from within this same transaction — Postgres's row lock from the first
+ * UPDATE is held until commit, so no other transaction (a concurrent
+ * recordPayment(), applyCreditToAccount(), or recalculateAccountAfter-
+ * PaymentChange() call on this same account — all of which now also lock
+ * or atomically write this row) can interleave between the two updates
+ * below. See docs/HARDENING_PLAN.md's Pass 4 section.
  */
 export async function recordPayment(
   organizationId: string,
@@ -627,6 +630,10 @@ export async function recordPayment(
   }
 
   const settings = await getInstallmentSettings(organizationId);
+
+  // The whole transaction attempt is retried on a receipt-number collision
+  // (not just the create call), regenerating receiptNo fresh each time.
+  return createWithUniqueRetry(async () => {
   const receiptNo = await generateReceiptNo(organizationId, settings.receiptPrefix);
 
   return db.$transaction(async (tx) => {
@@ -676,6 +683,7 @@ export async function recordPayment(
 
     return payment;
   });
+  });
 }
 
 export function canEditPayment(payment: { createdAt: Date }, windowHours: number, now: Date = new Date()): boolean {
@@ -718,6 +726,17 @@ async function recalculateAccountAfterPaymentChange(
   organizationId: string,
   accountId: string
 ) {
+  // Locks the account row before this function's read-then-absolute-write
+  // (a full recompute from every payment, not an increment — inherently
+  // can't use the guarded-updateMany pattern) — closes the race where a
+  // concurrent recordPayment()/applyCreditToAccount() on the same account
+  // could interleave between this read and this function's write. Any
+  // other function touching this account row (both of the above already
+  // use FOR UPDATE or an atomic increment/decrement) is naturally
+  // serialized against this lock by Postgres, not just callers of this
+  // specific function.
+  await tx.$queryRaw`SELECT id FROM "HirePurchaseAccount" WHERE id = ${accountId} AND "organizationId" = ${organizationId} FOR UPDATE`;
+
   const account = await tx.hirePurchaseAccount.findFirstOrThrow({ where: { id: accountId, organizationId } });
   const payments = await tx.hirePurchasePayment.findMany({ where: { accountId } });
 
@@ -804,35 +823,72 @@ export class CreditNotApplicableError extends Error {}
  * OPEN), recorded as a real payment row so the account's totalPaid stays
  * consistent with "sum of its payments."
  */
+type LockedCreditRow = {
+  id: string;
+  customerId: string;
+  status: string;
+  remainingAmount: Prisma.Decimal | string;
+  source: string;
+};
+type LockedAccountRow = {
+  id: string;
+  customerId: string;
+  balance: Prisma.Decimal | string;
+  totalPaid: Prisma.Decimal | string;
+  status: HirePurchaseAccountStatus;
+};
+
+/**
+ * Every read this function needs (the credit, the target account) now
+ * happens inside the transaction against rows locked with
+ * `SELECT ... FOR UPDATE`, not a pre-transaction snapshot — closing the
+ * previously-documented race where a concurrent recordPayment() or a
+ * second applyCreditToAccount() call on the same account/credit could
+ * interleave between the read and this function's absolute write. See
+ * docs/HARDENING_PLAN.md's Pass 4 section.
+ */
 export async function applyCreditToAccount(organizationId: string, creditId: string, targetAccountId: string) {
-  const credit = await db.hirePurchaseCredit.findFirst({ where: { id: creditId, organizationId, status: "OPEN" } });
-  if (!credit) throw new CreditNotApplicableError("This credit is no longer open.");
-
-  const targetAccount = await db.hirePurchaseAccount.findFirst({
-    where: { id: targetAccountId, organizationId, customerId: credit.customerId },
-  });
-  if (!targetAccount) throw new CreditNotApplicableError("The target account must belong to the same customer as the credit.");
-  const targetBalance = new Prisma.Decimal(targetAccount.balance);
-  if (targetBalance.lessThanOrEqualTo(0)) {
-    throw new CreditNotApplicableError("That account has no outstanding balance to apply a credit to.");
-  }
-
-  const creditRemaining = new Prisma.Decimal(credit.remainingAmount);
-  const applyAmount = Prisma.Decimal.min(creditRemaining, targetBalance);
-  const remainingCredit = creditRemaining.minus(applyAmount);
-  const nextBalance = targetBalance.minus(applyAmount);
-  const nextTotalPaid = new Prisma.Decimal(targetAccount.totalPaid).plus(applyAmount);
-  const nextStatus: HirePurchaseAccountStatus =
-    nextBalance.lessThanOrEqualTo(0)
-      ? "COMPLETED"
-      : targetAccount.status === "DORMANT" || targetAccount.status === "PROBATION"
-        ? "ACTIVE"
-        : targetAccount.status;
-
   const settings = await getInstallmentSettings(organizationId);
   const receiptNo = await generateReceiptNo(organizationId, settings.receiptPrefix);
 
   return db.$transaction(async (tx) => {
+    const [lockedCredit] = await tx.$queryRaw<LockedCreditRow[]>`
+      SELECT id, "customerId", status, "remainingAmount", source
+      FROM "HirePurchaseCredit"
+      WHERE id = ${creditId} AND "organizationId" = ${organizationId}
+      FOR UPDATE
+    `;
+    if (!lockedCredit || lockedCredit.status !== "OPEN") {
+      throw new CreditNotApplicableError("This credit is no longer open.");
+    }
+
+    const [lockedAccount] = await tx.$queryRaw<LockedAccountRow[]>`
+      SELECT id, "customerId", balance, "totalPaid", status
+      FROM "HirePurchaseAccount"
+      WHERE id = ${targetAccountId} AND "organizationId" = ${organizationId}
+      FOR UPDATE
+    `;
+    if (!lockedAccount || lockedAccount.customerId !== lockedCredit.customerId) {
+      throw new CreditNotApplicableError("The target account must belong to the same customer as the credit.");
+    }
+
+    const targetBalance = new Prisma.Decimal(lockedAccount.balance);
+    if (targetBalance.lessThanOrEqualTo(0)) {
+      throw new CreditNotApplicableError("That account has no outstanding balance to apply a credit to.");
+    }
+
+    const creditRemaining = new Prisma.Decimal(lockedCredit.remainingAmount);
+    const applyAmount = Prisma.Decimal.min(creditRemaining, targetBalance);
+    const remainingCredit = creditRemaining.minus(applyAmount);
+    const nextBalance = targetBalance.minus(applyAmount);
+    const nextTotalPaid = new Prisma.Decimal(lockedAccount.totalPaid).plus(applyAmount);
+    const nextStatus: HirePurchaseAccountStatus =
+      nextBalance.lessThanOrEqualTo(0)
+        ? "COMPLETED"
+        : lockedAccount.status === "DORMANT" || lockedAccount.status === "PROBATION"
+          ? "ACTIVE"
+          : lockedAccount.status;
+
     await tx.hirePurchasePayment.create({
       data: {
         organizationId,
@@ -841,7 +897,7 @@ export async function applyCreditToAccount(organizationId: string, creditId: str
         amount: applyAmount.toFixed(2),
         paymentDate: new Date(),
         method: "Credit applied",
-        notes: `Applied from credit ${credit.id} (${credit.source})`,
+        notes: `Applied from credit ${lockedCredit.id} (${lockedCredit.source})`,
       },
     });
 

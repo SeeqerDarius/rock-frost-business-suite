@@ -31,6 +31,7 @@ const mockDb = {
   payrollPayslip: { create: vi.fn() },
 
   $transaction: vi.fn(),
+  $queryRaw: vi.fn(),
 };
 
 vi.mock("@/lib/db", () => ({ db: mockDb }));
@@ -180,6 +181,11 @@ describe("Decimal-precision hygiene — exact arithmetic replacing JS Number/eps
     ]);
     mockDb.accountingAccount.count.mockResolvedValue(2);
     mockDb.accountingInvoice.update.mockResolvedValue({ id: "inv-1", amountPaid: "100.10", amount: "100.10" });
+    // The remaining-balance guard now runs against a row locked with
+    // SELECT ... FOR UPDATE inside the transaction (see
+    // docs/HARDENING_PLAN.md's Pass 4 section) rather than the
+    // pre-transaction findFirst read above.
+    mockDb.$queryRaw.mockResolvedValue([{ id: "inv-1", status: "SENT", amount: "100.10", amountPaid: "0.00" }]);
 
     await expect(accounting.recordInvoicePayment(ORG, "inv-1", "100.10", new Date())).resolves.toBeDefined();
   });
@@ -222,22 +228,17 @@ describe("Decimal-precision hygiene — exact arithmetic replacing JS Number/eps
   });
 
   it("installment: applyCreditToAccount partially applies a credit larger than the account balance, leaving the remainder OPEN", async () => {
-    mockDb.hirePurchaseCredit.findFirst.mockResolvedValue({
-      id: "credit-1",
-      organizationId: ORG,
-      customerId: "cust-1",
-      status: "OPEN",
-      remainingAmount: "50.00",
-      source: "PAYMENT_OVERPAYMENT",
-    });
-    mockDb.hirePurchaseAccount.findFirst.mockResolvedValue({
-      id: "acct-1",
-      organizationId: ORG,
-      customerId: "cust-1",
-      balance: "30.00",
-      totalPaid: "270.00",
-      status: "ACTIVE",
-    });
+    // Both the credit and the target account are now read via
+    // SELECT ... FOR UPDATE inside the transaction (see
+    // docs/HARDENING_PLAN.md's Pass 4 section), not findFirst — mocked
+    // here as two sequential $queryRaw calls in that same order.
+    mockDb.$queryRaw
+      .mockResolvedValueOnce([
+        { id: "credit-1", customerId: "cust-1", status: "OPEN", remainingAmount: "50.00", source: "PAYMENT_OVERPAYMENT" },
+      ])
+      .mockResolvedValueOnce([
+        { id: "acct-1", customerId: "cust-1", balance: "30.00", totalPaid: "270.00", status: "ACTIVE" },
+      ]);
     mockDb.hirePurchaseSettings.findUnique.mockResolvedValue({ organizationId: ORG, receiptPrefix: "RCPT" });
     mockDb.hirePurchasePayment.findMany.mockResolvedValue([]);
     mockDb.hirePurchaseAccount.update.mockResolvedValue({});

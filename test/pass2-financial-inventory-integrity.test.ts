@@ -39,6 +39,7 @@ const mockDb = {
   hirePurchaseSettings: { findUnique: vi.fn() },
 
   $transaction: vi.fn(),
+  $queryRaw: vi.fn(),
 };
 
 vi.mock("@/lib/db", () => ({ db: mockDb }));
@@ -187,6 +188,11 @@ describe("Accounting — journal account IDOR, invoice payment validation, doubl
       amount: "100.00",
       amountPaid: "80.00",
     });
+    // The remaining-balance guard now runs against a row locked with
+    // SELECT ... FOR UPDATE inside the transaction, not the pre-transaction
+    // findFirst read above (see docs/HARDENING_PLAN.md's Pass 4 section) —
+    // the mocked $queryRaw call stands in for that locked read.
+    mockDb.$queryRaw.mockResolvedValue([{ id: "inv-1", status: "SENT", amount: "100.00", amountPaid: "80.00" }]);
 
     await expect(accounting.recordInvoicePayment(ORG, "inv-1", "50.00", new Date())).rejects.toThrow(
       accounting.InvalidPaymentError,

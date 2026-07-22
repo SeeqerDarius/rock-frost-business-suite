@@ -2,6 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import type { HrEmployeeStatus } from "@prisma/client";
+import { createWithUniqueRetry } from "@/lib/unique-retry";
 
 export class NotFoundError extends Error {}
 
@@ -50,8 +51,10 @@ interface EmployeeInput {
 
 export async function createEmployee(organizationId: string, data: EmployeeInput) {
   if (data.managerId) await requireEmployee(organizationId, data.managerId);
-  const employeeNumber = await generateEmployeeNumber(organizationId);
-  return db.hrEmployee.create({ data: { organizationId, employeeNumber, ...data } });
+  return createWithUniqueRetry(async () => {
+    const employeeNumber = await generateEmployeeNumber(organizationId);
+    return db.hrEmployee.create({ data: { organizationId, employeeNumber, ...data } });
+  });
 }
 
 export async function updateEmployee(organizationId: string, id: string, data: EmployeeInput) {

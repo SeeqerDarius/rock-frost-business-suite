@@ -3,6 +3,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { recordMovement, getStockGrid, InsufficientStockError, NotFoundError } from "@/modules/inventory/service";
 import type { PosPaymentMethod } from "@prisma/client";
+import { createWithUniqueRetry } from "@/lib/unique-retry";
 
 async function validateWarehouseRef(organizationId: string, warehouseId?: string | null) {
   if (!warehouseId) return;
@@ -171,44 +172,49 @@ export async function createSale(organizationId: string, data: SaleInput) {
 
   const lineTotals = data.lines.map((l) => ({ ...l, lineTotal: (Number(l.unitPrice) * l.quantity).toFixed(2) }));
   const subtotal = lineTotals.reduce((sum, l) => sum + Number(l.lineTotal), 0);
-  const saleNumber = await generateSaleNumber(organizationId);
 
-  return db.$transaction(async (tx) => {
-    const sale = await tx.posSale.create({
-      data: {
-        organizationId,
-        registerId: session.registerId,
-        sessionId: data.sessionId,
-        saleNumber,
-        customerName: data.customerName,
-        paymentMethod: data.paymentMethod,
-        soldById: data.soldById,
-        subtotal: subtotal.toFixed(2),
-        total: subtotal.toFixed(2),
-        lines: { create: lineTotals },
-      },
-    });
-
-    if (register.warehouseId) {
-      for (const line of data.lines) {
-        if (!line.itemId) continue;
-        await recordMovement(
+  // The whole transaction attempt is retried (not just the create call),
+  // regenerating saleNumber fresh each time — a collision can only be
+  // detected once tx.posSale.create() runs, partway through the attempt.
+  return createWithUniqueRetry(async () => {
+    const saleNumber = await generateSaleNumber(organizationId);
+    return db.$transaction(async (tx) => {
+      const sale = await tx.posSale.create({
+        data: {
           organizationId,
-          {
-            itemId: line.itemId,
-            warehouseId: register.warehouseId,
-            type: "ISSUE",
-            quantity: line.quantity,
-            reference: saleNumber,
-            notes: `Sold via POS sale ${saleNumber}`,
-            createdById: data.soldById,
-          },
-          tx,
-        );
-      }
-    }
+          registerId: session.registerId,
+          sessionId: data.sessionId,
+          saleNumber,
+          customerName: data.customerName,
+          paymentMethod: data.paymentMethod,
+          soldById: data.soldById,
+          subtotal: subtotal.toFixed(2),
+          total: subtotal.toFixed(2),
+          lines: { create: lineTotals },
+        },
+      });
 
-    return sale;
+      if (register.warehouseId) {
+        for (const line of data.lines) {
+          if (!line.itemId) continue;
+          await recordMovement(
+            organizationId,
+            {
+              itemId: line.itemId,
+              warehouseId: register.warehouseId,
+              type: "ISSUE",
+              quantity: line.quantity,
+              reference: saleNumber,
+              notes: `Sold via POS sale ${saleNumber}`,
+              createdById: data.soldById,
+            },
+            tx,
+          );
+        }
+      }
+
+      return sale;
+    });
   });
 }
 

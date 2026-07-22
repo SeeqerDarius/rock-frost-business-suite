@@ -2,6 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import type { ProjectTaskStatus, ProjectTaskPriority } from "@prisma/client";
+import { createWithUniqueRetry } from "@/lib/unique-retry";
 
 /**
  * Fresh module (no reference implementation to migrate from). Every function
@@ -42,8 +43,10 @@ interface ProjectInput {
 }
 
 export async function createProject(organizationId: string, data: ProjectInput) {
-  const code = await generateProjectCode(organizationId);
-  return db.project.create({ data: { organizationId, code, ...data } });
+  return createWithUniqueRetry(async () => {
+    const code = await generateProjectCode(organizationId);
+    return db.project.create({ data: { organizationId, code, ...data } });
+  });
 }
 
 export function updateProject(organizationId: string, id: string, data: ProjectInput) {
