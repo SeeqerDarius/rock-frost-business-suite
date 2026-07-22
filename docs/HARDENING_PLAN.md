@@ -69,8 +69,11 @@ received-order gap, and a systemic `count()`-then-format document-number
 collision affecting six different number-generation functions); added a
 real concurrency test suite (`Promise.allSettled` against genuinely
 overlapping Postgres transactions) covering Inventory, POS, Procurement,
-Accounting, Payroll, and Installment. See the "Pass 4, Milestone B" section
-below.
+Accounting, Payroll, and Installment. Two further receipt-number generators
+(Installment's `createAccount` deposit receipt and `applyCreditToAccount`)
+were migrated to the same fix on 2026-07-22 during verification prep,
+closing the milestone's one remaining deferred item. See the "Pass 4,
+Milestone B" section below.
 
 **Pass 4, Milestone C — complete** (2026-07-22): a shared, append-only audit
 service (`src/lib/audit.ts`) wired into authentication, administration, and
@@ -919,13 +922,21 @@ helper); `test/integration/concurrency/*.test.ts` (new, 6 files);
 **Migration impact:** none (no schema change — every fix is query/logic
 shape, using the existing `Decimal`-typed columns from earlier passes).
 
-**Deliberately not fixed this pass:** `createAccount()`'s deposit-receipt
-and `applyCreditToAccount()`'s receipt-number generation retain the same
-`count()`-then-format race as the seven functions fixed above — judged
-lower priority (account creation and credit application are much lower-
-frequency concurrent hot paths than regular payment recording) and
-deferred rather than expanding this milestone further. Worth a quick
-follow-up fix using the same `createWithUniqueRetry()` helper.
+**Follow-up (2026-07-22, during verification prep):** the two receipt-number
+generators noted below as deferred (`createAccount()`'s deposit receipt,
+`applyCreditToAccount()`'s receipt number) have now been migrated to
+`createWithUniqueRetry()` as well — no concrete reason was found to treat
+them differently from the other eight call sites, so the deferral was
+closed rather than left open. Both wrap their existing `db.$transaction`
+in the retry helper, with `generateReceiptNo()` moved inside the retried
+closure so it recomputes fresh (rather than reusing the same doomed
+number) on each attempt. Verified via `npx tsc --noEmit` and the existing
+`test/pass3c-installment-pos-decimal.test.ts` suite (15 tests, still
+passing unmodified — these tests mock `db.$transaction` directly, not the
+outer retry wrapper, so no mock changes were needed) plus the full 101-test
+unit suite. `HirePurchasePayment` already has `@@unique([organizationId,
+receiptNo])`, confirming this was a real, live P2002 collision surface
+under concurrency, not just a theoretical one.
 
 **Verification:** `npx tsc --noEmit`, `npm run lint`, `npx prisma validate`,
 `npx vitest run` (101 tests across 10 files, all still passing, mocks
@@ -1045,12 +1056,6 @@ the IDOR/financial-integrity issues were.
 never actually executed on GitHub's infrastructure (this environment can't
 trigger one). Worth confirming on the next real push before relying on it as
 a merge gate.
-
-### Minor deferred item from Milestone B
-
-`createAccount()`'s deposit-receipt and `applyCreditToAccount()`'s
-receipt-number generation still use the pre-`createWithUniqueRetry`
-pattern — see Milestone B's "Deliberately not fixed this pass" note above.
 
 ---
 

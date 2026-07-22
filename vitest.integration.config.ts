@@ -25,6 +25,14 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["test/integration/**/*.test.ts"],
+    // Vitest does NOT auto-load .env the way Next.js does — without this,
+    // a TEST_DATABASE_URL sitting in .env would silently never reach
+    // process.env here, and every test would fail at the guard with a
+    // confusing "not set" error despite the variable genuinely being
+    // configured. dotenv/config's side effect on import loads .env from
+    // the current working directory (the repo root, since these tests
+    // are always run via `npm run test:integration` from there).
+    setupFiles: ["dotenv/config"],
     testTimeout: 30_000,
     hookTimeout: 30_000,
     pool: "forks",

@@ -480,52 +480,58 @@ export async function createAccount(
   const targetAmount = productPrice.plus(adminFee).toFixed(2);
   const dailyAmount = product.dailyAmount;
   const expectedEndDate = addDays(data.startDate, product.duration);
-  const receiptNo = depositAmount.greaterThan(0) ? await generateReceiptNo(organizationId, settings.receiptPrefix) : null;
 
-  return db.$transaction(async (tx) => {
-    await consumeStaffInventory(tx, data.inventoryStaffId, data.productId);
+  // Regenerated fresh on every retry attempt (not hoisted above the retried
+  // operation) so a P2002 collision on receiptNo gets a newly-counted number
+  // rather than retrying the transaction with the same doomed value.
+  return createWithUniqueRetry(async () => {
+    const receiptNo = depositAmount.greaterThan(0) ? await generateReceiptNo(organizationId, settings.receiptPrefix) : null;
 
-    const account = await tx.hirePurchaseAccount.create({
-      data: {
-        organizationId,
-        customerId: data.customerId,
-        productId: data.productId,
-        inventoryStaffId: data.inventoryStaffId,
-        startDate: data.startDate,
-        expectedEndDate,
-        targetAmount,
-        dailyAmount,
-        totalPaid: 0,
-        balance: targetAmount,
-        status: "ACTIVE",
-        deliveryStatus: "PENDING",
-      },
-    });
+    return db.$transaction(async (tx) => {
+      await consumeStaffInventory(tx, data.inventoryStaffId, data.productId);
 
-    if (depositAmount.greaterThan(0) && receiptNo) {
-      const nextBalance = Prisma.Decimal.max(new Prisma.Decimal(targetAmount).minus(depositAmount), 0);
-      await tx.hirePurchasePayment.create({
+      const account = await tx.hirePurchaseAccount.create({
         data: {
           organizationId,
-          accountId: account.id,
-          receiptNo,
-          amount: depositAmount.toFixed(2),
-          paymentDate: data.startDate,
-          method: "Initial deposit",
-          notes: "Deposit collected at account opening",
+          customerId: data.customerId,
+          productId: data.productId,
+          inventoryStaffId: data.inventoryStaffId,
+          startDate: data.startDate,
+          expectedEndDate,
+          targetAmount,
+          dailyAmount,
+          totalPaid: 0,
+          balance: targetAmount,
+          status: "ACTIVE",
+          deliveryStatus: "PENDING",
         },
       });
-      await tx.hirePurchaseAccount.update({
-        where: { id: account.id },
-        data: {
-          totalPaid: depositAmount.toFixed(2),
-          balance: nextBalance.toFixed(2),
-          status: nextBalance.lessThanOrEqualTo(0) ? "COMPLETED" : "ACTIVE",
-        },
-      });
-    }
 
-    return account;
+      if (depositAmount.greaterThan(0) && receiptNo) {
+        const nextBalance = Prisma.Decimal.max(new Prisma.Decimal(targetAmount).minus(depositAmount), 0);
+        await tx.hirePurchasePayment.create({
+          data: {
+            organizationId,
+            accountId: account.id,
+            receiptNo,
+            amount: depositAmount.toFixed(2),
+            paymentDate: data.startDate,
+            method: "Initial deposit",
+            notes: "Deposit collected at account opening",
+          },
+        });
+        await tx.hirePurchaseAccount.update({
+          where: { id: account.id },
+          data: {
+            totalPaid: depositAmount.toFixed(2),
+            balance: nextBalance.toFixed(2),
+            status: nextBalance.lessThanOrEqualTo(0) ? "COMPLETED" : "ACTIVE",
+          },
+        });
+      }
+
+      return account;
+    });
   });
 }
 
@@ -849,66 +855,72 @@ type LockedAccountRow = {
  */
 export async function applyCreditToAccount(organizationId: string, creditId: string, targetAccountId: string) {
   const settings = await getInstallmentSettings(organizationId);
-  const receiptNo = await generateReceiptNo(organizationId, settings.receiptPrefix);
 
-  return db.$transaction(async (tx) => {
-    const [lockedCredit] = await tx.$queryRaw<LockedCreditRow[]>`
-      SELECT id, "customerId", status, "remainingAmount", source
-      FROM "HirePurchaseCredit"
-      WHERE id = ${creditId} AND "organizationId" = ${organizationId}
-      FOR UPDATE
-    `;
-    if (!lockedCredit || lockedCredit.status !== "OPEN") {
-      throw new CreditNotApplicableError("This credit is no longer open.");
-    }
+  // Regenerated fresh on every retry attempt, same reasoning as
+  // createAccount()'s deposit receipt above — a P2002 collision on
+  // receiptNo must get a newly-counted number, not the same doomed one.
+  return createWithUniqueRetry(async () => {
+    const receiptNo = await generateReceiptNo(organizationId, settings.receiptPrefix);
 
-    const [lockedAccount] = await tx.$queryRaw<LockedAccountRow[]>`
-      SELECT id, "customerId", balance, "totalPaid", status
-      FROM "HirePurchaseAccount"
-      WHERE id = ${targetAccountId} AND "organizationId" = ${organizationId}
-      FOR UPDATE
-    `;
-    if (!lockedAccount || lockedAccount.customerId !== lockedCredit.customerId) {
-      throw new CreditNotApplicableError("The target account must belong to the same customer as the credit.");
-    }
+    return db.$transaction(async (tx) => {
+      const [lockedCredit] = await tx.$queryRaw<LockedCreditRow[]>`
+        SELECT id, "customerId", status, "remainingAmount", source
+        FROM "HirePurchaseCredit"
+        WHERE id = ${creditId} AND "organizationId" = ${organizationId}
+        FOR UPDATE
+      `;
+      if (!lockedCredit || lockedCredit.status !== "OPEN") {
+        throw new CreditNotApplicableError("This credit is no longer open.");
+      }
 
-    const targetBalance = new Prisma.Decimal(lockedAccount.balance);
-    if (targetBalance.lessThanOrEqualTo(0)) {
-      throw new CreditNotApplicableError("That account has no outstanding balance to apply a credit to.");
-    }
+      const [lockedAccount] = await tx.$queryRaw<LockedAccountRow[]>`
+        SELECT id, "customerId", balance, "totalPaid", status
+        FROM "HirePurchaseAccount"
+        WHERE id = ${targetAccountId} AND "organizationId" = ${organizationId}
+        FOR UPDATE
+      `;
+      if (!lockedAccount || lockedAccount.customerId !== lockedCredit.customerId) {
+        throw new CreditNotApplicableError("The target account must belong to the same customer as the credit.");
+      }
 
-    const creditRemaining = new Prisma.Decimal(lockedCredit.remainingAmount);
-    const applyAmount = Prisma.Decimal.min(creditRemaining, targetBalance);
-    const remainingCredit = creditRemaining.minus(applyAmount);
-    const nextBalance = targetBalance.minus(applyAmount);
-    const nextTotalPaid = new Prisma.Decimal(lockedAccount.totalPaid).plus(applyAmount);
-    const nextStatus: HirePurchaseAccountStatus =
-      nextBalance.lessThanOrEqualTo(0)
-        ? "COMPLETED"
-        : lockedAccount.status === "DORMANT" || lockedAccount.status === "PROBATION"
-          ? "ACTIVE"
-          : lockedAccount.status;
+      const targetBalance = new Prisma.Decimal(lockedAccount.balance);
+      if (targetBalance.lessThanOrEqualTo(0)) {
+        throw new CreditNotApplicableError("That account has no outstanding balance to apply a credit to.");
+      }
 
-    await tx.hirePurchasePayment.create({
-      data: {
-        organizationId,
-        accountId: targetAccountId,
-        receiptNo,
-        amount: applyAmount.toFixed(2),
-        paymentDate: new Date(),
-        method: "Credit applied",
-        notes: `Applied from credit ${lockedCredit.id} (${lockedCredit.source})`,
-      },
-    });
+      const creditRemaining = new Prisma.Decimal(lockedCredit.remainingAmount);
+      const applyAmount = Prisma.Decimal.min(creditRemaining, targetBalance);
+      const remainingCredit = creditRemaining.minus(applyAmount);
+      const nextBalance = targetBalance.minus(applyAmount);
+      const nextTotalPaid = new Prisma.Decimal(lockedAccount.totalPaid).plus(applyAmount);
+      const nextStatus: HirePurchaseAccountStatus =
+        nextBalance.lessThanOrEqualTo(0)
+          ? "COMPLETED"
+          : lockedAccount.status === "DORMANT" || lockedAccount.status === "PROBATION"
+            ? "ACTIVE"
+            : lockedAccount.status;
 
-    await tx.hirePurchaseAccount.update({
-      where: { id: targetAccountId },
-      data: { totalPaid: nextTotalPaid.toFixed(2), balance: nextBalance.toFixed(2), status: nextStatus },
-    });
+      await tx.hirePurchasePayment.create({
+        data: {
+          organizationId,
+          accountId: targetAccountId,
+          receiptNo,
+          amount: applyAmount.toFixed(2),
+          paymentDate: new Date(),
+          method: "Credit applied",
+          notes: `Applied from credit ${lockedCredit.id} (${lockedCredit.source})`,
+        },
+      });
 
-    await tx.hirePurchaseCredit.update({
-      where: { id: creditId },
-      data: { remainingAmount: remainingCredit.toFixed(2), status: remainingCredit.lessThanOrEqualTo(0) ? "APPLIED" : "OPEN" },
+      await tx.hirePurchaseAccount.update({
+        where: { id: targetAccountId },
+        data: { totalPaid: nextTotalPaid.toFixed(2), balance: nextBalance.toFixed(2), status: nextStatus },
+      });
+
+      await tx.hirePurchaseCredit.update({
+        where: { id: creditId },
+        data: { remainingAmount: remainingCredit.toFixed(2), status: remainingCredit.lessThanOrEqualTo(0) ? "APPLIED" : "OPEN" },
+      });
     });
   });
 }
