@@ -3,11 +3,13 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { db } from "@/lib/db";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { recordMovement, InsufficientStockError, InvalidTransferError } from "@/modules/inventory/service";
 import { cuid, shortText, longText, dateInput, parseWithSchema } from "@/lib/validation";
+import { logAuditEvent } from "@/lib/audit";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -15,6 +17,13 @@ function clean(value: FormDataEntryValue | null) {
 }
 
 const MOVEMENT_TYPES = ["RECEIPT", "ISSUE", "ADJUSTMENT", "TRANSFER"] as const;
+
+const MOVEMENT_AUDIT_ACTION: Record<(typeof MOVEMENT_TYPES)[number], string> = {
+  RECEIPT: "inventory.receipt",
+  ISSUE: "inventory.issue",
+  ADJUSTMENT: "inventory.adjustment",
+  TRANSFER: "inventory.transfer",
+};
 
 /**
  * A whole-number quantity that may be signed — ADJUSTMENT is the one movement
@@ -67,20 +76,56 @@ export async function createMovement(formData: FormData): Promise<void> {
   if (type !== "ADJUSTMENT") quantity = Math.abs(quantity);
 
   const session = await getServerAuthSession();
+  const auditMetadata = {
+    itemId,
+    warehouseId,
+    quantity,
+    ...(toWarehouseId ? { toWarehouseId } : {}),
+  };
 
   try {
-    await recordMovement(tenant.organizationId, {
-      itemId,
-      warehouseId,
-      type,
-      quantity,
-      toWarehouseId,
-      reference,
-      notes,
-      createdById: session?.user?.id ?? null,
-      occurredAt: occurredAt ?? undefined,
+    await db.$transaction(async (tx) => {
+      const movement = await recordMovement(
+        tenant.organizationId,
+        {
+          itemId,
+          warehouseId,
+          type,
+          quantity,
+          toWarehouseId,
+          reference,
+          notes,
+          createdById: session?.user?.id ?? null,
+          occurredAt: occurredAt ?? undefined,
+        },
+        tx,
+      );
+
+      await logAuditEvent(
+        {
+          organizationId: tenant.organizationId,
+          userId: session?.user?.id ?? null,
+          module: "inventory",
+          action: MOVEMENT_AUDIT_ACTION[type],
+          entityName: "InventoryMovement",
+          entityId: movement.id,
+          metadata: auditMetadata,
+        },
+        tx,
+      );
     });
   } catch (error) {
+    if (error instanceof InsufficientStockError || error instanceof InvalidTransferError) {
+      await logAuditEvent({
+        organizationId: tenant.organizationId,
+        userId: session?.user?.id ?? null,
+        module: "inventory",
+        action: MOVEMENT_AUDIT_ACTION[type],
+        entityName: "InventoryMovement",
+        status: "FAILURE",
+        metadata: { reason: error.constructor.name, ...auditMetadata },
+      });
+    }
     if (error instanceof InsufficientStockError) {
       redirect("/app/inventory/movements?error=insufficient-stock");
     }

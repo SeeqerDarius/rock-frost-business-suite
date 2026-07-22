@@ -9,6 +9,7 @@ import { getServerAuthSession } from "@/lib/auth/session";
 import { createSale, SaleStateError, InsufficientStockError, InvalidSaleInputError, NotFoundError } from "@/modules/pos/service";
 import { shortText, positiveInt, moneyAmountNonNegative, cuid, parseWithSchema } from "@/lib/validation";
 import type { PosPaymentMethod } from "@prisma/client";
+import { logAuditEvent } from "@/lib/audit";
 
 function clean(value: FormDataEntryValue | null): string {
   return String(value ?? "").trim();
@@ -80,14 +81,38 @@ export async function completeSale(formData: FormData): Promise<void> {
   const session = await getServerAuthSession();
 
   try {
-    await createSale(tenant.organizationId, {
+    const sale = await createSale(tenant.organizationId, {
       sessionId,
       customerName,
       paymentMethod: paymentMethod as PosPaymentMethod,
       soldById: session?.user?.id ?? null,
       lines,
     });
+
+    // createSale()'s own transaction has already committed by the time we get
+    // here, so this is a same-request follow-up log rather than a tx-scoped
+    // one — still accurate, since we only reach it after the sale succeeded.
+    await logAuditEvent({
+      organizationId: tenant.organizationId,
+      userId: session?.user?.id ?? null,
+      module: "pos",
+      action: "pos.sale",
+      entityName: "PosSale",
+      entityId: sale.id,
+      metadata: { saleNumber: sale.saleNumber, total: Number(sale.total), lineCount: lines.length },
+    });
   } catch (error) {
+    if (error instanceof InsufficientStockError || error instanceof InvalidSaleInputError) {
+      await logAuditEvent({
+        organizationId: tenant.organizationId,
+        userId: session?.user?.id ?? null,
+        module: "pos",
+        action: "pos.sale",
+        entityName: "PosSale",
+        status: "FAILURE",
+        metadata: { reason: error.constructor.name, sessionId, lineCount: lines.length },
+      });
+    }
     if (error instanceof InsufficientStockError) redirect("/app/pos/sell?error=insufficient-stock");
     if (error instanceof SaleStateError) redirect("/app/pos/sell?error=no-open-session");
     if (error instanceof InvalidSaleInputError) redirect("/app/pos/sell?error=invalid-line");

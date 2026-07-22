@@ -21,6 +21,7 @@ import {
 } from "@/modules/installment/service";
 import { moneyAmount, shortText, longText, dateInput, parseWithSchema } from "@/lib/validation";
 import { z } from "zod";
+import { logAuditEvent } from "@/lib/audit";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -68,7 +69,7 @@ export async function createPayment(formData: FormData): Promise<void> {
   const session = await getServerAuthSession();
 
   try {
-    await recordPayment(tenant.organizationId, {
+    const payment = await recordPayment(tenant.organizationId, {
       accountId: parsed.data.accountId,
       amount: parsed.data.amount,
       paymentDate: parsed.data.paymentDate,
@@ -76,11 +77,40 @@ export async function createPayment(formData: FormData): Promise<void> {
       notes: parsed.data.notes ?? null,
       receivedBy: session?.user?.name ?? session?.user?.email ?? null,
     });
+    await logAuditEvent({
+      organizationId: tenant.organizationId,
+      userId: session?.user?.id,
+      module: "installment",
+      action: "installment.payment",
+      entityName: "HirePurchaseAccount",
+      entityId: payment.accountId,
+      metadata: { amount: payment.amount.toString(), receiptNo: payment.receiptNo },
+    });
   } catch (error) {
     if (error instanceof PaymentBlockedError) {
+      await logAuditEvent({
+        organizationId: tenant.organizationId,
+        userId: session?.user?.id,
+        module: "installment",
+        action: "installment.payment",
+        entityName: "HirePurchaseAccount",
+        entityId: parsed.data.accountId,
+        status: "FAILURE",
+      });
       redirect("/app/installment/payments?error=blocked");
     }
-    if (error instanceof InvalidPaymentAmountError) redirect("/app/installment/payments?error=invalid-amount");
+    if (error instanceof InvalidPaymentAmountError) {
+      await logAuditEvent({
+        organizationId: tenant.organizationId,
+        userId: session?.user?.id,
+        module: "installment",
+        action: "installment.payment",
+        entityName: "HirePurchaseAccount",
+        entityId: parsed.data.accountId,
+        status: "FAILURE",
+      });
+      redirect("/app/installment/payments?error=invalid-amount");
+    }
     if (error instanceof NotFoundError) redirect("/app/installment/payments?error=not-found");
     throw error;
   }
@@ -155,8 +185,24 @@ export async function resolveCredit(formData: FormData): Promise<void> {
 
   if (decision === "void") {
     await voidCredit(tenant.organizationId, id, resolvedBy);
+    await logAuditEvent({
+      organizationId: tenant.organizationId,
+      userId: session.user.id,
+      module: "installment",
+      action: "installment.credit.voided",
+      entityName: "HirePurchaseCredit",
+      entityId: id,
+    });
   } else {
     await markCreditRefunded(tenant.organizationId, id, resolvedBy);
+    await logAuditEvent({
+      organizationId: tenant.organizationId,
+      userId: session.user.id,
+      module: "installment",
+      action: "installment.credit.refunded",
+      entityName: "HirePurchaseCredit",
+      entityId: id,
+    });
   }
 
   revalidatePath("/app/installment/payments");
@@ -175,8 +221,19 @@ export async function applyCredit(formData: FormData): Promise<void> {
     redirect("/app/installment/payments?error=missing-fields");
   }
 
+  const session = await getServerAuthSession();
+
   try {
     await applyCreditToAccount(tenant.organizationId, creditId, targetAccountId);
+    await logAuditEvent({
+      organizationId: tenant.organizationId,
+      userId: session?.user?.id,
+      module: "installment",
+      action: "installment.credit",
+      entityName: "HirePurchaseCredit",
+      entityId: creditId,
+      metadata: { targetAccountId },
+    });
   } catch (error) {
     if (error instanceof CreditNotApplicableError) {
       redirect("/app/installment/payments?error=credit-not-applicable");

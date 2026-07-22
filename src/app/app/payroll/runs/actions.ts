@@ -15,6 +15,7 @@ import {
   NotFoundError,
 } from "@/modules/payroll/service";
 import { cuid, dateInput, parseWithSchema } from "@/lib/validation";
+import { logAuditEvent } from "@/lib/audit";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -65,12 +66,43 @@ export async function processExistingRun(formData: FormData): Promise<void> {
   const parsed = parseWithSchema(idSchema, { id: clean(formData.get("id")) });
   if (!parsed.success) return;
   const { id } = parsed.data;
+  const session = await getServerAuthSession();
 
   try {
-    await processRun(tenant.organizationId, id);
+    const run = await processRun(tenant.organizationId, id);
+    await logAuditEvent({
+      organizationId: tenant.organizationId,
+      userId: session?.user?.id,
+      module: "payroll",
+      action: "payroll.processed",
+      entityName: "PayrollRun",
+      entityId: run.id,
+    });
   } catch (error) {
-    if (error instanceof RunStateError) redirect("/app/payroll/runs?error=invalid-state");
-    if (error instanceof NoCompensationError) redirect("/app/payroll/runs?error=no-compensation");
+    if (error instanceof RunStateError) {
+      await logAuditEvent({
+        organizationId: tenant.organizationId,
+        userId: session?.user?.id,
+        module: "payroll",
+        action: "payroll.processed",
+        entityName: "PayrollRun",
+        entityId: id,
+        status: "FAILURE",
+      });
+      redirect("/app/payroll/runs?error=invalid-state");
+    }
+    if (error instanceof NoCompensationError) {
+      await logAuditEvent({
+        organizationId: tenant.organizationId,
+        userId: session?.user?.id,
+        module: "payroll",
+        action: "payroll.processed",
+        entityName: "PayrollRun",
+        entityId: id,
+        status: "FAILURE",
+      });
+      redirect("/app/payroll/runs?error=no-compensation");
+    }
     if (error instanceof NotFoundError) redirect("/app/payroll/runs?error=not-found");
     throw error;
   }
@@ -88,6 +120,7 @@ export async function cancelExistingRun(formData: FormData): Promise<void> {
   const parsed = parseWithSchema(idSchema, { id: clean(formData.get("id")) });
   if (!parsed.success) return;
   const { id } = parsed.data;
+  const session = await getServerAuthSession();
 
   try {
     await cancelRun(tenant.organizationId, id);
@@ -96,6 +129,15 @@ export async function cancelExistingRun(formData: FormData): Promise<void> {
     if (error instanceof NotFoundError) redirect("/app/payroll/runs?error=not-found");
     throw error;
   }
+
+  await logAuditEvent({
+    organizationId: tenant.organizationId,
+    userId: session?.user?.id,
+    module: "payroll",
+    action: "payroll.cancelled",
+    entityName: "PayrollRun",
+    entityId: id,
+  });
 
   revalidatePath("/app/payroll/runs");
   redirect("/app/payroll/runs?saved=1");

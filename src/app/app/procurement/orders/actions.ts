@@ -17,6 +17,7 @@ import {
 } from "@/modules/procurement/service";
 import { InsufficientStockError } from "@/modules/inventory/service";
 import { shortText, positiveInt, moneyAmount, longText, dateInput, cuid, parseWithSchema } from "@/lib/validation";
+import { logAuditEvent } from "@/lib/audit";
 
 function clean(value: FormDataEntryValue | null): string {
   return String(value ?? "").trim();
@@ -169,12 +170,34 @@ export async function receiveExistingOrderLine(formData: FormData): Promise<void
       createdById: session?.user?.id ?? null,
     });
   } catch (error) {
-    if (error instanceof ReceiveQuantityError) redirect("/app/procurement/orders?error=invalid-quantity");
+    if (error instanceof ReceiveQuantityError) {
+      await logAuditEvent({
+        organizationId: tenant.organizationId,
+        userId: session?.user?.id ?? null,
+        module: "procurement",
+        action: "procurement.receipt",
+        entityName: "ProcurementOrder",
+        entityId: orderId,
+        status: "FAILURE",
+        metadata: { reason: error.constructor.name },
+      });
+      redirect("/app/procurement/orders?error=invalid-quantity");
+    }
     if (error instanceof OrderStateError) redirect("/app/procurement/orders?error=invalid-state");
     if (error instanceof InsufficientStockError) redirect("/app/procurement/orders?error=inventory-error");
     if (error instanceof NotFoundError) redirect("/app/procurement/orders?error=not-found");
     throw error;
   }
+
+  await logAuditEvent({
+    organizationId: tenant.organizationId,
+    userId: session?.user?.id ?? null,
+    module: "procurement",
+    action: "procurement.receipt",
+    entityName: "ProcurementOrder",
+    entityId: orderId,
+    metadata: { lineId, quantity },
+  });
 
   revalidatePath("/app/procurement/orders");
   revalidatePath("/app/inventory/stock");

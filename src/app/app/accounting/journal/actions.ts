@@ -8,6 +8,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { createManualJournalEntry, JournalNotBalancedError, NotFoundError } from "@/modules/accounting/service";
 import { moneyAmount, shortText, longText, cuid, dateInput, parseWithSchema } from "@/lib/validation";
+import { logAuditEvent } from "@/lib/audit";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -48,8 +49,9 @@ export async function createJournalEntry(formData: FormData): Promise<void> {
 
   const session = await getServerAuthSession();
 
+  let entry;
   try {
-    await createManualJournalEntry(tenant.organizationId, {
+    entry = await createManualJournalEntry(tenant.organizationId, {
       entryDate,
       description,
       reference: reference ?? null,
@@ -60,12 +62,33 @@ export async function createJournalEntry(formData: FormData): Promise<void> {
       ],
     });
   } catch (error) {
+    if (error instanceof JournalNotBalancedError || error instanceof NotFoundError) {
+      await logAuditEvent({
+        organizationId: tenant.organizationId,
+        userId: session?.user?.id ?? null,
+        module: "accounting",
+        action: "journal.posted",
+        entityName: "AccountingJournalEntry",
+        status: "FAILURE",
+        metadata: { reason: error.constructor.name },
+      });
+    }
     if (error instanceof JournalNotBalancedError) {
       redirect("/app/accounting/journal?error=not-balanced");
     }
     if (error instanceof NotFoundError) redirect("/app/accounting/journal?error=not-found");
     throw error;
   }
+
+  await logAuditEvent({
+    organizationId: tenant.organizationId,
+    userId: session?.user?.id ?? null,
+    module: "accounting",
+    action: "journal.posted",
+    entityName: "AccountingJournalEntry",
+    entityId: entry.id,
+    metadata: { lineCount: 2, description },
+  });
 
   revalidatePath("/app/accounting/journal");
   revalidatePath("/app/accounting/accounts");

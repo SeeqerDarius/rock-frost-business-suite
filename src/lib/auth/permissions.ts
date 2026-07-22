@@ -7,6 +7,8 @@ export const PERMISSIONS = {
   DASHBOARD_VIEW: "dashboard.view",
   ORG_SETTINGS_MANAGE: "org.settings.manage",
   AI_ASSISTANT_USE: "ai.assistant.use",
+  AUDIT_VIEW: "audit.view",
+  AUDIT_EXPORT: "audit.export",
   FLEET_VIEW: "fleet.view",
   FLEET_VEHICLES_MANAGE: "fleet.vehicles.manage",
   FLEET_OWNERS_MANAGE: "fleet.owners.manage",

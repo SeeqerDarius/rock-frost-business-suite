@@ -72,9 +72,15 @@ overlapping Postgres transactions) covering Inventory, POS, Procurement,
 Accounting, Payroll, and Installment. See the "Pass 4, Milestone B" section
 below.
 
-**Pass 4, Milestones C/D — not started.** Audit logging + viewer,
-observability, performance, resilience/accessibility, and the branch-access
-design doc remain. See "Remaining work" near the bottom.
+**Pass 4, Milestone C — complete** (2026-07-22): a shared, append-only audit
+service (`src/lib/audit.ts`) wired into authentication, administration, and
+the financial/operational mutations across every module; a real org-scoped
+audit-log viewer with filters/pagination and a permission-gated CSV export
+(itself audited). See the "Pass 4, Milestone C" section below.
+
+**Pass 4, Milestone D — not started.** Observability, performance,
+resilience/accessibility, and the branch-access design doc remain. See
+"Remaining work" near the bottom.
 
 ---
 
@@ -929,9 +935,105 @@ Milestone A: the concurrency tests themselves need a real disposable
 Postgres to actually execute — verified here via `tsc` and careful manual
 review of each fixed function's current code, not by watching them run.
 
-## Remaining work (Pass 4, Milestones C/D+, not started)
+## Pass 4, Milestone C — audit logging (complete)
 
-### Audit logging, performance, accessibility
+**Status: fixed.** A shared, append-only audit trail, wired into
+authentication, administration, and the financial/operational mutations
+across every module, plus a real viewer.
+
+### Schema
+
+`AuditLog` (already existed, mostly unused) gained `membershipId` (actor's
+`OrganizationMember`), `module` (source module key), `status`
+(`SUCCESS`/`FAILURE`), and `correlationId`, plus a back-relation on
+`OrganizationMember`. `organizationId` is now nullable — a failed login for
+an email matching no user (or a user with zero organization memberships)
+genuinely has no organization to attach to. Two migrations (both purely
+additive/relaxing, zero-downtime).
+
+### Shared service
+
+`src/lib/audit.ts`'s `logAuditEvent(input, tx?)` is the one way anything in
+this codebase writes an audit row:
+- Accepts an optional Prisma transaction client — pass it when the event
+  describes a mutation that just happened inside a `db.$transaction(...)`
+  callback, so the audit row commits or rolls back atomically with the
+  real operation (a hard requirement: an audit entry for a mutation must
+  only persist if that mutation's transaction actually commits).
+- Never throws. A failure to write an audit row logs to the server console
+  instead of breaking the real operation — verified for real: the mocked
+  unit suite's `invitation-redesign.test.ts` didn't mock `auditLog.create`
+  initially, so every accept-path test exercised this exact failure path
+  and all 13 tests still passed, proving the defensive try/catch works
+  under a genuinely broken audit sink, not just in theory.
+- Best-effort IP/user-agent capture from the current request's headers.
+
+### Events wired
+
+**Authentication** (`module: "auth"`): login success/failure (including
+lockout and wrong-password — the failure event never reveals which reason
+to distinguish "no such account" from "wrong password" for an
+unauthenticated caller), logout (NextAuth's `signOut` event), password
+reset, session revocation (generic — covers every `revokeUserSessions()`
+caller, not just password reset).
+
+**Administration** (`module: "administration"`): invitation created,
+resent, revoked, accepted (both the new-user and existing-user accept
+paths), module enable/disable (upgraded a pre-existing raw
+`auditLog.create` call to the shared helper), audit-log CSV export.
+
+**Financial/operational**, one event per successful mutation (with a
+`FAILURE` counterpart on the module's own typed rejection error, e.g.
+`InsufficientStockError`/`InvalidPaymentError`): inventory
+receipt/issue/transfer/adjustment; POS sale and refund; procurement
+receiving; journal posting; invoice send/payment/void; expense payment;
+payroll run processing and cancellation; installment payment, credit
+application/void/refund, and account reactivation.
+
+**Deliberately not wired — no underlying action exists yet**: membership
+suspension/removal, role reassignment after invite, and organization-status
+change have no existing UI/Server Action in this codebase at all. Building
+those from scratch would be new feature work, not "add audit logging to an
+existing mutation" — out of scope for this pass.
+
+### Audit-log viewer + permissions
+
+Two new permission keys, `audit.view`/`audit.export` (seeded; granted
+automatically to Super Admin/Organization Owner via `ALL_PERMISSIONS`, no
+other role gets them by default). `/app/administration/audit-log`: an
+org-scoped viewer with filters (date range, actor, module, action substring,
+entity type, status) and pagination, gated on `audit.view`. A CSV export
+route (`/api/audit-log/export`) respects the same filters, gated on the
+separate `audit.export` permission, and audits the export itself
+(`action: "audit_log.exported"`). The pre-existing platform-wide
+`/app/platform/activity` page (Super-Admin-gated, cross-tenant) was left as
+its simpler pre-existing self — the new org-scoped viewer is the real
+deliverable here.
+
+**Files changed:** `prisma/schema.prisma` (+2 migrations); `src/lib/audit.ts`
+(new); `src/lib/auth/{nextauth,actions,session-revocation,invitations}.ts`;
+`src/app/app/(overview)/administration/{actions,page}.tsx`;
+`src/app/app/(overview)/administration/audit-log/page.tsx` (new);
+`src/app/api/audit-log/export/route.ts` (new); `src/app/app/platform/actions.ts`;
+`src/app/app/platform/activity/page.tsx` (nullable-org fix only);
+`src/app/app/inventory/movements/actions.ts`; `src/app/app/pos/{sell,sales}/actions.ts`;
+`src/app/app/accounting/{journal,invoices,expenses}/actions.ts`;
+`src/app/app/procurement/orders/actions.ts`; `src/app/app/payroll/runs/actions.ts`;
+`src/app/app/installment/{payments,accounts}/actions.ts`;
+`src/lib/auth/permissions.ts`, `prisma/seed-data.ts` (2 new permission keys);
+`test/invitation-redesign.test.ts` (mock fix).
+
+**Migration impact:** additive/relaxing only, zero-downtime.
+
+**Verification:** `npx tsc --noEmit`, `npm run lint`, `npx prisma validate`,
+`npx vitest run` (101/101, unchanged), and `npm run build` (full production
+build, 103 routes — the two new audit-log routes) all pass clean. Both new
+permissions confirmed seeded against the live database (78 permissions,
+up from 76).
+
+## Remaining work (Pass 4, Milestone D+, not started)
+
+### Performance, resilience, accessibility
 
 All confirmed in the original audit, all deferred — none are blocking
 correctness or safety in the way tenant isolation, session revocation, and

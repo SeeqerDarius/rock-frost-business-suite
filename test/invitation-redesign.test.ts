@@ -10,6 +10,7 @@ const mockDb = {
   },
   user: { update: vi.fn() },
   organizationMember: { update: vi.fn(), updateMany: vi.fn() },
+  auditLog: { create: vi.fn() },
   $transaction: vi.fn(),
 };
 

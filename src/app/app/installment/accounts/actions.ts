@@ -19,6 +19,7 @@ import {
 import type { HirePurchaseAccountStatus } from "@prisma/client";
 import { dateInput, moneyAmountNonNegative, parseWithSchema } from "@/lib/validation";
 import { z } from "zod";
+import { logAuditEvent } from "@/lib/audit";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -123,6 +124,14 @@ export async function reactivateInstallmentAccount(formData: FormData): Promise<
 
   try {
     await reactivateAccount(tenant.organizationId, id);
+    await logAuditEvent({
+      organizationId: tenant.organizationId,
+      userId: session?.user?.id,
+      module: "installment",
+      action: "installment.account.reactivated",
+      entityName: "HirePurchaseAccount",
+      entityId: id,
+    });
   } catch (error) {
     if (error instanceof ReactivationNotEligibleError) {
       redirect("/app/installment/accounts?error=not-eligible");

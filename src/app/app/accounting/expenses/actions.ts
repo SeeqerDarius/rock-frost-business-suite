@@ -15,6 +15,7 @@ import {
   NotFoundError,
 } from "@/modules/accounting/service";
 import { moneyAmount, shortText, longText, cuid, dateInput, parseWithSchema } from "@/lib/validation";
+import { logAuditEvent } from "@/lib/audit";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -125,13 +126,37 @@ export async function payExistingExpense(formData: FormData): Promise<void> {
   }
   const { id, paymentDate } = parsed.data;
 
+  const session = await getServerAuthSession();
+
+  let expense;
   try {
-    await payExpense(tenant.organizationId, id, paymentDate);
+    expense = await payExpense(tenant.organizationId, id, paymentDate);
   } catch (error) {
-    if (error instanceof ExpenseStateError) redirect("/app/accounting/expenses?error=invalid-state");
+    if (error instanceof ExpenseStateError) {
+      await logAuditEvent({
+        organizationId: tenant.organizationId,
+        userId: session?.user?.id ?? null,
+        module: "accounting",
+        action: "expense.paid",
+        entityName: "AccountingExpense",
+        entityId: id,
+        status: "FAILURE",
+        metadata: { reason: error.constructor.name },
+      });
+      redirect("/app/accounting/expenses?error=invalid-state");
+    }
     if (error instanceof NotFoundError) redirect("/app/accounting/expenses?error=not-found");
     throw error;
   }
+
+  await logAuditEvent({
+    organizationId: tenant.organizationId,
+    userId: session?.user?.id ?? null,
+    module: "accounting",
+    action: "expense.paid",
+    entityName: "AccountingExpense",
+    entityId: expense.id,
+  });
 
   revalidatePath("/app/accounting/expenses");
   revalidatePath("/app/accounting/accounts");

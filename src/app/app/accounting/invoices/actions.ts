@@ -16,6 +16,7 @@ import {
   NotFoundError,
 } from "@/modules/accounting/service";
 import { moneyAmount, shortText, longText, email, cuid, dateInput, parseWithSchema } from "@/lib/validation";
+import { logAuditEvent } from "@/lib/audit";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -80,8 +81,11 @@ export async function sendInvoice(formData: FormData): Promise<void> {
   if (!parsed.success) return;
   const { id } = parsed.data;
 
+  const session = await getServerAuthSession();
+
+  let invoice;
   try {
-    await markInvoiceSent(tenant.organizationId, id);
+    invoice = await markInvoiceSent(tenant.organizationId, id);
   } catch (error) {
     if (error instanceof InvoiceStateError) {
       redirect("/app/accounting/invoices?error=invalid-state");
@@ -89,6 +93,15 @@ export async function sendInvoice(formData: FormData): Promise<void> {
     if (error instanceof NotFoundError) redirect("/app/accounting/invoices?error=not-found");
     throw error;
   }
+
+  await logAuditEvent({
+    organizationId: tenant.organizationId,
+    userId: session?.user?.id ?? null,
+    module: "accounting",
+    action: "invoice.sent",
+    entityName: "AccountingInvoice",
+    entityId: invoice.id,
+  });
 
   revalidatePath("/app/accounting/invoices");
   revalidatePath("/app/accounting/accounts");
@@ -113,16 +126,41 @@ export async function payInvoice(formData: FormData): Promise<void> {
   }
   const { id, amount, paymentDate } = parsed.data;
 
+  const session = await getServerAuthSession();
+
+  let invoice;
   try {
-    await recordInvoicePayment(tenant.organizationId, id, amount, paymentDate);
+    invoice = await recordInvoicePayment(tenant.organizationId, id, amount, paymentDate);
   } catch (error) {
+    if (error instanceof InvalidPaymentError) {
+      await logAuditEvent({
+        organizationId: tenant.organizationId,
+        userId: session?.user?.id ?? null,
+        module: "accounting",
+        action: "invoice.payment",
+        entityName: "AccountingInvoice",
+        entityId: id,
+        status: "FAILURE",
+        metadata: { reason: error.constructor.name },
+      });
+      redirect("/app/accounting/invoices?error=invalid-payment");
+    }
     if (error instanceof InvoiceStateError) {
       redirect("/app/accounting/invoices?error=invalid-state");
     }
-    if (error instanceof InvalidPaymentError) redirect("/app/accounting/invoices?error=invalid-payment");
     if (error instanceof NotFoundError) redirect("/app/accounting/invoices?error=not-found");
     throw error;
   }
+
+  await logAuditEvent({
+    organizationId: tenant.organizationId,
+    userId: session?.user?.id ?? null,
+    module: "accounting",
+    action: "invoice.payment",
+    entityName: "AccountingInvoice",
+    entityId: invoice.id,
+    metadata: { amount },
+  });
 
   revalidatePath("/app/accounting/invoices");
   revalidatePath("/app/accounting/accounts");
@@ -139,8 +177,11 @@ export async function voidExistingInvoice(formData: FormData): Promise<void> {
   if (!parsed.success) return;
   const { id } = parsed.data;
 
+  const session = await getServerAuthSession();
+
+  let invoice;
   try {
-    await voidInvoice(tenant.organizationId, id);
+    invoice = await voidInvoice(tenant.organizationId, id);
   } catch (error) {
     if (error instanceof InvoiceStateError) {
       redirect("/app/accounting/invoices?error=has-payment");
@@ -148,6 +189,15 @@ export async function voidExistingInvoice(formData: FormData): Promise<void> {
     if (error instanceof NotFoundError) redirect("/app/accounting/invoices?error=not-found");
     throw error;
   }
+
+  await logAuditEvent({
+    organizationId: tenant.organizationId,
+    userId: session?.user?.id ?? null,
+    module: "accounting",
+    action: "invoice.voided",
+    entityName: "AccountingInvoice",
+    entityId: invoice.id,
+  });
 
   revalidatePath("/app/accounting/invoices");
   redirect("/app/accounting/invoices?saved=1");

@@ -1,4 +1,5 @@
-import { Lock, ShieldCheck, UserPlus } from "lucide-react";
+import Link from "next/link";
+import { Lock, ShieldCheck, UserPlus, History } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -62,9 +63,19 @@ export default async function AdministrationPage({
     db.role.findMany({ where: { name: { in: INVITABLE_ROLE_NAMES } }, orderBy: { name: "asc" } }),
   ]);
 
+  const canViewAuditLog = hasPermission(tenant, PERMISSIONS.AUDIT_VIEW);
+
   return (
     <div className="space-y-6">
-      <PageHeader title="Administration" description="Users, roles, permissions, and audit logs for your organization." />
+      <div className="flex items-center justify-between gap-4">
+        <PageHeader title="Administration" description="Users, roles, permissions, and audit logs for your organization." />
+        {canViewAuditLog ? (
+          <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/administration/audit-log" />}>
+            <History />
+            Audit log
+          </Button>
+        ) : null}
+      </div>
 
       {invited ? (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
