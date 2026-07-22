@@ -1,6 +1,7 @@
 import "server-only";
 
 import { db } from "@/lib/db";
+import { logAuditEvent } from "@/lib/audit";
 
 /**
  * Invalidates every JWT session currently issued for this user by bumping
@@ -16,9 +17,21 @@ import { db } from "@/lib/db";
  * organization) does not need this — it's re-validated straight from the
  * database on every request by getCurrentTenant() regardless of JWT contents.
  */
-export async function revokeUserSessions(userId: string): Promise<void> {
+export async function revokeUserSessions(userId: string, reason?: string): Promise<void> {
   await db.user.update({
     where: { id: userId },
     data: { sessionVersion: { increment: 1 } },
+  });
+
+  const membership = await db.organizationMember.findFirst({ where: { userId }, orderBy: { createdAt: "asc" } });
+  await logAuditEvent({
+    organizationId: membership?.organizationId ?? null,
+    userId,
+    membershipId: membership?.id ?? null,
+    module: "auth",
+    action: "session.revoked",
+    entityName: "User",
+    entityId: userId,
+    metadata: reason ? { reason } : null,
   });
 }

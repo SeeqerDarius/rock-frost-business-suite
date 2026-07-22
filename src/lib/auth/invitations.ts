@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomBytes, createHash } from "node:crypto";
 import { db } from "@/lib/db";
+import { logAuditEvent } from "@/lib/audit";
 
 const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const RESEND_COOLDOWN_MS = 60 * 1000; // 1 resend per minute per invitation
@@ -146,6 +147,19 @@ export async function acceptInvitationNewUser(token: string, passwordHash: strin
       data: { status: "ACTIVE", joinedAt: new Date() },
     });
     await tx.invitation.update({ where: { id: invitation.id }, data: { status: "ACCEPTED", acceptedAt: new Date() } });
+    await logAuditEvent(
+      {
+        organizationId: invitation.organizationId,
+        userId: invitation.membership.userId,
+        membershipId: invitation.membershipId,
+        module: "administration",
+        action: "invitation.accepted",
+        entityName: "OrganizationMember",
+        entityId: invitation.membershipId,
+        metadata: { path: "new-user" },
+      },
+      tx,
+    );
   });
 
   return { organizationName: invitation.membership.organization.name };
@@ -173,6 +187,19 @@ export async function acceptInvitationExistingUser(token: string, sessionUserId:
       data: { status: "ACTIVE", joinedAt: new Date() },
     });
     await tx.invitation.update({ where: { id: invitation.id }, data: { status: "ACCEPTED", acceptedAt: new Date() } });
+    await logAuditEvent(
+      {
+        organizationId: invitation.organizationId,
+        userId: sessionUserId,
+        membershipId: invitation.membershipId,
+        module: "administration",
+        action: "invitation.accepted",
+        entityName: "OrganizationMember",
+        entityId: invitation.membershipId,
+        metadata: { path: "existing-user" },
+      },
+      tx,
+    );
   });
 
   return { organizationName: invitation.membership.organization.name };

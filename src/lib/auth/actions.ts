@@ -9,6 +9,7 @@ import { revokeUserSessions } from "@/lib/auth/session-revocation";
 import { acceptInvitationNewUser, acceptInvitationExistingUser, InvitationAcceptError } from "@/lib/auth/invitations";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { email as emailSchema } from "@/lib/validation";
+import { logAuditEvent } from "@/lib/audit";
 
 function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
@@ -84,7 +85,18 @@ export async function resetPassword(formData: FormData): Promise<void> {
 
   const passwordHash = await bcrypt.hash(password, 10);
   const updated = await db.user.update({ where: { email }, data: { passwordHash } });
-  await revokeUserSessions(updated.id);
+
+  const membership = await db.organizationMember.findFirst({ where: { userId: updated.id }, orderBy: { createdAt: "asc" } });
+  await logAuditEvent({
+    organizationId: membership?.organizationId ?? null,
+    userId: updated.id,
+    membershipId: membership?.id ?? null,
+    module: "auth",
+    action: "password.reset",
+    entityName: "User",
+    entityId: updated.id,
+  });
+  await revokeUserSessions(updated.id, "password_reset");
 
   redirect("/login?reset=1");
 }

@@ -7,6 +7,7 @@ import { requireCurrentTenant } from "@/lib/tenant";
 import { isPlatformOperator } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { cuid, parseWithSchema } from "@/lib/validation";
+import { logAuditEvent } from "@/lib/audit";
 
 const toggleSchema = z.object({
   organizationId: cuid,
@@ -46,16 +47,18 @@ export async function toggleOrganizationModule(formData: FormData): Promise<void
       create: { organizationId, moduleId, enabled, enabledAt: enabled ? new Date() : null },
     });
 
-    await tx.auditLog.create({
-      data: {
+    await logAuditEvent(
+      {
         organizationId,
         userId: session?.user?.id,
+        module: "platform",
         action: enabled ? "module.enabled" : "module.disabled",
         entityName: "OrganizationModule",
         entityId: moduleId,
-        changes: { module: module_.code, organization: organization.name },
+        metadata: { module: module_.code, organization: organization.name },
       },
-    });
+      tx,
+    );
   });
 
   revalidatePath("/app/platform/organizations");

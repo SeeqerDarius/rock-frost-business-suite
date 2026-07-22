@@ -10,6 +10,7 @@ import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { shortText, email as emailSchema, parseWithSchema } from "@/lib/validation";
+import { logAuditEvent } from "@/lib/audit";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
@@ -75,16 +76,18 @@ export async function inviteMember(formData: FormData): Promise<void> {
       },
     });
 
-    await tx.auditLog.create({
-      data: {
+    await logAuditEvent(
+      {
         organizationId: tenant.organizationId,
         userId: session?.user?.id,
-        action: "member.invited",
+        module: "administration",
+        action: "invitation.created",
         entityName: "OrganizationMember",
         entityId: member.id,
-        changes: { email, role: role.name },
+        metadata: { email, role: role.name },
       },
-    });
+      tx,
+    );
 
     return member;
   });
@@ -128,6 +131,7 @@ export async function resendMemberInvitation(formData: FormData): Promise<void> 
   });
   if (!member) redirect("/app/administration?error=not-found");
 
+  const session = await getServerAuthSession();
   let token: string;
   try {
     token = await resendInvitation(tenant.organizationId, membershipId);
@@ -135,6 +139,15 @@ export async function resendMemberInvitation(formData: FormData): Promise<void> 
     if (error instanceof InvitationError) redirect("/app/administration?error=resend-failed");
     throw error;
   }
+  await logAuditEvent({
+    organizationId: tenant.organizationId,
+    userId: session?.user?.id,
+    membershipId,
+    module: "administration",
+    action: "invitation.resent",
+    entityName: "OrganizationMember",
+    entityId: membershipId,
+  });
 
   const inviteUrl = `${siteUrl}/invite?token=${token}`;
   const result = await sendEmail({
@@ -168,6 +181,17 @@ export async function revokeMemberInvitation(formData: FormData): Promise<void> 
     if (error instanceof InvitationError) redirect("/app/administration?error=resend-failed");
     throw error;
   }
+
+  const session = await getServerAuthSession();
+  await logAuditEvent({
+    organizationId: tenant.organizationId,
+    userId: session?.user?.id,
+    membershipId,
+    module: "administration",
+    action: "invitation.revoked",
+    entityName: "OrganizationMember",
+    entityId: membershipId,
+  });
 
   revalidatePath("/app/administration");
   redirect("/app/administration?revoked=1");

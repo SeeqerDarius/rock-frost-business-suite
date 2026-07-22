@@ -2,6 +2,7 @@ import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
+import { logAuditEvent } from "@/lib/audit";
 
 export const MAX_FAILED_ATTEMPTS = 5;
 export const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
@@ -19,8 +20,9 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        const email = credentials.email.toLowerCase();
         const user = await db.user.findUnique({
-          where: { email: credentials.email.toLowerCase() },
+          where: { email },
           include: {
             organizationMemberships: {
               include: { role: true },
@@ -29,11 +31,36 @@ export const authOptions: NextAuthOptions = {
           },
         });
 
+        const primaryMembership = user?.organizationMemberships[0];
+
         if (!user || !user.passwordHash || user.status !== "ACTIVE") {
+          // No userId/organizationId to attach — this email may not exist
+          // at all; the metadata is deliberately just the attempted email,
+          // never anything that would confirm or deny account existence
+          // to someone reading the failure alone versus a wrong-password
+          // failure below.
+          await logAuditEvent({
+            organizationId: null,
+            module: "auth",
+            action: "login.failed",
+            entityName: "User",
+            status: "FAILURE",
+            metadata: { email, reason: "no_matching_active_account" },
+          });
           return null;
         }
 
         if (user.lockedUntil && user.lockedUntil > new Date()) {
+          await logAuditEvent({
+            organizationId: primaryMembership?.organizationId ?? null,
+            userId: user.id,
+            module: "auth",
+            action: "login.failed",
+            entityName: "User",
+            entityId: user.id,
+            status: "FAILURE",
+            metadata: { email, reason: "locked_out" },
+          });
           return null;
         }
 
@@ -48,6 +75,16 @@ export const authOptions: NextAuthOptions = {
               lockedUntil: lockingOut ? new Date(Date.now() + LOCKOUT_DURATION_MS) : null,
             },
           });
+          await logAuditEvent({
+            organizationId: primaryMembership?.organizationId ?? null,
+            userId: user.id,
+            module: "auth",
+            action: "login.failed",
+            entityName: "User",
+            entityId: user.id,
+            status: "FAILURE",
+            metadata: { email, reason: "wrong_password", lockedOut: lockingOut },
+          });
           return null;
         }
 
@@ -56,7 +93,15 @@ export const authOptions: NextAuthOptions = {
           data: { lastLoginAt: new Date(), failedLoginAttempts: 0, lockedUntil: null },
         });
 
-        const primaryMembership = user.organizationMemberships[0];
+        await logAuditEvent({
+          organizationId: primaryMembership?.organizationId ?? null,
+          userId: user.id,
+          membershipId: primaryMembership?.id ?? null,
+          module: "auth",
+          action: "login.success",
+          entityName: "User",
+          entityId: user.id,
+        });
 
         return {
           id: user.id,
@@ -114,6 +159,22 @@ export const authOptions: NextAuthOptions = {
         session.user = { ...session.user, ...token.user };
       }
       return session;
+    },
+  },
+  events: {
+    async signOut({ token }) {
+      const userId = token.user?.id;
+      if (!userId) return;
+      const membership = await db.organizationMember.findFirst({ where: { userId }, orderBy: { createdAt: "asc" } });
+      await logAuditEvent({
+        organizationId: membership?.organizationId ?? null,
+        userId,
+        membershipId: membership?.id ?? null,
+        module: "auth",
+        action: "logout",
+        entityName: "User",
+        entityId: userId,
+      });
     },
   },
   secret: process.env.NEXTAUTH_SECRET,
