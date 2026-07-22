@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listRegisters } from "@/modules/pos/service";
 import { listWarehouses } from "@/modules/inventory/service";
@@ -65,7 +65,7 @@ export default async function PosRegistersPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("pos");
   const canManageRegisters = hasPermission(tenant, PERMISSIONS.POS_REGISTERS_MANAGE);
   const canManageSessions = hasPermission(tenant, PERMISSIONS.POS_SESSIONS_MANAGE);
   const [registers, warehouses] = await Promise.all([

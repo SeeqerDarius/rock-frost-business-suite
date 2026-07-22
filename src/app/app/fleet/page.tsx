@@ -3,11 +3,11 @@ import { Truck, UserRound, Wrench, Handshake } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getFleetSummary } from "@/modules/fleet/service";
 
 export default async function FleetOverviewPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("fleet");
   const summary = await getFleetSummary(tenant.organizationId);
 
   const stats = [

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listFleetOwners } from "@/modules/fleet/service";
 import { upsertFleetOwner } from "./actions";
@@ -23,7 +23,7 @@ export default async function FleetOwnersPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_OWNERS_MANAGE);
   const owners = await listFleetOwners(tenant.organizationId);
 

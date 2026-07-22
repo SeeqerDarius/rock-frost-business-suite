@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { updateInstallmentSettings, InvalidSettingsError } from "@/modules/installment/service";
 
@@ -11,7 +11,7 @@ function clean(value: FormDataEntryValue | null) {
 }
 
 export async function saveInstallmentSettings(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("installment");
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_SETTINGS_MANAGE)) {
     redirect("/app/installment/settings?error=forbidden");
   }

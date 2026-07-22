@@ -1,11 +1,11 @@
 import { Lock, Settings as SettingsIcon } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 
 export default async function ProjectsSettingsPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("projects");
 
   if (!hasPermission(tenant, PERMISSIONS.PROJECTS_SETTINGS_MANAGE)) {
     return (

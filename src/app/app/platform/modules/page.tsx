@@ -3,8 +3,11 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/lib/db";
+import { requirePlatformOperator } from "@/lib/auth/module-access";
 
 export default async function PlatformModulesPage() {
+  await requirePlatformOperator();
+
   const modules = await db.module.findMany({
     include: { organizationModules: { where: { enabled: true } } },
     orderBy: { name: "asc" },

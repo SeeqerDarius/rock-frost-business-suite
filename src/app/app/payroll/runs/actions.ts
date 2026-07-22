@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import {
@@ -29,7 +29,7 @@ const createRunSchema = z.object({
 });
 
 export async function createNewRun(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("payroll");
   if (!hasPermission(tenant, PERMISSIONS.PAYROLL_RUNS_MANAGE)) {
     redirect("/app/payroll/runs?error=forbidden");
   }
@@ -59,7 +59,7 @@ export async function createNewRun(formData: FormData): Promise<void> {
 const idSchema = z.object({ id: cuid });
 
 export async function processExistingRun(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("payroll");
   if (!hasPermission(tenant, PERMISSIONS.PAYROLL_RUNS_MANAGE)) {
     redirect("/app/payroll/runs?error=forbidden");
   }
@@ -113,7 +113,7 @@ export async function processExistingRun(formData: FormData): Promise<void> {
 }
 
 export async function cancelExistingRun(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("payroll");
   if (!hasPermission(tenant, PERMISSIONS.PAYROLL_RUNS_MANAGE)) {
     redirect("/app/payroll/runs?error=forbidden");
   }

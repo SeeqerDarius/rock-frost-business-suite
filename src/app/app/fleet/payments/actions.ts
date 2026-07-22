@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createFleetPayment, updateFleetPaymentStatus } from "@/modules/fleet/service";
 import { moneyAmount, shortText, longText, cuid, dateInput, parseWithSchema } from "@/lib/validation";
@@ -25,7 +25,7 @@ const paymentSchema = z.object({
 });
 
 export async function createPayment(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("fleet");
   if (!hasPermission(tenant, PERMISSIONS.FLEET_PAYMENTS_MANAGE)) {
     redirect("/app/fleet/payments?error=forbidden");
   }
@@ -68,7 +68,7 @@ export async function createPayment(formData: FormData): Promise<void> {
 }
 
 export async function verifyPayment(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("fleet");
   if (!hasPermission(tenant, PERMISSIONS.FLEET_PAYMENTS_MANAGE)) {
     redirect("/app/fleet/payments?error=forbidden");
   }

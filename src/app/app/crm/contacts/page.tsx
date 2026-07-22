@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listContacts, listAssignableUsers } from "@/modules/crm/service";
 import { upsertContact } from "./actions";
@@ -90,7 +90,7 @@ export default async function CrmContactsPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("crm");
   const canManage = hasPermission(tenant, PERMISSIONS.CRM_CONTACTS_MANAGE);
   const [contacts, users] = await Promise.all([listContacts(tenant.organizationId), listAssignableUsers(tenant.organizationId)]);
   const ownerItems: Record<string, string> = Object.fromEntries(users.map((u) => [u.id, u.name ?? u.email]));

@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createDeal, updateDeal, updateDealStage, NotFoundError } from "@/modules/crm/service";
 import type { CrmDealStage } from "@prisma/client";
@@ -13,7 +13,7 @@ function clean(value: FormDataEntryValue | null) {
 }
 
 export async function upsertDeal(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("crm");
   if (!hasPermission(tenant, PERMISSIONS.CRM_DEALS_MANAGE)) {
     redirect("/app/crm/deals?error=forbidden");
   }
@@ -51,7 +51,7 @@ export async function upsertDeal(formData: FormData): Promise<void> {
 }
 
 export async function changeDealStage(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("crm");
   if (!hasPermission(tenant, PERMISSIONS.CRM_DEALS_MANAGE)) {
     redirect("/app/crm/deals?error=forbidden");
   }

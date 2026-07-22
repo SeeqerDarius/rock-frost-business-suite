@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listLeaveTypes } from "@/modules/hr/service";
 import { addLeaveType } from "./actions";
@@ -22,7 +22,7 @@ export default async function HrSettingsPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("hr");
 
   if (!hasPermission(tenant, PERMISSIONS.HR_SETTINGS_MANAGE)) {
     return (

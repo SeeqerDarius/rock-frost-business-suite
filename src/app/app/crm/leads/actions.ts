@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createLead, updateLead, convertLeadToDeal, LeadAlreadyConvertedError, NotFoundError } from "@/modules/crm/service";
 
@@ -12,7 +12,7 @@ function clean(value: FormDataEntryValue | null) {
 }
 
 export async function upsertLead(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("crm");
   if (!hasPermission(tenant, PERMISSIONS.CRM_LEADS_MANAGE)) {
     redirect("/app/crm/leads?error=forbidden");
   }
@@ -49,7 +49,7 @@ export async function upsertLead(formData: FormData): Promise<void> {
 }
 
 export async function convertLead(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("crm");
   if (!hasPermission(tenant, PERMISSIONS.CRM_LEADS_MANAGE) || !hasPermission(tenant, PERMISSIONS.CRM_DEALS_MANAGE)) {
     redirect("/app/crm/leads?error=forbidden");
   }

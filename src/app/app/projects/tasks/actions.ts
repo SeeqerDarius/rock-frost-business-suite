@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { createTask, updateTaskStatus, NotFoundError } from "@/modules/projects/service";
@@ -28,7 +28,7 @@ const taskSchema = z.object({
 });
 
 export async function createNewTask(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("projects");
   if (!hasPermission(tenant, PERMISSIONS.PROJECTS_TASKS_MANAGE)) {
     redirect("/app/projects/tasks?error=forbidden");
   }
@@ -70,7 +70,7 @@ export async function createNewTask(formData: FormData): Promise<void> {
 }
 
 export async function changeTaskStatus(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("projects");
   if (!hasPermission(tenant, PERMISSIONS.PROJECTS_TASKS_MANAGE)) {
     redirect("/app/projects/tasks?error=forbidden");
   }

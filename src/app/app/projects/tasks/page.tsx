@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listTasks, listProjects, listMilestones, listAssignableUsers } from "@/modules/projects/service";
 import { createNewTask, changeTaskStatus } from "./actions";
@@ -42,7 +42,7 @@ export default async function ProjectsTasksPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("projects");
   const canManage = hasPermission(tenant, PERMISSIONS.PROJECTS_TASKS_MANAGE);
   const [tasks, projects, milestones, users] = await Promise.all([
     listTasks(tenant.organizationId),

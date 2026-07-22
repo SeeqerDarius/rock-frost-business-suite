@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { createLeaveRequest, approveLeaveRequest, rejectLeaveRequest, LeaveDateError, LeaveStateError, NotFoundError } from "@/modules/hr/service";
@@ -13,7 +13,7 @@ function clean(value: FormDataEntryValue | null) {
 }
 
 export async function createNewLeaveRequest(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("hr");
   if (!hasPermission(tenant, PERMISSIONS.HR_LEAVE_MANAGE)) {
     redirect("/app/hr/leave?error=forbidden");
   }
@@ -45,7 +45,7 @@ export async function createNewLeaveRequest(formData: FormData): Promise<void> {
 }
 
 export async function approveExistingLeaveRequest(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("hr");
   if (!hasPermission(tenant, PERMISSIONS.HR_LEAVE_MANAGE)) {
     redirect("/app/hr/leave?error=forbidden");
   }
@@ -65,7 +65,7 @@ export async function approveExistingLeaveRequest(formData: FormData): Promise<v
 }
 
 export async function rejectExistingLeaveRequest(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("hr");
   if (!hasPermission(tenant, PERMISSIONS.HR_LEAVE_MANAGE)) {
     redirect("/app/hr/leave?error=forbidden");
   }

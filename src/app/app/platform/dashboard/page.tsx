@@ -2,8 +2,11 @@ import { Activity, Building2, Users, Blocks } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { db } from "@/lib/db";
+import { requirePlatformOperator } from "@/lib/auth/module-access";
 
 export default async function PlatformDashboardPage() {
+  await requirePlatformOperator();
+
   const [organizationCount, activeMemberCount, enabledModuleCount, moduleAdoption] = await Promise.all([
     db.organization.count(),
     db.organizationMember.count({ where: { status: "ACTIVE" } }),

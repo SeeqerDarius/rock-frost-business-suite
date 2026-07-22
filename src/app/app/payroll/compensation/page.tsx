@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listCompensation, listEmployeesWithoutCompensation } from "@/modules/payroll/service";
 import { saveCompensation } from "./actions";
@@ -28,7 +28,7 @@ export default async function PayrollCompensationPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("payroll");
   const canManage = hasPermission(tenant, PERMISSIONS.PAYROLL_COMPENSATION_MANAGE);
   const [compensations, uncoveredEmployees] = await Promise.all([
     listCompensation(tenant.organizationId),

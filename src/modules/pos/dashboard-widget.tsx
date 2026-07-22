@@ -2,11 +2,11 @@ import Link from "next/link";
 import { Store } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getPosSummary } from "@/modules/pos/service";
 
 export async function PosDashboardWidget() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("pos");
   const summary = await getPosSummary(tenant.organizationId);
 
   return (

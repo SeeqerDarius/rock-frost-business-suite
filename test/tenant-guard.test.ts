@@ -83,6 +83,10 @@ describe("getCurrentTenant — central active-tenant guard", () => {
     const tenant = await getCurrentTenant();
     expect(tenant).not.toBeNull();
     expect(tenant?.organizationId).toBe(ORG_ACTIVE.id);
+    expect(mockDb.organizationModule.findMany).toHaveBeenCalledWith({
+      where: { organizationId: ORG_ACTIVE.id, enabled: true, module: { status: "ACTIVE" } },
+      include: { module: true },
+    });
   });
 
   it("never selects an invalid membership as an implicit fallback, even when it sorts first", async () => {

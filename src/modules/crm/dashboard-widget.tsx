@@ -2,11 +2,11 @@ import Link from "next/link";
 import { Contact } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getCrmSummary } from "@/modules/crm/service";
 
 export async function CrmDashboardWidget() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("crm");
   const summary = await getCrmSummary(tenant.organizationId);
 
   return (

@@ -2,12 +2,12 @@ import { Lock, UsersRound } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getPeopleOverview } from "@/modules/analytics/service";
 
 export default async function AnalyticsPeoplePage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("analytics");
 
   if (!hasPermission(tenant, PERMISSIONS.ANALYTICS_PEOPLE_VIEW)) {
     return (

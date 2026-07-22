@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import {
   createFleetWorkAndPayContract,
@@ -24,7 +24,7 @@ function cleanInt(value: FormDataEntryValue | null) {
 }
 
 export async function createWorkAndPayContract(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("fleet");
   if (!hasPermission(tenant, PERMISSIONS.FLEET_WORKANDPAY_MANAGE)) {
     redirect("/app/fleet/work-and-pay?error=forbidden");
   }
@@ -62,7 +62,7 @@ export async function createWorkAndPayContract(formData: FormData): Promise<void
 }
 
 export async function recordContractPayment(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("fleet");
   if (!hasPermission(tenant, PERMISSIONS.FLEET_WORKANDPAY_MANAGE)) {
     redirect("/app/fleet/work-and-pay?error=forbidden");
   }
@@ -87,7 +87,7 @@ export async function recordContractPayment(formData: FormData): Promise<void> {
 }
 
 export async function updateContractStatus(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("fleet");
   if (!hasPermission(tenant, PERMISSIONS.FLEET_WORKANDPAY_MANAGE)) {
     redirect("/app/fleet/work-and-pay?error=forbidden");
   }

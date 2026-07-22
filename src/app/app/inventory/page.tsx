@@ -3,11 +3,11 @@ import { Package, Warehouse, AlertTriangle, ArrowLeftRight } from "lucide-react"
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getInventorySummary } from "@/modules/inventory/service";
 
 export default async function InventoryOverviewPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("inventory");
   const summary = await getInventorySummary(tenant.organizationId);
 
   const stats = [

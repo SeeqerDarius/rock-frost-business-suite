@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createCategory } from "@/modules/inventory/service";
 import { shortText, parseWithSchema } from "@/lib/validation";
@@ -13,7 +13,7 @@ function clean(value: FormDataEntryValue | null) {
 }
 
 export async function addCategory(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("inventory");
   if (!hasPermission(tenant, PERMISSIONS.INVENTORY_SETTINGS_MANAGE)) {
     redirect("/app/inventory/settings?error=forbidden");
   }

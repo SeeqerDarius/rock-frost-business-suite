@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { createReview, completeReview, ReviewStateError, NotFoundError } from "@/modules/hr/service";
@@ -13,7 +13,7 @@ function clean(value: FormDataEntryValue | null) {
 }
 
 export async function createNewReview(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("hr");
   if (!hasPermission(tenant, PERMISSIONS.HR_REVIEWS_MANAGE)) {
     redirect("/app/hr/reviews?error=forbidden");
   }
@@ -47,7 +47,7 @@ export async function createNewReview(formData: FormData): Promise<void> {
 }
 
 export async function completeExistingReview(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("hr");
   if (!hasPermission(tenant, PERMISSIONS.HR_REVIEWS_MANAGE)) {
     redirect("/app/hr/reviews?error=forbidden");
   }

@@ -3,11 +3,11 @@ import { Users, PlayCircle, Wallet, AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getPayrollSummary } from "@/modules/payroll/service";
 
 export default async function PayrollOverviewPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("payroll");
   const summary = await getPayrollSummary(tenant.organizationId);
 
   const stats = [

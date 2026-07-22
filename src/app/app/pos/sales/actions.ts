@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { refundSale, SaleStateError, NotFoundError } from "@/modules/pos/service";
@@ -17,7 +17,7 @@ function clean(value: FormDataEntryValue | null): string {
 const idSchema = z.object({ id: cuid });
 
 export async function refundExistingSale(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("pos");
   if (!hasPermission(tenant, PERMISSIONS.POS_SALES_MANAGE)) {
     redirect("/app/pos/sales?error=forbidden");
   }

@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import {
@@ -43,7 +43,7 @@ const createOrderSchema = z.object({
 });
 
 export async function createNewOrder(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("procurement");
   if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_ORDERS_MANAGE)) {
     redirect("/app/procurement/orders?error=forbidden");
   }
@@ -94,7 +94,7 @@ export async function createNewOrder(formData: FormData): Promise<void> {
 }
 
 export async function sendExistingOrder(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("procurement");
   if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_ORDERS_MANAGE)) {
     redirect("/app/procurement/orders?error=forbidden");
   }
@@ -115,7 +115,7 @@ export async function sendExistingOrder(formData: FormData): Promise<void> {
 }
 
 export async function cancelExistingOrder(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("procurement");
   if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_ORDERS_MANAGE)) {
     redirect("/app/procurement/orders?error=forbidden");
   }
@@ -143,7 +143,7 @@ const receiveLineSchema = z.object({
 });
 
 export async function receiveExistingOrderLine(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("procurement");
   if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_ORDERS_MANAGE)) {
     redirect("/app/procurement/orders?error=forbidden");
   }

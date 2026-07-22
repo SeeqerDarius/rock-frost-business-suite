@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listSales } from "@/modules/pos/service";
 import { refundExistingSale } from "./actions";
@@ -27,7 +27,7 @@ export default async function PosSalesPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("pos");
   const canManage = hasPermission(tenant, PERMISSIONS.POS_SALES_MANAGE);
   const sales = await listSales(tenant.organizationId);
 

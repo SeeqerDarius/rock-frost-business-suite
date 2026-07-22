@@ -2,7 +2,7 @@ import { BarChart3, Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getFleetSummary } from "@/modules/fleet/service";
 
@@ -15,7 +15,7 @@ const VEHICLE_STATUS_LABELS: Record<string, string> = {
 };
 
 export default async function FleetReportsPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("fleet");
 
   if (!hasPermission(tenant, PERMISSIONS.FLEET_REPORTS_VIEW)) {
     return (

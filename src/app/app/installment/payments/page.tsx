@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import {
@@ -49,7 +49,7 @@ export default async function InstallmentPaymentsPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("installment");
   const canManagePayments = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_PAYMENTS_MANAGE);
   const canManageCredits = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_CREDITS_MANAGE);
   const session = await getServerAuthSession();

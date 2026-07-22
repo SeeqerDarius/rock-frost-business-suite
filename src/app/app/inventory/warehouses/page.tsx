@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listWarehouses } from "@/modules/inventory/service";
 import { upsertWarehouse } from "./actions";
@@ -52,7 +52,7 @@ export default async function InventoryWarehousesPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("inventory");
   const canManage = hasPermission(tenant, PERMISSIONS.INVENTORY_WAREHOUSES_MANAGE);
   const warehouses = await listWarehouses(tenant.organizationId);
 

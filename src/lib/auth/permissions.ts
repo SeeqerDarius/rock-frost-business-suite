@@ -1,6 +1,6 @@
 import "server-only";
 import type { TenantContext } from "@/lib/tenant";
-import { getModule } from "@/platform/modules/registry";
+import { getModule, moduleRegistry } from "@/platform/modules/registry";
 
 /** Every permission key currently seeded in the database (see the archived seed-rbac.ts). */
 export const PERMISSIONS = {
@@ -85,7 +85,15 @@ export const PERMISSIONS = {
 } as const;
 
 export function hasPermission(tenant: TenantContext, key: string): boolean {
-  return tenant.permissions.includes(key);
+  if (!tenant.permissions.includes(key)) return false;
+
+  // A role may retain its seeded permission after the organization disables
+  // the corresponding module. Treat that permission as inactive everywhere,
+  // so a missed page/action guard still fails closed.
+  const owningModule = moduleRegistry.find(
+    (module_) => module_.permissionPrefix && key.startsWith(module_.permissionPrefix),
+  );
+  return !owningModule || tenant.enabledModuleKeys.includes(owningModule.key);
 }
 
 /**
@@ -99,7 +107,9 @@ export function hasPermission(tenant: TenantContext, key: string): boolean {
  */
 export function canAccessModule(tenant: TenantContext, moduleKey: string): boolean {
   if (!tenant.enabledModuleKeys.includes(moduleKey)) return false;
-  const prefix = getModule(moduleKey)?.permissionPrefix;
+  const module_ = getModule(moduleKey);
+  if (!module_ || module_.status !== "available") return false;
+  const prefix = module_.permissionPrefix;
   if (!prefix) return false;
   return tenant.permissions.some((permission) => permission.startsWith(prefix));
 }
@@ -111,5 +121,5 @@ export function canAccessModule(tenant: TenantContext, moduleKey: string): boole
  * /app/platform/* — that's Rock Frost's own operator surface, not a tenant's.
  */
 export function isPlatformOperator(tenant: TenantContext): boolean {
-  return tenant.role === "Super Admin";
+  return tenant.role === "Super Admin" && tenant.roleIsSystem && tenant.roleOrganizationId === null;
 }

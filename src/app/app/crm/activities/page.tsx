@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listActivities, listContacts, listLeads, listDeals } from "@/modules/crm/service";
 import { logActivity } from "./actions";
@@ -27,7 +27,7 @@ export default async function CrmActivitiesPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("crm");
   const canLog =
     hasPermission(tenant, PERMISSIONS.CRM_CONTACTS_MANAGE) ||
     hasPermission(tenant, PERMISSIONS.CRM_LEADS_MANAGE) ||

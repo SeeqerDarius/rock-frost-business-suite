@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createExpenseCategory } from "@/modules/accounting/service";
 import { shortText, cuid, parseWithSchema } from "@/lib/validation";
@@ -19,7 +19,7 @@ const expenseCategorySchema = z.object({
 });
 
 export async function addExpenseCategory(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("accounting");
   if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_SETTINGS_MANAGE)) {
     redirect("/app/accounting/settings?error=forbidden");
   }

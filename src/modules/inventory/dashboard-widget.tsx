@@ -2,11 +2,11 @@ import Link from "next/link";
 import { Boxes } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getInventorySummary } from "@/modules/inventory/service";
 
 export async function InventoryDashboardWidget() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("inventory");
   const summary = await getInventorySummary(tenant.organizationId);
 
   return (

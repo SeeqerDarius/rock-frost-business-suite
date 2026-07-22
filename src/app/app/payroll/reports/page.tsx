@@ -2,12 +2,12 @@ import { Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getPayrollSummary } from "@/modules/payroll/service";
 
 export default async function PayrollReportsPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("payroll");
 
   if (!hasPermission(tenant, PERMISSIONS.PAYROLL_REPORTS_VIEW)) {
     return (

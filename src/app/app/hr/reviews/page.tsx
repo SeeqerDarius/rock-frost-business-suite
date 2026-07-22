@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listReviews, listEmployees } from "@/modules/hr/service";
 import { createNewReview, completeExistingReview } from "./actions";
@@ -28,7 +28,7 @@ export default async function HrReviewsPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("hr");
   const canManage = hasPermission(tenant, PERMISSIONS.HR_REVIEWS_MANAGE);
   const [reviews, employees] = await Promise.all([listReviews(tenant.organizationId), listEmployees(tenant.organizationId)]);
   const employeeItems: Record<string, string> = Object.fromEntries(employees.map((e) => [e.id, e.fullName]));

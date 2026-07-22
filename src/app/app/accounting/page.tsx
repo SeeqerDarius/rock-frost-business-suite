@@ -3,11 +3,11 @@ import { Wallet, FileText, Receipt, TrendingUp } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getAccountingSummary } from "@/modules/accounting/service";
 
 export default async function AccountingOverviewPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("accounting");
   const summary = await getAccountingSummary(tenant.organizationId);
 
   const stats = [

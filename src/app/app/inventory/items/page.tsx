@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listItems, listCategories } from "@/modules/inventory/service";
 import { upsertItem } from "./actions";
@@ -86,7 +86,7 @@ export default async function InventoryItemsPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("inventory");
   const canManage = hasPermission(tenant, PERMISSIONS.INVENTORY_ITEMS_MANAGE);
   const [items, categories] = await Promise.all([listItems(tenant.organizationId), listCategories(tenant.organizationId)]);
   const categoryItems: Record<string, string> = Object.fromEntries(categories.map((c) => [c.id, c.name]));

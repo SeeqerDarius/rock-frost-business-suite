@@ -3,12 +3,12 @@ import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getInventorySummary } from "@/modules/inventory/service";
 
 export default async function InventoryReportsPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("inventory");
 
   if (!hasPermission(tenant, PERMISSIONS.INVENTORY_REPORTS_VIEW)) {
     return (

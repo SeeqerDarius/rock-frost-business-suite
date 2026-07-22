@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import {
   createStaff,
@@ -19,7 +19,7 @@ function clean(value: FormDataEntryValue | null) {
 }
 
 export async function upsertStaff(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("installment");
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_STAFF_MANAGE)) {
     redirect("/app/installment/staff?error=forbidden");
   }
@@ -54,7 +54,7 @@ export async function upsertStaff(formData: FormData): Promise<void> {
 }
 
 export async function recordSalaryPayment(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("installment");
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_STAFF_MANAGE)) {
     redirect("/app/installment/staff?error=forbidden");
   }

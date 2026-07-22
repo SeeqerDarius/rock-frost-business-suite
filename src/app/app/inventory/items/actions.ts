@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createItem, updateItem, ItemSkuTakenError, NotFoundError } from "@/modules/inventory/service";
 import { shortText, moneyAmount, cuid, parseWithSchema } from "@/lib/validation";
@@ -26,7 +26,7 @@ const itemSchema = z.object({
 });
 
 export async function upsertItem(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("inventory");
   if (!hasPermission(tenant, PERMISSIONS.INVENTORY_ITEMS_MANAGE)) {
     redirect("/app/inventory/items?error=forbidden");
   }

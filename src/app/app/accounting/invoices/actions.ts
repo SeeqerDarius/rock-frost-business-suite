@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import {
@@ -33,7 +33,7 @@ const createInvoiceSchema = z.object({
 });
 
 export async function createNewInvoice(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("accounting");
   if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_INVOICES_MANAGE)) {
     redirect("/app/accounting/invoices?error=forbidden");
   }
@@ -72,7 +72,7 @@ export async function createNewInvoice(formData: FormData): Promise<void> {
 const idSchema = z.object({ id: cuid });
 
 export async function sendInvoice(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("accounting");
   if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_INVOICES_MANAGE)) {
     redirect("/app/accounting/invoices?error=forbidden");
   }
@@ -111,7 +111,7 @@ export async function sendInvoice(formData: FormData): Promise<void> {
 const payInvoiceSchema = z.object({ id: cuid, amount: moneyAmount, paymentDate: dateInput });
 
 export async function payInvoice(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("accounting");
   if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_INVOICES_MANAGE)) {
     redirect("/app/accounting/invoices?error=forbidden");
   }
@@ -168,7 +168,7 @@ export async function payInvoice(formData: FormData): Promise<void> {
 }
 
 export async function voidExistingInvoice(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("accounting");
   if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_INVOICES_MANAGE)) {
     redirect("/app/accounting/invoices?error=forbidden");
   }

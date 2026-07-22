@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { updateSettings, InvalidCompensationError } from "@/modules/payroll/service";
 import { percent0to100, parseWithSchema } from "@/lib/validation";
@@ -16,7 +16,7 @@ function clean(value: FormDataEntryValue | null) {
 const taxRateSchema = z.object({ defaultTaxRatePercent: percent0to100 });
 
 export async function saveDefaultTaxRate(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("payroll");
   if (!hasPermission(tenant, PERMISSIONS.PAYROLL_SETTINGS_MANAGE)) {
     redirect("/app/payroll/settings?error=forbidden");
   }

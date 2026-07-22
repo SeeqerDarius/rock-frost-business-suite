@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import {
   createProject,
@@ -34,7 +34,7 @@ const projectSchema = z.object({
 });
 
 export async function upsertProject(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("projects");
   if (!hasPermission(tenant, PERMISSIONS.PROJECTS_PROJECTS_MANAGE)) {
     redirect("/app/projects/projects?error=forbidden");
   }
@@ -64,7 +64,7 @@ export async function upsertProject(formData: FormData): Promise<void> {
 }
 
 export async function changeProjectStatus(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("projects");
   if (!hasPermission(tenant, PERMISSIONS.PROJECTS_PROJECTS_MANAGE)) {
     redirect("/app/projects/projects?error=forbidden");
   }
@@ -79,7 +79,7 @@ export async function changeProjectStatus(formData: FormData): Promise<void> {
 }
 
 export async function completeExistingProject(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("projects");
   if (!hasPermission(tenant, PERMISSIONS.PROJECTS_PROJECTS_MANAGE)) {
     redirect("/app/projects/projects?error=forbidden");
   }
@@ -99,7 +99,7 @@ export async function completeExistingProject(formData: FormData): Promise<void>
 }
 
 export async function addMemberToProject(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("projects");
   if (!hasPermission(tenant, PERMISSIONS.PROJECTS_PROJECTS_MANAGE)) {
     redirect("/app/projects/projects?error=forbidden");
   }
@@ -128,7 +128,7 @@ export async function addMemberToProject(formData: FormData): Promise<void> {
 }
 
 export async function removeMemberFromProject(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("projects");
   if (!hasPermission(tenant, PERMISSIONS.PROJECTS_PROJECTS_MANAGE)) {
     redirect("/app/projects/projects?error=forbidden");
   }

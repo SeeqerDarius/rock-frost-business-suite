@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listFleetWorkAndPayContracts, listFleetVehicles } from "@/modules/fleet/service";
 import { createWorkAndPayContract, recordContractPayment, updateContractStatus } from "./actions";
@@ -35,7 +35,7 @@ export default async function FleetWorkAndPayPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_WORKANDPAY_MANAGE);
   const [contracts, vehicles] = await Promise.all([
     listFleetWorkAndPayContracts(tenant.organizationId),

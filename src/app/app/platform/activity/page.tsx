@@ -2,6 +2,7 @@ import { Activity } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { db } from "@/lib/db";
+import { requirePlatformOperator } from "@/lib/auth/module-access";
 
 const ACTION_LABELS: Record<string, string> = {
   "member.invited": "invited a member",
@@ -10,6 +11,8 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 export default async function PlatformActivityPage() {
+  await requirePlatformOperator();
+
   const entries = await db.auditLog.findMany({
     include: { organization: true, user: true },
     orderBy: { createdAt: "desc" },

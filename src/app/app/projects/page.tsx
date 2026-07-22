@@ -3,11 +3,11 @@ import { FolderKanban, ListTodo, AlertTriangle, Flag } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getProjectsSummary } from "@/modules/projects/service";
 
 export default async function ProjectsOverviewPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("projects");
   const summary = await getProjectsSummary(tenant.organizationId);
 
   const stats = [

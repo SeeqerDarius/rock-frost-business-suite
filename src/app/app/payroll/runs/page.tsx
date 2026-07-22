@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listRuns } from "@/modules/payroll/service";
 import { createNewRun, processExistingRun, cancelExistingRun } from "./actions";
@@ -32,7 +32,7 @@ export default async function PayrollRunsPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("payroll");
   const canManage = hasPermission(tenant, PERMISSIONS.PAYROLL_RUNS_MANAGE);
   const runs = await listRuns(tenant.organizationId);
   const today = new Date().toISOString().slice(0, 10);

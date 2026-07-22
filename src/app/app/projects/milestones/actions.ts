@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createMilestone, completeMilestone, MilestoneStateError, NotFoundError } from "@/modules/projects/service";
 import { cuid, shortText, dateInput, parseWithSchema } from "@/lib/validation";
@@ -20,7 +20,7 @@ const milestoneSchema = z.object({
 });
 
 export async function createNewMilestone(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("projects");
   if (!hasPermission(tenant, PERMISSIONS.PROJECTS_MILESTONES_MANAGE)) {
     redirect("/app/projects/milestones?error=forbidden");
   }
@@ -46,7 +46,7 @@ export async function createNewMilestone(formData: FormData): Promise<void> {
 }
 
 export async function completeExistingMilestone(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("projects");
   if (!hasPermission(tenant, PERMISSIONS.PROJECTS_MILESTONES_MANAGE)) {
     redirect("/app/projects/milestones?error=forbidden");
   }

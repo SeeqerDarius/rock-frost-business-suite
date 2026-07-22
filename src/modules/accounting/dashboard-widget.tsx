@@ -2,11 +2,11 @@ import Link from "next/link";
 import { Calculator } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getAccountingSummary } from "@/modules/accounting/service";
 
 export async function AccountingDashboardWidget() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("accounting");
   const summary = await getAccountingSummary(tenant.organizationId);
 
   return (

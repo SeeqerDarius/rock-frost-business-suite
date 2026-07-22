@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listLeads, listLeadSources, listAssignableUsers } from "@/modules/crm/service";
 import { upsertLead, convertLead } from "./actions";
@@ -103,7 +103,7 @@ export default async function CrmLeadsPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("crm");
   const canManage = hasPermission(tenant, PERMISSIONS.CRM_LEADS_MANAGE);
   const canConvert = canManage && hasPermission(tenant, PERMISSIONS.CRM_DEALS_MANAGE);
   const [leads, sources, users] = await Promise.all([

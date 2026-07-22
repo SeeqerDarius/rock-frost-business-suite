@@ -2,13 +2,13 @@ import Link from "next/link";
 import { Wallet } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { listAccounts, listCustomers, getEffectiveAccountStatus, resolveInstallmentStaffScope } from "@/modules/installment/service";
 
 export async function InstallmentDashboardWidget() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("installment");
   const session = await getServerAuthSession();
   const isManager = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_STAFF_MANAGE);
   const scope = await resolveInstallmentStaffScope(tenant.organizationId, session?.user?.id ?? "", isManager);

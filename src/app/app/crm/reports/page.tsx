@@ -2,7 +2,7 @@ import { Lock, TrendingUp } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getCrmSummary } from "@/modules/crm/service";
 
@@ -14,7 +14,7 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 export default async function CrmReportsPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("crm");
 
   if (!hasPermission(tenant, PERMISSIONS.CRM_REPORTS_VIEW)) {
     return (

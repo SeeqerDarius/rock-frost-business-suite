@@ -4,9 +4,12 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/lib/db";
+import { requirePlatformOperator } from "@/lib/auth/module-access";
 import { ModuleToggle } from "./module-toggle";
 
 export default async function PlatformOrganizationsPage() {
+  await requirePlatformOperator();
+
   const [organizations, modules] = await Promise.all([
     db.organization.findMany({
       include: {

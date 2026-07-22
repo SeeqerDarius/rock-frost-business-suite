@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createWarehouse, updateWarehouse } from "@/modules/inventory/service";
 import { shortText, parseWithSchema } from "@/lib/validation";
@@ -19,7 +19,7 @@ const warehouseSchema = z.object({
 });
 
 export async function upsertWarehouse(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("inventory");
   if (!hasPermission(tenant, PERMISSIONS.INVENTORY_WAREHOUSES_MANAGE)) {
     redirect("/app/inventory/warehouses?error=forbidden");
   }

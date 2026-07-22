@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listInvoices } from "@/modules/accounting/service";
 import { createNewInvoice, sendInvoice, payInvoice, voidExistingInvoice } from "./actions";
@@ -36,7 +36,7 @@ export default async function AccountingInvoicesPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("accounting");
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_INVOICES_MANAGE);
   const invoices = await listInvoices(tenant.organizationId);
   const today = new Date().toISOString().slice(0, 10);

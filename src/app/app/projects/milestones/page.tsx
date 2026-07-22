@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listMilestones, listProjects } from "@/modules/projects/service";
 import { createNewMilestone, completeExistingMilestone } from "./actions";
@@ -25,7 +25,7 @@ export default async function ProjectsMilestonesPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("projects");
   const canManage = hasPermission(tenant, PERMISSIONS.PROJECTS_MILESTONES_MANAGE);
   const [milestones, projects] = await Promise.all([
     listMilestones(tenant.organizationId),

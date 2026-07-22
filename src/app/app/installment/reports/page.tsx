@@ -3,12 +3,12 @@ import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getInstallmentSummary, getStaffPerformanceReport } from "@/modules/installment/service";
 
 export default async function InstallmentReportsPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("installment");
 
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_REPORTS_VIEW)) {
     return (

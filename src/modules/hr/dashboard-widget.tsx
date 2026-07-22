@@ -2,11 +2,11 @@ import Link from "next/link";
 import { UsersRound } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getHrSummary } from "@/modules/hr/service";
 
 export async function HrDashboardWidget() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("hr");
   const summary = await getHrSummary(tenant.organizationId);
 
   return (

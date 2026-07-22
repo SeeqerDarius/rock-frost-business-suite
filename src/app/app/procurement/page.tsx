@@ -3,11 +3,11 @@ import { FileText, PackageCheck, Wallet, CheckCircle2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getProcurementSummary } from "@/modules/procurement/service";
 
 export default async function ProcurementOverviewPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("procurement");
   const summary = await getProcurementSummary(tenant.organizationId);
 
   const stats = [

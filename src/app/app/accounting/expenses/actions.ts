@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import {
@@ -31,7 +31,7 @@ const createExpenseSchema = z.object({
 });
 
 export async function createNewExpense(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("accounting");
   if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_EXPENSES_MANAGE)) {
     redirect("/app/accounting/expenses?error=forbidden");
   }
@@ -68,7 +68,7 @@ export async function createNewExpense(formData: FormData): Promise<void> {
 const idSchema = z.object({ id: cuid });
 
 export async function approveExistingExpense(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("accounting");
   if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_EXPENSES_MANAGE)) {
     redirect("/app/accounting/expenses?error=forbidden");
   }
@@ -89,7 +89,7 @@ export async function approveExistingExpense(formData: FormData): Promise<void> 
 }
 
 export async function rejectExistingExpense(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("accounting");
   if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_EXPENSES_MANAGE)) {
     redirect("/app/accounting/expenses?error=forbidden");
   }
@@ -112,7 +112,7 @@ export async function rejectExistingExpense(formData: FormData): Promise<void> {
 const payExpenseSchema = z.object({ id: cuid, paymentDate: dateInput });
 
 export async function payExistingExpense(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("accounting");
   if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_EXPENSES_MANAGE)) {
     redirect("/app/accounting/expenses?error=forbidden");
   }

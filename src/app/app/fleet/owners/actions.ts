@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createFleetOwner, updateFleetOwner } from "@/modules/fleet/service";
 import { shortText, longText, email as emailSchema, parseWithSchema } from "@/lib/validation";
@@ -21,7 +21,7 @@ const ownerSchema = z.object({
 });
 
 export async function upsertFleetOwner(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("fleet");
   if (!hasPermission(tenant, PERMISSIONS.FLEET_OWNERS_MANAGE)) {
     redirect("/app/fleet/owners?error=forbidden");
   }

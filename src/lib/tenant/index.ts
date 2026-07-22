@@ -21,6 +21,8 @@ export interface TenantContext {
   };
   role: string | null;
   roleId: string | null;
+  roleIsSystem: boolean;
+  roleOrganizationId: string | null;
   permissions: string[];
   branch: {
     id: string;
@@ -114,14 +116,16 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
   }
 
   const enabledModules = await db.organizationModule.findMany({
-    where: { organizationId: membership.organizationId, enabled: true },
+    where: { organizationId: membership.organizationId, enabled: true, module: { status: "ACTIVE" } },
     include: { module: true },
   });
 
   const permissions = membership.role?.rolePermissions.map((rp) => rp.permission.key) ?? [];
   const enabledModuleKeys = enabledModules.map((om) => om.module.code);
   const accessibleModuleKeys = enabledModuleKeys.filter((key) => {
-    const prefix = moduleRegistry.find((mod) => mod.key === key)?.permissionPrefix;
+    const module_ = moduleRegistry.find((mod) => mod.key === key);
+    if (!module_ || module_.status !== "available") return false;
+    const prefix = module_.permissionPrefix;
     return !!prefix && permissions.some((permission) => permission.startsWith(prefix));
   });
 
@@ -136,6 +140,8 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
     },
     role: membership.role?.name ?? null,
     roleId: membership.roleId,
+    roleIsSystem: membership.role?.isSystem ?? false,
+    roleOrganizationId: membership.role?.organizationId ?? null,
     permissions,
     branch: membership.branch
       ? { id: membership.branch.id, name: membership.branch.name, code: membership.branch.code }

@@ -2,13 +2,13 @@ import { CalendarClock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getActivityReport } from "@/modules/installment/service";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default async function InstallmentCollectionsPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("installment");
   const days = await getActivityReport(tenant.organizationId);
 
   const weekExpected = days.reduce((sum, d) => sum + d.expectedAmount, 0);

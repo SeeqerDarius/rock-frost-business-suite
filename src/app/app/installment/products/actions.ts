@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createProduct, updateProduct, createProductCategory, ProductPriceError } from "@/modules/installment/service";
 import { shortText, longText, moneyAmount, moneyAmountNonNegative, positiveInt, parseWithSchema } from "@/lib/validation";
@@ -24,7 +24,7 @@ const productSchema = z.object({
 });
 
 export async function upsertProduct(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("installment");
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_PRODUCTS_MANAGE)) {
     redirect("/app/installment/products?error=forbidden");
   }
@@ -81,7 +81,7 @@ export async function upsertProduct(formData: FormData): Promise<void> {
 }
 
 export async function addProductCategory(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("installment");
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_PRODUCTS_MANAGE)) {
     redirect("/app/installment/products?error=forbidden");
   }

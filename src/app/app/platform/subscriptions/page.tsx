@@ -1,8 +1,11 @@
 import { CreditCard } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
+import { requirePlatformOperator } from "@/lib/auth/module-access";
 
-export default function PlatformSubscriptionsPage() {
+export default async function PlatformSubscriptionsPage() {
+  await requirePlatformOperator();
+
   return (
     <div className="space-y-6">
       <PageHeader title="Subscriptions" description="Billing plans and subscription status across all organizations." />

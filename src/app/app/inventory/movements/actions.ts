@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { recordMovement, InsufficientStockError, InvalidTransferError } from "@/modules/inventory/service";
@@ -52,7 +52,7 @@ const movementSchema = z.object({
 });
 
 export async function createMovement(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("inventory");
   if (!hasPermission(tenant, PERMISSIONS.INVENTORY_MOVEMENTS_MANAGE)) {
     redirect("/app/inventory/movements?error=forbidden");
   }

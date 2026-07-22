@@ -2,11 +2,11 @@ import Link from "next/link";
 import { FolderKanban } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getProjectsSummary } from "@/modules/projects/service";
 
 export async function ProjectsDashboardWidget() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("projects");
   const summary = await getProjectsSummary(tenant.organizationId);
   const openTasks = summary.totalTaskCount - (summary.tasksByStatus.DONE ?? 0);
 

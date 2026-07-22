@@ -1,8 +1,11 @@
 import { Settings } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 
-export default function FleetSettingsPage() {
+export default async function FleetSettingsPage() {
+  await requireModuleAccess("fleet");
+
   return (
     <div className="space-y-6">
       <PageHeader title="Fleet Settings" description="Module-wide configuration for Fleet Management." />

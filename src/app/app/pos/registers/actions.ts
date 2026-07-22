@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import {
@@ -22,7 +22,7 @@ function clean(value: FormDataEntryValue | null) {
 }
 
 export async function upsertRegister(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("pos");
   if (!hasPermission(tenant, PERMISSIONS.POS_REGISTERS_MANAGE)) {
     redirect("/app/pos/registers?error=forbidden");
   }
@@ -63,7 +63,7 @@ export async function upsertRegister(formData: FormData): Promise<void> {
 }
 
 export async function openRegisterSession(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("pos");
   if (!hasPermission(tenant, PERMISSIONS.POS_SESSIONS_MANAGE)) {
     redirect("/app/pos/registers?error=forbidden");
   }
@@ -90,7 +90,7 @@ export async function openRegisterSession(formData: FormData): Promise<void> {
 }
 
 export async function closeRegisterSession(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("pos");
   if (!hasPermission(tenant, PERMISSIONS.POS_SESSIONS_MANAGE)) {
     redirect("/app/pos/registers?error=forbidden");
   }

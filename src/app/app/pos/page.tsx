@@ -3,11 +3,11 @@ import { Store, ShoppingBag, ReceiptText, Undo2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getPosSummary } from "@/modules/pos/service";
 
 export default async function PosOverviewPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("pos");
   const summary = await getPosSummary(tenant.organizationId);
 
   const stats = [

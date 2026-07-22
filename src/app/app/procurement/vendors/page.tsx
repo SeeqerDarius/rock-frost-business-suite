@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listVendors } from "@/modules/procurement/service";
 import { upsertVendor } from "./actions";
@@ -64,7 +64,7 @@ export default async function ProcurementVendorsPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("procurement");
   const canManage = hasPermission(tenant, PERMISSIONS.PROCUREMENT_VENDORS_MANAGE);
   const vendors = await listVendors(tenant.organizationId);
 

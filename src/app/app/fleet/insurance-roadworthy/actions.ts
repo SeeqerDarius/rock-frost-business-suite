@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createFleetVehicleDocument, updateFleetVehicleDocument, NotFoundError } from "@/modules/fleet/service";
 
@@ -12,7 +12,7 @@ function clean(value: FormDataEntryValue | null) {
 }
 
 export async function upsertFleetVehicleDocument(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("fleet");
   if (!hasPermission(tenant, PERMISSIONS.FLEET_INSURANCE_MANAGE)) {
     redirect("/app/fleet/insurance-roadworthy?error=forbidden");
   }

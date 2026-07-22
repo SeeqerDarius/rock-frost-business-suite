@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { createRequest, approveRequest, rejectRequest, RequestStateError, NotFoundError } from "@/modules/procurement/service";
@@ -29,7 +29,7 @@ const createRequestSchema = z.object({
 });
 
 export async function createNewRequest(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("procurement");
   if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_REQUESTS_MANAGE)) {
     redirect("/app/procurement/requests?error=forbidden");
   }
@@ -66,7 +66,7 @@ export async function createNewRequest(formData: FormData): Promise<void> {
 }
 
 export async function approveExistingRequest(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("procurement");
   if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_REQUESTS_MANAGE)) {
     redirect("/app/procurement/requests?error=forbidden");
   }
@@ -88,7 +88,7 @@ export async function approveExistingRequest(formData: FormData): Promise<void> 
 }
 
 export async function rejectExistingRequest(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("procurement");
   if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_REQUESTS_MANAGE)) {
     redirect("/app/procurement/requests?error=forbidden");
   }

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listEmployees, listManagerCandidates } from "@/modules/hr/service";
 import { upsertEmployee, activateExistingEmployee, changeEmployeeStatus } from "./actions";
@@ -103,7 +103,7 @@ export default async function HrEmployeesPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("hr");
   const canManage = hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE);
   const [employees, managers] = await Promise.all([
     listEmployees(tenant.organizationId),

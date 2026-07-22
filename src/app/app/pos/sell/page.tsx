@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listRegisters } from "@/modules/pos/service";
 import { listItems } from "@/modules/inventory/service";
@@ -30,7 +30,7 @@ export default async function PosSellPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("pos");
   const canSell = hasPermission(tenant, PERMISSIONS.POS_SALES_MANAGE);
   const [registers, items] = await Promise.all([listRegisters(tenant.organizationId), listItems(tenant.organizationId)]);
   const openSessionItems: Record<string, string> = Object.fromEntries(

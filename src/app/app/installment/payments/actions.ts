@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { verifyCurrentPassword } from "@/lib/auth/verify-password";
@@ -37,7 +37,7 @@ const paymentSchema = z.object({
 });
 
 export async function createPayment(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("installment");
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_PAYMENTS_MANAGE)) {
     redirect("/app/installment/payments?error=forbidden");
   }
@@ -120,7 +120,7 @@ export async function createPayment(formData: FormData): Promise<void> {
 }
 
 export async function editPayment(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("installment");
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_PAYMENTS_MANAGE)) {
     redirect("/app/installment/payments?error=forbidden");
   }
@@ -166,7 +166,7 @@ export async function editPayment(formData: FormData): Promise<void> {
 }
 
 export async function resolveCredit(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("installment");
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_CREDITS_MANAGE)) {
     redirect("/app/installment/payments?error=forbidden");
   }
@@ -210,7 +210,7 @@ export async function resolveCredit(formData: FormData): Promise<void> {
 }
 
 export async function applyCredit(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("installment");
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_CREDITS_MANAGE)) {
     redirect("/app/installment/payments?error=forbidden");
   }

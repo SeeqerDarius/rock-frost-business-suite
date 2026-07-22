@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listDeals, listContacts, listAssignableUsers } from "@/modules/crm/service";
 import { upsertDeal, changeDealStage } from "./actions";
@@ -117,7 +117,7 @@ export default async function CrmDealsPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("crm");
   const canManage = hasPermission(tenant, PERMISSIONS.CRM_DEALS_MANAGE);
   const [deals, contacts, users] = await Promise.all([
     listDeals(tenant.organizationId),

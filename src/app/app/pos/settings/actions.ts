@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { updateSettings } from "@/modules/pos/service";
 import { longText, parseWithSchema } from "@/lib/validation";
@@ -20,7 +20,7 @@ function optional<T extends z.ZodTypeAny>(schema: T) {
 const settingsSchema = z.object({ receiptFooterText: optional(longText) });
 
 export async function saveReceiptFooter(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("pos");
   if (!hasPermission(tenant, PERMISSIONS.POS_SETTINGS_MANAGE)) {
     redirect("/app/pos/settings?error=forbidden");
   }

@@ -2,12 +2,12 @@ import { Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getPosSummary } from "@/modules/pos/service";
 
 export default async function PosReportsPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("pos");
 
   if (!hasPermission(tenant, PERMISSIONS.POS_REPORTS_VIEW)) {
     return (

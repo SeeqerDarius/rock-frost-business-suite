@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createLeaveType } from "@/modules/hr/service";
 import { shortText, parseWithSchema } from "@/lib/validation";
@@ -17,7 +17,7 @@ function clean(value: FormDataEntryValue | null) {
 const nonNegativeInt = z.coerce.number().int().min(0);
 
 export async function addLeaveType(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("hr");
   if (!hasPermission(tenant, PERMISSIONS.HR_SETTINGS_MANAGE)) {
     redirect("/app/hr/settings?error=forbidden");
   }

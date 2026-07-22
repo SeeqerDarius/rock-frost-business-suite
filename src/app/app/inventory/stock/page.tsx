@@ -3,11 +3,11 @@ import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getStockGrid } from "@/modules/inventory/service";
 
 export default async function InventoryStockPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("inventory");
   const stock = await getStockGrid(tenant.organizationId);
 
   return (

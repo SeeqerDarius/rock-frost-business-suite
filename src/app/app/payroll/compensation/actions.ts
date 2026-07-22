@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { setCompensation, NotFoundError, InvalidCompensationError } from "@/modules/payroll/service";
 import { moneyAmount, cuid, dateInput, parseWithSchema } from "@/lib/validation";
@@ -23,7 +23,7 @@ const compensationSchema = z.object({
 });
 
 export async function saveCompensation(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("payroll");
   if (!hasPermission(tenant, PERMISSIONS.PAYROLL_COMPENSATION_MANAGE)) {
     redirect("/app/payroll/compensation?error=forbidden");
   }

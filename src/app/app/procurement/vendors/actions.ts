@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createVendor, updateVendor } from "@/modules/procurement/service";
 import { shortText, email as emailSchema, cuid, parseWithSchema } from "@/lib/validation";
@@ -28,7 +28,7 @@ const vendorSchema = z.object({
 });
 
 export async function upsertVendor(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("procurement");
   if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_VENDORS_MANAGE)) {
     redirect("/app/procurement/vendors?error=forbidden");
   }

@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createContact, updateContact, NotFoundError } from "@/modules/crm/service";
 
@@ -12,7 +12,7 @@ function clean(value: FormDataEntryValue | null) {
 }
 
 export async function upsertContact(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("crm");
   if (!hasPermission(tenant, PERMISSIONS.CRM_CONTACTS_MANAGE)) {
     redirect("/app/crm/contacts?error=forbidden");
   }

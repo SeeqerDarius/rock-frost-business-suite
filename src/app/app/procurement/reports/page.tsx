@@ -2,12 +2,12 @@ import { Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getProcurementSummary } from "@/modules/procurement/service";
 
 export default async function ProcurementReportsPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("procurement");
 
   if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_REPORTS_VIEW)) {
     return (

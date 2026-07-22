@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { createManualJournalEntry, JournalNotBalancedError, NotFoundError } from "@/modules/accounting/service";
@@ -25,7 +25,7 @@ const journalEntrySchema = z.object({
 });
 
 export async function createJournalEntry(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("accounting");
   if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_ACCOUNTS_MANAGE)) {
     redirect("/app/accounting/journal?error=forbidden");
   }

@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { setDefaultWarehouse } from "@/modules/procurement/service";
 import { cuid, parseWithSchema } from "@/lib/validation";
@@ -20,7 +20,7 @@ function optional<T extends z.ZodTypeAny>(schema: T) {
 const settingsSchema = z.object({ defaultWarehouseId: optional(cuid) });
 
 export async function updateDefaultWarehouse(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("procurement");
   if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_SETTINGS_MANAGE)) {
     redirect("/app/procurement/settings?error=forbidden");
   }

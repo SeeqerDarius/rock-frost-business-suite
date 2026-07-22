@@ -35,7 +35,7 @@ import { projectsNavigation } from "@/modules/projects/navigation";
  * last; add it here as "coming-soon" if a placeholder is ever wanted before
  * it's actually built.
  */
-export const moduleRegistry: ModuleDefinition[] = [
+const moduleDefinitions = [
   {
     key: "fleet",
     name: "Fleet Management",
@@ -146,7 +146,13 @@ export const moduleRegistry: ModuleDefinition[] = [
     status: "available",
     permissionPrefix: "pos.",
   },
-];
+] as const satisfies readonly ModuleDefinition[];
+
+export type BusinessModuleKey = (typeof moduleDefinitions)[number]["key"];
+
+// Expose the registry through the full definition type so consumers can
+// handle future statuses while the guard retains the exact module-key union.
+export const moduleRegistry: readonly ModuleDefinition[] = moduleDefinitions;
 
 export function getModule(key: string): ModuleDefinition | undefined {
   return moduleRegistry.find((mod) => mod.key === key);

@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listStaff, getEffectiveMonthlySalary, getInstallmentSettings } from "@/modules/installment/service";
 import { upsertStaff, recordSalaryPayment } from "./actions";
@@ -70,7 +70,7 @@ export default async function InstallmentStaffPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("installment");
   const canManage = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_STAFF_MANAGE);
   const [staffList, settings] = await Promise.all([listStaff(tenant.organizationId), getInstallmentSettings(tenant.organizationId)]);
   const now = new Date();

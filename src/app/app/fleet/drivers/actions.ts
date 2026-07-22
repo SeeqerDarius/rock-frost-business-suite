@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createFleetDriver, updateFleetDriver } from "@/modules/fleet/service";
 import { shortText, longText, email as emailSchema, dateInput, parseWithSchema } from "@/lib/validation";
@@ -26,7 +26,7 @@ const driverSchema = z.object({
 });
 
 export async function upsertFleetDriver(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("fleet");
   if (!hasPermission(tenant, PERMISSIONS.FLEET_DRIVERS_MANAGE)) {
     redirect("/app/fleet/drivers?error=forbidden");
   }

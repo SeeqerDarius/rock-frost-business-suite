@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listExpenses, listExpenseCategories } from "@/modules/accounting/service";
 import { createNewExpense, approveExistingExpense, rejectExistingExpense, payExistingExpense } from "./actions";
@@ -34,7 +34,7 @@ export default async function AccountingExpensesPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("accounting");
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_EXPENSES_MANAGE);
   const [expenses, categories] = await Promise.all([
     listExpenses(tenant.organizationId),

@@ -2,12 +2,12 @@ import { Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getAccountingSummary } from "@/modules/accounting/service";
 
 export default async function AccountingReportsPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("accounting");
 
   if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_REPORTS_VIEW)) {
     return (

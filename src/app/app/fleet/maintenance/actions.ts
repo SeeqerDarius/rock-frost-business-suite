@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { createFleetMaintenanceRequest, updateFleetMaintenanceRequest, NotFoundError } from "@/modules/fleet/service";
@@ -14,7 +14,7 @@ function clean(value: FormDataEntryValue | null) {
 }
 
 export async function createMaintenanceRequest(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("fleet");
   if (!hasPermission(tenant, PERMISSIONS.FLEET_MAINTENANCE_MANAGE)) {
     redirect("/app/fleet/maintenance?error=forbidden");
   }
@@ -48,7 +48,7 @@ export async function createMaintenanceRequest(formData: FormData): Promise<void
  * so an owner-facing approval portal is out of scope for this pass.
  */
 export async function reviewMaintenanceRequest(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("fleet");
   if (!hasPermission(tenant, PERMISSIONS.FLEET_MAINTENANCE_MANAGE)) {
     redirect("/app/fleet/maintenance?error=forbidden");
   }

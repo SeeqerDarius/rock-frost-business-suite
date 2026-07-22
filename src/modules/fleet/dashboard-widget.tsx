@@ -2,11 +2,11 @@ import Link from "next/link";
 import { Truck } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getFleetSummary } from "@/modules/fleet/service";
 
 export async function FleetDashboardWidget() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("fleet");
   const summary = await getFleetSummary(tenant.organizationId);
 
   return (

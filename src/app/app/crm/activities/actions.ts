@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { createActivity, NotFoundError } from "@/modules/crm/service";
@@ -16,7 +16,7 @@ function clean(value: FormDataEntryValue | null) {
 const CAN_LOG_ACTIVITY = [PERMISSIONS.CRM_CONTACTS_MANAGE, PERMISSIONS.CRM_LEADS_MANAGE, PERMISSIONS.CRM_DEALS_MANAGE];
 
 export async function logActivity(formData: FormData): Promise<void> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("crm");
   if (!CAN_LOG_ACTIVITY.some((permission) => hasPermission(tenant, permission))) {
     redirect("/app/crm/activities?error=forbidden");
   }

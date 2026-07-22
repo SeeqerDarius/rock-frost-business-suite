@@ -1,13 +1,25 @@
 import Link from "next/link";
-import { Wallet, Handshake, Truck, UsersRound } from "lucide-react";
+import { Handshake, Lock, Truck, UsersRound, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
+import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getAnalyticsOverview } from "@/modules/analytics/service";
 
 export default async function AnalyticsOverviewPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("analytics");
+
+  if (!hasPermission(tenant, PERMISSIONS.ANALYTICS_VIEW)) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Analytics Overview" description="Cross-module business intelligence." />
+        <EmptyState icon={Lock} title="You don't have access to this page" description="The analytics overview is limited to roles with overview permissions." />
+      </div>
+    );
+  }
+
   const summary = await getAnalyticsOverview(tenant.organizationId, tenant.enabledModuleKeys);
 
   const stats = [

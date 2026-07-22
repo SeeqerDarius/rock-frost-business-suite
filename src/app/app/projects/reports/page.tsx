@@ -2,7 +2,7 @@ import { Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getProjectsSummary } from "@/modules/projects/service";
 
@@ -17,7 +17,7 @@ const PROJECT_STATUS_LABELS: Record<string, string> = {
 const TASK_STATUS_LABELS: Record<string, string> = { TODO: "To do", IN_PROGRESS: "In progress", IN_REVIEW: "In review", DONE: "Done" };
 
 export default async function ProjectsReportsPage() {
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("projects");
 
   if (!hasPermission(tenant, PERMISSIONS.PROJECTS_REPORTS_VIEW)) {
     return (

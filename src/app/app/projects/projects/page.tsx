@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listProjects, listAssignableUsers } from "@/modules/projects/service";
 import {
@@ -93,7 +93,7 @@ export default async function ProjectsListPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const { saved, error } = await searchParams;
-  const tenant = await requireCurrentTenant();
+  const tenant = await requireModuleAccess("projects");
   const canManage = hasPermission(tenant, PERMISSIONS.PROJECTS_PROJECTS_MANAGE);
   const [projects, users] = await Promise.all([listProjects(tenant.organizationId), listAssignableUsers(tenant.organizationId)]);
   const ownerItems: Record<string, string> = Object.fromEntries(users.map((u) => [u.id, u.name ?? u.email]));
