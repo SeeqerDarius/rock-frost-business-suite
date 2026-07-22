@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { afterEach, describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockDb = {
   project: { findFirst: vi.fn() },
@@ -51,6 +51,11 @@ const ORG = "org-1";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv("NEXTAUTH_URL", "https://www.rockfrostgroup.com");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 /**
@@ -226,6 +231,9 @@ describe("Administration inviteMember() — cross-tenant role IDOR fix", () => {
     expect(mockDb.user.upsert).toHaveBeenCalled();
     expect(mockCreateInvitation).toHaveBeenCalledWith(
       expect.objectContaining({ organizationId: ORG, membershipId: "mem-new" }),
+    );
+    expect(mockSendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ html: expect.stringContaining("https://www.rockfrostgroup.com/invite?token=tok-1") }),
     );
   });
 });

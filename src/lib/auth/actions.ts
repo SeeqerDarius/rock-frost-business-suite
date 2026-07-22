@@ -10,12 +10,11 @@ import { acceptInvitationNewUser, acceptInvitationExistingUser, InvitationAccept
 import { getServerAuthSession } from "@/lib/auth/session";
 import { email as emailSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
+import { buildAppUrl } from "@/lib/app-url";
 
 function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
 }
-
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
 /**
  * NextAuth v4's credentials provider collapses every authorize() failure
@@ -49,7 +48,7 @@ export async function requestPasswordReset(formData: FormData): Promise<void> {
     // never reveal via timing or response shape whether an email is registered.
     if (user && user.status === "ACTIVE") {
       const token = await issuePasswordResetToken(email);
-      const resetUrl = `${siteUrl}/reset-password?email=${encodeURIComponent(email)}&token=${token}`;
+      const resetUrl = buildAppUrl("/reset-password", { email, token });
 
       await sendEmail({
         to: email,

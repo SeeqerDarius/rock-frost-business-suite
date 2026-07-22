@@ -11,8 +11,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { shortText, email as emailSchema, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
-
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+import { buildAppUrl } from "@/lib/app-url";
 
 function inviteEmailHtml(organizationName: string, roleName: string, inviteUrl: string) {
   return `<p>You've been invited to join <strong>${organizationName}</strong> as ${roleName}.</p><p><a href="${inviteUrl}">Accept the invitation</a></p><p>This link expires in 7 days.</p>`;
@@ -98,7 +97,7 @@ export async function inviteMember(formData: FormData): Promise<void> {
     email,
     createdById: session?.user?.id ?? null,
   });
-  const inviteUrl = `${siteUrl}/invite?token=${token}`;
+  const inviteUrl = buildAppUrl("/invite", { token });
 
   const result = await sendEmail({
     to: email,
@@ -149,7 +148,7 @@ export async function resendMemberInvitation(formData: FormData): Promise<void> 
     entityId: membershipId,
   });
 
-  const inviteUrl = `${siteUrl}/invite?token=${token}`;
+  const inviteUrl = buildAppUrl("/invite", { token });
   const result = await sendEmail({
     to: member!.user.email,
     subject: `Reminder: you've been invited to join ${tenant.organization.name} on Rock Frost Business Suite`,
