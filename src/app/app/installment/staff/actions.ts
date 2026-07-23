@@ -10,8 +10,11 @@ import {
   recordStaffSalaryPayment,
   NotFoundError,
   InvalidPaymentAmountError,
+  InvalidStaffLoginError,
+  StaffLoginAlreadyLinkedError,
 } from "@/modules/installment/service";
 import { getServerAuthSession } from "@/lib/auth/session";
+import { cuid, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -31,22 +34,41 @@ export async function upsertStaff(formData: FormData): Promise<void> {
     redirect("/app/installment/staff?error=missing-fields");
   }
 
-  if (id) {
-    await updateStaff(tenant.organizationId, id, {
-      fullName,
-      email: clean(formData.get("email")),
-      phone: clean(formData.get("phone")),
-      monthlySalary,
-      active: formData.get("active") === "on",
-    });
-  } else {
-    await createStaff(tenant.organizationId, {
-      fullName,
-      email: clean(formData.get("email")),
-      phone: clean(formData.get("phone")),
-      monthlySalary,
-      code: clean(formData.get("code")),
-    });
+  const userIdRaw = clean(formData.get("userId"));
+  const parsedUserId = userIdRaw ? parseWithSchema(cuid, userIdRaw) : null;
+  if (parsedUserId && !parsedUserId.success) {
+    redirect("/app/installment/staff?error=invalid-member");
+  }
+  const userId = parsedUserId?.data ?? null;
+
+  try {
+    if (id) {
+      await updateStaff(tenant.organizationId, id, {
+        fullName,
+        email: clean(formData.get("email")),
+        phone: clean(formData.get("phone")),
+        monthlySalary,
+        active: formData.get("active") === "on",
+        userId,
+      });
+    } else {
+      await createStaff(tenant.organizationId, {
+        fullName,
+        email: clean(formData.get("email")),
+        phone: clean(formData.get("phone")),
+        monthlySalary,
+        code: clean(formData.get("code")),
+        userId,
+      });
+    }
+  } catch (error) {
+    if (error instanceof InvalidStaffLoginError) {
+      redirect("/app/installment/staff?error=invalid-member");
+    }
+    if (error instanceof StaffLoginAlreadyLinkedError) {
+      redirect("/app/installment/staff?error=member-already-linked");
+    }
+    throw error;
   }
 
   revalidatePath("/app/installment/staff");

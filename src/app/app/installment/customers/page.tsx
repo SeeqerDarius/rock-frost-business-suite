@@ -1,4 +1,4 @@
-import { Users, Plus } from "lucide-react";
+import { Users, Plus, Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -9,8 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getServerAuthSession } from "@/lib/auth/session";
-import { listCustomers, listStaff, resolveInstallmentStaffScope } from "@/modules/installment/service";
+import { resolveInstallmentAccessScope } from "@/modules/installment/access";
+import { listCustomers, listStaffForScope } from "@/modules/installment/service";
 import { upsertCustomer } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -73,25 +73,43 @@ export default async function InstallmentCustomersPage({
 }) {
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("installment");
-  const canManage = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_CUSTOMERS_MANAGE);
-  const session = await getServerAuthSession();
-  const isManager = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_STAFF_MANAGE);
-  const scope = await resolveInstallmentStaffScope(tenant.organizationId, session?.user?.id ?? "", isManager);
+  if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_CUSTOMERS_MANAGE)) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Customers" description="Customers buying products on installment." />
+        <EmptyState icon={Lock} title="You don't have access to this page" description="Customer records are limited to roles with customer management permissions." />
+      </div>
+    );
+  }
 
-  const [customers, allStaff] = await Promise.all([
-    listCustomers(tenant.organizationId, scope.staffId),
-    listStaff(tenant.organizationId),
+  const scope = await resolveInstallmentAccessScope(tenant);
+  if (scope.kind === "denied") {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Customers" description="Customers buying products on installment." />
+        <EmptyState
+          icon={Lock}
+          title="Staff access needs setup"
+          description="Ask an administrator to link your login to one active installment staff profile before you continue."
+        />
+      </div>
+    );
+  }
+
+  const [customers, staffList] = await Promise.all([
+    listCustomers(tenant.organizationId, scope),
+    listStaffForScope(tenant.organizationId, scope),
   ]);
 
   const staffItems: Record<string, string> = Object.fromEntries(
-    (isManager ? allStaff : allStaff.filter((s) => s.id === scope.staffId)).map((s) => [s.id, `${s.fullName} (${s.code})`])
+    staffList.map((staff) => [staff.id, `${staff.fullName} (${staff.code})`])
   );
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <PageHeader title="Customers" description="Customers buying products on installment." />
-        {canManage && Object.keys(staffItems).length > 0 ? (
+        {Object.keys(staffItems).length > 0 ? (
           <EntityDialog
             trigger={
               <Button size="sm">
@@ -128,7 +146,7 @@ export default async function InstallmentCustomersPage({
               <TableHead>Name</TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>Staff</TableHead>
-              {canManage ? <TableHead /> : null}
+              <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -138,23 +156,21 @@ export default async function InstallmentCustomersPage({
                 <TableCell>{customer.fullName}</TableCell>
                 <TableCell className="text-muted-foreground">{customer.phone ?? "-"}</TableCell>
                 <TableCell className="text-muted-foreground">{customer.staff.fullName}</TableCell>
-                {canManage ? (
-                  <TableCell className="text-right">
-                    <EntityDialog
-                      trigger={
-                        <Button size="sm" variant="ghost">
-                          Edit
-                        </Button>
-                      }
-                      title="Edit customer"
-                      action={upsertCustomer}
-                      submitLabel="Save changes"
-                    >
-                      <input type="hidden" name="id" value={customer.id} />
-                      <CustomerFields customer={customer} staffItems={staffItems} />
-                    </EntityDialog>
-                  </TableCell>
-                ) : null}
+                <TableCell className="text-right">
+                  <EntityDialog
+                    trigger={
+                      <Button size="sm" variant="ghost">
+                        Edit
+                      </Button>
+                    }
+                    title="Edit customer"
+                    action={upsertCustomer}
+                    submitLabel="Save changes"
+                  >
+                    <input type="hidden" name="id" value={customer.id} />
+                    <CustomerFields customer={customer} staffItems={staffItems} />
+                  </EntityDialog>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

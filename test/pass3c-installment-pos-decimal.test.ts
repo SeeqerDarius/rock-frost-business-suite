@@ -13,10 +13,10 @@ const mockDb = {
   hirePurchaseStaffSalaryPayment: { create: vi.fn() },
   hirePurchaseStaffInventory: { upsert: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
   hirePurchaseSettings: { findUnique: vi.fn(), update: vi.fn() },
-  hirePurchaseAccount: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+  hirePurchaseAccount: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   hirePurchaseCustomer: { findFirst: vi.fn() },
   hirePurchasePayment: { create: vi.fn(), findMany: vi.fn() },
-  hirePurchaseCredit: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+  hirePurchaseCredit: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
 
   posRegister: { create: vi.fn(), update: vi.fn() },
   inventoryWarehouse: { findFirst: vi.fn() },
@@ -46,6 +46,7 @@ const accounting = await import("@/modules/accounting/service");
 const payroll = await import("@/modules/payroll/service");
 
 const ORG = "org-1";
+const ORGANIZATION_SCOPE = { kind: "organization" } as const;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -214,7 +215,7 @@ describe("Decimal-precision hygiene — exact arithmetic replacing JS Number/eps
       return { id: "acct-1", ...data };
     });
 
-    await installment.createAccount(ORG, {
+    await installment.createAccount(ORG, ORGANIZATION_SCOPE, {
       customerId: "cust-1",
       productId: "prod-1",
       inventoryStaffId: "staff-1",
@@ -228,6 +229,8 @@ describe("Decimal-precision hygiene — exact arithmetic replacing JS Number/eps
   });
 
   it("installment: applyCreditToAccount partially applies a credit larger than the account balance, leaving the remainder OPEN", async () => {
+    mockDb.hirePurchaseCredit.findFirst.mockResolvedValue({ id: "credit-1" });
+    mockDb.hirePurchaseAccount.findFirst.mockResolvedValue({ id: "acct-1" });
     // Both the credit and the target account are now read via
     // SELECT ... FOR UPDATE inside the transaction (see
     // docs/HARDENING_PLAN.md's Pass 4 section), not findFirst — mocked
@@ -241,17 +244,17 @@ describe("Decimal-precision hygiene — exact arithmetic replacing JS Number/eps
       ]);
     mockDb.hirePurchaseSettings.findUnique.mockResolvedValue({ organizationId: ORG, receiptPrefix: "RCPT" });
     mockDb.hirePurchasePayment.findMany.mockResolvedValue([]);
-    mockDb.hirePurchaseAccount.update.mockResolvedValue({});
-    mockDb.hirePurchaseCredit.update.mockResolvedValue({});
+    mockDb.hirePurchaseAccount.updateMany.mockResolvedValue({ count: 1 });
+    mockDb.hirePurchaseCredit.updateMany.mockResolvedValue({ count: 1 });
 
-    await installment.applyCreditToAccount(ORG, "credit-1", "acct-1");
+    await installment.applyCreditToAccount(ORG, ORGANIZATION_SCOPE, "credit-1", "acct-1");
 
-    expect(mockDb.hirePurchaseAccount.update).toHaveBeenCalledWith({
-      where: { id: "acct-1" },
+    expect(mockDb.hirePurchaseAccount.updateMany).toHaveBeenCalledWith({
+      where: { id: "acct-1", organizationId: ORG, AND: {} },
       data: { totalPaid: "300.00", balance: "0.00", status: "COMPLETED" },
     });
-    expect(mockDb.hirePurchaseCredit.update).toHaveBeenCalledWith({
-      where: { id: "credit-1" },
+    expect(mockDb.hirePurchaseCredit.updateMany).toHaveBeenCalledWith({
+      where: { id: "credit-1", organizationId: ORG, AND: {} },
       data: { remainingAmount: "20.00", status: "OPEN" },
     });
   });

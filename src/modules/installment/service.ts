@@ -7,6 +7,9 @@ import type {
   HirePurchaseCreditSource,
 } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
+import type { InstallmentAccessScope } from "@/modules/installment/access";
+
+export type { InstallmentAccessScope } from "@/modules/installment/access";
 
 /**
  * Business logic migrated from the GLV reference implementation
@@ -79,23 +82,36 @@ export async function updateInstallmentSettings(organizationId: string, data: Re
   return db.hirePurchaseSettings.update({ where: { organizationId }, data });
 }
 
-// --- Staff scope (field staff see only their own customers/accounts/payments; managers see all) ---
+export class NotFoundError extends Error {}
 
-export interface InstallmentStaffScope {
-  isManager: boolean;
-  /** null = no filter (manager). A staffId = restrict to that staff's records. */
-  staffId: string | null;
+function staffOwnershipWhere(scope: InstallmentAccessScope): Prisma.HirePurchaseStaffWhereInput | null {
+  if (scope.kind === "denied") return null;
+  return scope.kind === "staff" ? { id: scope.staffId, active: true } : {};
 }
 
-export async function resolveInstallmentStaffScope(
-  organizationId: string,
-  userId: string,
-  isManager: boolean
-): Promise<InstallmentStaffScope> {
-  if (isManager) return { isManager: true, staffId: null };
-  const staff = await db.hirePurchaseStaff.findFirst({ where: { organizationId, userId } });
-  // A non-manager with no linked staff row sees nothing, rather than everything, as a safe default.
-  return { isManager: false, staffId: staff?.id ?? "__none__" };
+function customerOwnershipWhere(scope: InstallmentAccessScope): Prisma.HirePurchaseCustomerWhereInput | null {
+  if (scope.kind === "denied") return null;
+  return scope.kind === "staff" ? { staffId: scope.staffId } : {};
+}
+
+function accountOwnershipWhere(scope: InstallmentAccessScope): Prisma.HirePurchaseAccountWhereInput | null {
+  if (scope.kind === "denied") return null;
+  return scope.kind === "staff" ? { customer: { staffId: scope.staffId } } : {};
+}
+
+function paymentOwnershipWhere(scope: InstallmentAccessScope): Prisma.HirePurchasePaymentWhereInput | null {
+  if (scope.kind === "denied") return null;
+  return scope.kind === "staff" ? { account: { customer: { staffId: scope.staffId } } } : {};
+}
+
+function creditOwnershipWhere(scope: InstallmentAccessScope): Prisma.HirePurchaseCreditWhereInput | null {
+  if (scope.kind === "denied") return null;
+  return scope.kind === "staff" ? { customer: { staffId: scope.staffId } } : {};
+}
+
+function requireOwnershipWhere<T>(where: T | null): T {
+  if (!where) throw new NotFoundError("Record not found.");
+  return where;
 }
 
 // --- Code generation ---
@@ -229,41 +245,119 @@ export function listStaff(organizationId: string) {
   return db.hirePurchaseStaff.findMany({ where: { organizationId }, orderBy: { fullName: "asc" } });
 }
 
+export async function listStaffForScope(organizationId: string, scope: InstallmentAccessScope) {
+  const ownershipWhere = staffOwnershipWhere(scope);
+  if (!ownershipWhere) return [];
+
+  return db.hirePurchaseStaff.findMany({
+    where: { organizationId, active: true, ...ownershipWhere },
+    select: { id: true, fullName: true, code: true },
+    orderBy: { fullName: "asc" },
+  });
+}
+
+export class InvalidStaffLoginError extends Error {}
+export class StaffLoginAlreadyLinkedError extends Error {}
+
+export async function listAssignableStaffUsers(organizationId: string) {
+  const memberships = await db.organizationMember.findMany({
+    where: {
+      organizationId,
+      status: "ACTIVE",
+      user: { status: "ACTIVE" },
+    },
+    select: {
+      user: { select: { id: true, name: true, email: true } },
+    },
+    orderBy: { user: { name: "asc" } },
+  });
+  return memberships.map(({ user }) => user);
+}
+
+async function requireActiveStaffLogin(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  organizationId: string,
+  userId: string | null,
+) {
+  if (!userId) return;
+
+  const membership = await tx.organizationMember.findFirst({
+    where: {
+      organizationId,
+      userId,
+      status: "ACTIVE",
+      user: { status: "ACTIVE" },
+    },
+    select: { id: true },
+  });
+  if (!membership) {
+    throw new InvalidStaffLoginError("Select an active user in this organization.");
+  }
+}
+
+function isStaffLoginUniqueViolation(error: unknown) {
+  if (!(error instanceof Error) || !("code" in error) || error.code !== "P2002") return false;
+
+  const meta = "meta" in error ? error.meta : undefined;
+  const target = meta && typeof meta === "object" && "target" in meta ? meta.target : undefined;
+  if (Array.isArray(target)) {
+    return target.length === 2 && target.includes("organizationId") && target.includes("userId");
+  }
+  return typeof target === "string" && target.includes("organizationId") && target.includes("userId");
+}
+
 export async function createStaff(
   organizationId: string,
-  data: { fullName: string; email?: string | null; phone?: string | null; monthlySalary: string; code?: string | null }
+  data: {
+    fullName: string;
+    email?: string | null;
+    phone?: string | null;
+    monthlySalary: string;
+    code?: string | null;
+    userId: string | null;
+  }
 ) {
   const settings = await getInstallmentSettings(organizationId);
   const code = data.code || (await generateStaffCode(organizationId, data.fullName, settings.staffCodeLength));
 
-  return db.$transaction(async (tx) => {
-    const staff = await tx.hirePurchaseStaff.create({
-      data: {
-        organizationId,
-        code,
-        fullName: data.fullName,
-        email: data.email,
-        phone: data.phone,
-        monthlySalary: data.monthlySalary,
-      },
-    });
+  try {
+    return await db.$transaction(async (tx) => {
+      await requireActiveStaffLogin(tx, organizationId, data.userId);
 
-    const activeProducts = await tx.hirePurchaseProduct.findMany({ where: { organizationId, active: true } });
-    for (const product of activeProducts) {
-      await tx.hirePurchaseStaffInventory.upsert({
-        where: { staffId_productId: { staffId: staff.id, productId: product.id } },
-        update: {},
-        create: {
+      const staff = await tx.hirePurchaseStaff.create({
+        data: {
           organizationId,
-          staffId: staff.id,
-          productId: product.id,
-          quantity: settings.defaultStaffInventoryQuantity,
+          code,
+          fullName: data.fullName,
+          email: data.email,
+          phone: data.phone,
+          monthlySalary: data.monthlySalary,
+          userId: data.userId,
         },
       });
-    }
 
-    return staff;
-  });
+      const activeProducts = await tx.hirePurchaseProduct.findMany({ where: { organizationId, active: true } });
+      for (const product of activeProducts) {
+        await tx.hirePurchaseStaffInventory.upsert({
+          where: { staffId_productId: { staffId: staff.id, productId: product.id } },
+          update: {},
+          create: {
+            organizationId,
+            staffId: staff.id,
+            productId: product.id,
+            quantity: settings.defaultStaffInventoryQuantity,
+          },
+        });
+      }
+
+      return staff;
+    });
+  } catch (error) {
+    if (isStaffLoginUniqueViolation(error)) {
+      throw new StaffLoginAlreadyLinkedError("That login is already linked to another staff profile.");
+    }
+    throw error;
+  }
 }
 
 function monthStart(date: Date) {
@@ -273,27 +367,42 @@ function monthStart(date: Date) {
 export async function updateStaff(
   organizationId: string,
   id: string,
-  data: { fullName: string; email?: string | null; phone?: string | null; monthlySalary: string; active: boolean }
+  data: {
+    fullName: string;
+    email?: string | null;
+    phone?: string | null;
+    monthlySalary: string;
+    active: boolean;
+    userId: string | null;
+  }
 ) {
   const staff = await db.hirePurchaseStaff.findFirst({ where: { id, organizationId } });
   if (!staff) return null;
 
   const salaryChanged = staff.monthlySalary.toString() !== data.monthlySalary;
 
-  return db.$transaction(async (tx) => {
-    const updated = await tx.hirePurchaseStaff.update({ where: { id, organizationId }, data });
+  try {
+    return await db.$transaction(async (tx) => {
+      await requireActiveStaffLogin(tx, organizationId, data.userId);
+      const updated = await tx.hirePurchaseStaff.update({ where: { id, organizationId }, data });
 
-    if (salaryChanged) {
-      const effectiveMonth = monthStart(new Date());
-      await tx.hirePurchaseStaffSalaryHistory.upsert({
-        where: { staffId_effectiveMonth: { staffId: id, effectiveMonth } },
-        update: { monthlySalary: data.monthlySalary },
-        create: { organizationId, staffId: id, monthlySalary: data.monthlySalary, effectiveMonth },
-      });
+      if (salaryChanged) {
+        const effectiveMonth = monthStart(new Date());
+        await tx.hirePurchaseStaffSalaryHistory.upsert({
+          where: { staffId_effectiveMonth: { staffId: id, effectiveMonth } },
+          update: { monthlySalary: data.monthlySalary },
+          create: { organizationId, staffId: id, monthlySalary: data.monthlySalary, effectiveMonth },
+        });
+      }
+
+      return updated;
+    });
+  } catch (error) {
+    if (isStaffLoginUniqueViolation(error)) {
+      throw new StaffLoginAlreadyLinkedError("That login is already linked to another staff profile.");
     }
-
-    return updated;
-  });
+    throw error;
+  }
 }
 
 export async function recordStaffSalaryPayment(
@@ -322,12 +431,15 @@ export async function getEffectiveMonthlySalary(staffId: string, organizationId:
   const staff = await db.hirePurchaseStaff.findFirst({ where: { id: staffId, organizationId } });
   if (!staff) return 0;
 
+  const asOfMonth = monthStart(asOf);
+  const staffStartMonth = monthStart(staff.createdAt);
+  if (asOfMonth < staffStartMonth) return 0;
+
   const history = await db.hirePurchaseStaffSalaryHistory.findMany({
     where: { staffId, organizationId },
     orderBy: { effectiveMonth: "asc" },
   });
 
-  const asOfMonth = monthStart(asOf);
   let salary = Number(staff.monthlySalary);
   for (const entry of history) {
     if (entry.effectiveMonth <= asOfMonth) {
@@ -392,9 +504,12 @@ export async function adjustStaffInventory(organizationId: string, staffId: stri
 
 // --- Customers ---
 
-export function listCustomers(organizationId: string, staffId: string | null) {
+export async function listCustomers(organizationId: string, scope: InstallmentAccessScope) {
+  const ownershipWhere = customerOwnershipWhere(scope);
+  if (!ownershipWhere) return [];
+
   return db.hirePurchaseCustomer.findMany({
-    where: { organizationId, ...(staffId ? { staffId } : {}) },
+    where: { organizationId, ...ownershipWhere },
     include: { staff: true },
     orderBy: { createdAt: "desc" },
   });
@@ -402,10 +517,14 @@ export function listCustomers(organizationId: string, staffId: string | null) {
 
 export async function createCustomer(
   organizationId: string,
+  scope: InstallmentAccessScope,
   data: { fullName: string; phone?: string | null; address?: string | null; nationalId?: string | null; staffId: string }
 ) {
-  const staff = await db.hirePurchaseStaff.findFirst({ where: { id: data.staffId, organizationId } });
-  if (!staff) throw new Error("Assigned staff member not found.");
+  const ownershipWhere = requireOwnershipWhere(staffOwnershipWhere(scope));
+  const staff = await db.hirePurchaseStaff.findFirst({
+    where: { id: data.staffId, organizationId, active: true, AND: ownershipWhere },
+  });
+  if (!staff) throw new NotFoundError("Record not found.");
 
   const settings = await getInstallmentSettings(organizationId);
   const customerCode = await generateCustomerCode(organizationId, staff.code, settings.customerIdPrefix);
@@ -415,12 +534,32 @@ export async function createCustomer(
 
 export async function updateCustomer(
   organizationId: string,
+  scope: InstallmentAccessScope,
   id: string,
   data: { fullName: string; phone?: string | null; address?: string | null; nationalId?: string | null; staffId: string }
 ) {
-  const staff = await db.hirePurchaseStaff.findFirst({ where: { id: data.staffId, organizationId } });
-  if (!staff) throw new NotFoundError("Staff member not found.");
-  return db.hirePurchaseCustomer.update({ where: { id, organizationId }, data });
+  const customerWhere = requireOwnershipWhere(customerOwnershipWhere(scope));
+  const staffWhere = requireOwnershipWhere(staffOwnershipWhere(scope));
+
+  return db.$transaction(async (tx) => {
+    const [customer, staff] = await Promise.all([
+      tx.hirePurchaseCustomer.findFirst({ where: { id, organizationId, AND: customerWhere } }),
+      tx.hirePurchaseStaff.findFirst({
+        where: { id: data.staffId, organizationId, active: true, AND: staffWhere },
+      }),
+    ]);
+    if (!customer || !staff) throw new NotFoundError("Record not found.");
+
+    const updated = await tx.hirePurchaseCustomer.updateMany({
+      where: { id, organizationId, AND: customerWhere },
+      data,
+    });
+    if (updated.count !== 1) throw new NotFoundError("Record not found.");
+
+    return tx.hirePurchaseCustomer.findFirstOrThrow({
+      where: { id, organizationId, AND: customerWhere },
+    });
+  });
 }
 
 // --- Accounts ---
@@ -431,16 +570,18 @@ function addDays(date: Date, days: number) {
   return result;
 }
 
-export function listAccounts(organizationId: string, staffId: string | null) {
+export async function listAccounts(organizationId: string, scope: InstallmentAccessScope) {
+  const ownershipWhere = accountOwnershipWhere(scope);
+  if (!ownershipWhere) return [];
+
   return db.hirePurchaseAccount.findMany({
-    where: { organizationId, ...(staffId ? { customer: { staffId } } : {}) },
+    where: { organizationId, ...ownershipWhere },
     include: { customer: true, product: true, inventoryStaff: true },
     orderBy: { createdAt: "desc" },
   });
 }
 
 export class MinimumDepositError extends Error {}
-export class NotFoundError extends Error {}
 
 /**
  * `administrationFeePercent` and `minimumDeposit` are real, enforced rules
@@ -451,35 +592,18 @@ export class NotFoundError extends Error {}
  */
 export async function createAccount(
   organizationId: string,
+  scope: InstallmentAccessScope,
   data: { customerId: string; productId: string; inventoryStaffId: string; startDate: Date; initialDeposit?: string }
 ) {
-  const product = await db.hirePurchaseProduct.findFirst({ where: { id: data.productId, organizationId } });
-  if (!product) throw new NotFoundError("Product not found.");
-
-  const customer = await db.hirePurchaseCustomer.findFirst({ where: { id: data.customerId, organizationId } });
-  if (!customer) throw new NotFoundError("Customer not found.");
-
-  const inventoryStaff = await db.hirePurchaseStaff.findFirst({ where: { id: data.inventoryStaffId, organizationId } });
-  if (!inventoryStaff) throw new NotFoundError("Staff member not found.");
-
+  const customerWhere = requireOwnershipWhere(customerOwnershipWhere(scope));
+  const inventoryStaffWhere = requireOwnershipWhere(staffOwnershipWhere(scope));
   const settings = await getInstallmentSettings(organizationId);
-  // Prisma.Decimal (arbitrary-precision) rather than JS Number arithmetic —
-  // targetAmount/balance are derived values written straight to the
-  // database at account opening, so float rounding error here would be a
-  // real, persisted discrepancy rather than a transient display artifact.
   const minimumDeposit = new Prisma.Decimal(settings.minimumDeposit);
   const depositAmount = data.initialDeposit ? new Prisma.Decimal(data.initialDeposit) : new Prisma.Decimal(0);
 
   if (minimumDeposit.greaterThan(0) && depositAmount.lessThan(minimumDeposit)) {
     throw new MinimumDepositError(`A minimum deposit of ${minimumDeposit.toFixed(2)} is required to open this account.`);
   }
-
-  const adminFeeRate = new Prisma.Decimal(settings.administrationFeePercent).div(100);
-  const productPrice = new Prisma.Decimal(product.price);
-  const adminFee = productPrice.times(adminFeeRate);
-  const targetAmount = productPrice.plus(adminFee).toFixed(2);
-  const dailyAmount = product.dailyAmount;
-  const expectedEndDate = addDays(data.startDate, product.duration);
 
   // Regenerated fresh on every retry attempt (not hoisted above the retried
   // operation) so a P2002 collision on receiptNo gets a newly-counted number
@@ -488,6 +612,33 @@ export async function createAccount(
     const receiptNo = depositAmount.greaterThan(0) ? await generateReceiptNo(organizationId, settings.receiptPrefix) : null;
 
     return db.$transaction(async (tx) => {
+      const [product, customer, inventoryStaff] = await Promise.all([
+        tx.hirePurchaseProduct.findFirst({ where: { id: data.productId, organizationId } }),
+        tx.hirePurchaseCustomer.findFirst({
+          where: { id: data.customerId, organizationId, AND: customerWhere },
+        }),
+        tx.hirePurchaseStaff.findFirst({
+          where: {
+            id: data.inventoryStaffId,
+            organizationId,
+            active: true,
+            AND: inventoryStaffWhere,
+          },
+        }),
+      ]);
+      if (!product || !customer || !inventoryStaff) {
+        throw new NotFoundError("Record not found.");
+      }
+
+      // Prisma.Decimal (arbitrary-precision) rather than JS Number
+      // arithmetic: these derived values are persisted at account opening.
+      const adminFeeRate = new Prisma.Decimal(settings.administrationFeePercent).div(100);
+      const productPrice = new Prisma.Decimal(product.price);
+      const adminFee = productPrice.times(adminFeeRate);
+      const targetAmount = productPrice.plus(adminFee).toFixed(2);
+      const dailyAmount = product.dailyAmount;
+      const expectedEndDate = addDays(data.startDate, product.duration);
+
       await consumeStaffInventory(tx, data.inventoryStaffId, data.productId);
 
       const account = await tx.hirePurchaseAccount.create({
@@ -552,14 +703,40 @@ export function getEffectiveAccountStatus(
   return account.status;
 }
 
-export async function updateAccountDeliveryStatus(organizationId: string, id: string, deliveredBy: string) {
-  const account = await db.hirePurchaseAccount.findFirst({ where: { id, organizationId } });
-  if (!account || account.status !== "COMPLETED" || Number(account.balance) > 0) {
-    throw new Error("Only completed, fully-paid accounts can be marked delivered.");
-  }
-  return db.hirePurchaseAccount.update({
-    where: { id, organizationId },
-    data: { deliveryStatus: "DELIVERED", deliveredAt: new Date(), deliveredBy },
+export async function updateAccountDeliveryStatus(
+  organizationId: string,
+  scope: InstallmentAccessScope,
+  id: string,
+  deliveredBy: string,
+) {
+  const ownershipWhere = requireOwnershipWhere(accountOwnershipWhere(scope));
+
+  return db.$transaction(async (tx) => {
+    const account = await tx.hirePurchaseAccount.findFirst({
+      where: { id, organizationId, AND: ownershipWhere },
+    });
+    if (!account) throw new NotFoundError("Record not found.");
+    if (account.status !== "COMPLETED" || Number(account.balance) > 0) {
+      throw new Error("Only completed, fully-paid accounts can be marked delivered.");
+    }
+
+    const updated = await tx.hirePurchaseAccount.updateMany({
+      where: {
+        id,
+        organizationId,
+        status: "COMPLETED",
+        balance: { lte: 0 },
+        AND: ownershipWhere,
+      },
+      data: { deliveryStatus: "DELIVERED", deliveredAt: new Date(), deliveredBy },
+    });
+    if (updated.count !== 1) {
+      throw new Error("Only completed, fully-paid accounts can be marked delivered.");
+    }
+
+    return tx.hirePurchaseAccount.findFirstOrThrow({
+      where: { id, organizationId, AND: ownershipWhere },
+    });
   });
 }
 
@@ -570,30 +747,47 @@ const MANUALLY_SETTABLE_STATUSES: HirePurchaseAccountStatus[] = ["SUSPENDED", "C
  * inventory — the customer isn't taking delivery of that unit after all.
  * Suspension is treated as temporary/reversible, so it does not touch stock.
  */
-export async function setAccountStatus(organizationId: string, id: string, status: HirePurchaseAccountStatus) {
+export async function setAccountStatus(
+  organizationId: string,
+  scope: InstallmentAccessScope,
+  id: string,
+  status: HirePurchaseAccountStatus,
+) {
+  const ownershipWhere = requireOwnershipWhere(accountOwnershipWhere(scope));
   if (!MANUALLY_SETTABLE_STATUSES.includes(status)) {
     throw new Error("That status can't be set manually.");
   }
 
-  const account = await db.hirePurchaseAccount.findFirst({ where: { id, organizationId } });
-  if (!account) throw new Error("Account not found.");
-
   return db.$transaction(async (tx) => {
-    const updated = await tx.hirePurchaseAccount.update({ where: { id, organizationId }, data: { status } });
+    const account = await tx.hirePurchaseAccount.findFirst({
+      where: { id, organizationId, AND: ownershipWhere },
+    });
+    if (!account) throw new NotFoundError("Record not found.");
+
+    const claimed = await tx.hirePurchaseAccount.updateMany({
+      where: { id, organizationId, status: account.status, AND: ownershipWhere },
+      data: { status },
+    });
+    if (claimed.count !== 1) throw new NotFoundError("Record not found.");
 
     if (status === "CANCELLED" && account.status !== "CANCELLED" && account.inventoryStaffId) {
       await restoreStaffInventory(tx, organizationId, account.inventoryStaffId, account.productId);
     }
 
-    return updated;
+    return tx.hirePurchaseAccount.findFirstOrThrow({
+      where: { id, organizationId, AND: ownershipWhere },
+    });
   });
 }
 
 // --- Payments ---
 
-export function listPayments(organizationId: string, staffId: string | null) {
+export async function listPayments(organizationId: string, scope: InstallmentAccessScope) {
+  const ownershipWhere = paymentOwnershipWhere(scope);
+  if (!ownershipWhere) return [];
+
   return db.hirePurchasePayment.findMany({
-    where: { organizationId, ...(staffId ? { account: { customer: { staffId } } } : {}) },
+    where: { organizationId, ...ownershipWhere },
     include: { account: { include: { customer: true, product: true } }, credit: true },
     orderBy: { paymentDate: "desc" },
   });
@@ -622,6 +816,7 @@ export class InvalidPaymentAmountError extends Error {}
  */
 export async function recordPayment(
   organizationId: string,
+  scope: InstallmentAccessScope,
   data: { accountId: string; amount: string; paymentDate: Date; method: string; notes?: string | null; receivedBy?: string | null }
 ) {
   const amount = new Prisma.Decimal(data.amount);
@@ -629,66 +824,80 @@ export async function recordPayment(
     throw new InvalidPaymentAmountError("Payment amount must be a positive number.");
   }
 
-  const account = await db.hirePurchaseAccount.findFirst({ where: { id: data.accountId, organizationId } });
-  if (!account) throw new NotFoundError("Account not found.");
-  if (BLOCKED_PAYMENT_STATUSES.includes(account.status) || new Prisma.Decimal(account.balance).lessThanOrEqualTo(0)) {
-    throw new PaymentBlockedError("This account can't accept new payments in its current state.");
-  }
-
+  const accountWhere = requireOwnershipWhere(accountOwnershipWhere(scope));
   const settings = await getInstallmentSettings(organizationId);
 
   // The whole transaction attempt is retried on a receipt-number collision
   // (not just the create call), regenerating receiptNo fresh each time.
   return createWithUniqueRetry(async () => {
-  const receiptNo = await generateReceiptNo(organizationId, settings.receiptPrefix);
+    const receiptNo = await generateReceiptNo(organizationId, settings.receiptPrefix);
 
-  return db.$transaction(async (tx) => {
-    const payment = await tx.hirePurchasePayment.create({
-      data: { organizationId, receiptNo, ...data },
-    });
-
-    const updated = await tx.hirePurchaseAccount.update({
-      where: { id: account.id },
-      data: { totalPaid: { increment: amount.toNumber() }, balance: { decrement: amount.toNumber() } },
-    });
-
-    const rawBalance = new Prisma.Decimal(updated.balance);
-    const isOverpaid = rawBalance.lessThan(0);
-    const clampedBalance = Prisma.Decimal.max(rawBalance, 0);
-
-    let nextStatus = updated.status;
-    if (rawBalance.lessThanOrEqualTo(0)) {
-      nextStatus = "COMPLETED";
-    } else if (updated.status === "DORMANT" || updated.status === "PROBATION") {
-      nextStatus = "ACTIVE";
-    }
-
-    if (isOverpaid || nextStatus !== updated.status) {
-      await tx.hirePurchaseAccount.update({
-        where: { id: account.id },
-        data: { balance: clampedBalance.toFixed(2), status: nextStatus },
+    return db.$transaction(async (tx) => {
+      const account = await tx.hirePurchaseAccount.findFirst({
+        where: { id: data.accountId, organizationId, AND: accountWhere },
       });
-    }
+      if (!account) throw new NotFoundError("Record not found.");
+      if (BLOCKED_PAYMENT_STATUSES.includes(account.status) || new Prisma.Decimal(account.balance).lessThanOrEqualTo(0)) {
+        throw new PaymentBlockedError("This account can't accept new payments in its current state.");
+      }
 
-    if (isOverpaid) {
-      const creditAmount = rawBalance.abs();
-      await tx.hirePurchaseCredit.create({
-        data: {
+      const payment = await tx.hirePurchasePayment.create({
+        data: { organizationId, receiptNo, ...data },
+      });
+
+      const claimed = await tx.hirePurchaseAccount.updateMany({
+        where: {
+          id: account.id,
           organizationId,
-          customerId: account.customerId,
-          accountId: account.id,
-          paymentId: payment.id,
-          amount: creditAmount.toFixed(2),
-          remainingAmount: creditAmount.toFixed(2),
-          status: "OPEN",
-          source: "PAYMENT_OVERPAYMENT",
-          notes: `Overpayment from receipt ${receiptNo}`,
+          status: { notIn: BLOCKED_PAYMENT_STATUSES },
+          balance: { gt: 0 },
+          AND: accountWhere,
         },
+        data: { totalPaid: { increment: amount.toNumber() }, balance: { decrement: amount.toNumber() } },
       });
-    }
+      if (claimed.count !== 1) throw new NotFoundError("Record not found.");
 
-    return payment;
-  });
+      const updated = await tx.hirePurchaseAccount.findFirstOrThrow({
+        where: { id: account.id, organizationId, AND: accountWhere },
+      });
+      const rawBalance = new Prisma.Decimal(updated.balance);
+      const isOverpaid = rawBalance.lessThan(0);
+      const clampedBalance = Prisma.Decimal.max(rawBalance, 0);
+
+      let nextStatus = updated.status;
+      if (rawBalance.lessThanOrEqualTo(0)) {
+        nextStatus = "COMPLETED";
+      } else if (updated.status === "DORMANT" || updated.status === "PROBATION") {
+        nextStatus = "ACTIVE";
+      }
+
+      if (isOverpaid || nextStatus !== updated.status) {
+        const finalized = await tx.hirePurchaseAccount.updateMany({
+          where: { id: account.id, organizationId, AND: accountWhere },
+          data: { balance: clampedBalance.toFixed(2), status: nextStatus },
+        });
+        if (finalized.count !== 1) throw new NotFoundError("Record not found.");
+      }
+
+      if (isOverpaid) {
+        const creditAmount = rawBalance.abs();
+        await tx.hirePurchaseCredit.create({
+          data: {
+            organizationId,
+            customerId: account.customerId,
+            accountId: account.id,
+            paymentId: payment.id,
+            amount: creditAmount.toFixed(2),
+            remainingAmount: creditAmount.toFixed(2),
+            status: "OPEN",
+            source: "PAYMENT_OVERPAYMENT",
+            notes: `Overpayment from receipt ${receiptNo}`,
+          },
+        });
+      }
+
+      return payment;
+    });
   });
 }
 
@@ -702,36 +911,55 @@ export class PaymentCreditLockedError extends Error {}
 
 export async function updatePayment(
   organizationId: string,
+  scope: InstallmentAccessScope,
   id: string,
   data: { amount: string; paymentDate: Date; method: string; notes?: string | null }
 ) {
-  const payment = await db.hirePurchasePayment.findFirst({
-    where: { id, organizationId },
-    include: { credit: true },
-  });
-  if (!payment) throw new Error("Payment not found.");
-
+  const paymentWhere = requireOwnershipWhere(paymentOwnershipWhere(scope));
   const settings = await getInstallmentSettings(organizationId);
-  if (!canEditPayment(payment, settings.paymentEditWindowHours)) {
-    throw new PaymentEditWindowError(`This payment can only be edited within ${settings.paymentEditWindowHours} hour(s) of recording.`);
-  }
-
-  const amountChanged = payment.amount.toString() !== data.amount;
-  if (amountChanged && payment.credit && (payment.credit.status !== "OPEN" || payment.credit.remainingAmount.toString() !== payment.credit.amount.toString())) {
-    throw new PaymentCreditLockedError("This payment has a resolved or partially used credit and cannot have its amount edited.");
-  }
 
   return db.$transaction(async (tx) => {
-    await tx.hirePurchasePayment.update({ where: { id }, data });
-    await recalculateAccountAfterPaymentChange(tx, organizationId, payment.accountId);
+    const payment = await tx.hirePurchasePayment.findFirst({
+      where: { id, organizationId, AND: paymentWhere },
+      include: { credit: true },
+    });
+    if (!payment) throw new NotFoundError("Record not found.");
+
+    if (!canEditPayment(payment, settings.paymentEditWindowHours)) {
+      throw new PaymentEditWindowError(`This payment can only be edited within ${settings.paymentEditWindowHours} hour(s) of recording.`);
+    }
+
+    const amountChanged = payment.amount.toString() !== data.amount;
+    if (amountChanged && payment.credit && (payment.credit.status !== "OPEN" || payment.credit.remainingAmount.toString() !== payment.credit.amount.toString())) {
+      throw new PaymentCreditLockedError("This payment has a resolved or partially used credit and cannot have its amount edited.");
+    }
+
+    const updated = await tx.hirePurchasePayment.updateMany({
+      where: { id, organizationId, AND: paymentWhere },
+      data,
+    });
+    if (updated.count !== 1) throw new NotFoundError("Record not found.");
+
+    await recalculateAccountAfterPaymentChange(tx, organizationId, scope, payment.accountId);
   });
 }
 
 async function recalculateAccountAfterPaymentChange(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   organizationId: string,
+  scope: InstallmentAccessScope,
   accountId: string
 ) {
+  const accountWhere = requireOwnershipWhere(accountOwnershipWhere(scope));
+  const paymentWhere = requireOwnershipWhere(paymentOwnershipWhere(scope));
+  const creditWhere = requireOwnershipWhere(creditOwnershipWhere(scope));
+
+  const accessible = await tx.hirePurchaseAccount.findFirst({
+    where: { id: accountId, organizationId, AND: accountWhere },
+    select: { id: true },
+  });
+  if (!accessible) throw new NotFoundError("Record not found.");
+
   // Locks the account row before this function's read-then-absolute-write
   // (a full recompute from every payment, not an increment — inherently
   // can't use the guarded-updateMany pattern) — closes the race where a
@@ -743,8 +971,12 @@ async function recalculateAccountAfterPaymentChange(
   // specific function.
   await tx.$queryRaw`SELECT id FROM "HirePurchaseAccount" WHERE id = ${accountId} AND "organizationId" = ${organizationId} FOR UPDATE`;
 
-  const account = await tx.hirePurchaseAccount.findFirstOrThrow({ where: { id: accountId, organizationId } });
-  const payments = await tx.hirePurchasePayment.findMany({ where: { accountId } });
+  const account = await tx.hirePurchaseAccount.findFirstOrThrow({
+    where: { id: accountId, organizationId, AND: accountWhere },
+  });
+  const payments = await tx.hirePurchasePayment.findMany({
+    where: { accountId, organizationId, AND: paymentWhere },
+  });
 
   const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
   const rawBalance = Number(account.targetAmount) - totalPaid;
@@ -758,13 +990,20 @@ async function recalculateAccountAfterPaymentChange(
     nextStatus = "ACTIVE";
   }
 
-  await tx.hirePurchaseAccount.update({
-    where: { id: accountId },
+  const updated = await tx.hirePurchaseAccount.updateMany({
+    where: { id: accountId, organizationId, AND: accountWhere },
     data: { totalPaid: totalPaid.toFixed(2), balance: balance.toFixed(2), status: nextStatus },
   });
+  if (updated.count !== 1) throw new NotFoundError("Record not found.");
 
   const existingCredit = await tx.hirePurchaseCredit.findFirst({
-    where: { accountId, source: "PAYMENT_OVERPAYMENT", status: "OPEN" },
+    where: {
+      accountId,
+      organizationId,
+      source: "PAYMENT_OVERPAYMENT",
+      status: "OPEN",
+      AND: creditWhere,
+    },
   });
 
   if (isOverpaid) {
@@ -795,26 +1034,45 @@ async function recalculateAccountAfterPaymentChange(
 
 // --- Credits ---
 
-export function listCredits(organizationId: string, staffId: string | null) {
+export async function listCredits(organizationId: string, scope: InstallmentAccessScope) {
+  const ownershipWhere = creditOwnershipWhere(scope);
+  if (!ownershipWhere) return [];
+
   return db.hirePurchaseCredit.findMany({
-    where: { organizationId, ...(staffId ? { customer: { staffId } } : {}) },
+    where: { organizationId, ...ownershipWhere },
     include: { customer: true, account: true },
     orderBy: { createdAt: "desc" },
   });
 }
 
-export function markCreditRefunded(organizationId: string, id: string, resolvedBy: string) {
-  return db.hirePurchaseCredit.updateMany({
-    where: { id, organizationId, status: "OPEN" },
+export async function markCreditRefunded(
+  organizationId: string,
+  scope: InstallmentAccessScope,
+  id: string,
+  resolvedBy: string,
+) {
+  const ownershipWhere = requireOwnershipWhere(creditOwnershipWhere(scope));
+  const result = await db.hirePurchaseCredit.updateMany({
+    where: { id, organizationId, status: "OPEN", AND: ownershipWhere },
     data: { status: "REFUNDED", remainingAmount: 0, resolvedBy, resolvedAt: new Date() },
   });
+  if (result.count !== 1) throw new NotFoundError("Record not found.");
+  return result;
 }
 
-export function voidCredit(organizationId: string, id: string, resolvedBy: string) {
-  return db.hirePurchaseCredit.updateMany({
-    where: { id, organizationId, status: "OPEN" },
+export async function voidCredit(
+  organizationId: string,
+  scope: InstallmentAccessScope,
+  id: string,
+  resolvedBy: string,
+) {
+  const ownershipWhere = requireOwnershipWhere(creditOwnershipWhere(scope));
+  const result = await db.hirePurchaseCredit.updateMany({
+    where: { id, organizationId, status: "OPEN", AND: ownershipWhere },
     data: { status: "VOID", remainingAmount: 0, resolvedBy, resolvedAt: new Date() },
   });
+  if (result.count !== 1) throw new NotFoundError("Record not found.");
+  return result;
 }
 
 export class CreditNotApplicableError extends Error {}
@@ -853,7 +1111,14 @@ type LockedAccountRow = {
  * interleave between the read and this function's absolute write. See
  * docs/HARDENING_PLAN.md's Pass 4 section.
  */
-export async function applyCreditToAccount(organizationId: string, creditId: string, targetAccountId: string) {
+export async function applyCreditToAccount(
+  organizationId: string,
+  scope: InstallmentAccessScope,
+  creditId: string,
+  targetAccountId: string,
+) {
+  const creditWhere = requireOwnershipWhere(creditOwnershipWhere(scope));
+  const accountWhere = requireOwnershipWhere(accountOwnershipWhere(scope));
   const settings = await getInstallmentSettings(organizationId);
 
   // Regenerated fresh on every retry attempt, same reasoning as
@@ -863,13 +1128,28 @@ export async function applyCreditToAccount(organizationId: string, creditId: str
     const receiptNo = await generateReceiptNo(organizationId, settings.receiptPrefix);
 
     return db.$transaction(async (tx) => {
+      const [accessibleCredit, accessibleAccount] = await Promise.all([
+        tx.hirePurchaseCredit.findFirst({
+          where: { id: creditId, organizationId, AND: creditWhere },
+          select: { id: true },
+        }),
+        tx.hirePurchaseAccount.findFirst({
+          where: { id: targetAccountId, organizationId, AND: accountWhere },
+          select: { id: true },
+        }),
+      ]);
+      if (!accessibleCredit || !accessibleAccount) {
+        throw new NotFoundError("Record not found.");
+      }
+
       const [lockedCredit] = await tx.$queryRaw<LockedCreditRow[]>`
         SELECT id, "customerId", status, "remainingAmount", source
         FROM "HirePurchaseCredit"
         WHERE id = ${creditId} AND "organizationId" = ${organizationId}
         FOR UPDATE
       `;
-      if (!lockedCredit || lockedCredit.status !== "OPEN") {
+      if (!lockedCredit) throw new NotFoundError("Record not found.");
+      if (lockedCredit.status !== "OPEN") {
         throw new CreditNotApplicableError("This credit is no longer open.");
       }
 
@@ -879,7 +1159,8 @@ export async function applyCreditToAccount(organizationId: string, creditId: str
         WHERE id = ${targetAccountId} AND "organizationId" = ${organizationId}
         FOR UPDATE
       `;
-      if (!lockedAccount || lockedAccount.customerId !== lockedCredit.customerId) {
+      if (!lockedAccount) throw new NotFoundError("Record not found.");
+      if (lockedAccount.customerId !== lockedCredit.customerId) {
         throw new CreditNotApplicableError("The target account must belong to the same customer as the credit.");
       }
 
@@ -912,15 +1193,17 @@ export async function applyCreditToAccount(organizationId: string, creditId: str
         },
       });
 
-      await tx.hirePurchaseAccount.update({
-        where: { id: targetAccountId },
+      const accountUpdated = await tx.hirePurchaseAccount.updateMany({
+        where: { id: targetAccountId, organizationId, AND: accountWhere },
         data: { totalPaid: nextTotalPaid.toFixed(2), balance: nextBalance.toFixed(2), status: nextStatus },
       });
+      if (accountUpdated.count !== 1) throw new NotFoundError("Record not found.");
 
-      await tx.hirePurchaseCredit.update({
-        where: { id: creditId },
+      const creditUpdated = await tx.hirePurchaseCredit.updateMany({
+        where: { id: creditId, organizationId, AND: creditWhere },
         data: { remainingAmount: remainingCredit.toFixed(2), status: remainingCredit.lessThanOrEqualTo(0) ? "APPLIED" : "OPEN" },
       });
+      if (creditUpdated.count !== 1) throw new NotFoundError("Record not found.");
     });
   });
 }
@@ -946,15 +1229,26 @@ function getNextPayrollDate(payrollDay: number, from: Date): Date {
   return candidate;
 }
 
-async function getLastActivityDate(organizationId: string, account: { id: string; startDate: Date }) {
+async function getLastActivityDate(
+  organizationId: string,
+  scope: InstallmentAccessScope,
+  account: { id: string; startDate: Date },
+) {
+  const ownershipWhere = requireOwnershipWhere(paymentOwnershipWhere(scope));
   const lastPayment = await db.hirePurchasePayment.findFirst({
-    where: { organizationId, accountId: account.id },
+    where: { organizationId, accountId: account.id, AND: ownershipWhere },
     orderBy: { paymentDate: "desc" },
   });
   return lastPayment?.paymentDate ?? account.startDate;
 }
 
-export async function refreshAccountLifecycleStatuses(organizationId: string, now: Date = new Date()) {
+export async function refreshAccountLifecycleStatuses(
+  organizationId: string,
+  scope: InstallmentAccessScope,
+  now: Date = new Date(),
+) {
+  const accountWhere = requireOwnershipWhere(accountOwnershipWhere(scope));
+  const creditWhere = requireOwnershipWhere(creditOwnershipWhere(scope));
   const settings = await getInstallmentSettings(organizationId);
 
   // COMPLETED + delivered long enough ago -> ARCHIVED
@@ -964,19 +1258,28 @@ export async function refreshAccountLifecycleStatuses(organizationId: string, no
       status: "COMPLETED",
       deliveryStatus: "DELIVERED",
       deliveredAt: { lte: addDays(now, -settings.deliveryTimeAfterCompletionDays) },
+      AND: accountWhere,
     },
   });
   for (const account of toArchive) {
-    await db.hirePurchaseAccount.update({ where: { id: account.id }, data: { status: "ARCHIVED" } });
+    await db.hirePurchaseAccount.updateMany({
+      where: { id: account.id, organizationId, status: "COMPLETED", AND: accountWhere },
+      data: { status: "ARCHIVED" },
+    });
   }
 
   // ACTIVE/DORMANT/PROBATION with a balance -> re-evaluate against last activity
   const candidates = await db.hirePurchaseAccount.findMany({
-    where: { organizationId, status: { in: ["ACTIVE", "DORMANT", "PROBATION"] }, balance: { gt: 0 } },
+    where: {
+      organizationId,
+      status: { in: ["ACTIVE", "DORMANT", "PROBATION"] },
+      balance: { gt: 0 },
+      AND: accountWhere,
+    },
   });
 
   for (const account of candidates) {
-    const lastActivity = await getLastActivityDate(organizationId, account);
+    const lastActivity = await getLastActivityDate(organizationId, scope, account);
 
     let nextStatus: HirePurchaseAccountStatus = "ACTIVE";
     if (lastActivity <= monthsAgo(now, CLOSE_AFTER_MONTHS)) {
@@ -996,14 +1299,20 @@ export async function refreshAccountLifecycleStatuses(organizationId: string, no
     // credit. Now only whichever sweep's updateMany actually flips the
     // status (matches a row) proceeds to create the one refund credit.
     const claimed = await db.hirePurchaseAccount.updateMany({
-      where: { id: account.id, status: account.status },
+      where: { id: account.id, organizationId, status: account.status, AND: accountWhere },
       data: { status: nextStatus },
     });
     if (claimed.count === 0) continue;
 
     if (nextStatus === "CLOSED" && new Prisma.Decimal(account.totalPaid).greaterThan(0)) {
       const existingRefund = await db.hirePurchaseCredit.findFirst({
-        where: { accountId: account.id, source: "ACCOUNT_CLOSURE_REFUND", status: { not: "VOID" } },
+        where: {
+          accountId: account.id,
+          organizationId,
+          source: "ACCOUNT_CLOSURE_REFUND",
+          status: { not: "VOID" },
+          AND: creditWhere,
+        },
       });
       if (!existingRefund) {
         const feePercent = new Prisma.Decimal(settings.refundDeductionPercent);
@@ -1029,13 +1338,22 @@ export async function refreshAccountLifecycleStatuses(organizationId: string, no
 
 export class ReactivationNotEligibleError extends Error {}
 
-export async function reactivateAccount(organizationId: string, id: string) {
-  const account = await db.hirePurchaseAccount.findFirst({ where: { id, organizationId } });
-  if (!account || !["DORMANT", "PROBATION", "CLOSED"].includes(account.status)) {
+export async function reactivateAccount(
+  organizationId: string,
+  scope: InstallmentAccessScope,
+  id: string,
+) {
+  const accountWhere = requireOwnershipWhere(accountOwnershipWhere(scope));
+  const creditWhere = requireOwnershipWhere(creditOwnershipWhere(scope));
+  const account = await db.hirePurchaseAccount.findFirst({
+    where: { id, organizationId, AND: accountWhere },
+  });
+  if (!account) throw new NotFoundError("Record not found.");
+  if (!["DORMANT", "PROBATION", "CLOSED"].includes(account.status)) {
     throw new ReactivationNotEligibleError("Only dormant, probation, or closed accounts can be reactivated.");
   }
 
-  const lastActivity = await getLastActivityDate(organizationId, account);
+  const lastActivity = await getLastActivityDate(organizationId, scope, account);
   if (lastActivity > monthsAgo(new Date(), CLOSE_AFTER_MONTHS)) {
     throw new ReactivationNotEligibleError(`This account isn't eligible for reactivation yet (requires ${CLOSE_AFTER_MONTHS}+ months of inactivity).`);
   }
@@ -1050,13 +1368,24 @@ export async function reactivateAccount(organizationId: string, id: string) {
 
   return db.$transaction(async (tx) => {
     await tx.hirePurchaseCredit.updateMany({
-      where: { accountId: id, source: "ACCOUNT_CLOSURE_REFUND", status: "OPEN" },
+      where: {
+        accountId: id,
+        organizationId,
+        source: "ACCOUNT_CLOSURE_REFUND",
+        status: "OPEN",
+        AND: creditWhere,
+      },
       data: { status: "VOID", remainingAmount: 0 },
     });
 
-    return tx.hirePurchaseAccount.update({
-      where: { id },
+    const updated = await tx.hirePurchaseAccount.updateMany({
+      where: { id, organizationId, status: account.status, AND: accountWhere },
       data: { totalPaid: nextTotalPaid.toFixed(2), balance: nextBalance.toFixed(2), status: nextStatus },
+    });
+    if (updated.count !== 1) throw new NotFoundError("Record not found.");
+
+    return tx.hirePurchaseAccount.findFirstOrThrow({
+      where: { id, organizationId, AND: accountWhere },
     });
   });
 }
@@ -1114,7 +1443,7 @@ export async function getProcurementList(organizationId: string) {
 // --- Reports ---
 
 export async function getInstallmentSummary(organizationId: string) {
-  await refreshAccountLifecycleStatuses(organizationId);
+  await refreshAccountLifecycleStatuses(organizationId, { kind: "organization" });
 
   const accounts = await db.hirePurchaseAccount.findMany({ where: { organizationId }, include: { product: true } });
   const now = new Date();
@@ -1185,8 +1514,6 @@ export async function getInstallmentSummary(organizationId: string) {
 }
 
 export async function getStaffPerformanceReport(organizationId: string) {
-  await refreshAccountLifecycleStatuses(organizationId);
-
   const now = new Date();
   const dayOfWeek = now.getDay();
   const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
@@ -1245,8 +1572,12 @@ export async function getStaffPerformanceReport(organizationId: string) {
   return rows.sort((a, b) => b.weeklyCollection - a.weeklyCollection);
 }
 
-export async function getActivityReport(organizationId: string) {
-  await refreshAccountLifecycleStatuses(organizationId);
+export async function getActivityReport(organizationId: string, scope: InstallmentAccessScope) {
+  const accountWhere = accountOwnershipWhere(scope);
+  const paymentWhere = paymentOwnershipWhere(scope);
+  if (!accountWhere || !paymentWhere) return [];
+
+  await refreshAccountLifecycleStatuses(organizationId, scope);
 
   const now = new Date();
   const dayOfWeek = now.getDay();
@@ -1254,7 +1585,9 @@ export async function getActivityReport(organizationId: string) {
   const weekStart = addDays(now, mondayOffset);
   weekStart.setHours(0, 0, 0, 0);
 
-  const accounts = await db.hirePurchaseAccount.findMany({ where: { organizationId } });
+  const accounts = await db.hirePurchaseAccount.findMany({
+    where: { organizationId, ...accountWhere },
+  });
   const days = [];
 
   for (let i = 0; i < 7; i += 1) {
@@ -1272,7 +1605,11 @@ export async function getActivityReport(organizationId: string) {
     }, 0);
 
     const actualAgg = await db.hirePurchasePayment.aggregate({
-      where: { organizationId, paymentDate: { gte: dayStart, lt: dayEnd } },
+      where: {
+        organizationId,
+        paymentDate: { gte: dayStart, lt: dayEnd },
+        ...paymentWhere,
+      },
       _sum: { amount: true },
     });
 

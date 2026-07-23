@@ -1,4 +1,4 @@
-import { Receipt, Plus, Wallet } from "lucide-react";
+import { Receipt, Plus, Wallet, Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -11,12 +11,11 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getServerAuthSession } from "@/lib/auth/session";
+import { resolveInstallmentAccessScope } from "@/modules/installment/access";
 import {
   listPayments,
   listAccounts,
   listCredits,
-  resolveInstallmentStaffScope,
   getInstallmentSettings,
   canEditPayment,
 } from "@/modules/installment/service";
@@ -52,15 +51,35 @@ export default async function InstallmentPaymentsPage({
   const tenant = await requireModuleAccess("installment");
   const canManagePayments = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_PAYMENTS_MANAGE);
   const canManageCredits = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_CREDITS_MANAGE);
-  const session = await getServerAuthSession();
-  const isManager = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_STAFF_MANAGE);
-  const scope = await resolveInstallmentStaffScope(tenant.organizationId, session?.user?.id ?? "", isManager);
 
-  const [payments, accounts, credits, settings] = await Promise.all([
-    listPayments(tenant.organizationId, scope.staffId),
-    listAccounts(tenant.organizationId, scope.staffId),
-    listCredits(tenant.organizationId, scope.staffId),
-    getInstallmentSettings(tenant.organizationId),
+  if (!canManagePayments && !canManageCredits) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Payments" description="Installment payments and resulting customer credits." />
+        <EmptyState icon={Lock} title="You don't have access to this page" description="Payments are limited to roles that can manage payments or customer credits." />
+      </div>
+    );
+  }
+
+  const scope = await resolveInstallmentAccessScope(tenant);
+  if (scope.kind === "denied") {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Payments" description="Installment payments and resulting customer credits." />
+        <EmptyState
+          icon={Lock}
+          title="Staff access needs setup"
+          description="Ask an administrator to link your login to one active installment staff profile before you continue."
+        />
+      </div>
+    );
+  }
+
+  const [accounts, payments, credits, settings] = await Promise.all([
+    listAccounts(tenant.organizationId, scope),
+    canManagePayments ? listPayments(tenant.organizationId, scope) : Promise.resolve([]),
+    canManageCredits ? listCredits(tenant.organizationId, scope) : Promise.resolve([]),
+    canManagePayments ? getInstallmentSettings(tenant.organizationId) : Promise.resolve(null),
   ]);
 
   const payableAccounts = accounts.filter((a) => a.status !== "CANCELLED" && a.status !== "SUSPENDED" && a.status !== "CLOSED" && a.status !== "ARCHIVED" && Number(a.balance) > 0);
@@ -131,10 +150,11 @@ export default async function InstallmentPaymentsPage({
         </div>
       ) : null}
 
-      {payments.length === 0 ? (
-        <EmptyState icon={Receipt} title="No payments yet" description="Payments you record will appear here." />
-      ) : (
-        <Table>
+      {canManagePayments && settings ? (
+        payments.length === 0 ? (
+          <EmptyState icon={Receipt} title="No payments yet" description="Payments you record will appear here." />
+        ) : (
+          <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Receipt</TableHead>
@@ -196,10 +216,11 @@ export default async function InstallmentPaymentsPage({
               );
             })}
           </TableBody>
-        </Table>
-      )}
+          </Table>
+        )
+      ) : null}
 
-      <Card>
+      {canManageCredits ? <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
             <Wallet className="size-5 text-muted-foreground" />
@@ -307,7 +328,7 @@ export default async function InstallmentPaymentsPage({
             </div>
           )}
         </CardContent>
-      </Card>
+      </Card> : null}
     </div>
   );
 }

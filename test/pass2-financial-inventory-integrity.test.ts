@@ -56,6 +56,7 @@ const payroll = await import("@/modules/payroll/service");
 const installment = await import("@/modules/installment/service");
 
 const ORG = "org-1";
+const ORGANIZATION_SCOPE = { kind: "organization" } as const;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -240,7 +241,7 @@ describe("Payroll — duplicate run processing guard, compensation/tax validatio
 describe("Installment — payment amount validation, createAccount IDOR", () => {
   it("recordPayment rejects a non-positive payment amount before touching the database", async () => {
     await expect(
-      installment.recordPayment(ORG, { accountId: "acct-1", amount: "-10.00", paymentDate: new Date(), method: "Cash" }),
+      installment.recordPayment(ORG, ORGANIZATION_SCOPE, { accountId: "acct-1", amount: "-10.00", paymentDate: new Date(), method: "Cash" }),
     ).rejects.toThrow(installment.InvalidPaymentAmountError);
     expect(mockDb.hirePurchaseAccount.findFirst).not.toHaveBeenCalled();
   });
@@ -256,7 +257,7 @@ describe("Installment — payment amount validation, createAccount IDOR", () => 
     mockDb.hirePurchaseCustomer.findFirst.mockResolvedValue(null);
 
     await expect(
-      installment.createAccount(ORG, {
+      installment.createAccount(ORG, ORGANIZATION_SCOPE, {
         customerId: "cust-foreign",
         productId: "prod-1",
         inventoryStaffId: "staff-1",

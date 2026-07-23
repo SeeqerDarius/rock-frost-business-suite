@@ -19,10 +19,11 @@ export default async function InstallmentReportsPage() {
     );
   }
 
-  const [summary, staffPerformance] = await Promise.all([
-    getInstallmentSummary(tenant.organizationId),
-    getStaffPerformanceReport(tenant.organizationId),
-  ]);
+  // Summary performs the single organization-wide lifecycle refresh. Await it
+  // before the pure performance read so two concurrent page-level sweeps do
+  // not race each other.
+  const summary = await getInstallmentSummary(tenant.organizationId);
+  const staffPerformance = await getStaffPerformanceReport(tenant.organizationId);
 
   const stats = [
     { label: "Expected receivables", value: summary.expectedReceivables },

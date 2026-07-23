@@ -1,15 +1,41 @@
-import { CalendarClock } from "lucide-react";
+import { CalendarClock, Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
+import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { resolveInstallmentAccessScope } from "@/modules/installment/access";
 import { getActivityReport } from "@/modules/installment/service";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default async function InstallmentCollectionsPage() {
   const tenant = await requireModuleAccess("installment");
-  const days = await getActivityReport(tenant.organizationId);
+  if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_VIEW)) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Collections" description="Expected vs. actual collections for the current week." />
+        <EmptyState icon={Lock} title="You don't have access to this page" description="Collections are limited to roles with Installment overview permissions." />
+      </div>
+    );
+  }
+
+  const scope = await resolveInstallmentAccessScope(tenant);
+  if (scope.kind === "denied") {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Collections" description="Expected vs. actual collections for the current week." />
+        <EmptyState
+          icon={Lock}
+          title="Staff access needs setup"
+          description="Ask an administrator to link your login to one active installment staff profile before you continue."
+        />
+      </div>
+    );
+  }
+
+  const days = await getActivityReport(tenant.organizationId, scope);
 
   const weekExpected = days.reduce((sum, d) => sum + d.expectedAmount, 0);
   const weekActual = days.reduce((sum, d) => sum + d.actualAmount, 0);

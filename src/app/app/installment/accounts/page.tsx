@@ -1,4 +1,4 @@
-import { FileText, Plus } from "lucide-react";
+import { FileText, Plus, Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -10,13 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getServerAuthSession } from "@/lib/auth/session";
+import { resolveInstallmentAccessScope } from "@/modules/installment/access";
 import {
   listAccounts,
   listCustomers,
   listProducts,
-  listStaff,
-  resolveInstallmentStaffScope,
+  listStaffForScope,
   getEffectiveAccountStatus,
   getInstallmentSettings,
 } from "@/modules/installment/service";
@@ -53,16 +52,34 @@ export default async function InstallmentAccountsPage({
 }) {
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("installment");
-  const canManage = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_ACCOUNTS_MANAGE);
-  const session = await getServerAuthSession();
-  const isManager = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_STAFF_MANAGE);
-  const scope = await resolveInstallmentStaffScope(tenant.organizationId, session?.user?.id ?? "", isManager);
+  if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_ACCOUNTS_MANAGE)) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Customer Accounts" description="Active and historical installment accounts." />
+        <EmptyState icon={Lock} title="You don't have access to this page" description="Installment accounts are limited to roles with account management permissions." />
+      </div>
+    );
+  }
+
+  const scope = await resolveInstallmentAccessScope(tenant);
+  if (scope.kind === "denied") {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Customer Accounts" description="Active and historical installment accounts." />
+        <EmptyState
+          icon={Lock}
+          title="Staff access needs setup"
+          description="Ask an administrator to link your login to one active installment staff profile before you continue."
+        />
+      </div>
+    );
+  }
 
   const [accounts, customers, products, staffList, settings] = await Promise.all([
-    listAccounts(tenant.organizationId, scope.staffId),
-    listCustomers(tenant.organizationId, scope.staffId),
+    listAccounts(tenant.organizationId, scope),
+    listCustomers(tenant.organizationId, scope),
     listProducts(tenant.organizationId),
-    listStaff(tenant.organizationId),
+    listStaffForScope(tenant.organizationId, scope),
     getInstallmentSettings(tenant.organizationId),
   ]);
 
@@ -77,7 +94,7 @@ export default async function InstallmentAccountsPage({
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <PageHeader title="Customer Accounts" description="Active and historical installment accounts." />
-        {canManage && customers.length > 0 && activeProducts.length > 0 ? (
+        {customers.length > 0 && activeProducts.length > 0 ? (
           <EntityDialog
             trigger={
               <Button size="sm">
@@ -176,7 +193,7 @@ export default async function InstallmentAccountsPage({
               <TableHead>Balance</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Delivery</TableHead>
-              {canManage ? <TableHead /> : null}
+              <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -199,8 +216,7 @@ export default async function InstallmentAccountsPage({
                     <Badge variant={STATUS_BADGE[effectiveStatus]}>{effectiveStatus}</Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{account.deliveryStatus}</TableCell>
-                  {canManage ? (
-                    <TableCell className="text-right">
+                  <TableCell className="text-right">
                       <div className="flex flex-wrap justify-end gap-1">
                         {canDeliver ? (
                           <form action={markAccountDelivered}>
@@ -257,8 +273,7 @@ export default async function InstallmentAccountsPage({
                           </form>
                         ) : null}
                       </div>
-                    </TableCell>
-                  ) : null}
+                  </TableCell>
                 </TableRow>
               );
             })}

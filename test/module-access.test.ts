@@ -36,6 +36,7 @@ const MODULE_KEYS = [
 
 function tenant(overrides: Record<string, unknown> = {}) {
   return {
+    userId: "user-1",
     organizationId: "org-1",
     organization: { id: "org-1", name: "Org", tenantCode: "org", industry: null, status: "ACTIVE" },
     role: "Member",

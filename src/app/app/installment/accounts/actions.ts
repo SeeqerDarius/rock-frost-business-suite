@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { resolveInstallmentAccessScope } from "@/modules/installment/access";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import {
@@ -36,6 +37,10 @@ export async function createInstallmentAccount(formData: FormData): Promise<void
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_ACCOUNTS_MANAGE)) {
     redirect("/app/installment/accounts?error=forbidden");
   }
+  const scope = await resolveInstallmentAccessScope(tenant);
+  if (scope.kind === "denied") {
+    redirect("/app/installment/accounts?error=staff-unlinked");
+  }
 
   const customerId = clean(formData.get("customerId"));
   const productId = clean(formData.get("productId"));
@@ -61,7 +66,7 @@ export async function createInstallmentAccount(formData: FormData): Promise<void
   const { startDate, initialDeposit } = parsed.data;
 
   try {
-    await createAccount(tenant.organizationId, { customerId, productId, inventoryStaffId, startDate, initialDeposit });
+    await createAccount(tenant.organizationId, scope, { customerId, productId, inventoryStaffId, startDate, initialDeposit });
   } catch (error) {
     if (error instanceof InsufficientInventoryError) {
       redirect("/app/installment/accounts?error=no-stock");
@@ -82,12 +87,26 @@ export async function markAccountDelivered(formData: FormData): Promise<void> {
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_ACCOUNTS_MANAGE)) {
     redirect("/app/installment/accounts?error=forbidden");
   }
+  const scope = await resolveInstallmentAccessScope(tenant);
+  if (scope.kind === "denied") {
+    redirect("/app/installment/accounts?error=staff-unlinked");
+  }
 
   const id = clean(formData.get("id"));
   if (!id) return;
 
   const session = await getServerAuthSession();
-  await updateAccountDeliveryStatus(tenant.organizationId, id, session?.user?.name ?? session?.user?.email ?? "unknown");
+  try {
+    await updateAccountDeliveryStatus(
+      tenant.organizationId,
+      scope,
+      id,
+      session?.user?.name ?? session?.user?.email ?? "unknown",
+    );
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/installment/accounts?error=not-found");
+    throw error;
+  }
   revalidatePath("/app/installment/accounts");
   redirect("/app/installment/accounts?saved=1");
 }
@@ -97,12 +116,21 @@ export async function changeAccountStatus(formData: FormData): Promise<void> {
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_ACCOUNTS_MANAGE)) {
     redirect("/app/installment/accounts?error=forbidden");
   }
+  const scope = await resolveInstallmentAccessScope(tenant);
+  if (scope.kind === "denied") {
+    redirect("/app/installment/accounts?error=staff-unlinked");
+  }
 
   const id = clean(formData.get("id"));
   const status = clean(formData.get("status")) as HirePurchaseAccountStatus | null;
   if (!id || !status) return;
 
-  await setAccountStatus(tenant.organizationId, id, status);
+  try {
+    await setAccountStatus(tenant.organizationId, scope, id, status);
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/installment/accounts?error=not-found");
+    throw error;
+  }
   revalidatePath("/app/installment/accounts");
   redirect("/app/installment/accounts?saved=1");
 }
@@ -111,6 +139,10 @@ export async function reactivateInstallmentAccount(formData: FormData): Promise<
   const tenant = await requireModuleAccess("installment");
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_ACCOUNTS_MANAGE)) {
     redirect("/app/installment/accounts?error=forbidden");
+  }
+  const scope = await resolveInstallmentAccessScope(tenant);
+  if (scope.kind === "denied") {
+    redirect("/app/installment/accounts?error=staff-unlinked");
   }
 
   const id = clean(formData.get("id"));
@@ -123,7 +155,7 @@ export async function reactivateInstallmentAccount(formData: FormData): Promise<
   }
 
   try {
-    await reactivateAccount(tenant.organizationId, id);
+    await reactivateAccount(tenant.organizationId, scope, id);
     await logAuditEvent({
       organizationId: tenant.organizationId,
       userId: session?.user?.id,
@@ -136,6 +168,7 @@ export async function reactivateInstallmentAccount(formData: FormData): Promise<
     if (error instanceof ReactivationNotEligibleError) {
       redirect("/app/installment/accounts?error=not-eligible");
     }
+    if (error instanceof NotFoundError) redirect("/app/installment/accounts?error=not-found");
     throw error;
   }
 

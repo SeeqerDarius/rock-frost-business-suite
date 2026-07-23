@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { resolveInstallmentAccessScope } from "@/modules/installment/access";
 import { createCustomer, updateCustomer, NotFoundError } from "@/modules/installment/service";
 import { shortText, longText, parseWithSchema } from "@/lib/validation";
 import { z } from "zod";
@@ -25,6 +26,10 @@ export async function upsertCustomer(formData: FormData): Promise<void> {
   const tenant = await requireModuleAccess("installment");
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_CUSTOMERS_MANAGE)) {
     redirect("/app/installment/customers?error=forbidden");
+  }
+  const scope = await resolveInstallmentAccessScope(tenant);
+  if (scope.kind === "denied") {
+    redirect("/app/installment/customers?error=staff-unlinked");
   }
 
   const id = clean(formData.get("id"));
@@ -55,9 +60,9 @@ export async function upsertCustomer(formData: FormData): Promise<void> {
 
   try {
     if (id) {
-      await updateCustomer(tenant.organizationId, id, data);
+      await updateCustomer(tenant.organizationId, scope, id, data);
     } else {
-      await createCustomer(tenant.organizationId, data);
+      await createCustomer(tenant.organizationId, scope, data);
     }
   } catch (error) {
     if (error instanceof NotFoundError) redirect("/app/installment/customers?error=not-found");

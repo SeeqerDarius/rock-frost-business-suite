@@ -1,4 +1,4 @@
-import { UserRound, Plus } from "lucide-react";
+import { Lock, UserRound, Plus } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -7,10 +7,16 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listStaff, getEffectiveMonthlySalary, getInstallmentSettings } from "@/modules/installment/service";
+import {
+  listAssignableStaffUsers,
+  listStaff,
+  getEffectiveMonthlySalary,
+  getInstallmentSettings,
+} from "@/modules/installment/service";
 import { upsertStaff, recordSalaryPayment } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -18,16 +24,28 @@ const ERROR_MESSAGES: Record<string, string> = {
   "missing-fields": "Please fill in all required fields.",
   "not-found": "That staff member could not be found.",
   "invalid-amount": "Payment amount must be a positive number.",
+  "invalid-member": "Choose an active login from this organization.",
+  "member-already-linked": "That login is already linked to another staff profile.",
 };
 
 interface StaffFieldsProps {
-  staff?: { fullName: string; email: string | null; phone: string | null; monthlySalary: string; active: boolean };
+  staff?: {
+    fullName: string;
+    email: string | null;
+    phone: string | null;
+    monthlySalary: string;
+    active: boolean;
+    userId: string | null;
+  };
   showCode?: boolean;
   defaultMonthlySalary?: string;
+  userItems: Record<string, string>;
 }
 
-function StaffFields({ staff, showCode, defaultMonthlySalary }: StaffFieldsProps) {
+function StaffFields({ staff, showCode, defaultMonthlySalary, userItems }: StaffFieldsProps) {
   const idSuffix = staff ? "-edit" : "";
+  const loginItems = { "": "No login linked", ...userItems };
+  const defaultUserId = staff?.userId && userItems[staff.userId] ? staff.userId : "";
   return (
     <>
       <div className="space-y-2">
@@ -54,6 +72,24 @@ function StaffFields({ staff, showCode, defaultMonthlySalary }: StaffFieldsProps
         <Label htmlFor={`monthlySalary${idSuffix}`}>Monthly salary</Label>
         <Input id={`monthlySalary${idSuffix}`} name="monthlySalary" type="number" step="0.01" defaultValue={staff?.monthlySalary ?? defaultMonthlySalary ?? "0"} required />
       </div>
+      <div className="space-y-2">
+        <Label htmlFor={`userId${idSuffix}`}>Member login (optional)</Label>
+        <Select name="userId" defaultValue={defaultUserId} items={loginItems}>
+          <SelectTrigger id={`userId${idSuffix}`} className="w-full">
+            <SelectValue placeholder="No login linked" />
+          </SelectTrigger>
+          <SelectContent>
+            {Object.entries(loginItems).map(([value, label]) => (
+              <SelectItem key={value || "unlinked"} value={value}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Linking an active member login limits that field user to this staff profile&apos;s customers, accounts, and payments.
+        </p>
+      </div>
       {staff ? (
         <label className="flex items-center gap-2 text-sm">
           <Checkbox name="active" defaultChecked={staff.active} />
@@ -72,7 +108,34 @@ export default async function InstallmentStaffPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("installment");
   const canManage = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_STAFF_MANAGE);
-  const [staffList, settings] = await Promise.all([listStaff(tenant.organizationId), getInstallmentSettings(tenant.organizationId)]);
+
+  if (!canManage) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Staff" description="Field staff managing installment customers and collections." />
+        <EmptyState
+          icon={Lock}
+          title="You don't have access to this page"
+          description="Staff profiles and salary information are limited to roles with staff-management permission."
+        />
+      </div>
+    );
+  }
+
+  const [staffList, settings, assignableUsers] = await Promise.all([
+    listStaff(tenant.organizationId),
+    getInstallmentSettings(tenant.organizationId),
+    listAssignableStaffUsers(tenant.organizationId),
+  ]);
+  const loginLabels = new Map(
+    assignableUsers.map((user) => [user.id, user.name ? `${user.name} (${user.email})` : user.email]),
+  );
+  const linkedUserIds = new Set(staffList.flatMap((staff) => (staff.userId ? [staff.userId] : [])));
+  const createUserItems = Object.fromEntries(
+    assignableUsers
+      .filter((user) => !linkedUserIds.has(user.id))
+      .map((user) => [user.id, loginLabels.get(user.id) ?? user.email]),
+  );
   const now = new Date();
   const effectiveSalaries = await Promise.all(
     staffList.map((s) => getEffectiveMonthlySalary(s.id, tenant.organizationId, now))
@@ -93,7 +156,11 @@ export default async function InstallmentStaffPage({
             title="New staff member"
             action={upsertStaff}
           >
-            <StaffFields showCode defaultMonthlySalary={settings.defaultMonthlySalary.toString()} />
+            <StaffFields
+              showCode
+              defaultMonthlySalary={settings.defaultMonthlySalary.toString()}
+              userItems={createUserItems}
+            />
           </EntityDialog>
         ) : null}
       </div>
@@ -119,6 +186,7 @@ export default async function InstallmentStaffPage({
               <TableHead>Name</TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>Monthly salary</TableHead>
+              <TableHead>Login</TableHead>
               <TableHead>Status</TableHead>
               {canManage ? <TableHead /> : null}
             </TableRow>
@@ -130,6 +198,9 @@ export default async function InstallmentStaffPage({
                 <TableCell>{staff.fullName}</TableCell>
                 <TableCell className="text-muted-foreground">{staff.phone ?? "-"}</TableCell>
                 <TableCell className="text-muted-foreground">{effectiveSalaries[index].toFixed(2)}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {staff.userId ? loginLabels.get(staff.userId) ?? "Inactive or unavailable login" : "Not linked"}
+                </TableCell>
                 <TableCell>
                   <Badge variant={staff.active ? "default" : "outline"}>{staff.active ? "Active" : "Inactive"}</Badge>
                 </TableCell>
@@ -177,7 +248,14 @@ export default async function InstallmentStaffPage({
                         submitLabel="Save changes"
                       >
                         <input type="hidden" name="id" value={staff.id} />
-                        <StaffFields staff={{ ...staff, monthlySalary: staff.monthlySalary.toString() }} />
+                        <StaffFields
+                          staff={{ ...staff, monthlySalary: staff.monthlySalary.toString() }}
+                          userItems={Object.fromEntries(
+                            assignableUsers
+                              .filter((user) => !linkedUserIds.has(user.id) || user.id === staff.userId)
+                              .map((user) => [user.id, loginLabels.get(user.id) ?? user.email]),
+                          )}
+                        />
                       </EntityDialog>
                     </div>
                   </TableCell>

@@ -82,6 +82,7 @@ describe("getCurrentTenant — central active-tenant guard", () => {
 
     const tenant = await getCurrentTenant();
     expect(tenant).not.toBeNull();
+    expect(tenant?.userId).toBe("user-1");
     expect(tenant?.organizationId).toBe(ORG_ACTIVE.id);
     expect(mockDb.organizationModule.findMany).toHaveBeenCalledWith({
       where: { organizationId: ORG_ACTIVE.id, enabled: true, module: { status: "ACTIVE" } },

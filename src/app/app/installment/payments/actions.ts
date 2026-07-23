@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { resolveInstallmentAccessScope } from "@/modules/installment/access";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import {
@@ -41,6 +42,10 @@ export async function createPayment(formData: FormData): Promise<void> {
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_PAYMENTS_MANAGE)) {
     redirect("/app/installment/payments?error=forbidden");
   }
+  const scope = await resolveInstallmentAccessScope(tenant);
+  if (scope.kind === "denied") {
+    redirect("/app/installment/payments?error=staff-unlinked");
+  }
 
   const accountId = clean(formData.get("accountId"));
   const amount = clean(formData.get("amount"));
@@ -69,7 +74,7 @@ export async function createPayment(formData: FormData): Promise<void> {
   const session = await getServerAuthSession();
 
   try {
-    const payment = await recordPayment(tenant.organizationId, {
+    const payment = await recordPayment(tenant.organizationId, scope, {
       accountId: parsed.data.accountId,
       amount: parsed.data.amount,
       paymentDate: parsed.data.paymentDate,
@@ -124,6 +129,10 @@ export async function editPayment(formData: FormData): Promise<void> {
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_PAYMENTS_MANAGE)) {
     redirect("/app/installment/payments?error=forbidden");
   }
+  const scope = await resolveInstallmentAccessScope(tenant);
+  if (scope.kind === "denied") {
+    redirect("/app/installment/payments?error=staff-unlinked");
+  }
 
   const id = clean(formData.get("id"));
   const amount = clean(formData.get("amount"));
@@ -145,7 +154,7 @@ export async function editPayment(formData: FormData): Promise<void> {
   }
 
   try {
-    await updatePayment(tenant.organizationId, id, {
+    await updatePayment(tenant.organizationId, scope, id, {
       amount: parsed.data.amount,
       paymentDate: parsed.data.paymentDate,
       method: parsed.data.method,
@@ -158,6 +167,7 @@ export async function editPayment(formData: FormData): Promise<void> {
     if (error instanceof PaymentCreditLockedError) {
       redirect("/app/installment/payments?error=credit-locked");
     }
+    if (error instanceof NotFoundError) redirect("/app/installment/payments?error=not-found");
     throw error;
   }
 
@@ -169,6 +179,10 @@ export async function resolveCredit(formData: FormData): Promise<void> {
   const tenant = await requireModuleAccess("installment");
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_CREDITS_MANAGE)) {
     redirect("/app/installment/payments?error=forbidden");
+  }
+  const scope = await resolveInstallmentAccessScope(tenant);
+  if (scope.kind === "denied") {
+    redirect("/app/installment/payments?error=staff-unlinked");
   }
 
   const id = clean(formData.get("id"));
@@ -183,26 +197,31 @@ export async function resolveCredit(formData: FormData): Promise<void> {
 
   const resolvedBy = session.user.name ?? session.user.email ?? "unknown";
 
-  if (decision === "void") {
-    await voidCredit(tenant.organizationId, id, resolvedBy);
-    await logAuditEvent({
-      organizationId: tenant.organizationId,
-      userId: session.user.id,
-      module: "installment",
-      action: "installment.credit.voided",
-      entityName: "HirePurchaseCredit",
-      entityId: id,
-    });
-  } else {
-    await markCreditRefunded(tenant.organizationId, id, resolvedBy);
-    await logAuditEvent({
-      organizationId: tenant.organizationId,
-      userId: session.user.id,
-      module: "installment",
-      action: "installment.credit.refunded",
-      entityName: "HirePurchaseCredit",
-      entityId: id,
-    });
+  try {
+    if (decision === "void") {
+      await voidCredit(tenant.organizationId, scope, id, resolvedBy);
+      await logAuditEvent({
+        organizationId: tenant.organizationId,
+        userId: session.user.id,
+        module: "installment",
+        action: "installment.credit.voided",
+        entityName: "HirePurchaseCredit",
+        entityId: id,
+      });
+    } else {
+      await markCreditRefunded(tenant.organizationId, scope, id, resolvedBy);
+      await logAuditEvent({
+        organizationId: tenant.organizationId,
+        userId: session.user.id,
+        module: "installment",
+        action: "installment.credit.refunded",
+        entityName: "HirePurchaseCredit",
+        entityId: id,
+      });
+    }
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/installment/payments?error=not-found");
+    throw error;
   }
 
   revalidatePath("/app/installment/payments");
@@ -214,6 +233,10 @@ export async function applyCredit(formData: FormData): Promise<void> {
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_CREDITS_MANAGE)) {
     redirect("/app/installment/payments?error=forbidden");
   }
+  const scope = await resolveInstallmentAccessScope(tenant);
+  if (scope.kind === "denied") {
+    redirect("/app/installment/payments?error=staff-unlinked");
+  }
 
   const creditId = clean(formData.get("creditId"));
   const targetAccountId = clean(formData.get("targetAccountId"));
@@ -224,7 +247,7 @@ export async function applyCredit(formData: FormData): Promise<void> {
   const session = await getServerAuthSession();
 
   try {
-    await applyCreditToAccount(tenant.organizationId, creditId, targetAccountId);
+    await applyCreditToAccount(tenant.organizationId, scope, creditId, targetAccountId);
     await logAuditEvent({
       organizationId: tenant.organizationId,
       userId: session?.user?.id,
@@ -238,6 +261,7 @@ export async function applyCredit(formData: FormData): Promise<void> {
     if (error instanceof CreditNotApplicableError) {
       redirect("/app/installment/payments?error=credit-not-applicable");
     }
+    if (error instanceof NotFoundError) redirect("/app/installment/payments?error=not-found");
     throw error;
   }
 

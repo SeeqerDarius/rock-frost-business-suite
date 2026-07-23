@@ -3,6 +3,8 @@ import * as installment from "@/modules/installment/service";
 import { testDb } from "../setup/db";
 import { createTestOrg, cleanupTestOrg, type TestOrg } from "../setup/fixtures";
 
+const ORGANIZATION_SCOPE = { kind: "organization" } as const;
+
 /**
  * Real-Postgres concurrency coverage for src/modules/installment/service.ts
  * (Hardening Pass 4, Milestone B — this service was JUST hardened in this
@@ -36,7 +38,7 @@ const PRODUCT_INPUT = {
 };
 
 async function openAccount() {
-  return installment.createAccount(org.organizationId, {
+  return installment.createAccount(org.organizationId, ORGANIZATION_SCOPE, {
     customerId: customer.id,
     productId: product.id,
     inventoryStaffId: staff.id,
@@ -47,8 +49,8 @@ async function openAccount() {
 beforeAll(async () => {
   org = await createTestOrg("concurrency-installment");
   product = await installment.createProduct(org.organizationId, { name: "Concurrency Product", ...PRODUCT_INPUT });
-  staff = await installment.createStaff(org.organizationId, { fullName: "Concurrency Staff", monthlySalary: "500.00" });
-  customer = await installment.createCustomer(org.organizationId, { fullName: "Concurrency Customer", staffId: staff.id });
+  staff = await installment.createStaff(org.organizationId, { fullName: "Concurrency Staff", monthlySalary: "500.00", userId: null });
+  customer = await installment.createCustomer(org.organizationId, ORGANIZATION_SCOPE, { fullName: "Concurrency Customer", staffId: staff.id });
 });
 
 afterAll(async () => {
@@ -61,13 +63,13 @@ describe("Installment service — concurrency against real Postgres", () => {
     expect(account.balance.toString()).toBe("100.00");
 
     const results = await Promise.allSettled([
-      installment.recordPayment(org.organizationId, {
+      installment.recordPayment(org.organizationId, ORGANIZATION_SCOPE, {
         accountId: account.id,
         amount: "70.00",
         paymentDate: new Date("2026-01-05"),
         method: "Cash",
       }),
-      installment.recordPayment(org.organizationId, {
+      installment.recordPayment(org.organizationId, ORGANIZATION_SCOPE, {
         accountId: account.id,
         amount: "70.00",
         paymentDate: new Date("2026-01-05"),
@@ -107,13 +109,13 @@ describe("Installment service — concurrency against real Postgres", () => {
     expect(account.balance.toString()).toBe("100.00");
 
     const results = await Promise.allSettled([
-      installment.recordPayment(org.organizationId, {
+      installment.recordPayment(org.organizationId, ORGANIZATION_SCOPE, {
         accountId: account.id,
         amount: "50.00",
         paymentDate: new Date("2026-01-05"),
         method: "Cash",
       }),
-      installment.recordPayment(org.organizationId, {
+      installment.recordPayment(org.organizationId, ORGANIZATION_SCOPE, {
         accountId: account.id,
         amount: "50.00",
         paymentDate: new Date("2026-01-05"),
@@ -144,7 +146,7 @@ describe("Installment service — concurrency against real Postgres", () => {
     // Create an overpaid account purely to generate a real OPEN credit to
     // apply elsewhere.
     const sourceAccount = await openAccount();
-    await installment.recordPayment(org.organizationId, {
+    await installment.recordPayment(org.organizationId, ORGANIZATION_SCOPE, {
       accountId: sourceAccount.id,
       amount: "150.00", // overpays a 100.00 balance by 50.00
       paymentDate: new Date("2026-01-05"),
@@ -161,8 +163,8 @@ describe("Installment service — concurrency against real Postgres", () => {
     const targetAccount2 = await openAccount();
 
     const results = await Promise.allSettled([
-      installment.applyCreditToAccount(org.organizationId, credit.id, targetAccount1.id),
-      installment.applyCreditToAccount(org.organizationId, credit.id, targetAccount2.id),
+      installment.applyCreditToAccount(org.organizationId, ORGANIZATION_SCOPE, credit.id, targetAccount1.id),
+      installment.applyCreditToAccount(org.organizationId, ORGANIZATION_SCOPE, credit.id, targetAccount2.id),
     ]);
 
     const fulfilled = results.filter((r) => r.status === "fulfilled");

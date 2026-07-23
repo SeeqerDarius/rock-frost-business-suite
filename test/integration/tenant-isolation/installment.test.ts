@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import * as installment from "@/modules/installment/service";
 import { createTestOrg, cleanupTestOrg, type TestOrg } from "../setup/fixtures";
 
+const ORGANIZATION_SCOPE = { kind: "organization" } as const;
+
 /**
  * Real-Postgres equivalent of the mocked IDOR coverage for
  * src/modules/installment/service.ts (see
@@ -34,12 +36,12 @@ beforeAll(async () => {
   orgB = await createTestOrg("orgB-installment");
 
   productA = await installment.createProduct(orgA.organizationId, { name: "Org A Product", ...PRODUCT_INPUT });
-  staffA = await installment.createStaff(orgA.organizationId, { fullName: "Org A Staff", monthlySalary: "500.00" });
-  customerA = await installment.createCustomer(orgA.organizationId, { fullName: "Org A Customer", staffId: staffA.id });
+  staffA = await installment.createStaff(orgA.organizationId, { fullName: "Org A Staff", monthlySalary: "500.00", userId: null });
+  customerA = await installment.createCustomer(orgA.organizationId, ORGANIZATION_SCOPE, { fullName: "Org A Customer", staffId: staffA.id });
 
   productB = await installment.createProduct(orgB.organizationId, { name: "Org B Product", ...PRODUCT_INPUT });
-  staffB = await installment.createStaff(orgB.organizationId, { fullName: "Org B Staff", monthlySalary: "500.00" });
-  customerB = await installment.createCustomer(orgB.organizationId, { fullName: "Org B Customer", staffId: staffB.id });
+  staffB = await installment.createStaff(orgB.organizationId, { fullName: "Org B Staff", monthlySalary: "500.00", userId: null });
+  customerB = await installment.createCustomer(orgB.organizationId, ORGANIZATION_SCOPE, { fullName: "Org B Customer", staffId: staffB.id });
 });
 
 afterAll(async () => {
@@ -50,7 +52,7 @@ afterAll(async () => {
 describe("Installment service — cross-tenant isolation against real Postgres", () => {
   it("createAccount rejects a productId from another organization", async () => {
     await expect(
-      installment.createAccount(orgA.organizationId, {
+      installment.createAccount(orgA.organizationId, ORGANIZATION_SCOPE, {
         customerId: customerA.id,
         productId: productB.id,
         inventoryStaffId: staffA.id,
@@ -61,7 +63,7 @@ describe("Installment service — cross-tenant isolation against real Postgres",
 
   it("createAccount rejects a customerId from another organization", async () => {
     await expect(
-      installment.createAccount(orgA.organizationId, {
+      installment.createAccount(orgA.organizationId, ORGANIZATION_SCOPE, {
         customerId: customerB.id,
         productId: productA.id,
         inventoryStaffId: staffA.id,
@@ -72,7 +74,7 @@ describe("Installment service — cross-tenant isolation against real Postgres",
 
   it("createAccount rejects an inventoryStaffId from another organization", async () => {
     await expect(
-      installment.createAccount(orgA.organizationId, {
+      installment.createAccount(orgA.organizationId, ORGANIZATION_SCOPE, {
         customerId: customerA.id,
         productId: productA.id,
         inventoryStaffId: staffB.id,
@@ -83,7 +85,7 @@ describe("Installment service — cross-tenant isolation against real Postgres",
 
   it("updateCustomer rejects a staffId from another organization", async () => {
     await expect(
-      installment.updateCustomer(orgA.organizationId, customerA.id, {
+      installment.updateCustomer(orgA.organizationId, ORGANIZATION_SCOPE, customerA.id, {
         fullName: customerA.fullName,
         staffId: staffB.id,
       }),
@@ -114,7 +116,7 @@ describe("Installment service — cross-tenant isolation against real Postgres",
   });
 
   it("listCustomers scoped to Org A never returns Org B's customer", async () => {
-    const list = await installment.listCustomers(orgA.organizationId, null);
+    const list = await installment.listCustomers(orgA.organizationId, ORGANIZATION_SCOPE);
     expect(list.map((c) => c.id)).not.toContain(customerB.id);
     expect(list.map((c) => c.id)).toContain(customerA.id);
   });

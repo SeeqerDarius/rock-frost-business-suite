@@ -1,4 +1,4 @@
-import { Package, Plus, Tag, Truck } from "lucide-react";
+import { Lock, Package, Plus, Tag, Truck } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -103,6 +103,19 @@ export default async function InstallmentProductsPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("installment");
   const canManage = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_PRODUCTS_MANAGE);
+
+  if (!canManage) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Products" description="Installment product pricing, terms, and inventory setup." />
+        <EmptyState
+          icon={Lock}
+          title="You don't have access to this page"
+          description="Product costs and configuration are limited to roles with product-management permission."
+        />
+      </div>
+    );
+  }
   const [products, categories, settings, procurementList] = await Promise.all([
     listProducts(tenant.organizationId),
     listProductCategories(tenant.organizationId),

@@ -11,6 +11,7 @@ export const ACTIVE_ORG_COOKIE = "active_org";
 export const ACTIVE_ORGANIZATION_STATUSES = new Set(["ACTIVE", "TRIAL"]);
 
 export interface TenantContext {
+  userId: string;
   organizationId: string;
   organization: {
     id: string;
@@ -130,6 +131,7 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
   });
 
   return {
+    userId,
     organizationId: membership.organization.id,
     organization: {
       id: membership.organization.id,

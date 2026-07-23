@@ -842,6 +842,7 @@ model HirePurchaseStaff {
   inventoryAccounts HirePurchaseAccount[]            @relation("HirePurchaseAccountInventoryStaff")
 
   @@unique([organizationId, code])
+  @@unique([organizationId, userId])
   @@index([organizationId])
   @@index([branchId])
   @@index([userId])

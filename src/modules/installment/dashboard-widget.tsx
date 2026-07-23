@@ -1,21 +1,36 @@
 import Link from "next/link";
-import { Wallet } from "lucide-react";
+import { Lock, Wallet } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/feedback/empty-state";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getServerAuthSession } from "@/lib/auth/session";
-import { listAccounts, listCustomers, getEffectiveAccountStatus, resolveInstallmentStaffScope } from "@/modules/installment/service";
+import { resolveInstallmentAccessScope } from "@/modules/installment/access";
+import { listAccounts, listCustomers, getEffectiveAccountStatus } from "@/modules/installment/service";
 
 export async function InstallmentDashboardWidget() {
   const tenant = await requireModuleAccess("installment");
-  const session = await getServerAuthSession();
-  const isManager = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_STAFF_MANAGE);
-  const scope = await resolveInstallmentStaffScope(tenant.organizationId, session?.user?.id ?? "", isManager);
+  if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_VIEW)) return null;
+
+  const scope = await resolveInstallmentAccessScope(tenant);
+  if (scope.kind === "denied") {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <EmptyState
+            icon={Lock}
+            title="Staff access needs setup"
+            description="Ask an administrator to link your login to one active installment staff profile before you continue."
+            className="py-8"
+          />
+        </CardContent>
+      </Card>
+    );
+  }
 
   const [accounts, customers] = await Promise.all([
-    listAccounts(tenant.organizationId, scope.staffId),
-    listCustomers(tenant.organizationId, scope.staffId),
+    listAccounts(tenant.organizationId, scope),
+    listCustomers(tenant.organizationId, scope),
   ]);
 
   const now = new Date();
