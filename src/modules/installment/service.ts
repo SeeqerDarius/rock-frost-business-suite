@@ -507,24 +507,6 @@ export function listStaffInventory(organizationId: string, staffId?: string) {
   });
 }
 
-export class InsufficientInventoryError extends Error {}
-
-async function consumeStaffInventory(
-  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
-  staffId: string,
-  productId: string
-) {
-  const row = await tx.hirePurchaseStaffInventory.findUnique({
-    where: { staffId_productId: { staffId, productId } },
-  });
-
-  if (!row || row.quantity <= 0) {
-    throw new InsufficientInventoryError("This staff member has no stock left for this product.");
-  }
-
-  await tx.hirePurchaseStaffInventory.update({ where: { id: row.id }, data: { quantity: row.quantity - 1 } });
-}
-
 async function restoreStaffInventory(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   organizationId: string,

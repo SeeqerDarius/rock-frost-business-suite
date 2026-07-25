@@ -47,6 +47,7 @@ export async function upsertFleetOwner(formData: FormData): Promise<void> {
     businessName: parsed.data.businessName ?? null,
     phone: parsed.data.phone ?? null,
     email: parsed.data.email ?? null,
+    userId: clean(formData.get("userId")),
   };
 
   if (id) {

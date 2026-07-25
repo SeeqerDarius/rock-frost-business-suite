@@ -21,6 +21,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 const TYPE_LABELS: Record<string, string> = {
+  WEEKLY_SALES: "Weekly sales",
   OWNER_PAYOUT: "Owner payout",
   DRIVER_PAYMENT: "Driver payment",
   MAINTENANCE: "Maintenance",
@@ -48,7 +49,7 @@ export default async function FleetPaymentsPage({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <PageHeader title="Payments" description="Owner payouts, driver payments, and other fleet transactions." />
+        <PageHeader title="Payments" description="Weekly sales, Work & Pay collections, owner payouts, driver payments, and fleet transactions." />
         {canManage ? (
           <EntityDialog
             trigger={

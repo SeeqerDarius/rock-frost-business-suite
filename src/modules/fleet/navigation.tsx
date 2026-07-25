@@ -1,4 +1,4 @@
-import { Truck, Users, UserRound, ShieldCheck, Wrench, Handshake, Receipt, BarChart3, Settings } from "lucide-react";
+import { Truck, Users, UserRound, ShieldCheck, Wrench, Handshake, Receipt, BarChart3, Settings, Landmark } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const fleetNavigation: ModuleNavItem[] = [
@@ -11,5 +11,6 @@ export const fleetNavigation: ModuleNavItem[] = [
   { label: "Payments", href: "/app/fleet/payments", icon: <Receipt className="size-4" /> },
   { label: "Work & Pay", href: "/app/fleet/work-and-pay", icon: <Handshake className="size-4" /> },
   { label: "Reports", href: "/app/fleet/reports", icon: <BarChart3 className="size-4" /> },
+  { label: "Investor Dashboard", href: "/app/fleet/investor", icon: <Landmark className="size-4" /> },
   { label: "Fleet Settings", href: "/app/fleet/settings", icon: <Settings className="size-4" /> },
 ];

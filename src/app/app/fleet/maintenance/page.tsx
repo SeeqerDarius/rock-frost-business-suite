@@ -7,18 +7,24 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listFleetMaintenanceRequests, listFleetVehicles } from "@/modules/fleet/service";
-import { createMaintenanceRequest, reviewMaintenanceRequest } from "./actions";
+import { getServerAuthSession } from "@/lib/auth/session";
+import {
+  createMaintenanceRequest, reviewMaintenanceRequest, ownerMaintenanceDecision,
+  assignMechanic, startRepair, completeRepair, verifyRepairCompletion,
+} from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage maintenance requests.",
   "missing-fields": "A vehicle and fault description are required.",
   "not-found": "That vehicle could not be found.",
+  "invalid-transition": "That workflow step is not valid for the request's current state.",
+  "approval-required": "Complete all required approvals before assigning a mechanic.",
+  "invalid-cost": "Repair cost must be zero or greater.",
 };
 
 const PROGRESS_LABELS: Record<string, string> = {
@@ -49,6 +55,9 @@ export default async function FleetMaintenancePage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_MAINTENANCE_MANAGE);
+  const canSubmit = canManage || hasPermission(tenant, PERMISSIONS.FLEET_VIEW);
+  const canApproveAsOwner = hasPermission(tenant, PERMISSIONS.FLEET_INVESTOR_VIEW);
+  const session = await getServerAuthSession();
   const [requests, vehicles] = await Promise.all([
     listFleetMaintenanceRequests(tenant.organizationId),
     listFleetVehicles(tenant.organizationId),
@@ -62,7 +71,7 @@ export default async function FleetMaintenancePage({
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <PageHeader title="Maintenance" description="Vehicle fault reports and repair progress." />
-        {canManage && vehicles.length > 0 ? (
+        {canSubmit && vehicles.length > 0 ? (
           <EntityDialog
             trigger={
               <Button size="sm">
@@ -88,6 +97,10 @@ export default async function FleetMaintenancePage({
                 </SelectContent>
               </Select>
             </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="ownerApprovalRequired" />
+              Vehicle-owner approval is required
+            </label>
             <div className="space-y-2">
               <Label htmlFor="faultDescription">What&apos;s wrong?</Label>
               <Textarea id="faultDescription" name="faultDescription" rows={4} required />
@@ -118,7 +131,9 @@ export default async function FleetMaintenancePage({
               <TableHead>Reported by</TableHead>
               <TableHead>Progress</TableHead>
               <TableHead>Approval</TableHead>
-              {canManage ? <TableHead /> : null}
+              <TableHead>Owner approval</TableHead>
+              <TableHead>Mechanic</TableHead>
+              <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -131,77 +146,90 @@ export default async function FleetMaintenancePage({
                   <Badge variant={PROGRESS_BADGE[request.progressStatus]}>{PROGRESS_LABELS[request.progressStatus]}</Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground">{APPROVAL_LABELS[request.approvalStatus]}</TableCell>
-                {canManage ? (
-                  <TableCell className="text-right">
+                <TableCell className="text-muted-foreground">
+                  {request.ownerApprovalRequired ? APPROVAL_LABELS[request.ownerApprovalStatus] : "Not required"}
+                </TableCell>
+                <TableCell className="text-muted-foreground">{request.mechanicAssigned ?? "-"}</TableCell>
+                <TableCell className="text-right">
+                  <div className="flex flex-wrap justify-end gap-1">
+                  {canManage && ["REPORTED", "REVIEWING"].includes(request.progressStatus) && request.approvalStatus === "PENDING" ? (
                     <EntityDialog
                       trigger={
                         <Button size="sm" variant="ghost">
                           Review
                         </Button>
                       }
-                      title="Review maintenance request"
+                      title="Fleet manager review"
                       description={request.faultDescription}
                       action={reviewMaintenanceRequest}
                       submitLabel="Save review"
                     >
                       <input type="hidden" name="id" value={request.id} />
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="space-y-2">
-                          <Label htmlFor={`approvalStatus-${request.id}`}>Approval</Label>
-                          <Select name="approvalStatus" defaultValue={request.approvalStatus} items={APPROVAL_LABELS}>
-                            <SelectTrigger id={`approvalStatus-${request.id}`} className="w-full">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Object.entries(APPROVAL_LABELS).map(([value, label]) => (
-                                <SelectItem key={value} value={value}>
-                                  {label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor={`progressStatus-${request.id}`}>Progress</Label>
-                          <Select name="progressStatus" defaultValue={request.progressStatus} items={PROGRESS_LABELS}>
-                            <SelectTrigger id={`progressStatus-${request.id}`} className="w-full">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Object.entries(PROGRESS_LABELS).map(([value, label]) => (
-                                <SelectItem key={value} value={value}>
-                                  {label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor={`mechanicAssigned-${request.id}`}>Mechanic assigned</Label>
-                        <Input id={`mechanicAssigned-${request.id}`} name="mechanicAssigned" defaultValue={request.mechanicAssigned ?? ""} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor={`repairCost-${request.id}`}>Repair cost</Label>
-                        <Input
-                          id={`repairCost-${request.id}`}
-                          name="repairCost"
-                          type="number"
-                          step="0.01"
-                          defaultValue={request.repairCost?.toString() ?? ""}
-                        />
-                      </div>
+                      <input type="hidden" name="decision" value="approve" />
                       <div className="space-y-2">
                         <Label htmlFor={`fleetManagerReview-${request.id}`}>Review notes</Label>
                         <Textarea id={`fleetManagerReview-${request.id}`} name="fleetManagerReview" defaultValue={request.fleetManagerReview ?? ""} rows={3} />
                       </div>
                       <label className="flex items-center gap-2 text-sm">
-                        <Checkbox name="completionVerified" defaultChecked={request.completionVerified} />
-                        Completion verified
+                        <input type="checkbox" name="ownerApprovalRequired" defaultChecked={request.ownerApprovalRequired} />
+                        Require vehicle-owner approval
                       </label>
                     </EntityDialog>
-                  </TableCell>
-                ) : null}
+                  ) : null}
+                  {canManage && ["REPORTED", "REVIEWING"].includes(request.progressStatus) && request.approvalStatus === "PENDING" ? (
+                    <form action={reviewMaintenanceRequest}>
+                      <input type="hidden" name="id" value={request.id} />
+                      <input type="hidden" name="decision" value="reject" />
+                      <Button type="submit" size="sm" variant="ghost">Reject</Button>
+                    </form>
+                  ) : null}
+                  {canApproveAsOwner && request.vehicle.owner?.userId === session?.user?.id && request.ownerApprovalStatus === "PENDING" && request.approvalStatus === "APPROVED" ? (
+                    <EntityDialog trigger={<Button size="sm" variant="ghost">Owner decision</Button>} title="Owner maintenance approval" action={ownerMaintenanceDecision} submitLabel="Approve">
+                      <input type="hidden" name="id" value={request.id} />
+                      <input type="hidden" name="decision" value="approve" />
+                      <div className="space-y-2"><Label htmlFor={`owner-note-${request.id}`}>Comment</Label><Textarea id={`owner-note-${request.id}`} name="note" /></div>
+                    </EntityDialog>
+                  ) : null}
+                  {canApproveAsOwner && request.vehicle.owner?.userId === session?.user?.id && request.ownerApprovalStatus === "PENDING" && request.approvalStatus === "APPROVED" ? (
+                    <form action={ownerMaintenanceDecision}>
+                      <input type="hidden" name="id" value={request.id} />
+                      <input type="hidden" name="decision" value="reject" />
+                      <Button type="submit" size="sm" variant="ghost">Owner reject</Button>
+                    </form>
+                  ) : null}
+                  {canManage && request.progressStatus === "APPROVED" && !request.mechanicAssigned ? (
+                    <EntityDialog trigger={<Button size="sm" variant="ghost">Assign mechanic</Button>} title="Assign mechanic" action={assignMechanic}>
+                      <input type="hidden" name="id" value={request.id} />
+                      <div className="space-y-2"><Label htmlFor={`mechanic-${request.id}`}>Mechanic or workshop</Label><Input id={`mechanic-${request.id}`} name="mechanicAssigned" required /></div>
+                    </EntityDialog>
+                  ) : null}
+                  {canManage && request.progressStatus === "APPROVED" && request.mechanicAssigned ? (
+                    <form action={startRepair}><input type="hidden" name="id" value={request.id} /><Button type="submit" size="sm" variant="ghost">Start repair</Button></form>
+                  ) : null}
+                  {canManage && request.progressStatus === "IN_PROGRESS" ? (
+                    <EntityDialog trigger={<Button size="sm" variant="ghost">Complete repair</Button>} title="Record repair completion" action={completeRepair}>
+                      <input type="hidden" name="id" value={request.id} />
+                      <div className="space-y-2"><Label htmlFor={`cost-${request.id}`}>Repair cost</Label><Input id={`cost-${request.id}`} name="repairCost" type="number" min="0" step="0.01" required /></div>
+                      <div className="space-y-2"><Label htmlFor={`completion-note-${request.id}`}>Completion notes</Label><Textarea id={`completion-note-${request.id}`} name="note" /></div>
+                    </EntityDialog>
+                  ) : null}
+                  {canManage && request.progressStatus === "COMPLETED" && !request.completionVerified ? (
+                    <form action={verifyRepairCompletion}><input type="hidden" name="id" value={request.id} /><Button type="submit" size="sm">Verify & notify owner</Button></form>
+                  ) : null}
+                  <details className="relative text-left">
+                    <summary className="cursor-pointer list-none rounded-md px-3 py-2 text-sm hover:bg-muted">History</summary>
+                    <div className="absolute right-0 z-20 mt-2 max-h-80 w-80 space-y-3 overflow-y-auto rounded-md border bg-popover p-4 shadow-md">
+                      {request.events.map((event) => (
+                        <div key={event.id} className="border-l-2 pl-3 text-sm">
+                          <p className="font-medium">{event.eventType.replaceAll("_", " ")}</p>
+                          <p className="text-muted-foreground">{event.createdAt.toLocaleString()} · {event.actor?.name ?? "System"}</p>
+                          {event.note ? <p>{event.note}</p> : null}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

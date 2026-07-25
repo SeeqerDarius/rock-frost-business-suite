@@ -13,7 +13,7 @@ function clean(value: FormDataEntryValue | null) {
   return str.length > 0 ? str : null;
 }
 
-const paymentTypeSchema = z.enum(["OWNER_PAYOUT", "DRIVER_PAYMENT", "MAINTENANCE", "WORK_AND_PAY", "OTHER"]);
+const paymentTypeSchema = z.enum(["WEEKLY_SALES", "OWNER_PAYOUT", "DRIVER_PAYMENT", "MAINTENANCE", "WORK_AND_PAY", "OTHER"]);
 
 const paymentSchema = z.object({
   reference: shortText,

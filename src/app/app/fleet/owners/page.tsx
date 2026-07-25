@@ -5,10 +5,11 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listFleetOwners } from "@/modules/fleet/service";
+import { listAssignableFleetUsers, listFleetOwners } from "@/modules/fleet/service";
 import { upsertFleetOwner } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -25,7 +26,11 @@ export default async function FleetOwnersPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_OWNERS_MANAGE);
-  const owners = await listFleetOwners(tenant.organizationId);
+  const [owners, users] = await Promise.all([
+    listFleetOwners(tenant.organizationId),
+    listAssignableFleetUsers(tenant.organizationId),
+  ]);
+  const userItems = Object.fromEntries(users.map((user) => [user.id, `${user.name ?? user.email} (${user.email})`]));
 
   return (
     <div className="space-y-6">
@@ -59,6 +64,13 @@ export default async function FleetOwnersPage({
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" name="email" type="email" />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="userId">Owner portal login (optional)</Label>
+              <Select name="userId" items={userItems}>
+                <SelectTrigger id="userId" className="w-full"><SelectValue placeholder="Link an organization user" /></SelectTrigger>
+                <SelectContent>{Object.entries(userItems).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+              </Select>
             </div>
           </EntityDialog>
         ) : null}
@@ -125,6 +137,13 @@ export default async function FleetOwnersPage({
                           <Label htmlFor={`email-${owner.id}`}>Email</Label>
                           <Input id={`email-${owner.id}`} name="email" type="email" defaultValue={owner.email ?? ""} />
                         </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`userId-${owner.id}`}>Owner portal login</Label>
+                        <Select name="userId" items={userItems} defaultValue={owner.userId ?? undefined}>
+                          <SelectTrigger id={`userId-${owner.id}`} className="w-full"><SelectValue placeholder="Link an organization user" /></SelectTrigger>
+                          <SelectContent>{Object.entries(userItems).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+                        </Select>
                       </div>
                     </EntityDialog>
                   </TableCell>
