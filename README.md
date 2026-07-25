@@ -59,6 +59,8 @@ Start with `OPERATOR_HANDOFF.md` at the repo root for the current state and next
 - `docs/DATABASE_STRATEGY.md` — Prisma/Neon setup and migration workflow
 - `docs/AUTHENTICATION_AND_AUTHORIZATION.md` — real, enforced auth/RBAC (76 permission keys across 11 modules)
 - `docs/TESTING_STRATEGY.md` — how work is validated, current automated test coverage
+- `docs/MODULE_REQUESTS_AND_CUSTOMIZATION.md` — customer requests, operator assignment, approval/enablement, and per-organization module configuration
+- `docs/ORGANIZATION_LIFECYCLE.md` — Super Admin onboarding, profile/status management, protected platform organizations, and recoverable deletion
 - `docs/HARDENING_PLAN.md` — the production-hardening track: what's fixed, what's deferred, why
 - `docs/DECISIONS.md` — dated log of consequential technical decisions
 

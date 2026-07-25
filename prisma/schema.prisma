@@ -55,6 +55,41 @@ enum NotificationStatus {
   FAILED
 }
 
+enum ModuleRequestType {
+  ENABLE_EXISTING
+  CUSTOMIZE_EXISTING
+  CUSTOM_MODULE
+  INTEGRATION
+  DATA_MIGRATION
+}
+
+enum ModuleRequestStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  NEEDS_INFORMATION
+  QUOTED
+  APPROVED
+  REJECTED
+  IMPLEMENTING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum ModuleRequestPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum ContactSubmissionStatus {
+  NEW
+  LINKED
+  RESOLVED
+  SPAM
+}
+
 enum FleetVehicleStatus {
   AVAILABLE
   ASSIGNED
@@ -201,6 +236,11 @@ model User {
   projectMemberships              ProjectMember[]           @relation("ProjectMemberships")
   projectTasksAssigned            ProjectTask[]             @relation("ProjectTasksAssigned")
   projectTasksCreated             ProjectTask[]             @relation("ProjectTasksCreated")
+  moduleRequestsCreated           ModuleRequest[]           @relation("ModuleRequestsCreated")
+  moduleRequestsAssigned          ModuleRequest[]           @relation("ModuleRequestsAssigned")
+  moduleRequestEvents             ModuleRequestEvent[]
+  contactSubmissionsAssigned      ContactSubmission[]       @relation("ContactSubmissionsAssigned")
+  organizationDeletionsRequested  Organization[]            @relation("OrganizationDeletionRequestedBy")
 }
 
 model Account {
@@ -243,17 +283,17 @@ model VerificationToken {
 }
 
 model Organization {
-  id                         String             @id @default(cuid())
+  id                         String              @id @default(cuid())
   name                       String
   industry                   String?
-  tenantCode                 String             @unique
+  tenantCode                 String              @unique
   address                    String?
-  timezone                   String             @default("UTC")
+  timezone                   String              @default("UTC")
   billingEmail               String?
-  status                     OrganizationStatus @default(TRIAL)
+  status                     OrganizationStatus  @default(TRIAL)
   metadata                   Json?
-  createdAt                  DateTime           @default(now())
-  updatedAt                  DateTime           @updatedAt
+  createdAt                  DateTime            @default(now())
+  updatedAt                  DateTime            @updatedAt
   businessRegistrationNumber String?
   taxNumber                  String?
   country                    String?
@@ -263,8 +303,12 @@ model Organization {
   email                      String?
   website                    String?
   logoUrl                    String?
-  currency                   String             @default("USD")
-  defaultLanguage            String             @default("en")
+  currency                   String              @default("USD")
+  defaultLanguage            String              @default("en")
+  deletionRequestedAt        DateTime?
+  deletionScheduledFor       DateTime?
+  deletionRequestedById      String?
+  deletionPreviousStatus     OrganizationStatus?
 
   members                         OrganizationMember[]
   invitations                     Invitation[]
@@ -324,9 +368,13 @@ model Organization {
   posSettings                     PosSettings?
   projects                        Project[]
   projectTasks                    ProjectTask[]
+  moduleRequests                  ModuleRequest[]
+  contactSubmissions              ContactSubmission[]
+  deletionRequestedBy             User?                            @relation("OrganizationDeletionRequestedBy", fields: [deletionRequestedById], references: [id], onDelete: SetNull)
 
   @@index([industry])
   @@index([status])
+  @@index([deletionScheduledFor])
 }
 
 model OrganizationMember {
@@ -490,6 +538,7 @@ model Module {
   updatedAt   DateTime     @updatedAt
 
   organizationModules OrganizationModule[]
+  moduleRequests      ModuleRequest[]
 }
 
 model OrganizationModule {
@@ -507,6 +556,58 @@ model OrganizationModule {
 
   @@unique([organizationId, moduleId])
   @@index([moduleId])
+}
+
+model ModuleRequest {
+  id                    String                @id @default(cuid())
+  organizationId        String
+  moduleId              String?
+  requestedById         String
+  assignedToId          String?
+  contactSubmissionId   String?               @unique
+  type                  ModuleRequestType
+  status                ModuleRequestStatus   @default(SUBMITTED)
+  priority              ModuleRequestPriority @default(NORMAL)
+  title                 String
+  businessJustification String                @db.Text
+  customizationDetails  String?               @db.Text
+  expectedUsers         Int?
+  externalReference     String?
+  decisionReason        String?               @db.Text
+  approvedAt            DateTime?
+  completedAt           DateTime?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  module            Module?              @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  requestedBy       User                 @relation("ModuleRequestsCreated", fields: [requestedById], references: [id], onDelete: Restrict)
+  assignedTo        User?                @relation("ModuleRequestsAssigned", fields: [assignedToId], references: [id], onDelete: SetNull)
+  contactSubmission ContactSubmission?   @relation(fields: [contactSubmissionId], references: [id], onDelete: SetNull)
+  events            ModuleRequestEvent[]
+
+  @@index([organizationId, status])
+  @@index([moduleId])
+  @@index([requestedById])
+  @@index([assignedToId, status])
+  @@index([createdAt])
+}
+
+model ModuleRequestEvent {
+  id              String               @id @default(cuid())
+  moduleRequestId String
+  authorId        String?
+  fromStatus      ModuleRequestStatus?
+  toStatus        ModuleRequestStatus?
+  note            String?              @db.Text
+  isInternal      Boolean              @default(false)
+  createdAt       DateTime             @default(now())
+
+  moduleRequest ModuleRequest @relation(fields: [moduleRequestId], references: [id], onDelete: Cascade)
+  author        User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([moduleRequestId, createdAt])
+  @@index([authorId])
 }
 
 enum AuditEventStatus {
@@ -567,15 +668,27 @@ model AuditLog {
  * simple per-email rate-limit check on new submissions.
  */
 model ContactSubmission {
-  id        String   @id @default(cuid())
-  name      String
-  company   String
-  email     String
-  reason    String
-  message   String?  @db.Text
-  createdAt DateTime @default(now())
+  id             String                  @id @default(cuid())
+  name           String
+  company        String
+  email          String
+  reason         String
+  message        String?                 @db.Text
+  status         ContactSubmissionStatus @default(NEW)
+  organizationId String?
+  assignedToId   String?
+  resolvedAt     DateTime?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  organization  Organization?  @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  assignedTo    User?          @relation("ContactSubmissionsAssigned", fields: [assignedToId], references: [id], onDelete: SetNull)
+  moduleRequest ModuleRequest?
 
   @@index([email, createdAt])
+  @@index([status, createdAt])
+  @@index([organizationId])
+  @@index([assignedToId])
 }
 
 model Notification {

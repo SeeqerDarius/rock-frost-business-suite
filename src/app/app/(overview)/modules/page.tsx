@@ -6,16 +6,25 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { moduleRegistry } from "@/platform/modules/registry";
 import { requireCurrentTenant } from "@/lib/tenant";
+import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 
 export default async function ModulesPage() {
   const tenant = await requireCurrentTenant();
+  const canRequestModules = hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE);
   const enabledModules = moduleRegistry.filter(
     (mod) => mod.status === "available" && tenant.accessibleModuleKeys.includes(mod.key),
   );
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Modules" description="Business systems enabled for your organization." />
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <PageHeader title="Modules" description="Business systems enabled for your organization." />
+        {canRequestModules ? (
+          <Button variant="outline" nativeButton={false} render={<Link href="/app/module-requests" />}>
+            Request a module
+          </Button>
+        ) : null}
+      </div>
       {enabledModules.length === 0 ? (
         <EmptyState
           icon={Blocks}

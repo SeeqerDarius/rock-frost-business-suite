@@ -8,6 +8,8 @@ import { shortText, longText, email as emailSchema, parseWithSchema, escapeHtml 
 
 const REASON_LABELS: Record<string, string> = {
   demo: "Request a demo",
+  module: "Request a module",
+  "custom-module": "Request a custom module",
   general: "General inquiry",
   support: "Existing customer support",
   other: "Something else",

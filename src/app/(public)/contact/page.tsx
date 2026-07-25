@@ -14,6 +14,8 @@ import { submitContactForm } from "./actions";
 
 const REASON_LABELS: Record<string, string> = {
   demo: "Request a demo",
+  module: "Request a module",
+  "custom-module": "Request a custom module",
   general: "General inquiry",
   support: "Existing customer support",
   other: "Something else",
@@ -81,6 +83,8 @@ export default async function ContactPage({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="demo">Request a demo</SelectItem>
+                  <SelectItem value="module">Request a module</SelectItem>
+                  <SelectItem value="custom-module">Request a custom module</SelectItem>
                   <SelectItem value="general">General inquiry</SelectItem>
                   <SelectItem value="support">Existing customer support</SelectItem>
                   <SelectItem value="other">Something else</SelectItem>
