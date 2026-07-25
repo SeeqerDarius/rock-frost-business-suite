@@ -10,6 +10,7 @@ import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import {
   recordPayment,
   updatePayment,
+  deletePayment,
   markCreditRefunded,
   voidCredit,
   applyCreditToAccount,
@@ -266,5 +267,36 @@ export async function applyCredit(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/app/installment/payments");
+  redirect("/app/installment/payments?saved=1");
+}
+
+export async function removePayment(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("installment");
+  if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_PAYMENTS_MANAGE)) {
+    redirect("/app/installment/payments?error=forbidden");
+  }
+  const scope = await resolveInstallmentAccessScope(tenant);
+  const id = clean(formData.get("id"));
+  const password = clean(formData.get("confirmPassword"));
+  const session = await getServerAuthSession();
+  if (!id) redirect("/app/installment/payments?error=missing-fields");
+  if (!session?.user?.id || !password || !(await verifyCurrentPassword(session.user.id, password))) {
+    redirect("/app/installment/payments?error=wrong-password");
+  }
+  try {
+    const payment = await deletePayment(tenant.organizationId, scope, id);
+    await logAuditEvent({
+      organizationId: tenant.organizationId, userId: session.user.id, module: "installment",
+      action: "installment.payment.deleted", entityName: "HirePurchasePayment", entityId: id,
+      metadata: { receiptNo: payment.receiptNo, accountId: payment.accountId, amount: payment.amount.toString() },
+    });
+  } catch (error) {
+    if (error instanceof PaymentCreditLockedError) redirect("/app/installment/payments?error=credit-locked");
+    if (error instanceof NotFoundError) redirect("/app/installment/payments?error=not-found");
+    throw error;
+  }
+  revalidatePath("/app/installment/payments");
+  revalidatePath("/app/installment/accounts");
+  revalidatePath("/app/installment/reports");
   redirect("/app/installment/payments?saved=1");
 }

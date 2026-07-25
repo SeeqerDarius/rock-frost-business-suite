@@ -5,9 +5,11 @@ import { revalidatePath } from "next/cache";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { resolveInstallmentAccessScope } from "@/modules/installment/access";
-import { createCustomer, updateCustomer, NotFoundError } from "@/modules/installment/service";
+import { bulkReassignCustomers, createCustomer, updateCustomer, NotFoundError } from "@/modules/installment/service";
 import { shortText, longText, parseWithSchema } from "@/lib/validation";
 import { z } from "zod";
+import { getServerAuthSession } from "@/lib/auth/session";
+import { logAuditEvent } from "@/lib/audit";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -71,4 +73,35 @@ export async function upsertCustomer(formData: FormData): Promise<void> {
 
   revalidatePath("/app/installment/customers");
   redirect("/app/installment/customers?saved=1");
+}
+
+export async function reassignInstallmentCustomers(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("installment");
+  if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_CUSTOMERS_MANAGE)) {
+    redirect("/app/installment/customers?error=forbidden");
+  }
+  const staffId = clean(formData.get("staffId"));
+  const customerIds = formData.getAll("customerIds").map((value) => String(value));
+  if (!staffId || customerIds.length === 0) {
+    redirect("/app/installment/customers?error=no-selection");
+  }
+  try {
+    const result = await bulkReassignCustomers(tenant.organizationId, customerIds, staffId);
+    const session = await getServerAuthSession();
+    await logAuditEvent({
+      organizationId: tenant.organizationId,
+      userId: session?.user?.id,
+      module: "installment",
+      action: "installment.customers.bulk_reassigned",
+      entityName: "HirePurchaseCustomer",
+      entityId: `bulk:${result.count}`,
+      metadata: { customerIds, staffId, count: result.count },
+    });
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/installment/customers?error=not-found");
+    throw error;
+  }
+  revalidatePath("/app/installment/customers");
+  revalidatePath("/app/installment/accounts");
+  redirect(`/app/installment/customers?saved=1&reassigned=${customerIds.length}`);
 }

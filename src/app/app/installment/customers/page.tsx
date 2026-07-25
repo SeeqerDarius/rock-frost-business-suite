@@ -11,13 +11,14 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { resolveInstallmentAccessScope } from "@/modules/installment/access";
 import { listCustomers, listStaffForScope } from "@/modules/installment/service";
-import { upsertCustomer } from "./actions";
+import { reassignInstallmentCustomers, upsertCustomer } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage customers.",
   "missing-fields": "Full name and assigned staff are required.",
   "invalid-input": "Please check that all fields are valid.",
   "not-found": "That staff member could not be found.",
+  "no-selection": "Select at least one customer and a destination staff member.",
 };
 
 interface CustomerFieldsProps {
@@ -109,6 +110,34 @@ export default async function InstallmentCustomersPage({
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <PageHeader title="Customers" description="Customers buying products on installment." />
+        <div className="flex gap-2">
+        {customers.length > 0 && Object.keys(staffItems).length > 0 ? (
+          <EntityDialog
+            trigger={<Button size="sm" variant="outline">Bulk reassign</Button>}
+            title="Reassign customers"
+            description="Move the selected customers and their account visibility to another active staff member."
+            action={reassignInstallmentCustomers}
+            submitLabel="Reassign selected"
+          >
+            <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border p-3">
+              {customers.map((customer) => (
+                <label key={customer.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="customerIds" value={customer.id} />
+                  <span>{customer.fullName} <span className="text-muted-foreground">({customer.customerCode})</span></span>
+                </label>
+              ))}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="bulk-staff">Assign to</Label>
+              <Select name="staffId" items={staffItems}>
+                <SelectTrigger id="bulk-staff" className="w-full"><SelectValue placeholder="Select staff" /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(staffItems).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </EntityDialog>
+        ) : null}
         {Object.keys(staffItems).length > 0 ? (
           <EntityDialog
             trigger={
@@ -123,6 +152,7 @@ export default async function InstallmentCustomersPage({
             <CustomerFields staffItems={staffItems} />
           </EntityDialog>
         ) : null}
+        </div>
       </div>
 
       {saved ? (

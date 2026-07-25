@@ -4,7 +4,11 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createProduct, updateProduct, createProductCategory, ProductPriceError } from "@/modules/installment/service";
+import {
+  createProduct, updateProduct, createProductCategory, updateProductCategory,
+  deleteProductCategory, setProductActive, deleteProduct, ProductPriceError,
+  ProductCategoryInUseError, ProductInUseError, NotFoundError,
+} from "@/modules/installment/service";
 import { shortText, longText, moneyAmount, moneyAmountNonNegative, positiveInt, parseWithSchema } from "@/lib/validation";
 import { z } from "zod";
 
@@ -92,6 +96,57 @@ export async function addProductCategory(formData: FormData): Promise<void> {
   }
 
   await createProductCategory(tenant.organizationId, name);
+  revalidatePath("/app/installment/products");
+  redirect("/app/installment/products?saved=1");
+}
+
+async function requireProductManager() {
+  const tenant = await requireModuleAccess("installment");
+  if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_PRODUCTS_MANAGE)) {
+    redirect("/app/installment/products?error=forbidden");
+  }
+  return tenant;
+}
+
+export async function manageProductCategory(formData: FormData): Promise<void> {
+  const tenant = await requireProductManager();
+  const id = clean(formData.get("id"));
+  const intent = clean(formData.get("intent"));
+  if (!id) redirect("/app/installment/products?error=missing-fields");
+  try {
+    if (intent === "delete") {
+      await deleteProductCategory(tenant.organizationId, id);
+    } else {
+      const name = clean(formData.get("name"));
+      if (!name) redirect("/app/installment/products?error=missing-fields");
+      await updateProductCategory(tenant.organizationId, id, {
+        name,
+        active: formData.get("active") === "on",
+        sortOrder: Number(formData.get("sortOrder") ?? 0),
+      });
+    }
+  } catch (error) {
+    if (error instanceof ProductCategoryInUseError) redirect("/app/installment/products?error=category-in-use");
+    if (error instanceof NotFoundError) redirect("/app/installment/products?error=not-found");
+    throw error;
+  }
+  revalidatePath("/app/installment/products");
+  redirect("/app/installment/products?saved=1");
+}
+
+export async function manageProductLifecycle(formData: FormData): Promise<void> {
+  const tenant = await requireProductManager();
+  const id = clean(formData.get("id"));
+  const intent = clean(formData.get("intent"));
+  if (!id) redirect("/app/installment/products?error=missing-fields");
+  try {
+    if (intent === "delete") await deleteProduct(tenant.organizationId, id);
+    else await setProductActive(tenant.organizationId, id, intent === "activate");
+  } catch (error) {
+    if (error instanceof ProductInUseError) redirect("/app/installment/products?error=product-in-use");
+    if (error instanceof NotFoundError) redirect("/app/installment/products?error=not-found");
+    throw error;
+  }
   revalidatePath("/app/installment/products");
   redirect("/app/installment/products?saved=1");
 }

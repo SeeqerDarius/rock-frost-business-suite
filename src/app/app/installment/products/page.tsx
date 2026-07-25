@@ -13,13 +13,16 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listProducts, listProductCategories, getInstallmentSettings, getProcurementList } from "@/modules/installment/service";
-import { upsertProduct, addProductCategory } from "./actions";
+import { upsertProduct, addProductCategory, manageProductCategory, manageProductLifecycle } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage products.",
   "missing-fields": "Name, category, cost price, daily amount, and duration are required.",
   "invalid-input": "Please check that all fields are valid (prices and duration must be positive numbers).",
   "price-floor": "Daily amount × duration cannot be lower than cost price.",
+  "category-in-use": "That category is still used by one or more products.",
+  "product-in-use": "This product has customer accounts, so it can be deactivated but not deleted.",
+  "not-found": "That product or category could not be found.",
 };
 
 interface ProductFieldsProps {
@@ -162,7 +165,7 @@ export default async function InstallmentProductsPage({
               <Tag className="size-5 text-muted-foreground" />
               <CardTitle>Categories</CardTitle>
             </div>
-            <CardDescription>{categories.map((c) => c.name).join(", ") || "No categories yet."}</CardDescription>
+            <CardDescription>Maintain the selectable product catalogue groups.</CardDescription>
           </CardHeader>
           <CardContent>
             <form action={addProductCategory} className="flex gap-2">
@@ -171,6 +174,18 @@ export default async function InstallmentProductsPage({
                 Add category
               </Button>
             </form>
+            <div className="mt-4 space-y-2">
+              {categories.map((category) => (
+                <form key={category.id} action={manageProductCategory} className="flex flex-wrap items-center gap-2 rounded-md border p-2">
+                  <input type="hidden" name="id" value={category.id} />
+                  <Input name="name" defaultValue={category.name} className="min-w-48 flex-1" />
+                  <Input name="sortOrder" type="number" defaultValue={category.sortOrder} className="w-20" aria-label="Sort order" />
+                  <label className="flex items-center gap-2 text-sm"><input name="active" type="checkbox" defaultChecked={category.active} /> Active</label>
+                  <Button type="submit" size="sm" variant="outline">Save</Button>
+                  <Button type="submit" size="sm" variant="destructive" name="intent" value="delete">Delete</Button>
+                </form>
+              ))}
+            </div>
           </CardContent>
         </Card>
       ) : null}
@@ -235,6 +250,7 @@ export default async function InstallmentProductsPage({
                 </TableCell>
                 {canManage ? (
                   <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
                     <EntityDialog
                       trigger={
                         <Button size="sm" variant="ghost">
@@ -258,6 +274,17 @@ export default async function InstallmentProductsPage({
                         defaultDailyAmount={settings.defaultDailyCollection.toString()}
                       />
                     </EntityDialog>
+                    <form action={manageProductLifecycle}>
+                      <input type="hidden" name="id" value={product.id} />
+                      <input type="hidden" name="intent" value={product.active ? "deactivate" : "activate"} />
+                      <Button type="submit" size="sm" variant="ghost">{product.active ? "Deactivate" : "Activate"}</Button>
+                    </form>
+                    <form action={manageProductLifecycle}>
+                      <input type="hidden" name="id" value={product.id} />
+                      <input type="hidden" name="intent" value="delete" />
+                      <Button type="submit" size="sm" variant="ghost">Delete</Button>
+                    </form>
+                    </div>
                   </TableCell>
                 ) : null}
               </TableRow>

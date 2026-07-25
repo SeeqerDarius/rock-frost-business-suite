@@ -12,7 +12,9 @@ import {
   updateAccountDeliveryStatus,
   setAccountStatus,
   reactivateAccount,
-  InsufficientInventoryError,
+  updateAccountPrice,
+  updateAccountProduct,
+  InvalidAccountPriceError,
   ReactivationNotEligibleError,
   MinimumDepositError,
   NotFoundError,
@@ -47,7 +49,7 @@ export async function createInstallmentAccount(formData: FormData): Promise<void
   const inventoryStaffId = clean(formData.get("inventoryStaffId"));
   const startDateRaw = clean(formData.get("startDate"));
 
-  if (!customerId || !productId || !inventoryStaffId || !startDateRaw) {
+  if (!customerId || !productId || !startDateRaw) {
     redirect("/app/installment/accounts?error=missing-fields");
   }
 
@@ -68,9 +70,6 @@ export async function createInstallmentAccount(formData: FormData): Promise<void
   try {
     await createAccount(tenant.organizationId, scope, { customerId, productId, inventoryStaffId, startDate, initialDeposit });
   } catch (error) {
-    if (error instanceof InsufficientInventoryError) {
-      redirect("/app/installment/accounts?error=no-stock");
-    }
     if (error instanceof MinimumDepositError) {
       redirect("/app/installment/accounts?error=below-minimum-deposit");
     }
@@ -173,5 +172,59 @@ export async function reactivateInstallmentAccount(formData: FormData): Promise<
   }
 
   revalidatePath("/app/installment/accounts");
+  redirect("/app/installment/accounts?saved=1");
+}
+
+export async function correctInstallmentAccountPrice(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("installment");
+  if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_ACCOUNTS_MANAGE)) redirect("/app/installment/accounts?error=forbidden");
+  const scope = await resolveInstallmentAccessScope(tenant);
+  const id = clean(formData.get("id"));
+  const targetAmount = clean(formData.get("targetAmount"));
+  const password = clean(formData.get("confirmPassword"));
+  const session = await getServerAuthSession();
+  if (!id || !targetAmount) redirect("/app/installment/accounts?error=missing-fields");
+  if (!session?.user?.id || !password || !(await verifyCurrentPassword(session.user.id, password))) {
+    redirect("/app/installment/accounts?error=wrong-password");
+  }
+  try {
+    const change = await updateAccountPrice(tenant.organizationId, scope, id, targetAmount);
+    await logAuditEvent({
+      organizationId: tenant.organizationId, userId: session.user.id, module: "installment",
+      action: "installment.account.price_corrected", entityName: "HirePurchaseAccount", entityId: id, metadata: change,
+    });
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/installment/accounts?error=not-found");
+    if (error instanceof InvalidAccountPriceError) redirect("/app/installment/accounts?error=invalid-price");
+    throw error;
+  }
+  revalidatePath("/app/installment/accounts");
+  redirect("/app/installment/accounts?saved=1");
+}
+
+export async function correctInstallmentAccountProduct(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("installment");
+  if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_ACCOUNTS_MANAGE)) redirect("/app/installment/accounts?error=forbidden");
+  const scope = await resolveInstallmentAccessScope(tenant);
+  const id = clean(formData.get("id"));
+  const productId = clean(formData.get("productId"));
+  const password = clean(formData.get("confirmPassword"));
+  const session = await getServerAuthSession();
+  if (!id || !productId) redirect("/app/installment/accounts?error=missing-fields");
+  if (!session?.user?.id || !password || !(await verifyCurrentPassword(session.user.id, password))) {
+    redirect("/app/installment/accounts?error=wrong-password");
+  }
+  try {
+    const change = await updateAccountProduct(tenant.organizationId, scope, id, productId);
+    await logAuditEvent({
+      organizationId: tenant.organizationId, userId: session.user.id, module: "installment",
+      action: "installment.account.product_corrected", entityName: "HirePurchaseAccount", entityId: id, metadata: change,
+    });
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/installment/accounts?error=not-found");
+    throw error;
+  }
+  revalidatePath("/app/installment/accounts");
+  revalidatePath("/app/installment/payments");
   redirect("/app/installment/accounts?saved=1");
 }

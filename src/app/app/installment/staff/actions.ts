@@ -8,6 +8,7 @@ import {
   createStaff,
   updateStaff,
   recordStaffSalaryPayment,
+  deleteStaffSalaryPayment,
   NotFoundError,
   InvalidPaymentAmountError,
   InvalidStaffLoginError,
@@ -107,5 +108,23 @@ export async function recordSalaryPayment(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/app/installment/staff");
+  redirect("/app/installment/staff?saved=1");
+}
+
+export async function removeSalaryPayment(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("installment");
+  if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_STAFF_MANAGE)) {
+    redirect("/app/installment/staff?error=forbidden");
+  }
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) redirect("/app/installment/staff?error=missing-fields");
+  try {
+    await deleteStaffSalaryPayment(tenant.organizationId, id);
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/installment/staff?error=not-found");
+    throw error;
+  }
+  revalidatePath("/app/installment/staff");
+  revalidatePath("/app/installment/reports");
   redirect("/app/installment/staff?saved=1");
 }

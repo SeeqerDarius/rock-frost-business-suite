@@ -15,9 +15,10 @@ import {
   listAssignableStaffUsers,
   listStaff,
   getEffectiveMonthlySalary,
+  listStaffSalaryPayments,
   getInstallmentSettings,
 } from "@/modules/installment/service";
-import { upsertStaff, recordSalaryPayment } from "./actions";
+import { upsertStaff, recordSalaryPayment, removeSalaryPayment } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage staff.",
@@ -122,10 +123,11 @@ export default async function InstallmentStaffPage({
     );
   }
 
-  const [staffList, settings, assignableUsers] = await Promise.all([
+  const [staffList, settings, assignableUsers, salaryPayments] = await Promise.all([
     listStaff(tenant.organizationId),
     getInstallmentSettings(tenant.organizationId),
     listAssignableStaffUsers(tenant.organizationId),
+    listStaffSalaryPayments(tenant.organizationId),
   ]);
   const loginLabels = new Map(
     assignableUsers.map((user) => [user.id, user.name ? `${user.name} (${user.email})` : user.email]),
@@ -265,6 +267,30 @@ export default async function InstallmentStaffPage({
           </TableBody>
         </Table>
       )}
+      {salaryPayments.length > 0 ? (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold">Salary payment history</h2>
+          <Table>
+            <TableHeader><TableRow><TableHead>Staff</TableHead><TableHead>Salary month</TableHead><TableHead>Paid on</TableHead><TableHead>Amount</TableHead><TableHead /></TableRow></TableHeader>
+            <TableBody>
+              {salaryPayments.map((payment) => (
+                <TableRow key={payment.id}>
+                  <TableCell>{staffList.find((staff) => staff.id === payment.staffId)?.fullName ?? "Former staff"}</TableCell>
+                  <TableCell>{payment.salaryMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</TableCell>
+                  <TableCell>{payment.paymentDate.toLocaleDateString()}</TableCell>
+                  <TableCell>{Number(payment.amount).toFixed(2)}</TableCell>
+                  <TableCell className="text-right">
+                    <form action={removeSalaryPayment}>
+                      <input type="hidden" name="id" value={payment.id} />
+                      <Button type="submit" size="sm" variant="ghost">Reverse</Button>
+                    </form>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      ) : null}
     </div>
   );
 }

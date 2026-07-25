@@ -181,6 +181,28 @@ export function createProductCategory(organizationId: string, name: string) {
   return db.hirePurchaseProductCategory.create({ data: { organizationId, name } });
 }
 
+export async function updateProductCategory(
+  organizationId: string,
+  id: string,
+  data: { name: string; active: boolean; sortOrder: number },
+) {
+  const category = await db.hirePurchaseProductCategory.findFirst({ where: { id, organizationId } });
+  if (!category) throw new NotFoundError("Product category not found.");
+  return db.hirePurchaseProductCategory.update({ where: { id }, data });
+}
+
+export async function deleteProductCategory(organizationId: string, id: string) {
+  const category = await db.hirePurchaseProductCategory.findFirst({ where: { id, organizationId } });
+  if (!category) throw new NotFoundError("Product category not found.");
+  const products = await db.hirePurchaseProduct.count({
+    where: { organizationId, category: { equals: category.name, mode: "insensitive" } },
+  });
+  if (products > 0) throw new ProductCategoryInUseError("Move products out of this category before deleting it.");
+  await db.hirePurchaseProductCategory.delete({ where: { id } });
+}
+
+export class ProductCategoryInUseError extends Error {}
+
 // --- Products ---
 
 export function listProducts(organizationId: string) {
@@ -237,6 +259,28 @@ export async function createProduct(organizationId: string, input: ProductInput)
 export function updateProduct(organizationId: string, id: string, input: ProductInput) {
   const price = computeProductPrice(input);
   return db.hirePurchaseProduct.update({ where: { id, organizationId }, data: { ...input, price } });
+}
+
+export async function setProductActive(organizationId: string, id: string, active: boolean) {
+  const updated = await db.hirePurchaseProduct.updateMany({ where: { id, organizationId }, data: { active } });
+  if (updated.count !== 1) throw new NotFoundError("Product not found.");
+}
+
+export class ProductInUseError extends Error {}
+
+export async function deleteProduct(organizationId: string, id: string) {
+  const product = await db.hirePurchaseProduct.findFirst({
+    where: { id, organizationId },
+    select: { id: true, _count: { select: { accounts: true } } },
+  });
+  if (!product) throw new NotFoundError("Product not found.");
+  if (product._count.accounts > 0) {
+    throw new ProductInUseError("Deactivate this product instead; it already has customer accounts.");
+  }
+  await db.$transaction([
+    db.hirePurchaseStaffInventory.deleteMany({ where: { organizationId, productId: id } }),
+    db.hirePurchaseProduct.delete({ where: { id } }),
+  ]);
 }
 
 // --- Staff ---
@@ -420,6 +464,11 @@ export async function recordStaffSalaryPayment(
   return db.hirePurchaseStaffSalaryPayment.create({ data: { organizationId, ...data } });
 }
 
+export async function deleteStaffSalaryPayment(organizationId: string, id: string) {
+  const deleted = await db.hirePurchaseStaffSalaryPayment.deleteMany({ where: { id, organizationId } });
+  if (deleted.count !== 1) throw new NotFoundError("Salary payment not found.");
+}
+
 export function listStaffSalaryPayments(organizationId: string, staffId?: string) {
   return db.hirePurchaseStaffSalaryPayment.findMany({
     where: { organizationId, ...(staffId ? { staffId } : {}) },
@@ -562,6 +611,29 @@ export async function updateCustomer(
   });
 }
 
+export async function bulkReassignCustomers(
+  organizationId: string,
+  customerIds: string[],
+  staffId: string,
+) {
+  const uniqueIds = Array.from(new Set(customerIds.filter(Boolean)));
+  if (uniqueIds.length === 0) throw new NotFoundError("Select at least one customer.");
+  return db.$transaction(async (tx) => {
+    const [staff, customers] = await Promise.all([
+      tx.hirePurchaseStaff.findFirst({ where: { id: staffId, organizationId, active: true } }),
+      tx.hirePurchaseCustomer.findMany({
+        where: { id: { in: uniqueIds }, organizationId },
+        select: { id: true },
+      }),
+    ]);
+    if (!staff || customers.length !== uniqueIds.length) throw new NotFoundError("Staff member or customer not found.");
+    return tx.hirePurchaseCustomer.updateMany({
+      where: { id: { in: uniqueIds }, organizationId },
+      data: { staffId },
+    });
+  });
+}
+
 // --- Accounts ---
 
 function addDays(date: Date, days: number) {
@@ -593,10 +665,9 @@ export class MinimumDepositError extends Error {}
 export async function createAccount(
   organizationId: string,
   scope: InstallmentAccessScope,
-  data: { customerId: string; productId: string; inventoryStaffId: string; startDate: Date; initialDeposit?: string }
+  data: { customerId: string; productId: string; inventoryStaffId?: string | null; startDate: Date; initialDeposit?: string }
 ) {
   const customerWhere = requireOwnershipWhere(customerOwnershipWhere(scope));
-  const inventoryStaffWhere = requireOwnershipWhere(staffOwnershipWhere(scope));
   const settings = await getInstallmentSettings(organizationId);
   const minimumDeposit = new Prisma.Decimal(settings.minimumDeposit);
   const depositAmount = data.initialDeposit ? new Prisma.Decimal(data.initialDeposit) : new Prisma.Decimal(0);
@@ -612,21 +683,13 @@ export async function createAccount(
     const receiptNo = depositAmount.greaterThan(0) ? await generateReceiptNo(organizationId, settings.receiptPrefix) : null;
 
     return db.$transaction(async (tx) => {
-      const [product, customer, inventoryStaff] = await Promise.all([
-        tx.hirePurchaseProduct.findFirst({ where: { id: data.productId, organizationId } }),
+      const [product, customer] = await Promise.all([
+        tx.hirePurchaseProduct.findFirst({ where: { id: data.productId, organizationId, active: true } }),
         tx.hirePurchaseCustomer.findFirst({
           where: { id: data.customerId, organizationId, AND: customerWhere },
         }),
-        tx.hirePurchaseStaff.findFirst({
-          where: {
-            id: data.inventoryStaffId,
-            organizationId,
-            active: true,
-            AND: inventoryStaffWhere,
-          },
-        }),
       ]);
-      if (!product || !customer || !inventoryStaff) {
+      if (!product || !customer) {
         throw new NotFoundError("Record not found.");
       }
 
@@ -639,14 +702,12 @@ export async function createAccount(
       const dailyAmount = product.dailyAmount;
       const expectedEndDate = addDays(data.startDate, product.duration);
 
-      await consumeStaffInventory(tx, data.inventoryStaffId, data.productId);
-
       const account = await tx.hirePurchaseAccount.create({
         data: {
           organizationId,
           customerId: data.customerId,
           productId: data.productId,
-          inventoryStaffId: data.inventoryStaffId,
+          inventoryStaffId: data.inventoryStaffId ?? null,
           startDate: data.startDate,
           expectedEndDate,
           targetAmount,
@@ -701,6 +762,98 @@ export function getEffectiveAccountStatus(
     return "OVERDUE";
   }
   return account.status;
+}
+
+export class InvalidAccountPriceError extends Error {}
+
+export async function updateAccountPrice(
+  organizationId: string,
+  scope: InstallmentAccessScope,
+  id: string,
+  targetAmountValue: string,
+) {
+  const accountWhere = requireOwnershipWhere(accountOwnershipWhere(scope));
+  const targetAmount = new Prisma.Decimal(targetAmountValue);
+  if (!targetAmount.isPositive()) throw new InvalidAccountPriceError("Account price must be greater than zero.");
+
+  return db.$transaction(async (tx) => {
+    const account = await tx.hirePurchaseAccount.findFirst({
+      where: { id, organizationId, AND: accountWhere },
+    });
+    if (!account) throw new NotFoundError("Account not found.");
+
+    const balance = Prisma.Decimal.max(targetAmount.minus(account.totalPaid), 0);
+    const status: HirePurchaseAccountStatus =
+      balance.lessThanOrEqualTo(0) ? "COMPLETED" : account.status === "COMPLETED" ? "ACTIVE" : account.status;
+    await tx.hirePurchaseAccount.update({
+      where: { id },
+      data: { targetAmount: targetAmount.toFixed(2), balance: balance.toFixed(2), status },
+    });
+    return { previousTargetAmount: account.targetAmount.toString(), targetAmount: targetAmount.toFixed(2) };
+  });
+}
+
+export async function updateAccountProduct(
+  organizationId: string,
+  scope: InstallmentAccessScope,
+  id: string,
+  productId: string,
+) {
+  const accountWhere = requireOwnershipWhere(accountOwnershipWhere(scope));
+  return db.$transaction(async (tx) => {
+    const [account, product] = await Promise.all([
+      tx.hirePurchaseAccount.findFirst({
+        where: { id, organizationId, AND: accountWhere },
+        include: { product: true },
+      }),
+      tx.hirePurchaseProduct.findFirst({ where: { id: productId, organizationId, active: true } }),
+    ]);
+    if (!account || !product) throw new NotFoundError("Account or product not found.");
+    if (account.productId === product.id) return { previousProductId: account.productId, productId };
+
+    const targetAmount = new Prisma.Decimal(product.price);
+    const balance = Prisma.Decimal.max(targetAmount.minus(account.totalPaid), 0);
+    const overpayment = Prisma.Decimal.max(new Prisma.Decimal(account.totalPaid).minus(targetAmount), 0);
+    const status: HirePurchaseAccountStatus =
+      balance.lessThanOrEqualTo(0) ? "COMPLETED" : account.status === "COMPLETED" ? "ACTIVE" : account.status;
+
+    await tx.hirePurchaseAccount.update({
+      where: { id },
+      data: {
+        productId,
+        targetAmount: targetAmount.toFixed(2),
+        dailyAmount: product.dailyAmount,
+        expectedEndDate: addDays(account.startDate, product.duration),
+        balance: balance.toFixed(2),
+        status,
+        deliveryStatus: "PENDING",
+        deliveredAt: null,
+        deliveredBy: null,
+      },
+    });
+
+    if (overpayment.greaterThan(0)) {
+      const existing = await tx.hirePurchaseCredit.aggregate({
+        where: { organizationId, accountId: id, status: { not: "VOID" } },
+        _sum: { amount: true },
+      });
+      const additional = Prisma.Decimal.max(overpayment.minus(existing._sum.amount ?? 0), 0);
+      if (additional.greaterThan(0)) {
+        await tx.hirePurchaseCredit.create({
+          data: {
+            organizationId,
+            customerId: account.customerId,
+            accountId: id,
+            amount: additional.toFixed(2),
+            remainingAmount: additional.toFixed(2),
+            source: "MANUAL_ADJUSTMENT",
+            notes: `Credit from product correction: ${account.product.name} to ${product.name}`,
+          },
+        });
+      }
+    }
+    return { previousProductId: account.productId, productId };
+  });
 }
 
 export async function updateAccountDeliveryStatus(
@@ -941,6 +1094,28 @@ export async function updatePayment(
     if (updated.count !== 1) throw new NotFoundError("Record not found.");
 
     await recalculateAccountAfterPaymentChange(tx, organizationId, scope, payment.accountId);
+  });
+}
+
+export async function deletePayment(
+  organizationId: string,
+  scope: InstallmentAccessScope,
+  id: string,
+) {
+  const paymentWhere = requireOwnershipWhere(paymentOwnershipWhere(scope));
+  return db.$transaction(async (tx) => {
+    const payment = await tx.hirePurchasePayment.findFirst({
+      where: { id, organizationId, AND: paymentWhere },
+      include: { credit: true },
+    });
+    if (!payment) throw new NotFoundError("Payment not found.");
+    if (payment.credit && (payment.credit.status !== "OPEN" || !payment.credit.remainingAmount.equals(payment.credit.amount))) {
+      throw new PaymentCreditLockedError("This payment has a resolved or partially used credit and cannot be deleted.");
+    }
+    if (payment.credit) await tx.hirePurchaseCredit.delete({ where: { id: payment.credit.id } });
+    await tx.hirePurchasePayment.delete({ where: { id } });
+    await recalculateAccountAfterPaymentChange(tx, organizationId, scope, payment.accountId);
+    return payment;
   });
 }
 

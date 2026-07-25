@@ -15,15 +15,17 @@ import {
   listAccounts,
   listCustomers,
   listProducts,
-  listStaffForScope,
   getEffectiveAccountStatus,
   getInstallmentSettings,
 } from "@/modules/installment/service";
-import { createInstallmentAccount, markAccountDelivered, changeAccountStatus, reactivateInstallmentAccount } from "./actions";
+import {
+  createInstallmentAccount, markAccountDelivered, changeAccountStatus,
+  reactivateInstallmentAccount, correctInstallmentAccountPrice, correctInstallmentAccountProduct,
+} from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage accounts.",
-  "missing-fields": "Customer, product, staff, and start date are required.",
+  "missing-fields": "Customer, product, and start date are required.",
   "invalid-input": "Please check that the start date and deposit amount are valid.",
   "future-date": "Start date can't be in the future.",
   "no-stock": "That staff member has no stock left for this product.",
@@ -31,6 +33,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "below-minimum-deposit": "The initial deposit doesn't meet the required minimum.",
   "wrong-password": "Incorrect password. Reactivation requires re-entering your password to confirm.",
   "not-found": "That customer, product, or staff member could not be found.",
+  "invalid-price": "Enter a valid account price greater than zero.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
@@ -75,18 +78,16 @@ export default async function InstallmentAccountsPage({
     );
   }
 
-  const [accounts, customers, products, staffList, settings] = await Promise.all([
+  const [accounts, customers, products, settings] = await Promise.all([
     listAccounts(tenant.organizationId, scope),
     listCustomers(tenant.organizationId, scope),
     listProducts(tenant.organizationId),
-    listStaffForScope(tenant.organizationId, scope),
     getInstallmentSettings(tenant.organizationId),
   ]);
 
   const customerItems: Record<string, string> = Object.fromEntries(customers.map((c) => [c.id, `${c.fullName} (${c.customerCode})`]));
   const activeProducts = products.filter((p) => p.active);
   const productItems: Record<string, string> = Object.fromEntries(activeProducts.map((p) => [p.id, `${p.name} - ${Number(p.price).toFixed(2)}`]));
-  const staffItems: Record<string, string> = Object.fromEntries(staffList.map((s) => [s.id, `${s.fullName} (${s.code})`]));
 
   const now = new Date();
 
@@ -103,7 +104,7 @@ export default async function InstallmentAccountsPage({
               </Button>
             }
             title="New customer account"
-            description="Creating an account reserves one unit of stock from the selected staff member's inventory."
+            description="Open an installment plan and optionally record its first payment."
             action={createInstallmentAccount}
           >
             <div className="space-y-2">
@@ -129,21 +130,6 @@ export default async function InstallmentAccountsPage({
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(productItems).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="inventoryStaffId">Stock from staff</Label>
-              <Select name="inventoryStaffId" items={staffItems}>
-                <SelectTrigger id="inventoryStaffId" className="w-full">
-                  <SelectValue placeholder="Select staff" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(staffItems).map(([value, label]) => (
                     <SelectItem key={value} value={value}>
                       {label}
                     </SelectItem>
@@ -272,6 +258,45 @@ export default async function InstallmentAccountsPage({
                             </Button>
                           </form>
                         ) : null}
+                        <EntityDialog
+                          trigger={<Button size="sm" variant="ghost">Correct price</Button>}
+                          title="Correct account price"
+                          description="This recalculates the balance while retaining every recorded payment. Password confirmation is required."
+                          action={correctInstallmentAccountPrice}
+                          submitLabel="Update price"
+                        >
+                          <input type="hidden" name="id" value={account.id} />
+                          <div className="space-y-2">
+                            <Label htmlFor={`price-${account.id}`}>Target amount</Label>
+                            <Input id={`price-${account.id}`} name="targetAmount" type="number" min="0.01" step="0.01" defaultValue={account.targetAmount.toString()} required />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`price-password-${account.id}`}>Your password</Label>
+                            <Input id={`price-password-${account.id}`} name="confirmPassword" type="password" required />
+                          </div>
+                        </EntityDialog>
+                        <EntityDialog
+                          trigger={<Button size="sm" variant="ghost">Change product</Button>}
+                          title="Correct account product"
+                          description="Payments are retained, schedule and balance are recalculated, and any overpayment becomes customer credit."
+                          action={correctInstallmentAccountProduct}
+                          submitLabel="Change product"
+                        >
+                          <input type="hidden" name="id" value={account.id} />
+                          <div className="space-y-2">
+                            <Label htmlFor={`product-${account.id}`}>Product</Label>
+                            <Select name="productId" items={productItems} defaultValue={account.productId}>
+                              <SelectTrigger id={`product-${account.id}`} className="w-full"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {Object.entries(productItems).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`product-password-${account.id}`}>Your password</Label>
+                            <Input id={`product-password-${account.id}`} name="confirmPassword" type="password" required />
+                          </div>
+                        </EntityDialog>
                       </div>
                   </TableCell>
                 </TableRow>

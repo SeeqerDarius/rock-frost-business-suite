@@ -19,7 +19,7 @@ import {
   getInstallmentSettings,
   canEditPayment,
 } from "@/modules/installment/service";
-import { createPayment, editPayment, resolveCredit, applyCredit } from "./actions";
+import { createPayment, editPayment, resolveCredit, applyCredit, removePayment } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission for this action.",
@@ -177,6 +177,7 @@ export default async function InstallmentPaymentsPage({
                   <TableCell className="text-muted-foreground">{Number(payment.amount).toFixed(2)}</TableCell>
                   {canManagePayments ? (
                     <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
                       {editable ? (
                         <EntityDialog
                           trigger={
@@ -210,6 +211,20 @@ export default async function InstallmentPaymentsPage({
                           </div>
                         </EntityDialog>
                       ) : null}
+                      <EntityDialog
+                        trigger={<Button size="sm" variant="ghost">Delete</Button>}
+                        title={`Delete payment: ${payment.receiptNo}`}
+                        description="This reverses the payment, recalculates the account, and is written to the audit log. Resolved credits block deletion."
+                        action={removePayment}
+                        submitLabel="Delete payment"
+                      >
+                        <input type="hidden" name="id" value={payment.id} />
+                        <div className="space-y-2">
+                          <Label htmlFor={`delete-payment-password-${payment.id}`}>Your password</Label>
+                          <Input id={`delete-payment-password-${payment.id}`} name="confirmPassword" type="password" required />
+                        </div>
+                      </EntityDialog>
+                      </div>
                     </TableCell>
                   ) : null}
                 </TableRow>
