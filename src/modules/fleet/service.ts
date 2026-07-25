@@ -179,7 +179,8 @@ export async function updateFleetVehicle(
 
 // --- Vehicle documents (insurance & roadworthy) ---
 
-export function listFleetVehicleDocuments(organizationId: string) {
+export async function listFleetVehicleDocuments(organizationId: string) {
+  await refreshFleetDocumentStatuses(organizationId);
   return db.fleetVehicleDocument.findMany({
     where: { organizationId },
     include: { vehicle: true },
@@ -229,6 +230,35 @@ function computeRenewalStatus(data: { insuranceExpiresAt: Date; roadworthyExpire
   if (daysUntil < 0) return "DUE" as const;
   if (daysUntil <= 30) return "READY" as const;
   return "CLEAR" as const;
+}
+
+export async function refreshFleetDocumentStatuses(organizationId: string) {
+  const documents = await db.fleetVehicleDocument.findMany({
+    where: { organizationId },
+    include: { vehicle: true },
+  });
+  for (const document of documents) {
+    const renewalStatus = computeRenewalStatus(document);
+    const documentStatus = renewalStatus === "DUE" ? "EXPIRED" : renewalStatus === "READY" ? "EXPIRING_SOON" : "VALID";
+    if (document.renewalStatus === renewalStatus && document.vehicle.documentStatus === documentStatus) continue;
+    await db.$transaction(async (tx) => {
+      await tx.fleetVehicleDocument.update({ where: { id: document.id }, data: { renewalStatus } });
+      await tx.fleetVehicle.update({ where: { id: document.vehicleId }, data: { documentStatus } });
+      if (renewalStatus !== "CLEAR" && document.renewalStatus !== renewalStatus) {
+        await tx.notification.create({
+          data: {
+            organizationId,
+            type: "FLEET_DOCUMENT_RENEWAL",
+            title: `${document.vehicle.plateNumber} documents ${renewalStatus === "DUE" ? "are due" : "expire soon"}`,
+            message: `Insurance or roadworthy renewal requires attention for ${document.vehicle.assetTag}.`,
+            status: "SENT",
+            sentAt: new Date(),
+            metadata: { vehicleId: document.vehicleId, documentId: document.id, renewalStatus },
+          },
+        });
+      }
+    });
+  }
 }
 
 // --- Maintenance requests ---
