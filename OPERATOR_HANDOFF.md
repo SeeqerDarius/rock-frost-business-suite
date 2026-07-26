@@ -8,6 +8,8 @@ Invitation links and payment callbacks now target `app.*`; password-reset links 
 
 Validation passed: ESLint, TypeScript, Prisma schema validation, all 197 tests across 28 files, and the Next.js production build (116 routes plus Proxy).
 
+Commit `5d346fb` was pushed to `main` and deployed successfully as production deployment `dpl_HTfRzYVUvvQALvtgsfxs1tmxe3fa` (`READY`). All three aliases resolve to that deployment. Live HTTP verification passed: `www/login` redirects to `app/login`, legacy `www/app/platform/*` redirects to `admin/app/platform/*`, both subdomain roots redirect to their own `/login`, and both login pages return HTTP 200. The one-hour post-deploy error scan was clean.
+
 ## 2026-07-26 — Immutable platform-owner/tenant identity boundary
 
 Root cause of the reported owner-to-tenant workspace jump was a three-part identity-resolution conflict: tenant creation could attach the platform owner's existing `User` to an `Organization Owner` membership; NextAuth selected the earliest membership; and `getCurrentTenant()` preferred the `active_org` cookie. The fix establishes the active global system `Super Admin` membership as the immutable platform identity in `src/lib/auth/platform-identity.ts`. NextAuth and tenant resolution now canonicalize that identity to the internal platform anchor before any cookie/JWT fallback, tenant context hides all non-anchor memberships, and the switch action clears the organization cookie and returns the owner to the platform dashboard.
