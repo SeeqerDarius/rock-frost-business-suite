@@ -195,3 +195,44 @@ export async function revokeMemberInvitation(formData: FormData): Promise<void> 
   revalidatePath("/app/administration");
   redirect("/app/administration?revoked=1");
 }
+
+export async function removeMember(formData: FormData): Promise<void> {
+  const tenant = await requireCurrentTenant();
+  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) {
+    redirect("/app/administration?error=forbidden");
+  }
+  const membershipId = clean(formData.get("membershipId"));
+  const member = await db.organizationMember.findFirst({
+    where: { id: membershipId, organizationId: tenant.organizationId },
+    include: { role: true },
+  });
+  if (!member) redirect("/app/administration?error=not-found");
+  if (member.userId === tenant.userId) redirect("/app/administration?error=self-remove");
+
+  if (member.role?.name === "Organization Owner" && member.status === "ACTIVE") {
+    const owners = await db.organizationMember.count({
+      where: { organizationId: tenant.organizationId, status: "ACTIVE", role: { name: "Organization Owner" } },
+    });
+    if (owners <= 1) redirect("/app/administration?error=last-owner");
+  }
+
+  await db.$transaction(async (tx) => {
+    await tx.organizationMember.update({ where: { id: member.id }, data: { status: "REMOVED" } });
+    await tx.invitation.updateMany({
+      where: { membershipId: member.id, status: "PENDING" },
+      data: { status: "REVOKED" },
+    });
+    await logAuditEvent({
+      organizationId: tenant.organizationId,
+      userId: tenant.userId,
+      membershipId: member.id,
+      module: "administration",
+      action: "member.removed",
+      entityName: "OrganizationMember",
+      entityId: member.id,
+      metadata: { removedUserId: member.userId },
+    }, tx);
+  });
+  revalidatePath("/app/administration");
+  redirect("/app/administration?removed=1");
+}

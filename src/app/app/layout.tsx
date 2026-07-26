@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { getCurrentTenant } from "@/lib/tenant";
+import { OrganizationThemeSync } from "@/components/theme/organization-theme-sync";
+import { db } from "@/lib/db";
 
 /**
  * Real route protection for everything under /app/* — organization scope,
@@ -31,5 +33,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     );
   }
 
-  return <>{children}</>;
+  const organization = await db.organization.findUnique({
+    where: { id: tenant.organizationId },
+    select: { metadata: true },
+  });
+  const metadata = organization?.metadata;
+  const workspaceSettings = metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? (metadata as Record<string, unknown>).workspaceSettings
+    : undefined;
+  const theme = workspaceSettings && typeof workspaceSettings === "object"
+    ? (workspaceSettings as { theme?: "system" | "light" | "dark" }).theme
+    : undefined;
+
+  return <><OrganizationThemeSync theme={theme} />{children}</>;
 }

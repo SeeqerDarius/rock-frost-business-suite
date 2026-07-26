@@ -18,7 +18,6 @@ import { requireCurrentTenant } from "@/lib/tenant";
 import { cuid, email, escapeHtml, longText, parseWithSchema, shortText } from "@/lib/validation";
 import { createModuleRequest } from "@/platform/module-requests/service";
 
-const DELETION_RECOVERY_DAYS = 30;
 const tenantCode = z.string().trim().toLowerCase().min(3).max(50).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const optionalText = z.union([shortText, z.literal("")]);
 
@@ -328,7 +327,18 @@ export async function scheduleOrganizationDeletion(formData: FormData): Promise<
   }
 
   const requestedAt = new Date();
-  const scheduledFor = new Date(requestedAt.getTime() + DELETION_RECOVERY_DAYS * 24 * 60 * 60 * 1000);
+  const platformOrganization = await db.organization.findUnique({
+    where: { id: tenant.organizationId },
+    select: { metadata: true },
+  });
+  const platformMetadata = platformOrganization?.metadata && typeof platformOrganization.metadata === "object" && !Array.isArray(platformOrganization.metadata)
+    ? platformOrganization.metadata as Record<string, unknown>
+    : {};
+  const configuredRecoveryDays = Number(platformMetadata.organizationDeletionRecoveryDays);
+  const recoveryDays = Number.isInteger(configuredRecoveryDays) && configuredRecoveryDays >= 1 && configuredRecoveryDays <= 365
+    ? configuredRecoveryDays
+    : 30;
+  const scheduledFor = new Date(requestedAt.getTime() + recoveryDays * 24 * 60 * 60 * 1000);
   await db.$transaction(async (tx) => {
     await tx.organization.update({
       where: { id: organization.id },
@@ -348,7 +358,7 @@ export async function scheduleOrganizationDeletion(formData: FormData): Promise<
         action: "organization.deletion_scheduled",
         entityName: "Organization",
         entityId: organization.id,
-        metadata: { scheduledFor: scheduledFor.toISOString(), recoveryDays: DELETION_RECOVERY_DAYS },
+        metadata: { scheduledFor: scheduledFor.toISOString(), recoveryDays },
       },
       tx,
     );

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Lock, ShieldCheck, UserPlus, History } from "lucide-react";
+import { Lock, ShieldCheck, UserPlus, History, Settings } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { db } from "@/lib/db";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { inviteMember, resendMemberInvitation, revokeMemberInvitation } from "./actions";
+import { inviteMember, removeMember, resendMemberInvitation, revokeMemberInvitation } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to invite members.",
@@ -21,6 +21,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   "delivery-failed": "The invitation was created, but the email failed to send. Use Resend to try again, or share the link manually.",
   "not-found": "That member could not be found.",
   "resend-failed": "That invitation can no longer be resent or revoked.",
+  "self-remove": "You cannot remove your own organization access.",
+  "last-owner": "The last active Organization Owner cannot be removed.",
 };
 
 const INVITABLE_ROLE_NAMES = [
@@ -36,9 +38,9 @@ const INVITABLE_ROLE_NAMES = [
 export default async function AdministrationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ invited?: string; revoked?: string; error?: string }>;
+  searchParams: Promise<{ invited?: string; revoked?: string; removed?: string; error?: string }>;
 }) {
-  const { invited, revoked, error } = await searchParams;
+  const { invited, revoked, removed, error } = await searchParams;
   const tenant = await requireCurrentTenant();
 
   if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) {
@@ -69,12 +71,14 @@ export default async function AdministrationPage({
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <PageHeader title="Administration" description="Users, roles, permissions, and audit logs for your organization." />
-        {canViewAuditLog ? (
-          <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/administration/audit-log" />}>
-            <History />
-            Audit log
-          </Button>
-        ) : null}
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/organization/settings" />}><Settings />Workspace settings</Button>
+          {canViewAuditLog ? (
+            <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/administration/audit-log" />}>
+              <History />Audit log
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {invited ? (
@@ -87,6 +91,7 @@ export default async function AdministrationPage({
           Invitation revoked.
         </div>
       ) : null}
+      {removed ? <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">Member access removed.</div> : null}
       {error && ERROR_MESSAGES[error] ? (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {ERROR_MESSAGES[error]}
@@ -148,6 +153,11 @@ export default async function AdministrationPage({
                             </Button>
                           </form>
                         </div>
+                      ) : member.status !== "REMOVED" && member.userId !== tenant.userId ? (
+                        <form action={removeMember}>
+                          <input type="hidden" name="membershipId" value={member.id} />
+                          <Button type="submit" size="sm" variant="ghost">Remove access</Button>
+                        </form>
                       ) : null}
                     </TableCell>
                   </TableRow>
