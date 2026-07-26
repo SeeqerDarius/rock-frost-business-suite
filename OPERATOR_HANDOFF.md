@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-07-26 — UI/UX and profile-thumbnail quality pass
+
+Vetted the platform-owner and profile experience after the identity-boundary work. The small tiled control beside the account avatar was the tenant Module Launcher, which `AppShell` rendered unconditionally; platform layout now disables it. `UserMenu` previously rendered only `AvatarFallback`, so uploaded images could never appear there. It now renders `AvatarImage` when present and a clean initials fallback otherwise.
+
+Replaced the raw profile file input with a responsive photo editor including preview, accessible picker, format/size guidance, selected filename, pending state, inline errors, and success feedback. Added authenticated `/api/account/profile` retrieval with `private, no-store` caching plus immediate refresh after upload. The image remains out of JWT cookies to avoid exceeding cookie-size limits. Added app-wide loading skeletons and a recoverable runtime error boundary. Full findings are in `docs/UI_UX_QUALITY_AUDIT_2026-07-26.md`.
+
+Verification passed: ESLint, TypeScript, all 182 unit tests across 25 files, and the Next.js production build (116 routes). Browser-control backends were unavailable during this pass, so no claim of an automated authenticated screenshot walkthrough is made.
+
 ## 2026-07-26 — Platform-owner and tenant-workspace boundary
 
 Fixed the underlying route/context conflict reported by the user. The shared account dropdown previously hardcoded `/app/account` and `/app/administration`, placing a platform Super Admin inside the tenant `(overview)` shell. Platform operators now use `/app/platform/account` and `/app/platform/settings`; account mutations preserve the originating account route. The tenant overview layout rejects platform operators server-side, and business-module access sends them back to `/app/platform/dashboard`.

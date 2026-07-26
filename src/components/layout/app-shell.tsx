@@ -17,13 +17,22 @@ interface AppShellProps {
   children: React.ReactNode;
   enabledModuleKeys?: string[];
   homeHref?: string;
+  showModuleLauncher?: boolean;
   organization?: {
     organizationId: string;
     memberships: { organizationId: string; name: string; tenantCode: string }[];
   };
 }
 
-export function AppShell({ sectionLabel, navigation, children, enabledModuleKeys = [], organization, homeHref = "/app/dashboard" }: AppShellProps) {
+export function AppShell({
+  sectionLabel,
+  navigation,
+  children,
+  enabledModuleKeys = [],
+  organization,
+  homeHref = "/app/dashboard",
+  showModuleLauncher = true,
+}: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   return (
@@ -64,7 +73,7 @@ export function AppShell({ sectionLabel, navigation, children, enabledModuleKeys
           </Button>
           <div className="flex-1" />
           <div className="flex items-center gap-1">
-            <ModuleLauncher enabledModuleKeys={enabledModuleKeys} />
+            {showModuleLauncher ? <ModuleLauncher enabledModuleKeys={enabledModuleKeys} /> : null}
             <UserMenu />
           </div>
         </header>

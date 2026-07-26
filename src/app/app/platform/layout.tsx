@@ -31,6 +31,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
       sectionLabel="Platform Administration"
       navigation={platformNavigation}
       homeHref="/app/platform/dashboard"
+      showModuleLauncher={false}
     >
       {children}
     </AppShell>

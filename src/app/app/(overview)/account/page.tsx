@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Image from "next/image";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
-import { changePassword, updateProfile, uploadProfilePicture } from "./actions";
+import { changePassword, updateProfile } from "./actions";
+import { ProfilePhotoForm } from "./profile-photo-form";
 
 const ERRORS: Record<string, string> = {
   "invalid-profile": "Enter a valid name and email address.",
@@ -56,15 +56,7 @@ export default async function AccountPage({
         <div className="space-y-6">
           <Card>
             <CardHeader><CardTitle>Profile picture</CardTitle><CardDescription>JPG, PNG, or WebP, up to 1 MB.</CardDescription></CardHeader>
-            <CardContent className="flex items-center gap-4">
-              <div className="flex size-16 items-center justify-center overflow-hidden rounded-full bg-muted text-xl font-semibold">
-                {user.image ? <Image src={user.image} alt="" width={64} height={64} unoptimized className="size-full object-cover" /> : (user.name?.[0] ?? user.email[0]).toUpperCase()}
-              </div>
-              <form action={uploadProfilePicture} className="flex flex-1 items-end gap-2">
-                <Input name="image" type="file" accept="image/jpeg,image/png,image/webp" required />
-                <Button type="submit" variant="outline">Upload</Button>
-              </form>
-            </CardContent>
+            <CardContent><ProfilePhotoForm image={user.image} name={user.name} email={user.email} /></CardContent>
           </Card>
 
           <Card>

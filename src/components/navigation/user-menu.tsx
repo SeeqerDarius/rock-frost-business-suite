@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
+import { useEffect, useState } from "react";
 import { LogOut, Settings, User } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -25,8 +26,27 @@ function initialsFor(name?: string | null, email?: string | null) {
 
 export function UserMenu() {
   const { data: session } = useSession();
-  const name = session?.user?.name ?? null;
-  const email = session?.user?.email ?? null;
+  const [profile, setProfile] = useState<{ name: string | null; email: string; image: string | null } | null>(null);
+  useEffect(() => {
+    let active = true;
+    const refreshProfile = () => {
+      void fetch("/api/account/profile", { cache: "no-store" })
+        .then((response) => response.ok ? response.json() : null)
+        .then((nextProfile) => {
+          if (active && nextProfile) setProfile(nextProfile);
+        });
+    };
+    const initialRequest = window.setTimeout(refreshProfile, 0);
+    window.addEventListener("profile-updated", refreshProfile);
+    return () => {
+      active = false;
+      window.clearTimeout(initialRequest);
+      window.removeEventListener("profile-updated", refreshProfile);
+    };
+  }, []);
+  const name = profile?.name ?? session?.user?.name ?? null;
+  const email = profile?.email ?? session?.user?.email ?? null;
+  const image = profile?.image ?? undefined;
   const isPlatformOwner = session?.user?.role === "Super Admin";
   const profileHref = isPlatformOwner ? "/app/platform/account" : "/app/account";
   const settingsHref = isPlatformOwner ? "/app/platform/settings" : "/app/administration";
@@ -35,6 +55,7 @@ export function UserMenu() {
     <DropdownMenu>
       <DropdownMenuTrigger render={<Button variant="ghost" className="gap-2 px-2" aria-label="Open account menu" />}>
         <Avatar className="size-6">
+          {image ? <AvatarImage src={image} alt={name ? `${name} profile picture` : "Profile picture"} /> : null}
           <AvatarFallback className="text-xs">{initialsFor(name, email)}</AvatarFallback>
         </Avatar>
       </DropdownMenuTrigger>

@@ -61,16 +61,19 @@ export async function updateProfile(formData: FormData): Promise<void> {
   redirect(`${destination}?saved=profile`);
 }
 
-export async function uploadProfilePicture(formData: FormData): Promise<void> {
+export async function uploadProfilePicture(formData: FormData): Promise<void | { ok: boolean; error?: string }> {
   const destination = await accountPath();
   const userId = await currentUserId();
   const file = formData.get("image");
+  const clientSubmission = formData.get("_client") === "1";
   if (!(file instanceof File) || file.size === 0 || file.size > MAX_IMAGE_BYTES || !IMAGE_TYPES.has(file.type)) {
+    if (clientSubmission) return { ok: false, error: "Choose a JPG, PNG, or WebP image no larger than 1 MB." };
     redirect(`${destination}?error=invalid-image`);
   }
   const image = `data:${file.type};base64,${Buffer.from(await file.arrayBuffer()).toString("base64")}`;
   await db.user.update({ where: { id: userId }, data: { image } });
-  revalidatePath(destination);
+  revalidatePath("/app", "layout");
+  if (clientSubmission) return { ok: true };
   redirect(`${destination}?saved=photo`);
 }
 

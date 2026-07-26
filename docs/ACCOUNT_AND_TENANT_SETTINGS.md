@@ -13,6 +13,8 @@ Changing the sign-in email requires the current password. Email and password cha
 
 Images are stored as bounded data URLs in the existing `User.image` and `Organization.logoUrl` fields. This avoids introducing an undeclared object-storage dependency. A later object-storage migration can retain the same UI and replace only the persistence layer.
 
+The account header retrieves the current image through the authenticated `/api/account/profile` endpoint with private, no-store caching. Images are deliberately not embedded in the NextAuth JWT cookie: even a bounded image can exceed browser cookie limits. A successful upload refreshes the header thumbnail immediately.
+
 ## Tenant administration
 
 Organization administrators with `org.settings.manage` can open `/app/organization/settings` from Administration. They can upload a company logo and configure:
