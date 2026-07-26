@@ -47,6 +47,9 @@ async function main() {
       users: await db.user.count(),
       organizations: await db.organization.count(),
       memberships: await db.organizationMember.count(),
+      roles: await db.role.count(),
+      permissions: await db.permission.count(),
+      modules: await db.module.count(),
     }, null, 2));
     return;
   }

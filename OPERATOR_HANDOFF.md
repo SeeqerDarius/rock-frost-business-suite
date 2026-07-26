@@ -1,5 +1,11 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-07-26 — Clean production platform reset
+
+At the user's explicit request, the configured `neondb.public` database was reset with `scripts/reset-platform.ts`. All 77 application tables were truncated while `_prisma_migrations` was preserved. The canonical platform catalog was reseeded and one fresh platform anchor was created with separate Super Admin and Organization Owner identities. No demo tenants, module transactions, subscriptions, requests, notifications, or audit history were recreated.
+
+Post-reset counts: 2 users, 1 organization, 2 memberships, 17 system roles, 78 permissions, and 11 active module definitions. Plaintext bootstrap passwords were returned directly to the user and were not written to this repository or documentation. The existing sequential catalog seed was converted to bulk permission/grant insertion so clean bootstraps complete reliably over the remote Neon connection.
+
 ## 2026-07-26 — Account, tenant, and platform settings
 
 Implemented editable user profiles (name, phone, sign-in email), bounded profile-picture uploads, authenticated password changes, tenant logo uploads, tenant backup/recovery policy controls, and tenant-wide theme defaults. Email and password changes revoke existing sessions. Organization administrators can remove tenant access without deleting a shared user identity; self-removal and removal of the final active Organization Owner are blocked.

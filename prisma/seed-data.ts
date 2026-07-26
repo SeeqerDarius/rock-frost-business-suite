@@ -258,9 +258,10 @@ export const MODULES: { code: string; name: string }[] = [
 export async function seedPlatform(db: PrismaClient, options: { log?: boolean } = {}) {
   const log = options.log ?? true;
 
-  for (const key of ALL_PERMISSIONS) {
-    await db.permission.upsert({ where: { key }, update: {}, create: { key, name: key } });
-  }
+  await db.permission.createMany({
+    data: ALL_PERMISSIONS.map((key) => ({ key, name: key })),
+    skipDuplicates: true,
+  });
   if (log) console.log(`Upserted ${ALL_PERMISSIONS.length} permissions.`);
 
   for (const role of SYSTEM_ROLES) {
@@ -274,6 +275,7 @@ export async function seedPlatform(db: PrismaClient, options: { log?: boolean } 
   const permissions = await db.permission.findMany();
   const permissionByKey = new Map(permissions.map((p) => [p.key, p]));
 
+  const grants: Array<{ roleId: string; permissionId: string }> = [];
   for (const role of roles) {
     const keys = ROLE_PERMISSIONS[role.name];
     if (!keys) {
@@ -284,21 +286,16 @@ export async function seedPlatform(db: PrismaClient, options: { log?: boolean } 
     for (const key of keys) {
       const permission = permissionByKey.get(key);
       if (!permission) continue;
-      await db.rolePermission.upsert({
-        where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } },
-        update: {},
-        create: { roleId: role.id, permissionId: permission.id },
-      });
+      grants.push({ roleId: role.id, permissionId: permission.id });
     }
     if (log) console.log(`Seeded ${keys.length} permission grants for role "${role.name}".`);
   }
+  await db.rolePermission.createMany({ data: grants, skipDuplicates: true });
 
-  for (const mod of MODULES) {
-    await db.module.upsert({
-      where: { code: mod.code },
-      update: { name: mod.name, status: "ACTIVE" },
-      create: { code: mod.code, name: mod.name, status: "ACTIVE", isCore: false },
-    });
-  }
+  await Promise.all(MODULES.map((mod) => db.module.upsert({
+    where: { code: mod.code },
+    update: { name: mod.name, status: "ACTIVE" },
+    create: { code: mod.code, name: mod.name, status: "ACTIVE", isCore: false },
+  })));
   if (log) console.log(`Upserted ${MODULES.length} modules (all ACTIVE).`);
 }

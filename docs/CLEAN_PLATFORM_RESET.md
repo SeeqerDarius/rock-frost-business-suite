@@ -19,3 +19,5 @@ Remove-Item Env:CONFIRM_DATABASE_RESET
 ```
 
 Fresh passwords are randomly generated, printed once, and stored only as bcrypt hashes. Never copy the plaintext credentials into this repository or documentation. Change both passwords after first login.
+
+The catalog seed uses bulk inserts for permissions and role grants. This is important on remote databases: a sequential grant-per-query seed can exceed normal operator command timeouts after the destructive truncation has already completed.
