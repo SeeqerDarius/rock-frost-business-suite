@@ -1,5 +1,9 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-07-26 — Internal platform anchor excluded from tenant surfaces
+
+Corrected the platform UI after the user rightly observed that the required internal authorization anchor was displayed as a tenant. Organizations carrying an active system Super Admin membership are now excluded centrally from platform tenant counts, active-member/module-adoption totals, organization lists, request/subscription selectors, and direct tenant detail/configuration routes. The clean bootstrap also marks the anchor with `metadata.isPlatformAnchor = true`. With the current clean database, every customer-tenant surface reports zero organizations while the single platform owner can still authenticate.
+
 ## 2026-07-26 — Single platform-owner identity
 
 Superseding the two-identity bootstrap below at the user's direction, the live database was reset again and now contains exactly one user and one membership: `owner@rockfrostgroup.com`, named Rock Frost Platform Owner, with the system `Super Admin` role. There is no Organization Owner or customer-tenant login. The one remaining organization is the protected internal platform anchor required by the current membership-based authorization model, not a customer tenant.

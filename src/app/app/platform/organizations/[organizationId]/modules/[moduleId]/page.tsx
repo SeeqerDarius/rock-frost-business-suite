@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/db";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
+import { isPlatformAnchorOrganization } from "@/lib/platform-organizations";
 import { parseOrganizationModuleConfiguration } from "@/platform/module-requests/configuration";
 import { updateOrganizationModuleConfiguration } from "./actions";
 
@@ -20,6 +21,7 @@ export default async function OrganizationModuleConfigurationPage({
 }) {
   await requirePlatformOperator();
   const { organizationId, moduleId } = await params;
+  if (await isPlatformAnchorOrganization(organizationId)) notFound();
   const { saved, error } = await searchParams;
   const [organization, module_, assignment] = await Promise.all([
     db.organization.findUnique({ where: { id: organizationId } }),
@@ -100,4 +102,3 @@ export default async function OrganizationModuleConfigurationPage({
     </div>
   );
 }
-

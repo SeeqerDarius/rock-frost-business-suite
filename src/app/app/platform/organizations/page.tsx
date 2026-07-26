@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { db } from "@/lib/db";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
+import { getPlatformAnchorOrganizationIds } from "@/lib/platform-organizations";
 
 const STATUSES = ["ALL", "TRIAL", "ACTIVE", "SUSPENDED", "CANCELLED"] as const;
 
@@ -18,11 +19,13 @@ export default async function PlatformOrganizationsPage({
   searchParams: Promise<{ q?: string; status?: string; deleted?: string; error?: string }>;
 }) {
   await requirePlatformOperator();
+  const platformAnchorIds = await getPlatformAnchorOrganizationIds();
   const { q = "", status = "ALL", deleted, error } = await searchParams;
   const normalizedStatus = STATUSES.includes(status as (typeof STATUSES)[number]) ? status : "ALL";
 
   const organizations = await db.organization.findMany({
     where: {
+      id: { notIn: platformAnchorIds },
       ...(normalizedStatus !== "ALL" ? { status: normalizedStatus as "TRIAL" | "ACTIVE" | "SUSPENDED" | "CANCELLED" } : {}),
       ...(q.trim()
         ? {

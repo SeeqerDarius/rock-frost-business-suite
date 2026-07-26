@@ -77,6 +77,7 @@ async function main() {
       timezone: "Africa/Accra",
       defaultLanguage: "en",
       billingEmail: "owner@rockfrostgroup.com",
+      metadata: { isPlatformAnchor: true },
     },
   });
 

@@ -8,7 +8,7 @@
 4. creates one empty platform anchor organization; and
 5. creates one fresh platform-owner identity with the `Super Admin` role.
 
-The platform anchor is an internal authorization boundary required by the application; it is not a customer tenant. The reset does not create a tenant-owner login, demo tenants, demo module data, subscriptions, requests, notifications, or audit history.
+The platform anchor is marked with `metadata.isPlatformAnchor` and is an internal authorization boundary required by the application; it is not a customer tenant. Platform organization lists, totals, selectors, and direct tenant-management routes exclude organizations carrying an active system Super Admin membership. The reset does not create a tenant-owner login, demo tenants, demo module data, subscriptions, requests, notifications, or audit history.
 
 The command refuses to run unless the operator supplies the exact one-time confirmation variable:
 

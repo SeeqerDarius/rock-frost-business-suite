@@ -7,12 +7,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/layout/page-header";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
 import { db } from "@/lib/db";
+import { getPlatformAnchorOrganizationIds } from "@/lib/platform-organizations";
 import { activateSubscriptionAction, cancelSubscriptionAction, createSubscriptionAction } from "./actions";
 
 export default async function PlatformSubscriptionsPage() {
   await requirePlatformOperator();
+  const platformAnchorIds = await getPlatformAnchorOrganizationIds();
   const [organizations, modules, requests, subscriptions] = await Promise.all([
-    db.organization.findMany({ where: { status: { in: ["ACTIVE", "TRIAL"] } }, orderBy: { name: "asc" } }),
+    db.organization.findMany({ where: { id: { notIn: platformAnchorIds }, status: { in: ["ACTIVE", "TRIAL"] } }, orderBy: { name: "asc" } }),
     db.module.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" } }),
     db.moduleRequest.findMany({ where: { status: { in: ["SUBMITTED", "UNDER_REVIEW", "QUOTED", "APPROVED"] } }, include: { organization: true, module: true, contactSubmission: true }, orderBy: { createdAt: "desc" } }),
     db.subscription.findMany({ include: { organization: true, module: true }, orderBy: { createdAt: "desc" } }),

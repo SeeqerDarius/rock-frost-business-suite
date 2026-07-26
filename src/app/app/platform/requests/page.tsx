@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/db";
+import { getPlatformAnchorOrganizationIds } from "@/lib/platform-organizations";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
 import {
   MODULE_REQUEST_PRIORITIES,
@@ -34,6 +35,7 @@ export default async function PlatformRequestsPage({
   searchParams: Promise<{ updated?: string; converted?: string; error?: string }>;
 }) {
   await requirePlatformOperator();
+  const platformAnchorIds = await getPlatformAnchorOrganizationIds();
   const { updated, converted, error } = await searchParams;
   const [requests, operators, organizations, modules, inquiries] = await Promise.all([
     db.moduleRequest.findMany({
@@ -60,7 +62,7 @@ export default async function PlatformRequestsPage({
       select: { id: true, name: true, email: true },
       orderBy: { name: "asc" },
     }),
-    db.organization.findMany({ where: { status: { in: ["ACTIVE", "TRIAL"] } }, orderBy: { name: "asc" } }),
+    db.organization.findMany({ where: { id: { notIn: platformAnchorIds }, status: { in: ["ACTIVE", "TRIAL"] } }, orderBy: { name: "asc" } }),
     db.module.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" } }),
     db.contactSubmission.findMany({
       where: { status: "NEW", intent: { in: ["DEMO", "MODULE", "CUSTOM_MODULE"] } },

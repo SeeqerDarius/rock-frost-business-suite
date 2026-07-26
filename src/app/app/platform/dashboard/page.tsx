@@ -3,17 +3,19 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { db } from "@/lib/db";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
+import { getPlatformAnchorOrganizationIds } from "@/lib/platform-organizations";
 
 export default async function PlatformDashboardPage() {
   await requirePlatformOperator();
+  const platformAnchorIds = await getPlatformAnchorOrganizationIds();
 
   const [organizationCount, activeMemberCount, enabledModuleCount, moduleAdoption] = await Promise.all([
-    db.organization.count(),
-    db.organizationMember.count({ where: { status: "ACTIVE" } }),
-    db.organizationModule.count({ where: { enabled: true } }),
+    db.organization.count({ where: { id: { notIn: platformAnchorIds } } }),
+    db.organizationMember.count({ where: { status: "ACTIVE", organizationId: { notIn: platformAnchorIds } } }),
+    db.organizationModule.count({ where: { enabled: true, organizationId: { notIn: platformAnchorIds } } }),
     db.module.findMany({
       where: { status: "ACTIVE" },
-      select: { name: true, organizationModules: { where: { enabled: true }, select: { id: true } } },
+      select: { name: true, organizationModules: { where: { enabled: true, organizationId: { notIn: platformAnchorIds } }, select: { id: true } } },
       orderBy: { name: "asc" },
     }),
   ]);

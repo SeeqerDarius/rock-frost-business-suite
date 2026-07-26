@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/db";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
+import { isPlatformAnchorOrganization } from "@/lib/platform-organizations";
 import { MODULE_REQUEST_STATUS_LABELS, MODULE_REQUEST_TYPE_LABELS } from "@/platform/module-requests/constants";
 import { ModuleToggle } from "../module-toggle";
 import {
@@ -49,6 +50,7 @@ export default async function OrganizationDetailPage({
 }) {
   await requirePlatformOperator();
   const { organizationId } = await params;
+  if (await isPlatformAnchorOrganization(organizationId)) notFound();
   const notices = await searchParams;
   const [organization, modules] = await Promise.all([
     db.organization.findUnique({
