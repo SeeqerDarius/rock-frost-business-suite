@@ -6,7 +6,9 @@ Root cause of the reported owner-to-tenant workspace jump was a three-part ident
 
 Tenant creation and invitation now reject a platform identity's email, including transaction-time rechecks. Migration `20260726050000_enforce_platform_owner_isolation` idempotently marks historical tenant memberships `REMOVED`, revokes associated pending invitations, and increments affected users' `sessionVersion`. `scripts/repair-platform-owner-isolation.ts` and `npm run db:repair-platform-owner-isolation` provide the equivalent operator repair/check.
 
-Verification passed: the focused identity suite (31 tests), ESLint, TypeScript, Prisma schema validation, all 186 tests across 26 files, and the Next.js production build (116 generated routes). The direct local repair command could not connect to the configured Neon endpoint (`ep-crimson-star-ah27j3if-pooler.c-3.us-east-1.aws.neon.tech:5432`), so live data cleanup is delegated to the deployment migration and must be confirmed after deployment.
+Verification passed: the focused identity suite (31 tests), ESLint, TypeScript, Prisma schema validation, all 186 tests across 26 files, and the Next.js production build (116 generated routes). The direct local repair command could not connect to the configured Neon endpoint (`ep-crimson-star-ah27j3if-pooler.c-3.us-east-1.aws.neon.tech:5432`), so live data cleanup was delegated to the deployment migration.
+
+Commit `5525750` was pushed to `main` and deployed successfully to production as Vercel deployment `dpl_GPDCZuk7x6bCxs4x4NDKNt3Lya9d`, aliased to `https://www.rockfrostgroup.com`. The production build connected to Neon and reported no pending migrations, confirming the cleanup migration had already been applied by the Git-triggered deployment. The deployment is `READY`; the one-hour post-deploy error-log scan was clean. Direct row-by-row verification from the local machine remains unavailable because its Neon pooler endpoint cannot be reached.
 
 ## 2026-07-26 — UI/UX and profile-thumbnail quality pass
 
