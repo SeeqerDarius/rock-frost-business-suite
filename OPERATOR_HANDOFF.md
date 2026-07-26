@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-07-26 — Completed requests leave the operator queue
+
+Approving and enabling an existing module now sets its `ModuleRequest` to
+`COMPLETED` instead of leaving it at `APPROVED`. The platform request query
+excludes `COMPLETED`, `CANCELLED`, and `REJECTED`, keeping the work pane
+actionable while preserving every request and audit event in storage.
+Regression coverage now asserts the completed transition.
+
 ## 2026-07-26 — Public acquisition, onboarding, billing, and subscriptions
 
 **Implemented:** Public `/modules` cards now send visitors to a module-specific
@@ -110,7 +118,9 @@ After making changes:
 
 ## Current phase
 
-**All sixteen product phases are feature-complete (see `docs/DEVELOPMENT_ROADMAP.md`), but a 2026-07-20 full-project audit found the platform is only production-ready for controlled/internal use, not external multi-tenant onboarding or real financial operations — see `docs/HARDENING_PLAN.md`.** The project is in a dedicated **production-hardening track**, run in numbered passes rather than feature phases. **Hardening Pass 1** (tenant guard, session revocation, dashboard permission leak, Administration/Projects/Payroll IDOR), **Pass 2** (financial/inventory transaction integrity), **Pass 3a** (invitation redesign), **Pass 3b** (Zod validation library + CRM/HR/Fleet IDOR audit), **Pass 3c** (remaining IDOR/Zod/Decimal-hygiene work, reproducible seeding/CI, stale-doc fixes), and **Pass 4** (real-Postgres integration/concurrency test infrastructure, closing the documented residual concurrency races plus two more found while testing, and a production audit-logging system with a real viewer) **are all complete.** See `docs/HARDENING_PLAN.md` for full detail and the remaining Milestone D+ scope (performance, resilience/accessibility, the branch-access design doc, and confirming the CI workflow against a real GitHub Actions run — still unverified from this environment). Billing/Subscriptions remains an explicit "Planned — requirements not yet defined" placeholder; it was never implemented scope and is not part of the hardening track.
+**All sixteen product phases are feature-complete (see `docs/DEVELOPMENT_ROADMAP.md`), but a 2026-07-20 full-project audit found the platform is only production-ready for controlled/internal use, not external multi-tenant onboarding or real financial operations — see `docs/HARDENING_PLAN.md`.** The project is in a dedicated **production-hardening track**, run in numbered passes rather than feature phases. **Hardening Pass 1** (tenant guard, session revocation, dashboard permission leak, Administration/Projects/Payroll IDOR), **Pass 2** (financial/inventory transaction integrity), **Pass 3a** (invitation redesign), **Pass 3b** (Zod validation library + CRM/HR/Fleet IDOR audit), **Pass 3c** (remaining IDOR/Zod/Decimal-hygiene work, reproducible seeding/CI, stale-doc fixes), and **Pass 4** (real-Postgres integration/concurrency test infrastructure, closing the documented residual concurrency races plus two more found while testing, and a production audit-logging system with a real viewer) **are all complete.** See `docs/HARDENING_PLAN.md` for full detail and the remaining Milestone D+ scope (performance, resilience/accessibility, the branch-access design doc, and confirming the CI workflow against a real GitHub Actions run — still unverified from this environment).
+
+**Billing/Subscriptions is no longer a placeholder.** A prior, undocumented pass (commits `54226be`/`d5eba17`/`2312aa9`/`18221a1`/`ed644f8` — **not previously logged in this file**, a gap in itself; see the note at the end of the entry below) had already built the full acquisition pipeline (`/contact` → platform inquiry inbox → organization creation with auto-generated tenant codes and prefilled fields → `Subscription` record with a `MANUAL_OFFLINE`/`PLATFORM_MANAGED` mode) and reserved but never wired `PAYSTACK`/`FLUTTERWAVE` as gateway-provider values. This pass (below) connects that reservation to real Paystack and Flutterwave checkout, a tenant-facing billing page, and both providers' webhooks. See `docs/BILLING_AND_SUBSCRIPTIONS.md` for the full design.
 
 ## Current architecture (short version — see `docs/ARCHITECTURE.md` for full detail)
 

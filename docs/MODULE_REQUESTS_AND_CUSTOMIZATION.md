@@ -47,6 +47,12 @@ The supported request statuses are:
 `SUBMITTED`, `UNDER_REVIEW`, `NEEDS_INFORMATION`, `QUOTED`, `APPROVED`, `REJECTED`,
 `IMPLEMENTING`, `READY`, `COMPLETED`, and `CANCELLED`.
 
+The platform work queue shows only active, actionable requests. Approving and
+enabling an existing module transitions the request directly to `COMPLETED`,
+so it leaves the queue immediately while remaining available in the database,
+audit log, and organization history. Rejected and cancelled requests are also
+excluded from the active queue.
+
 ## Organization-specific configuration
 
 Platform operators can open an organization's module configuration from `/app/platform/organizations`.
@@ -83,4 +89,3 @@ It does not dynamically generate or execute code. A real custom module still req
 5. `OrganizationModule` enablement only for the purchasing organization.
 
 This preserves reviewability and prevents customer-supplied configuration from becoming an arbitrary-code path.
-

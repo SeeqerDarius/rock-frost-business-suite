@@ -56,7 +56,7 @@ export async function manageModuleRequest(formData: FormData): Promise<void> {
       requestId: parsed.data.requestId,
       actorId: tenant.userId,
       assignedToId: parsed.data.assignedToId || null,
-      status: enableModule ? "APPROVED" : parsed.data.status,
+      status: enableModule ? "COMPLETED" : parsed.data.status,
       priority: parsed.data.priority,
       note: parsed.data.note || null,
       isInternal: formData.get("isInternal") === "true",

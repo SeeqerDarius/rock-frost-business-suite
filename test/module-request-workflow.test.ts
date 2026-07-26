@@ -101,7 +101,7 @@ describe("module request workflow", () => {
     }));
   });
 
-  it("forces approve-and-enable to the APPROVED status", async () => {
+  it("completes approve-and-enable so it leaves the active queue", async () => {
     await expect(
       manageModuleRequest(data({
         requestId: "clh3234567890123456789012",
@@ -116,9 +116,8 @@ describe("module request workflow", () => {
     ).rejects.toThrow("updated=1");
 
     expect(mockUpdateModuleRequest).toHaveBeenCalledWith(expect.objectContaining({
-      status: "APPROVED",
+      status: "COMPLETED",
       enableModule: true,
     }));
   });
 });
-

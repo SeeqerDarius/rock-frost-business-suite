@@ -37,6 +37,7 @@ export default async function PlatformRequestsPage({
   const { updated, converted, error } = await searchParams;
   const [requests, operators, organizations, modules, inquiries] = await Promise.all([
     db.moduleRequest.findMany({
+      where: { status: { notIn: ["COMPLETED", "CANCELLED", "REJECTED"] } },
       include: {
         organization: true,
         module: true,
