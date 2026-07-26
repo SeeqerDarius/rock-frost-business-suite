@@ -10,6 +10,13 @@ shadcn/ui (Base UI primitives, `base-nova` preset) + Tailwind CSS v4. See `docs/
 - **Dark mode**: `next-themes`, class-based (`.dark` on `<html>`), system-aware by default. Every shadcn component ships both light and dark tokens already — don't hardcode colors outside the token system.
 - **Theme tokens**: defined as CSS variables in `src/app/globals.css` (`--background`, `--foreground`, `--primary`, `--card`, `--border`, etc., plus matching `.dark` overrides). Use Tailwind's semantic classes (`bg-background`, `text-muted-foreground`, `border-border`) — never a raw hex/oklch value in a component.
 
+## Brand and application icons
+
+- The authoritative raster RF mark is `public/rf logo.png`; keep it unchanged as the source asset.
+- Browser and installed-app icons use the complete RF mark, tightly cropped to its alpha bounds and centered on the brand navy `#0b1220` rounded square.
+- Next.js file-convention assets are `src/app/favicon.ico` (16/32/48), `src/app/icon.png` (32), and `src/app/apple-icon.png` (180). The web manifest references `public/icon-192.png` and `public/icon-512.png`.
+- Regenerate every size from the source image. Do not enlarge a favicon-sized derivative or redraw the RF geometry.
+
 ## Component conventions
 
 - shadcn primitives live in `src/components/ui/` — generated code. If you need to change one, prefer re-running `npx shadcn@latest add <name> --overwrite` after adjusting `components.json`/registry config, rather than hand-editing generated internals out of sync with upstream.

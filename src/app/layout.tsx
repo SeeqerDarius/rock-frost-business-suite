@@ -22,7 +22,6 @@ export const metadata: Metadata = {
   creator: "Rock Frost Technologies",
   publisher: "Rock Frost Technologies",
   formatDetection: { email: false, address: false, telephone: false },
-  icons: { icon: "/favicon.svg", apple: "/apple-touch-icon.svg" },
   manifest: "/manifest.webmanifest",
 };
 

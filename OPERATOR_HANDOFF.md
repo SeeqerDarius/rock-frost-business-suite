@@ -1,5 +1,11 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-07-26 — RF favicon and installed-app icons
+
+Replaced the generic geometric SVG favicon with the supplied `public/rf logo.png`. The source remains unchanged; its alpha bounds were tightly cropped and the full RF mark was centered on a brand-navy rounded square. Added Next.js file-convention assets at `src/app/favicon.ico` (16/32/48), `src/app/icon.png` (32), and `src/app/apple-icon.png` (180), plus manifest icons at `public/icon-192.png` and `public/icon-512.png`. Removed the explicit root metadata icon override and the obsolete SVG assets so Next.js emits the correct size/type metadata automatically. Updated `public/manifest.webmanifest` and `docs/DESIGN_SYSTEM.md`.
+
+Validation passed: generated dimensions and all three embedded ICO sizes verified, manifest JSON parsed successfully, ESLint, TypeScript, all 200 tests across 29 files, and the Next.js production build (133 generated routes, including `/icon.png` and `/apple-icon.png`).
+
 ## 2026-07-26 — Concurrent owner and tenant sessions by subdomain
 
 Implemented host-separated authentication so the same browser profile can remain signed in as a platform owner and tenant simultaneously. `admin.rockfrostgroup.com` is the platform control plane, `app.rockfrostgroup.com` is the tenant workspace, and `www.rockfrostgroup.com` remains public. NextAuth's session-token cookie is explicitly host-only, credential login rejects identities on the wrong surface, and the authenticated app layout independently repeats the host/role check. `src/proxy.ts` routes legacy and cross-surface URLs but is not relied on as the sole authorization gate.
