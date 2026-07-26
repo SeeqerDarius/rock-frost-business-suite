@@ -29,7 +29,7 @@ function LoginForm() {
   const notice = noticeKey ? NOTICE_MESSAGES[noticeKey] : null;
   const urlError = searchParams.get("error");
   const urlErrorMessage = urlError ? ERROR_MESSAGES[urlError] : null;
-  const callbackUrl = searchParams.get("callbackUrl") || "/app/dashboard";
+  const callbackUrl = searchParams.get("callbackUrl") || "/app";
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

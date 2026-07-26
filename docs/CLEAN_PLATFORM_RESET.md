@@ -6,9 +6,9 @@
 2. discovers and truncates every application table while retaining `_prisma_migrations`;
 3. reseeds the canonical system permissions, roles, role grants, and module registry;
 4. creates one empty platform anchor organization; and
-5. creates separate fresh `Super Admin` and `Organization Owner` identities.
+5. creates one fresh platform-owner identity with the `Super Admin` role.
 
-It does not create demo tenants, demo module data, subscriptions, requests, notifications, or audit history.
+The platform anchor is an internal authorization boundary required by the application; it is not a customer tenant. The reset does not create a tenant-owner login, demo tenants, demo module data, subscriptions, requests, notifications, or audit history.
 
 The command refuses to run unless the operator supplies the exact one-time confirmation variable:
 

@@ -1,5 +1,11 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-07-26 — Single platform-owner identity
+
+Superseding the two-identity bootstrap below at the user's direction, the live database was reset again and now contains exactly one user and one membership: `owner@rockfrostgroup.com`, named Rock Frost Platform Owner, with the system `Super Admin` role. There is no Organization Owner or customer-tenant login. The one remaining organization is the protected internal platform anchor required by the current membership-based authorization model, not a customer tenant.
+
+The default login callback now targets `/app`; that server route sends platform operators to `/app/platform/dashboard` and tenant users (when real customer tenants are later onboarded) to `/app/dashboard`. Post-reset counts: 1 user, 1 internal platform organization, 1 membership, 17 roles, 78 permissions, and 11 module definitions. The new plaintext password was returned only to the user and is not recorded here.
+
 ## 2026-07-26 — Clean production platform reset
 
 At the user's explicit request, the configured `neondb.public` database was reset with `scripts/reset-platform.ts`. All 77 application tables were truncated while `_prisma_migrations` was preserved. The canonical platform catalog was reseeded and one fresh platform anchor was created with separate Super Admin and Organization Owner identities. No demo tenants, module transactions, subscriptions, requests, notifications, or audit history were recreated.

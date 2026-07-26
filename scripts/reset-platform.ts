@@ -3,7 +3,7 @@
  *
  * Deletes every application row while preserving Prisma migration history,
  * reseeds the system role/permission/module catalog, and creates a fresh
- * platform anchor with separate Super Admin and Organization Owner logins.
+ * platform anchor with one platform-owner Super Admin login.
  *
  * Run only with:
  *   CONFIRM_DATABASE_RESET=DELETE_ALL_PLATFORM_DATA npx tsx scripts/reset-platform.ts
@@ -62,11 +62,9 @@ async function main() {
   await seedPlatform(db, { log: false });
 
   const superAdminPassword = password();
-  const ownerPassword = password();
-  const [superAdminRole, ownerRole] = await Promise.all([
-    db.role.findFirstOrThrow({ where: { name: "Super Admin", isSystem: true, organizationId: null } }),
-    db.role.findFirstOrThrow({ where: { name: "Organization Owner", isSystem: true, organizationId: null } }),
-  ]);
+  const superAdminRole = await db.role.findFirstOrThrow({
+    where: { name: "Super Admin", isSystem: true, organizationId: null },
+  });
 
   const organization = await db.organization.create({
     data: {
@@ -82,44 +80,24 @@ async function main() {
     },
   });
 
-  const [superAdmin, owner] = await Promise.all([
-    db.user.create({
-      data: {
-        name: "Rock Frost Super Admin",
-        email: "superadmin@rockfrostgroup.com",
-        status: "ACTIVE",
-        emailVerified: new Date(),
-        passwordHash: await bcrypt.hash(superAdminPassword, 12),
-      },
-    }),
-    db.user.create({
-      data: {
-        name: "Rock Frost Organization Owner",
-        email: "owner@rockfrostgroup.com",
-        status: "ACTIVE",
-        emailVerified: new Date(),
-        passwordHash: await bcrypt.hash(ownerPassword, 12),
-      },
-    }),
-  ]);
+  const superAdmin = await db.user.create({
+    data: {
+      name: "Rock Frost Platform Owner",
+      email: "owner@rockfrostgroup.com",
+      status: "ACTIVE",
+      emailVerified: new Date(),
+      passwordHash: await bcrypt.hash(superAdminPassword, 12),
+    },
+  });
 
-  await db.organizationMember.createMany({
-    data: [
-      {
-        organizationId: organization.id,
-        userId: superAdmin.id,
-        roleId: superAdminRole.id,
-        status: "ACTIVE",
-        joinedAt: new Date(),
-      },
-      {
-        organizationId: organization.id,
-        userId: owner.id,
-        roleId: ownerRole.id,
-        status: "ACTIVE",
-        joinedAt: new Date(),
-      },
-    ],
+  await db.organizationMember.create({
+    data: {
+      organizationId: organization.id,
+      userId: superAdmin.id,
+      roleId: superAdminRole.id,
+      status: "ACTIVE",
+      joinedAt: new Date(),
+    },
   });
 
   const counts = {
@@ -137,8 +115,7 @@ async function main() {
     resetTables: tables.length,
     counts,
     credentials: {
-      superAdmin: { email: superAdmin.email, password: superAdminPassword },
-      organizationOwner: { email: owner.email, password: ownerPassword },
+      platformOwner: { email: superAdmin.email, password: superAdminPassword, role: superAdminRole.name },
     },
   }, null, 2));
 }
