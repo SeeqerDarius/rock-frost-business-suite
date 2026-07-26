@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockDb = {
   contactSubmission: { findFirst: vi.fn(), create: vi.fn() },
+  module: { findFirst: vi.fn() },
+  organizationMember: { findMany: vi.fn() },
+  notification: { createMany: vi.fn() },
 };
 const mockSendEmail = vi.fn();
 
@@ -30,6 +33,8 @@ function formData(fields: Record<string, string>) {
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.RESEND_TO_EMAIL = "sales@rockfrostgroup.com";
+  mockDb.contactSubmission.create.mockResolvedValue({ id: "submission-1" });
+  mockDb.organizationMember.findMany.mockResolvedValue([]);
 });
 
 /**
@@ -56,7 +61,6 @@ describe("submitContactForm — validation, rate limiting, HTML escaping", () =>
 
   it("HTML-escapes submitted fields before interpolating them into the outbound email", async () => {
     mockDb.contactSubmission.findFirst.mockResolvedValue(null);
-    mockDb.contactSubmission.create.mockResolvedValue({});
     mockSendEmail.mockResolvedValue({ ok: true });
 
     await expect(
@@ -88,5 +92,44 @@ describe("submitContactForm — validation, rate limiting, HTML escaping", () =>
 
     expect(mockDb.contactSubmission.create).toHaveBeenCalled();
     expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it("stores a module-specific WhatsApp request and notifies platform operators", async () => {
+    mockDb.contactSubmission.findFirst.mockResolvedValue(null);
+    mockDb.module.findFirst.mockResolvedValue({ id: "module-fleet", name: "Fleet Management" });
+    mockDb.organizationMember.findMany.mockResolvedValue([
+      { organizationId: "platform-org", userId: "operator-1" },
+    ]);
+
+    await expect(
+      submitContactForm(formData({
+        name: "Ama",
+        company: "Acme Logistics",
+        email: "ama@example.com",
+        phone: "+233200000000",
+        preferredContact: "WHATSAPP",
+        intent: "MODULE",
+        moduleCode: "fleet",
+        expectedUsers: "20",
+        country: "Ghana",
+        industry: "Logistics",
+        reason: "module",
+        message: "We need fleet operations.",
+      })),
+    ).rejects.toThrow("?sent=1");
+
+    expect(mockDb.contactSubmission.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        moduleId: "module-fleet",
+        preferredContact: "WHATSAPP",
+        intent: "MODULE",
+        phone: "+233200000000",
+        expectedUsers: 20,
+      }),
+    });
+    expect(mockDb.notification.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ userId: "operator-1", type: "PUBLIC_MODULE_ENQUIRY" })],
+      skipDuplicates: true,
+    });
   });
 });

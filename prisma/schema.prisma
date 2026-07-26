@@ -56,6 +56,7 @@ enum NotificationStatus {
 }
 
 enum ModuleRequestType {
+  DEMO
   ENABLE_EXISTING
   CUSTOMIZE_EXISTING
   CUSTOM_MODULE
@@ -88,6 +89,39 @@ enum ContactSubmissionStatus {
   LINKED
   RESOLVED
   SPAM
+}
+
+enum ContactPreference {
+  EMAIL
+  PHONE
+  WHATSAPP
+}
+
+enum EnquiryIntent {
+  DEMO
+  MODULE
+  GENERAL
+  SUPPORT
+  CUSTOM_MODULE
+}
+
+enum SubscriptionMode {
+  MANUAL_OFFLINE
+  PLATFORM_MANAGED
+}
+
+enum PaymentGatewayProvider {
+  PAYSTACK
+  FLUTTERWAVE
+}
+
+enum SubscriptionStatus {
+  DRAFT
+  PENDING_PAYMENT
+  ACTIVE
+  PAST_DUE
+  EXPIRED
+  CANCELLED
 }
 
 enum FleetVehicleStatus {
@@ -256,6 +290,8 @@ model User {
   moduleRequestsAssigned          ModuleRequest[]           @relation("ModuleRequestsAssigned")
   moduleRequestEvents             ModuleRequestEvent[]
   contactSubmissionsAssigned      ContactSubmission[]       @relation("ContactSubmissionsAssigned")
+  subscriptionsCreated            Subscription[]            @relation("SubscriptionsCreated")
+  subscriptionsActivated          Subscription[]            @relation("SubscriptionsActivated")
   organizationDeletionsRequested  Organization[]            @relation("OrganizationDeletionRequestedBy")
 }
 
@@ -387,6 +423,7 @@ model Organization {
   projectTasks                    ProjectTask[]
   moduleRequests                  ModuleRequest[]
   contactSubmissions              ContactSubmission[]
+  subscriptions                   Subscription[]
   deletionRequestedBy             User?                            @relation("OrganizationDeletionRequestedBy", fields: [deletionRequestedById], references: [id], onDelete: SetNull)
 
   @@index([industry])
@@ -556,6 +593,8 @@ model Module {
 
   organizationModules OrganizationModule[]
   moduleRequests      ModuleRequest[]
+  contactSubmissions  ContactSubmission[]
+  subscriptions       Subscription[]
 }
 
 model OrganizationModule {
@@ -602,6 +641,7 @@ model ModuleRequest {
   assignedTo        User?                @relation("ModuleRequestsAssigned", fields: [assignedToId], references: [id], onDelete: SetNull)
   contactSubmission ContactSubmission?   @relation(fields: [contactSubmissionId], references: [id], onDelete: SetNull)
   events            ModuleRequestEvent[]
+  subscription      Subscription?
 
   @@index([organizationId, status])
   @@index([moduleId])
@@ -685,27 +725,74 @@ model AuditLog {
  * simple per-email rate-limit check on new submissions.
  */
 model ContactSubmission {
-  id             String                  @id @default(cuid())
-  name           String
-  company        String
-  email          String
-  reason         String
-  message        String?                 @db.Text
-  status         ContactSubmissionStatus @default(NEW)
-  organizationId String?
-  assignedToId   String?
-  resolvedAt     DateTime?
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
+  id               String                  @id @default(cuid())
+  name             String
+  company          String
+  email            String
+  phone            String?
+  preferredContact ContactPreference       @default(EMAIL)
+  intent           EnquiryIntent           @default(GENERAL)
+  reason           String
+  moduleId         String?
+  expectedUsers    Int?
+  country          String?
+  industry         String?
+  message          String?                 @db.Text
+  status           ContactSubmissionStatus @default(NEW)
+  organizationId   String?
+  assignedToId     String?
+  resolvedAt       DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
 
   organization  Organization?  @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   assignedTo    User?          @relation("ContactSubmissionsAssigned", fields: [assignedToId], references: [id], onDelete: SetNull)
+  module        Module?        @relation(fields: [moduleId], references: [id], onDelete: SetNull)
   moduleRequest ModuleRequest?
+  subscription  Subscription?
 
   @@index([email, createdAt])
   @@index([status, createdAt])
   @@index([organizationId])
   @@index([assignedToId])
+  @@index([moduleId])
+}
+
+model Subscription {
+  id                  String                  @id @default(cuid())
+  organizationId      String
+  moduleId            String
+  moduleRequestId     String?                 @unique
+  contactSubmissionId String?                 @unique
+  mode                SubscriptionMode
+  status              SubscriptionStatus      @default(PENDING_PAYMENT)
+  durationMonths      Int
+  amount              Decimal                 @db.Decimal(18, 2)
+  currency            String                  @default("GHS")
+  startsAt            DateTime?
+  endsAt              DateTime?
+  autoRenew           Boolean                 @default(false)
+  paymentReference    String?
+  paymentMethod       String?
+  gatewayProvider     PaymentGatewayProvider?
+  paidAt              DateTime?
+  notes               String?                 @db.Text
+  createdById         String
+  activatedById       String?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  module            Module             @relation(fields: [moduleId], references: [id], onDelete: Restrict)
+  moduleRequest     ModuleRequest?     @relation(fields: [moduleRequestId], references: [id], onDelete: SetNull)
+  contactSubmission ContactSubmission? @relation(fields: [contactSubmissionId], references: [id], onDelete: SetNull)
+  createdBy         User               @relation("SubscriptionsCreated", fields: [createdById], references: [id], onDelete: Restrict)
+  activatedBy       User?              @relation("SubscriptionsActivated", fields: [activatedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([moduleId, status])
+  @@index([endsAt])
+  @@index([gatewayProvider, paymentReference])
 }
 
 model Notification {
@@ -865,32 +952,32 @@ model FleetVehicleDocument {
 }
 
 model FleetMaintenanceRequest {
-  id                  String                         @id @default(cuid())
-  organizationId      String
-  branchId            String?
-  vehicleId           String
-  requestedById       String?
-  faultDescription    String                         @db.Text
-  photoAssetId        String?
-  approvalStatus      FleetMaintenanceApprovalStatus @default(PENDING)
-  fleetManagerReview  String?                        @db.Text
-  ownerApprovalStatus FleetMaintenanceApprovalStatus @default(PENDING)
+  id                    String                         @id @default(cuid())
+  organizationId        String
+  branchId              String?
+  vehicleId             String
+  requestedById         String?
+  faultDescription      String                         @db.Text
+  photoAssetId          String?
+  approvalStatus        FleetMaintenanceApprovalStatus @default(PENDING)
+  fleetManagerReview    String?                        @db.Text
+  ownerApprovalStatus   FleetMaintenanceApprovalStatus @default(PENDING)
   ownerApprovalRequired Boolean                        @default(false)
-  mechanicAssigned    String?
-  progressStatus      FleetMaintenanceProgressStatus @default(REPORTED)
-  repairCost          Decimal?                       @db.Decimal(12, 2)
-  completionVerified  Boolean                        @default(false)
-  ownerNotifiedAt      DateTime?
-  requestedAt         DateTime                       @default(now())
-  completedAt         DateTime?
-  createdAt           DateTime                       @default(now())
-  updatedAt           DateTime                       @updatedAt
+  mechanicAssigned      String?
+  progressStatus        FleetMaintenanceProgressStatus @default(REPORTED)
+  repairCost            Decimal?                       @db.Decimal(12, 2)
+  completionVerified    Boolean                        @default(false)
+  ownerNotifiedAt       DateTime?
+  requestedAt           DateTime                       @default(now())
+  completedAt           DateTime?
+  createdAt             DateTime                       @default(now())
+  updatedAt             DateTime                       @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  vehicle      FleetVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  requestedBy  User?        @relation(fields: [requestedById], references: [id], onDelete: SetNull)
-  photoAsset   FileAsset?   @relation(fields: [photoAssetId], references: [id], onDelete: SetNull)
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?                 @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  vehicle      FleetVehicle            @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  requestedBy  User?                   @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+  photoAsset   FileAsset?              @relation(fields: [photoAssetId], references: [id], onDelete: SetNull)
   events       FleetMaintenanceEvent[]
 
   @@index([organizationId, progressStatus])
@@ -901,16 +988,16 @@ model FleetMaintenanceRequest {
 }
 
 model FleetMaintenanceEvent {
-  id             String                    @id @default(cuid())
+  id             String                          @id @default(cuid())
   organizationId String
   requestId      String
   actorId        String?
   eventType      FleetMaintenanceEventType
   fromStatus     FleetMaintenanceProgressStatus?
   toStatus       FleetMaintenanceProgressStatus?
-  note           String?                   @db.Text
+  note           String?                         @db.Text
   metadata       Json?
-  createdAt      DateTime                  @default(now())
+  createdAt      DateTime                        @default(now())
 
   organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   request      FleetMaintenanceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)

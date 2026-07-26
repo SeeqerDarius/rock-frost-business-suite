@@ -1,5 +1,97 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-07-26 — Public acquisition, onboarding, billing, and subscriptions
+
+**Implemented:** Public `/modules` cards now send visitors to a module-specific
+demo or module request form. The contact form persists phone/WhatsApp,
+preferred communication channel, intent, exact module, expected users,
+industry, and country; validates module/phone requirements; emails the sales
+address; and creates an in-app notification for every active platform Super
+Admin. `/app/platform/requests` shows the enquiry with email/call/WhatsApp
+actions and a direct **Create organization from inquiry** path.
+
+Organization onboarding now prefills the customer/company fields from the
+enquiry. Tenant codes are generated server-side from the organization name
+with collision-safe suffixes and are no longer operator-entered. Creating the
+organization still creates/invites its owner and now converts the enquiry into
+a first-class `DEMO`, `ENABLE_EXISTING`, or `CUSTOM_MODULE` request.
+
+`/app/platform/subscriptions` is now a working operator ledger. It supports
+manual/offline agreements and platform-managed subscriptions, agreed
+price/currency, duration, auto-renew intent, linked module requests, payment
+confirmation, activation, cancellation, audit logging, and organization
+notifications. Payment confirmation calculates the term end, enables the
+module, and completes the linked request. Once a module has subscription
+history, `getCurrentTenant()` exposes it only during a current paid `ACTIVE`
+term; legacy non-subscription module activations remain compatible.
+
+**Payment boundary:** No card/mobile-money gateway was present or selected.
+`PLATFORM_MANAGED` is therefore a real lifecycle/renewal classification, but
+an operator must confirm a payment reference before activation. The system
+does not falsely claim online payment processing. A future signed provider
+webhook should reuse `activateSubscription()`.
+
+**Schema/migration:** Added enquiry/contact enums and fields plus the
+`Subscription` model in
+`20260726020000_add_acquisition_and_subscriptions`. A concurrent compatible
+follow-up, `20260726030000_add_subscription_payment_gateway`, reserves
+Paystack/Flutterwave provider metadata and adds server-only initialization,
+verification, and signature/hash-verification adapters plus documented
+optional environment variables. No checkout/callback/webhook routes call
+those adapters yet, so this does not claim a working end-user gateway.
+Prisma format/generate completed. The migrations were **not applied from this
+workstation**:
+both `DATABASE_URL` and `DIRECT_URL` currently point to the pooled endpoint;
+retrying with the derived direct endpoint still returned Prisma's generic
+`Schema engine error`, and a direct Prisma query confirmed that this
+environment cannot reach the Neon host at all. The repository's Vercel build
+runs `prisma migrate deploy` before `next build`; verify that remote migration
+succeeds before treating the deployment as live. No environment file was
+modified and no credential was printed.
+
+**Validation:** `npx tsc --noEmit` passed; `npm run lint` passed; `npm run
+test` passed (23 files, 164 tests); `npm run build` passed on Next.js 16.2.9,
+including TypeScript and all 107 routes. Added regression coverage for
+module-specific operator notifications, subscription creation/activation,
+module enablement, request completion, and expired-term access denial.
+
+**Documentation:** Added `docs/BILLING_AND_SUBSCRIPTIONS.md`; updated README,
+the development roadmap, hardening plan, module registry commentary, and this
+handoff. The earlier test-suite repair documentation remains immediately
+below.
+
+## 2026-07-26 — Documentation discipline and test-suite repair
+
+**Why:** A shared-agent audit of the five commits preceding this entry found
+that three included relevant documentation, while
+`18221a1` (Fleet document renewal notifications) and `ed644f8`
+(Installment ownership/salary-eligibility hardening) did not update an
+authoritative current-state document in the same commit.
+
+**Durable process fix:** `AGENTS.md` now requires every code/schema/config/
+behavior/test change to update the relevant authoritative documentation and
+`OPERATOR_HANDOFF.md`, keep tests and documented counts synchronized, record
+validation results, and protect concurrent agents' work through `git status`
+checks. Fleet renewal reminders are now recorded in
+`docs/FLEET_MODULE_IMPLEMENTATION.md`. The Installment ownership and salary
+eligibility behavior was already represented by the current code, tests, and
+handoff references, but the original commit's missing same-commit handoff is
+recorded here rather than rewriting history.
+
+**Test repairs:** Updated the module-authorization coverage expectation from
+76 to 77 module pages after the Fleet investor route was added. Updated the
+Fleet service test's Prisma mock to execute `$transaction`, expose the
+transactional `fleetPayment.create`, and assert that the verified payment
+record is written; this preserves coverage of the production transaction
+rather than weakening the implementation to satisfy an old mock.
+
+**Validation:** Targeted repaired tests passed (2 files, 23 tests);
+`npm run lint` passed; `npm run test` passed (22 files, 160 tests);
+`npm run build` passed under Next.js 16.2.9, including TypeScript and all 107
+generated routes. The guarded real-Postgres integration suite was not run
+because this change only repairs unit-test expectations/mocks and does not
+change application or database behavior.
+
 ## Mandatory instructions for every agent
 
 Before making changes:

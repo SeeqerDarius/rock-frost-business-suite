@@ -36,9 +36,12 @@ export default function PublicModulesPage() {
                   <CardDescription>{mod.description}</CardDescription>
                 </CardHeader>
                 {mod.status === "available" ? (
-                  <CardContent>
-                    <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/login" />}>
-                      Sign in to explore
+                  <CardContent className="flex flex-wrap gap-2">
+                    <Button size="sm" nativeButton={false} render={<Link href={`/contact?intent=demo&module=${mod.key}`} />}>
+                      Request demo
+                    </Button>
+                    <Button size="sm" variant="outline" nativeButton={false} render={<Link href={`/contact?intent=module&module=${mod.key}`} />}>
+                      Request module
                     </Button>
                   </CardContent>
                 ) : null}

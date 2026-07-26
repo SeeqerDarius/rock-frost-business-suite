@@ -10,6 +10,7 @@ import { addRequesterMessage, createModuleRequest } from "@/platform/module-requ
 
 const requestSchema = z.object({
   type: z.enum([
+    "DEMO",
     "ENABLE_EXISTING",
     "CUSTOMIZE_EXISTING",
     "CUSTOM_MODULE",
@@ -49,7 +50,7 @@ export async function submitModuleRequest(formData: FormData): Promise<void> {
   if (!parsed.success) redirect("/app/module-requests?error=invalid");
 
   const needsExistingModule =
-    parsed.data.type === "ENABLE_EXISTING" || parsed.data.type === "CUSTOMIZE_EXISTING";
+    parsed.data.type === "DEMO" || parsed.data.type === "ENABLE_EXISTING" || parsed.data.type === "CUSTOMIZE_EXISTING";
   if (needsExistingModule && !parsed.data.moduleId) {
     redirect("/app/module-requests?error=module-required");
   }
@@ -93,4 +94,3 @@ export async function addModuleRequestMessage(formData: FormData): Promise<void>
   revalidatePath("/app/platform/requests");
   redirect("/app/module-requests?message=1");
 }
-

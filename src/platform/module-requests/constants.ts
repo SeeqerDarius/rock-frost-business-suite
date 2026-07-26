@@ -1,4 +1,5 @@
 export const MODULE_REQUEST_TYPE_LABELS = {
+  DEMO: "Request a module demo",
   ENABLE_EXISTING: "Enable an existing module",
   CUSTOMIZE_EXISTING: "Customize an existing module",
   CUSTOM_MODULE: "Build a custom module",
@@ -37,4 +38,3 @@ export const MODULE_REQUEST_PRIORITIES = Object.keys(MODULE_REQUEST_PRIORITY_LAB
 >;
 
 export const TERMINAL_MODULE_REQUEST_STATUSES = new Set(["COMPLETED", "CANCELLED", "REJECTED"]);
-

@@ -116,13 +116,33 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
     return null;
   }
 
-  const enabledModules = await db.organizationModule.findMany({
-    where: { organizationId: membership.organizationId, enabled: true, module: { status: "ACTIVE" } },
-    include: { module: true },
-  });
+  const [enabledModules, subscriptionModules, activeSubscriptions] = await Promise.all([
+    db.organizationModule.findMany({
+      where: { organizationId: membership.organizationId, enabled: true, module: { status: "ACTIVE" } },
+      include: { module: true },
+    }),
+    db.subscription.findMany({
+      where: { organizationId: membership.organizationId },
+      select: { moduleId: true },
+      distinct: ["moduleId"],
+    }),
+    db.subscription.findMany({
+      where: {
+        organizationId: membership.organizationId,
+        status: "ACTIVE",
+        startsAt: { lte: new Date() },
+        endsAt: { gt: new Date() },
+      },
+      select: { moduleId: true },
+    }),
+  ]);
 
   const permissions = membership.role?.rolePermissions.map((rp) => rp.permission.key) ?? [];
-  const enabledModuleKeys = enabledModules.map((om) => om.module.code);
+  const subscriptionControlled = new Set(subscriptionModules.map((item) => item.moduleId));
+  const paidAndCurrent = new Set(activeSubscriptions.map((item) => item.moduleId));
+  const enabledModuleKeys = enabledModules
+    .filter((om) => !subscriptionControlled.has(om.moduleId) || paidAndCurrent.has(om.moduleId))
+    .map((om) => om.module.code);
   const accessibleModuleKeys = enabledModuleKeys.filter((key) => {
     const module_ = moduleRegistry.find((mod) => mod.key === key);
     if (!module_ || module_.status !== "available") return false;

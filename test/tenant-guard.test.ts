@@ -4,6 +4,7 @@ const mockCookies = { get: vi.fn(() => undefined) };
 const mockDb = {
   organizationMember: { findMany: vi.fn(), findFirst: vi.fn() },
   organizationModule: { findMany: vi.fn() },
+  subscription: { findMany: vi.fn() },
 };
 const mockGetServerAuthSession = vi.fn();
 
@@ -32,6 +33,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockCookies.get.mockReturnValue(undefined);
   mockDb.organizationModule.findMany.mockResolvedValue([]);
+  mockDb.subscription.findMany.mockResolvedValue([]);
 });
 
 describe("getCurrentTenant — central active-tenant guard", () => {
@@ -88,6 +90,25 @@ describe("getCurrentTenant — central active-tenant guard", () => {
       where: { organizationId: ORG_ACTIVE.id, enabled: true, module: { status: "ACTIVE" } },
       include: { module: true },
     });
+  });
+
+  it("does not expose a subscription-controlled module after its paid term expires", async () => {
+    mockGetServerAuthSession.mockResolvedValue({ user: { id: "user-1", organizationId: ORG_ACTIVE.id } });
+    const row = membershipRow();
+    mockDb.organizationMember.findMany.mockResolvedValue([row]);
+    mockDb.organizationMember.findFirst.mockResolvedValue({
+      ...row,
+      branch: null,
+      role: { name: "Fleet Manager", isSystem: true, organizationId: null, rolePermissions: [{ permission: { key: "fleet.view" } }] },
+    });
+    mockDb.organizationModule.findMany.mockResolvedValue([{ moduleId: "module-fleet", module: { code: "fleet" } }]);
+    mockDb.subscription.findMany
+      .mockResolvedValueOnce([{ moduleId: "module-fleet" }])
+      .mockResolvedValueOnce([]);
+
+    const tenant = await getCurrentTenant();
+    expect(tenant?.enabledModuleKeys).not.toContain("fleet");
+    expect(tenant?.accessibleModuleKeys).not.toContain("fleet");
   });
 
   it("never selects an invalid membership as an implicit fallback, even when it sorts first", async () => {

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
 import { createOrganization } from "../actions";
+import { db } from "@/lib/db";
 
 const ERRORS: Record<string, string> = {
   invalid: "Check all required fields and use a lowercase tenant code such as acme-ghana.",
@@ -19,10 +20,11 @@ const ERRORS: Record<string, string> = {
 export default async function NewOrganizationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; inquiry?: string }>;
 }) {
   await requirePlatformOperator();
-  const { error } = await searchParams;
+  const { error, inquiry } = await searchParams;
+  const submission = inquiry ? await db.contactSubmission.findFirst({ where: { id: inquiry, status: "NEW" }, include: { module: true } }) : null;
   return (
     <div className="space-y-6">
       <PageHeader title="New organization" description="Create a trial tenant and invite its first Organization Owner." />
@@ -36,15 +38,16 @@ export default async function NewOrganizationPage({
         </CardHeader>
         <CardContent>
           <form action={createOrganization} className="grid gap-4 md:grid-cols-2">
-            <Field label="Organization name" name="name" required />
-            <Field label="Tenant code" name="tenantCode" required placeholder="acme-ghana" />
-            <Field label="Owner email" name="ownerEmail" type="email" required />
-            <Field label="Billing email" name="billingEmail" type="email" />
-            <Field label="Organization email" name="email" type="email" />
-            <Field label="Phone" name="phone" />
-            <Field label="Industry" name="industry" />
+            {submission ? <input type="hidden" name="contactSubmissionId" value={submission.id} /> : null}
+            <Field label="Organization name" name="name" required defaultValue={submission?.company} />
+            <div className="space-y-2"><Label>Tenant code</Label><Input value="Generated automatically when saved" disabled /></div>
+            <Field label="Owner email" name="ownerEmail" type="email" required defaultValue={submission?.email} />
+            <Field label="Billing email" name="billingEmail" type="email" defaultValue={submission?.email} />
+            <Field label="Organization email" name="email" type="email" defaultValue={submission?.email} />
+            <Field label="Phone" name="phone" defaultValue={submission?.phone} />
+            <Field label="Industry" name="industry" defaultValue={submission?.industry} />
             <Field label="Website" name="website" />
-            <Field label="Country" name="country" />
+            <Field label="Country" name="country" defaultValue={submission?.country} />
             <Field label="Region" name="region" />
             <Field label="City" name="city" />
             <Field label="Currency" name="currency" defaultValue="GHS" required />
@@ -78,13 +81,12 @@ function Field({
   type?: string;
   required?: boolean;
   placeholder?: string;
-  defaultValue?: string;
+  defaultValue?: string | null;
 }) {
   return (
     <div className="space-y-2">
       <Label htmlFor={name}>{label}</Label>
-      <Input id={name} name={name} type={type} required={required} placeholder={placeholder} defaultValue={defaultValue} />
+      <Input id={name} name={name} type={type} required={required} placeholder={placeholder} defaultValue={defaultValue ?? undefined} />
     </div>
   );
 }
-

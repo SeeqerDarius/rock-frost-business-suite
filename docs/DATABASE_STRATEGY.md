@@ -1,5 +1,16 @@
 # Database Strategy
 
+> 2026-07-26 operational note: migration
+> `20260726020000_add_acquisition_and_subscriptions` is committed but was not
+> applied from the development environment (the compatible provider-metadata
+> follow-up `20260726030000_add_subscription_payment_gateway` is pending too).
+> Its `DIRECT_URL` currently equals
+> the pooled Neon URL, and both the pooled endpoint and an in-memory
+> direct-host retry returned Prisma's generic `Schema engine error`; even a
+> simple Prisma query could not reach Neon from this environment. The Vercel
+> build runs `prisma migrate deploy`; confirm that remote step succeeds before
+> treating code that reads the new enquiry/subscription columns as live.
+
 ## Current state
 
 `prisma/schema.prisma` is the real, live-in-use schema for this rebuild — 70+ models across every business module, all reconnected/redesigned since Phase 3. This document described Phase 1's "not yet touched" state (2026-07-19); none of it has been true since. For the current authoritative model-by-model breakdown, read the schema file directly and `docs/MODULE_BOUNDARIES.md` for the isolation rules every model follows, rather than this document — the sections below now describe *process*, not a stale inventory.

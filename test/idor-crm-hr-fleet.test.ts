@@ -18,6 +18,8 @@ const mockDb = {
   fleetVehicleDocument: { create: vi.fn() },
   fleetMaintenanceRequest: { create: vi.fn() },
   fleetWorkAndPayContract: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+  fleetPayment: { create: vi.fn() },
+  $transaction: vi.fn(),
 };
 
 vi.mock("@/lib/db", () => ({ db: mockDb }));
@@ -30,6 +32,7 @@ const ORG = "org-1";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockDb.$transaction.mockImplementation(async (callback) => callback(mockDb));
 });
 
 describe("CRM service — cross-tenant IDOR fixes", () => {
@@ -183,6 +186,17 @@ describe("Fleet service — cross-tenant IDOR fixes and payment atomicity", () =
     expect(mockDb.fleetWorkAndPayContract.update).toHaveBeenNthCalledWith(2, {
       where: { id: "contract-1", organizationId: ORG },
       data: { outstandingBalance: "0.00", completionPercentage: "100.00", contractStatus: "COMPLETED" },
+    });
+    expect(mockDb.fleetPayment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        organizationId: ORG,
+        type: "WORK_AND_PAY",
+        amount: "50.00",
+        status: "VERIFIED",
+        verified: true,
+        relatedEntity: "FleetWorkAndPayContract",
+        relatedEntityId: "contract-1",
+      }),
     });
   });
 });

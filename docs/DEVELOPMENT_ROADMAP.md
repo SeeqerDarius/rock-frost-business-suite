@@ -187,6 +187,12 @@ Verified end-to-end: created a project, added a member, created a milestone with
 
 With every product module built, a full-project audit (2026-07-20) found the platform is a strong feature-complete beta but not yet safe for external multi-tenant onboarding or real financial operations. Rather than a numbered phase, this is now tracked as a series of hardening passes in **`docs/HARDENING_PLAN.md`** — read that file for the authoritative current status. **Pass 1** (central active-tenant guard, session revocation, dashboard permission leak, and the Administration/Projects/Payroll IDOR paths), **Pass 2** (financial/inventory transaction atomicity across POS/Inventory/Procurement/Accounting/Payroll/Installment plus the IDOR paths entangled with it), **Pass 3a** (invitation redesign — bound to one membership, hashed tokens, resend/revoke), **Pass 3b** (a shared Zod validation library applied to the public contact form and Administration's invite form, plus a full CRM/HR/Fleet cross-tenant IDOR audit that found and fixed real gaps in all three), and **Pass 3c** (the remaining Installment/POS IDOR audit, a full Zod validation rollout across every remaining Server Action file, bounded Decimal-precision hygiene in Accounting/Payroll/Installment, reproducible seeding/CI, and stale-documentation fixes) are all complete. **Pass 4+** (the narrow documented residual concurrency races, audit logging, performance, accessibility) has not started.
 
-## Later phases (not scoped in detail yet)
+## Platform acquisition and subscriptions ✅
 
-A possible future Billing/Subscriptions module — **not implemented scope**; the `/app/platform/subscriptions` placeholder is explicitly labeled "Planned — requirements not yet defined" and is not part of the hardening track. No `Subscription` model exists, and none is planned until requirements are defined.
+Public module/demo enquiries now feed the operator request queue, prefill
+organization onboarding, generate tenant codes automatically, and convert to
+module requests. Operators can record manual/offline or platform-managed
+subscriptions, confirm payment, activate a module for a defined term, and
+cancel it. Subscription-controlled access fails closed after expiry. See
+`docs/BILLING_AND_SUBSCRIPTIONS.md`. Automated online checkout remains
+provider-dependent and is not represented as complete.

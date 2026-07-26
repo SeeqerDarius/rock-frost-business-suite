@@ -137,7 +137,7 @@ describe("module authorization source coverage", () => {
       return collectEntryFiles(moduleDirectory).map((filePath) => ({ moduleKey, filePath }));
     });
 
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(76);
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(77);
     expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(45);
 
     for (const { moduleKey, filePath } of guardedFiles) {

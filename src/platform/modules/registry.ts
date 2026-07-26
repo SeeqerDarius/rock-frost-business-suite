@@ -31,9 +31,8 @@ import { projectsNavigation } from "@/modules/projects/navigation";
  *
  * Every module is "available" as of Phase 16 (Projects) — the last one from
  * the original docs/PRODUCT_VISION.md list, plus POS added by explicit
- * request. Billing/Subscriptions remains unbuilt and deliberately scheduled
- * last; add it here as "coming-soon" if a placeholder is ever wanted before
- * it's actually built.
+ * request. Billing/Subscriptions is a platform capability rather than a
+ * tenant business module, so it deliberately does not belong in this registry.
  */
 const moduleDefinitions = [
   {

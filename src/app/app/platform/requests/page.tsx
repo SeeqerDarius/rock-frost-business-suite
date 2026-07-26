@@ -1,4 +1,5 @@
 import { Inbox } from "lucide-react";
+import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -61,7 +62,8 @@ export default async function PlatformRequestsPage({
     db.organization.findMany({ where: { status: { in: ["ACTIVE", "TRIAL"] } }, orderBy: { name: "asc" } }),
     db.module.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" } }),
     db.contactSubmission.findMany({
-      where: { status: "NEW", reason: { in: ["module", "custom-module"] } },
+      where: { status: "NEW", intent: { in: ["DEMO", "MODULE", "CUSTOM_MODULE"] } },
+      include: { module: true },
       orderBy: { createdAt: "desc" },
     }),
   ]);
@@ -93,10 +95,19 @@ export default async function PlatformRequestsPage({
           <Card key={inquiry.id}>
             <CardHeader>
               <CardTitle>{inquiry.company}</CardTitle>
-              <CardDescription>{inquiry.name} · {inquiry.email} · {inquiry.createdAt.toLocaleString()}</CardDescription>
+              <CardDescription>{inquiry.name} · {inquiry.email} · {inquiry.phone || "No phone"} · prefers {inquiry.preferredContact.toLowerCase()} · {inquiry.createdAt.toLocaleString()}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <p className="text-sm font-medium">{inquiry.intent === "DEMO" ? "Demo" : "Module"} · {inquiry.module?.name ?? "Custom module"}</p>
               <p className="whitespace-pre-wrap text-sm">{inquiry.message || "No additional message."}</p>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" nativeButton={false} render={<a href={`mailto:${inquiry.email}`} />}>Email</Button>
+                {inquiry.phone ? <Button size="sm" variant="outline" nativeButton={false} render={<a href={`tel:${inquiry.phone}`} />}>Call</Button> : null}
+                {inquiry.phone ? <Button size="sm" variant="outline" nativeButton={false} render={<a href={`https://wa.me/${inquiry.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" />}>WhatsApp</Button> : null}
+              </div>
+              <Button nativeButton={false} render={<Link href={`/app/platform/organizations/new?inquiry=${inquiry.id}`} />}>
+                Create organization from inquiry
+              </Button>
               <form action={convertContactSubmission} className="grid gap-3 md:grid-cols-4">
                 <input type="hidden" name="contactSubmissionId" value={inquiry.id} />
                 <select aria-label="Organization" name="organizationId" required defaultValue="" className="h-9 rounded-md border bg-transparent px-3 text-sm">
@@ -105,7 +116,7 @@ export default async function PlatformRequestsPage({
                     <option key={organization.id} value={organization.id}>{organization.name}</option>
                   ))}
                 </select>
-                <select aria-label="Request type" name="type" defaultValue={inquiry.reason === "custom-module" ? "CUSTOM_MODULE" : "ENABLE_EXISTING"} className="h-9 rounded-md border bg-transparent px-3 text-sm">
+                <select aria-label="Request type" name="type" defaultValue={inquiry.intent === "CUSTOM_MODULE" ? "CUSTOM_MODULE" : inquiry.intent === "DEMO" ? "DEMO" : "ENABLE_EXISTING"} className="h-9 rounded-md border bg-transparent px-3 text-sm">
                   {MODULE_REQUEST_TYPES.map((type) => (
                     <option key={type} value={type}>{MODULE_REQUEST_TYPE_LABELS[type]}</option>
                   ))}

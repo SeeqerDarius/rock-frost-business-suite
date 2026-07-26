@@ -14,6 +14,8 @@ The responsive Next.js web application is the system of record. Its server-actio
 - Driver registry and vehicle assignment
 - Insurance and roadworthy certificate tracking
 - Expiry and renewal status calculation
+- In-app renewal reminders for insurance and roadworthy documents approaching
+  expiry, with duplicate-notification protection
 - Maintenance request workflow
 - Work & Pay agreements
 - Weekly sales, Work & Pay, owner, driver and maintenance payments

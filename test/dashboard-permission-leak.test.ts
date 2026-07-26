@@ -4,6 +4,7 @@ const mockCookies = { get: vi.fn(() => undefined) };
 const mockDb = {
   organizationMember: { findMany: vi.fn(), findFirst: vi.fn() },
   organizationModule: { findMany: vi.fn() },
+  subscription: { findMany: vi.fn() },
 };
 const mockGetServerAuthSession = vi.fn();
 
@@ -17,6 +18,7 @@ const ORG = { id: "org-1", name: "Org", tenantCode: "org", status: "ACTIVE" };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockDb.subscription.findMany.mockResolvedValue([]);
   mockCookies.get.mockReturnValue(undefined);
   mockGetServerAuthSession.mockResolvedValue({ user: { id: "user-1", organizationId: ORG.id } });
   mockDb.organizationMember.findMany.mockResolvedValue([

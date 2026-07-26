@@ -16,6 +16,7 @@ import { isPlatformOperator } from "@/lib/auth/permissions";
 import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { cuid, email, escapeHtml, longText, parseWithSchema, shortText } from "@/lib/validation";
+import { createModuleRequest } from "@/platform/module-requests/service";
 
 const DELETION_RECOVERY_DAYS = 30;
 const tenantCode = z.string().trim().toLowerCase().min(3).max(50).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
@@ -39,7 +40,11 @@ const organizationSchema = z.object({
   defaultLanguage: z.string().trim().min(2).max(20),
 });
 
-const createSchema = organizationSchema.extend({ ownerEmail: email });
+const createSchema = organizationSchema.extend({
+  tenantCode: tenantCode.optional(),
+  ownerEmail: email,
+  contactSubmissionId: z.union([cuid, z.literal("")]).optional(),
+});
 const statusSchema = z.object({
   organizationId: cuid,
   status: z.enum(["TRIAL", "ACTIVE", "SUSPENDED", "CANCELLED"]),
@@ -87,13 +92,31 @@ function organizationData(data: z.infer<typeof organizationSchema>) {
   };
 }
 
+async function generateTenantCode(name: string) {
+  const base = name.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 42) || "organization";
+  for (let suffix = 0; suffix < 1000; suffix += 1) {
+    const candidate = suffix === 0 ? base : `${base}-${suffix + 1}`;
+    if (!(await db.organization.findUnique({ where: { tenantCode: candidate }, select: { id: true } }))) return candidate;
+  }
+  return `${base}-${Date.now().toString(36)}`;
+}
+
 export async function createOrganization(formData: FormData): Promise<void> {
   const tenant = await requireOperator();
   const parsed = parseWithSchema(createSchema, Object.fromEntries(formData));
   if (!parsed.success) redirect("/app/platform/organizations/new?error=invalid");
+  const generatedTenantCode = await generateTenantCode(parsed.data.name);
 
-  const existing = await db.organization.findUnique({ where: { tenantCode: parsed.data.tenantCode } });
-  if (existing) redirect("/app/platform/organizations/new?error=tenant-code");
+  const contactSubmission = parsed.data.contactSubmissionId
+    ? await db.contactSubmission.findFirst({
+        where: { id: parsed.data.contactSubmissionId, status: "NEW" },
+        include: { module: true },
+      })
+    : null;
+  if (parsed.data.contactSubmissionId && !contactSubmission) {
+    redirect("/app/platform/organizations/new?error=inquiry");
+  }
 
   const ownerRole = await db.role.findFirst({
     where: { organizationId: null, isSystem: true, name: "Organization Owner" },
@@ -104,7 +127,7 @@ export async function createOrganization(formData: FormData): Promise<void> {
   try {
     result = await db.$transaction(async (tx) => {
       const organization = await tx.organization.create({
-        data: { ...organizationData(parsed.data), status: "TRIAL" },
+        data: { ...organizationData({ ...parsed.data, tenantCode: generatedTenantCode }), status: "TRIAL" },
       });
       const owner = await tx.user.upsert({
         where: { email: parsed.data.ownerEmail },
@@ -127,7 +150,7 @@ export async function createOrganization(formData: FormData): Promise<void> {
           action: "organization.created",
           entityName: "Organization",
           entityId: organization.id,
-          metadata: { name: organization.name, tenantCode: organization.tenantCode, ownerEmail: parsed.data.ownerEmail },
+          metadata: { name: organization.name, tenantCode: generatedTenantCode, ownerEmail: parsed.data.ownerEmail },
         },
         tx,
       );
@@ -153,8 +176,21 @@ export async function createOrganization(formData: FormData): Promise<void> {
     await markInvitationDeliveryFailed(result.membershipId);
   }
 
+  if (contactSubmission) {
+    await createModuleRequest({
+      organizationId: result.organizationId,
+      requestedById: result.ownerUserId,
+      contactSubmissionId: contactSubmission.id,
+      moduleId: contactSubmission.moduleId,
+      type: contactSubmission.intent === "CUSTOM_MODULE" ? "CUSTOM_MODULE" : contactSubmission.intent === "DEMO" ? "DEMO" : "ENABLE_EXISTING",
+      title: `${contactSubmission.intent === "DEMO" ? "Demo" : "Module"} request — ${contactSubmission.company}`,
+      businessJustification: contactSubmission.message || `${contactSubmission.name} requested ${contactSubmission.module?.name ?? "a module"}.`,
+      expectedUsers: contactSubmission.expectedUsers,
+    });
+  }
+
   revalidatePath("/app/platform/organizations");
-  redirect(`/app/platform/organizations/${result.organizationId}?created=1${delivery.ok ? "" : "&delivery=failed"}`);
+  redirect(`/app/platform/organizations/${result.organizationId}?created=1${delivery.ok ? "" : "&delivery=failed"}${contactSubmission ? "&request=linked" : ""}`);
 }
 
 export async function updateOrganizationProfile(formData: FormData): Promise<void> {

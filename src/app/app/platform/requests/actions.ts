@@ -27,7 +27,7 @@ const convertSchema = z.object({
   organizationId: cuid,
   moduleId: z.union([cuid, z.literal("")]),
   type: z.enum([
-    "ENABLE_EXISTING", "CUSTOMIZE_EXISTING", "CUSTOM_MODULE", "INTEGRATION", "DATA_MIGRATION",
+    "DEMO", "ENABLE_EXISTING", "CUSTOMIZE_EXISTING", "CUSTOM_MODULE", "INTEGRATION", "DATA_MIGRATION",
   ]),
 });
 
@@ -97,7 +97,7 @@ export async function convertContactSubmission(formData: FormData): Promise<void
   if (!submission || !membership) redirect("/app/platform/requests?error=conversion-failed");
 
   const needsExistingModule =
-    parsed.data.type === "ENABLE_EXISTING" || parsed.data.type === "CUSTOMIZE_EXISTING";
+    parsed.data.type === "DEMO" || parsed.data.type === "ENABLE_EXISTING" || parsed.data.type === "CUSTOMIZE_EXISTING";
   if (needsExistingModule && !parsed.data.moduleId) redirect("/app/platform/requests?error=module-required");
 
   await createModuleRequest({

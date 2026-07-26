@@ -3,36 +3,24 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { submitContactForm } from "./actions";
-
-const REASON_LABELS: Record<string, string> = {
-  demo: "Request a demo",
-  module: "Request a module",
-  "custom-module": "Request a custom module",
-  general: "General inquiry",
-  support: "Existing customer support",
-  other: "Something else",
-};
+import { moduleRegistry } from "@/platform/modules/registry";
 
 const ERROR_MESSAGES: Record<string, string> = {
   "missing-fields": "Please double-check your name, company, and a valid email address.",
   "send-failed": "We couldn't send your message just now. Please try again shortly.",
   "too-soon": "You've already sent a message recently. Please wait a moment before sending another.",
+  "invalid-module": "Please choose an available module.",
 };
 
 export default async function ContactPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sent?: string; error?: string }>;
+  searchParams: Promise<{ sent?: string; error?: string; intent?: string; module?: string }>;
 }) {
-  const { sent, error } = await searchParams;
+  const { sent, error, intent, module: moduleCode } = await searchParams;
+  const initialIntent = intent === "module" ? "MODULE" : intent === "demo" ? "DEMO" : "GENERAL";
+  const selectedModule = moduleRegistry.find((item) => item.key === moduleCode);
 
   return (
     <section className="mx-auto max-w-2xl px-6 py-24">
@@ -75,21 +63,43 @@ export default async function ContactPage({
               <Label htmlFor="email">Work email</Label>
               <Input id="email" name="email" type="email" placeholder="you@company.com" required />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="reason">What can we help with?</Label>
-              <Select name="reason" defaultValue="demo" items={REASON_LABELS}>
-                <SelectTrigger id="reason" className="w-full">
-                  <SelectValue placeholder="Select a reason" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="demo">Request a demo</SelectItem>
-                  <SelectItem value="module">Request a module</SelectItem>
-                  <SelectItem value="custom-module">Request a custom module</SelectItem>
-                  <SelectItem value="general">General inquiry</SelectItem>
-                  <SelectItem value="support">Existing customer support</SelectItem>
-                  <SelectItem value="other">Something else</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone / WhatsApp number</Label>
+                <Input id="phone" name="phone" type="tel" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="preferredContact">Preferred contact</Label>
+                <select id="preferredContact" name="preferredContact" defaultValue="EMAIL" className="h-9 w-full rounded-md border bg-transparent px-3 text-sm">
+                  <option value="EMAIL">Email</option>
+                  <option value="PHONE">Phone call</option>
+                  <option value="WHATSAPP">WhatsApp</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="intent">Request</Label>
+                <select id="intent" name="intent" defaultValue={initialIntent} className="h-9 w-full rounded-md border bg-transparent px-3 text-sm">
+                  <option value="DEMO">Request a demo</option>
+                  <option value="MODULE">Subscribe to a module</option>
+                  <option value="CUSTOM_MODULE">Request a custom module</option>
+                  <option value="GENERAL">General inquiry</option>
+                  <option value="SUPPORT">Existing customer support</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="moduleCode">Module</Label>
+                <select id="moduleCode" name="moduleCode" defaultValue={selectedModule?.key ?? ""} className="h-9 w-full rounded-md border bg-transparent px-3 text-sm">
+                  <option value="">Choose a module</option>
+                  {moduleRegistry.map((item) => <option key={item.key} value={item.key}>{item.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2"><Label htmlFor="expectedUsers">Expected users</Label><Input id="expectedUsers" name="expectedUsers" type="number" min="1" /></div>
+              <div className="space-y-2"><Label htmlFor="industry">Industry</Label><Input id="industry" name="industry" /></div>
+              <div className="space-y-2"><Label htmlFor="country">Country</Label><Input id="country" name="country" /></div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="message">Message</Label>

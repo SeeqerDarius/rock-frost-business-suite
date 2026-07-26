@@ -1061,9 +1061,9 @@ a merge gate.
 
 ## Billing / Subscriptions
 
-Per explicit scope clarification: billing, subscriptions, pricing plans,
-checkout, usage metering, and payment-provider integration are **not** part of
-this project's implemented or planned-for-this-pass scope. The existing
-`/app/platform/subscriptions` placeholder page is relabeled to say
-**"Planned — requirements not yet defined."** No further work on it is
-implied by this hardening pass.
+Implemented after the original hardening scope was written: public
+module/demo acquisition, operator-led onboarding, manual/offline and
+platform-managed subscription records, payment confirmation, time-bounded
+module activation, cancellation, notifications, and audit logging. See
+`docs/BILLING_AND_SUBSCRIPTIONS.md`. A real online checkout/payment webhook
+remains intentionally unimplemented until a provider is selected.

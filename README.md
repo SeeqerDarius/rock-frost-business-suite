@@ -4,7 +4,7 @@ A modular multi-tenant business platform. Organizations activate independent man
 
 > This is a clean rebuild started 2026-07-19. The previous implementation is archived on branch `archive/pre-redesign-rfbs` and under `docs/archive/previous-implementation/`. See `docs/DECISIONS.md` for why.
 
-**Current status**: all eleven business modules are feature-complete and deployed live at [rockfrostgroup.com](https://www.rockfrostgroup.com). The project is now in a dedicated production-hardening track (see `docs/HARDENING_PLAN.md`) rather than active feature development — see `OPERATOR_HANDOFF.md` for exactly what's been hardened and what's still open before external multi-tenant/production financial use.
+**Current status**: all eleven business modules are feature-complete and deployed live at [rockfrostgroup.com](https://www.rockfrostgroup.com). Public module/demo enquiries, operator-led onboarding, automatic tenant-code generation, and time-bounded module subscriptions are implemented. External automated checkout is not yet connected to a payment provider. The project remains in a production-hardening track (see `docs/HARDENING_PLAN.md`) — see `OPERATOR_HANDOFF.md` for the exact current state.
 
 ## Stack
 
@@ -60,6 +60,7 @@ Start with `OPERATOR_HANDOFF.md` at the repo root for the current state and next
 - `docs/AUTHENTICATION_AND_AUTHORIZATION.md` — real, enforced auth/RBAC (76 permission keys across 11 modules)
 - `docs/TESTING_STRATEGY.md` — how work is validated, current automated test coverage
 - `docs/MODULE_REQUESTS_AND_CUSTOMIZATION.md` — customer requests, operator assignment, approval/enablement, and per-organization module configuration
+- `docs/BILLING_AND_SUBSCRIPTIONS.md` — public acquisition, prefilled onboarding, offline/platform billing modes, activation, and expiry enforcement
 - `docs/ORGANIZATION_LIFECYCLE.md` — Super Admin onboarding, profile/status management, protected platform organizations, and recoverable deletion
 - `docs/HARDENING_PLAN.md` — the production-hardening track: what's fixed, what's deferred, why
 - `docs/DECISIONS.md` — dated log of consequential technical decisions
