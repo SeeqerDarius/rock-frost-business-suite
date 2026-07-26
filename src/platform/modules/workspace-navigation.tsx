@@ -1,4 +1,4 @@
-import { LayoutGrid, Grid3x3, BarChart3, Bell, Building2, ShieldCheck, MessageSquarePlus } from "lucide-react";
+import { LayoutGrid, Grid3x3, BarChart3, Bell, Building2, ShieldCheck, MessageSquarePlus, CreditCard } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 import type { TenantContext } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
@@ -22,6 +22,7 @@ export function getWorkspaceNavigation(tenant: TenantContext): ModuleNavItem[] {
     items.push(
       { label: "Module Requests", href: "/app/module-requests", icon: <MessageSquarePlus className="size-4" /> },
       { label: "Organization", href: "/app/organization", icon: <Building2 className="size-4" /> },
+      { label: "Billing", href: "/app/organization/billing", icon: <CreditCard className="size-4" /> },
       { label: "Administration", href: "/app/administration", icon: <ShieldCheck className="size-4" /> }
     );
   }

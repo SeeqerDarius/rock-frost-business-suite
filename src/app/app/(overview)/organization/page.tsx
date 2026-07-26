@@ -1,6 +1,8 @@
-import { Building2, Lock, MapPinned } from "lucide-react";
+import Link from "next/link";
+import { Building2, CreditCard, Lock, MapPinned } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
+import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/lib/db";
@@ -61,6 +63,21 @@ export default async function OrganizationSettingsPage() {
             ))}
           </dl>
         </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <CreditCard className="size-5 text-muted-foreground" />
+              <CardTitle>Billing</CardTitle>
+            </div>
+            <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/organization/billing" />}>
+              View subscriptions
+            </Button>
+          </div>
+          <CardDescription>Module subscriptions and online payment.</CardDescription>
+        </CardHeader>
       </Card>
 
       <Card>

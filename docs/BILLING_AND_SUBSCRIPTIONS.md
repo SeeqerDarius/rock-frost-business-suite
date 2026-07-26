@@ -32,23 +32,68 @@ The public acquisition and platform-operator workflows share one record chain:
 - `MANUAL_OFFLINE` covers negotiated arrangements paid outside the platform,
   such as bank transfer, cash, mobile money, or an externally issued invoice.
   The operator records the payment method and reference before activation.
-- `PLATFORM_MANAGED` identifies subscriptions intended for automated platform
-  checkout and renewal. The subscription lifecycle and auto-renew preference
-  are implemented, but no external payment processor is connected yet.
-  Until one is selected and configured, an operator must still confirm the
-  payment reference before access activates.
+- `PLATFORM_MANAGED` subscriptions are paid online, inside the platform, by
+  the organization's own admin — from `/app/organization/billing` (linked
+  from Organization; requires `org.settings.manage`, the same permission as
+  the rest of that section). There is no public/unauthenticated payment link;
+  the customer must already be a signed-in member of the org the subscription
+  belongs to.
 
-The schema reserves `PAYSTACK` and `FLUTTERWAVE` as gateway-provider values,
-and server-only adapters can initialize and verify transactions and validate
-Paystack signatures or Flutterwave webhook hashes. They are not yet connected
-to a checkout page, callback route, or webhook route, so platform-managed
-subscriptions still require operator payment confirmation. Provider
-credentials are documented in `.env.example` and remain optional.
+### Payment gateways: Paystack and Flutterwave
 
-The application must never claim that an online payment succeeded without a
-verified provider callback. A future gateway integration should call the same
-subscription activation service from a signed webhook after verifying the
-provider event.
+Both providers are supported, chosen because both cover Ghana (this
+platform's primary market) and West Africa broadly. Both are offered to the
+customer as separate buttons on the billing page — whichever gateway is
+configured (has its secret key set, per `isGatewayConfigured()` in
+`src/lib/payments/config.ts`) shows up; an unconfigured gateway's button is
+hidden rather than offered and failing, the same graceful-degradation pattern
+`RESEND_API_KEY` already uses elsewhere in this codebase.
+
+Client code lives in `src/lib/payments/`: `paystack.ts` / `flutterwave.ts`
+implement `initializeTransaction()` (starts a hosted checkout),
+`verifyTransaction()` (server-to-server confirmation by reference), and each
+provider's own webhook-authenticity check (`verifySignature()` — HMAC-SHA512
+for Paystack; `verifyWebhookHash()` — constant-time shared-secret comparison
+for Flutterwave, since Flutterwave doesn't sign its webhook payload).
+Provider credentials are documented in `.env.example`
+(`PAYSTACK_SECRET_KEY`/`PAYSTACK_PUBLIC_KEY`,
+`FLUTTERWAVE_SECRET_KEY`/`FLUTTERWAVE_PUBLIC_KEY`/`FLUTTERWAVE_WEBHOOK_HASH`)
+and remain optional — the gateway is simply unavailable until set.
+
+**Reference/idempotency model.** `Subscription.paymentReference` is written
+twice, not once: at **initiation** (`initiateGatewayPayment()` in
+`src/platform/subscriptions/service.ts`), our own generated reference
+(`sub_<subscriptionId>_<random>`) is stamped onto the subscription alongside
+`gatewayProvider` via a guarded `updateMany`, without changing status; at
+**activation** (`activateSubscriptionFromGateway()`), the subscription is
+looked up *by* that reference + provider, and the payment is only accepted
+once the gateway's own `verifyTransaction()` call confirms success **and**
+the verified amount/currency match the subscription's stored
+`amount`/`currency` exactly — the webhook/callback payload's own claimed
+amount is never trusted directly.
+
+Two independent callers can reach `activateSubscriptionFromGateway()` for the
+same payment: the **webhook**
+(`src/app/api/payments/{paystack,flutterwave}/webhook/route.ts` — the
+authoritative path, registered in each provider's dashboard) and the
+**browser callback page**
+(`/app/organization/billing/callback/{paystack,flutterwave}` — a UX
+accelerant so the customer isn't stuck waiting for the webhook). The function
+is idempotent: a subscription already `ACTIVE` by the time either caller
+reaches it is returned as-is rather than re-processed or rejected, so
+whichever lands first wins and the other is a safe no-op. Neither webhook
+route requires a signed-in session — they're called server-to-server by the
+gateway, not a browser; authenticity comes entirely from the signature/hash
+check.
+
+**Honestly unverified**, consistent with this project's existing practice
+(see `OPERATOR_HANDOFF.md`'s Hardening Pass 4 section): the webhook routes
+and the full checkout round-trip are written carefully against each
+provider's documented API shape and are `tsc`-clean, but have not been
+exercised against a real Paystack/Flutterwave sandbox from this environment —
+there's no way to receive an inbound webhook call here. Run a real sandbox
+transaction through both providers and confirm the webhook actually lands
+before relying on this in production.
 
 ## Access and expiry
 
