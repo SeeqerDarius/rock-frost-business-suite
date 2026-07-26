@@ -7,10 +7,12 @@
 **Authentication:**
 - NextAuth v4, credentials provider (email + password, bcrypt-hashed) — `src/lib/auth/nextauth.ts`. `authorize()` looks up `User` by lowercased email, requires `status === "ACTIVE"`, verifies the password with `bcrypt.compare`, and updates `lastLoginAt`.
 - JWT session strategy. `Session.user` / `JWT.user` carry `{ id, organizationId, role }` via a type augmentation in `src/lib/auth/next-auth.d.ts`.
+- Production authentication is split by host: platform owners sign in at `admin.rockfrostgroup.com`, tenant users at `app.rockfrostgroup.com`. NextAuth's session token is explicitly host-only (no parent `Domain` attribute), allowing independent owner and tenant sessions in the same browser. Login and the authenticated app layout both enforce that the database-resolved identity matches the current host.
 - `src/app/api/auth/[...nextauth]/route.ts` is the standard NextAuth route handler.
 - `getServerAuthSession()` (`src/lib/auth/session.ts`) wraps `getServerSession(authOptions)` for server components/actions.
 - `src/components/session-provider.tsx` wraps the app in NextAuth's client `SessionProvider` (mounted in `src/app/layout.tsx`).
 - `src/app/(auth)/login/page.tsx` is a real client-side form (`signIn("credentials", ...)`, `redirect: false`, manual redirect on success, visible error on failure).
+- `src/proxy.ts` routes legacy `www` app/authentication URLs and cross-surface paths to the correct subdomain. It does not replace the role checks in layouts/actions.
 - **Login rate limiting**: `User.failedLoginAttempts`/`User.lockedUntil` (migration `20260720120000_add_login_lockout`). Five wrong passwords locks the account for 15 minutes; a correct password resets the counter. **Important NextAuth v4 gotcha, confirmed in `node_modules/next-auth/core/routes/callback.js`**: the credentials provider collapses every `authorize()` failure — including a thrown `Error` — to the fixed string `"CredentialsSignin"`; a custom message thrown from `authorize()` never reaches the client. The lock message is therefore surfaced via a separate pre-check, `getAccountLockStatus(email)` in `src/lib/auth/actions.ts`, called by the login page *before* invoking `signIn()` — not by trying to smuggle a message through NextAuth's error channel.
 - `src/components/navigation/user-menu.tsx` uses `useSession()` for real name/email/initials and `signOut({ callbackUrl: "/login" })`.
 
@@ -23,6 +25,7 @@
 - Pages: `src/app/(auth)/forgot-password/page.tsx`, `src/app/(auth)/reset-password/page.tsx`, `src/app/(auth)/invite/page.tsx`.
 - The admin-facing "send an invite" UI (`inviteMember` server action, `/app/administration`) was built in Phase 4 — it creates the `User`/`OrganizationMember` rows, issues the token, and sends the email in one `db.$transaction`, logging an `AuditLog` entry. "Super Admin" is excluded from the invitable-role list to prevent a tenant admin from granting Rock Frost's own operator role.
 - Email delivery (`src/lib/email.ts`) degrades gracefully: if `RESEND_API_KEY` is unset, `sendEmail()` logs a `console.warn` and returns `{ ok: false }` instead of throwing. Today `RESEND_API_KEY` is unset in this environment, so reset/invite/contact emails are logged, not delivered — the UI and token logic work end-to-end regardless.
+- Invitation and billing callback URLs always use the tenant origin. Password-reset links preserve the surface where the reset was requested, so an owner returns to `admin.*` and a tenant returns to `app.*`.
 
 **Route protection:**
 - `src/app/app/layout.tsx` wraps every route under `/app/*`. It redirects to `/login` if there is no session, and renders a "No organization access" message if `getCurrentTenant()` (`src/lib/tenant/index.ts`) returns null (session exists but no matching `OrganizationMember`). Otherwise it renders children.

@@ -3,6 +3,9 @@ import { getServerAuthSession } from "@/lib/auth/session";
 import { getCurrentTenant } from "@/lib/tenant";
 import { OrganizationThemeSync } from "@/components/theme/organization-theme-sync";
 import { db } from "@/lib/db";
+import { headers } from "next/headers";
+import { buildSurfaceUrl, classifyAppSurface, isIdentityAllowedOnSurface } from "@/lib/app-surfaces";
+import { isPlatformOperator } from "@/lib/auth/permissions";
 
 /**
  * Real route protection for everything under /app/* — organization scope,
@@ -31,6 +34,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </div>
     );
+  }
+
+  const requestHeaders = await headers();
+  const requestSurface = classifyAppSurface(
+    requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host"),
+  );
+  const platformIdentity = isPlatformOperator(tenant);
+  if (!isIdentityAllowedOnSurface(platformIdentity, requestSurface)) {
+    const destination = platformIdentity ? "platform" : "tenant";
+    const callbackPath = platformIdentity ? "/app/platform/dashboard" : "/app/dashboard";
+    const loginUrl = buildSurfaceUrl(destination, "/login");
+    loginUrl.searchParams.set("callbackUrl", callbackPath);
+    loginUrl.searchParams.set("reason", "wrong-surface");
+    redirect(loginUrl.toString());
   }
 
   const organization = await db.organization.findUnique({

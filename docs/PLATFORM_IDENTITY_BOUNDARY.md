@@ -9,6 +9,14 @@ Rock Frost Business Suite has two operational identity contexts:
 
 The current session model requires every authenticated user to have an organization membership. The platform owner's membership therefore points to an internal platform anchor. That anchor is an authorization implementation detail, not a tenant: it is excluded from tenant lists, counts, selectors, module adoption, and direct organization-management routes.
 
+The contexts also have separate browser origins:
+
+- `https://admin.rockfrostgroup.com` — platform-owner authentication and `/app/platform/*`.
+- `https://app.rockfrostgroup.com` — tenant authentication and tenant workspace routes.
+- `https://www.rockfrostgroup.com` — public marketing and acquisition pages.
+
+NextAuth session cookies deliberately omit the `Domain` attribute. They are host-only, so the same browser profile can hold one owner session on `admin.*` and a different tenant session on `app.*` without either login replacing the other.
+
 ## Immutable identity rules
 
 - An active membership with the global system `Super Admin` role makes the user a platform identity. This classification is resolved from the database and is not inferred from the selected organization, URL, or `active_org` cookie.
@@ -16,11 +24,13 @@ The current session model requires every authenticated user to have an organizat
 - The tenant switch action refuses platform identities, clears `active_org`, and returns them to `/app/platform/dashboard`.
 - Tenant creation and tenant invitations reject an email already belonging to a platform identity. The checks run both before and inside the write transaction to prevent partial organizations or race-condition membership creation.
 - The tenant context exposes only the platform-anchor membership to platform identities, so future UI components cannot accidentally present tenant workspaces as switch targets.
+- Credentials login rejects a platform identity on `app.*` and a tenant identity on `admin.*`. The authenticated app layout repeats the host/identity check server-side; the routing proxy is convenience and defense-in-depth, not the authorization boundary.
 - Migration `20260726050000_enforce_platform_owner_isolation` removes historical non-platform memberships from platform identities, revokes their pending tenant invitations, and increments `sessionVersion` to invalidate contaminated sessions. The idempotent operator check/repair is `npm run db:repair-platform-owner-isolation`.
 
 ## Route rules
 
 - `/app` resolves the signed-in identity and sends a Super Admin to `/app/platform/dashboard`; tenant users go to `/app/dashboard`.
+- Legacy `/app/*` and authentication URLs on `www.*` are redirected to the corresponding `admin.*` or `app.*` origin. Cross-surface workspace URLs are redirected to the correct origin.
 - `/app/platform/account` is the platform owner's profile and password-management route.
 - `/app/account` is the tenant-user profile route.
 - The account menu chooses the correct profile and settings links from the session role.

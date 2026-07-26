@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
-import { buildAppUrl } from "@/lib/app-url";
+import { buildTenantAppUrl } from "@/lib/app-url";
 import { sendEmail } from "@/lib/email";
 import {
   createInvitation,
@@ -181,7 +181,7 @@ export async function createOrganization(formData: FormData): Promise<void> {
     email: parsed.data.ownerEmail,
     createdById: tenant.userId,
   });
-  const inviteUrl = buildAppUrl("/invite", { token });
+  const inviteUrl = buildTenantAppUrl("/invite", { token });
   const delivery = await sendEmail({
     to: parsed.data.ownerEmail,
     subject: `You have been invited to ${parsed.data.name}`,
@@ -302,7 +302,7 @@ export async function resendOrganizationInvitation(formData: FormData): Promise<
   } catch {
     redirect(`/app/platform/organizations/${parsed.data.organizationId}?error=invitation`);
   }
-  const inviteUrl = buildAppUrl("/invite", { token });
+  const inviteUrl = buildTenantAppUrl("/invite", { token });
   const delivery = await sendEmail({
     to: member.user.email,
     subject: `Reminder: invitation to ${member.organization.name}`,

@@ -4,6 +4,11 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 import { hasPlatformRole } from "@/lib/auth/platform-identity";
+import {
+  classifyAppSurface,
+  isIdentityAllowedOnSurface,
+  isTrustedAppOrigin,
+} from "@/lib/app-surfaces";
 
 export const MAX_FAILED_ATTEMPTS = 5;
 export const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
@@ -16,7 +21,7 @@ export const authOptions: NextAuthOptions = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         if (!credentials?.email || !credentials?.password) {
           return null;
         }
@@ -95,6 +100,28 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        const requestHost =
+          request.headers?.["x-forwarded-host"] ??
+          request.headers?.host;
+        const requestSurface = classifyAppSurface(
+          Array.isArray(requestHost) ? requestHost[0] : requestHost,
+        );
+        const isPlatformIdentity = hasPlatformRole(primaryMembership?.role);
+        if (!isIdentityAllowedOnSurface(isPlatformIdentity, requestSurface)) {
+          await logAuditEvent({
+            organizationId: primaryMembership?.organizationId ?? null,
+            userId: user.id,
+            membershipId: primaryMembership?.id ?? null,
+            module: "auth",
+            action: "login.failed",
+            entityName: "User",
+            entityId: user.id,
+            status: "FAILURE",
+            metadata: { email, reason: "wrong_application_surface", requestSurface },
+          });
+          return null;
+        }
+
         await db.user.update({
           where: { id: user.id },
           data: { lastLoginAt: new Date(), failedLoginAttempts: 0, lockedUntil: null },
@@ -128,7 +155,32 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
   },
+  useSecureCookies: process.env.NODE_ENV === "production",
+  cookies: {
+    sessionToken: {
+      name: process.env.NODE_ENV === "production"
+        ? "__Secure-next-auth.session-token"
+        : "next-auth.session-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+        // Deliberately omit `domain`: this makes the cookie host-only, so
+        // admin.* and app.* can hold different signed-in accounts.
+      },
+    },
+  },
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith("/") && !url.startsWith("//")) return new URL(url, baseUrl).toString();
+      try {
+        const destination = new URL(url);
+        return isTrustedAppOrigin(destination.origin) ? destination.toString() : baseUrl;
+      } catch {
+        return baseUrl;
+      }
+    },
     async jwt({ token, user }) {
       if (user) {
         token.user = {

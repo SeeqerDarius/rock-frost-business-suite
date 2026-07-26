@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { getAccountLockStatus } from "@/lib/auth/actions";
+import { buildSurfaceUrl, classifyAppSurface, type AppSurface } from "@/lib/app-surfaces";
 
 const NOTICE_MESSAGES: Record<string, string> = {
   reset: "Your password has been reset. Sign in with your new password.",
@@ -20,16 +21,29 @@ const ERROR_MESSAGES: Record<string, string> = {
   "expired-invite": "That invitation link has expired or was already used.",
 };
 
+const subscribeToHostname = () => () => {};
+
 function LoginForm() {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const surface = useSyncExternalStore<AppSurface>(
+    subscribeToHostname,
+    () => classifyAppSurface(window.location.hostname),
+    () => "unknown",
+  );
 
   const noticeKey = searchParams.get("reset") ? "reset" : searchParams.get("activated") ? "activated" : null;
   const notice = noticeKey ? NOTICE_MESSAGES[noticeKey] : null;
   const urlError = searchParams.get("error");
   const urlErrorMessage = urlError ? ERROR_MESSAGES[urlError] : null;
-  const callbackUrl = searchParams.get("callbackUrl") || "/app";
+  const requestedCallbackUrl = searchParams.get("callbackUrl") || "/app";
+  const callbackPath =
+    requestedCallbackUrl.startsWith("/") && !requestedCallbackUrl.startsWith("//")
+      ? requestedCallbackUrl
+      : "/app";
+  const platformLoginUrl = buildSurfaceUrl("platform", "/login").toString();
+  const tenantLoginUrl = buildSurfaceUrl("tenant", "/login").toString();
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -49,7 +63,7 @@ function LoginForm() {
     const result = await signIn("credentials", {
       email,
       password: formData.get("password"),
-      callbackUrl,
+      callbackUrl: new URL(callbackPath, window.location.origin).toString(),
       redirect: false,
     });
 
@@ -59,7 +73,7 @@ function LoginForm() {
       return;
     }
 
-    window.location.href = result?.url ?? callbackUrl;
+    window.location.href = result?.url ?? callbackPath;
   }
 
   return (
@@ -77,6 +91,21 @@ function LoginForm() {
       {error ? (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
+        </div>
+      ) : null}
+      {surface === "platform" ? (
+        <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
+          Platform owner sign-in. Tenant users should use{" "}
+          <a href={tenantLoginUrl} className="font-medium text-primary underline-offset-4 hover:underline">
+            the tenant workspace
+          </a>.
+        </div>
+      ) : surface === "tenant" ? (
+        <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
+          Tenant workspace sign-in. Platform owners should use{" "}
+          <a href={platformLoginUrl} className="font-medium text-primary underline-offset-4 hover:underline">
+            Platform Administration
+          </a>.
         </div>
       ) : null}
       <div className="space-y-2">
@@ -104,7 +133,7 @@ export default function LoginPage() {
     <Card>
       <CardHeader>
         <CardTitle>Sign in</CardTitle>
-        <CardDescription>Enter your credentials to access your workspace.</CardDescription>
+        <CardDescription>Enter your credentials for this application workspace.</CardDescription>
       </CardHeader>
       <CardContent>
         <Suspense fallback={null}>

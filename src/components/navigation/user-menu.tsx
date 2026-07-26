@@ -76,7 +76,10 @@ export function UserMenu() {
           Settings
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onClick={() => signOut({ callbackUrl: "/login" })}>
+        <DropdownMenuItem
+          variant="destructive"
+          onClick={() => signOut({ callbackUrl: new URL("/login", window.location.origin).toString() })}
+        >
           <LogOut />
           Sign out
         </DropdownMenuItem>

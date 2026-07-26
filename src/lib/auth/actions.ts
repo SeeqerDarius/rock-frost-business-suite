@@ -10,7 +10,8 @@ import { acceptInvitationNewUser, acceptInvitationExistingUser, InvitationAccept
 import { getServerAuthSession } from "@/lib/auth/session";
 import { email as emailSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
-import { buildAppUrl } from "@/lib/app-url";
+import { headers } from "next/headers";
+import { buildSurfaceUrl, classifyAppSurface } from "@/lib/app-surfaces";
 
 function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
@@ -48,12 +49,18 @@ export async function requestPasswordReset(formData: FormData): Promise<void> {
     // never reveal via timing or response shape whether an email is registered.
     if (user && user.status === "ACTIVE") {
       const token = await issuePasswordResetToken(email);
-      const resetUrl = buildAppUrl("/reset-password", { email, token });
+      const requestHeaders = await headers();
+      const surface = classifyAppSurface(
+        requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host"),
+      );
+      const resetUrl = buildSurfaceUrl(surface === "platform" ? "platform" : "tenant", "/reset-password");
+      resetUrl.searchParams.set("email", email);
+      resetUrl.searchParams.set("token", token);
 
       await sendEmail({
         to: email,
         subject: "Reset your Rock Frost Business Suite password",
-        html: `<p>Someone requested a password reset for this account.</p><p><a href="${resetUrl}">Reset your password</a></p><p>This link expires in 1 hour. If you didn't request this, you can ignore this email.</p>`,
+        html: `<p>Someone requested a password reset for this account.</p><p><a href="${resetUrl.toString()}">Reset your password</a></p><p>This link expires in 1 hour. If you didn't request this, you can ignore this email.</p>`,
       });
     }
   }

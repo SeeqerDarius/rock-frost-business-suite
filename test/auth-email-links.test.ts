@@ -6,6 +6,7 @@ const mockDb = {
 };
 const mockIssuePasswordResetToken = vi.fn();
 const mockSendEmail = vi.fn();
+let mockHost = "app.rockfrostgroup.com";
 
 class RedirectSignal extends Error {
   constructor(public url: string) {
@@ -21,6 +22,9 @@ vi.mock("@/lib/auth/tokens", () => ({
 }));
 vi.mock("@/lib/auth/session-revocation", () => ({ revokeUserSessions: vi.fn() }));
 vi.mock("@/lib/auth/session", () => ({ getServerAuthSession: vi.fn() }));
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers({ host: mockHost }),
+}));
 vi.mock("@/lib/audit", () => ({ logAuditEvent: vi.fn() }));
 vi.mock("@/lib/auth/invitations", () => ({
   acceptInvitationNewUser: vi.fn(),
@@ -38,6 +42,9 @@ const { requestPasswordReset } = await import("@/lib/auth/actions");
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("NEXTAUTH_URL", "https://www.rockfrostgroup.com");
+  vi.stubEnv("PLATFORM_APP_URL", "https://admin.rockfrostgroup.com");
+  vi.stubEnv("TENANT_APP_URL", "https://app.rockfrostgroup.com");
+  mockHost = "app.rockfrostgroup.com";
   vi.stubEnv("NEXT_PUBLIC_SITE_URL", "");
   vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "");
   vi.stubEnv("VERCEL_URL", "");
@@ -60,7 +67,26 @@ describe("authentication email links", () => {
     expect(mockSendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         html: expect.stringContaining(
-          "https://www.rockfrostgroup.com/reset-password?email=person%2Bops%40example.com&token=token%26one",
+          "https://app.rockfrostgroup.com/reset-password?email=person%2Bops%40example.com&token=token%26one",
+        ),
+      }),
+    );
+  });
+
+  it("keeps a platform owner's password-reset flow on the admin host", async () => {
+    mockHost = "admin.rockfrostgroup.com";
+    mockDb.user.findUnique.mockResolvedValue({ id: "owner-1", email: "owner@example.com", status: "ACTIVE" });
+    mockIssuePasswordResetToken.mockResolvedValue("owner-token");
+    mockSendEmail.mockResolvedValue({ ok: true });
+
+    const formData = new FormData();
+    formData.set("email", "owner@example.com");
+
+    await expect(requestPasswordReset(formData)).rejects.toThrow("/forgot-password?sent=1");
+    expect(mockSendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        html: expect.stringContaining(
+          "https://admin.rockfrostgroup.com/reset-password?email=owner%40example.com&token=owner-token",
         ),
       }),
     );

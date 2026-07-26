@@ -6,6 +6,8 @@ A modular multi-tenant business platform. Organizations activate independent man
 
 **Current status**: all eleven business modules are feature-complete and deployed live at [rockfrostgroup.com](https://www.rockfrostgroup.com). Public module/demo enquiries, operator-led onboarding, automatic tenant-code generation, time-bounded module subscriptions, and Paystack/Flutterwave hosted checkout are implemented. Platform-owner identities are isolated from tenant workspaces at membership creation, session resolution, organization switching, and route authorization. The project remains in a production-hardening track (see `docs/HARDENING_PLAN.md`) — see `OPERATOR_HANDOFF.md` for the exact current state.
 
+Production uses host-separated authentication: platform owners use `admin.rockfrostgroup.com`, tenant users use `app.rockfrostgroup.com`, and public pages remain on `www.rockfrostgroup.com`. Host-only cookies allow both accounts to stay signed in concurrently in one browser profile.
+
 ## Stack
 
 - **Next.js 16** (App Router, Turbopack) — see `AGENTS.md` before writing Next.js-specific code; this project pins a version with breaking changes from what most training data assumes.

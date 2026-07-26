@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-07-26 — Concurrent owner and tenant sessions by subdomain
+
+Implemented host-separated authentication so the same browser profile can remain signed in as a platform owner and tenant simultaneously. `admin.rockfrostgroup.com` is the platform control plane, `app.rockfrostgroup.com` is the tenant workspace, and `www.rockfrostgroup.com` remains public. NextAuth's session-token cookie is explicitly host-only, credential login rejects identities on the wrong surface, and the authenticated app layout independently repeats the host/role check. `src/proxy.ts` routes legacy and cross-surface URLs but is not relied on as the sole authorization gate.
+
+Invitation links and payment callbacks now target `app.*`; password-reset links preserve the requesting surface; sign-out callbacks preserve the current origin; and authentication redirects allow only the three trusted origins (plus local development). Vercel project domains `admin.rockfrostgroup.com` and `app.rockfrostgroup.com` were attached. Cloudflare has unproxied `admin` and `app` CNAME records pointing to `a39ecc209697275a.vercel-dns-017.com`; Vercel reports both domains verified and configured correctly.
+
+Validation passed: ESLint, TypeScript, Prisma schema validation, all 197 tests across 28 files, and the Next.js production build (116 routes plus Proxy).
+
 ## 2026-07-26 — Immutable platform-owner/tenant identity boundary
 
 Root cause of the reported owner-to-tenant workspace jump was a three-part identity-resolution conflict: tenant creation could attach the platform owner's existing `User` to an `Organization Owner` membership; NextAuth selected the earliest membership; and `getCurrentTenant()` preferred the `active_org` cookie. The fix establishes the active global system `Super Admin` membership as the immutable platform identity in `src/lib/auth/platform-identity.ts`. NextAuth and tenant resolution now canonicalize that identity to the internal platform anchor before any cookie/JWT fallback, tenant context hides all non-anchor memberships, and the switch action clears the organization cookie and returns the owner to the platform dashboard.

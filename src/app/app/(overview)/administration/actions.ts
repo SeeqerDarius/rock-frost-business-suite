@@ -11,7 +11,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { shortText, email as emailSchema, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
-import { buildAppUrl } from "@/lib/app-url";
+import { buildTenantAppUrl } from "@/lib/app-url";
 import { isPlatformUser } from "@/lib/auth/platform-identity";
 
 function inviteEmailHtml(organizationName: string, roleName: string, inviteUrl: string) {
@@ -111,7 +111,7 @@ export async function inviteMember(formData: FormData): Promise<void> {
     email,
     createdById: session?.user?.id ?? null,
   });
-  const inviteUrl = buildAppUrl("/invite", { token });
+  const inviteUrl = buildTenantAppUrl("/invite", { token });
 
   const result = await sendEmail({
     to: email,
@@ -162,7 +162,7 @@ export async function resendMemberInvitation(formData: FormData): Promise<void> 
     entityId: membershipId,
   });
 
-  const inviteUrl = buildAppUrl("/invite", { token });
+  const inviteUrl = buildTenantAppUrl("/invite", { token });
   const result = await sendEmail({
     to: member!.user.email,
     subject: `Reminder: you've been invited to join ${tenant.organization.name} on Rock Frost Business Suite`,

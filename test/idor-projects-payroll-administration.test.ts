@@ -237,7 +237,7 @@ describe("Administration inviteMember() — cross-tenant role IDOR fix", () => {
       expect.objectContaining({ organizationId: ORG, membershipId: "mem-new" }),
     );
     expect(mockSendEmail).toHaveBeenCalledWith(
-      expect.objectContaining({ html: expect.stringContaining("https://www.rockfrostgroup.com/invite?token=tok-1") }),
+      expect.objectContaining({ html: expect.stringContaining("https://app.rockfrostgroup.com/invite?token=tok-1") }),
     );
   });
 });

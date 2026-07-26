@@ -1,4 +1,5 @@
 import "server-only";
+import { buildSurfaceUrl } from "@/lib/app-surfaces";
 
 type SearchParamValue = string | number | boolean | null | undefined;
 
@@ -85,4 +86,30 @@ export function buildAppUrl(pathname: string, searchParams: Record<string, Searc
   }
 
   return url.toString();
+}
+
+function buildScopedAppUrl(
+  surface: "platform" | "tenant",
+  pathname: string,
+  searchParams: Record<string, SearchParamValue> = {},
+): string {
+  const url = buildSurfaceUrl(surface, pathname);
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (value !== null && value !== undefined) url.searchParams.set(key, String(value));
+  }
+  return url.toString();
+}
+
+export function buildPlatformAppUrl(
+  pathname: string,
+  searchParams: Record<string, SearchParamValue> = {},
+): string {
+  return buildScopedAppUrl("platform", pathname, searchParams);
+}
+
+export function buildTenantAppUrl(
+  pathname: string,
+  searchParams: Record<string, SearchParamValue> = {},
+): string {
+  return buildScopedAppUrl("tenant", pathname, searchParams);
 }

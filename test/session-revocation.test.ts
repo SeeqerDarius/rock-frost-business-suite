@@ -21,6 +21,25 @@ beforeEach(() => {
  * use, not linger for up to 30 days.
  */
 describe("nextauth jwt callback — session revocation", () => {
+  it("uses a host-only session cookie so admin and tenant sessions remain independent", () => {
+    const sessionCookie = authOptions.cookies?.sessionToken;
+    expect(sessionCookie?.options.domain).toBeUndefined();
+    expect(sessionCookie?.options.path).toBe("/");
+    expect(sessionCookie?.options.httpOnly).toBe(true);
+  });
+
+  it("accepts redirects only to trusted application origins", async () => {
+    const redirectCallback = authOptions.callbacks!.redirect!;
+    await expect(redirectCallback({
+      url: "https://admin.rockfrostgroup.com/app/platform/dashboard",
+      baseUrl: "https://www.rockfrostgroup.com",
+    })).resolves.toBe("https://admin.rockfrostgroup.com/app/platform/dashboard");
+    await expect(redirectCallback({
+      url: "https://attacker.example/phishing",
+      baseUrl: "https://www.rockfrostgroup.com",
+    })).resolves.toBe("https://www.rockfrostgroup.com");
+  });
+
   it("stores sessionVersion on initial sign-in", async () => {
     const token = await jwtCallback({
       token: {},

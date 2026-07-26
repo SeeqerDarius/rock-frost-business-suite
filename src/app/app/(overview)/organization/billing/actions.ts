@@ -5,7 +5,7 @@ import { z } from "zod";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { cuid, parseWithSchema } from "@/lib/validation";
-import { buildAppUrl } from "@/lib/app-url";
+import { buildTenantAppUrl } from "@/lib/app-url";
 import { initiateGatewayPayment } from "@/platform/subscriptions/service";
 
 const startSchema = z.object({
@@ -35,7 +35,7 @@ export async function startGatewayPayment(formData: FormData): Promise<void> {
       organizationId: tenant.organizationId,
       provider: parsed.data.provider,
       payerUserId: tenant.userId,
-      callbackUrl: buildAppUrl(CALLBACK_PATH[parsed.data.provider]),
+      callbackUrl: buildTenantAppUrl(CALLBACK_PATH[parsed.data.provider]),
     });
     checkoutUrl = result.checkoutUrl;
   } catch (error) {
