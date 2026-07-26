@@ -6,6 +6,8 @@ Replaced the generic geometric SVG favicon with the supplied `public/rf logo.png
 
 Validation passed: generated dimensions and all three embedded ICO sizes verified, manifest JSON parsed successfully, ESLint, TypeScript, all 200 tests across 29 files, and the Next.js production build (133 generated routes, including `/icon.png` and `/apple-icon.png`).
 
+Commit `389fd85` was pushed to `main` and deployed successfully as Vercel production deployment `dpl_6vhMyhC62ZYVUXTZM5m3vSBGQusD` (`READY`). The `www`, `app`, and `admin` aliases all resolve to it. Live checks returned HTTP 200 with the correct image MIME types for `/favicon.ico`, `/icon.png`, `/apple-icon.png`, and `/icon-512.png`; the one-hour post-deploy error scan was clean.
+
 ## 2026-07-26 — Concurrent owner and tenant sessions by subdomain
 
 Implemented host-separated authentication so the same browser profile can remain signed in as a platform owner and tenant simultaneously. `admin.rockfrostgroup.com` is the platform control plane, `app.rockfrostgroup.com` is the tenant workspace, and `www.rockfrostgroup.com` remains public. NextAuth's session-token cookie is explicitly host-only, credential login rejects identities on the wrong surface, and the authenticated app layout independently repeats the host/role check. `src/proxy.ts` routes legacy and cross-surface URLs but is not relied on as the sole authorization gate.
