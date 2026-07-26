@@ -3,6 +3,7 @@ import "server-only";
 import { randomBytes, createHash } from "node:crypto";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
+import { isPlatformUser } from "@/lib/auth/platform-identity";
 
 const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const RESEND_COOLDOWN_MS = 60 * 1000; // 1 resend per minute per invitation
@@ -13,7 +14,7 @@ function hashToken(token: string): string {
 
 export class InvitationError extends Error {}
 export class InvitationAcceptError extends Error {
-  constructor(public reason: "invalid" | "already-accepted" | "revoked" | "expired" | "existing-account" | "not-active" | "wrong-account") {
+  constructor(public reason: "invalid" | "already-accepted" | "revoked" | "expired" | "existing-account" | "not-active" | "wrong-account" | "platform-owner") {
     super(reason);
   }
 }
@@ -179,6 +180,9 @@ export async function acceptInvitationExistingUser(token: string, sessionUserId:
   }
   if (invitation.membership.userId !== sessionUserId) {
     throw new InvitationAcceptError("wrong-account");
+  }
+  if (await isPlatformUser(sessionUserId)) {
+    throw new InvitationAcceptError("platform-owner");
   }
 
   await db.$transaction(async (tx) => {

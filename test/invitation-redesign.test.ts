@@ -9,7 +9,7 @@ const mockDb = {
     findUnique: vi.fn(),
   },
   user: { update: vi.fn() },
-  organizationMember: { update: vi.fn(), updateMany: vi.fn() },
+  organizationMember: { update: vi.fn(), updateMany: vi.fn(), findFirst: vi.fn() },
   auditLog: { create: vi.fn() },
   $transaction: vi.fn(),
 };
@@ -27,6 +27,7 @@ const MEMBERSHIP = "mem-1";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockDb.organizationMember.findFirst.mockResolvedValue(null);
   txPassthrough();
 });
 
@@ -162,6 +163,15 @@ describe("acceptInvitationExistingUser — never sets a password, requires the m
     await expect(invitations.acceptInvitationExistingUser("raw-token", "user-1")).rejects.toThrow(
       invitations.InvitationAcceptError,
     );
+  });
+
+  it("rejects a platform owner before activating a tenant membership", async () => {
+    mockDb.invitation.findUnique.mockResolvedValue(invitationRow());
+    mockDb.organizationMember.findFirst.mockResolvedValue({ id: "platform-membership" });
+
+    await expect(invitations.acceptInvitationExistingUser("raw-token", "user-1"))
+      .rejects.toMatchObject({ reason: "platform-owner" });
+    expect(mockDb.organizationMember.update).not.toHaveBeenCalled();
   });
 });
 

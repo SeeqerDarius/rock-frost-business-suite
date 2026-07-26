@@ -16,6 +16,7 @@
     "test:all": "npm run test && npm run test:integration",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset-platform": "tsx scripts/reset-platform.ts",
+    "db:repair-platform-owner-isolation": "tsx scripts/repair-platform-owner-isolation.ts",
     "db:test:migrate": "cross-env ALLOW_INTEGRATION_TESTS=1 tsx scripts/test-db-migrate.ts",
     "db:test:seed": "cross-env ALLOW_INTEGRATION_TESTS=1 tsx scripts/test-db-seed.ts",
     "postinstall": "prisma generate"

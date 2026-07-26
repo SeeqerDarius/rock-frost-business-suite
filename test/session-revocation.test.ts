@@ -41,7 +41,11 @@ describe("nextauth jwt callback — session revocation", () => {
   });
 
   it("keeps the session when the DB sessionVersion still matches the token's", async () => {
-    mockDb.user.findUnique.mockResolvedValue({ status: "ACTIVE", sessionVersion: 3 });
+    mockDb.user.findUnique.mockResolvedValue({
+      status: "ACTIVE",
+      sessionVersion: 3,
+      organizationMemberships: [],
+    });
 
     const token = await jwtCallback({
       token: { user: { id: "user-1", sessionVersion: 3 } },

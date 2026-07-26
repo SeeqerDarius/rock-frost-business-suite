@@ -17,6 +17,7 @@ import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { cuid, email, escapeHtml, longText, parseWithSchema, shortText } from "@/lib/validation";
 import { createModuleRequest } from "@/platform/module-requests/service";
+import { isPlatformUser } from "@/lib/auth/platform-identity";
 
 const tenantCode = z.string().trim().toLowerCase().min(3).max(50).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const optionalText = z.union([shortText, z.literal("")]);
@@ -53,6 +54,8 @@ const deletionSchema = z.object({
   confirmTenantCode: tenantCode,
   confirmPassword: z.string().min(1).max(200),
 });
+
+class PlatformOwnerTenantError extends Error {}
 
 async function requireOperator() {
   const tenant = await requireCurrentTenant();
@@ -106,6 +109,13 @@ export async function createOrganization(formData: FormData): Promise<void> {
   const parsed = parseWithSchema(createSchema, Object.fromEntries(formData));
   if (!parsed.success) redirect("/app/platform/organizations/new?error=invalid");
   const generatedTenantCode = await generateTenantCode(parsed.data.name);
+  const existingOwner = await db.user.findUnique({
+    where: { email: parsed.data.ownerEmail },
+    select: { id: true },
+  });
+  if (existingOwner && await isPlatformUser(existingOwner.id)) {
+    redirect("/app/platform/organizations/new?error=platform-owner");
+  }
 
   const contactSubmission = parsed.data.contactSubmissionId
     ? await db.contactSubmission.findFirst({
@@ -133,6 +143,9 @@ export async function createOrganization(formData: FormData): Promise<void> {
         update: {},
         create: { email: parsed.data.ownerEmail, status: "INVITED" },
       });
+      if (await isPlatformUser(owner.id, tx)) {
+        throw new PlatformOwnerTenantError();
+      }
       const membership = await tx.organizationMember.create({
         data: {
           organizationId: organization.id,
@@ -155,7 +168,10 @@ export async function createOrganization(formData: FormData): Promise<void> {
       );
       return { organizationId: organization.id, membershipId: membership.id, ownerUserId: owner.id };
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof PlatformOwnerTenantError) {
+      redirect("/app/platform/organizations/new?error=platform-owner");
+    }
     redirect("/app/platform/organizations/new?error=create-failed");
   }
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const mockCookies = { get: vi.fn(() => undefined) };
+const mockCookies = { get: vi.fn<() => { value: string } | undefined>(() => undefined) };
 const mockDb = {
   organizationMember: { findMany: vi.fn(), findFirst: vi.fn() },
   organizationModule: { findMany: vi.fn() },
@@ -129,6 +129,41 @@ describe("getCurrentTenant — central active-tenant guard", () => {
     // Confirm the DB was only ever asked to resolve the valid org, never the invalid one.
     expect(mockDb.organizationMember.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ organizationId: ORG_ACTIVE.id }) }),
+    );
+  });
+
+  it("always resolves a platform owner to the platform anchor even when the active-org cookie requests a tenant", async () => {
+    mockGetServerAuthSession.mockResolvedValue({ user: { id: "user-1", organizationId: "tenant-org" } });
+    mockCookies.get.mockReturnValue({ value: "tenant-org" });
+    const tenantMembership = membershipRow({
+      id: "mem-tenant",
+      organizationId: "tenant-org",
+      organization: { ...ORG_ACTIVE, id: "tenant-org", tenantCode: "customer" },
+      role: { name: "Organization Owner", isSystem: true, organizationId: null },
+    });
+    const platformMembership = membershipRow({
+      id: "mem-platform",
+      organizationId: "platform-org",
+      organization: { ...ORG_ACTIVE, id: "platform-org", tenantCode: "rock-frost" },
+      role: { name: "Super Admin", isSystem: true, organizationId: null },
+    });
+    mockDb.organizationMember.findMany.mockResolvedValue([tenantMembership, platformMembership]);
+    mockDb.organizationMember.findFirst.mockResolvedValue({
+      ...platformMembership,
+      branch: null,
+      role: {
+        name: "Super Admin",
+        isSystem: true,
+        organizationId: null,
+        rolePermissions: [],
+      },
+    });
+
+    const tenant = await getCurrentTenant();
+    expect(tenant?.organizationId).toBe("platform-org");
+    expect(tenant?.role).toBe("Super Admin");
+    expect(mockDb.organizationMember.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ organizationId: "platform-org" }) }),
     );
   });
 });

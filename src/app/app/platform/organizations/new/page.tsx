@@ -14,6 +14,7 @@ const ERRORS: Record<string, string> = {
   invalid: "Check all required fields and use a lowercase tenant code such as acme-ghana.",
   "tenant-code": "That tenant code is already in use.",
   "owner-role": "The Organization Owner system role is missing. Run the platform seed.",
+  "platform-owner": "The platform owner cannot also be a tenant owner. Use a separate customer email address.",
   "create-failed": "The organization could not be created. The owner may already belong to it.",
 };
 

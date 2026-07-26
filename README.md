@@ -4,7 +4,7 @@ A modular multi-tenant business platform. Organizations activate independent man
 
 > This is a clean rebuild started 2026-07-19. The previous implementation is archived on branch `archive/pre-redesign-rfbs` and under `docs/archive/previous-implementation/`. See `docs/DECISIONS.md` for why.
 
-**Current status**: all eleven business modules are feature-complete and deployed live at [rockfrostgroup.com](https://www.rockfrostgroup.com). Public module/demo enquiries, operator-led onboarding, automatic tenant-code generation, and time-bounded module subscriptions are implemented. External automated checkout is not yet connected to a payment provider. The project remains in a production-hardening track (see `docs/HARDENING_PLAN.md`) — see `OPERATOR_HANDOFF.md` for the exact current state.
+**Current status**: all eleven business modules are feature-complete and deployed live at [rockfrostgroup.com](https://www.rockfrostgroup.com). Public module/demo enquiries, operator-led onboarding, automatic tenant-code generation, time-bounded module subscriptions, and Paystack/Flutterwave hosted checkout are implemented. Platform-owner identities are isolated from tenant workspaces at membership creation, session resolution, organization switching, and route authorization. The project remains in a production-hardening track (see `docs/HARDENING_PLAN.md`) — see `OPERATOR_HANDOFF.md` for the exact current state.
 
 ## Stack
 
@@ -29,6 +29,8 @@ npm run dev
 Node version is pinned in `.nvmrc`/`package.json`'s `engines` field. Required environment variables are documented in `.env.example`. See `docs/DATABASE_STRATEGY.md` for the database connection story and `docs/AUTHENTICATION_AND_AUTHORIZATION.md` for auth-related variables.
 
 **Database migrations**: always use `npx prisma migrate deploy` (after hand-verifying a `prisma migrate diff`-generated migration file) — **never** `npx prisma migrate dev` against the shared Neon database. See `OPERATOR_HANDOFF.md`'s "Mandatory instructions" for why.
+
+**Platform-owner isolation check/repair**: `npm run db:repair-platform-owner-isolation` removes any historical tenant memberships from platform identities, revokes their pending tenant invitations, and invalidates affected sessions. Deployment migration `20260726050000_enforce_platform_owner_isolation` performs the same idempotent repair automatically.
 
 ## Project structure
 

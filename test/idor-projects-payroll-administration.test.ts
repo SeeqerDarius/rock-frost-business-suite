@@ -9,7 +9,7 @@ const mockDb = {
   hrEmployee: { findFirst: vi.fn() },
   payrollCompensation: { upsert: vi.fn() },
   role: { findFirst: vi.fn() },
-  user: { upsert: vi.fn() },
+  user: { findUnique: vi.fn(), upsert: vi.fn() },
   auditLog: { create: vi.fn() },
   $transaction: vi.fn(),
 };
@@ -18,6 +18,7 @@ const mockRequireCurrentTenant = vi.fn();
 const mockGetServerAuthSession = vi.fn();
 const mockSendEmail = vi.fn();
 const mockCreateInvitation = vi.fn();
+const mockIsPlatformUser = vi.fn();
 
 class RedirectSignal extends Error {
   constructor(public url: string) {
@@ -28,6 +29,7 @@ class RedirectSignal extends Error {
 vi.mock("@/lib/db", () => ({ db: mockDb }));
 vi.mock("@/lib/tenant", () => ({ requireCurrentTenant: mockRequireCurrentTenant }));
 vi.mock("@/lib/auth/session", () => ({ getServerAuthSession: mockGetServerAuthSession }));
+vi.mock("@/lib/auth/platform-identity", () => ({ isPlatformUser: mockIsPlatformUser }));
 vi.mock("@/lib/email", () => ({ sendEmail: mockSendEmail }));
 vi.mock("@/lib/auth/invitations", () => ({
   createInvitation: mockCreateInvitation,
@@ -51,6 +53,8 @@ const ORG = "org-1";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockDb.user.findUnique.mockResolvedValue(null);
+  mockIsPlatformUser.mockResolvedValue(false);
   vi.stubEnv("NEXTAUTH_URL", "https://www.rockfrostgroup.com");
 });
 

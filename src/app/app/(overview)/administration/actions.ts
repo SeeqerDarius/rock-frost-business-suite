@@ -12,6 +12,7 @@ import { getServerAuthSession } from "@/lib/auth/session";
 import { shortText, email as emailSchema, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
 import { buildAppUrl } from "@/lib/app-url";
+import { isPlatformUser } from "@/lib/auth/platform-identity";
 
 function inviteEmailHtml(organizationName: string, roleName: string, inviteUrl: string) {
   return `<p>You've been invited to join <strong>${organizationName}</strong> as ${roleName}.</p><p><a href="${inviteUrl}">Accept the invitation</a></p><p>This link expires in 7 days.</p>`;
@@ -27,6 +28,7 @@ function clean(value: FormDataEntryValue | null) {
  * escalate themselves (or anyone) into the platform operator role.
  */
 const NOT_INVITABLE_ROLES = new Set(["Super Admin"]);
+class PlatformOwnerTenantError extends Error {}
 
 export async function inviteMember(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
@@ -47,6 +49,10 @@ export async function inviteMember(formData: FormData): Promise<void> {
     redirect("/app/administration?error=missing-fields");
   }
   const { name, email } = parsed.data;
+  const existingUser = await db.user.findUnique({ where: { email }, select: { id: true } });
+  if (existingUser && await isPlatformUser(existingUser.id)) {
+    redirect("/app/administration?error=platform-owner");
+  }
 
   const role = await db.role.findFirst({
     where: { id: roleId, OR: [{ organizationId: tenant.organizationId }, { isSystem: true }] },
@@ -57,23 +63,27 @@ export async function inviteMember(formData: FormData): Promise<void> {
 
   const session = await getServerAuthSession();
 
-  const membership = await db.$transaction(async (tx) => {
-    const user = await tx.user.upsert({
-      where: { email },
-      update: {},
-      create: { email, name, status: "INVITED" },
-    });
+  let membership;
+  try {
+    membership = await db.$transaction(async (tx) => {
+      const user = await tx.user.upsert({
+        where: { email },
+        update: {},
+        create: { email, name, status: "INVITED" },
+      });
 
-    const member = await tx.organizationMember.upsert({
-      where: { organizationId_userId: { organizationId: tenant.organizationId, userId: user.id } },
-      update: { roleId, status: "INVITED" },
-      create: {
-        organizationId: tenant.organizationId,
-        userId: user.id,
-        roleId,
-        status: "INVITED",
-      },
-    });
+      if (await isPlatformUser(user.id, tx)) throw new PlatformOwnerTenantError();
+
+      const member = await tx.organizationMember.upsert({
+        where: { organizationId_userId: { organizationId: tenant.organizationId, userId: user.id } },
+        update: { roleId, status: "INVITED" },
+        create: {
+          organizationId: tenant.organizationId,
+          userId: user.id,
+          roleId,
+          status: "INVITED",
+        },
+      });
 
     await logAuditEvent(
       {
@@ -88,8 +98,12 @@ export async function inviteMember(formData: FormData): Promise<void> {
       tx,
     );
 
-    return member;
-  });
+      return member;
+    });
+  } catch (error) {
+    if (error instanceof PlatformOwnerTenantError) redirect("/app/administration?error=platform-owner");
+    throw error;
+  }
 
   const token = await createInvitation({
     organizationId: tenant.organizationId,

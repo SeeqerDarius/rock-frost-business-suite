@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { ACTIVE_ORG_COOKIE, ACTIVE_ORGANIZATION_STATUSES } from "@/lib/tenant";
 import { cuid, parseWithSchema } from "@/lib/validation";
+import { findPlatformMembership } from "@/lib/auth/platform-identity";
 
 export async function switchOrganization(formData: FormData): Promise<void> {
   const session = await getServerAuthSession();
@@ -13,6 +14,13 @@ export async function switchOrganization(formData: FormData): Promise<void> {
 
   if (!userId) {
     return;
+  }
+
+  const platformMembership = await findPlatformMembership(userId);
+  if (platformMembership) {
+    const cookieStore = await cookies();
+    cookieStore.delete(ACTIVE_ORG_COOKIE);
+    redirect("/app/platform/dashboard");
   }
 
   const parsedOrgId = parseWithSchema(cuid, String(formData.get("organizationId") ?? "").trim());

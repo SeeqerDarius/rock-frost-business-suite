@@ -27,7 +27,8 @@
 **Route protection:**
 - `src/app/app/layout.tsx` wraps every route under `/app/*`. It redirects to `/login` if there is no session, and renders a "No organization access" message if `getCurrentTenant()` (`src/lib/tenant/index.ts`) returns null (session exists but no matching `OrganizationMember`). Otherwise it renders children.
 - `getCurrentTenant()`/`requireCurrentTenant()` resolve the current `OrganizationMember`, including `organization`, `branch`, and `role.rolePermissions.permission`, and expose a flattened `permissions: string[]`, `enabledModuleKeys: string[]` (from `OrganizationModule.enabled`), and `memberships` (every organization the user belongs to) on the returned `TenantContext`.
-- The active organization is normally the one chosen at login (`session.user.organizationId`), but a user in more than one organization can switch via the `active_org` cookie (`src/lib/tenant/actions.ts`'s `switchOrganization`, surfaced as `OrganizationSwitcher` in the sidebar) — honored only if a real `OrganizationMember` row for that organization still exists, so a stale/tampered cookie can't grant access to an organization the user has since left.
+- Tenant users normally start in the organization chosen at login (`session.user.organizationId`) and can switch among their active memberships via the `active_org` cookie (`src/lib/tenant/actions.ts`'s `switchOrganization`, surfaced as `OrganizationSwitcher` in the sidebar).
+- Platform identity is immutable across organization selection. `src/lib/auth/platform-identity.ts` recognizes an active global system `Super Admin` membership; NextAuth and `getCurrentTenant()` then canonicalize that user to the internal platform anchor before considering JWT or cookie organization state. A platform user cannot switch into a tenant, be invited into a tenant, or be selected as a new tenant's owner. See `docs/PLATFORM_IDENTITY_BOUNDARY.md`.
 
 ## Authorization — real (Phase 4)
 

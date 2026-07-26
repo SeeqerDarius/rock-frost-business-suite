@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { moduleRegistry } from "@/platform/modules/registry";
+import { hasPlatformRole } from "@/lib/auth/platform-identity";
 
 export const ACTIVE_ORG_COOKIE = "active_org";
 
@@ -84,7 +85,7 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
 
   const allMemberships = await db.organizationMember.findMany({
     where: { userId },
-    include: { organization: true },
+    include: { organization: true, role: true },
     orderBy: { createdAt: "asc" },
   });
 
@@ -98,7 +99,8 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
 
   const cookieStore = await cookies();
   const requestedOrgId = cookieStore.get(ACTIVE_ORG_COOKIE)?.value;
-  const effectiveOrgId =
+  const platformMembership = validMemberships.find((membership) => hasPlatformRole(membership.role));
+  const effectiveOrgId = platformMembership?.organizationId ||
     (requestedOrgId && validMemberships.some((m) => m.organizationId === requestedOrgId) && requestedOrgId) ||
     (validMemberships.some((m) => m.organizationId === session?.user?.organizationId) && session?.user?.organizationId) ||
     validMemberships[0].organizationId;
@@ -150,6 +152,8 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
     return !!prefix && permissions.some((permission) => permission.startsWith(prefix));
   });
 
+  const visibleMemberships = platformMembership ? [platformMembership] : validMemberships;
+
   return {
     userId,
     organizationId: membership.organization.id,
@@ -170,7 +174,7 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
       : null,
     enabledModuleKeys,
     accessibleModuleKeys,
-    memberships: validMemberships.map((m) => ({
+    memberships: visibleMemberships.map((m) => ({
       organizationId: m.organizationId,
       name: m.organization.name,
       tenantCode: m.organization.tenantCode,

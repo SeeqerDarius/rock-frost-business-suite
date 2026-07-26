@@ -17,6 +17,7 @@ const tx = {
 };
 
 const mockDb = {
+  user: { findUnique: vi.fn() },
   organization: { findUnique: vi.fn(), findFirst: vi.fn() },
   organizationMember: { findFirst: vi.fn() },
   role: { findFirst: vi.fn() },
@@ -48,6 +49,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 const {
+  createOrganization,
   permanentlyDeleteOrganization,
   scheduleOrganizationDeletion,
   updateOrganizationStatus,
@@ -69,6 +71,7 @@ beforeEach(() => {
   mockRequireCurrentTenant.mockResolvedValue(tenant);
   mockIsPlatformOperator.mockReturnValue(true);
   mockVerifyCurrentPassword.mockResolvedValue(true);
+  mockDb.user.findUnique.mockResolvedValue(null);
   mockDb.organizationMember.findFirst.mockResolvedValue(null);
   mockDb.organization.findUnique.mockResolvedValue({
     id: "target-org",
@@ -87,6 +90,33 @@ beforeEach(() => {
 });
 
 describe("platform organization lifecycle", () => {
+  it("rejects using the platform owner's identity as a tenant owner", async () => {
+    mockDb.user.findUnique.mockResolvedValue({ id: "user-platform" });
+    mockDb.organization.findUnique.mockResolvedValue(null);
+    mockDb.organizationMember.findFirst.mockResolvedValue({ id: "platform-membership" });
+
+    await expect(
+      createOrganization(data({
+        name: "Tenant One",
+        ownerEmail: "owner@example.com",
+        industry: "",
+        billingEmail: "",
+        email: "",
+        phone: "",
+        website: "",
+        country: "",
+        region: "",
+        city: "",
+        address: "",
+        currency: "GHS",
+        timezone: "Africa/Accra",
+        defaultLanguage: "en",
+      })),
+    ).rejects.toThrow("platform-owner");
+
+    expect(mockDb.$transaction).not.toHaveBeenCalled();
+  });
+
   it("rejects organization status changes from a non-platform user", async () => {
     mockIsPlatformOperator.mockReturnValue(false);
     await expect(
@@ -174,4 +204,3 @@ describe("platform organization lifecycle", () => {
     );
   });
 });
-

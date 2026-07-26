@@ -3,6 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
+import { hasPlatformRole } from "@/lib/auth/platform-identity";
 
 export const MAX_FAILED_ATTEMPTS = 5;
 export const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
@@ -25,13 +26,19 @@ export const authOptions: NextAuthOptions = {
           where: { email },
           include: {
             organizationMemberships: {
-              include: { role: true },
+              include: { role: true, organization: { select: { status: true } } },
               orderBy: { createdAt: "asc" },
             },
           },
         });
 
-        const primaryMembership = user?.organizationMemberships[0];
+        const activeMemberships = user?.organizationMemberships.filter(
+          (membership) => membership.status === "ACTIVE" && ["ACTIVE", "TRIAL"].includes(membership.organization.status),
+        ) ?? [];
+        const primaryMembership =
+          activeMemberships.find((membership) => hasPlatformRole(membership.role)) ??
+          activeMemberships[0] ??
+          user?.organizationMemberships[0];
 
         if (!user || !user.passwordHash || user.status !== "ACTIVE") {
           // No userId/organizationId to attach — this email may not exist
@@ -144,11 +151,26 @@ export const authOptions: NextAuthOptions = {
       if (token.user?.id) {
         const current = await db.user.findUnique({
           where: { id: token.user.id },
-          select: { status: true, sessionVersion: true },
+          select: {
+            status: true,
+            sessionVersion: true,
+            organizationMemberships: {
+              where: { status: "ACTIVE", organization: { status: { in: ["ACTIVE", "TRIAL"] } } },
+              include: { role: true },
+              orderBy: { createdAt: "asc" },
+            },
+          },
         });
 
         if (!current || current.status !== "ACTIVE" || current.sessionVersion !== token.user.sessionVersion) {
           token.user = undefined;
+        } else {
+          const canonicalMembership =
+            current.organizationMemberships.find((membership) => hasPlatformRole(membership.role)) ??
+            current.organizationMemberships.find((membership) => membership.organizationId === token.user?.organizationId) ??
+            current.organizationMemberships[0];
+          token.user.organizationId = canonicalMembership?.organizationId;
+          token.user.role = canonicalMembership?.role?.name;
         }
       }
 

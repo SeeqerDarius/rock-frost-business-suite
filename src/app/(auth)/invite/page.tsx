@@ -17,6 +17,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "existing-account": "This invitation is for an account that already exists. Log in and try the link again.",
   "not-active": "This invitation's account isn't active yet.",
   "wrong-account": "You're signed in as a different account than this invitation was sent to. Sign out and try again.",
+  "platform-owner": "Platform owners cannot join tenant workspaces. Use the customer account this invitation was intended for.",
 };
 
 /**

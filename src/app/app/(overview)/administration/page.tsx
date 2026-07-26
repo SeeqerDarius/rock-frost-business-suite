@@ -23,6 +23,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "resend-failed": "That invitation can no longer be resent or revoked.",
   "self-remove": "You cannot remove your own organization access.",
   "last-owner": "The last active Organization Owner cannot be removed.",
+  "platform-owner": "A platform owner cannot be added to a tenant organization. Use a separate tenant-user email.",
 };
 
 const INVITABLE_ROLE_NAMES = [
