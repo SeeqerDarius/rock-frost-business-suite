@@ -52,7 +52,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const organization = await db.organization.findUnique({
     where: { id: tenant.organizationId },
-    select: { metadata: true },
+    select: { metadata: true, status: true, createdAt: true },
   });
   const metadata = organization?.metadata;
   const workspaceSettings = metadata && typeof metadata === "object" && !Array.isArray(metadata)
@@ -62,5 +62,23 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     ? (workspaceSettings as { theme?: "system" | "light" | "dark" }).theme
     : undefined;
 
-  return <><OrganizationThemeSync theme={theme} />{children}</>;
+  const trialEndsAt = new Date(organization?.createdAt ?? new Date());
+  trialEndsAt.setUTCDate(trialEndsAt.getUTCDate() + 14);
+  const trialDaysRemaining = Math.max(0, Math.ceil((trialEndsAt.getTime() - Date.now()) / 86_400_000));
+
+  return (
+    <>
+      <OrganizationThemeSync theme={theme} />
+      {!platformIdentity ? (
+        <div className="fixed right-24 top-4 z-40 hidden rounded-full border bg-background/95 px-3 py-1 text-xs font-medium shadow-sm backdrop-blur sm:block">
+          {organization?.status === "TRIAL"
+            ? `Trial workspace · ${trialDaysRemaining} day${trialDaysRemaining === 1 ? "" : "s"} remaining`
+            : organization?.status === "ACTIVE"
+              ? "Subscribed workspace"
+              : "Subscription inactive"}
+        </div>
+      ) : null}
+      {children}
+    </>
+  );
 }

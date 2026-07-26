@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 
 const tx = {
   subscription: { findFirst: vi.fn(), update: vi.fn() },
+  organization: { update: vi.fn() },
   organizationModule: { upsert: vi.fn(), updateMany: vi.fn() },
   moduleRequest: { update: vi.fn() },
   organizationMember: { findMany: vi.fn() },
@@ -137,6 +138,10 @@ describe("activateSubscriptionFromGateway", () => {
       }),
     });
     expect(tx.organizationModule.upsert).toHaveBeenCalled();
+    expect(tx.organization.update).toHaveBeenCalledWith({
+      where: { id: "org-1" },
+      data: { status: "ACTIVE" },
+    });
     expect(tx.notification.createMany).toHaveBeenCalled();
   });
 

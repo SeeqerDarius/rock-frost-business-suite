@@ -116,3 +116,17 @@ activation, and cancellation are audit logged.
 
 Card numbers, mobile-money PINs, bank credentials, and provider secrets must
 never be stored in `Subscription`, notes, audit metadata, or notifications.
+# Workspace access indication
+
+Tenant pages display the workspace state in the application header:
+
+- `TRIAL` is shown as **Trial workspace**, with the remaining days in the
+  standard 14-day window calculated from the organization creation date.
+- A confirmed manual or gateway payment activates the subscription, enables
+  the module, and moves the organization to `ACTIVE`; tenant pages then show
+  **Subscribed workspace**.
+- Suspended or cancelled states are shown as **Subscription inactive**.
+
+The 14-day value is currently an indication derived from the organization's
+creation timestamp. Automatic trial-expiry enforcement is not yet implemented;
+operators remain responsible for suspending or converting an expired trial.

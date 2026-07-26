@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const tx = {
   subscription: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findFirst: vi.fn() },
+  organization: { update: vi.fn() },
   organizationModule: { upsert: vi.fn(), updateMany: vi.fn() },
   moduleRequest: { update: vi.fn() },
   organizationMember: { findMany: vi.fn() },
@@ -74,6 +75,10 @@ describe("subscription workflow", () => {
       }),
     });
     expect(tx.organizationModule.upsert).toHaveBeenCalled();
+    expect(tx.organization.update).toHaveBeenCalledWith({
+      where: { id: "org-1" },
+      data: { status: "ACTIVE" },
+    });
     expect(tx.moduleRequest.update).toHaveBeenCalledWith({
       where: { id: "request-1" },
       data: expect.objectContaining({ status: "COMPLETED" }),

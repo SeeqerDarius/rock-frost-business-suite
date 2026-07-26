@@ -42,7 +42,6 @@ function LoginForm() {
     requestedCallbackUrl.startsWith("/") && !requestedCallbackUrl.startsWith("//")
       ? requestedCallbackUrl
       : "/app";
-  const platformLoginUrl = buildSurfaceUrl("platform", "/login").toString();
   const tenantLoginUrl = buildSurfaceUrl("tenant", "/login").toString();
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -98,13 +97,6 @@ function LoginForm() {
           Platform owner sign-in. Tenant users should use{" "}
           <a href={tenantLoginUrl} className="font-medium text-primary underline-offset-4 hover:underline">
             the tenant workspace
-          </a>.
-        </div>
-      ) : surface === "tenant" ? (
-        <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
-          Tenant workspace sign-in. Platform owners should use{" "}
-          <a href={platformLoginUrl} className="font-medium text-primary underline-offset-4 hover:underline">
-            Platform Administration
           </a>.
         </div>
       ) : null}

@@ -18,7 +18,13 @@ import {
   listStaffSalaryPayments,
   getInstallmentSettings,
 } from "@/modules/installment/service";
-import { upsertStaff, recordSalaryPayment, removeSalaryPayment } from "./actions";
+import {
+  upsertStaff,
+  recordSalaryPayment,
+  removeSalaryPayment,
+  deactivateStaffMember,
+  deleteStaffMember,
+} from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage staff.",
@@ -27,6 +33,10 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-amount": "Payment amount must be a positive number.",
   "invalid-member": "Choose an active login from this organization.",
   "member-already-linked": "That login is already linked to another staff profile.",
+  "delete-confirmation": "Type DELETE exactly to confirm permanent deletion.",
+  "wrong-password": "Your password was incorrect.",
+  "staff-has-history": "This staff member has customer or account history. Deactivate them to preserve the records.",
+  "staff-has-payroll-history": "This staff member has salary payment history. Deactivate them to preserve the records.",
 };
 
 interface StaffFieldsProps {
@@ -104,9 +114,9 @@ function StaffFields({ staff, showCode, defaultMonthlySalary, userItems }: Staff
 export default async function InstallmentStaffPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string }>;
+  searchParams: Promise<{ saved?: string; deleted?: string; error?: string }>;
 }) {
-  const { saved, error } = await searchParams;
+  const { saved, deleted, error } = await searchParams;
   const tenant = await requireModuleAccess("installment");
   const canManage = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_STAFF_MANAGE);
 
@@ -170,6 +180,11 @@ export default async function InstallmentStaffPage({
       {saved ? (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
           Saved.
+        </div>
+      ) : null}
+      {deleted ? (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
+          Staff member deleted.
         </div>
       ) : null}
       {error && ERROR_MESSAGES[error] ? (
@@ -258,6 +273,29 @@ export default async function InstallmentStaffPage({
                               .map((user) => [user.id, loginLabels.get(user.id) ?? user.email]),
                           )}
                         />
+                      </EntityDialog>
+                      {staff.active ? (
+                        <form action={deactivateStaffMember}>
+                          <input type="hidden" name="id" value={staff.id} />
+                          <Button type="submit" size="sm" variant="ghost">Deactivate</Button>
+                        </form>
+                      ) : null}
+                      <EntityDialog
+                        trigger={<Button size="sm" variant="destructive">Delete</Button>}
+                        title={`Delete ${staff.fullName}?`}
+                        description="Permanent deletion is allowed only when this staff member has no customer, account, or payroll history. Otherwise, deactivate the profile."
+                        action={deleteStaffMember}
+                        submitLabel="Delete permanently"
+                      >
+                        <input type="hidden" name="id" value={staff.id} />
+                        <div className="space-y-2">
+                          <Label htmlFor={`confirmation-${staff.id}`}>Type DELETE to confirm</Label>
+                          <Input id={`confirmation-${staff.id}`} name="confirmation" autoComplete="off" required />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`password-${staff.id}`}>Your password</Label>
+                          <Input id={`password-${staff.id}`} name="password" type="password" autoComplete="current-password" required />
+                        </div>
                       </EntityDialog>
                     </div>
                   </TableCell>

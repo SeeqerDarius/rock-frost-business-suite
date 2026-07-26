@@ -9,12 +9,17 @@ import {
   updateStaff,
   recordStaffSalaryPayment,
   deleteStaffSalaryPayment,
+  deactivateStaff,
+  deleteStaff,
   NotFoundError,
   InvalidPaymentAmountError,
   InvalidStaffLoginError,
   StaffLoginAlreadyLinkedError,
+  StaffHasOperationalHistoryError,
+  StaffHasPayrollHistoryError,
 } from "@/modules/installment/service";
 import { getServerAuthSession } from "@/lib/auth/session";
+import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import { cuid, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
@@ -127,4 +132,47 @@ export async function removeSalaryPayment(formData: FormData): Promise<void> {
   revalidatePath("/app/installment/staff");
   revalidatePath("/app/installment/reports");
   redirect("/app/installment/staff?saved=1");
+}
+
+export async function deactivateStaffMember(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("installment");
+  if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_STAFF_MANAGE)) {
+    redirect("/app/installment/staff?error=forbidden");
+  }
+  const id = clean(formData.get("id"));
+  if (!id) redirect("/app/installment/staff?error=missing-fields");
+  try {
+    await deactivateStaff(tenant.organizationId, id);
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/installment/staff?error=not-found");
+    throw error;
+  }
+  revalidatePath("/app/installment/staff");
+  redirect("/app/installment/staff?saved=1");
+}
+
+export async function deleteStaffMember(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("installment");
+  if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_STAFF_MANAGE)) {
+    redirect("/app/installment/staff?error=forbidden");
+  }
+  const id = clean(formData.get("id"));
+  const confirmation = clean(formData.get("confirmation"));
+  const password = clean(formData.get("password"));
+  const session = await getServerAuthSession();
+  if (confirmation !== "DELETE") redirect("/app/installment/staff?error=delete-confirmation");
+  if (!session?.user?.id || !password || !(await verifyCurrentPassword(session.user.id, password))) {
+    redirect("/app/installment/staff?error=wrong-password");
+  }
+  if (!id) redirect("/app/installment/staff?error=missing-fields");
+  try {
+    await deleteStaff(tenant.organizationId, id);
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/installment/staff?error=not-found");
+    if (error instanceof StaffHasOperationalHistoryError) redirect("/app/installment/staff?error=staff-has-history");
+    if (error instanceof StaffHasPayrollHistoryError) redirect("/app/installment/staff?error=staff-has-payroll-history");
+    throw error;
+  }
+  revalidatePath("/app/installment/staff");
+  redirect("/app/installment/staff?deleted=1");
 }

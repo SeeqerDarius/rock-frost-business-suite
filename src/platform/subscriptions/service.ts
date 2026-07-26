@@ -44,6 +44,10 @@ async function finalizeActivation(
     update: { enabled: true, enabledAt: startsAt },
     create: { organizationId: current.organizationId, moduleId: current.moduleId, enabled: true, enabledAt: startsAt },
   });
+  await tx.organization.update({
+    where: { id: current.organizationId },
+    data: { status: "ACTIVE" },
+  });
   if (current.moduleRequestId) {
     await tx.moduleRequest.update({
       where: { id: current.moduleRequestId },

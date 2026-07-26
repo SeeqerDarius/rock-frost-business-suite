@@ -718,3 +718,33 @@ See "Files changed," "Summary," "Build result," "Known issues," and "Next recomm
 **Known issues:** See Phase 2 entry above — the "no database/auth/business-logic yet" and "form component not added" gaps carried forward unchanged into Phase 2 and are documented there.
 
 **Next recommended step (at the time):** Report per the instruction's required final-report format and get explicit approval before continuing — which the user then gave ("proceed to the next phase"), leading directly into the Phase 2 work above.
+## 2026-07-26 — Tenant login copy, GLV staff lifecycle, and subscription-state indication
+
+Removed the tenant-login cross-surface notice while preserving the platform
+owner notice. Audited Installment staff management against the original GLV
+project and added deactivation plus password-and-`DELETE`-confirmed permanent
+deletion. Customer, installment-account, or salary-payment history blocks
+deletion and directs the administrator to deactivate the profile; linked
+Business Suite membership accounts are deliberately preserved.
+
+Tenant application pages now identify the workspace as Trial, Subscribed, or
+inactive. Trial display uses the documented 14-day window from organization
+creation. Both manual and gateway subscription activation now promote the
+organization from `TRIAL` to `ACTIVE`, keeping the badge consistent with paid
+access.
+
+Important files: `src/app/(auth)/login/page.tsx`,
+`src/app/app/layout.tsx`, `src/app/app/installment/staff/{page,actions}.tsx`,
+`src/modules/installment/service.ts`,
+`src/platform/subscriptions/service.ts`,
+`test/subscription-{workflow,gateway-payment}.test.ts`,
+`docs/{INSTALLMENT_GLV_PARITY,BILLING_AND_SUBSCRIPTIONS}.md`, and `README.md`.
+No schema migration or environment change is required.
+
+Validation: `npm run lint` passed; the affected suite passed 17/17; the full
+`npm run test` suite passed 197/197 across 28 files; and `npm run build`
+compiled, type-checked, and generated all 116 pages successfully. The initial
+affected-test run exposed two stale transaction mocks after organization
+activation was added; both tests were updated to assert the new state
+transition. Remaining risk: the 14-day trial is currently indicated but is not
+automatically expired; operators must suspend or convert it after the window.

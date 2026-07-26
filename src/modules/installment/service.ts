@@ -302,6 +302,8 @@ export async function listStaffForScope(organizationId: string, scope: Installme
 
 export class InvalidStaffLoginError extends Error {}
 export class StaffLoginAlreadyLinkedError extends Error {}
+export class StaffHasOperationalHistoryError extends Error {}
+export class StaffHasPayrollHistoryError extends Error {}
 
 export async function listAssignableStaffUsers(organizationId: string) {
   const memberships = await db.organizationMember.findMany({
@@ -447,6 +449,44 @@ export async function updateStaff(
     }
     throw error;
   }
+}
+
+export async function deactivateStaff(organizationId: string, id: string) {
+  const updated = await db.hirePurchaseStaff.updateMany({
+    where: { id, organizationId },
+    data: { active: false },
+  });
+  if (updated.count !== 1) throw new NotFoundError("Staff member not found.");
+}
+
+export async function deleteStaff(organizationId: string, id: string) {
+  return db.$transaction(async (tx) => {
+    const staff = await tx.hirePurchaseStaff.findFirst({
+      where: { id, organizationId },
+      select: {
+        id: true,
+        _count: {
+          select: {
+            customers: true,
+            inventoryAccounts: true,
+            salaryPayments: true,
+          },
+        },
+      },
+    });
+    if (!staff) throw new NotFoundError("Staff member not found.");
+    if (staff._count.customers > 0 || staff._count.inventoryAccounts > 0) {
+      throw new StaffHasOperationalHistoryError(
+        "Staff with customer or account history must be deactivated instead of deleted.",
+      );
+    }
+    if (staff._count.salaryPayments > 0) {
+      throw new StaffHasPayrollHistoryError(
+        "Staff with salary payment history must be deactivated instead of deleted.",
+      );
+    }
+    await tx.hirePurchaseStaff.delete({ where: { id, organizationId } });
+  });
 }
 
 export async function recordStaffSalaryPayment(
