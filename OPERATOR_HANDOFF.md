@@ -1,5 +1,11 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-07-26 — Platform-owner and tenant-workspace boundary
+
+Fixed the underlying route/context conflict reported by the user. The shared account dropdown previously hardcoded `/app/account` and `/app/administration`, placing a platform Super Admin inside the tenant `(overview)` shell. Platform operators now use `/app/platform/account` and `/app/platform/settings`; account mutations preserve the originating account route. The tenant overview layout rejects platform operators server-side, and business-module access sends them back to `/app/platform/dashboard`.
+
+The platform `AppShell` no longer receives the internal anchor as organization-switcher data, and its desktop/mobile logo links to the platform dashboard rather than the tenant dashboard. Tenant behavior remains unchanged for future customer users. The authoritative boundary is documented in `docs/PLATFORM_IDENTITY_BOUNDARY.md`.
+
 ## 2026-07-26 — Internal platform anchor excluded from tenant surfaces
 
 Corrected the platform UI after the user rightly observed that the required internal authorization anchor was displayed as a tenant. Organizations carrying an active system Super Admin membership are now excluded centrally from platform tenant counts, active-member/module-adoption totals, organization lists, request/subscription selectors, and direct tenant detail/configuration routes. The clean bootstrap also marks the anchor with `metadata.isPlatformAnchor = true`. With the current clean database, every customer-tenant surface reports zero organizations while the single platform owner can still authenticate.

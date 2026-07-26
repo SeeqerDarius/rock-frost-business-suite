@@ -16,20 +16,21 @@ interface AppShellProps {
   navigation: ModuleNavItem[];
   children: React.ReactNode;
   enabledModuleKeys?: string[];
+  homeHref?: string;
   organization?: {
     organizationId: string;
     memberships: { organizationId: string; name: string; tenantCode: string }[];
   };
 }
 
-export function AppShell({ sectionLabel, navigation, children, enabledModuleKeys = [], organization }: AppShellProps) {
+export function AppShell({ sectionLabel, navigation, children, enabledModuleKeys = [], organization, homeHref = "/app/dashboard" }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   return (
     <div className="flex min-h-screen">
       <aside className="hidden w-64 shrink-0 flex-col border-r lg:flex">
         <div className="flex h-16 items-center border-b px-4">
-          <Logo href="/app/dashboard" />
+          <Logo href={homeHref} />
         </div>
         {organization ? (
           <OrganizationSwitcher currentOrganizationId={organization.organizationId} memberships={organization.memberships} />
@@ -44,7 +45,7 @@ export function AppShell({ sectionLabel, navigation, children, enabledModuleKeys
         <SheetContent side="left" className="w-64 p-0">
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           <div className="flex h-16 items-center border-b px-4">
-            <Logo />
+            <Logo href={homeHref} />
           </div>
           {organization ? (
             <OrganizationSwitcher currentOrganizationId={organization.organizationId} memberships={organization.memberships} />

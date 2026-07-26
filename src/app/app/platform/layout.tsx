@@ -30,7 +30,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
     <AppShell
       sectionLabel="Platform Administration"
       navigation={platformNavigation}
-      organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
+      homeHref="/app/platform/dashboard"
     >
       {children}
     </AppShell>

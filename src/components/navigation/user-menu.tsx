@@ -27,6 +27,9 @@ export function UserMenu() {
   const { data: session } = useSession();
   const name = session?.user?.name ?? null;
   const email = session?.user?.email ?? null;
+  const isPlatformOwner = session?.user?.role === "Super Admin";
+  const profileHref = isPlatformOwner ? "/app/platform/account" : "/app/account";
+  const settingsHref = isPlatformOwner ? "/app/platform/settings" : "/app/administration";
 
   return (
     <DropdownMenu>
@@ -43,11 +46,11 @@ export function UserMenu() {
           </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem render={<Link href="/app/account" />}>
+        <DropdownMenuItem render={<Link href={profileHref} />}>
           <User />
           Profile
         </DropdownMenuItem>
-        <DropdownMenuItem render={<Link href="/app/administration" />}>
+        <DropdownMenuItem render={<Link href={settingsHref} />}>
           <Settings />
           Settings
         </DropdownMenuItem>

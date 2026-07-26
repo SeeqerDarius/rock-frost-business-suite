@@ -13,6 +13,9 @@ import type { BusinessModuleKey } from "@/platform/modules/registry";
  */
 export async function requireModuleAccess(moduleKey: BusinessModuleKey): Promise<TenantContext> {
   const tenant = await requireCurrentTenant();
+  if (isPlatformOperator(tenant)) {
+    redirect("/app/platform/dashboard");
+  }
   if (!canAccessModule(tenant, moduleKey)) {
     redirect("/app/modules?error=module-unavailable");
   }
