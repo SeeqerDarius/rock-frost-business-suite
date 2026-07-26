@@ -1,4 +1,11 @@
 import { Logo } from "@/components/layout/logo";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Secure account access",
+  description: "Secure access to Rock Frost Business Suite.",
+  robots: { index: false, follow: false, nocache: true },
+};
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (

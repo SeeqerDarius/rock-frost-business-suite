@@ -2,10 +2,29 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { moduleRegistry } from "@/platform/modules/registry";
+import { JsonLd } from "@/components/seo/json-ld";
+import { createPublicMetadata, DEFAULT_DESCRIPTION, SITE_URL } from "@/lib/seo";
+
+export const metadata = createPublicMetadata({
+  title: "Business Management Software Ghana",
+  description: DEFAULT_DESCRIPTION,
+  path: "/",
+  keywords: ["business management software Ghana", "ERP software Ghana", "business software Africa", "modular SaaS platform"],
+});
 
 export default function HomePage() {
   return (
     <>
+      <JsonLd data={{
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        name: "Rock Frost Business Suite",
+        url: SITE_URL,
+        applicationCategory: "BusinessApplication",
+        operatingSystem: "Web",
+        description: DEFAULT_DESCRIPTION,
+        provider: { "@id": `${SITE_URL}/#organization` },
+      }} />
       <section className="mx-auto max-w-6xl px-6 py-24">
         <div className="max-w-2xl space-y-6">
           <p className="text-sm font-medium text-muted-foreground">Rock Frost Business Suite</p>

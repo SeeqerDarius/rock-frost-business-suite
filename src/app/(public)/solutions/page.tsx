@@ -2,13 +2,21 @@ import Link from "next/link";
 import { Blocks, ShieldCheck, Layers, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { createPublicMetadata } from "@/lib/seo";
+
+export const metadata = createPublicMetadata({
+  title: "Modular Business Software Solutions",
+  description: "Bring fleet, sales, finance, people, inventory, projects, and operations into one secure modular business platform without mixing their workflows or data.",
+  path: "/solutions",
+  keywords: ["modular business software", "business operations platform Ghana", "multi-tenant business software"],
+});
 
 const pillars = [
   {
     icon: Layers,
     title: "One workspace, every module",
     description:
-      "Sign in once and switch between the business systems your organization runs on: Fleet Management, Installment Sales, and more as they come online, without juggling separate logins or tools.",
+      "Sign in once and switch between the business systems your organization runs on, from Fleet and Installment Sales to CRM, Accounting, HR, Payroll, Inventory, POS, and more, without juggling separate logins.",
   },
   {
     icon: Blocks,
@@ -26,7 +34,7 @@ const pillars = [
     icon: Building2,
     title: "Grows with you",
     description:
-      "Start with the modules you need today. The platform is designed so new modules, such as CRM, Inventory, Accounting, and HR, can be added later without disrupting what's already running.",
+      "Start with the modules you need today. Add any of the platform's eleven operational modules later without disrupting what's already running.",
   },
 ];
 
@@ -69,7 +77,7 @@ export default function SolutionsPage() {
         <div className="flex flex-col items-start justify-between gap-6 rounded-lg border p-8 sm:flex-row sm:items-center">
           <div className="space-y-1">
             <h2 className="text-xl font-semibold">See which modules fit your organization</h2>
-            <p className="text-muted-foreground">Explore what&apos;s available today and what&apos;s on the roadmap.</p>
+            <p className="text-muted-foreground">Explore the eleven business modules available today.</p>
           </div>
           <Button variant="outline" nativeButton={false} render={<Link href="/modules" />}>
             View modules

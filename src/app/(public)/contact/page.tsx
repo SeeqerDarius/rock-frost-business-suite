@@ -5,6 +5,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { submitContactForm } from "./actions";
 import { moduleRegistry } from "@/platform/modules/registry";
+import { createPublicMetadata } from "@/lib/seo";
+
+export const metadata = createPublicMetadata({
+  title: "Request a Business Software Demo",
+  description: "Request a demonstration, module subscription, or custom business software consultation from Rock Frost Technologies.",
+  path: "/contact",
+  keywords: ["business software demo Ghana", "request ERP demo", "Rock Frost contact"],
+});
 
 const ERROR_MESSAGES: Record<string, string> = {
   "missing-fields": "Please double-check your name, company, and a valid email address.",

@@ -1,9 +1,17 @@
+import Link from "next/link";
+
 export function PublicFooter() {
   return (
     <footer className="border-t">
-      <div className="mx-auto flex max-w-6xl flex-col gap-2 px-6 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+      <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         <p>&copy; {new Date().getFullYear()} Rock Frost Technologies. All rights reserved.</p>
-        <p>Rock Frost Business Suite: a modular business operating platform.</p>
+        <nav aria-label="Footer navigation" className="flex flex-wrap gap-x-4 gap-y-2">
+          <Link href="/solutions" className="hover:text-foreground">Solutions</Link>
+          <Link href="/modules" className="hover:text-foreground">Modules</Link>
+          <Link href="/industries" className="hover:text-foreground">Industries</Link>
+          <Link href="/company" className="hover:text-foreground">Company</Link>
+          <Link href="/contact" className="hover:text-foreground">Contact</Link>
+        </nav>
       </div>
     </footer>
   );

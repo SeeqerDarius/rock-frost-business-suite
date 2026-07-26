@@ -1,5 +1,13 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { createPublicMetadata } from "@/lib/seo";
+
+export const metadata = createPublicMetadata({
+  title: "About Rock Frost Technologies",
+  description: "Rock Frost Technologies builds secure modular business management software for organizations running multiple operational systems.",
+  path: "/company",
+  keywords: ["Rock Frost Technologies", "business software company Ghana", "African SaaS company"],
+});
 
 export default function CompanyPage() {
   return (

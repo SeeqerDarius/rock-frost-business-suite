@@ -748,3 +748,38 @@ affected-test run exposed two stale transaction mocks after organization
 activation was added; both tests were updated to assert the new state
 transition. Remaining risk: the 14-day trial is currently indicated but is not
 automatically expired; operators must suspend or convert it after the window.
+## 2026-07-26 — Complete public-site technical SEO foundation
+
+Replaced the stale static sitemap and permissive robots file with Next.js
+metadata routes. The sitemap now contains only real public pages and dedicated
+landing pages for all eleven business modules; `/app`, `/api`, login, password,
+and invitation routes are excluded from crawling and also emit `noindex`.
+
+Added a single canonical SEO configuration, unique page titles/descriptions,
+canonical URLs, Open Graph and Twitter cards, a generated 1200×630 sharing
+image, Organization/WebSite/SoftwareApplication/Breadcrumb JSON-LD, stronger
+internal footer/module links, and truthful module-focused search content.
+Removed stale public copy that said completed modules were still forthcoming.
+
+Important files: `src/lib/seo.ts`, `src/app/{robots,sitemap,opengraph-image}.tsx`,
+`src/components/seo/json-ld.tsx`,
+`src/app/(public)/modules/[moduleKey]/page.tsx`, all six existing public pages,
+the public/auth/application layouts, `public/manifest.webmanifest`,
+`test/seo.test.ts`, and `docs/SEO.md`. Static `public/robots.txt` and
+`public/sitemap.xml` were removed to prevent competing output. No schema or
+environment changes are required.
+
+External owner action remains required: verify the `rockfrostgroup.com` Domain
+property in Google Search Console using Google's account-specific Cloudflare
+TXT record, submit `https://www.rockfrostgroup.com/sitemap.xml`, and request
+indexing for priority pages. Exact steps are in `docs/SEO.md`. Technical SEO
+can be made complete, but no implementation can truthfully guarantee a
+specific Google ranking.
+
+Validation before release: `npm run lint` passed; the new SEO tests passed
+3/3; the full `npm run test` suite passed 200/200 across 29 files; and
+`npm run build` compiled, type-checked, generated 130 pages, and statically
+prerendered all eleven module landing pages. A local production-server probe
+confirmed HTTP 200 responses, unique titles, canonical tags, JSON-LD,
+generated robots/sitemap output, and `noindex, nofollow, nocache` on login.
+Production verification is completed after deployment.

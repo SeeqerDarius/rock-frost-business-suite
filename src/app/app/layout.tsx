@@ -6,6 +6,11 @@ import { db } from "@/lib/db";
 import { headers } from "next/headers";
 import { buildSurfaceUrl, classifyAppSurface, isIdentityAllowedOnSurface } from "@/lib/app-surfaces";
 import { isPlatformOperator } from "@/lib/auth/permissions";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false, nocache: true },
+};
 
 /**
  * Real route protection for everything under /app/* — organization scope,

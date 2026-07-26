@@ -2,6 +2,14 @@ import Link from "next/link";
 import { Truck, Wallet, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { createPublicMetadata } from "@/lib/seo";
+
+export const metadata = createPublicMetadata({
+  title: "Business Software for Ghanaian Industries",
+  description: "Business management software for transport and logistics, retail, installment sales, consumer finance, and multi-department organizations in Ghana and Africa.",
+  path: "/industries",
+  keywords: ["business software Ghana industries", "transport software Ghana", "retail management software Africa"],
+});
 
 const industries = [
   {

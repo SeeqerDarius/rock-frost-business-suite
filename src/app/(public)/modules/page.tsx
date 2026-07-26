@@ -3,6 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { moduleRegistry } from "@/platform/modules/registry";
+import { createPublicMetadata } from "@/lib/seo";
+
+export const metadata = createPublicMetadata({
+  title: "Business Software Modules",
+  description: "Explore 11 integrated business software modules for fleet, installment sales, CRM, inventory, accounting, HR, payroll, procurement, projects, analytics, and POS.",
+  path: "/modules",
+  keywords: ["business software modules Ghana", "ERP modules Africa", "fleet CRM payroll inventory software"],
+});
 
 export default function PublicModulesPage() {
   return (
@@ -15,7 +23,7 @@ export default function PublicModulesPage() {
           </h1>
           <p className="text-lg text-muted-foreground">
             Every module is a complete, self-contained business system with its own data, navigation, and
-            workflows. Activate the ones your organization needs today; more are on the way.
+            workflows. Activate only the ones your organization needs and add others as your operations grow.
           </p>
         </div>
       </section>
@@ -37,6 +45,9 @@ export default function PublicModulesPage() {
                 </CardHeader>
                 {mod.status === "available" ? (
                   <CardContent className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" nativeButton={false} render={<Link href={`/modules/${mod.key}`} />}>
+                      Learn more
+                    </Button>
                     <Button size="sm" nativeButton={false} render={<Link href={`/contact?intent=demo&module=${mod.key}`} />}>
                       Request demo
                     </Button>
