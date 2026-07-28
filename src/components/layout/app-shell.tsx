@@ -77,7 +77,7 @@ export function AppShell({
             <UserMenu />
           </div>
         </header>
-        <main className="flex-1 p-4 sm:p-6">{children}</main>
+        <main id="main-content" tabIndex={-1} className="flex-1 p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );

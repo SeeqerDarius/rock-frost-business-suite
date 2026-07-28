@@ -56,5 +56,10 @@ The owner must complete these external actions after deployment:
    completeness does not guarantee a ranking position.
 
 The verification TXT value is account-specific and must never be invented or
-committed without the owner's actual value.
-
+committed without the owner's actual value. On 2026-07-28 the application-side
+SEO work and live sitemap validation were complete: the production sitemap
+returned HTTP 200 as XML with 17 canonical URLs and `robots.txt` returned HTTP
+200. No controllable authenticated browser session was available for the
+Google account workflow, however. Search Console ownership verification and
+sitemap submission must only be marked complete after Google visibly confirms
+both actions.

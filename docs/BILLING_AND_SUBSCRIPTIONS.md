@@ -127,6 +127,10 @@ Tenant pages display the workspace state in the application header:
   **Subscribed workspace**.
 - Suspended or cancelled states are shown as **Subscription inactive**.
 
-The 14-day value is currently an indication derived from the organization's
-creation timestamp. Automatic trial-expiry enforcement is not yet implemented;
-operators remain responsible for suspending or converting an expired trial.
+The 14-day window is enforced automatically. Vercel invokes the authenticated
+`/api/cron/expire-trials` route daily. The sweep excludes the internal platform
+anchor and organizations with a current active subscription, then atomically
+suspends each eligible tenant, disables its enabled modules, notifies active
+members, and records `organization.trial_expired` in the audit log. Operators
+can still convert or suspend a trial early. See
+`docs/OPERATIONS_AND_MONITORING.md`.

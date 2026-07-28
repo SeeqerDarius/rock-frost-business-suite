@@ -7,6 +7,8 @@ import { SessionProvider } from "@/components/session-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { DEFAULT_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -29,10 +31,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning className={cn("font-sans", geist.variable)}>
       <body>
+        <a
+          href="#main-content"
+          className="fixed left-4 top-4 z-[100] -translate-y-24 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg transition-transform focus:translate-y-0"
+        >
+          Skip to main content
+        </a>
         <SessionProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
             <TooltipProvider>{children}</TooltipProvider>
             <Toaster />
+            <Analytics />
+            <SpeedInsights />
           </ThemeProvider>
         </SessionProvider>
       </body>

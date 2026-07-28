@@ -1,5 +1,52 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-07-28 — Trial enforcement, monitoring, accessibility, dependency hardening, and SEO follow-through
+
+Implemented automatic 14-day trial expiry in
+`src/platform/trials/service.ts`, invoked daily at 01:15 UTC by the
+authenticated `/api/cron/expire-trials` route configured in `vercel.json`.
+The idempotent sweep excludes internal platform anchors and tenants with a
+current active subscription, suspends eligible organizations, disables their
+modules, notifies active members, and records an atomic audit event.
+
+Added `/api/health`, structured cron and uncaught-request logs via
+`src/instrumentation.ts`, Vercel Web Analytics and Speed Insights, a
+keyboard-visible skip link, focusable `main` landmarks, and reduced-motion
+support. Upgraded Next.js/eslint-config-next from 16.2.9 to 16.2.12 and
+NextAuth to 4.24.15; patched PostCSS/Sharp transitive versions are pinned by
+overrides. `npm audit --omit=dev` reports zero vulnerabilities.
+
+Tests added: `test/trial-expiry.test.ts`,
+`test/trial-expiry-cron.test.ts`, and `test/health-route.test.ts`.
+Validation: ESLint and TypeScript passed; all 208 mocked tests passed across
+32 files; the Next.js 16.2.12 production build passed and generated 133 static
+pages. Prisma validation initially failed because the local `DIRECT_URL` is
+empty; rerun with the documented harmless placeholder values before handoff.
+
+Documentation synchronized: README and the architecture/authentication counts
+now state 78 permissions; billing and hardening docs no longer claim trial
+expiry, gateways, monitoring, or accessibility are unimplemented; new
+`docs/OPERATIONS_AND_MONITORING.md` is the operations runbook.
+
+Search Console remains an external account action: the browser-control runtime
+reported no available browser, so ownership verification and sitemap
+submission were not falsely claimed. Reconnect a signed-in browser and finish
+the exact Cloudflare TXT + Search Console workflow in `docs/SEO.md`.
+
+No database migration is required. A 48-byte generated `CRON_SECRET` was added
+to the Vercel production environment as a sensitive value. Production
+deployment `dpl_DEWgpbiXTfBwAQoAzJmx6f5das37` reached `READY`; its build ran
+`prisma migrate deploy` and confirmed all 25 migrations were already applied.
+The `www`, `app`, and `admin` aliases resolve to the deployment. Live checks
+returned HTTP 200 for the database-backed health endpoint, sitemap (17 URLs),
+robots response, and public skip-link target; an unauthenticated cron request
+correctly returned HTTP 401. Vercel Web Analytics was enabled through the
+project API, Speed Insights is active, and the post-deploy error-log query was
+clean. Prisma schema validation also passed locally with harmless placeholder
+URLs because the checked-in local environment intentionally has an empty
+`DIRECT_URL`. A disposable `TEST_DATABASE_URL` was unavailable, so the guarded
+real-PostgreSQL integration suite was not run.
+
 ## 2026-07-26 — RF favicon and installed-app icons
 
 Replaced the generic geometric SVG favicon with the supplied `public/rf logo.png`. The source remains unchanged; its alpha bounds were tightly cropped and the full RF mark was centered on a brand-navy rounded square. Added Next.js file-convention assets at `src/app/favicon.ico` (16/32/48), `src/app/icon.png` (32), and `src/app/apple-icon.png` (180), plus manifest icons at `public/icon-192.png` and `public/icon-512.png`. Removed the explicit root metadata icon override and the obsolete SVG assets so Next.js emits the correct size/type metadata automatically. Updated `public/manifest.webmanifest` and `docs/DESIGN_SYSTEM.md`.
@@ -184,7 +231,7 @@ After making changes:
 
 ## Current phase
 
-**All sixteen product phases are feature-complete (see `docs/DEVELOPMENT_ROADMAP.md`), but a 2026-07-20 full-project audit found the platform is only production-ready for controlled/internal use, not external multi-tenant onboarding or real financial operations — see `docs/HARDENING_PLAN.md`.** The project is in a dedicated **production-hardening track**, run in numbered passes rather than feature phases. **Hardening Pass 1** (tenant guard, session revocation, dashboard permission leak, Administration/Projects/Payroll IDOR), **Pass 2** (financial/inventory transaction integrity), **Pass 3a** (invitation redesign), **Pass 3b** (Zod validation library + CRM/HR/Fleet IDOR audit), **Pass 3c** (remaining IDOR/Zod/Decimal-hygiene work, reproducible seeding/CI, stale-doc fixes), and **Pass 4** (real-Postgres integration/concurrency test infrastructure, closing the documented residual concurrency races plus two more found while testing, and a production audit-logging system with a real viewer) **are all complete.** See `docs/HARDENING_PLAN.md` for full detail and the remaining Milestone D+ scope (performance, resilience/accessibility, the branch-access design doc, and confirming the CI workflow against a real GitHub Actions run — still unverified from this environment).
+**All sixteen product phases are feature-complete (see `docs/DEVELOPMENT_ROADMAP.md`).** The project is in a dedicated **production-hardening track**. Hardening Passes 1–3 and Pass 4 Milestones A–D now cover tenant/session/IDOR controls, financial concurrency, invitations, validation, real-Postgres test infrastructure, audit logging, automatic trial expiry, health checks, structured error logging, performance telemetry, and accessibility baselines. Remaining work is external verification and continuous operations: payment-provider sandbox round trips, the Search Console account workflow, a live disposable-Postgres integration run when available, ongoing Core Web Vitals/accessibility review, and the branch-access design.
 
 **Billing/Subscriptions is no longer a placeholder.** A prior, undocumented pass (commits `54226be`/`d5eba17`/`2312aa9`/`18221a1`/`ed644f8` — **not previously logged in this file**, a gap in itself; see the note at the end of the entry below) had already built the full acquisition pipeline (`/contact` → platform inquiry inbox → organization creation with auto-generated tenant codes and prefilled fields → `Subscription` record with a `MANUAL_OFFLINE`/`PLATFORM_MANAGED` mode) and reserved but never wired `PAYSTACK`/`FLUTTERWAVE` as gateway-provider values. This pass (below) connects that reservation to real Paystack and Flutterwave checkout, a tenant-facing billing page, and both providers' webhooks. See `docs/BILLING_AND_SUBSCRIPTIONS.md` for the full design.
 
@@ -194,7 +241,7 @@ After making changes:
 - Each module (`fleet`, `installment`, `crm`, `inventory`, `accounting`, `hr`, `procurement`, `payroll`, `analytics`, `pos`, `projects`) has its own `layout.tsx` rendering `AppShell` with its own navigation array, guarded on `canAccessModule()` (module enabled for the org + a permission under that module's registered `permissionPrefix`).
 - `src/platform/modules/registry.ts` is the single source of truth for every module's metadata; `src/platform/modules/dashboard-widgets.tsx` maps a module key to a real dashboard summary component — every business module except Analytics (which has no natural summary distinct from its own pages) is wired up.
 - shadcn/ui (Base UI primitives) + Tailwind v4 design system — see `docs/DESIGN_SYSTEM.md`.
-- **All eleven business modules are fully real.** Fleet Management (Phase 6), Installment Management (Phase 7), CRM (Phase 8), Inventory Management (Phase 9), Accounting (Phase 10), Human Resources (Phase 11), Procurement (Phase 12), Payroll (Phase 13), Analytics (Phase 14), Point of Sale (Phase 15), and Project Management (Phase 16) are all complete — every module from the original `docs/PRODUCT_VISION.md` list, plus POS added by explicit request. Only a future Billing/Subscriptions module remains unbuilt. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md` and `docs/MODULE_BOUNDARIES.md` for full detail.
+- **All eleven business modules are fully real.** Fleet Management (Phase 6), Installment Management (Phase 7), CRM (Phase 8), Inventory Management (Phase 9), Accounting (Phase 10), Human Resources (Phase 11), Procurement (Phase 12), Payroll (Phase 13), Analytics (Phase 14), Point of Sale (Phase 15), and Project Management (Phase 16) are complete. Billing/subscriptions is an implemented cross-platform capability rather than a twelfth tenant module. See `docs/BILLING_AND_SUBSCRIPTIONS.md`.
 - **Every mutating Server Action that redirects to a list page calls `revalidatePath()` on that page immediately before the `redirect()`** — a systemic gap discovered and fixed during Phase 8 across every action file that existed at the time; every module built since (Inventory, Accounting, HR, Procurement, Payroll, POS, Projects) was written with this pattern from the start.
 - **`package.json` has a `"postinstall": "prisma generate"` script** (added after Phase 9) — required because Vercel's build can reuse a cached `node_modules` (including an already-generated Prisma Client) across deployments without regenerating it, which caused a real production build failure right after Phase 8/9 shipped. **Always check deployment status after pushing** (see the "After making changes" checklist above) — this is a standing rule, checked after every phase since (Accounting through POS all confirmed `READY` via `vercel --prod`).
 - **Two modules now call directly into a second module's service function as real, load-bearing behavior** (not just a UI shell): Procurement's receiving flow and POS's checkout/refund flow both call Inventory's own `recordMovement()` — receiving posts a stock `RECEIPT`, a POS sale posts an `ISSUE` and a refund reverses it with a `RECEIPT`. Both are deliberate, documented cross-module integrations (see `docs/DECISIONS.md`'s two 2026-07-20 entries, and `docs/MODULE_BOUNDARIES.md`) — the template for any future integration of this kind is the same: call the other module's public service function, never its Prisma models directly, and record the decision.

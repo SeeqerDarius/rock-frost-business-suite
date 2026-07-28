@@ -4,7 +4,7 @@
 
 **Two distinct, real test layers exist**, kept deliberately separate rather than one growing suite:
 
-1. **Mocked-database unit suite** (`vitest.config.ts`, `test/*.test.ts` — non-recursive, does not pick up subdirectories — `npm run test`), committed since Pass 1 (2026-07-21). Fast, mocks `@/lib/db`, covers authorization/validation branching logic across every hardening pass through Pass 3c.
+1. **Mocked-database unit suite** (`vitest.config.ts`, `test/*.test.ts` — non-recursive, does not pick up subdirectories — `npm run test`), committed since Pass 1 (2026-07-21). Fast, mocks `@/lib/db`, covers authorization/validation branching logic, trial expiry, cron authentication, and health-probe behavior.
 2. **Real-PostgreSQL integration suite** (`vitest.integration.config.ts`, `test/integration/**/*.test.ts`, `npm run test:integration`), added in Pass 4 (2026-07-21). Runs real Prisma queries against a genuinely disposable database — see "Real-database integration tests" below.
 
 **Known limitation of the mocked suite, stated honestly**: it verifies the code's *branching logic* ("does this function reject when the lookup returns null") without verifying the underlying Prisma query is well-formed or that a real database behaves as the mock assumes. That's why the integration suite exists as a second, independent layer rather than a replacement — the mocked suite stays for its speed on every commit; the integration suite is the one that actually proves tenant isolation and transaction behavior against real Postgres.
@@ -82,3 +82,4 @@ Real-database integration tests and tenant-isolation coverage across every modul
 - **Permission tests** — for every module permission, confirm both "user with permission can act" and "user without permission is blocked," at the Server Action layer specifically (not just the service-layer functions the integration suite currently exercises).
 - **End-to-end browser tests as a committed suite** — today, UI verification still follows the ad hoc "Browser verification" pattern below (temporary Playwright install, script, screenshot, uninstall), not a committed `test:e2e` suite. Worth formalizing once the highest-value smoke paths are identified.
 - **Responsive/accessibility checks** — at minimum, verify the mobile sidebar `Sheet` pattern and keyboard navigation work for any new interactive component; shadcn/Base UI components are accessible by default, but custom compositions (like `AppShell`) should be spot-checked.
+- **Production monitoring assertions** — configure an external uptime probe for `/api/health` and review Vercel Web Analytics, Speed Insights, runtime errors, and the daily trial-expiry success log. See `docs/OPERATIONS_AND_MONITORING.md`.

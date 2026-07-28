@@ -81,9 +81,13 @@ the financial/operational mutations across every module; a real org-scoped
 audit-log viewer with filters/pagination and a permission-gated CSV export
 (itself audited). See the "Pass 4, Milestone C" section below.
 
-**Pass 4, Milestone D — not started.** Observability, performance,
-resilience/accessibility, and the branch-access design doc remain. See
-"Remaining work" near the bottom.
+**Pass 4, Milestone D — baseline complete** (2026-07-28). Added authenticated
+automatic trial expiry, a database-backed health probe, structured cron and
+uncaught-request error logs, Vercel Web Analytics and Speed Insights, a global
+keyboard skip link, focusable main landmarks, reduced-motion support, patched
+production dependencies, and operational documentation. Ongoing performance
+and accessibility work is evidence-driven through production metrics and
+manual assistive-technology checks. The branch-access design remains separate.
 
 ---
 
@@ -1042,13 +1046,16 @@ build, 103 routes — the two new audit-log routes) all pass clean. Both new
 permissions confirmed seeded against the live database (78 permissions,
 up from 76).
 
-## Remaining work (Pass 4, Milestone D+, not started)
+## Remaining work (Pass 4, Milestone D+)
 
 ### Performance, resilience, accessibility
 
-All confirmed in the original audit, all deferred — none are blocking
-correctness or safety in the way tenant isolation, session revocation, and
-the IDOR/financial-integrity issues were.
+The production baseline is implemented: structured runtime/error logs, health
+checks, Web Analytics, Speed Insights, keyboard skip links, main landmarks,
+reduced-motion support, and a zero-production-vulnerability dependency audit.
+Continue weekly Core Web Vitals review and periodic keyboard, screen-reader,
+contrast, zoom, and responsive testing. Add an external uptime monitor against
+`/api/health`; Vercel instrumentation does not itself page an operator.
 
 ### CI workflow — unverified against a real run
 
@@ -1065,5 +1072,7 @@ Implemented after the original hardening scope was written: public
 module/demo acquisition, operator-led onboarding, manual/offline and
 platform-managed subscription records, payment confirmation, time-bounded
 module activation, cancellation, notifications, and audit logging. See
-`docs/BILLING_AND_SUBSCRIPTIONS.md`. A real online checkout/payment webhook
-remains intentionally unimplemented until a provider is selected.
+`docs/BILLING_AND_SUBSCRIPTIONS.md`. Paystack and Flutterwave hosted checkout,
+callbacks, signed/authenticated webhook routes, server-side amount/currency
+verification, and idempotent activation are implemented. Real provider-sandbox
+round trips remain the required external verification step.

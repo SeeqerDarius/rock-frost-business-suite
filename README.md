@@ -4,7 +4,7 @@ A modular multi-tenant business platform. Organizations activate independent man
 
 > This is a clean rebuild started 2026-07-19. The previous implementation is archived on branch `archive/pre-redesign-rfbs` and under `docs/archive/previous-implementation/`. See `docs/DECISIONS.md` for why.
 
-**Current status**: all eleven business modules are feature-complete and deployed live at [rockfrostgroup.com](https://www.rockfrostgroup.com). Public module/demo enquiries, operator-led onboarding, automatic tenant-code generation, time-bounded module subscriptions, Paystack/Flutterwave hosted checkout, and tenant-visible trial/subscribed status are implemented. Platform-owner identities are isolated from tenant workspaces at membership creation, session resolution, organization switching, and route authorization. Installment staff can be deactivated or permanently deleted with the same history-preservation rules as the GLV reference system. The project remains in a production-hardening track (see `docs/HARDENING_PLAN.md`) — see `OPERATOR_HANDOFF.md` for the exact current state.
+**Current status**: all eleven business modules are feature-complete and deployed live at [rockfrostgroup.com](https://www.rockfrostgroup.com). Public module/demo enquiries, operator-led onboarding, automatic tenant-code generation, time-bounded module subscriptions, Paystack/Flutterwave hosted checkout, automatic 14-day trial expiry, and tenant-visible trial/subscribed status are implemented. Platform-owner identities are isolated from tenant workspaces at membership creation, session resolution, organization switching, and route authorization. Installment staff can be deactivated or permanently deleted with the same history-preservation rules as the GLV reference system. Production monitoring now includes a database-backed health route, structured server-error/cron logs, Web Analytics, and Speed Insights. The project remains in a production-hardening track (see `docs/HARDENING_PLAN.md`) — see `OPERATOR_HANDOFF.md` for the exact current state.
 
 The public marketing site has a generated sitemap and robots policy, unique canonical metadata, Open Graph/Twitter sharing data, structured data, and dedicated search landing pages for all eleven modules. See `docs/SEO.md` for the authoritative indexable surface and the Search Console launch checklist.
 
@@ -12,7 +12,7 @@ Production uses host-separated authentication: platform owners use `admin.rockfr
 
 ## Stack
 
-- **Next.js 16** (App Router, Turbopack) — see `AGENTS.md` before writing Next.js-specific code; this project pins a version with breaking changes from what most training data assumes.
+- **Next.js 16.2.12** (App Router, Turbopack) — see `AGENTS.md` before writing Next.js-specific code; this project pins a version with breaking changes from what most training data assumes.
 - **TypeScript**, strict mode
 - **Tailwind CSS v4**
 - **shadcn/ui** (Base UI primitives) — see `docs/DECISIONS.md` for the license/rationale
@@ -63,12 +63,13 @@ Start with `OPERATOR_HANDOFF.md` at the repo root for the current state and next
 - `docs/DESIGN_SYSTEM.md` — UI foundation, tokens, component conventions
 - `docs/DEVELOPMENT_ROADMAP.md` — phased build history (all sixteen phases complete)
 - `docs/DATABASE_STRATEGY.md` — Prisma/Neon setup and migration workflow
-- `docs/AUTHENTICATION_AND_AUTHORIZATION.md` — real, enforced auth/RBAC (76 permission keys across 11 modules)
+- `docs/AUTHENTICATION_AND_AUTHORIZATION.md` — real, enforced auth/RBAC (78 permission keys across 11 modules)
 - `docs/TESTING_STRATEGY.md` — how work is validated, current automated test coverage
 - `docs/MODULE_REQUESTS_AND_CUSTOMIZATION.md` — customer requests, operator assignment, approval/enablement, and per-organization module configuration
 - `docs/BILLING_AND_SUBSCRIPTIONS.md` — public acquisition, prefilled onboarding, offline/platform billing modes, activation, and expiry enforcement
 - `docs/ORGANIZATION_LIFECYCLE.md` — Super Admin onboarding, profile/status management, protected platform organizations, and recoverable deletion
 - `docs/HARDENING_PLAN.md` — the production-hardening track: what's fixed, what's deferred, why
+- `docs/OPERATIONS_AND_MONITORING.md` — trial-expiry cron, health checks, logs, performance monitoring, and accessibility operations
 - `docs/DECISIONS.md` — dated log of consequential technical decisions
 
 `docs/archive/previous-implementation/` contains the retired implementation's docs, marked obsolete. Do not follow them.

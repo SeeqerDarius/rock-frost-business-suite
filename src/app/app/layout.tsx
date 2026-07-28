@@ -7,6 +7,7 @@ import { headers } from "next/headers";
 import { buildSurfaceUrl, classifyAppSurface, isIdentityAllowedOnSurface } from "@/lib/app-surfaces";
 import { isPlatformOperator } from "@/lib/auth/permissions";
 import type { Metadata } from "next";
+import { getTrialDaysRemaining } from "@/platform/trials/service";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false, nocache: true },
@@ -29,7 +30,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   if (!tenant) {
     return (
-      <div className="flex min-h-screen items-center justify-center px-6 text-center">
+      <main id="main-content" tabIndex={-1} className="flex min-h-screen items-center justify-center px-6 text-center">
         <div className="max-w-md space-y-3">
           <h1 className="text-2xl font-semibold">No organization access</h1>
           <p className="text-sm text-muted-foreground">
@@ -37,7 +38,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             workspace.
           </p>
         </div>
-      </div>
+      </main>
     );
   }
 
@@ -67,9 +68,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     ? (workspaceSettings as { theme?: "system" | "light" | "dark" }).theme
     : undefined;
 
-  const trialEndsAt = new Date(organization?.createdAt ?? new Date());
-  trialEndsAt.setUTCDate(trialEndsAt.getUTCDate() + 14);
-  const trialDaysRemaining = Math.max(0, Math.ceil((trialEndsAt.getTime() - Date.now()) / 86_400_000));
+  const trialDaysRemaining = getTrialDaysRemaining(organization?.createdAt ?? new Date());
 
   return (
     <>
