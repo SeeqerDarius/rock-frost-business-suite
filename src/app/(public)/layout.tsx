@@ -14,7 +14,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
             "@id": `${SITE_URL}/#organization`,
             name: COMPANY_NAME,
             url: SITE_URL,
-            logo: `${SITE_URL}/RFG.png`,
+            logo: `${SITE_URL}/icon-512.png`,
             description: DEFAULT_DESCRIPTION,
           },
           {
