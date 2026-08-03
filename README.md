@@ -10,7 +10,7 @@ The public marketing site has a generated sitemap and robots policy, unique cano
 
 ## Vertical suites
 
-- **Hotel Management:** rooms, guests, reservations, stay lifecycle, folios and payments, housekeeping, reporting and settings, followed by restaurant, guest services, rate management and channel distribution.
+- **Hotel Management:** rooms, guests, reservations, stay lifecycle, folios and payments, housekeeping, reporting, restaurant, channels, and enforced property settings for currency/timezone, stay policy, charges, numbering, settlement, and room-readiness workflow.
 - **School Management:** student/guardian administration, academic periods, classes, enrollment, attendance, fees and reporting, followed by examinations, grading, timetables, transport, library, campus services and education-specific payroll integration.
 
 See `docs/HOTEL_AND_SCHOOL_MODULES.md` for boundaries, invariants, roles, integrations, and completion gates. Both modules now have tenant routes and unique RBAC prefixes.

@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-03 — Hotel Settings completion and Reports-route repair
+
+Completed the Hotel Settings module as enforced property configuration rather than passive form fields. Each property now controls timezone/currency, check-in/out, tax and service charge, outstanding-checkout policy, reservation/folio/receipt/order prefixes, automatic checkout cleaning tasks, housekeeping due hours, and mandatory inspection. The stay, payment, restaurant, checkout, and housekeeping services consume those settings. Housekeeping also supports tenant-scoped manual task creation, duplicate-open-task prevention, assignment, due date, priority, notes, inspection, and completion.
+
+Fixed the production Reports 404 at its source. `.vercelignore` used unanchored `reports/` and `output/` patterns, which removed nested App Router report directories from Vercel source packaging. Both rules are now root-anchored, and a regression test protects them. The production build route manifest explicitly contains `/app/hotel/reports` plus all other module report routes.
+
+Added additive migration `20260803215500_complete_hotel_settings`; no environment change is required. The disposable PostgreSQL database applied all 27 migrations. Validation passed Prisma validate/generate, strict TypeScript, ESLint, 34 unit files / 213 tests, 19 integration files / 104 real-database tests, and the 160-page Next.js production build. Pre-existing `output/` and `reports/` artifacts remain preserved and uncommitted.
+
 ## 2026-08-03 — Coordinated UI/UX and sidebar refresh
 
 Refined the authenticated workspace after a live-interface review and an independent agent audit. The desktop `AppShell` now has a sticky, persistent user-collapsible sidebar; its 72px rail retains accessible icon navigation and tooltips. The mobile sheet is full-height with an independently scrolling navigation region and closes only after route selection. The top bar now identifies the current page and module, while RF blue is used semantically for primary, focus, chart, and active-navigation tokens.
