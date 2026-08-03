@@ -1,8 +1,7 @@
-import Link from "next/link";
-import { BedDouble, CalendarDays, Receipt, Sparkles } from "lucide-react";
+import { BedDouble, CalendarDays, Receipt, Sparkles, UtensilsCrossed } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card";
+import { WorkflowLinks } from "@/components/dashboard/workflow-links";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getHotelSummary } from "@/modules/hotel/service";
 
@@ -10,10 +9,21 @@ export default async function HotelOverviewPage() {
   const tenant = await requireModuleAccess("hotel");
   const summary = await getHotelSummary(tenant.organizationId);
   const stats = [
-    { label: "Occupied rooms", value: `${summary.occupiedRooms}/${summary.totalRooms}`, icon: BedDouble, href: "/app/hotel/rooms" },
-    { label: "In-house guests", value: summary.inHouse, icon: CalendarDays, href: "/app/hotel/reservations" },
-    { label: "Open folios", value: summary.openFolios, icon: Receipt, href: "/app/hotel/folios" },
-    { label: "Housekeeping queue", value: summary.housekeeping, icon: Sparkles, href: "/app/hotel/housekeeping" },
+    { label: "Occupied rooms", value: `${summary.occupiedRooms}/${summary.totalRooms}`, description: "Current room utilization", icon: <BedDouble className="size-4" />, href: "/app/hotel/rooms" },
+    { label: "In-house guests", value: summary.inHouse, description: "Active checked-in stays", icon: <CalendarDays className="size-4" />, href: "/app/hotel/reservations" },
+    { label: "Open folios", value: summary.openFolios, description: "Guest accounts awaiting settlement", icon: <Receipt className="size-4" />, href: "/app/hotel/folios" },
+    { label: "Housekeeping queue", value: summary.housekeeping, description: "Rooms requiring attention", icon: <Sparkles className="size-4" />, href: "/app/hotel/housekeeping" },
   ];
-  return <div className="space-y-6"><PageHeader title="Hotel Overview" description="Occupancy, guest stays, settlement, and room readiness at a glance." /><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{stats.map((stat) => <Card key={stat.label}><CardHeader><div className="flex items-center justify-between"><CardDescription>{stat.label}</CardDescription><stat.icon className="size-4 text-muted-foreground" /></div><CardTitle className="text-3xl">{stat.value}</CardTitle></CardHeader><CardContent><Button size="sm" variant="outline" nativeButton={false} render={<Link href={stat.href as never} />}>View</Button></CardContent></Card>)}</div></div>;
+  const workflows = [
+    { title: "Manage reservations", description: "Review bookings, arrivals, departures, and stay status.", href: "/app/hotel/reservations", icon: <CalendarDays /> },
+    { title: "Run housekeeping", description: "Coordinate room readiness and operational assignments.", href: "/app/hotel/housekeeping", icon: <Sparkles /> },
+    { title: "Restaurant & channels", description: "Post restaurant orders and maintain distribution mappings.", href: "/app/hotel/restaurant", icon: <UtensilsCrossed /> },
+  ];
+  return (
+    <div className="mx-auto max-w-screen-2xl space-y-6">
+      <PageHeader title="Hotel Overview" description="Occupancy, guest stays, settlement, and room readiness at a glance." />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{stats.map((stat) => <OverviewMetricCard key={stat.label} {...stat} />)}</div>
+      <WorkflowLinks title="Daily operations" description="Move directly into the workflows your front desk and operations teams use most." items={workflows} />
+    </div>
+  );
 }

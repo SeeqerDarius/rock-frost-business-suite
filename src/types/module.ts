@@ -3,6 +3,10 @@ import type { ReactNode } from "react";
 
 export interface ModuleNavItem {
   label: string;
+  /** Optional compact label used when horizontal space is constrained. */
+  shortLabel?: string;
+  /** Optional visual section label for long module navigation lists. */
+  group?: string;
   href: string;
   /**
    * A pre-rendered icon element (e.g. `<Truck className="size-4" />`), not a component

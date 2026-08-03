@@ -1,14 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { Menu } from "lucide-react";
+import { useState, useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
+import { ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { SidebarNav } from "@/components/navigation/sidebar-nav";
 import { ModuleLauncher } from "@/components/navigation/module-launcher";
 import { UserMenu } from "@/components/navigation/user-menu";
 import { OrganizationSwitcher } from "@/components/navigation/organization-switcher";
+import { getActiveNavigationHref } from "@/components/navigation/active-navigation";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 import type { ModuleNavItem } from "@/types/module";
 
 interface AppShellProps {
@@ -24,6 +27,19 @@ interface AppShellProps {
   };
 }
 
+function subscribeToSidebarPreference(onStoreChange: () => void) {
+  window.addEventListener("rf-sidebar-change", onStoreChange);
+  return () => window.removeEventListener("rf-sidebar-change", onStoreChange);
+}
+
+function getSidebarPreference() {
+  return window.localStorage.getItem("rf-sidebar-collapsed") === "true";
+}
+
+function getServerSidebarPreference() {
+  return false;
+}
+
 export function AppShell({
   sectionLabel,
   navigation,
@@ -34,50 +50,87 @@ export function AppShell({
   showModuleLauncher = true,
 }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const sidebarCollapsed = useSyncExternalStore(
+    subscribeToSidebarPreference,
+    getSidebarPreference,
+    getServerSidebarPreference,
+  );
+  const pathname = usePathname();
+  const activeHref = getActiveNavigationHref(pathname, navigation);
+  const currentItem = navigation.find((item) => item.href === activeHref);
+
+  function toggleSidebar() {
+    window.localStorage.setItem("rf-sidebar-collapsed", String(!sidebarCollapsed));
+    window.dispatchEvent(new Event("rf-sidebar-change"));
+  }
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="hidden w-64 shrink-0 flex-col border-r lg:flex">
-        <div className="flex h-16 items-center border-b px-4">
-          <Logo href={homeHref} />
+    <div className="flex min-h-dvh bg-muted/20">
+      <aside
+        aria-label={`${sectionLabel} sidebar`}
+        data-collapsed={sidebarCollapsed}
+        className={cn(
+          "sticky top-0 hidden h-dvh shrink-0 flex-col border-r bg-sidebar transition-[width] duration-200 lg:flex",
+          sidebarCollapsed ? "w-18" : "w-64",
+        )}
+      >
+        <div className={cn("flex h-16 items-center border-b px-4", sidebarCollapsed && "justify-center px-2")}>
+          <Logo href={homeHref} compact={sidebarCollapsed} />
         </div>
-        {organization ? (
+        {organization && !sidebarCollapsed ? (
           <OrganizationSwitcher currentOrganizationId={organization.organizationId} memberships={organization.memberships} />
         ) : null}
-        <p className="px-5 pt-4 pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{sectionLabel}</p>
-        <div className="flex-1 overflow-y-auto py-1">
-          <SidebarNav items={navigation} />
+        {!sidebarCollapsed ? <p className="px-5 pb-2 pt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">{sectionLabel}</p> : null}
+        <div className="min-h-0 flex-1 overflow-y-auto py-1">
+          <SidebarNav items={navigation} collapsed={sidebarCollapsed} />
+        </div>
+        <div className="border-t p-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size={sidebarCollapsed ? "icon" : "default"}
+            className={cn("w-full text-muted-foreground", !sidebarCollapsed && "justify-start")}
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!sidebarCollapsed}
+            onClick={toggleSidebar}
+          >
+            {sidebarCollapsed ? <ChevronRight /> : <ChevronLeft />}
+            {!sidebarCollapsed ? <span>Collapse sidebar</span> : null}
+          </Button>
         </div>
       </aside>
 
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-        <SheetContent side="left" className="w-64 p-0">
+        <SheetContent side="left" className="flex h-dvh w-72 flex-col p-0">
           <SheetTitle className="sr-only">Navigation</SheetTitle>
-          <div className="flex h-16 items-center border-b px-4">
+          <div className="flex h-16 shrink-0 items-center border-b px-4">
             <Logo href={homeHref} />
           </div>
           {organization ? (
             <OrganizationSwitcher currentOrganizationId={organization.organizationId} memberships={organization.memberships} />
           ) : null}
           <p className="px-5 pt-4 pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{sectionLabel}</p>
-          <div className="flex-1 overflow-y-auto py-1" onClick={() => setMobileNavOpen(false)}>
-            <SidebarNav items={navigation} />
+          <div className="min-h-0 flex-1 overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))] pt-1">
+            <SidebarNav items={navigation} onNavigate={() => setMobileNavOpen(false)} />
           </div>
         </SheetContent>
       </Sheet>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 items-center justify-between gap-4 border-b px-4 sm:px-6">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b bg-background/95 px-4 backdrop-blur sm:px-6">
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation">
             <Menu className="size-4" />
           </Button>
-          <div className="flex-1" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">{currentItem?.shortLabel ?? currentItem?.label ?? sectionLabel}</p>
+            <p className="hidden truncate text-xs text-muted-foreground sm:block">{sectionLabel}</p>
+          </div>
           <div className="flex items-center gap-1">
             {showModuleLauncher ? <ModuleLauncher enabledModuleKeys={enabledModuleKeys} /> : null}
             <UserMenu />
           </div>
         </header>
-        <main id="main-content" tabIndex={-1} className="flex-1 p-4 sm:p-6">{children}</main>
+        <main id="main-content" tabIndex={-1} className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
     </div>
   );
