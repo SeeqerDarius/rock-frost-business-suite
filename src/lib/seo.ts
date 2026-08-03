@@ -119,5 +119,16 @@ export const MODULE_SEO = {
     keywords: ["POS software Ghana", "point of sale system Africa", "retail checkout software"],
     features: ["Register and session controls", "Fast retail checkout", "Sales history", "POS settings and reports"],
   },
+  hotel: {
+    shortName: "Hotel Management Software",
+    description: "Manage properties, rooms, guests, reservations, check-in and checkout, folios, housekeeping, restaurant operations, and distribution channels.",
+    keywords: ["hotel management software Ghana", "property management system Africa", "hotel reservation and housekeeping software"],
+    features: ["Rooms, guests, and reservations", "Check-in, checkout, folios, and payments", "Housekeeping and room readiness", "Restaurant operations and channel mappings"],
+  },
+  school: {
+    shortName: "School Management Software",
+    description: "Manage students, guardians, academics, attendance, fees, examinations, timetables, transport, library, and school payroll inputs.",
+    keywords: ["school management software Ghana", "student information system Africa", "school fees attendance examination software"],
+    features: ["Student, guardian, and enrollment records", "Attendance, fees, and payments", "Examinations, grading, and timetables", "Transport, library, and payroll inputs"],
+  },
 } as const;
-

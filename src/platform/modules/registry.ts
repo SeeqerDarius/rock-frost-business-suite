@@ -10,6 +10,8 @@ import {
   KanbanSquare,
   LineChart,
   Store,
+  Building2,
+  GraduationCap,
 } from "lucide-react";
 import type { ModuleDefinition } from "@/types/module";
 import { fleetNavigation } from "@/modules/fleet/navigation";
@@ -23,16 +25,17 @@ import { payrollNavigation } from "@/modules/payroll/navigation";
 import { analyticsNavigation } from "@/modules/analytics/navigation";
 import { posNavigation } from "@/modules/pos/navigation";
 import { projectsNavigation } from "@/modules/projects/navigation";
+import { hotelNavigation } from "@/modules/hotel/navigation";
+import { schoolNavigation } from "@/modules/school/navigation";
 
 /**
  * The module registry. Every business module the platform can offer is declared
  * here — this is the single source of truth the module launcher, workspace
  * navigation, and (eventually) organization module-activation records read from.
  *
- * Every module is "available" as of Phase 16 (Projects) — the last one from
- * the original docs/PRODUCT_VISION.md list, plus POS added by explicit
- * request. Billing/Subscriptions is a platform capability rather than a
- * tenant business module, so it deliberately does not belong in this registry.
+ * All thirteen modules are available. Hotel and School follow the vertical
+ * architecture contract in docs/HOTEL_AND_SCHOOL_MODULES.md. Billing/Subscriptions is a platform
+ * capability rather than a tenant business module, so it does not belong here.
  */
 const moduleDefinitions = [
   {
@@ -144,6 +147,26 @@ const moduleDefinitions = [
     navigation: posNavigation,
     status: "available",
     permissionPrefix: "pos.",
+  },
+  {
+    key: "hotel",
+    name: "Hotel Management",
+    description: "Property operations, reservations, stays, folios, housekeeping, food and beverage, and distribution.",
+    icon: Building2,
+    routePrefix: "/app/hotel",
+    navigation: hotelNavigation,
+    status: "available",
+    permissionPrefix: "hotel.",
+  },
+  {
+    key: "school",
+    name: "School Management",
+    description: "Admissions, academics, attendance, fees, assessments, campus services, and family engagement.",
+    icon: GraduationCap,
+    routePrefix: "/app/school",
+    navigation: schoolNavigation,
+    status: "available",
+    permissionPrefix: "school.",
   },
 ] as const satisfies readonly ModuleDefinition[];
 

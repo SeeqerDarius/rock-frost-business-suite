@@ -23,6 +23,9 @@ export const moneyAmount = z
   .regex(/^\d{1,12}(\.\d{1,2})?$/, "Must be a positive number with at most 2 decimal places.")
   .refine((value) => Number(value) > 0, "Must be greater than zero.");
 
+/** Explicit alias for workflows where zero is never a valid monetary value. */
+export const moneyAmountPositive = moneyAmount;
+
 /** Same as moneyAmount but allows zero (e.g. an optional deposit/fee that can legitimately be 0). */
 export const moneyAmountNonNegative = z
   .string()

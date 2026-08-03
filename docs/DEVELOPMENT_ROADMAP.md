@@ -183,6 +183,18 @@ Verified end-to-end: created a project, added a member, created a milestone with
 
 **Status: complete.**
 
+## Phase 17 — Hotel Management ✅
+
+Property and room inventory, guests, reservation and stay lifecycle, folios/payments, housekeeping, restaurant orders and folio charging, channel mappings, reporting, and settings. Tenant isolation, RBAC, state guards, additive migration, and real-database integration coverage are included.
+
+**Status: complete.**
+
+## Phase 18 — School Management ✅
+
+Campus, student/guardian, academic period, class/enrollment, attendance, fee/payment, exam/grading/moderation, timetable, transport, library, payroll-adjustment, reporting, and settings workflows. Tenant isolation, RBAC, academic/financial guards, additive migration, and real-database integration coverage are included.
+
+**Status: complete.**
+
 ## Production hardening track (started 2026-07-21)
 
 With every product module built, a full-project audit (2026-07-20) found the platform is a strong feature-complete beta but not yet safe for external multi-tenant onboarding or real financial operations. Rather than a numbered phase, this is now tracked as a series of hardening passes in **`docs/HARDENING_PLAN.md`** — read that file for the authoritative current status. **Pass 1** (central active-tenant guard, session revocation, dashboard permission leak, and the Administration/Projects/Payroll IDOR paths), **Pass 2** (financial/inventory transaction atomicity across POS/Inventory/Procurement/Accounting/Payroll/Installment plus the IDOR paths entangled with it), **Pass 3a** (invitation redesign — bound to one membership, hashed tokens, resend/revoke), **Pass 3b** (a shared Zod validation library applied to the public contact form and Administration's invite form, plus a full CRM/HR/Fleet cross-tenant IDOR audit that found and fixed real gaps in all three), and **Pass 3c** (the remaining Installment/POS IDOR audit, a full Zod validation rollout across every remaining Server Action file, bounded Decimal-precision hygiene in Accounting/Payroll/Installment, reproducible seeding/CI, and stale-documentation fixes) are all complete. **Pass 4+** (the narrow documented residual concurrency races, audit logging, performance, accessibility) has not started.

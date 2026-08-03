@@ -1,12 +1,19 @@
 # Rock Frost Business Suite
 
-A modular multi-tenant business platform. Organizations activate independent management modules — Fleet, Installment Sales, CRM, Inventory, Accounting, HR, Procurement, Payroll, Analytics, Point of Sale, and Project Management — from one unified workspace, without mixing unrelated business data together.
+A modular multi-tenant business platform. Organizations activate thirteen independent management modules — Fleet, Installment Sales, CRM, Inventory, Accounting, HR, Procurement, Payroll, Analytics, Point of Sale, Project Management, Hotel Management, and School Management — from one unified workspace, without mixing unrelated business data together.
 
 > This is a clean rebuild started 2026-07-19. The previous implementation is archived on branch `archive/pre-redesign-rfbs` and under `docs/archive/previous-implementation/`. See `docs/DECISIONS.md` for why.
 
-**Current status**: all eleven business modules are feature-complete and deployed live at [rockfrostgroup.com](https://www.rockfrostgroup.com). Public module/demo enquiries, operator-led onboarding, automatic tenant-code generation, time-bounded module subscriptions, Paystack/Flutterwave hosted checkout, automatic 14-day trial expiry, and tenant-visible trial/subscribed status are implemented. Platform-owner identities are isolated from tenant workspaces at membership creation, session resolution, organization switching, and route authorization. Installment staff can be deactivated or permanently deleted with the same history-preservation rules as the GLV reference system. Production monitoring now includes a database-backed health route, structured server-error/cron logs, Web Analytics, and Speed Insights. The project remains in a production-hardening track (see `docs/HARDENING_PLAN.md`) — see `OPERATOR_HANDOFF.md` for the exact current state.
+**Current status**: all thirteen business modules are implemented; Hotel and School are awaiting the validation and deployment results recorded in `OPERATOR_HANDOFF.md`. The previously deployed eleven modules remain live at [rockfrostgroup.com](https://www.rockfrostgroup.com). Public acquisition, subscriptions, hosted checkout, trial expiry, tenant isolation, and production monitoring remain implemented.
 
-The public marketing site has a generated sitemap and robots policy, unique canonical metadata, Open Graph/Twitter sharing data, structured data, and dedicated search landing pages for all eleven modules. See `docs/SEO.md` for the authoritative indexable surface and the Search Console launch checklist.
+The public marketing site has a generated sitemap and robots policy, unique canonical metadata, Open Graph/Twitter sharing data, structured data, and dedicated search landing pages for all thirteen modules. See `docs/SEO.md` for the authoritative indexable surface and the Search Console launch checklist.
+
+## Vertical suites
+
+- **Hotel Management:** rooms, guests, reservations, stay lifecycle, folios and payments, housekeeping, reporting and settings, followed by restaurant, guest services, rate management and channel distribution.
+- **School Management:** student/guardian administration, academic periods, classes, enrollment, attendance, fees and reporting, followed by examinations, grading, timetables, transport, library, campus services and education-specific payroll integration.
+
+See `docs/HOTEL_AND_SCHOOL_MODULES.md` for boundaries, invariants, roles, integrations, and completion gates. Both modules now have tenant routes and unique RBAC prefixes.
 
 Production uses host-separated authentication: platform owners use `admin.rockfrostgroup.com`, tenant users use `app.rockfrostgroup.com`, and public pages remain on `www.rockfrostgroup.com`. Host-only cookies allow both accounts to stay signed in concurrently in one browser profile.
 
@@ -63,7 +70,7 @@ Start with `OPERATOR_HANDOFF.md` at the repo root for the current state and next
 - `docs/DESIGN_SYSTEM.md` — UI foundation, tokens, component conventions
 - `docs/DEVELOPMENT_ROADMAP.md` — phased build history (all sixteen phases complete)
 - `docs/DATABASE_STRATEGY.md` — Prisma/Neon setup and migration workflow
-- `docs/AUTHENTICATION_AND_AUTHORIZATION.md` — real, enforced auth/RBAC (78 permission keys across 11 modules)
+- `docs/AUTHENTICATION_AND_AUTHORIZATION.md` — real, enforced auth/RBAC (104 permission keys across 13 modules)
 - `docs/TESTING_STRATEGY.md` — how work is validated, current automated test coverage
 - `docs/MODULE_REQUESTS_AND_CUSTOMIZATION.md` — customer requests, operator assignment, approval/enablement, and per-organization module configuration
 - `docs/BILLING_AND_SUBSCRIPTIONS.md` — public acquisition, prefilled onboarding, offline/platform billing modes, activation, and expiry enforcement

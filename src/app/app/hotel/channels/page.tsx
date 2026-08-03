@@ -1,0 +1,10 @@
+import { RadioTower } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/feedback/empty-state";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { requireModuleAccess } from "@/lib/auth/module-access";
+import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { listHotelChannels, listHotelProperties } from "@/modules/hotel/service";
+import { upsertChannelAction } from "../actions";
+export default async function HotelChannelsPage(){const tenant=await requireModuleAccess("hotel");const can=hasPermission(tenant,PERMISSIONS.HOTEL_CHANNELS_MANAGE);const [channels,properties]=await Promise.all([listHotelChannels(tenant.organizationId),listHotelProperties(tenant.organizationId)]);return <div className="space-y-6"><PageHeader title="Channels" description="Distribution-channel mappings and synchronization readiness. Credentials remain provider-managed and are never exposed here."/>{can?<form action={upsertChannelAction} className="grid gap-3 rounded-lg border p-4 sm:grid-cols-2 lg:grid-cols-5"><select name="propertyId" required className="h-9 rounded-md border bg-transparent px-3 text-sm"><option value="">Property…</option>{properties.map((p)=><option key={p.id} value={p.id}>{p.name}</option>)}</select><Input name="provider" placeholder="Provider" required/><Input name="externalPropertyId" placeholder="External property ID"/><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="active"/>Active</label><Button size="sm">Save mapping</Button></form>:null}{channels.length===0?<EmptyState icon={RadioTower} title="No channel mappings" description="Add an OTA or distribution provider mapping when credentials and an adapter are ready."/>:<div className="space-y-2">{channels.map((c)=><div key={c.id} className="flex justify-between rounded-lg border p-3"><span>{c.property.name} · {c.provider}</span><span className="text-sm text-muted-foreground">{c.active?"Active":"Inactive"} · {c.lastSyncAt?.toLocaleString()||"Never synced"}</span></div>)}</div>}</div>}

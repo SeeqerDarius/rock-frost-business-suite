@@ -1,8 +1,33 @@
 # Architecture & Tooling Decisions
 
+## 2026-08-03 — Hotel and School are operational vertical suites
+
+**Decision:** Promote Hotel and School to available modules after implementing their schema, services, RBAC, tenant isolation, navigation, workflows, reports, settings, migration, and tests. Restaurant charges are posted to Hotel folios within the same transaction as the order; School examination results move through explicit open, moderation, and published states.
+
+**Boundary rule:** The vertical modules own vertical operational records. Existing shared modules remain independent; future external channel adapters and automated payroll posting must use public service boundaries rather than querying another module's tables.
+
 This is the authoritative decision log for the rebuilt Rock Frost Business Suite. Record every consequential technical decision here, in date order, newest first. Do not silently reverse a decision recorded here — supersede it with a new dated entry explaining why.
 
 ---
+
+## 2026-08-03 — Hotel and School are staged vertical suites
+
+**Decision:** Add Hotel Management and School Management to the product registry
+as `coming-soon` and to the platform module catalog seed for acquisition, then deliver them through the bounded releases and completion
+gates in `docs/HOTEL_AND_SCHOOL_MODULES.md`. They must not be marked available,
+made tenant-accessible or receive a permission prefix until their first
+operational release passes schema, RBAC, state-transition, isolation, migration,
+test, and documentation checks.
+
+**Why:** Both requested verticals contain multiple dependent domains and
+regulated/sensitive data. Registering the roadmap supports acquisition now,
+while fail-closed availability prevents placeholder pages or incomplete financial
+and academic workflows from being sold as production-ready.
+
+**Boundary rule:** Future Hotel restaurant/channel and School workforce/payroll
+integrations call existing module services behind explicit adapters. They do not
+query POS, Inventory, Accounting, HR, or Payroll tables directly.
+
 
 ## 2026-07-20 — POS sales post real Inventory stock movements (ISSUE on sale, RECEIPT on refund)
 

@@ -95,6 +95,32 @@ export const PERMISSIONS = {
   PROJECTS_MILESTONES_MANAGE: "projects.milestones.manage",
   PROJECTS_REPORTS_VIEW: "projects.reports.view",
   PROJECTS_SETTINGS_MANAGE: "projects.settings.manage",
+  HOTEL_VIEW: "hotel.view",
+  HOTEL_PROPERTIES_MANAGE: "hotel.properties.manage",
+  HOTEL_ROOMS_MANAGE: "hotel.rooms.manage",
+  HOTEL_GUESTS_MANAGE: "hotel.guests.manage",
+  HOTEL_RESERVATIONS_MANAGE: "hotel.reservations.manage",
+  HOTEL_FOLIOS_MANAGE: "hotel.folios.manage",
+  HOTEL_HOUSEKEEPING_MANAGE: "hotel.housekeeping.manage",
+  HOTEL_RESTAURANT_MANAGE: "hotel.restaurant.manage",
+  HOTEL_CHANNELS_MANAGE: "hotel.channels.manage",
+  HOTEL_REPORTS_VIEW: "hotel.reports.view",
+  HOTEL_SETTINGS_MANAGE: "hotel.settings.manage",
+  SCHOOL_VIEW: "school.view",
+  SCHOOL_CAMPUSES_MANAGE: "school.campuses.manage",
+  SCHOOL_STUDENTS_MANAGE: "school.students.manage",
+  SCHOOL_ACADEMICS_MANAGE: "school.academics.manage",
+  SCHOOL_ENROLLMENT_MANAGE: "school.enrollment.manage",
+  SCHOOL_ATTENDANCE_MANAGE: "school.attendance.manage",
+  SCHOOL_FEES_MANAGE: "school.fees.manage",
+  SCHOOL_EXAMS_MANAGE: "school.exams.manage",
+  SCHOOL_EXAMS_PUBLISH: "school.exams.publish",
+  SCHOOL_TIMETABLES_MANAGE: "school.timetables.manage",
+  SCHOOL_TRANSPORT_MANAGE: "school.transport.manage",
+  SCHOOL_LIBRARY_MANAGE: "school.library.manage",
+  SCHOOL_PAYROLL_MANAGE: "school.payroll.manage",
+  SCHOOL_REPORTS_VIEW: "school.reports.view",
+  SCHOOL_SETTINGS_MANAGE: "school.settings.manage",
 } as const;
 
 export const ALL_PERMISSIONS = Object.values(PERMISSIONS);
@@ -117,6 +143,19 @@ export const SYSTEM_ROLES: { name: string; description: string }[] = [
   { name: "Analytics Manager", description: "Read-only cross-module reporting role." },
   { name: "POS Cashier", description: "Operational Point of Sale role for registers, sessions, and sales." },
   { name: "Projects Manager", description: "Operational Project Management role for projects, tasks, and milestones." },
+  { name: "Hotel Manager", description: "Full operational Hotel Management role." },
+  { name: "Front Desk Agent", description: "Hotel guest, reservation, check-in, folio, and payment role." },
+  { name: "Housekeeping Supervisor", description: "Hotel room-readiness and housekeeping supervision role." },
+  { name: "Housekeeper", description: "Hotel housekeeping task execution role." },
+  { name: "Restaurant Manager", description: "Hotel restaurant menu, order, and reconciliation role." },
+  { name: "Revenue Manager", description: "Hotel reporting, rates, and distribution role." },
+  { name: "School Administrator", description: "Full operational School Management role." },
+  { name: "Admissions Officer", description: "School student, guardian, admission, and enrollment role." },
+  { name: "Teacher", description: "School attendance, assessment, and timetable role." },
+  { name: "Academic Head", description: "School academic-period, assessment, grading, and publishing role." },
+  { name: "Bursar", description: "School fees, receipts, financial reporting, and payroll-input role." },
+  { name: "Librarian", description: "School library catalog and circulation role." },
+  { name: "Transport Manager", description: "School route and student transport assignment role." },
 ];
 
 function moduleRolePermissions(keys: (typeof ALL_PERMISSIONS)[number][]) {
@@ -231,6 +270,33 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     PERMISSIONS.PROJECTS_REPORTS_VIEW,
     PERMISSIONS.PROJECTS_SETTINGS_MANAGE,
   ]),
+  "Hotel Manager": moduleRolePermissions([
+    PERMISSIONS.HOTEL_VIEW, PERMISSIONS.HOTEL_PROPERTIES_MANAGE, PERMISSIONS.HOTEL_ROOMS_MANAGE,
+    PERMISSIONS.HOTEL_GUESTS_MANAGE, PERMISSIONS.HOTEL_RESERVATIONS_MANAGE, PERMISSIONS.HOTEL_FOLIOS_MANAGE,
+    PERMISSIONS.HOTEL_HOUSEKEEPING_MANAGE, PERMISSIONS.HOTEL_RESTAURANT_MANAGE, PERMISSIONS.HOTEL_CHANNELS_MANAGE,
+    PERMISSIONS.HOTEL_REPORTS_VIEW, PERMISSIONS.HOTEL_SETTINGS_MANAGE,
+  ]),
+  "Front Desk Agent": moduleRolePermissions([
+    PERMISSIONS.HOTEL_VIEW, PERMISSIONS.HOTEL_GUESTS_MANAGE, PERMISSIONS.HOTEL_RESERVATIONS_MANAGE,
+    PERMISSIONS.HOTEL_FOLIOS_MANAGE, PERMISSIONS.HOTEL_REPORTS_VIEW,
+  ]),
+  "Housekeeping Supervisor": moduleRolePermissions([PERMISSIONS.HOTEL_VIEW, PERMISSIONS.HOTEL_ROOMS_MANAGE, PERMISSIONS.HOTEL_HOUSEKEEPING_MANAGE, PERMISSIONS.HOTEL_REPORTS_VIEW]),
+  Housekeeper: moduleRolePermissions([PERMISSIONS.HOTEL_VIEW, PERMISSIONS.HOTEL_HOUSEKEEPING_MANAGE]),
+  "Restaurant Manager": moduleRolePermissions([PERMISSIONS.HOTEL_VIEW, PERMISSIONS.HOTEL_RESTAURANT_MANAGE, PERMISSIONS.HOTEL_REPORTS_VIEW]),
+  "Revenue Manager": moduleRolePermissions([PERMISSIONS.HOTEL_VIEW, PERMISSIONS.HOTEL_CHANNELS_MANAGE, PERMISSIONS.HOTEL_REPORTS_VIEW, PERMISSIONS.HOTEL_SETTINGS_MANAGE]),
+  "School Administrator": moduleRolePermissions([
+    PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_CAMPUSES_MANAGE, PERMISSIONS.SCHOOL_STUDENTS_MANAGE,
+    PERMISSIONS.SCHOOL_ACADEMICS_MANAGE, PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE, PERMISSIONS.SCHOOL_ATTENDANCE_MANAGE,
+    PERMISSIONS.SCHOOL_FEES_MANAGE, PERMISSIONS.SCHOOL_EXAMS_MANAGE, PERMISSIONS.SCHOOL_EXAMS_PUBLISH,
+    PERMISSIONS.SCHOOL_TIMETABLES_MANAGE, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE, PERMISSIONS.SCHOOL_LIBRARY_MANAGE,
+    PERMISSIONS.SCHOOL_PAYROLL_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW, PERMISSIONS.SCHOOL_SETTINGS_MANAGE,
+  ]),
+  "Admissions Officer": moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_STUDENTS_MANAGE, PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE]),
+  Teacher: moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_ATTENDANCE_MANAGE, PERMISSIONS.SCHOOL_EXAMS_MANAGE, PERMISSIONS.SCHOOL_TIMETABLES_MANAGE]),
+  "Academic Head": moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_ACADEMICS_MANAGE, PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE, PERMISSIONS.SCHOOL_ATTENDANCE_MANAGE, PERMISSIONS.SCHOOL_EXAMS_MANAGE, PERMISSIONS.SCHOOL_EXAMS_PUBLISH, PERMISSIONS.SCHOOL_TIMETABLES_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW]),
+  Bursar: moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_FEES_MANAGE, PERMISSIONS.SCHOOL_PAYROLL_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW]),
+  Librarian: moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_LIBRARY_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW]),
+  "Transport Manager": moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW]),
 };
 
 /** Matches the `key`/`name` pairs in src/platform/modules/registry.ts. Keep in sync when adding a module. */
@@ -246,6 +312,8 @@ export const MODULES: { code: string; name: string }[] = [
   { code: "projects", name: "Project Management" },
   { code: "analytics", name: "Analytics" },
   { code: "pos", name: "Point of Sale" },
+  { code: "hotel", name: "Hotel Management" },
+  { code: "school", name: "School Management" },
 ];
 
 /**

@@ -57,6 +57,12 @@ As of Phase 6 this is real for Fleet, not just aspirational — `src/modules/fle
 
 ## Adding a new module
 
+The approved Hotel and School verticals follow the staged boundaries and
+integration contracts in `HOTEL_AND_SCHOOL_MODULES.md`. In particular, Hotel
+restaurant/stock workflows must call POS/Inventory services, and School
+workforce/payroll workflows must call HR/Payroll services; neither vertical may
+query another module's Prisma tables directly.
+
 1. Add its entry to `src/platform/modules/registry.ts` (key, name, description, icon, `routePrefix` — must be `/app`-prefixed, e.g. `/app/crm` — status).
 2. If it has real navigation, add `src/modules/<key>/navigation.tsx` and reference it from the registry entry. Every `href` in it must also be `/app`-prefixed.
 3. Create its route tree under `src/app/app/<key>/` with its own `layout.tsx` wrapping `AppShell` with that module's navigation — copy the pattern from `app/fleet/layout.tsx` or `app/installment/layout.tsx`.

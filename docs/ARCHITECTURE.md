@@ -83,10 +83,15 @@ Two real bugs this rebuild hit so far share one root cause: **passing a function
 
 ## Current state (superseding the "not here yet" list this section originally had at Phase 1)
 
+Hotel and School are available verticals with separate tenant route trees,
+navigation, service layers, dashboard widgets, Prisma models, and `hotel.*` /
+`school.*` permission prefixes. See `HOTEL_AND_SCHOOL_MODULES.md` for their
+bounded contexts and integration rules.
+
 This section described Phase 1's UI-only shell (2026-07-19). None of it has been true since Phase 3. For the record, current reality:
 
 - **Prisma is used throughout `src/`** — every module's `service.ts` queries the database, always scoped by `organizationId`. See `docs/MODULE_BOUNDARIES.md`.
 - **Real session/auth exists**: NextAuth v4 credentials provider, bcrypt password hashing, JWT sessions revalidated against the database on every request (a `sessionVersion` mismatch or non-`ACTIVE` user clears the session immediately — see `docs/HARDENING_PLAN.md`). `UserMenu`, login, password reset, and invitation acceptance are all real, not static UI.
 - **Route protection is real**: `src/app/app/layout.tsx` redirects to `/login` for any unauthenticated or revoked session; `src/lib/tenant/index.ts`'s `getCurrentTenant()` is the single authoritative tenant-state check re-run on every request (not just at layout time), filtering to `ACTIVE` memberships in `ACTIVE`/`TRIAL` organizations before any fallback selection. See `docs/HARDENING_PLAN.md`'s Pass 1 section for the full design.
-- **RBAC is real and enforced**: 78 permission keys across 11 business modules plus platform/org-level keys, checked via `hasPermission()`/`canAccessModule()` at both the page and Server Action layer. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md`.
+- **RBAC is real and enforced**: 104 permission keys across 13 business modules plus platform/org-level keys, checked via `hasPermission()`/`canAccessModule()` at both the page and Server Action layer. See `docs/AUTHENTICATION_AND_AUTHORIZATION.md`.
 - **Operations are explicit**: `vercel.json` schedules authenticated trial expiry, `/api/health` probes application/database reachability, `src/instrumentation.ts` emits structured uncaught-error logs, and the root layout publishes Web Analytics and Speed Insights. See `docs/OPERATIONS_AND_MONITORING.md`.

@@ -34,7 +34,7 @@ const pillars = [
     icon: Building2,
     title: "Grows with you",
     description:
-      "Start with the modules you need today. Add any of the platform's eleven operational modules later without disrupting what's already running.",
+      "Start with the modules you need today and add Hotel, School, or any other available suite later without disruption.",
   },
 ];
 
@@ -77,7 +77,7 @@ export default function SolutionsPage() {
         <div className="flex flex-col items-start justify-between gap-6 rounded-lg border p-8 sm:flex-row sm:items-center">
           <div className="space-y-1">
             <h2 className="text-xl font-semibold">See which modules fit your organization</h2>
-            <p className="text-muted-foreground">Explore the eleven business modules available today.</p>
+            <p className="text-muted-foreground">Explore thirteen available modules, including Hotel and School vertical suites.</p>
           </div>
           <Button variant="outline" nativeButton={false} render={<Link href="/modules" />}>
             View modules

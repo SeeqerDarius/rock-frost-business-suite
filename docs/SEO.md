@@ -14,7 +14,8 @@ The indexable surface is deliberately limited to:
 - `/`
 - `/solutions`
 - `/modules`
-- `/modules/{module-key}` for all eleven available modules
+- `/modules/{module-key}` for all thirteen available modules, including dedicated
+  Hotel and School metadata, features, canonical URLs, and acquisition links
 - `/industries`
 - `/company`
 - `/contact`

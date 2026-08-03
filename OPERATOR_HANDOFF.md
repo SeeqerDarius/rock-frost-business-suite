@@ -1,5 +1,36 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-03 — Hotel and School implementation and release
+
+Hotel and School are now implemented as tenant-isolated, RBAC-controlled modules rather than roadmap placeholders. Hotel includes properties, room types and rooms, guests, reservations, check-in/out, automatically charged folios, payments, housekeeping, restaurant orders with folio posting, channel mappings, reports, and settings. School includes campuses, students and guardians, academic years and terms, classes and enrollment, attendance, fees and payments, exams/results/moderation/publishing, timetables, transport, library loans, payroll adjustments, reports, and settings.
+
+The additive migration is `prisma/migrations/20260803183000_add_hotel_school_modules/migration.sql`; the platform now seeds 13 module definitions, 104 permissions, and associated operational roles. Integration tests cover tenant isolation and critical hotel reservation/school payment guards. Final release validation and deployment results are recorded in this entry after the commands complete.
+
+## 2026-08-03 — Hotel and School vertical-suite architecture
+
+Approved and documented the complete Hotel and School expansion in
+`docs/HOTEL_AND_SCHOOL_MODULES.md`. The contract covers hotel property/stay,
+folio, housekeeping, food-and-beverage, guest-service, commercial, and channel
+domains, plus school student/guardian, academics, attendance, fees, assessment,
+timetable, transport, library, hostel, health, cafeteria, workforce, and payroll
+domains. Critical state/financial/academic invariants and release gates are now
+explicit.
+
+Added Hotel and School to `src/platform/modules/registry.ts` as `coming-soon`
+definitions with no navigation or permission prefix. This intentionally makes
+them visible on product/acquisition surfaces while `canAccessModule()` continues
+to reject tenant access. Catalog rows were added to the idempotent platform seed
+so public enquiries can resolve their module IDs; this does not enable either
+module for a tenant. No database migration or environment change was made. Updated README, Architecture, Module
+Boundaries, SEO, Solutions metadata/copy, and this decision log to reflect the
+current truth.
+
+Validation: registry/static-source checks completed; full lint/test/build results
+are recorded below when run. Pre-existing untracked `output/` and `reports/`
+directories in the requested project were preserved and excluded from the
+working copy. Remaining work is implementation of Release H1/S1; neither module
+is represented as operational or tenant-accessible.
+
 ## 2026-07-28 — Trial enforcement, monitoring, accessibility, dependency hardening, and SEO follow-through
 
 Implemented automatic 14-day trial expiry in

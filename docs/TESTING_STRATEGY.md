@@ -33,7 +33,7 @@ npm run test:all          # npm run test && npm run test:integration
 
 ### What's covered
 
-`test/integration/tenant-isolation/*.test.ts` — one file per business module (Fleet, Installment, CRM, Inventory, Accounting, HR, Procurement, Payroll, POS, Projects, plus Administration) — each creates two real organizations and proves, against real Postgres, that Organization A can never read or write Organization B's records through that module's service-layer functions. This is the real-database counterpart to the mocked IDOR tests in `test/idor-*.test.ts`; both layers exist because the mocked tests are fast defense-in-depth and the integration tests are the actual proof.
+`test/integration/tenant-isolation/*.test.ts` — one file per business module (including Hotel and School) plus Administration — each creates two real organizations and proves, against real Postgres, that Organization A can never read or write Organization B's records through that module's service-layer functions. Hotel additionally verifies overlapping-room rejection; School verifies invoice overpayment rejection. This is the real-database counterpart to the mocked IDOR tests in `test/idor-*.test.ts`; both layers exist because the mocked tests are fast defense-in-depth and the integration tests are the actual proof.
 
 `test/integration/concurrency/*.test.ts` (added in Pass 4, if present — check `docs/HARDENING_PLAN.md`'s Pass 4 section for current coverage) exercises genuine concurrent requests (`Promise.all` against real overlapping transactions) for the state-transition races the mocked suite can only simulate by asserting a mock returned `count: 0`.
 
