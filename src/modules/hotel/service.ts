@@ -56,14 +56,14 @@ export function listHotelReservations(organizationId: string) {
 export async function createHotelReservation(organizationId: string, data: { propertyId: string; roomTypeId: string; roomId?: string | null; guestId: string; arrivalDate: Date; departureDate: Date; adults: number; children?: number; nightlyRate: Prisma.Decimal.Value; source?: string | null; specialRequests?: string | null }) {
   if (data.departureDate <= data.arrivalDate) throw new HotelStateError("Departure must be after arrival.");
   const [property, roomType, guest] = await Promise.all([
-    db.hotelProperty.findFirst({ where: { id: data.propertyId, organizationId, active: true } }),
+    db.hotelProperty.findFirst({ where: { id: data.propertyId, organizationId, active: true }, include: { settings: true } }),
     db.hotelRoomType.findFirst({ where: { id: data.roomTypeId, organizationId, propertyId: data.propertyId, active: true } }),
     db.hotelGuest.findFirst({ where: { id: data.guestId, organizationId } }),
   ]);
   if (!property || !roomType || !guest) throw new HotelNotFoundError("Property, room type, or guest not found.");
   if (data.adults + (data.children ?? 0) > roomType.capacity) throw new HotelStateError("Guest count exceeds room capacity.");
   if (data.roomId) await assertRoomAvailable(organizationId, data.roomId, data.arrivalDate, data.departureDate);
-  return createWithUniqueRetry(async () => db.hotelReservation.create({ data: { organizationId, confirmationCode: await nextCode(organizationId, "RSV", () => db.hotelReservation.count({ where: { organizationId } })), ...data, nightlyRate: money(data.nightlyRate), status: "CONFIRMED" } }));
+  return createWithUniqueRetry(async () => db.hotelReservation.create({ data: { organizationId, confirmationCode: await nextCode(organizationId, property.settings?.reservationPrefix ?? "RSV", () => db.hotelReservation.count({ where: { organizationId } })), ...data, nightlyRate: money(data.nightlyRate), status: "CONFIRMED" } }));
 }
 
 async function assertRoomAvailable(organizationId: string, roomId: string, arrivalDate: Date, departureDate: Date, excludeReservationId?: string) {
@@ -75,7 +75,7 @@ async function assertRoomAvailable(organizationId: string, roomId: string, arriv
 }
 
 export async function checkInHotelReservation(organizationId: string, reservationId: string, roomId: string) {
-  const reservation = await db.hotelReservation.findFirst({ where: { id: reservationId, organizationId }, include: { folio: true } });
+  const reservation = await db.hotelReservation.findFirst({ where: { id: reservationId, organizationId }, include: { folio: true, property: { include: { settings: true } } } });
   if (!reservation) throw new HotelNotFoundError("Reservation not found.");
   if (reservation.status !== "CONFIRMED") throw new HotelStateError("Only confirmed reservations can check in.");
   const room = await assertRoomAvailable(organizationId, roomId, reservation.arrivalDate, reservation.departureDate, reservation.id);
@@ -85,7 +85,7 @@ export async function checkInHotelReservation(organizationId: string, reservatio
     if (claimed.count !== 1) throw new HotelStateError("Room is no longer available.");
     const updated = await tx.hotelReservation.update({ where: { id: reservationId }, data: { roomId, status: "CHECKED_IN", checkedInAt: new Date() } });
     if (!reservation.folio) {
-      const folio = await tx.hotelFolio.create({ data: { organizationId, reservationId, folioNumber: await nextCode(organizationId, "FOL", () => tx.hotelFolio.count({ where: { organizationId } })) } });
+      const folio = await tx.hotelFolio.create({ data: { organizationId, reservationId, folioNumber: await nextCode(organizationId, reservation.property.settings?.folioPrefix ?? "FOL", () => tx.hotelFolio.count({ where: { organizationId } })) } });
       const nights = Math.max(1, Math.ceil((reservation.departureDate.getTime() - reservation.arrivalDate.getTime()) / 86_400_000));
       await tx.hotelFolioEntry.create({ data: { organizationId, folioId: folio.id, type: "CHARGE", description: `Accommodation (${nights} night${nights === 1 ? "" : "s"})`, amount: reservation.nightlyRate.mul(nights), reference: reservation.confirmationCode } });
     }
@@ -101,10 +101,10 @@ export async function postHotelFolioCharge(organizationId: string, folioId: stri
 }
 
 export async function recordHotelPayment(organizationId: string, folioId: string, data: { amount: Prisma.Decimal.Value; method: HotelPaymentMethod; reference?: string | null }) {
-  const folio = await db.hotelFolio.findFirst({ where: { id: folioId, organizationId, closedAt: null } });
+  const folio = await db.hotelFolio.findFirst({ where: { id: folioId, organizationId, closedAt: null }, include: { reservation: { include: { property: { include: { settings: true } } } } } });
   if (!folio) throw new HotelNotFoundError("Open folio not found.");
   if (money(data.amount).lte(0)) throw new HotelStateError("Payment must be greater than zero.");
-  return createWithUniqueRetry(async () => db.hotelPayment.create({ data: { organizationId, folioId, receiptNumber: await nextCode(organizationId, "HRC", () => db.hotelPayment.count({ where: { organizationId } })), ...data, amount: money(data.amount) } }));
+  return createWithUniqueRetry(async () => db.hotelPayment.create({ data: { organizationId, folioId, receiptNumber: await nextCode(organizationId, folio.reservation.property.settings?.receiptPrefix ?? "HRC", () => db.hotelPayment.count({ where: { organizationId } })), ...data, amount: money(data.amount) } }));
 }
 
 export async function getHotelFolioBalance(organizationId: string, folioId: string) {
@@ -124,7 +124,10 @@ export async function checkOutHotelReservation(organizationId: string, reservati
   return db.$transaction(async (tx) => {
     await tx.hotelFolio.update({ where: { id: reservation.folio!.id }, data: { closedAt: new Date() } });
     await tx.hotelRoom.update({ where: { id: reservation.roomId! }, data: { status: "DIRTY" } });
-    await tx.hotelHousekeepingTask.create({ data: { organizationId, roomId: reservation.roomId!, status: "PENDING", priority: "CHECKOUT" } });
+    if (reservation.property.settings?.autoCreateCheckoutTask ?? true) {
+      const dueHours = reservation.property.settings?.housekeepingDueHours ?? 4;
+      await tx.hotelHousekeepingTask.create({ data: { organizationId, roomId: reservation.roomId!, status: "PENDING", priority: "CHECKOUT", dueAt: new Date(Date.now() + dueHours * 3_600_000) } });
+    }
     return tx.hotelReservation.update({ where: { id: reservationId }, data: { status: "CHECKED_OUT", checkedOutAt: new Date() } });
   });
 }
@@ -133,13 +136,22 @@ export function listHotelHousekeepingTasks(organizationId: string) {
   return db.hotelHousekeepingTask.findMany({ where: { organizationId }, include: { room: { include: { property: true } } }, orderBy: [{ status: "asc" }, { dueAt: "asc" }] });
 }
 
+export async function createHotelHousekeepingTask(organizationId: string, data: { roomId: string; assignedTo?: string | null; priority: string; notes?: string | null; dueAt?: Date | null }) {
+  const room = await db.hotelRoom.findFirst({ where: { id: data.roomId, organizationId, active: true, status: { not: "OUT_OF_SERVICE" } } });
+  if (!room) throw new HotelNotFoundError("Room not found.");
+  const existing = await db.hotelHousekeepingTask.findFirst({ where: { organizationId, roomId: data.roomId, status: { not: "COMPLETED" } } });
+  if (existing) throw new HotelStateError("The room already has an open housekeeping task.");
+  return db.hotelHousekeepingTask.create({ data: { organizationId, ...data } });
+}
+
 export function listOpenHotelFolios(organizationId: string) {
   return db.hotelFolio.findMany({ where: { organizationId, closedAt: null }, include: { reservation: { include: { guest: true, room: true } }, entries: true, payments: true }, orderBy: { createdAt: "desc" } });
 }
 
 export async function updateHotelHousekeepingTask(organizationId: string, id: string, status: HotelHousekeepingStatus, assignedTo?: string | null) {
-  const task = await db.hotelHousekeepingTask.findFirst({ where: { id, organizationId }, include: { room: true } });
+  const task = await db.hotelHousekeepingTask.findFirst({ where: { id, organizationId }, include: { room: { include: { property: { include: { settings: true } } } } } });
   if (!task) throw new HotelNotFoundError("Housekeeping task not found.");
+  if (status === "COMPLETED" && task.room.property.settings?.requireHousekeepingInspection && task.status !== "INSPECTION") throw new HotelStateError("This property requires housekeeping inspection before completion.");
   return db.$transaction(async (tx) => {
     const updated = await tx.hotelHousekeepingTask.update({ where: { id }, data: { status, assignedTo, completedAt: status === "COMPLETED" ? new Date() : task.completedAt, inspectedAt: status === "COMPLETED" ? new Date() : task.inspectedAt } });
     if (status === "COMPLETED" && task.room.status !== "OUT_OF_SERVICE") await tx.hotelRoom.update({ where: { id: task.roomId }, data: { status: "AVAILABLE" } });
@@ -180,12 +192,12 @@ export async function createHotelMenuItem(organizationId: string, outletId: stri
 }
 
 export async function createHotelOrder(organizationId: string, data: { outletId: string; folioId?: string | null; tableOrRoom?: string | null; menuItemId: string; quantity: number }) {
-  const item = await db.hotelMenuItem.findFirst({ where: { id: data.menuItemId, organizationId, outletId: data.outletId, active: true } });
+  const item = await db.hotelMenuItem.findFirst({ where: { id: data.menuItemId, organizationId, outletId: data.outletId, active: true }, include: { outlet: { include: { property: { include: { settings: true } } } } } });
   if (!item || data.quantity < 1) throw new HotelNotFoundError("Menu item not found.");
   if (data.folioId && !(await db.hotelFolio.findFirst({ where: { id: data.folioId, organizationId, closedAt: null } }))) throw new HotelNotFoundError("Open folio not found.");
   return createWithUniqueRetry(async () => db.$transaction(async (tx) => {
     const total = item.price.mul(data.quantity);
-    const order = await tx.hotelOrder.create({ data: { organizationId, outletId: data.outletId, folioId: data.folioId, tableOrRoom: data.tableOrRoom, orderNumber: await nextCode(organizationId, "ORD", () => tx.hotelOrder.count({ where: { organizationId } })), total, lines: { create: { organizationId, menuItemId: item.id, description: item.name, quantity: data.quantity, unitPrice: item.price, lineTotal: total } } } });
+    const order = await tx.hotelOrder.create({ data: { organizationId, outletId: data.outletId, folioId: data.folioId, tableOrRoom: data.tableOrRoom, orderNumber: await nextCode(organizationId, item.outlet.property.settings?.orderPrefix ?? "ORD", () => tx.hotelOrder.count({ where: { organizationId } })), total, lines: { create: { organizationId, menuItemId: item.id, description: item.name, quantity: data.quantity, unitPrice: item.price, lineTotal: total } } } });
     if (data.folioId) await tx.hotelFolioEntry.create({ data: { organizationId, folioId: data.folioId, type: "CHARGE", description: `Restaurant order ${order.orderNumber}`, amount: total, reference: order.orderNumber } });
     return order;
   }));
@@ -204,8 +216,13 @@ export function listHotelSettings(organizationId: string) {
   return db.hotelProperty.findMany({ where: { organizationId }, include: { settings: true }, orderBy: { name: "asc" } });
 }
 
-export async function upsertHotelSettings(organizationId: string, data: { propertyId: string; checkInTime: string; checkOutTime: string; taxRate: Prisma.Decimal.Value; serviceChargeRate: Prisma.Decimal.Value; allowOutstandingCheckout: boolean }) {
-  if (!(await db.hotelProperty.findFirst({ where: { id: data.propertyId, organizationId } }))) throw new HotelNotFoundError("Property not found.");
-  const values = { checkInTime: data.checkInTime, checkOutTime: data.checkOutTime, taxRate: money(data.taxRate), serviceChargeRate: money(data.serviceChargeRate), allowOutstandingCheckout: data.allowOutstandingCheckout };
-  return db.hotelSettings.upsert({ where: { propertyId: data.propertyId }, update: values, create: { organizationId, propertyId: data.propertyId, ...values } });
+export async function upsertHotelSettings(organizationId: string, data: { propertyId: string; timezone: string; currency: string; checkInTime: string; checkOutTime: string; taxRate: Prisma.Decimal.Value; serviceChargeRate: Prisma.Decimal.Value; allowOutstandingCheckout: boolean; reservationPrefix: string; folioPrefix: string; receiptPrefix: string; orderPrefix: string; autoCreateCheckoutTask: boolean; housekeepingDueHours: number; requireHousekeepingInspection: boolean }) {
+  const property = await db.hotelProperty.findFirst({ where: { id: data.propertyId, organizationId } });
+  if (!property) throw new HotelNotFoundError("Property not found.");
+  const { propertyId, timezone, currency, ...settings } = data;
+  const values = { ...settings, taxRate: money(settings.taxRate), serviceChargeRate: money(settings.serviceChargeRate) };
+  return db.$transaction(async (tx) => {
+    await tx.hotelProperty.update({ where: { id: propertyId }, data: { timezone, currency } });
+    return tx.hotelSettings.upsert({ where: { propertyId }, update: values, create: { organizationId, propertyId, ...values } });
+  });
 }

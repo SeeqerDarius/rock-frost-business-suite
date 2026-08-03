@@ -2644,16 +2644,23 @@ model HotelChannel {
 }
 
 model HotelSettings {
-  id             String   @id @default(cuid())
-  organizationId String
-  propertyId     String   @unique
-  checkInTime    String   @default("14:00")
-  checkOutTime   String   @default("11:00")
-  taxRate        Decimal  @default(0) @db.Decimal(5, 2)
-  serviceChargeRate Decimal @default(0) @db.Decimal(5, 2)
-  allowOutstandingCheckout Boolean @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                            String   @id @default(cuid())
+  organizationId                String
+  propertyId                    String   @unique
+  checkInTime                   String   @default("14:00")
+  checkOutTime                  String   @default("11:00")
+  taxRate                       Decimal  @default(0) @db.Decimal(5, 2)
+  serviceChargeRate             Decimal  @default(0) @db.Decimal(5, 2)
+  allowOutstandingCheckout      Boolean  @default(false)
+  reservationPrefix             String   @default("RSV")
+  folioPrefix                   String   @default("FOL")
+  receiptPrefix                 String   @default("HRC")
+  orderPrefix                   String   @default("ORD")
+  autoCreateCheckoutTask        Boolean  @default(true)
+  housekeepingDueHours          Int      @default(4)
+  requireHousekeepingInspection Boolean  @default(false)
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   property     HotelProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)

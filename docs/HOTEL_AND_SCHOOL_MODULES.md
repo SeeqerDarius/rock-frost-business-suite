@@ -38,8 +38,9 @@ than querying its tables directly.
   escalation.
 - Occupancy, arrivals/departures, revenue, outstanding-balance, and housekeeping
   reports.
-- Property-level taxes, service charges, currencies, numbering, cancellation,
-  check-in/out, and housekeeping settings.
+  - Property-level taxes, service charges, currencies, numbering, check-in/out,
+    settlement, automatic checkout-task timing, and mandatory housekeeping-inspection settings.
+    Reservation, folio, receipt, and restaurant-order prefixes are enforced when new records are created.
 
 ### Release H2 — food, beverage, and guest services
 

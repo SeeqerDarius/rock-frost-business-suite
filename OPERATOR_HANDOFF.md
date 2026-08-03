@@ -1,5 +1,12 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-03 — Hotel Settings completion and Reports-route repair
+
+Completed the Hotel Settings module as enforced property configuration rather than passive form fields. Each property now controls timezone/currency, check-in/out, tax and service charge, outstanding-checkout policy, reservation/folio/receipt/order prefixes, automatic checkout cleaning tasks, housekeeping due hours, and mandatory inspection. The stay, payment, restaurant, checkout, and housekeeping services consume those settings. Housekeeping also supports tenant-scoped manual task creation, duplicate-open-task prevention, assignment, due date, priority, notes, inspection, and completion.
+
+Fixed the production Reports 404 at its source. `.vercelignore` used unanchored `reports/` and `output/` patterns, which removed nested App Router report directories from Vercel source packaging. Both rules are now root-anchored, and a regression test protects them. The production build route manifest explicitly contains `/app/hotel/reports` plus all other module report routes.
+
+Added additive migration `20260803215500_complete_hotel_settings`; no environment change is required. The disposable PostgreSQL database applied all 27 migrations. Validation passed Prisma validate/generate, strict TypeScript, ESLint, 34 unit files / 213 tests, 19 integration files / 104 real-database tests, and the 160-page Next.js production build. Pre-existing `output/` and `reports/` artifacts remain preserved and uncommitted.
 ## 2026-08-03 — Hotel and School implementation and release
 
 Hotel and School are now implemented as tenant-isolated, RBAC-controlled modules rather than roadmap placeholders. Hotel includes properties, room types and rooms, guests, reservations, check-in/out, automatically charged folios, payments, housekeeping, restaurant orders with folio posting, channel mappings, reports, and settings. School includes campuses, students and guardians, academic years and terms, classes and enrollment, attendance, fees and payments, exams/results/moderation/publishing, timetables, transport, library loans, payroll adjustments, reports, and settings.
