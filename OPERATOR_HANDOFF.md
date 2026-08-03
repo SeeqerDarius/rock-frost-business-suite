@@ -6,6 +6,8 @@ Hotel and School are now implemented as tenant-isolated, RBAC-controlled modules
 
 The additive migration is `prisma/migrations/20260803183000_add_hotel_school_modules/migration.sql`; the platform now seeds 13 module definitions, 104 permissions, and associated operational roles. Integration tests cover tenant isolation and critical hotel reservation/school payment guards. Final release validation and deployment results are recorded in this entry after the commands complete.
 
+Vercel preview builds intentionally skip database migration and perform the full application build; production builds retain `prisma migrate deploy` before `next build`. This prevents feature previews from mutating shared data while the disposable-PostgreSQL CI gate validates the migration.
+
 ## 2026-08-03 — Hotel and School vertical-suite architecture
 
 Approved and documented the complete Hotel and School expansion in

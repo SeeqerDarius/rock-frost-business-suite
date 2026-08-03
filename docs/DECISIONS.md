@@ -1,5 +1,11 @@
 # Architecture & Tooling Decisions
 
+## 2026-08-03 — Vercel previews never apply database migrations
+
+**Decision:** `npm run vercel-build` runs `prisma migrate deploy` only when `VERCEL_ENV=production`; preview builds compile the application without mutating a database. Production retains the migration-before-build gate.
+
+**Why:** Preview database integrations may not expose a direct migration URL, and a feature-branch preview must never apply schema changes to a shared or production database. Real migration behavior is proven first by GitHub Actions against disposable PostgreSQL, then applied once during the production release.
+
 ## 2026-08-03 — Hotel and School are operational vertical suites
 
 **Decision:** Promote Hotel and School to available modules after implementing their schema, services, RBAC, tenant isolation, navigation, workflows, reports, settings, migration, and tests. Restaurant charges are posted to Hotel folios within the same transaction as the order; School examination results move through explicit open, moderation, and published states.
