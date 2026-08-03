@@ -4,7 +4,7 @@ A modular multi-tenant business platform. Organizations activate thirteen indepe
 
 > This is a clean rebuild started 2026-07-19. The previous implementation is archived on branch `archive/pre-redesign-rfbs` and under `docs/archive/previous-implementation/`. See `docs/DECISIONS.md` for why.
 
-**Current status**: all thirteen business modules are implemented; Hotel and School are awaiting the validation and deployment results recorded in `OPERATOR_HANDOFF.md`. The previously deployed eleven modules remain live at [rockfrostgroup.com](https://www.rockfrostgroup.com). Public acquisition, subscriptions, hosted checkout, trial expiry, tenant isolation, and production monitoring remain implemented.
+**Current status**: all thirteen business modules are implemented and have passed the complete local validation gate, including all real-PostgreSQL migration, tenant-isolation, and concurrency tests. Release/deployment evidence is recorded in `OPERATOR_HANDOFF.md`. The production platform is live at [rockfrostgroup.com](https://www.rockfrostgroup.com). Public acquisition, subscriptions, hosted checkout, trial expiry, tenant isolation, and production monitoring remain implemented.
 
 The public marketing site has a generated sitemap and robots policy, unique canonical metadata, Open Graph/Twitter sharing data, structured data, and dedicated search landing pages for all thirteen modules. See `docs/SEO.md` for the authoritative indexable surface and the Search Console launch checklist.
 

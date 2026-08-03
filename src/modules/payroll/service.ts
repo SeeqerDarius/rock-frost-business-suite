@@ -66,9 +66,11 @@ export async function setCompensation(organizationId: string, data: Compensation
 // --- Settings ---
 
 export async function getSettings(organizationId: string) {
-  const existing = await db.payrollSettings.findUnique({ where: { organizationId } });
-  if (existing) return existing;
-  return db.payrollSettings.create({ data: { organizationId } });
+  return db.payrollSettings.upsert({
+    where: { organizationId },
+    update: {},
+    create: { organizationId },
+  });
 }
 
 export function updateSettings(organizationId: string, defaultTaxRate: string) {

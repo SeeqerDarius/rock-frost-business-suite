@@ -4,9 +4,13 @@
 
 Hotel and School are now implemented as tenant-isolated, RBAC-controlled modules rather than roadmap placeholders. Hotel includes properties, room types and rooms, guests, reservations, check-in/out, automatically charged folios, payments, housekeeping, restaurant orders with folio posting, channel mappings, reports, and settings. School includes campuses, students and guardians, academic years and terms, classes and enrollment, attendance, fees and payments, exams/results/moderation/publishing, timetables, transport, library loans, payroll adjustments, reports, and settings.
 
-The additive migration is `prisma/migrations/20260803183000_add_hotel_school_modules/migration.sql`; the platform now seeds 13 module definitions, 104 permissions, and associated operational roles. Integration tests cover tenant isolation and critical hotel reservation/school payment guards. Final release validation and deployment results are recorded in this entry after the commands complete.
+The additive migration is `prisma/migrations/20260803183000_add_hotel_school_modules/migration.sql`; the platform now seeds 13 module definitions, 104 permissions, and associated operational roles. A dedicated PostgreSQL 16 database applied all 26 committed migrations successfully, then all 19 integration files / 101 real-database tests passed, including Hotel room-overlap/tenant-isolation and School fee-overpayment/tenant-isolation guards. The mocked suite passed all 32 files / 208 tests, and Prisma validation/generation, ESLint, strict TypeScript, and the 160-page Next.js production build passed.
 
 Vercel preview builds intentionally skip database migration and perform the full application build; production builds retain `prisma migrate deploy` before `next build`. This prevents feature previews from mutating shared data while the disposable-PostgreSQL CI gate validates the migration.
+
+The local PostgreSQL gate exposed and fixed a pre-existing integration-harness wiring error: fixtures used `TEST_DATABASE_URL`, but imported services still used the unreachable `DATABASE_URL` placeholder. `test/integration/setup/environment.ts` now validates the disposable URL before any service import and binds the shared service client to it; the safety guard caches only that already-validated URL.
+
+That real gate also exposed and fixed existing concurrency/isolation defects: cross-tenant Installment inventory-staff assignment, concurrent Inventory stock-row creation, Procurement receive-vs-cancel, Payroll settings initialization, inactive Payroll test fixtures, and brittle Decimal string-format assertions. The repaired Vercel preview for commit `f373798` reached Ready and responded through authenticated deployment probes; the final commit receives a fresh preview before production promotion/deployment.
 
 ## 2026-08-03 — Hotel and School vertical-suite architecture
 

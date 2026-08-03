@@ -705,13 +705,16 @@ export async function createAccount(
     const receiptNo = depositAmount.greaterThan(0) ? await generateReceiptNo(organizationId, settings.receiptPrefix) : null;
 
     return db.$transaction(async (tx) => {
-      const [product, customer] = await Promise.all([
+      const [product, customer, inventoryStaff] = await Promise.all([
         tx.hirePurchaseProduct.findFirst({ where: { id: data.productId, organizationId, active: true } }),
         tx.hirePurchaseCustomer.findFirst({
           where: { id: data.customerId, organizationId, AND: customerWhere },
         }),
+        data.inventoryStaffId
+          ? tx.hirePurchaseStaff.findFirst({ where: { id: data.inventoryStaffId, organizationId, active: true } })
+          : Promise.resolve(true),
       ]);
-      if (!product || !customer) {
+      if (!product || !customer || !inventoryStaff) {
         throw new NotFoundError("Record not found.");
       }
 

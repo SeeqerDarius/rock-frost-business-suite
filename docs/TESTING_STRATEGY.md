@@ -46,6 +46,8 @@ npm run test:all          # npm run test && npm run test:integration
 
 **No repository secrets are required for CI as currently configured** — every environment variable the workflow needs is either a harmless placeholder (`validate` job) or points at the ephemeral service container the job itself creates (`integration` job). If a future change needs CI to reach an *external* database or service (e.g. a hosted Neon test branch instead of the container), add its connection string as a GitHub Actions repository secret (Settings → Secrets and variables → Actions) and reference it as `${{ secrets.NAME }}` in the workflow — never hardcode a real credential into the YAML.
 
+The integration setup validates `TEST_DATABASE_URL` before importing application services, then binds both the fixture Prisma client and the services' shared Prisma client to that already-approved disposable URL. This is required because service functions use `src/lib/db.ts`; leaving `DATABASE_URL` on CI's unreachable install-time placeholder would test only fixtures and make every real service query fail before exercising its invariants. Test files share one isolated Vitest fork/module graph and use a bounded connection pool, preventing a fresh pair of Prisma pools from leaking across every suite while preserving deliberate within-test concurrency.
+
 **Re-running a failed workflow**: from the GitHub Actions UI, open the failed run and use "Re-run jobs" (either the failed job only, or all jobs). From the `gh` CLI: `gh run rerun <run-id>` (or `--failed` to rerun only failed jobs).
 
 ## Required validation at the end of every milestone

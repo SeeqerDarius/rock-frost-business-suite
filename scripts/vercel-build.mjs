@@ -5,11 +5,16 @@ const require = createRequire(import.meta.url);
 const binaries = {
   next: require.resolve("next/dist/bin/next"),
   prisma: require.resolve("prisma/build/index.js"),
+  tsx: require.resolve("tsx/cli"),
 };
 
 const production = process.env.VERCEL_ENV === "production";
 const commands = production
-  ? [["prisma", ["migrate", "deploy"]], ["next", ["build"]]]
+  ? [
+      ["prisma", ["migrate", "deploy"]],
+      ["tsx", ["prisma/seed.ts"]],
+      ["next", ["build"]],
+    ]
   : [["next", ["build"]]];
 
 for (const [command, args] of commands) {

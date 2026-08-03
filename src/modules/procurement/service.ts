@@ -251,6 +251,12 @@ export async function receiveOrderLine(
   }
 
   return db.$transaction(async (tx) => {
+    const orderClaim = await tx.procurementOrder.updateMany({
+      where: { id: input.orderId, organizationId, status: { in: ["SENT", "PARTIALLY_RECEIVED"] } },
+      data: { status: "PARTIALLY_RECEIVED" },
+    });
+    if (orderClaim.count === 0) throw new OrderStateError("This order can no longer receive stock.");
+
     const claimed = await tx.procurementOrderLine.updateMany({
       where: { id: line.id, receivedQuantity: { lte: line.quantity - input.quantity } },
       data: { receivedQuantity: { increment: input.quantity } },

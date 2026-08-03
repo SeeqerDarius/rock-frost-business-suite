@@ -32,11 +32,12 @@ export default defineConfig({
     // configured. dotenv/config's side effect on import loads .env from
     // the current working directory (the repo root, since these tests
     // are always run via `npm run test:integration` from there).
-    setupFiles: ["dotenv/config"],
+    setupFiles: ["dotenv/config", "./test/integration/setup/environment.ts"],
     testTimeout: 30_000,
     hookTimeout: 30_000,
     pool: "forks",
     poolOptions: { forks: { singleFork: true } },
     fileParallelism: false,
+    isolate: false,
   },
 });

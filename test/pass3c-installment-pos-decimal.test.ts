@@ -27,7 +27,7 @@ const mockDb = {
 
   payrollCompensation: { findMany: vi.fn() },
   payrollRun: { findFirst: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn() },
-  payrollSettings: { findUnique: vi.fn() },
+  payrollSettings: { upsert: vi.fn() },
   payrollPayslip: { create: vi.fn() },
 
   $transaction: vi.fn(),
@@ -261,7 +261,7 @@ describe("Decimal-precision hygiene — exact arithmetic replacing JS Number/eps
 
   it("payroll: processRun computes netPay exactly for a tax rate that isn't a clean binary fraction", async () => {
     mockDb.payrollRun.findFirst.mockResolvedValue({ id: "run-1", organizationId: ORG, status: "DRAFT" });
-    mockDb.payrollSettings.findUnique.mockResolvedValue({ defaultTaxRate: "0.15" });
+    mockDb.payrollSettings.upsert.mockResolvedValue({ defaultTaxRate: "0.15" });
     mockDb.payrollCompensation.findMany.mockResolvedValue([{ employeeId: "emp-1", baseSalary: "1000.10" }]);
     mockDb.payrollRun.updateMany.mockResolvedValue({ count: 1 });
     mockDb.payrollRun.findUniqueOrThrow.mockResolvedValue({ id: "run-1", status: "COMPLETED" });

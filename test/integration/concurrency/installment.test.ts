@@ -60,7 +60,7 @@ afterAll(async () => {
 describe("Installment service — concurrency against real Postgres", () => {
   it("two simultaneous overpaying recordPayment() calls clamp balance to zero and create exactly one correctly-sized credit", async () => {
     const account = await openAccount();
-    expect(account.balance.toString()).toBe("100.00");
+    expect(account.balance.toFixed(2)).toBe("100.00");
 
     const results = await Promise.allSettled([
       installment.recordPayment(org.organizationId, ORGANIZATION_SCOPE, {
@@ -82,8 +82,8 @@ describe("Installment service — concurrency against real Postgres", () => {
     expect(results.every((r) => r.status === "fulfilled")).toBe(true);
 
     const finalAccount = await testDb.hirePurchaseAccount.findUniqueOrThrow({ where: { id: account.id } });
-    expect(finalAccount.balance.toString()).toBe("0.00");
-    expect(finalAccount.totalPaid.toString()).toBe("140.00");
+    expect(finalAccount.balance.toFixed(2)).toBe("0.00");
+    expect(finalAccount.totalPaid.toFixed(2)).toBe("140.00");
     expect(finalAccount.status).toBe("COMPLETED");
 
     const credits = await testDb.hirePurchaseCredit.findMany({
@@ -93,8 +93,8 @@ describe("Installment service — concurrency against real Postgres", () => {
     // not two separate half-computed 40/2-ish credits from each
     // transaction computing its own partial view of the balance.
     expect(credits).toHaveLength(1);
-    expect(credits[0].amount.toString()).toBe("40.00");
-    expect(credits[0].remainingAmount.toString()).toBe("40.00");
+    expect(credits[0].amount.toFixed(2)).toBe("40.00");
+    expect(credits[0].remainingAmount.toFixed(2)).toBe("40.00");
     expect(credits[0].status).toBe("OPEN");
 
     const payments = await testDb.hirePurchasePayment.findMany({
@@ -106,7 +106,7 @@ describe("Installment service — concurrency against real Postgres", () => {
 
   it("two simultaneous exactly-fitting recordPayment() calls both succeed with no lost update and distinct receipt numbers", async () => {
     const account = await openAccount();
-    expect(account.balance.toString()).toBe("100.00");
+    expect(account.balance.toFixed(2)).toBe("100.00");
 
     const results = await Promise.allSettled([
       installment.recordPayment(org.organizationId, ORGANIZATION_SCOPE, {
@@ -126,8 +126,8 @@ describe("Installment service — concurrency against real Postgres", () => {
     expect(results.every((r) => r.status === "fulfilled")).toBe(true);
 
     const finalAccount = await testDb.hirePurchaseAccount.findUniqueOrThrow({ where: { id: account.id } });
-    expect(finalAccount.totalPaid.toString()).toBe("100.00");
-    expect(finalAccount.balance.toString()).toBe("0.00");
+    expect(finalAccount.totalPaid.toFixed(2)).toBe("100.00");
+    expect(finalAccount.balance.toFixed(2)).toBe("0.00");
     expect(finalAccount.status).toBe("COMPLETED");
 
     const overpaymentCredits = await testDb.hirePurchaseCredit.findMany({
@@ -156,7 +156,7 @@ describe("Installment service — concurrency against real Postgres", () => {
     const credit = await testDb.hirePurchaseCredit.findFirstOrThrow({
       where: { organizationId: org.organizationId, accountId: sourceAccount.id, source: "PAYMENT_OVERPAYMENT" },
     });
-    expect(credit.remainingAmount.toString()).toBe("50.00");
+    expect(credit.remainingAmount.toFixed(2)).toBe("50.00");
     expect(credit.status).toBe("OPEN");
 
     const targetAccount1 = await openAccount();
@@ -177,7 +177,7 @@ describe("Installment service — concurrency against real Postgres", () => {
     // The 50.00 credit against a 100.00-balance target account is fully
     // consumed by whichever call won — never left with remainingAmount
     // split/decremented twice.
-    expect(finalCredit.remainingAmount.toString()).toBe("0.00");
+    expect(finalCredit.remainingAmount.toFixed(2)).toBe("0.00");
     expect(finalCredit.status).toBe("APPLIED");
 
     const [payments1, payments2] = await Promise.all([

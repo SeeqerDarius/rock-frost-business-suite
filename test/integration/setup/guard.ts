@@ -13,6 +13,8 @@
 
 const REQUIRED_NAME_MARKER = "test";
 const PRODUCTION_MARKERS = ["prod", "production"];
+const validatedUrlKey = Symbol.for("rockfrost.validatedTestDatabaseUrl");
+const validationState = globalThis as typeof globalThis & { [validatedUrlKey]?: string };
 
 function parseUrl(raw: string): URL | null {
   try {
@@ -38,6 +40,7 @@ function databaseNameOf(raw: string): string | null {
  * the validated TEST_DATABASE_URL on success.
  */
 export function assertSafeTestDatabase(): string {
+  if (validationState[validatedUrlKey]) return validationState[validatedUrlKey];
   if (process.env.NODE_ENV === "production") {
     throw new Error(
       "Refusing to run integration tests: NODE_ENV is 'production'. Integration tests must never execute in a production environment.",
@@ -104,5 +107,8 @@ export function assertSafeTestDatabase(): string {
     throw new Error("Refusing to run integration tests: TEST_DATABASE_URL is identical to DIRECT_URL.");
   }
 
-  return testUrl;
+  const boundedUrl = new URL(testUrl);
+  boundedUrl.searchParams.set("connection_limit", "10");
+  validationState[validatedUrlKey] = boundedUrl.toString();
+  return validationState[validatedUrlKey];
 }

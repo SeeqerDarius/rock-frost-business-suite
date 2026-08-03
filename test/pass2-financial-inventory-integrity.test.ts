@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockDb = {
   inventoryItem: { findFirst: vi.fn() },
   inventoryWarehouse: { findFirst: vi.fn() },
-  inventoryStock: { upsert: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+  inventoryStock: { createMany: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   inventoryMovement: { create: vi.fn() },
 
   posRegister: { findFirst: vi.fn() },
@@ -29,7 +29,7 @@ const mockDb = {
 
   payrollRun: { findFirst: vi.fn(), updateMany: vi.fn() },
   payrollCompensation: { findMany: vi.fn() },
-  payrollSettings: { findUnique: vi.fn() },
+  payrollSettings: { upsert: vi.fn() },
 
   hrEmployee: { findFirst: vi.fn() },
   hirePurchaseAccount: { findFirst: vi.fn() },
@@ -88,7 +88,8 @@ describe("Inventory — quantity validation, warehouse IDOR, atomic guard", () =
   it("ISSUE throws InsufficientStockError when the guarded decrement's updateMany matches zero rows (oversell attempt)", async () => {
     mockDb.inventoryItem.findFirst.mockResolvedValue({ id: "item-1", organizationId: ORG });
     mockDb.inventoryWarehouse.findFirst.mockResolvedValue({ id: "wh-1", organizationId: ORG });
-    mockDb.inventoryStock.upsert.mockResolvedValue({ id: "stock-1", quantity: 3 });
+    mockDb.inventoryStock.createMany.mockResolvedValue({ count: 0 });
+    mockDb.inventoryStock.findUniqueOrThrow.mockResolvedValue({ id: "stock-1", quantity: 3 });
     mockDb.inventoryStock.updateMany.mockResolvedValue({ count: 0 }); // guard failed: not enough stock
 
     await expect(
@@ -151,6 +152,7 @@ describe("Procurement — vendor/item IDOR, atomic receiving guard", () => {
   it("receiveOrderLine throws ReceiveQuantityError when the atomic receivedQuantity guard matches zero rows", async () => {
     mockDb.procurementOrder.findFirst.mockResolvedValue({ id: "order-1", organizationId: ORG, status: "SENT", orderNumber: "PO-0001" });
     mockDb.procurementOrderLine.findFirst.mockResolvedValue({ id: "line-1", orderId: "order-1", quantity: 10, receivedQuantity: 0, itemId: null });
+    mockDb.procurementOrder.updateMany.mockResolvedValue({ count: 1 });
     mockDb.procurementOrderLine.updateMany.mockResolvedValue({ count: 0 }); // a concurrent receive already claimed it
 
     await expect(
@@ -219,7 +221,7 @@ describe("Accounting — journal account IDOR, invoice payment validation, doubl
 describe("Payroll — duplicate run processing guard, compensation/tax validation", () => {
   it("processRun throws RunStateError when the atomic DRAFT->COMPLETED claim matches zero rows (already processed)", async () => {
     mockDb.payrollRun.findFirst.mockResolvedValue({ id: "run-1", organizationId: ORG, status: "DRAFT" });
-    mockDb.payrollSettings.findUnique.mockResolvedValue({ defaultTaxRate: "0.10" });
+    mockDb.payrollSettings.upsert.mockResolvedValue({ defaultTaxRate: "0.10" });
     mockDb.payrollCompensation.findMany.mockResolvedValue([{ employeeId: "emp-1", baseSalary: "1000.00" }]);
     mockDb.payrollRun.updateMany.mockResolvedValue({ count: 0 });
 

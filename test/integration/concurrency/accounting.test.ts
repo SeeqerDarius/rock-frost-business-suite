@@ -61,7 +61,7 @@ describe("Accounting concurrency (real Postgres)", () => {
     expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(accounting.InvalidPaymentError);
 
     const finalInvoice = await testDb.accountingInvoice.findUniqueOrThrow({ where: { id: invoice.id } });
-    expect(finalInvoice.amountPaid.toString()).toBe("60.00");
+    expect(finalInvoice.amountPaid.toFixed(2)).toBe("60.00");
     expect(finalInvoice.status).toBe("SENT");
   });
 
@@ -77,7 +77,7 @@ describe("Accounting concurrency (real Postgres)", () => {
     expect(resultB).toBeTruthy();
 
     const finalInvoice = await testDb.accountingInvoice.findUniqueOrThrow({ where: { id: invoice.id } });
-    expect(finalInvoice.amountPaid.toString()).toBe("100.00");
+    expect(finalInvoice.amountPaid.toFixed(2)).toBe("100.00");
     expect(finalInvoice.status).toBe("PAID");
   });
 

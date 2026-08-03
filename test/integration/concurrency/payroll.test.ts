@@ -29,6 +29,9 @@ beforeAll(async () => {
     hireDate: new Date("2025-01-01"),
   });
 
+  await hr.activateEmployee(org.organizationId, employeeA.id);
+  await hr.activateEmployee(org.organizationId, employeeB.id);
+
   await payroll.setCompensation(org.organizationId, {
     employeeId: employeeA.id,
     baseSalary: "1000.00",

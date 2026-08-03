@@ -122,10 +122,12 @@ export type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
  * quietly succeeding).
  */
 async function getOrCreateStockRow(tx: Tx, itemId: string, warehouseId: string) {
-  return tx.inventoryStock.upsert({
+  await tx.inventoryStock.createMany({
+    data: [{ itemId, warehouseId, quantity: 0 }],
+    skipDuplicates: true,
+  });
+  return tx.inventoryStock.findUniqueOrThrow({
     where: { itemId_warehouseId: { itemId, warehouseId } },
-    update: {},
-    create: { itemId, warehouseId, quantity: 0 },
   });
 }
 
