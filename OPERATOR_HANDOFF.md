@@ -1,5 +1,15 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-03 — Coordinated UI/UX and sidebar refresh
+
+Refined the authenticated workspace after a live-interface review and an independent agent audit. The desktop `AppShell` now has a sticky, persistent user-collapsible sidebar; its 72px rail retains accessible icon navigation and tooltips. The mobile sheet is full-height with an independently scrolling navigation region and closes only after route selection. The top bar now identifies the current page and module, while RF blue is used semantically for primary, focus, chart, and active-navigation tokens.
+
+Fixed a real navigation defect in which overview routes could remain highlighted alongside nested routes. `getActiveNavigationHref()` now chooses the longest segment-boundary match, `SidebarNav` exposes `aria-current`, and four regression tests cover nested Hotel routes, overview matching, false prefixes, and Organization/Billing collisions. Hotel and School navigation is grouped by operational domain, and both overview pages now use fully linked real-data KPI cards, localized Ghana-cedi fee formatting, and high-frequency workflow launchers without inventing metrics.
+
+Coordination and acceptance criteria are recorded in `docs/UI_UX_REFRESH.md`. Codex owns the shell/sidebar and Hotel/School overview files in this tranche; an external Claude session may review them after the commit and should use the non-overlapping public-site/small-icon review lane described there. Pre-existing untracked `output/` and `reports/` were preserved.
+
+Validation: strict TypeScript passed with `--incremental false`; ESLint passed; the full single-worker unit suite passed 33 files / 212 tests; and the Next.js 16.2.12 production build passed with 160 generated static pages. No migration or environment change is required.
+
 ## 2026-08-03 — Hotel and School implementation and release
 
 Hotel and School are now implemented as tenant-isolated, RBAC-controlled modules rather than roadmap placeholders. Hotel includes properties, room types and rooms, guests, reservations, check-in/out, automatically charged folios, payments, housekeeping, restaurant orders with folio posting, channel mappings, reports, and settings. School includes campuses, students and guardians, academic years and terms, classes and enrollment, attendance, fees and payments, exams/results/moderation/publishing, timetables, transport, library loans, payroll adjustments, reports, and settings.

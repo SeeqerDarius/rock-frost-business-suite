@@ -4,7 +4,7 @@
 
 shadcn/ui (Base UI primitives, `base-nova` preset) + Tailwind CSS v4. See `docs/DECISIONS.md` for the license/rationale and why this was chosen over a purchased dashboard template.
 
-- **Base color**: neutral (gray scale — restrained, not colorful-by-default).
+- **Base color**: neutral, with RF blue reserved for primary actions, active navigation, focus, and operational emphasis. The accent is semantic rather than decorative.
 - **Icons**: `lucide-react`, size `size-4` (16px) in nav/inline contexts, `size-5`–`size-6` for feature/empty-state icons.
 - **Font**: Geist (via `next/font/google`), applied through the `--font-sans` CSS variable in the root layout.
 - **Dark mode**: `next-themes`, class-based (`.dark` on `<html>`), system-aware by default. Every shadcn component ships both light and dark tokens already — don't hardcode colors outside the token system.
@@ -12,7 +12,7 @@ shadcn/ui (Base UI primitives, `base-nova` preset) + Tailwind CSS v4. See `docs/
 
 ## Brand and application icons
 
-- The authoritative raster RF mark is `public/rf logo.png`; keep it unchanged as the source asset.
+- The authoritative raster RF mark is `public/rf logo.png`; keep it unchanged as the source asset. Application chrome uses the optically cropped `src/app/icon.png` derivative rather than shrinking the detailed source at runtime.
 - Browser and installed-app icons use the complete RF mark, tightly cropped to its alpha bounds and centered on the brand navy `#0b1220` rounded square.
 - Next.js file-convention assets are `src/app/favicon.ico` (16/32/48), `src/app/icon.png` (32), and `src/app/apple-icon.png` (180). The web manifest references `public/icon-192.png` and `public/icon-512.png`.
 - Regenerate every size from the source image. Do not enlarge a favicon-sized derivative or redraw the RF geometry.
@@ -39,7 +39,9 @@ Per the project brief, the following are not acceptable anywhere in this product
 
 ## Responsive behavior
 
-`AppShell` collapses its persistent sidebar below the `lg` breakpoint and exposes navigation via a `Sheet` (slide-out drawer) triggered from the topbar's menu button — this is the reference pattern for any future mobile-nav need, don't build a second one.
+`AppShell` provides a sticky, user-collapsible desktop sidebar and stores that preference locally. The collapsed rail retains icons, active-state shape, accessible names, and tooltips. Below `lg`, navigation uses a full-height constrained `Sheet` with independently scrolling links and closes only after a route is selected. This is the reference pattern for future mobile navigation; do not build a second one.
+
+Long module menus may use `ModuleNavItem.group` to create quiet, noninteractive section labels. Active-route selection always chooses the longest segment-boundary match so an overview and a nested route are never highlighted simultaneously.
 
 ## Reference points (inspiration only, never copy proprietary UI)
 
