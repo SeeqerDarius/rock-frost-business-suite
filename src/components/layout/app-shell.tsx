@@ -20,6 +20,7 @@ import type { ModuleNavItem } from "@/types/module";
 interface AppShellProps {
   sectionLabel: string;
   navigation: ModuleNavItem[];
+  footerNavigation?: ModuleNavItem[];
   children: React.ReactNode;
   enabledModuleKeys?: string[];
   homeHref?: string;
@@ -70,6 +71,7 @@ function getServerSidebarPreference() {
 export function AppShell({
   sectionLabel,
   navigation,
+  footerNavigation = [],
   children,
   enabledModuleKeys = [],
   organization,
@@ -111,6 +113,11 @@ export function AppShell({
         <div className="min-h-0 flex-1 overflow-y-auto py-1">
           <SidebarNav items={navigation} collapsed={sidebarCollapsed} />
         </div>
+        {footerNavigation.length > 0 ? (
+          <div className="border-t py-2">
+            <SidebarNav items={footerNavigation} collapsed={sidebarCollapsed} />
+          </div>
+        ) : null}
         <div className="border-t p-2">
           <Button
             type="button"
@@ -140,6 +147,11 @@ export function AppShell({
           <div className="min-h-0 flex-1 overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))] pt-1">
             <SidebarNav items={navigation} onNavigate={() => setMobileNavOpen(false)} />
           </div>
+          {footerNavigation.length > 0 ? (
+            <div className="border-t py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+              <SidebarNav items={footerNavigation} onNavigate={() => setMobileNavOpen(false)} />
+            </div>
+          ) : null}
         </SheetContent>
       </Sheet>
 

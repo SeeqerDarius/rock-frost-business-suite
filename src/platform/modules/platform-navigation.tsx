@@ -9,5 +9,8 @@ export const platformNavigation: ModuleNavItem[] = [
   { label: "Subscriptions", href: "/app/platform/subscriptions", icon: <CreditCard className="size-4" /> },
   { label: "Modules", href: "/app/platform/modules", icon: <Blocks className="size-4" /> },
   { label: "System Activity", href: "/app/platform/activity", icon: <Activity className="size-4" /> },
-  { label: "Settings", href: "/app/platform/settings", icon: <Settings className="size-4" /> },
+];
+
+export const platformFooterNavigation: ModuleNavItem[] = [
+  { label: "Platform Settings", shortLabel: "Settings", href: "/app/platform/settings", icon: <Settings className="size-4" /> },
 ];

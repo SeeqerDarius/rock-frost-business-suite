@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
-import { LogOut, Settings, User } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,7 +49,6 @@ export function UserMenu() {
   const image = profile?.image ?? undefined;
   const isPlatformOwner = session?.user?.role === "Super Admin";
   const profileHref = isPlatformOwner ? "/app/platform/account" : "/app/account";
-  const settingsHref = isPlatformOwner ? "/app/platform/settings" : "/app/administration";
 
   return (
     <DropdownMenu>
@@ -68,12 +67,8 @@ export function UserMenu() {
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<Link href={profileHref} />}>
-          <User />
-          Profile
-        </DropdownMenuItem>
-        <DropdownMenuItem render={<Link href={settingsHref} />}>
           <Settings />
-          Settings
+          Profile settings
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem

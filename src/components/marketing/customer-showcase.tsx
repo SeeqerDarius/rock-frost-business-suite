@@ -14,7 +14,17 @@ export interface CustomerShowcaseItem {
   attribution: string;
 }
 
-export function CustomerShowcase({ customers }: { customers: CustomerShowcaseItem[] }) {
+export function CustomerShowcase({
+  customers,
+  eyebrow = "Customer stories",
+  headline = "Trusted by organizations building better operations",
+  description = "Real organizations using management systems built by Rock Frost.",
+}: {
+  customers: CustomerShowcaseItem[];
+  eyebrow?: string;
+  headline?: string;
+  description?: string;
+}) {
   const [activeIndex, setActiveIndex] = useState(0);
   const active = customers[activeIndex];
 
@@ -28,11 +38,11 @@ export function CustomerShowcase({ customers }: { customers: CustomerShowcaseIte
     <section className="border-y bg-muted/25" aria-labelledby="customer-showcase-title">
       <div className="mx-auto max-w-6xl px-6 py-20">
         <div className="mx-auto max-w-2xl text-center">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">Customer stories</p>
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">{eyebrow}</p>
           <h2 id="customer-showcase-title" className="mt-3 text-3xl font-semibold tracking-tight">
-            Trusted by organizations building better operations
+            {headline}
           </h2>
-          <p className="mt-3 text-muted-foreground">Real organizations using Rock Frost Business Suite.</p>
+          <p className="mt-3 text-muted-foreground">{description}</p>
         </div>
 
         <div className="mt-10 overflow-hidden rounded-2xl border bg-background shadow-sm">

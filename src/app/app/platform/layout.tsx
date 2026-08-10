@@ -1,7 +1,7 @@
 import { ShieldAlert } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { platformNavigation } from "@/platform/modules/platform-navigation";
+import { platformFooterNavigation, platformNavigation } from "@/platform/modules/platform-navigation";
 import { getCurrentTenant } from "@/lib/tenant";
 import { isPlatformOperator } from "@/lib/auth/permissions";
 
@@ -30,6 +30,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
     <AppShell
       sectionLabel="Platform Administration"
       navigation={platformNavigation}
+      footerNavigation={platformFooterNavigation}
       homeHref="/app/platform/dashboard"
       showModuleLauncher={false}
     >

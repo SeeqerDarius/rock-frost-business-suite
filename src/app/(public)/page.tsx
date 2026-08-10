@@ -7,6 +7,7 @@ import { createPublicMetadata, DEFAULT_DESCRIPTION, SITE_URL } from "@/lib/seo";
 import { db } from "@/lib/db";
 import { PUBLIC_SHOWCASE_FILTER, readPublicShowcase } from "@/lib/public-showcase";
 import { CustomerShowcase } from "@/components/marketing/customer-showcase";
+import { findPlatformOrganizationMetadata, readPlatformMarketing } from "@/lib/platform-marketing";
 
 export const metadata = createPublicMetadata({
   title: "Business Management Software Ghana",
@@ -16,24 +17,39 @@ export const metadata = createPublicMetadata({
 });
 
 export default async function HomePage() {
-  const showcaseOrganizations = await db.organization.findMany({
-    where: PUBLIC_SHOWCASE_FILTER,
-    select: { id: true, name: true, industry: true, metadata: true },
-    orderBy: { name: "asc" },
-    take: 12,
-  });
-  const customers = showcaseOrganizations.flatMap((organization) => {
+  const [showcaseOrganizations, platformOrganization] = await Promise.all([
+    db.organization.findMany({
+      where: PUBLIC_SHOWCASE_FILTER,
+      select: { id: true, name: true, industry: true, metadata: true },
+      orderBy: { name: "asc" },
+      take: 12,
+    }),
+    findPlatformOrganizationMetadata(),
+  ]);
+  const marketing = readPlatformMarketing(platformOrganization?.metadata);
+  const tenantCustomers = showcaseOrganizations.flatMap((organization) => {
     const showcase = readPublicShowcase(organization.metadata);
     if (!showcase.quote || !showcase.attribution) return [];
     return [{
       id: organization.id,
       name: organization.name,
-      industry: organization.industry,
+      industry: marketing.showIndustry ? organization.industry : null,
       logoUrl: `/api/public/showcase-logo/${organization.id}`,
       quote: showcase.quote,
       attribution: showcase.attribution,
     }];
   });
+  const externalCustomers = marketing.externalCustomers
+    .filter((customer) => customer.enabled)
+    .map((customer) => ({
+      id: `external-${customer.id}`,
+      name: customer.name,
+      industry: marketing.showIndustry ? customer.industry || null : null,
+      logoUrl: `/api/public/external-showcase-logo/${customer.id}`,
+      quote: customer.quote,
+      attribution: customer.attribution,
+    }));
+  const customers = [...externalCustomers, ...tenantCustomers].slice(0, 12);
 
   return (
     <>
@@ -68,7 +84,14 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {customers.length > 0 ? <CustomerShowcase customers={customers} /> : null}
+      {marketing.showcaseEnabled && customers.length > 0 ? (
+        <CustomerShowcase
+          customers={customers}
+          eyebrow={marketing.eyebrow}
+          headline={marketing.headline}
+          description={marketing.description}
+        />
+      ) : null}
 
       <section className="border-t bg-muted/30">
         <div className="mx-auto max-w-6xl px-6 py-20">
