@@ -10,6 +10,8 @@ const platformNavigation = readFileSync("src/platform/modules/platform-navigatio
 
 describe("platform owner settings and external customer showcase", () => {
   it("requires platform authorization and validates uploaded customer logos", () => {
+    expect(settingsPage).toContain("await getCurrentTenant()");
+    expect(settingsPage).toContain('if (!tenant) redirect("/login")');
     expect(settingsActions).toContain("requirePlatformContext()");
     expect(settingsActions).toContain("isPlatformOperator(tenant)");
     expect(settingsActions).toContain("isValidProfileImage(file)");

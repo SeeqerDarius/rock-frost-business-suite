@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/db";
 import { readPlatformMarketing } from "@/lib/platform-marketing";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { getCurrentTenant } from "@/lib/tenant";
 import { isPlatformOperator } from "@/lib/auth/permissions";
 import {
   deleteExternalShowcaseCustomer,
@@ -32,7 +32,8 @@ const ERRORS: Record<string, string> = {
 export default async function PlatformSettingsPage({ searchParams }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
-  const tenant = await requireCurrentTenant();
+  const tenant = await getCurrentTenant();
+  if (!tenant) redirect("/login");
   if (!isPlatformOperator(tenant)) redirect("/app/dashboard");
   const organization = await db.organization.findUnique({
     where: { id: tenant.organizationId },
