@@ -22,6 +22,8 @@ Integrated Claude commits `746d79d` and `357ca35` with the Codex security, backu
 
 Follow-up deployment `dpl_8omVcmkeT4fubs5FAHh8H4BXZt7Y` reached Ready. Health returned 200 on `www`, `app`, and `admin`; tenant/platform security routes returned the expected unauthenticated 307. That probe then exposed the same throwing-helper pattern directly inside the new backup page. Hardened the page to redirect unauthenticated users and both backup APIs to return JSON 401 before tenant authorization. Final hardening again passed ESLint, strict TypeScript, `git diff --check`, and **227/227 unit tests**; the final deployment ID and clean log result are appended after promotion.
 
+Final hardened production deployment `dpl_DPxZNrkfJunHnGYUCNKdQNYDmAG3` reached **Ready**. Post-promotion probes: `www`/`app`/`admin` health all 200; tenant security, tenant backup page, and platform security all returned the expected unauthenticated 307; backup export API returned 401; Vercel error-log query after those probes returned no logs. Production code commit is `910b52e`.
+
 ## 2026-08-10 — Requests experience, module settings, organization branding, and premium loading (Claude, branch `agent/claude-requests-settings-loading`)
 
 Scoped exactly to the four-part brief given for this branch: (A) platform and tenant module-request UX, (B) a real audit-and-fill pass over every module's Settings page, (C) making organization branding actually consumed by the shell, (D) a premium loading state. Worked concurrently with Codex, who owns auth/2FA, backup/export/restore, cron, security docs/tests, and `prisma/schema.prisma`/migrations — none of those were touched. This entry documents everything; **not merged to `main`, not deployed** — that is explicitly Codex's job per the task brief.
