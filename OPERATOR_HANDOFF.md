@@ -10,7 +10,7 @@ At the user's explicit instruction ("use this file for the icon and favicon"), r
 
 **Validation:** `npm run lint` passed (no errors/warnings); `npx tsc --noEmit --incremental false` passed; `npm run test` passed 214/214 across 34 files; `npm run build` compiled successfully with `/icon.png` and `/apple-icon.png` present in the route output. No database/integration suite was relevant (asset-only change).
 
-**Deployment:** pushed to `main` at the user's explicit request; see the deployment status line appended below once confirmed.
+**Deployment:** commit `ceaeb6f` was pushed to `main` at the user's explicit request and deployed successfully as Vercel production deployment `dpl_7njhQqQDALzrqYiXNwN7B3MygjSp` (`Ready`, confirmed via `vercel inspect --wait`). Both `www.rockfrostgroup.com` and `app.rockfrostgroup.com` aliases returned HTTP 200 with correct MIME types for `/icon.png`, `/favicon.ico`, and `/icon-512.png`; `/api/health` returned 200 on both. The live `/icon.png` bytes were downloaded and compared byte-for-byte against the committed file — exact match, confirming no stale CDN cache.
 
 ## 2026-08-03 — Claude review lane: UI/UX audit (no code changes)
 
