@@ -2,7 +2,7 @@ import { ShieldAlert } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { platformNavigation } from "@/platform/modules/platform-navigation";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { getCurrentTenant } from "@/lib/tenant";
 import { isPlatformOperator } from "@/lib/auth/permissions";
 
 /**
@@ -12,9 +12,9 @@ import { isPlatformOperator } from "@/lib/auth/permissions";
  * permission a tenant can have, but must never reach this section.
  */
 export default async function PlatformLayout({ children }: { children: React.ReactNode }) {
-  const tenant = await requireCurrentTenant();
+  const tenant = await getCurrentTenant();
 
-  if (!isPlatformOperator(tenant)) {
+  if (!tenant || !isPlatformOperator(tenant)) {
     return (
       <div className="flex min-h-screen items-center justify-center px-6">
         <EmptyState
