@@ -81,6 +81,10 @@ Not modified: `prisma/schema.prisma`, any migration, `next.config.ts`, `package.
 
 Browser/visual verification was not performed (no interactive browser session available in this environment) — every claim above is grounded in reading the actual consuming code path (e.g. confirming `WorkspaceLogo` is reached only when `organization` is passed and `logoUrl` is set), not just that a build succeeded. Recommend a quick authenticated look at: the sidebar with and without a tenant logo set, the platform Requests three-view queue with a mix of statuses, and the loading screen on a throttled connection, before or shortly after this branch is integrated.
 
+### Branch and commit
+
+Commit `746d79d7703ece5c7777011b081670455881e9ae` on branch `agent/claude-requests-settings-loading`, pushed to `origin`. **Not merged to `main`, not deployed** — per the task brief, Codex integrates, validates, and deploys the combined release.
+
 ---
 
 ## 2026-08-10 — Favicon/app-icon source swapped to `public/rf logo.png` (explicit user request)
