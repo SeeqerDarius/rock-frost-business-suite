@@ -2,7 +2,7 @@
 
 ## 2026-08-10 — RF navigation transition preserves the current page
 
-Replaced the opaque navigation overlay introduced in `afed69e` with a non-blanking transition: the existing workspace remains visible while a slim RF-blue progress line and compact glass RF loading card float above it for the same bounded transition. The overlay still prevents accidental repeat interaction, retains `role=status`/live-region semantics, and respects the global reduced-motion rule. Files: `src/components/feedback/app-navigation-loader.tsx`, `docs/UI_UX_REFRESH.md`. Validation passed ESLint, strict TypeScript, **38 files / 227 tests**, the 164-page Next.js production build, and `git diff --check`. Production deployment evidence follows after promotion.
+Replaced the opaque navigation overlay introduced in `afed69e` with a non-blanking transition: the existing workspace remains visible while a slim RF-blue progress line and compact glass RF loading card float above it for the same bounded transition. The overlay still prevents accidental repeat interaction, retains `role=status`/live-region semantics, and respects the global reduced-motion rule. Files: `src/components/feedback/app-navigation-loader.tsx`, `docs/UI_UX_REFRESH.md`. Validation passed ESLint, strict TypeScript, **38 files / 227 tests**, the 164-page Next.js production build, and `git diff --check`. Commit `673b821` deployed as Vercel production deployment `dpl_9ckEQ1QXTtLtj6cFoWiui8tLpbRo` (`Ready`); production health returned 200 and the post-deployment Vercel error-log query was empty.
 
 ## 2026-08-10 — RF loading transition made visible on fast production navigation
 
