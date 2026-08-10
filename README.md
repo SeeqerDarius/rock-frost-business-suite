@@ -13,6 +13,13 @@ The public marketing site has a generated sitemap and robots policy, unique cano
 - **Hotel Management:** rooms, guests, reservations, stay lifecycle, folios and payments, housekeeping, reporting, restaurant, channels, and enforced property settings for currency/timezone, stay policy, charges, numbering, settlement, and room-readiness workflow.
 - **School Management:** student/guardian administration, academic periods, classes, enrollment, attendance, fees and reporting, followed by examinations, grading, timetables, transport, library, campus services and education-specific payroll integration.
 
+School is undergoing an active customer-readiness expansion. The first tranche
+adds explicit student lifecycle history, reusable fee structures with
+idempotent bulk billing, enforced attendance correction windows, and
+campus-specific receipt numbering. See
+`docs/SCHOOL_CUSTOMER_READINESS.md` for delivered scope, remaining work, and
+release gates.
+
 See `docs/HOTEL_AND_SCHOOL_MODULES.md` for boundaries, invariants, roles, integrations, and completion gates. Both modules now have tenant routes and unique RBAC prefixes.
 
 Production uses host-separated authentication: platform owners use `admin.rockfrostgroup.com`, tenant users use `app.rockfrostgroup.com`, and public pages remain on `www.rockfrostgroup.com`. Host-only cookies allow both accounts to stay signed in concurrently in one browser profile.

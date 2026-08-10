@@ -904,3 +904,40 @@ prerendered all eleven module landing pages. A local production-server probe
 confirmed HTTP 200 responses, unique titles, canonical tags, JSON-LD,
 generated robots/sitemap output, and `noindex, nofollow, nocache` on login.
 Production verification is completed after deployment.
+
+## 2026-08-10 — School customer-readiness foundation (in progress)
+
+Started the coordinated School production-readiness program with separate
+backend/data and UI lanes. The backend tranche adds explicit, append-only
+student lifecycle events; terminal student transitions close active enrollment
+history; reusable campus/year/term/class fee structures issue at most one
+invoice per eligible active student; and repeated bulk issuance safely skips
+students already billed. Attendance correction windows and campus receipt
+prefixes are now enforced rather than merely stored. Invoice/receipt number
+allocation is serialized per organization during the affected transactions.
+
+The coordinated UI lane rewrites all fourteen School routes with labelled
+controls, responsive record tables, prerequisite guidance, explicit read-only
+states, success/error feedback, search/filter surfaces, structured grading
+scale editing, and reachable student-lifecycle and bulk-fee actions. Stable
+service rejection codes now reach customer-readable UI messages, bulk issuance
+reports issued/skipped counts, and student state claims reject concurrent stale
+transitions. `AGENTS.md` now makes validated push, deployment, and post-deploy
+verification part of the repository definition of done; CI also runs on
+`agent/**` release branches so database gates finish before `main` promotion.
+
+Important files: `prisma/schema.prisma`, migration
+`20260810103000_school_customer_readiness_foundation`,
+`src/modules/school/service.ts`, `src/app/app/school/actions.ts`,
+`test/integration/tenant-isolation/school.test.ts`, and
+`docs/SCHOOL_CUSTOMER_READINESS.md`. No environment variable was added.
+
+Local validation: Prisma format/generate passed; Prisma validate passed with
+the documented harmless `DIRECT_URL` placeholder because local `DIRECT_URL` is
+intentionally empty; strict TypeScript and ESLint passed; the mocked suite
+passed 34 files / 213 tests. New real-database School coverage is written but
+has not run because this checkout has no disposable `TEST_DATABASE_URL`.
+The combined Next.js production build passed and generated all 160 pages.
+Authenticated browser verification and the guarded disposable-database
+migration/full integration suites remain release gates and will run through
+the release branch/preview workflow before production promotion.

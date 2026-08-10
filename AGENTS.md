@@ -35,3 +35,31 @@ operations, or tests:
 Documentation must describe the current truth. Amend the authoritative
 current documents instead of treating archived material under
 `docs/archive/` as active guidance.
+
+## Production release rule
+
+This repository is operated for production delivery. Unless the user
+explicitly limits a task to analysis, a draft, or local-only work, every
+completed change must be taken through the full release lifecycle:
+
+1. Make the implementation, tests, documentation, schema, and configuration
+   internally consistent and production-ready. Do not knowingly ship partial,
+   placeholder, failing, or unverified behavior as complete.
+2. Run the proportional local validation gate and all required guarded
+   disposable-database integration tests. Database/schema changes must not be
+   deployed until their migrations and integration suite pass against the
+   disposable test database described in `docs/TESTING_STRATEGY.md`.
+3. Commit the intended scope, push it to the configured remote, and use the
+   repository's CI/preview workflow as a release gate. Never include unrelated
+   concurrent work silently.
+4. Deploy or promote the validated artifact to production, then verify health,
+   critical changed routes, database migration status, and post-deploy error
+   logs. Record the commit, deployment, validation, and remaining risks in
+   `OPERATOR_HANDOFF.md`.
+5. If a required gate or production verification fails, fix and rerun it. If
+   credentials, permissions, an external provider, or another hard blocker
+   prevents safe release, stop before production, document the exact blocker,
+   and tell the user what authorization or external action is required.
+
+Pushing and deployment are part of the definition of done; passing a local
+build alone is not a completed implementation handoff.

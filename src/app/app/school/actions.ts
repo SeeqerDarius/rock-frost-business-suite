@@ -5,11 +5,11 @@ import { z } from "zod";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { cuid, shortText, longText, dateInput, moneyAmountPositive, parseWithSchema } from "@/lib/validation";
-import { createSchoolCampus, createSchoolAcademicYear, createSchoolTerm, createSchoolStudent, createSchoolGuardian, linkSchoolGuardian, createSchoolClass, createSchoolSubject, enrollSchoolStudent, recordSchoolAttendance, createSchoolFeeInvoice, recordSchoolFeePayment, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, upsertSchoolSettings, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
+import { createSchoolCampus, createSchoolAcademicYear, createSchoolTerm, createSchoolStudent, createSchoolGuardian, linkSchoolGuardian, createSchoolClass, createSchoolSubject, enrollSchoolStudent, recordSchoolAttendance, createSchoolFeeInvoice, recordSchoolFeePayment, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, upsertSchoolSettings, transitionSchoolStudent, createSchoolFeeStructure, issueSchoolFeeStructure, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
 
 const clean=(value:FormDataEntryValue|null)=>{const text=String(value??"").trim();return text||null};
 async function auth(permission:string,path:string){const tenant=await requireModuleAccess("school");if(!hasPermission(tenant,permission))redirect(`${path}?error=forbidden`);return tenant;}
-const fail=(path:string,error:unknown)=>{if(error instanceof SchoolStateError)redirect(`${path}?error=state`);if(error instanceof SchoolNotFoundError)redirect(`${path}?error=not-found`);throw error;};
+const fail=(path:string,error:unknown):never=>{if(error instanceof SchoolStateError)redirect(`${path}?error=state-${error.code}`);if(error instanceof SchoolNotFoundError)redirect(`${path}?error=not-found`);throw error;};
 
 export async function createCampusAction(f:FormData){const path="/app/school/campuses",t=await auth(PERMISSIONS.SCHOOL_CAMPUSES_MANAGE,path);const p=z.object({code:shortText,name:shortText,address:longText.nullable(),phone:shortText.nullable(),email:z.string().email().nullable()}).safeParse({code:clean(f.get("code")),name:clean(f.get("name")),address:clean(f.get("address")),phone:clean(f.get("phone")),email:clean(f.get("email"))});if(!p.success)redirect(`${path}?error=invalid`);await createSchoolCampus(t.organizationId,p.data);revalidatePath(path);redirect(`${path}?saved=1`)}
 export async function createAcademicYearAction(f:FormData){const path="/app/school/academic-periods",t=await auth(PERMISSIONS.SCHOOL_ACADEMICS_MANAGE,path);const p=parseWithSchema(z.object({name:shortText,startDate:dateInput,endDate:dateInput,current:z.boolean()}),{name:clean(f.get("name"))??"",startDate:clean(f.get("startDate")),endDate:clean(f.get("endDate")),current:f.get("current")==="on"});if(!p.success)redirect(`${path}?error=invalid`);try{await createSchoolAcademicYear(t.organizationId,p.data)}catch(e){fail(path,e)}revalidatePath(path);redirect(`${path}?saved=1`)}
@@ -35,3 +35,63 @@ export async function createTransportRouteAction(f:FormData){const path="/app/sc
 export async function assignTransportAction(f:FormData){const path="/app/school/transport",t=await auth(PERMISSIONS.SCHOOL_TRANSPORT_MANAGE,path);const p=z.object({routeId:cuid,studentId:cuid,stopName:shortText.nullable()}).safeParse({routeId:clean(f.get("routeId")),studentId:clean(f.get("studentId")),stopName:clean(f.get("stopName"))});if(!p.success)redirect(`${path}?error=invalid`);try{await assignSchoolTransport(t.organizationId,p.data.routeId,p.data.studentId,p.data.stopName)}catch(e){fail(path,e)}revalidatePath(path);redirect(`${path}?saved=1`)}
 export async function createPayrollAdjustmentAction(f:FormData){const path="/app/school/payroll",t=await auth(PERMISSIONS.SCHOOL_PAYROLL_MANAGE,path);const p=parseWithSchema(z.object({employeeId:shortText,period:shortText,type:shortText,description:shortText,amount:moneyAmountPositive}),Object.fromEntries(["employeeId","period","type","description","amount"].map(k=>[k,clean(f.get(k))??""])));if(!p.success)redirect(`${path}?error=invalid`);await createSchoolPayrollAdjustment(t.organizationId,p.data);revalidatePath(path);redirect(`${path}?saved=1`)}
 export async function upsertSchoolSettingsAction(f:FormData){const path="/app/school/settings",t=await auth(PERMISSIONS.SCHOOL_SETTINGS_MANAGE,path);const p=z.object({campusId:cuid,attendanceCloseDays:z.coerce.number().int().min(0).max(365),receiptPrefix:shortText,allowRanking:z.boolean(),gradingScaleText:longText.nullable()}).safeParse({campusId:clean(f.get("campusId")),attendanceCloseDays:clean(f.get("attendanceCloseDays")),receiptPrefix:clean(f.get("receiptPrefix")),allowRanking:f.get("allowRanking")==="on",gradingScaleText:clean(f.get("gradingScaleText"))});if(!p.success)redirect(`${path}?error=invalid`);let gradingScale;try{gradingScale=p.data.gradingScaleText?JSON.parse(p.data.gradingScaleText):undefined}catch{redirect(`${path}?error=invalid`)}await upsertSchoolSettings(t.organizationId,{campusId:p.data.campusId,attendanceCloseDays:p.data.attendanceCloseDays,receiptPrefix:p.data.receiptPrefix,allowRanking:p.data.allowRanking,gradingScale});revalidatePath(path);redirect(`${path}?saved=1`)}
+
+export async function transitionStudentAction(f: FormData) {
+  const path = "/app/school/students";
+  const tenant = await auth(PERMISSIONS.SCHOOL_STUDENTS_MANAGE, path);
+  const parsed = z.object({
+    studentId: cuid,
+    toStatus: z.enum(["APPLICANT", "ACTIVE", "SUSPENDED", "WITHDRAWN", "GRADUATED"]),
+    reason: longText.nullable(),
+  }).safeParse({
+    studentId: clean(f.get("studentId")),
+    toStatus: clean(f.get("toStatus")),
+    reason: clean(f.get("reason")),
+  });
+  if (!parsed.success) redirect(`${path}?error=invalid`);
+  try { await transitionSchoolStudent(tenant.organizationId, parsed.data.studentId, parsed.data.toStatus, parsed.data.reason); }
+  catch (error) { fail(path, error); }
+  revalidatePath(path);
+  revalidatePath("/app/school/classes");
+  redirect(`${path}?saved=1`);
+}
+
+export async function createFeeStructureAction(f: FormData) {
+  const path = "/app/school/fees";
+  const tenant = await auth(PERMISSIONS.SCHOOL_FEES_MANAGE, path);
+  const parsed = parseWithSchema(z.object({
+    campusId: cuid,
+    academicYearId: cuid,
+    termId: cuid.nullable(),
+    classId: cuid.nullable(),
+    name: shortText,
+    description: longText.nullable(),
+    amount: moneyAmountPositive,
+    dueDate: dateInput.nullable(),
+  }), {
+    campusId: clean(f.get("campusId")) ?? "",
+    academicYearId: clean(f.get("academicYearId")) ?? "",
+    termId: clean(f.get("termId")),
+    classId: clean(f.get("classId")),
+    name: clean(f.get("name")) ?? "",
+    description: clean(f.get("description")),
+    amount: clean(f.get("amount")),
+    dueDate: clean(f.get("dueDate")),
+  });
+  if (!parsed.success) redirect(`${path}?error=invalid`);
+  try { await createSchoolFeeStructure(tenant.organizationId, parsed.data); }
+  catch (error) { fail(path, error); }
+  revalidatePath(path);
+  redirect(`${path}?saved=1`);
+}
+
+export async function issueFeeStructureAction(f: FormData) {
+  const path = "/app/school/fees";
+  const tenant = await auth(PERMISSIONS.SCHOOL_FEES_MANAGE, path);
+  const feeStructureId = clean(f.get("feeStructureId"));
+  if (!feeStructureId || !cuid.safeParse(feeStructureId).success) redirect(`${path}?error=invalid`);
+  const result = await issueSchoolFeeStructure(tenant.organizationId, feeStructureId).catch((error) => fail(path, error));
+  revalidatePath(path);
+  revalidatePath("/app/school/reports");
+  redirect(`${path}?saved=1&issued=${result.issued}&skipped=${result.skipped}`);
+}

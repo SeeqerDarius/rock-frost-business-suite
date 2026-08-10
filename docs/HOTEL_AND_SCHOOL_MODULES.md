@@ -4,6 +4,12 @@
 conditional on the migration, validation, preview, and deployment evidence in
 `OPERATOR_HANDOFF.md`.
 
+School's original operational release is now followed by an explicit
+customer-readiness program. `docs/SCHOOL_CUSTOMER_READINESS.md` is authoritative
+for the current delivery tranches and remaining gaps; the release lists below
+remain the target product contract and must not be read as a claim that every
+S2–S4 capability is already implemented.
+
 This document is the product and architecture contract for the Hotel and
 School verticals. It applies the isolation rules in `MODULE_BOUNDARIES.md`:
 every owned record carries `organizationId`, every lookup and mutation is
