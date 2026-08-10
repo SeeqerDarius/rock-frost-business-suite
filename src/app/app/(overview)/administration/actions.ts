@@ -14,6 +14,7 @@ import { shortText, email as emailSchema, parseWithSchema } from "@/lib/validati
 import { logAuditEvent } from "@/lib/audit";
 import { buildTenantAppUrl } from "@/lib/app-url";
 import { isPlatformUser } from "@/lib/auth/platform-identity";
+import { isRoleAssignableToOrganization } from "@/lib/administration-roles";
 
 function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
@@ -53,8 +54,13 @@ export async function inviteMember(formData: FormData): Promise<void> {
 
   const role = await db.role.findFirst({
     where: { id: roleId, OR: [{ organizationId: tenant.organizationId }, { isSystem: true }] },
+    include: { rolePermissions: { include: { permission: true } } },
   });
-  if (!role || NOT_INVITABLE_ROLES.has(role.name)) {
+  if (!role || NOT_INVITABLE_ROLES.has(role.name) || !isRoleAssignableToOrganization(
+    role,
+    tenant.organizationId,
+    tenant.enabledModuleKeys,
+  )) {
     redirect("/app/administration?error=invalid-role");
   }
 

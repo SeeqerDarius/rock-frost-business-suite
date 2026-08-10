@@ -193,6 +193,7 @@ describe("Administration inviteMember() — cross-tenant role IDOR fix", () => {
       organizationId: ORG,
       organization: { name: "Org One" },
       permissions: ["org.settings.manage"],
+      enabledModuleKeys: ["school"],
     };
   }
 
@@ -216,6 +217,7 @@ describe("Administration inviteMember() — cross-tenant role IDOR fix", () => {
 
     expect(mockDb.role.findFirst).toHaveBeenCalledWith({
       where: { id: "role-from-other-org", OR: [{ organizationId: ORG }, { isSystem: true }] },
+      include: { rolePermissions: { include: { permission: true } } },
     });
     expect(mockDb.user.upsert).not.toHaveBeenCalled();
   });

@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { db } from "@/lib/db";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { isRoleAssignableToOrganization } from "@/lib/administration-roles";
 import { inviteMember, removeMember, resendMemberInvitation, revokeMemberInvitation } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -25,16 +26,6 @@ const ERROR_MESSAGES: Record<string, string> = {
   "last-owner": "The last active Organization Owner cannot be removed.",
   "platform-owner": "A platform owner cannot be added to a tenant organization. Use a separate tenant-user email.",
 };
-
-const INVITABLE_ROLE_NAMES = [
-  "Organization Owner",
-  "Fleet Manager",
-  "Driver",
-  "Mechanic",
-  "Investor",
-  "Hire Purchase Manager",
-  "Hire Purchase Staff",
-];
 
 export default async function AdministrationPage({
   searchParams,
@@ -63,8 +54,20 @@ export default async function AdministrationPage({
       include: { user: true, role: true, invitation: true },
       orderBy: { createdAt: "asc" },
     }),
-    db.role.findMany({ where: { name: { in: INVITABLE_ROLE_NAMES } }, orderBy: { name: "asc" } }),
+    db.role.findMany({
+      where: {
+        OR: [{ organizationId: tenant.organizationId }, { isSystem: true }],
+        name: { not: "Super Admin" },
+      },
+      include: { rolePermissions: { include: { permission: true } } },
+      orderBy: { name: "asc" },
+    }),
   ]);
+  const assignableRoles = roles.filter((role) => isRoleAssignableToOrganization(
+    role,
+    tenant.organizationId,
+    tenant.enabledModuleKeys,
+  ));
 
   const canViewAuditLog = hasPermission(tenant, PERMISSIONS.AUDIT_VIEW);
 
@@ -191,12 +194,12 @@ export default async function AdministrationPage({
             </div>
             <div className="space-y-2">
               <Label htmlFor="roleId">Role</Label>
-              <Select name="roleId" items={Object.fromEntries(roles.map((r) => [r.id, r.name]))}>
+              <Select name="roleId" items={Object.fromEntries(assignableRoles.map((r) => [r.id, r.name]))}>
                 <SelectTrigger id="roleId" className="w-full">
                   <SelectValue placeholder="Select a role" />
                 </SelectTrigger>
                 <SelectContent>
-                  {roles.map((role) => (
+                  {assignableRoles.map((role) => (
                     <SelectItem key={role.id} value={role.id}>
                       {role.name}
                     </SelectItem>

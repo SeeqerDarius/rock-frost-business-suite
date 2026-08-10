@@ -58,6 +58,8 @@ Authentication determines who the user is. Authorization determines what they ca
 2. **Permission-aware server actions** — every Fleet action (e.g. `upsertFleetVehicle`, `reviewMaintenanceRequest`, `verifyPayment`) as well as `inviteMember` and `toggleOrganizationModule` re-check the relevant permission/role server-side (never trust the page-level guard alone, since server actions are directly callable).
 3. **Permission-aware page-level guards** — `/app/platform/*`, `/app/administration`, `/app/organization`, `/app/fleet`, `/app/installment` all redirect/block server-side for a user who reaches the URL directly without the right access. Within Fleet, each page additionally hides its own manage controls (buttons, edit links) from a signed-in user who can view but not mutate that area — verified via browser testing across Fleet Manager (full access), Driver (maintenance-only manage, no reports), and Investor (reports-only, no manage anywhere).
 
+The Administration invitation form derives assignable roles from the organization's enabled modules. An organization with only School enabled sees School roles (plus Organization Owner), not Fleet, Installment, Hotel, or other module roles. The invitation server action repeats this compatibility check, so submitting a hidden or stale unrelated role ID cannot bypass the interface.
+
 ## Known gaps carried forward
 
 - No public self-registration/signup flow (the Phase 4 invite UI covers admin-initiated onboarding, not self-signup) — a deliberate choice for an invite-only B2B platform, not an oversight.
