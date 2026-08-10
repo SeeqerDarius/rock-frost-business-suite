@@ -6,7 +6,7 @@ A modular multi-tenant business platform. Organizations activate thirteen indepe
 
 **Current status**: all thirteen business modules are implemented and have passed the complete local validation gate, including all real-PostgreSQL migration, tenant-isolation, and concurrency tests. The authenticated workspace uses a responsive, user-collapsible navigation shell with grouped Hotel and School workflows and operational overview pages. Release/deployment evidence is recorded in `OPERATOR_HANDOFF.md`. The production platform is live at [rockfrostgroup.com](https://www.rockfrostgroup.com). Public acquisition, subscriptions, hosted checkout, trial expiry, tenant isolation, and production monitoring remain implemented.
 
-The public marketing site has a generated sitemap and robots policy, unique canonical metadata, Open Graph/Twitter sharing data, structured data, and dedicated search landing pages for all thirteen modules. See `docs/SEO.md` for the authoritative indexable surface and the Search Console launch checklist.
+The public marketing site has a generated sitemap and robots policy, unique canonical metadata, Open Graph/Twitter sharing data, structured data, dedicated search landing pages for all thirteen modules, and a consent-controlled carousel for approved customer logos and testimonials. Onboarded tenants are never published automatically. See `docs/SEO.md` for the authoritative indexable surface and the Search Console launch checklist.
 
 ## Vertical suites
 

@@ -4,6 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { moduleRegistry } from "@/platform/modules/registry";
 import { JsonLd } from "@/components/seo/json-ld";
 import { createPublicMetadata, DEFAULT_DESCRIPTION, SITE_URL } from "@/lib/seo";
+import { db } from "@/lib/db";
+import { PUBLIC_SHOWCASE_FILTER, readPublicShowcase } from "@/lib/public-showcase";
+import { CustomerShowcase } from "@/components/marketing/customer-showcase";
 
 export const metadata = createPublicMetadata({
   title: "Business Management Software Ghana",
@@ -12,7 +15,26 @@ export const metadata = createPublicMetadata({
   keywords: ["business management software Ghana", "ERP software Ghana", "business software Africa", "modular SaaS platform"],
 });
 
-export default function HomePage() {
+export default async function HomePage() {
+  const showcaseOrganizations = await db.organization.findMany({
+    where: PUBLIC_SHOWCASE_FILTER,
+    select: { id: true, name: true, industry: true, metadata: true },
+    orderBy: { name: "asc" },
+    take: 12,
+  });
+  const customers = showcaseOrganizations.flatMap((organization) => {
+    const showcase = readPublicShowcase(organization.metadata);
+    if (!showcase.quote || !showcase.attribution) return [];
+    return [{
+      id: organization.id,
+      name: organization.name,
+      industry: organization.industry,
+      logoUrl: `/api/public/showcase-logo/${organization.id}`,
+      quote: showcase.quote,
+      attribution: showcase.attribution,
+    }];
+  });
+
   return (
     <>
       <JsonLd data={{
@@ -45,6 +67,8 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {customers.length > 0 ? <CustomerShowcase customers={customers} /> : null}
 
       <section className="border-t bg-muted/30">
         <div className="mx-auto max-w-6xl px-6 py-20">

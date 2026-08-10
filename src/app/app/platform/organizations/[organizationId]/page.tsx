@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -11,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/db";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
 import { isPlatformAnchorOrganization } from "@/lib/platform-organizations";
+import { readPublicShowcase } from "@/lib/public-showcase";
 import { MODULE_REQUEST_STATUS_LABELS, MODULE_REQUEST_TYPE_LABELS } from "@/platform/module-requests/constants";
 import { ModuleToggle } from "../module-toggle";
 import {
@@ -19,6 +21,7 @@ import {
   restoreOrganization,
   scheduleOrganizationDeletion,
   updateOrganizationProfile,
+  updateOrganizationPublicShowcase,
   updateOrganizationStatus,
 } from "../actions";
 
@@ -31,6 +34,8 @@ const ERRORS: Record<string, string> = {
   "not-ready": "Permanent deletion is unavailable until the scheduled recovery period expires.",
   invitation: "The invitation could not be resent yet. It may no longer be pending or may be in its resend cooldown.",
   delivery: "The invitation was refreshed, but email delivery failed.",
+  "showcase-invalid": "Add an approved customer quote and attribution before publishing this organization.",
+  "showcase-logo": "Upload the organization's approved logo before publishing it on the home page.",
 };
 
 export default async function OrganizationDetailPage({
@@ -45,6 +50,7 @@ export default async function OrganizationDetailPage({
     status?: string;
     deletion?: string;
     invitation?: string;
+    showcase?: string;
     error?: string;
   }>;
 }) {
@@ -84,6 +90,7 @@ export default async function OrganizationDetailPage({
   const deletionReady = Boolean(
     organization.deletionScheduledFor && organization.deletionScheduledFor <= new Date(),
   );
+  const publicShowcase = readPublicShowcase(organization.metadata);
 
   return (
     <div className="space-y-6">
@@ -106,6 +113,9 @@ export default async function OrganizationDetailPage({
       ) : null}
       {notices.invitation === "resent" ? (
         <Alert><AlertTitle>Invitation resent</AlertTitle><AlertDescription>A new seven-day invitation link was sent.</AlertDescription></Alert>
+      ) : null}
+      {notices.showcase === "updated" ? (
+        <Alert><AlertTitle>Customer showcase updated</AlertTitle><AlertDescription>The public home page now reflects this organization&apos;s approved showcase settings.</AlertDescription></Alert>
       ) : null}
       {notices.deletion === "scheduled" ? (
         <Alert variant="destructive"><AlertTitle>Deletion scheduled</AlertTitle><AlertDescription>The organization is cancelled and remains recoverable until the scheduled deletion date.</AlertDescription></Alert>
@@ -156,6 +166,37 @@ export default async function OrganizationDetailPage({
               <Textarea id="address" name="address" defaultValue={organization.address ?? ""} rows={3} />
             </div>
             <Button type="submit" className="md:col-span-2 md:w-fit">Save profile</Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Public customer showcase</CardTitle>
+          <CardDescription>Publish this customer only after receiving permission to use its name, logo, and quote in Rock Frost marketing.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={updateOrganizationPublicShowcase} className="grid gap-4 md:grid-cols-2">
+            <input type="hidden" name="organizationId" value={organization.id} />
+            <div className="flex items-center gap-4 rounded-lg border p-4 md:col-span-2">
+              {organization.logoUrl ? (
+                <Image src={organization.logoUrl} alt={`${organization.name} logo`} width={96} height={48} unoptimized className="max-h-12 w-24 object-contain" />
+              ) : <div className="flex h-12 w-24 items-center justify-center rounded bg-muted text-xs text-muted-foreground">No logo</div>}
+              <div>
+                <p className="text-sm font-medium">{organization.name}</p>
+                <p className="text-xs text-muted-foreground">Only ACTIVE organizations with a logo and complete approved copy appear publicly.</p>
+              </div>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="quote">Approved customer quote</Label>
+              <Textarea id="quote" name="quote" defaultValue={publicShowcase.quote} maxLength={320} rows={4} placeholder="How Rock Frost improved the organization’s work" />
+            </div>
+            <Field label="Attribution" name="attribution" defaultValue={publicShowcase.attribution} />
+            <label className="flex items-center gap-3 self-end rounded-md border px-4 py-2.5 text-sm font-medium">
+              <input name="enabled" type="checkbox" defaultChecked={publicShowcase.enabled} className="size-4 accent-primary" />
+              Approved for public showcase
+            </label>
+            <Button type="submit" className="md:col-span-2 md:w-fit">Save showcase settings</Button>
           </form>
         </CardContent>
       </Card>

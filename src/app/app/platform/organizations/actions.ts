@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 import { buildTenantAppUrl } from "@/lib/app-url";
@@ -54,6 +55,12 @@ const deletionSchema = z.object({
   organizationId: cuid,
   confirmTenantCode: tenantCode,
   confirmPassword: z.string().min(1).max(200),
+});
+const publicShowcaseSchema = z.object({
+  organizationId: cuid,
+  enabled: z.boolean(),
+  quote: z.string().trim().max(320),
+  attribution: z.string().trim().max(120),
 });
 
 class PlatformOwnerTenantError extends Error {}
@@ -273,6 +280,56 @@ export async function updateOrganizationStatus(formData: FormData): Promise<void
   revalidatePath("/app/platform/organizations");
   revalidatePath(`/app/platform/organizations/${parsed.data.organizationId}`);
   redirect(`/app/platform/organizations/${parsed.data.organizationId}?status=updated`);
+}
+
+export async function updateOrganizationPublicShowcase(formData: FormData): Promise<void> {
+  const tenant = await requireOperator();
+  const parsed = publicShowcaseSchema.safeParse({
+    organizationId: String(formData.get("organizationId") ?? "").trim(),
+    enabled: formData.get("enabled") === "on",
+    quote: String(formData.get("quote") ?? "").trim(),
+    attribution: String(formData.get("attribution") ?? "").trim(),
+  });
+  if (!parsed.success || (parsed.data.enabled && (!parsed.data.quote || !parsed.data.attribution))) {
+    redirect(`/app/platform/organizations/${String(formData.get("organizationId") ?? "")}?error=showcase-invalid`);
+  }
+
+  const organization = await db.organization.findUnique({
+    where: { id: parsed.data.organizationId },
+    select: { id: true, logoUrl: true, metadata: true },
+  });
+  if (!organization) redirect("/app/platform/organizations?error=invalid");
+  if (parsed.data.enabled && !organization.logoUrl) {
+    redirect(`/app/platform/organizations/${organization.id}?error=showcase-logo`);
+  }
+  const metadata = organization.metadata && typeof organization.metadata === "object" && !Array.isArray(organization.metadata)
+      ? { ...(organization.metadata as Record<string, unknown>) }
+      : {};
+  metadata.publicShowcase = {
+    enabled: parsed.data.enabled,
+    quote: parsed.data.quote,
+    attribution: parsed.data.attribution,
+    approvedAt: parsed.data.enabled ? new Date().toISOString() : null,
+    approvedById: parsed.data.enabled ? tenant.userId : null,
+  };
+  await db.$transaction(async (tx) => {
+    await tx.organization.update({
+      where: { id: organization.id },
+      data: { metadata: metadata as Prisma.InputJsonValue },
+    });
+    await logAuditEvent({
+      organizationId: organization.id,
+      userId: tenant.userId,
+      module: "platform",
+      action: "organization.public_showcase_updated",
+      entityName: "Organization",
+      entityId: organization.id,
+      metadata: { enabled: parsed.data.enabled },
+    }, tx);
+  });
+  revalidatePath("/");
+  revalidatePath(`/app/platform/organizations/${parsed.data.organizationId}`);
+  redirect(`/app/platform/organizations/${parsed.data.organizationId}?showcase=updated`);
 }
 
 export async function resendOrganizationInvitation(formData: FormData): Promise<void> {
