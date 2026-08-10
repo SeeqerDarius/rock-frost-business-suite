@@ -992,3 +992,11 @@ ESLint passed; 34 unit files / 214 tests passed; TypeScript passed through the
 optimized Next.js build; and the build generated all 160 pages. No schema or
 database-service behavior changed, so the guarded integration suite was not
 required for this authentication/UI-only release.
+
+### 2026-08-10 — Claude Code release-rule clarification
+
+`CLAUDE.md` already imported the root `AGENTS.md`; it now also states the
+production release requirement explicitly so Claude Code has an unambiguous
+definition of done: validate, document, commit, push, deploy, and verify while
+preserving concurrent work. This is instruction/documentation-only; validation
+was limited to `git diff --check` and inspection of the resulting files.
