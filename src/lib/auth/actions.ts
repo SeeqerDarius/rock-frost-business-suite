@@ -17,6 +17,10 @@ function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
 }
 
+function passwordValue(value: FormDataEntryValue | null) {
+  return String(value ?? "");
+}
+
 /**
  * NextAuth v4's credentials provider collapses every authorize() failure
  * (including a thrown Error) to the fixed string "CredentialsSignin" —
@@ -71,8 +75,8 @@ export async function requestPasswordReset(formData: FormData): Promise<void> {
 export async function resetPassword(formData: FormData): Promise<void> {
   const email = clean(formData.get("email")).toLowerCase();
   const token = clean(formData.get("token"));
-  const password = clean(formData.get("password"));
-  const confirmPassword = clean(formData.get("confirmPassword"));
+  const password = passwordValue(formData.get("password"));
+  const confirmPassword = passwordValue(formData.get("confirmPassword"));
 
   if (!email || !token) {
     redirect("/forgot-password?error=invalid-link");
@@ -116,8 +120,8 @@ export async function resetPassword(formData: FormData): Promise<void> {
  */
 export async function acceptInvite(formData: FormData): Promise<void> {
   const token = clean(formData.get("token"));
-  const password = clean(formData.get("password"));
-  const confirmPassword = clean(formData.get("confirmPassword"));
+  const password = passwordValue(formData.get("password"));
+  const confirmPassword = passwordValue(formData.get("confirmPassword"));
 
   if (!token) {
     redirect("/login?error=invalid-invite");
@@ -131,8 +135,10 @@ export async function acceptInvite(formData: FormData): Promise<void> {
 
   const passwordHash = await bcrypt.hash(password, 10);
 
+  let invitedEmail: string;
   try {
-    await acceptInvitationNewUser(token, passwordHash);
+    const invitation = await acceptInvitationNewUser(token, passwordHash);
+    invitedEmail = invitation.email;
   } catch (error) {
     if (error instanceof InvitationAcceptError) {
       redirect(`/invite?token=${token}&error=${error.reason}`);
@@ -140,7 +146,7 @@ export async function acceptInvite(formData: FormData): Promise<void> {
     throw error;
   }
 
-  redirect("/login?activated=1");
+  redirect(`/login?activated=1&email=${encodeURIComponent(invitedEmail)}`);
 }
 
 /**

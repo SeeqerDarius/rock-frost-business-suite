@@ -132,7 +132,7 @@ export async function previewInvitation(token: string) {
  * membership the user might have across other organizations, which was the
  * confirmed cross-tenant bug in the previous email-keyed token design.
  */
-export async function acceptInvitationNewUser(token: string, passwordHash: string): Promise<{ organizationName: string }> {
+export async function acceptInvitationNewUser(token: string, passwordHash: string): Promise<{ organizationName: string; email: string }> {
   const invitation = await resolveInvitationForAccept(token);
   if (invitation.membership.user.status !== "INVITED") {
     throw new InvitationAcceptError("existing-account");
@@ -163,7 +163,7 @@ export async function acceptInvitationNewUser(token: string, passwordHash: strin
     );
   });
 
-  return { organizationName: invitation.membership.organization.name };
+  return { organizationName: invitation.membership.organization.name, email: invitation.membership.user.email };
 }
 
 /**

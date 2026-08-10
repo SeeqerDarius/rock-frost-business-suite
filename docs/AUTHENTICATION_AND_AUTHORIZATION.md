@@ -5,7 +5,7 @@
 ## Current implementation (Phase 3 authentication + Phase 4 authorization)
 
 **Authentication:**
-- NextAuth v4, credentials provider (email + password, bcrypt-hashed) — `src/lib/auth/nextauth.ts`. `authorize()` looks up `User` by lowercased email, requires `status === "ACTIVE"`, verifies the password with `bcrypt.compare`, and updates `lastLoginAt`.
+- NextAuth v4, credentials provider (email + password, bcrypt-hashed) — `src/lib/auth/nextauth.ts`. `authorize()` looks up `User` by trimmed, lowercased email, requires `status === "ACTIVE"`, verifies the password with `bcrypt.compare`, and updates `lastLoginAt`.
 - JWT session strategy. `Session.user` / `JWT.user` carry `{ id, organizationId, role }` via a type augmentation in `src/lib/auth/next-auth.d.ts`.
 - Production authentication is split by host: platform owners sign in at `admin.rockfrostgroup.com`, tenant users at `app.rockfrostgroup.com`. NextAuth's session token is explicitly host-only (no parent `Domain` attribute), allowing independent owner and tenant sessions in the same browser. Login and the authenticated app layout both enforce that the database-resolved identity matches the current host.
 - `src/app/api/auth/[...nextauth]/route.ts` is the standard NextAuth route handler.
@@ -23,6 +23,12 @@
   - `resetPassword` — validates password length (≥8) and confirmation match, consumes the token, bcrypt-hashes the new password, redirects to `/login?reset=1`.
   - `acceptInvite` — consumes an invite token, sets the user's password and `status: "ACTIVE"`, and flips the matching `OrganizationMember` from `INVITED` to `ACTIVE` (`joinedAt` set), all inside one `db.$transaction`.
 - Pages: `src/app/(auth)/forgot-password/page.tsx`, `src/app/(auth)/reset-password/page.tsx`, `src/app/(auth)/invite/page.tsx`.
+- New-account invitation acceptance carries the canonical invited address into
+  `/login` and prefills it, preventing the customer from accidentally signing
+  in or requesting a reset with a different enquiry/contact address. Password
+  fields preserve the exact submitted value, including intentional leading or
+  trailing spaces. The login page carries its current email into the forgot-
+  password form, and its password field has an accessible visibility toggle.
 - The admin-facing "send an invite" UI (`inviteMember` server action, `/app/administration`) was built in Phase 4 — it creates the `User`/`OrganizationMember` rows, issues the token, and sends the email in one `db.$transaction`, logging an `AuditLog` entry. "Super Admin" is excluded from the invitable-role list to prevent a tenant admin from granting Rock Frost's own operator role.
 - Email delivery (`src/lib/email.ts`) degrades gracefully: if `RESEND_API_KEY` is unset, `sendEmail()` logs a `console.warn` and returns `{ ok: false }` instead of throwing. Today `RESEND_API_KEY` is unset in this environment, so reset/invite/contact emails are logged, not delivered — the UI and token logic work end-to-end regardless.
 - Invitation and billing callback URLs always use the tenant origin. Password-reset links preserve the surface where the reset was requested, so an owner returns to `admin.*` and a tenant returns to `app.*`.

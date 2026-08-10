@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import bcrypt from "bcryptjs";
 
 const mockDb = {
   user: { findUnique: vi.fn(), update: vi.fn() },
@@ -6,6 +7,7 @@ const mockDb = {
 };
 const mockIssuePasswordResetToken = vi.fn();
 const mockSendEmail = vi.fn();
+const mockAcceptInvitationNewUser = vi.fn();
 let mockHost = "app.rockfrostgroup.com";
 
 class RedirectSignal extends Error {
@@ -27,7 +29,7 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("@/lib/audit", () => ({ logAuditEvent: vi.fn() }));
 vi.mock("@/lib/auth/invitations", () => ({
-  acceptInvitationNewUser: vi.fn(),
+  acceptInvitationNewUser: mockAcceptInvitationNewUser,
   acceptInvitationExistingUser: vi.fn(),
   InvitationAcceptError: class InvitationAcceptError extends Error {},
 }));
@@ -37,7 +39,7 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
-const { requestPasswordReset } = await import("@/lib/auth/actions");
+const { acceptInvite, requestPasswordReset } = await import("@/lib/auth/actions");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -55,6 +57,28 @@ afterEach(() => {
 });
 
 describe("authentication email links", () => {
+  it("preserves the chosen password and carries the canonical invited email to login", async () => {
+    mockAcceptInvitationNewUser.mockResolvedValue({
+      organizationName: "Acme",
+      email: "customer+owner@example.com",
+    });
+    const formData = new FormData();
+    formData.set("token", "invite-token");
+    formData.set("password", " password with spaces ");
+    formData.set("confirmPassword", " password with spaces ");
+
+    await expect(acceptInvite(formData)).rejects.toThrow(
+      "/login?activated=1&email=customer%2Bowner%40example.com",
+    );
+    expect(mockAcceptInvitationNewUser).toHaveBeenCalledWith(
+      "invite-token",
+      expect.stringMatching(/^\$2[aby]\$/),
+    );
+    const passwordHash = mockAcceptInvitationNewUser.mock.calls[0]?.[1] as string;
+    expect(await bcrypt.compare(" password with spaces ", passwordHash)).toBe(true);
+    expect(await bcrypt.compare("password with spaces", passwordHash)).toBe(false);
+  });
+
   it("sends an active user a canonical, safely encoded password-reset URL", async () => {
     mockDb.user.findUnique.mockResolvedValue({ id: "user-1", email: "person+ops@example.com", status: "ACTIVE" });
     mockIssuePasswordResetToken.mockResolvedValue("token&one");

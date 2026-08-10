@@ -31,7 +31,7 @@ Production uses host-separated authentication: platform owners use `admin.rockfr
 - **Tailwind CSS v4**
 - **shadcn/ui** (Base UI primitives) — see `docs/DECISIONS.md` for the license/rationale
 - **Prisma** + **Neon Postgres**
-- **NextAuth v4** (credentials-based auth, JWT sessions, session revocation via a `sessionVersion` check — see `docs/HARDENING_PLAN.md`)
+- **NextAuth v4** (credentials-based auth, JWT sessions, session revocation via a `sessionVersion` check, canonical invited-email handoff to login, and accessible password visibility — see `docs/HARDENING_PLAN.md`)
 - **Zod** for input validation on the highest-risk untrusted-input surfaces (see `src/lib/validation.ts`)
 - **Vitest** for automated tests (`npm run test`)
 

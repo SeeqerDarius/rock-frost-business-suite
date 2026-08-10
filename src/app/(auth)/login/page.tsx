@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { PasswordInput } from "@/components/auth/password-input";
 import { getAccountLockStatus } from "@/lib/auth/actions";
 import { buildSurfaceUrl, classifyAppSurface, type AppSurface } from "@/lib/app-surfaces";
 
@@ -36,6 +37,8 @@ function LoginForm() {
   const noticeKey = searchParams.get("reset") ? "reset" : searchParams.get("activated") ? "activated" : null;
   const notice = noticeKey ? NOTICE_MESSAGES[noticeKey] : null;
   const urlError = searchParams.get("error");
+  const invitedEmail = searchParams.get("email")?.trim().toLowerCase() ?? "";
+  const [email, setEmail] = useState(invitedEmail);
   const urlErrorMessage = urlError ? ERROR_MESSAGES[urlError] : null;
   const requestedCallbackUrl = searchParams.get("callbackUrl") || "/app";
   const callbackPath =
@@ -50,7 +53,7 @@ function LoginForm() {
     setIsSubmitting(true);
 
     const formData = new FormData(event.currentTarget);
-    const email = String(formData.get("email") ?? "");
+    const email = String(formData.get("email") ?? "").trim().toLowerCase();
 
     const lockStatus = await getAccountLockStatus(email);
     if (lockStatus.locked) {
@@ -102,16 +105,19 @@ function LoginForm() {
       ) : null}
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
-        <Input id="email" name="email" type="email" placeholder="you@company.com" autoComplete="email" required />
+        <Input id="email" name="email" type="email" placeholder="you@company.com" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
       </div>
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label htmlFor="password">Password</Label>
-          <Link href="/forgot-password" className="text-xs text-muted-foreground hover:text-foreground">
+          <Link
+            href={email.trim() ? `/forgot-password?email=${encodeURIComponent(email.trim().toLowerCase())}` : "/forgot-password"}
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
             Forgot password?
           </Link>
         </div>
-        <Input id="password" name="password" type="password" autoComplete="current-password" required />
+        <PasswordInput id="password" name="password" autoComplete="current-password" required />
       </div>
       <Button type="submit" disabled={isSubmitting} className="w-full">
         {isSubmitting ? "Signing in..." : "Sign in"}

@@ -962,3 +962,21 @@ and build. Live verification returned HTTP 200 with a reachable database from
 login surfaces, and the unauthenticated School route correctly returned HTTP
 307 to `https://app.rockfrostgroup.com/login`. No customer data was used during
 release validation.
+
+### 2026-08-10 — Invitation login and password-reset diagnosis
+
+Production read-only inspection confirmed the latest accepted invitation had
+matching Invitation/User email values, an ACTIVE user, an ACTIVE membership,
+and a saved password hash. The failed credential attempts used a different
+email address, so authentication correctly found no account and the
+enumeration-safe reset flow correctly sent no email. The onboarding UX now
+redirects accepted invitees to login with the exact invited email prefilled,
+credential lookup trims/lowercases email input, and password setup/reset no
+longer silently trims password values. Added an accessible login password
+visibility toggle and regression coverage for exact password preservation and
+canonical-email handoff. Concurrent icon changes under `public/` and
+`src/app/` were pre-existing and intentionally left untouched. Validation:
+ESLint passed; 34 unit files / 214 tests passed; TypeScript passed through the
+optimized Next.js build; and the build generated all 160 pages. No schema or
+database-service behavior changed, so the guarded integration suite was not
+required for this authentication/UI-only release.

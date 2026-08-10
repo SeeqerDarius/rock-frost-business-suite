@@ -13,9 +13,9 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function ForgotPasswordPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sent?: string; error?: string }>;
+  searchParams: Promise<{ sent?: string; error?: string; email?: string }>;
 }) {
-  const { sent, error } = await searchParams;
+  const { sent, error, email } = await searchParams;
 
   return (
     <Card>
@@ -37,7 +37,7 @@ export default async function ForgotPasswordPage({
         <form action={requestPasswordReset} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" placeholder="you@company.com" autoComplete="email" required />
+            <Input id="email" name="email" type="email" placeholder="you@company.com" autoComplete="email" defaultValue={email?.trim().toLowerCase()} required />
           </div>
           <Button type="submit" className="w-full">
             Send reset link

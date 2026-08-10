@@ -26,7 +26,7 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const email = credentials.email.toLowerCase();
+        const email = credentials.email.trim().toLowerCase();
         const user = await db.user.findUnique({
           where: { email },
           include: {
