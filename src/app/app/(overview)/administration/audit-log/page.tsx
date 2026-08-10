@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { History, Lock, Download } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
@@ -14,6 +15,7 @@ import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import type { Prisma } from "@prisma/client";
 import { TENANT_AUDIT_ACTOR_WHERE, tenantAuditWhere } from "@/lib/audit-scope";
+import { getServerAuthSession } from "@/lib/auth/session";
 
 const PAGE_SIZE = 50;
 
@@ -32,6 +34,8 @@ interface AuditLogSearchParams {
 
 export default async function AuditLogPage({ searchParams }: { searchParams: Promise<AuditLogSearchParams> }) {
   const params = await searchParams;
+  const session = await getServerAuthSession();
+  if (!session?.user?.id) redirect("/login");
   const tenant = await requireCurrentTenant();
 
   if (!hasPermission(tenant, PERMISSIONS.AUDIT_VIEW)) {
