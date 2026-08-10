@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { db } from "@/lib/db";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { isRoleAssignableToOrganization } from "@/lib/administration-roles";
+import { isRoleAssignableToOrganization, resolveAssignableModuleKeys, roleDisplayName } from "@/lib/administration-roles";
 import { inviteMember, removeMember, resendMemberInvitation, revokeMemberInvitation } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -48,7 +48,7 @@ export default async function AdministrationPage({
     );
   }
 
-  const [members, roles] = await Promise.all([
+  const [members, roles, assignableModuleKeys] = await Promise.all([
     db.organizationMember.findMany({
       where: { organizationId: tenant.organizationId },
       include: { user: true, role: true, invitation: true },
@@ -62,11 +62,12 @@ export default async function AdministrationPage({
       include: { rolePermissions: { include: { permission: true } } },
       orderBy: { name: "asc" },
     }),
+    resolveAssignableModuleKeys(tenant.organizationId, tenant.enabledModuleKeys),
   ]);
   const assignableRoles = roles.filter((role) => isRoleAssignableToOrganization(
     role,
     tenant.organizationId,
-    tenant.enabledModuleKeys,
+    assignableModuleKeys,
   ));
 
   const canViewAuditLog = hasPermission(tenant, PERMISSIONS.AUDIT_VIEW);
@@ -194,14 +195,14 @@ export default async function AdministrationPage({
             </div>
             <div className="space-y-2">
               <Label htmlFor="roleId">Role</Label>
-              <Select name="roleId" items={Object.fromEntries(assignableRoles.map((r) => [r.id, r.name]))}>
+              <Select name="roleId" items={Object.fromEntries(assignableRoles.map((r) => [r.id, roleDisplayName(r.name)]))}>
                 <SelectTrigger id="roleId" className="w-full">
                   <SelectValue placeholder="Select a role" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent align="start" alignItemWithTrigger={false} className="max-h-72">
                   {assignableRoles.map((role) => (
                     <SelectItem key={role.id} value={role.id}>
-                      {role.name}
+                      {roleDisplayName(role.name)}
                     </SelectItem>
                   ))}
                 </SelectContent>

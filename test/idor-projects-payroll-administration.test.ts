@@ -9,6 +9,7 @@ const mockDb = {
   hrEmployee: { findFirst: vi.fn() },
   payrollCompensation: { upsert: vi.fn() },
   role: { findFirst: vi.fn() },
+  subscription: { findMany: vi.fn() },
   user: { findUnique: vi.fn(), upsert: vi.fn() },
   auditLog: { create: vi.fn() },
   $transaction: vi.fn(),
@@ -53,6 +54,7 @@ const ORG = "org-1";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockDb.subscription.findMany.mockResolvedValue([]);
   mockDb.user.findUnique.mockResolvedValue(null);
   mockIsPlatformUser.mockResolvedValue(false);
   vi.stubEnv("NEXTAUTH_URL", "https://www.rockfrostgroup.com");

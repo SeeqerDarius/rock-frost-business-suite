@@ -9,15 +9,22 @@ describe("administration role filtering", () => {
   it("builds the role selector from the tenant's enabled modules", () => {
     expect(page).not.toContain("INVITABLE_ROLE_NAMES");
     expect(page).toContain("assignableRoles");
-    expect(page).toContain("tenant.enabledModuleKeys");
+    expect(page).toContain("resolveAssignableModuleKeys");
     expect(filtering).toContain("moduleRegistry.find");
     expect(filtering).toContain("enabledModules.has(moduleKey)");
   });
 
   it("enforces the same module compatibility in the invitation action", () => {
     expect(actions).toContain("isRoleAssignableToOrganization(");
-    expect(actions).toContain("tenant.enabledModuleKeys");
+    expect(actions).toContain("resolveAssignableModuleKeys");
     expect(actions).toContain("rolePermissions: { include: { permission: true } }");
+  });
+
+  it("prefers active subscriptions and presents a compact, product-named selector", () => {
+    expect(filtering).toContain('status: "ACTIVE"');
+    expect(filtering).toContain('return "Installment Manager"');
+    expect(page).toContain('alignItemWithTrigger={false}');
+    expect(page).toContain('className="max-h-72"');
   });
 
   it("keeps Organization Owner assignable but never exposes Super Admin", () => {

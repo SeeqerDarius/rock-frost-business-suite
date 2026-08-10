@@ -14,7 +14,7 @@ import { shortText, email as emailSchema, parseWithSchema } from "@/lib/validati
 import { logAuditEvent } from "@/lib/audit";
 import { buildTenantAppUrl } from "@/lib/app-url";
 import { isPlatformUser } from "@/lib/auth/platform-identity";
-import { isRoleAssignableToOrganization } from "@/lib/administration-roles";
+import { isRoleAssignableToOrganization, resolveAssignableModuleKeys, roleDisplayName } from "@/lib/administration-roles";
 
 function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
@@ -56,10 +56,11 @@ export async function inviteMember(formData: FormData): Promise<void> {
     where: { id: roleId, OR: [{ organizationId: tenant.organizationId }, { isSystem: true }] },
     include: { rolePermissions: { include: { permission: true } } },
   });
+  const assignableModuleKeys = await resolveAssignableModuleKeys(tenant.organizationId, tenant.enabledModuleKeys);
   if (!role || NOT_INVITABLE_ROLES.has(role.name) || !isRoleAssignableToOrganization(
     role,
     tenant.organizationId,
-    tenant.enabledModuleKeys,
+    assignableModuleKeys,
   )) {
     redirect("/app/administration?error=invalid-role");
   }
@@ -116,7 +117,7 @@ export async function inviteMember(formData: FormData): Promise<void> {
   });
   const inviteUrl = buildTenantAppUrl("/invite", { token });
 
-  const result = await sendEmail({ to: email, ...invitationEmail({ organizationName: tenant.organization.name, roleName: role.name, inviteUrl }) });
+  const result = await sendEmail({ to: email, ...invitationEmail({ organizationName: tenant.organization.name, roleName: roleDisplayName(role.name), inviteUrl }) });
 
   if (!result.ok) {
     await markInvitationDeliveryFailed(membership.id);
