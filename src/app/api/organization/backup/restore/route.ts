@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { getCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import { decryptTotpSecret, verifyTotpCode } from "@/lib/auth/totp";
@@ -10,7 +10,8 @@ import { mergeTenantBackup, validateTenantBackup } from "@/lib/backup/tenant-bac
 const MAX_BACKUP_BYTES = 4 * 1024 * 1024;
 
 export async function POST(request: Request) {
-  const tenant = await requireCurrentTenant();
+  const tenant = await getCurrentTenant();
+  if (!tenant) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const formData = await request.formData();
   if (String(formData.get("confirmation") ?? "").trim() !== `RESTORE ${tenant.organization.tenantCode}`) {
