@@ -953,3 +953,12 @@ workspace), TypeScript, 34 unit files / 213 tests, 19 integration files / 107
 real-PostgreSQL tests, and the optimized Next.js build with all 160 pages. The
 disposable database is for release validation only and contains no
 production/customer data.
+
+Production release: commits `4ed658d` and `2957562` were fast-forwarded to
+`main` and pushed. Vercel production deployment
+`dpl_CwELTKmUEUyEFgrccRtnqDMpwG9o` reached Ready after the production migration
+and build. Live verification returned HTTP 200 with a reachable database from
+`www.rockfrostgroup.com/api/health`, HTTP 200 from the customer and platform
+login surfaces, and the unauthenticated School route correctly returned HTTP
+307 to `https://app.rockfrostgroup.com/login`. No customer data was used during
+release validation.
