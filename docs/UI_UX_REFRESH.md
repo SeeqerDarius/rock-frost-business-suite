@@ -59,3 +59,5 @@ Reviewed against commit `fa5494f` ("Refine workspace navigation and module UX") 
 # Visible authenticated navigation feedback
 
 The authenticated root retains `app/loading.tsx` as its server-streaming fallback. Because production Next.js links are prefetched, fast route changes may never suspend and therefore may not display that fallback. `AppNavigationLoader` adds a short RF-branded transition on valid internal link navigation so users receive consistent feedback without disabling prefetching or delaying data requests. External/new-tab/download/same-page interactions are excluded, and the app-wide reduced-motion policy applies.
+
+The navigation transition deliberately keeps the current workspace visible. It uses a slim progress line and compact glass RF status card above the existing page instead of an opaque full-screen replacement, avoiding a blank/disappear/reappear effect while still blocking accidental repeated navigation during the brief transition.

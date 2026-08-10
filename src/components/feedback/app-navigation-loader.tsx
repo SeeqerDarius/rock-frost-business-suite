@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { RfLoadingScreen } from "@/components/feedback/rf-loading-screen";
+import Image from "next/image";
 
 const VISIBLE_MS = 650;
 
@@ -34,8 +34,26 @@ export function AppNavigationLoader() {
 
   if (!visible) return null;
   return (
-    <div className="fixed inset-0 z-[100] bg-background/95 backdrop-blur-sm" aria-busy="true">
-      <RfLoadingScreen />
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label="Loading the next page"
+      aria-busy="true"
+      className="fixed inset-0 z-[100] cursor-progress"
+    >
+      <div className="absolute inset-x-0 top-0 h-1 overflow-hidden bg-primary/10">
+        <span className="block h-full w-1/2 animate-pulse rounded-r-full bg-primary shadow-md" />
+      </div>
+      <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-3 rounded-2xl border bg-background/90 px-5 py-4 shadow-2xl backdrop-blur-md">
+        <div className="relative flex size-11 shrink-0 items-center justify-center">
+          <span className="absolute inset-0 animate-ping rounded-full bg-primary/20" />
+          <Image src="/icon.png" alt="" width={34} height={34} priority className="relative rounded-lg" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">Loading workspace</p>
+          <p className="text-xs text-muted-foreground">Your current page will stay visible.</p>
+        </div>
+      </div>
     </div>
   );
 }

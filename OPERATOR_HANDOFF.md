@@ -1,5 +1,9 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-10 — RF navigation transition preserves the current page
+
+Replaced the opaque navigation overlay introduced in `afed69e` with a non-blanking transition: the existing workspace remains visible while a slim RF-blue progress line and compact glass RF loading card float above it for the same bounded transition. The overlay still prevents accidental repeat interaction, retains `role=status`/live-region semantics, and respects the global reduced-motion rule. Files: `src/components/feedback/app-navigation-loader.tsx`, `docs/UI_UX_REFRESH.md`. Validation passed ESLint, strict TypeScript, **38 files / 227 tests**, the 164-page Next.js production build, and `git diff --check`. Production deployment evidence follows after promotion.
+
 ## 2026-08-10 — RF loading transition made visible on fast production navigation
 
 The server-only `app/loading.tsx` boundary was correct but normally imperceptible because production `<Link>` routes are prefetched and resolve without suspending. Added `AppNavigationLoader`, mounted once in the authenticated root layout, to show the existing accessible RF loading screen immediately for 650 ms on genuine same-origin navigation. It ignores modified clicks, external links, downloads, new-tab links, the current URL, and same-page anchors. The existing server loading boundary remains responsible for waits longer than the short transition, and the existing global reduced-motion rule makes the animation static for users who request reduced motion. No data fetching or server response was artificially delayed.
