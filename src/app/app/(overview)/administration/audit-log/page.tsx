@@ -13,6 +13,7 @@ import { db } from "@/lib/db";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import type { Prisma } from "@prisma/client";
+import { TENANT_AUDIT_ACTOR_WHERE, tenantAuditWhere } from "@/lib/audit-scope";
 
 const PAGE_SIZE = 50;
 
@@ -49,7 +50,8 @@ export default async function AuditLogPage({ searchParams }: { searchParams: Pro
   const canExport = hasPermission(tenant, PERMISSIONS.AUDIT_EXPORT);
 
   const page = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
-  const where: Prisma.AuditLogWhereInput = { organizationId: tenant.organizationId };
+  const tenantScope = tenantAuditWhere(tenant.organizationId);
+  const where: Prisma.AuditLogWhereInput = { ...tenantScope };
   if (params.from) where.createdAt = { ...where.createdAt as object, gte: new Date(`${params.from}T00:00:00`) };
   if (params.to) where.createdAt = { ...where.createdAt as object, lte: new Date(`${params.to}T23:59:59`) };
   if (params.module) where.module = params.module;
@@ -67,9 +69,9 @@ export default async function AuditLogPage({ searchParams }: { searchParams: Pro
       skip: (page - 1) * PAGE_SIZE,
     }),
     db.auditLog.count({ where }),
-    db.organizationMember.findMany({ where: { organizationId: tenant.organizationId }, include: { user: true } }),
-    db.auditLog.findMany({ where: { organizationId: tenant.organizationId }, select: { module: true }, distinct: ["module"] }),
-    db.auditLog.findMany({ where: { organizationId: tenant.organizationId }, select: { entityName: true }, distinct: ["entityName"] }),
+    db.organizationMember.findMany({ where: { organizationId: tenant.organizationId, user: TENANT_AUDIT_ACTOR_WHERE }, include: { user: true } }),
+    db.auditLog.findMany({ where: tenantScope, select: { module: true }, distinct: ["module"] }),
+    db.auditLog.findMany({ where: tenantScope, select: { entityName: true }, distinct: ["entityName"] }),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));

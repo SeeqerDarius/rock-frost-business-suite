@@ -5,6 +5,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { logAuditEvent } from "@/lib/audit";
 import type { Prisma } from "@prisma/client";
+import { tenantAuditWhere } from "@/lib/audit-scope";
 
 function csvEscape(value: unknown): string {
   const str = value === null || value === undefined ? "" : String(value);
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
   }
 
   const params = request.nextUrl.searchParams;
-  const where: Prisma.AuditLogWhereInput = { organizationId: tenant.organizationId };
+  const where: Prisma.AuditLogWhereInput = tenantAuditWhere(tenant.organizationId);
   const from = params.get("from");
   const to = params.get("to");
   if (from) where.createdAt = { ...(where.createdAt as object), gte: new Date(`${from}T00:00:00`) };

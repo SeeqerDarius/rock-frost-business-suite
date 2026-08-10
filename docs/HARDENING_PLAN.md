@@ -1025,6 +1025,14 @@ separate `audit.export` permission, and audits the export itself
 its simpler pre-existing self — the new org-scoped viewer is the real
 deliverable here.
 
+Tenant visibility has an additional actor boundary beyond `organizationId`:
+`tenantAuditWhere()` excludes every event whose actor holds the global system
+`Super Admin` role, even when a platform action targeted that tenant and the
+row therefore carries the tenant's organization ID. The same scope is applied
+to viewer rows/counts, actor/module/entity filter options, and CSV export.
+Tenant/system events remain visible; the complete cross-tenant/operator trail
+is available only from the Super-Admin-gated platform activity surface.
+
 **Files changed:** `prisma/schema.prisma` (+2 migrations); `src/lib/audit.ts`
 (new); `src/lib/auth/{nextauth,actions,session-revocation,invitations}.ts`;
 `src/app/app/(overview)/administration/{actions,page}.tsx`;
