@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { getCurrentTenant } from "@/lib/tenant";
@@ -75,7 +76,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <OrganizationBrandingProvider branding={{ logoUrl: organization?.logoUrl ?? null, name: organization?.name ?? null }}>
       <OrganizationThemeSync theme={theme} />
-      <AppNavigationLoader />
+      <Suspense fallback={null}>
+        <AppNavigationLoader />
+      </Suspense>
       {!platformIdentity ? (
         <div className="fixed right-24 top-4 z-40 hidden rounded-full border bg-background/95 px-3 py-1 text-xs font-medium shadow-sm backdrop-blur sm:block">
           {organization?.status === "TRIAL"
