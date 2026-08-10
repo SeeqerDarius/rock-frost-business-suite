@@ -1,6 +1,7 @@
 import "server-only";
 
 import { db } from "@/lib/db";
+import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { Prisma } from "@prisma/client";
 
 /**
@@ -66,11 +67,13 @@ export async function setCompensation(organizationId: string, data: Compensation
 // --- Settings ---
 
 export async function getSettings(organizationId: string) {
-  return db.payrollSettings.upsert({
-    where: { organizationId },
-    update: {},
-    create: { organizationId },
-  });
+  return createWithUniqueRetry(() =>
+    db.payrollSettings.upsert({
+      where: { organizationId },
+      update: {},
+      create: { organizationId },
+    }),
+  );
 }
 
 export function updateSettings(organizationId: string, defaultTaxRate: string) {
@@ -78,11 +81,13 @@ export function updateSettings(organizationId: string, defaultTaxRate: string) {
   if (!Number.isFinite(rate) || rate < 0 || rate > 1) {
     throw new InvalidCompensationError("Default tax rate must be between 0% and 100%.");
   }
-  return db.payrollSettings.upsert({
-    where: { organizationId },
-    update: { defaultTaxRate },
-    create: { organizationId, defaultTaxRate },
-  });
+  return createWithUniqueRetry(() =>
+    db.payrollSettings.upsert({
+      where: { organizationId },
+      update: { defaultTaxRate },
+      create: { organizationId, defaultTaxRate },
+    }),
+  );
 }
 
 // --- Runs ---

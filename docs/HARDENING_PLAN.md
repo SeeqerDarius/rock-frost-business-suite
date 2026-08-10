@@ -1048,6 +1048,16 @@ up from 76).
 
 ## Remaining work (Pass 4, Milestone D+)
 
+### 2026-08-10 Payroll settings initialization follow-up
+
+The School customer-readiness release gate exposed a first-use race in
+`getSettings()`: concurrent payroll processing could both enter Prisma's
+upsert create path and one caller received a unique-constraint error instead
+of the expected run-state result. Payroll settings reads/updates now take a
+bounded shared unique-constraint retry around the settings upsert.
+The complete disposable-PostgreSQL suite subsequently passed 19 files / 107
+tests, including both payroll process/process and process/cancel races.
+
 ### Performance, resilience, accessibility
 
 The production baseline is implemented: structured runtime/error logs, health

@@ -941,3 +941,15 @@ The combined Next.js production build passed and generated all 160 pages.
 Authenticated browser verification and the guarded disposable-database
 migration/full integration suites remain release gates and will run through
 the release branch/preview workflow before production promotion.
+
+Release-gate follow-up: installed a local PostgreSQL 16.14 test runtime on
+port 55432, created the guard-compliant disposable `rockfrost_test` database,
+and applied all 28 migrations successfully. The first full integration run
+passed School 7/7 but exposed a pre-existing Payroll first-use settings race.
+`src/modules/payroll/service.ts` now retries the organization-unique settings
+upsert after a create collision so the loser re-enters the update path. The
+final validation passed ESLint (excluding the unrelated concurrent `.scratch/`
+workspace), TypeScript, 34 unit files / 213 tests, 19 integration files / 107
+real-PostgreSQL tests, and the optimized Next.js build with all 160 pages. The
+disposable database is for release validation only and contains no
+production/customer data.
