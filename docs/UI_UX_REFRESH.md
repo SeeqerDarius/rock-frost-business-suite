@@ -68,3 +68,7 @@ The navigation transition deliberately keeps the current workspace visible: a sl
 2. **The progress bar didn't progress** — a bar frozen at a fixed 50% width, opacity-pulsing in place, doesn't read as "in progress" to a user; it reads as broken or stalled. It now genuinely animates: width eases up toward ~86% while waiting, then completes to 100% only once real navigation completion fires, via a CSS width transition rather than an opacity pulse.
 
 The navigation indicator uses the original `animate-ping`/`animate-pulse` RF treatment requested by the product owner. The temporary top progress bar, status pill, workspace card, and explanatory copy were removed.
+
+### Visible Rock Frost brand lockup
+
+The shared visible `Logo` component now uses the supplied single-line `public/RFGgg.png` wordmark by itself in the public home-page header and authenticated app fallback/sidebar branding. The separate square RF icon was removed from those visible lockups. This does not change the independently configured favicon, Apple touch icon, Android/PWA icons, `manifest.webmanifest`, or the round RF icon used inside the navigation loading indicator.

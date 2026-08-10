@@ -40,7 +40,7 @@ interface AppShellProps {
 function WorkspaceLogo({ homeHref, compact, hasOrganization }: { homeHref: string; compact?: boolean; hasOrganization: boolean }) {
   const branding = useOrganizationBranding();
   if (!hasOrganization || !branding.logoUrl) {
-    return <Logo href={homeHref} compact={compact} imageWordmark />;
+    return <Logo href={homeHref} compact={compact} />;
   }
   return (
     <Link
