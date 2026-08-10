@@ -1,5 +1,11 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-10 — RF loading transition made visible on fast production navigation
+
+The server-only `app/loading.tsx` boundary was correct but normally imperceptible because production `<Link>` routes are prefetched and resolve without suspending. Added `AppNavigationLoader`, mounted once in the authenticated root layout, to show the existing accessible RF loading screen immediately for 650 ms on genuine same-origin navigation. It ignores modified clicks, external links, downloads, new-tab links, the current URL, and same-page anchors. The existing server loading boundary remains responsible for waits longer than the short transition, and the existing global reduced-motion rule makes the animation static for users who request reduced motion. No data fetching or server response was artificially delayed.
+
+**Files:** `src/components/feedback/app-navigation-loader.tsx`, `src/app/app/layout.tsx`. **Validation:** ESLint passed; strict TypeScript passed; full unit suite passed **38 files / 227 tests**; Next.js 16.2.12 production build passed with 164 pages; `git diff --check` passed. Deployment and live verification are recorded below after promotion.
+
 ## 2026-08-10 — Combined production-readiness release: 2FA, tenant backups, transactional email, requests/settings/branding/loading
 
 Integrated Claude commits `746d79d` and `357ca35` with the Codex security, backup, and email lane. Claude's detailed requests/settings/branding/loading breakdown remains immediately below this entry. No ownership-boundary conflicts were found.

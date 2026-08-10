@@ -9,6 +9,7 @@ import { buildSurfaceUrl, classifyAppSurface, isIdentityAllowedOnSurface } from 
 import { isPlatformOperator } from "@/lib/auth/permissions";
 import type { Metadata } from "next";
 import { getTrialDaysRemaining } from "@/platform/trials/service";
+import { AppNavigationLoader } from "@/components/feedback/app-navigation-loader";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false, nocache: true },
@@ -74,6 +75,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <OrganizationBrandingProvider branding={{ logoUrl: organization?.logoUrl ?? null, name: organization?.name ?? null }}>
       <OrganizationThemeSync theme={theme} />
+      <AppNavigationLoader />
       {!platformIdentity ? (
         <div className="fixed right-24 top-4 z-40 hidden rounded-full border bg-background/95 px-3 py-1 text-xs font-medium shadow-sm backdrop-blur sm:block">
           {organization?.status === "TRIAL"
