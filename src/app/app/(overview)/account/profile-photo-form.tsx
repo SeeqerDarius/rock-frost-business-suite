@@ -5,6 +5,7 @@ import { Camera, CheckCircle2, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { isValidProfileImage } from "@/lib/profile-image";
 import { uploadProfilePicture } from "./actions";
 
 function initials(name: string | null, email: string) {
@@ -68,7 +69,15 @@ export function ProfilePhotoForm({ image, name, email }: {
           className="sr-only"
           required
           onChange={(event) => {
-            setFileName(event.target.files?.[0]?.name ?? "");
+            const file = event.target.files?.[0];
+            if (file && !isValidProfileImage(file)) {
+              event.target.value = "";
+              setFileName("");
+              setError("Choose a JPG, PNG, or WebP image no larger than 1 MB.");
+              setSaved(false);
+              return;
+            }
+            setFileName(file?.name ?? "");
             setError("");
             setSaved(false);
           }}

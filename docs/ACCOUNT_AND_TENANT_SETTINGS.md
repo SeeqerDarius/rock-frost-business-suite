@@ -11,6 +11,11 @@
 
 Changing the sign-in email requires the current password. Email and password changes invalidate existing sessions so stolen or stale sessions cannot remain active.
 
+Profile photos are rejected immediately in the browser when they exceed 1
+MiB, and the Server Action repeats the type/size validation. Next.js allows a
+bounded 2 MB action envelope so multipart overhead cannot reject an otherwise
+valid 1 MiB photo before application validation runs.
+
 Images are stored as bounded data URLs in the existing `User.image` and `Organization.logoUrl` fields. This avoids introducing an undeclared object-storage dependency. A later object-storage migration can retain the same UI and replace only the persistence layer.
 
 The account header retrieves the current image through the authenticated `/api/account/profile` endpoint with private, no-store caching. Images are deliberately not embedded in the NextAuth JWT cookie: even a bounded image can exceed browser cookie limits. A successful upload refreshes the header thumbnail immediately.

@@ -1000,3 +1000,18 @@ production release requirement explicitly so Claude Code has an unambiguous
 definition of done: validate, document, commit, push, deploy, and verify while
 preserving concurrent work. This is instruction/documentation-only; validation
 was limited to `git diff --check` and inspection of the resulting files.
+
+### 2026-08-10 — Profile-photo Server Action 413 fix
+
+Vercel production logs showed one confirmed runtime error: `POST /app/account`
+returned HTTP 413 because Next.js's 1 MB Server Action body limit was smaller
+than the existing 1 MiB profile-photo allowance once multipart overhead was
+included. `next.config.ts` now provides a bounded 2 MB Server Action envelope;
+the application still enforces the existing 1 MiB/type limit server-side, and
+`profile-photo-form.tsx` now rejects oversized selections immediately with an
+actionable message. No database schema or stored-data migration changed.
+Validation passed: ESLint; 35 unit files / 217 tests; standalone TypeScript;
+and the optimized Next.js 16.2.12 build with all 160 pages. The initial
+top-level `serverActions` configuration was rejected by this installed Next.js
+type definition and was corrected to the version-documented
+`experimental.serverActions.bodySizeLimit` before release.

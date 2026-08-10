@@ -8,9 +8,8 @@ import { db } from "@/lib/db";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import { revokeUserSessions } from "@/lib/auth/session-revocation";
+import { isValidProfileImage } from "@/lib/profile-image";
 
-const MAX_IMAGE_BYTES = 1024 * 1024;
-const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 function value(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -66,7 +65,7 @@ export async function uploadProfilePicture(formData: FormData): Promise<void | {
   const userId = await currentUserId();
   const file = formData.get("image");
   const clientSubmission = formData.get("_client") === "1";
-  if (!(file instanceof File) || file.size === 0 || file.size > MAX_IMAGE_BYTES || !IMAGE_TYPES.has(file.type)) {
+  if (!(file instanceof File) || !isValidProfileImage(file)) {
     if (clientSubmission) return { ok: false, error: "Choose a JPG, PNG, or WebP image no larger than 1 MB." };
     redirect(`${destination}?error=invalid-image`);
   }
