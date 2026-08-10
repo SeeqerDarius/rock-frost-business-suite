@@ -1,5 +1,17 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-10 — Favicon/app-icon source swapped to `public/rf logo.png` (explicit user request)
+
+At the user's explicit instruction ("use this file for the icon and favicon"), regenerated every icon surface from `public/rf logo.png` — a 500x500 RF mark that already had genuine alpha transparency (verified corner/edge pixels were `0,0,0,0`, not a baked-in matte). No cropping or redesign was applied; the file's existing framing was used as-is, only resized per target.
+
+**Files changed:** `src/app/icon.png` (180x180), `src/app/apple-icon.png` (180x180), `src/app/favicon.ico` (16/32/48 — rebuilt by hand-writing the ICO container, since no `png-to-ico`-style package was available in this environment; structure verified against the previous file with `file`), `public/icon-192.png` and `public/icon-512.png` (the PWA manifest icons `public/manifest.webmanifest` already pointed at, so no manifest edit was needed). No schema/migration change.
+
+**Note for whoever picks this up next:** the 2026-08-03 "Claude review lane" entry below deliberately moved *away* from `rf logo.png` and toward a dark-navy-square-background treatment (matching `apple-icon.png`'s prior look) specifically to fix a dark-sidebar clash and unify every icon surface on one asset. This pass reintroduces `rf logo.png` with its native transparent background instead, which is a different visual choice than that prior decision — done on explicit user request today, not a rediscovery of the same problem. If the transparent-background mark looks wrong against the dark sidebar/header again, that's the known tradeoff being made here, not a new bug.
+
+**Validation:** `npm run lint` passed (no errors/warnings); `npx tsc --noEmit --incremental false` passed; `npm run test` passed 214/214 across 34 files; `npm run build` compiled successfully with `/icon.png` and `/apple-icon.png` present in the route output. No database/integration suite was relevant (asset-only change).
+
+**Deployment:** pushed to `main` at the user's explicit request; see the deployment status line appended below once confirmed.
+
 ## 2026-08-03 — Claude review lane: UI/UX audit (no code changes)
 
 Completed the "Claude review lane" defined in `docs/UI_UX_REFRESH.md` after confirming Codex's sidebar/shell tranche was committed (`fa5494f`, "Refine workspace navigation and module UX"). Reviewed the resulting `AppShell`/`SidebarNav` interaction model, audited the public acquisition pages (home, solutions, modules, industries, company, contact), and audited the small-format RF icon treatment across `src/app/icon.png`, `apple-icon.png`, `public/icon-192.png`/`icon-512.png`, the orphaned `public/rf logo.png`, and the JSON-LD `Organization.logo` reference to `public/RFG.png`. Full findings and proposed follow-ups are recorded in `docs/UI_UX_REFRESH.md` under "Claude review lane: findings (2026-08-03)"; no Codex-owned files were edited and no other code was changed.
