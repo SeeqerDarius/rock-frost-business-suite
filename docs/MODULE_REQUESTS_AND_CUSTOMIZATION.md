@@ -40,6 +40,16 @@ Every request mutation writes an audit event. Customer-visible changes create an
 authenticated requester. Enabling a module still does not bypass RBAC: users need an appropriate module permission
 before they can enter it.
 
+`/app/platform/requests` is organized into three views — **Active queue** (the default; excludes terminal
+statuses), **Inbox** (unlinked public inquiries), and **History** (`COMPLETED`/`REJECTED`/`CANCELLED` requests,
+previously not viewable at all in this UI once they left the active queue) — plus search and priority/type filters,
+all driven by URL query params so results are shareable/bookmarkable. Each request is a collapsed row by default;
+opening it reveals the full management form. **Approve and enable module** and **Reject** both require an explicit
+confirmation dialog before submitting, since both are consequential and were previously one accidental click away.
+The tenant-facing `/app/module-requests` got the equivalent treatment (Open/All/Resolved views, search, collapsible
+rows) plus moving the "new request" form into a dialog so the page opens on requests instead of an always-expanded
+form.
+
 ## Lifecycle
 
 The supported request statuses are:
@@ -76,6 +86,17 @@ the relevant module explicitly supports and reads that key through
 Do not add organization-id conditionals to shared module code. Add a reusable configuration key or deployed
 extension key, document it, validate it, test it for both enabled and disabled organizations, and then assign it
 only to the intended organization.
+
+**Tenant-facing write path.** Until now this store was writable only through the platform operator's raw-JSON
+editor above. `updateOrganizationModuleConfigurationValues(organizationId, moduleCode, patch, actorId)` (same file)
+adds a validated, audited, tenant-facing write path: it does a targeted shallow merge into
+`features`/`limits`/`workflow`/`terminology` rather than replacing the whole object, so a tenant saving one of
+their own module's settings can never silently clobber an unrelated key a platform operator set via the raw editor,
+or vice versa. Every module without a dedicated `<Module>Settings` Prisma table (Fleet, Projects, Accounting, CRM,
+HR, Inventory, POS, Procurement) now stores its one or two real settings this way instead of leaving its Settings
+page's controls unimplemented — see each module's `src/modules/<key>/service.ts` (`get<Module>Settings`/
+`update<Module>Settings`, or similarly named per-setting getters) for the exact keys in use, and
+`OPERATOR_HANDOFF.md`'s 2026-08-10 entry for the full per-module list of what each setting actually changes.
 
 ## Purpose-built modules
 

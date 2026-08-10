@@ -1,4 +1,4 @@
-import { Lock, Tag } from "lucide-react";
+import { AlertTriangle, Lock, Tag } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -8,12 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listCategories } from "@/modules/inventory/service";
-import { addCategory } from "./actions";
+import { getInventorySettings, listCategories } from "@/modules/inventory/service";
+import { addCategory, saveInventorySettings } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage Inventory settings.",
   "missing-fields": "A name is required.",
+  "invalid-reorder-point": "The default reorder point must be a whole number of 0 or more.",
 };
 
 export default async function InventorySettingsPage({
@@ -33,7 +34,10 @@ export default async function InventorySettingsPage({
     );
   }
 
-  const categories = await listCategories(tenant.organizationId);
+  const [categories, settings] = await Promise.all([
+    listCategories(tenant.organizationId),
+    getInventorySettings(tenant.organizationId),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -49,6 +53,25 @@ export default async function InventorySettingsPage({
           {ERROR_MESSAGES[error]}
         </div>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="size-5 text-muted-foreground" />
+            <CardTitle>Stock alerts</CardTitle>
+          </div>
+          <CardDescription>Pre-fills the reorder point when adding a new item; the Items page flags stock at or below it as low.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={saveInventorySettings} className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="defaultReorderPoint">Default reorder point for new items</Label>
+              <Input id="defaultReorderPoint" name="defaultReorderPoint" type="number" min={0} defaultValue={settings.defaultReorderPoint} className="w-32" required />
+            </div>
+            <Button type="submit" size="sm" variant="outline">Save</Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

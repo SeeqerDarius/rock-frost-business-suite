@@ -1,4 +1,4 @@
-import { Lock, Tag } from "lucide-react";
+import { Lock, Tag, UserCircle } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -8,12 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listLeadSources } from "@/modules/crm/service";
-import { addLeadSource } from "./actions";
+import { getCrmSettings, listActiveMembers, listLeadSources } from "@/modules/crm/service";
+import { addLeadSource, saveCrmSettings } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage CRM settings.",
   "missing-fields": "A name is required.",
+  "invalid-owner": "Choose an active organization member.",
 };
 
 export default async function CrmSettingsPage({
@@ -33,7 +34,11 @@ export default async function CrmSettingsPage({
     );
   }
 
-  const sources = await listLeadSources(tenant.organizationId);
+  const [sources, members, settings] = await Promise.all([
+    listLeadSources(tenant.organizationId),
+    listActiveMembers(tenant.organizationId),
+    getCrmSettings(tenant.organizationId),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -49,6 +54,28 @@ export default async function CrmSettingsPage({
           {ERROR_MESSAGES[error]}
         </div>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <UserCircle className="size-5 text-muted-foreground" />
+            <CardTitle>Default owner</CardTitle>
+          </div>
+          <CardDescription>A new lead or deal created without an owner is automatically assigned here instead of sitting unowned.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={saveCrmSettings} className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="defaultOwnerId">Default owner</Label>
+              <select id="defaultOwnerId" name="defaultOwnerId" defaultValue={settings.defaultOwnerId ?? ""} className="h-9 w-56 rounded-md border bg-transparent px-3 text-sm">
+                <option value="">No default (leave unowned)</option>
+                {members.map((member) => <option key={member.id} value={member.id}>{member.name || member.email}</option>)}
+              </select>
+            </div>
+            <Button type="submit" size="sm" variant="outline">Save</Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

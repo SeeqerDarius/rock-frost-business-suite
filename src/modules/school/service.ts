@@ -267,13 +267,46 @@ export async function createSchoolTimetableEntry(organizationId: string, data: {
   return db.schoolTimetableEntry.create({ data: { organizationId, ...data } });
 }
 
+/**
+ * Reads a campus's `SchoolSettings.gradingScale` (`[{ grade, min, max }, …]`
+ * as percentages, edited via the Settings > Grading scale control) and
+ * returns the matching letter grade for a mark percentage. Returns null if
+ * the campus has no grading scale configured or none of its bands match —
+ * callers keep whatever grade (if any) was already supplied in that case.
+ */
+function resolveGradeFromScale(gradingScale: Prisma.JsonValue | null | undefined, percent: number): string | null {
+  if (!Array.isArray(gradingScale)) return null;
+  for (const entry of gradingScale) {
+    if (!entry || typeof entry !== "object") continue;
+    const row = entry as Record<string, unknown>;
+    const grade = typeof row.grade === "string" ? row.grade : null;
+    const min = typeof row.min === "number" ? row.min : null;
+    const max = typeof row.max === "number" ? row.max : null;
+    if (grade && min !== null && max !== null && percent >= min && percent <= max) return grade;
+  }
+  return null;
+}
+
 export async function recordSchoolExamResult(organizationId: string, data: { examId: string; studentId: string; classId: string; subjectId: string; marks: Prisma.Decimal.Value; grade?: string | null; remark?: string | null }) {
   const exam = await db.schoolExam.findFirst({ where: { id: data.examId, organizationId, subjectId: data.subjectId, status: { in: ["DRAFT", "OPEN", "MODERATION"] } } });
-  const enrollment = await db.schoolEnrollment.findFirst({ where: { organizationId, studentId: data.studentId, classId: data.classId, status: "ACTIVE", academicYearId: exam?.academicYearId } });
+  const enrollment = await db.schoolEnrollment.findFirst({
+    where: { organizationId, studentId: data.studentId, classId: data.classId, status: "ACTIVE", academicYearId: exam?.academicYearId },
+    include: { student: { include: { campus: { include: { settings: true } } } } },
+  });
   if (!exam || !enrollment) throw new SchoolNotFoundError("Exam or active enrollment not found.");
   const marks = decimal(data.marks);
   if (marks.lt(0) || marks.gt(exam.totalMarks)) throw new SchoolStateError("Marks must be within the exam total.", "marks-out-of-range");
-  return db.schoolExamResult.upsert({ where: { examId_studentId: { examId: data.examId, studentId: data.studentId } }, update: { marks, grade: data.grade, remark: data.remark }, create: { organizationId, ...data, marks } });
+
+  // Auto-derive the letter grade from the campus's configured grading scale
+  // (Settings > Grading scale) when the caller didn't supply one explicitly —
+  // an explicit grade always wins, so a teacher can still override it.
+  let grade = data.grade;
+  if (!grade) {
+    const percent = marks.div(exam.totalMarks).times(100).toNumber();
+    grade = resolveGradeFromScale(enrollment.student.campus.settings?.gradingScale, percent);
+  }
+
+  return db.schoolExamResult.upsert({ where: { examId_studentId: { examId: data.examId, studentId: data.studentId } }, update: { marks, grade, remark: data.remark }, create: { organizationId, ...data, marks, grade } });
 }
 
 export function listSchoolExams(organizationId: string) { return db.schoolExam.findMany({ where: { organizationId }, include: { academicYear: true, term: true, subject: true, results: { include: { student: true, class: true } } }, orderBy: { examDate: "desc" } }); }

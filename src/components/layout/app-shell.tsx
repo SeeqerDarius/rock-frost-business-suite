@@ -2,8 +2,11 @@
 
 import { useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
+import Image from "next/image";
+import Link from "next/link";
 import { ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
+import { useOrganizationBranding } from "@/components/theme/organization-branding-context";
 import { SidebarNav } from "@/components/navigation/sidebar-nav";
 import { ModuleLauncher } from "@/components/navigation/module-launcher";
 import { UserMenu } from "@/components/navigation/user-menu";
@@ -25,6 +28,30 @@ interface AppShellProps {
     organizationId: string;
     memberships: { organizationId: string; name: string; tenantCode: string }[];
   };
+}
+
+/**
+ * Renders the organization's own uploaded logo (Organization Settings >
+ * Company logo) in place of the Rock Frost mark, for tenant-scoped shells
+ * only (`organization` prop present — platform scope never passes it, so
+ * platform operators always see the Rock Frost brand). Falls back to the
+ * standard `Logo` when the organization hasn't uploaded one.
+ */
+function WorkspaceLogo({ homeHref, compact, hasOrganization }: { homeHref: string; compact?: boolean; hasOrganization: boolean }) {
+  const branding = useOrganizationBranding();
+  if (!hasOrganization || !branding.logoUrl) {
+    return <Logo href={homeHref} compact={compact} />;
+  }
+  return (
+    <Link
+      href={homeHref as never}
+      aria-label={compact ? (branding.name ? `${branding.name} home` : "Workspace home") : undefined}
+      className="flex min-w-0 items-center gap-2 font-semibold tracking-tight"
+    >
+      <Image src={branding.logoUrl} alt="" width={30} height={30} unoptimized className="size-[30px] shrink-0 rounded-lg object-contain" />
+      {!compact ? <span className="truncate">{branding.name ?? "Workspace"}</span> : null}
+    </Link>
+  );
 }
 
 function subscribeToSidebarPreference(onStoreChange: () => void) {
@@ -75,7 +102,7 @@ export function AppShell({
         )}
       >
         <div className={cn("flex h-16 items-center border-b px-4", sidebarCollapsed && "justify-center px-2")}>
-          <Logo href={homeHref} compact={sidebarCollapsed} />
+          <WorkspaceLogo homeHref={homeHref} compact={sidebarCollapsed} hasOrganization={Boolean(organization)} />
         </div>
         {organization && !sidebarCollapsed ? (
           <OrganizationSwitcher currentOrganizationId={organization.organizationId} memberships={organization.memberships} />
@@ -104,7 +131,7 @@ export function AppShell({
         <SheetContent side="left" className="flex h-dvh w-72 flex-col p-0">
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           <div className="flex h-16 shrink-0 items-center border-b px-4">
-            <Logo href={homeHref} />
+            <WorkspaceLogo homeHref={homeHref} hasOrganization={Boolean(organization)} />
           </div>
           {organization ? (
             <OrganizationSwitcher currentOrganizationId={organization.organizationId} memberships={organization.memberships} />

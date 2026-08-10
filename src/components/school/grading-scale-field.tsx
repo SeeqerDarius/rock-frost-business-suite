@@ -17,7 +17,10 @@ import { Label } from "@/components/ui/label";
  * Server Action contract is unchanged.
  *
  * Persisted shape: `[{ "grade": "A", "min": 80, "max": 100 }, …]`.
- * Nothing reads this value back yet — see
+ * Consumed by `recordSchoolExamResult()` in `src/modules/school/service.ts`,
+ * which auto-derives a result's letter grade from the student's campus
+ * scale when a grade isn't explicitly supplied (an explicit grade always
+ * wins). `allowRanking` remains unconsumed — see
  * docs/SCHOOL_UI_CUSTOMER_READINESS.md.
  */
 

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { getCurrentTenant } from "@/lib/tenant";
 import { OrganizationThemeSync } from "@/components/theme/organization-theme-sync";
+import { OrganizationBrandingProvider } from "@/components/theme/organization-branding-context";
 import { db } from "@/lib/db";
 import { headers } from "next/headers";
 import { buildSurfaceUrl, classifyAppSurface, isIdentityAllowedOnSurface } from "@/lib/app-surfaces";
@@ -58,7 +59,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const organization = await db.organization.findUnique({
     where: { id: tenant.organizationId },
-    select: { metadata: true, status: true, createdAt: true },
+    select: { metadata: true, status: true, createdAt: true, logoUrl: true, name: true },
   });
   const metadata = organization?.metadata;
   const workspaceSettings = metadata && typeof metadata === "object" && !Array.isArray(metadata)
@@ -71,7 +72,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const trialDaysRemaining = getTrialDaysRemaining(organization?.createdAt ?? new Date());
 
   return (
-    <>
+    <OrganizationBrandingProvider branding={{ logoUrl: organization?.logoUrl ?? null, name: organization?.name ?? null }}>
       <OrganizationThemeSync theme={theme} />
       {!platformIdentity ? (
         <div className="fixed right-24 top-4 z-40 hidden rounded-full border bg-background/95 px-3 py-1 text-xs font-medium shadow-sm backdrop-blur sm:block">
@@ -83,6 +84,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       ) : null}
       {children}
-    </>
+    </OrganizationBrandingProvider>
   );
 }

@@ -1,18 +1,20 @@
-import { Lock, ReceiptText } from "lucide-react";
+import { Hash, Lock, ReceiptText } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getSettings } from "@/modules/pos/service";
-import { saveReceiptFooter } from "./actions";
+import { getSaleNumberPrefix, getSettings } from "@/modules/pos/service";
+import { saveReceiptFooter, saveSaleNumberPrefix } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage POS settings.",
   "invalid-input": "Footer text must be 5000 characters or fewer.",
+  "invalid-prefix": "Use 2-8 uppercase letters or numbers.",
 };
 
 export default async function PosSettingsPage({
@@ -32,7 +34,10 @@ export default async function PosSettingsPage({
     );
   }
 
-  const settings = await getSettings(tenant.organizationId);
+  const [settings, saleNumberPrefix] = await Promise.all([
+    getSettings(tenant.organizationId),
+    getSaleNumberPrefix(tenant.organizationId),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -48,6 +53,25 @@ export default async function PosSettingsPage({
           {ERROR_MESSAGES[error]}
         </div>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Hash className="size-5 text-muted-foreground" />
+            <CardTitle>Sale numbering</CardTitle>
+          </div>
+          <CardDescription>e.g. &quot;SALE&quot; → SALE-00001. Existing sale numbers are not renumbered.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={saveSaleNumberPrefix} className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="saleNumberPrefix">Sale number prefix</Label>
+              <Input id="saleNumberPrefix" name="saleNumberPrefix" defaultValue={saleNumberPrefix} minLength={2} maxLength={8} className="w-32 uppercase" required />
+            </div>
+            <Button type="submit" size="sm" variant="outline">Save</Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

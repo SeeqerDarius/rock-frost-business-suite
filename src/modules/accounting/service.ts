@@ -4,6 +4,27 @@ import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import type { AccountingAccountType, AccountingInvoiceStatus } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
+import {
+  getOrganizationModuleConfiguration,
+  updateOrganizationModuleConfigurationValues,
+} from "@/platform/module-requests/configuration";
+
+const DEFAULT_INVOICE_NUMBER_PREFIX = "INV";
+const PREFIX_PATTERN = /^[A-Z0-9]{2,8}$/;
+
+/** Accounting has no dedicated settings table; the invoice numbering prefix
+ * lives in the generic `OrganizationModule.configuration` store. */
+export async function getAccountingSettings(organizationId: string) {
+  const configuration = await getOrganizationModuleConfiguration(organizationId, "accounting");
+  const configured = configuration.workflow.invoiceNumberPrefix;
+  return {
+    invoiceNumberPrefix: configured && PREFIX_PATTERN.test(configured) ? configured : DEFAULT_INVOICE_NUMBER_PREFIX,
+  };
+}
+
+export async function updateAccountingSettings(organizationId: string, data: { invoiceNumberPrefix: string }, actorId?: string | null) {
+  await updateOrganizationModuleConfigurationValues(organizationId, "accounting", { workflow: { invoiceNumberPrefix: data.invoiceNumberPrefix } }, actorId);
+}
 
 /**
  * Fresh module (no reference implementation to migrate from). Every function
@@ -204,8 +225,11 @@ async function sweepOverdueInvoices(organizationId: string) {
 }
 
 async function generateInvoiceNumber(organizationId: string) {
-  const count = await db.accountingInvoice.count({ where: { organizationId } });
-  return `INV-${String(count + 1).padStart(4, "0")}`;
+  const [{ invoiceNumberPrefix }, count] = await Promise.all([
+    getAccountingSettings(organizationId),
+    db.accountingInvoice.count({ where: { organizationId } }),
+  ]);
+  return `${invoiceNumberPrefix}-${String(count + 1).padStart(4, "0")}`;
 }
 
 export async function listInvoices(organizationId: string) {

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createLeaveType } from "@/modules/hr/service";
+import { createLeaveType, updateHrSettings } from "@/modules/hr/service";
 import { shortText, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
@@ -37,5 +37,24 @@ export async function addLeaveType(formData: FormData): Promise<void> {
   await createLeaveType(tenant.organizationId, { name, defaultDaysPerYear });
   revalidatePath("/app/hr/settings");
   revalidatePath("/app/hr/leave");
+  redirect("/app/hr/settings?saved=1");
+}
+
+const employeeNumberSchema = z.object({
+  employeeNumberPrefix: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,8}$/, "Use 2-8 uppercase letters or numbers."),
+});
+
+export async function saveHrSettings(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("hr");
+  if (!hasPermission(tenant, PERMISSIONS.HR_SETTINGS_MANAGE)) {
+    redirect("/app/hr/settings?error=forbidden");
+  }
+
+  const parsed = parseWithSchema(employeeNumberSchema, { employeeNumberPrefix: clean(formData.get("employeeNumberPrefix")) ?? "" });
+  if (!parsed.success) redirect("/app/hr/settings?error=invalid-prefix");
+
+  await updateHrSettings(tenant.organizationId, parsed.data, tenant.userId);
+  revalidatePath("/app/hr/settings");
+  revalidatePath("/app/hr/employees");
   redirect("/app/hr/settings?saved=1");
 }

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listItems, listCategories } from "@/modules/inventory/service";
+import { listItems, listCategories, getInventorySettings } from "@/modules/inventory/service";
 import { upsertItem } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -24,9 +24,11 @@ const ERROR_MESSAGES: Record<string, string> = {
 interface ItemFieldsProps {
   item?: { sku: string; name: string; categoryId: string | null; unit: string; costPrice: string; reorderPoint: number; active: boolean };
   categoryItems: Record<string, string>;
+  /** Only applied for a brand-new item — set on Inventory Settings ("Default reorder point for new items"). */
+  defaultReorderPoint?: number;
 }
 
-function ItemFields({ item, categoryItems }: ItemFieldsProps) {
+function ItemFields({ item, categoryItems, defaultReorderPoint = 0 }: ItemFieldsProps) {
   const idSuffix = item ? "-edit" : "";
   return (
     <>
@@ -69,7 +71,7 @@ function ItemFields({ item, categoryItems }: ItemFieldsProps) {
         </div>
         <div className="space-y-2">
           <Label htmlFor={`reorderPoint${idSuffix}`}>Reorder point</Label>
-          <Input id={`reorderPoint${idSuffix}`} name="reorderPoint" type="number" defaultValue={item?.reorderPoint ?? 0} />
+          <Input id={`reorderPoint${idSuffix}`} name="reorderPoint" type="number" defaultValue={item?.reorderPoint ?? defaultReorderPoint} />
         </div>
       </div>
       <div className="flex items-center gap-2">
@@ -88,7 +90,11 @@ export default async function InventoryItemsPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("inventory");
   const canManage = hasPermission(tenant, PERMISSIONS.INVENTORY_ITEMS_MANAGE);
-  const [items, categories] = await Promise.all([listItems(tenant.organizationId), listCategories(tenant.organizationId)]);
+  const [items, categories, settings] = await Promise.all([
+    listItems(tenant.organizationId),
+    listCategories(tenant.organizationId),
+    getInventorySettings(tenant.organizationId),
+  ]);
   const categoryItems: Record<string, string> = Object.fromEntries(categories.map((c) => [c.id, c.name]));
 
   return (
@@ -97,7 +103,7 @@ export default async function InventoryItemsPage({
         <PageHeader title="Items" description="The catalog of stock-keeping units your organization tracks." />
         {canManage ? (
           <EntityDialog trigger={<Button size="sm"><Plus />New item</Button>} title="New item" action={upsertItem}>
-            <ItemFields categoryItems={categoryItems} />
+            <ItemFields categoryItems={categoryItems} defaultReorderPoint={settings.defaultReorderPoint} />
           </EntityDialog>
         ) : null}
       </div>

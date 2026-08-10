@@ -1,4 +1,4 @@
-import { Lock, CalendarClock } from "lucide-react";
+import { Lock, CalendarClock, Hash } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -8,12 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listLeaveTypes } from "@/modules/hr/service";
-import { addLeaveType } from "./actions";
+import { getHrSettings, listLeaveTypes } from "@/modules/hr/service";
+import { addLeaveType, saveHrSettings } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage HR settings.",
   "missing-fields": "A name is required.",
+  "invalid-prefix": "Use 2-8 uppercase letters or numbers.",
 };
 
 export default async function HrSettingsPage({
@@ -33,7 +34,10 @@ export default async function HrSettingsPage({
     );
   }
 
-  const leaveTypes = await listLeaveTypes(tenant.organizationId);
+  const [leaveTypes, settings] = await Promise.all([
+    listLeaveTypes(tenant.organizationId),
+    getHrSettings(tenant.organizationId),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -49,6 +53,25 @@ export default async function HrSettingsPage({
           {ERROR_MESSAGES[error]}
         </div>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Hash className="size-5 text-muted-foreground" />
+            <CardTitle>Employee numbering</CardTitle>
+          </div>
+          <CardDescription>e.g. &quot;EMP&quot; → EMP-0001. Existing employee numbers are not renumbered.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={saveHrSettings} className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="employeeNumberPrefix">Employee number prefix</Label>
+              <Input id="employeeNumberPrefix" name="employeeNumberPrefix" defaultValue={settings.employeeNumberPrefix} minLength={2} maxLength={8} className="w-32 uppercase" required />
+            </div>
+            <Button type="submit" size="sm" variant="outline">Save</Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

@@ -4,6 +4,26 @@ import { db } from "@/lib/db";
 import { recordMovement, getStockGrid, InsufficientStockError, NotFoundError } from "@/modules/inventory/service";
 import type { PosPaymentMethod } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
+import {
+  getOrganizationModuleConfiguration,
+  updateOrganizationModuleConfigurationValues,
+} from "@/platform/module-requests/configuration";
+
+const DEFAULT_SALE_NUMBER_PREFIX = "SALE";
+const PREFIX_PATTERN = /^[A-Z0-9]{2,8}$/;
+
+/** The receipt footer lives on the dedicated `PosSettings` table (see below);
+ * the sale numbering prefix has no column there, so it lives in the generic
+ * `OrganizationModule.configuration` store instead. */
+export async function getSaleNumberPrefix(organizationId: string) {
+  const configuration = await getOrganizationModuleConfiguration(organizationId, "pos");
+  const configured = configuration.workflow.saleNumberPrefix;
+  return configured && PREFIX_PATTERN.test(configured) ? configured : DEFAULT_SALE_NUMBER_PREFIX;
+}
+
+export async function updateSaleNumberPrefix(organizationId: string, saleNumberPrefix: string, actorId?: string | null) {
+  await updateOrganizationModuleConfigurationValues(organizationId, "pos", { workflow: { saleNumberPrefix } }, actorId);
+}
 
 async function validateWarehouseRef(organizationId: string, warehouseId?: string | null) {
   if (!warehouseId) return;
@@ -92,8 +112,11 @@ export function listSessions(organizationId: string) {
 // --- Sales ---
 
 async function generateSaleNumber(organizationId: string) {
-  const count = await db.posSale.count({ where: { organizationId } });
-  return `SALE-${String(count + 1).padStart(5, "0")}`;
+  const [prefix, count] = await Promise.all([
+    getSaleNumberPrefix(organizationId),
+    db.posSale.count({ where: { organizationId } }),
+  ]);
+  return `${prefix}-${String(count + 1).padStart(5, "0")}`;
 }
 
 export function listSales(organizationId: string) {

@@ -1,25 +1,25 @@
-import { Inbox } from "lucide-react";
 import Link from "next/link";
+import { Inbox, Search } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/feedback/empty-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/db";
 import { getPlatformAnchorOrganizationIds } from "@/lib/platform-organizations";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
+import type { ModuleRequestPriority, ModuleRequestStatus, ModuleRequestType, Prisma } from "@prisma/client";
 import {
   MODULE_REQUEST_PRIORITIES,
   MODULE_REQUEST_PRIORITY_LABELS,
-  MODULE_REQUEST_STATUSES,
-  MODULE_REQUEST_STATUS_LABELS,
   MODULE_REQUEST_TYPE_LABELS,
   MODULE_REQUEST_TYPES,
+  TERMINAL_MODULE_REQUEST_STATUSES,
 } from "@/platform/module-requests/constants";
 import { convertContactSubmission, manageModuleRequest, resolveContactSubmission } from "./actions";
+import { RequestCard, type PlatformRequestCardData } from "./_components/request-card";
 
 const ERRORS: Record<string, string> = {
   invalid: "Check the update fields.",
@@ -29,29 +29,69 @@ const ERRORS: Record<string, string> = {
   "module-required": "An existing module must be selected for this request type.",
 };
 
+const VIEWS = ["queue", "inbox", "history"] as const;
+type View = (typeof VIEWS)[number];
+
+function isView(value: string | undefined): value is View {
+  return VIEWS.includes(value as View);
+}
+
 export default async function PlatformRequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ updated?: string; converted?: string; error?: string }>;
+  searchParams: Promise<{
+    updated?: string;
+    converted?: string;
+    error?: string;
+    view?: string;
+    q?: string;
+    priority?: string;
+    type?: string;
+  }>;
 }) {
   await requirePlatformOperator();
   const platformAnchorIds = await getPlatformAnchorOrganizationIds();
-  const { updated, converted, error } = await searchParams;
-  const [requests, operators, organizations, modules, inquiries] = await Promise.all([
-    db.moduleRequest.findMany({
-      where: { status: { notIn: ["COMPLETED", "CANCELLED", "REJECTED"] } },
-      include: {
-        organization: true,
-        module: true,
-        requestedBy: { select: { name: true, email: true } },
-        assignedTo: { select: { name: true, email: true } },
-        events: {
-          include: { author: { select: { name: true, email: true } } },
-          orderBy: { createdAt: "asc" },
-        },
-      },
-      orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-    }),
+  const query = await searchParams;
+  const view: View = isView(query.view) ? query.view : "queue";
+  const search = (query.q ?? "").trim();
+  const priorityFilter = MODULE_REQUEST_PRIORITIES.includes(query.priority as ModuleRequestPriority) ? (query.priority as ModuleRequestPriority) : undefined;
+  const typeFilter = MODULE_REQUEST_TYPES.includes(query.type as ModuleRequestType) ? (query.type as ModuleRequestType) : undefined;
+
+  const statusFilter: Prisma.ModuleRequestWhereInput["status"] =
+    view === "history"
+      ? { in: Array.from(TERMINAL_MODULE_REQUEST_STATUSES) as ModuleRequestStatus[] }
+      : { notIn: Array.from(TERMINAL_MODULE_REQUEST_STATUSES) as ModuleRequestStatus[] };
+
+  const [requests, operators, organizations, modules, inquiries, activeCount, inboxCount, historyCount] = await Promise.all([
+    view === "inbox"
+      ? Promise.resolve([])
+      : db.moduleRequest.findMany({
+          where: {
+            status: statusFilter,
+            ...(priorityFilter ? { priority: priorityFilter } : {}),
+            ...(typeFilter ? { type: typeFilter } : {}),
+            ...(search
+              ? {
+                  OR: [
+                    { title: { contains: search, mode: "insensitive" } },
+                    { organization: { name: { contains: search, mode: "insensitive" } } },
+                    { module: { name: { contains: search, mode: "insensitive" } } },
+                  ],
+                }
+              : {}),
+          },
+          include: {
+            organization: true,
+            module: true,
+            requestedBy: { select: { name: true, email: true } },
+            assignedTo: { select: { name: true, email: true } },
+            events: {
+              include: { author: { select: { name: true, email: true } } },
+              orderBy: { createdAt: "asc" },
+            },
+          },
+          orderBy: view === "history" ? { updatedAt: "desc" } : [{ priority: "desc" }, { createdAt: "desc" }],
+        }),
     db.user.findMany({
       where: {
         status: "ACTIVE",
@@ -64,176 +104,192 @@ export default async function PlatformRequestsPage({
     }),
     db.organization.findMany({ where: { id: { notIn: platformAnchorIds }, status: { in: ["ACTIVE", "TRIAL"] } }, orderBy: { name: "asc" } }),
     db.module.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" } }),
-    db.contactSubmission.findMany({
-      where: { status: "NEW", intent: { in: ["DEMO", "MODULE", "CUSTOM_MODULE"] } },
-      include: { module: true },
-      orderBy: { createdAt: "desc" },
-    }),
+    view === "inbox" || view === "queue"
+      ? db.contactSubmission.findMany({
+          where: { status: "NEW", intent: { in: ["DEMO", "MODULE", "CUSTOM_MODULE"] } },
+          include: { module: true },
+          orderBy: { createdAt: "desc" },
+        })
+      : Promise.resolve([]),
+    db.moduleRequest.count({ where: { status: { notIn: Array.from(TERMINAL_MODULE_REQUEST_STATUSES) as ModuleRequestStatus[] } } }),
+    db.contactSubmission.count({ where: { status: "NEW", intent: { in: ["DEMO", "MODULE", "CUSTOM_MODULE"] } } }),
+    db.moduleRequest.count({ where: { status: { in: Array.from(TERMINAL_MODULE_REQUEST_STATUSES) as ModuleRequestStatus[] } } }),
   ]);
 
+  const operatorOptions = operators.map((operator) => ({ id: operator.id, label: operator.name || operator.email }));
+  const cardData: PlatformRequestCardData[] = requests.map((request) => ({
+    id: request.id,
+    title: request.title,
+    organizationName: request.organization.name,
+    requesterLabel: request.requestedBy.name || request.requestedBy.email,
+    type: request.type,
+    status: request.status,
+    priority: request.priority,
+    moduleName: request.module?.name ?? null,
+    businessJustification: request.businessJustification,
+    customizationDetails: request.customizationDetails,
+    decisionReason: request.decisionReason,
+    externalReference: request.externalReference,
+    assignedToId: request.assignedToId,
+    updatedLabel: request.updatedAt.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }),
+    isEnableExisting: request.type === "ENABLE_EXISTING" && Boolean(request.moduleId),
+    events: request.events.map((event) => ({
+      id: event.id,
+      authorLabel: event.author?.name || event.author?.email || "System",
+      createdLabel: event.createdAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }),
+      note: event.note,
+      isInternal: event.isInternal,
+      toStatus: event.toStatus,
+    })),
+  }));
+
+  const tabHref = (target: View) => {
+    const params = new URLSearchParams();
+    params.set("view", target);
+    return `/app/platform/requests?${params.toString()}`;
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
         title="Module requests"
         description="Review customer demand, assign ownership, enable existing modules, and manage custom work."
       />
-      {updated || converted ? (
+
+      {query.updated || query.converted ? (
         <Alert>
-          <AlertTitle>{converted ? "Inquiry converted" : "Request updated"}</AlertTitle>
+          <AlertTitle>{query.converted ? "Inquiry converted" : "Request updated"}</AlertTitle>
           <AlertDescription>The requester and platform records now reflect the change.</AlertDescription>
         </Alert>
       ) : null}
-      {error && ERRORS[error] ? (
+      {query.error && ERRORS[query.error] ? (
         <Alert variant="destructive">
           <AlertTitle>Action failed</AlertTitle>
-          <AlertDescription>{ERRORS[error]}</AlertDescription>
+          <AlertDescription>{ERRORS[query.error]}</AlertDescription>
         </Alert>
       ) : null}
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Unlinked public inquiries</h2>
-        {inquiries.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No new public module inquiries.</p>
-        ) : inquiries.map((inquiry) => (
-          <Card key={inquiry.id}>
-            <CardHeader>
-              <CardTitle>{inquiry.company}</CardTitle>
-              <CardDescription>{inquiry.name} · {inquiry.email} · {inquiry.phone || "No phone"} · prefers {inquiry.preferredContact.toLowerCase()} · {inquiry.createdAt.toLocaleString()}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm font-medium">{inquiry.intent === "DEMO" ? "Demo" : "Module"} · {inquiry.module?.name ?? "Custom module"}</p>
-              <p className="whitespace-pre-wrap text-sm">{inquiry.message || "No additional message."}</p>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" nativeButton={false} render={<a href={`mailto:${inquiry.email}`} />}>Email</Button>
-                {inquiry.phone ? <Button size="sm" variant="outline" nativeButton={false} render={<a href={`tel:${inquiry.phone}`} />}>Call</Button> : null}
-                {inquiry.phone ? <Button size="sm" variant="outline" nativeButton={false} render={<a href={`https://wa.me/${inquiry.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" />}>WhatsApp</Button> : null}
-              </div>
-              <Button nativeButton={false} render={<Link href={`/app/platform/organizations/new?inquiry=${inquiry.id}`} />}>
-                Create organization from inquiry
-              </Button>
-              <form action={convertContactSubmission} className="grid gap-3 md:grid-cols-4">
-                <input type="hidden" name="contactSubmissionId" value={inquiry.id} />
-                <select aria-label="Organization" name="organizationId" required defaultValue="" className="h-9 rounded-md border bg-transparent px-3 text-sm">
-                  <option value="" disabled>Link organization</option>
-                  {organizations.map((organization) => (
-                    <option key={organization.id} value={organization.id}>{organization.name}</option>
-                  ))}
-                </select>
-                <select aria-label="Request type" name="type" defaultValue={inquiry.intent === "CUSTOM_MODULE" ? "CUSTOM_MODULE" : inquiry.intent === "DEMO" ? "DEMO" : "ENABLE_EXISTING"} className="h-9 rounded-md border bg-transparent px-3 text-sm">
-                  {MODULE_REQUEST_TYPES.map((type) => (
-                    <option key={type} value={type}>{MODULE_REQUEST_TYPE_LABELS[type]}</option>
-                  ))}
-                </select>
-                <select aria-label="Existing module" name="moduleId" defaultValue="" className="h-9 rounded-md border bg-transparent px-3 text-sm">
-                  <option value="">No existing module</option>
-                  {modules.map((module_) => (
-                    <option key={module_.id} value={module_.id}>{module_.name}</option>
-                  ))}
-                </select>
-                <Button type="submit">Convert to request</Button>
-              </form>
-              <div className="flex gap-2">
-                <form action={resolveContactSubmission}>
-                  <input type="hidden" name="contactSubmissionId" value={inquiry.id} />
-                  <input type="hidden" name="status" value="RESOLVED" />
-                  <Button type="submit" size="sm" variant="outline">Resolve without request</Button>
-                </form>
-                <form action={resolveContactSubmission}>
-                  <input type="hidden" name="contactSubmissionId" value={inquiry.id} />
-                  <input type="hidden" name="status" value="SPAM" />
-                  <Button type="submit" size="sm" variant="ghost">Mark spam</Button>
-                </form>
-              </div>
-            </CardContent>
-          </Card>
+      <nav className="flex flex-wrap gap-2 border-b pb-3" aria-label="Request views">
+        {([
+          ["queue", "Active queue", activeCount],
+          ["inbox", "Inbox", inboxCount],
+          ["history", "History", historyCount],
+        ] as const).map(([key, label, count]) => (
+          <Button
+            key={key}
+            size="sm"
+            variant={view === key ? "default" : "ghost"}
+            nativeButton={false}
+            render={<Link href={tabHref(key)} />}
+          >
+            {label}
+            <Badge variant={view === key ? "secondary" : "outline"} className="ml-1">{count}</Badge>
+          </Button>
         ))}
-      </section>
+      </nav>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Request queue</h2>
-        {requests.length === 0 ? (
-          <Card><CardContent className="flex flex-col items-center py-10 text-center"><Inbox className="mb-3 size-8 text-muted-foreground" /><p className="font-medium">No module requests</p></CardContent></Card>
-        ) : requests.map((request) => (
-          <Card key={request.id}>
-            <CardHeader>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <CardTitle>{request.title}</CardTitle>
-                  <CardDescription>
-                    {request.organization.name} · {request.requestedBy.name || request.requestedBy.email}
-                    {" · "}{MODULE_REQUEST_TYPE_LABELS[request.type]} · {request.module?.name ?? "No existing module"}
-                  </CardDescription>
+      {view !== "inbox" ? (
+        <Card>
+          <CardContent className="pt-6">
+            <form className="flex flex-col gap-3 sm:flex-row" action={`/app/platform/requests`}>
+              <input type="hidden" name="view" value={view} />
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+                <Input name="q" defaultValue={search} placeholder="Search title, organization, or module" className="pl-9" />
+              </div>
+              <select aria-label="Priority" name="priority" defaultValue={priorityFilter ?? ""} className="h-9 rounded-md border bg-transparent px-3 text-sm">
+                <option value="">All priorities</option>
+                {MODULE_REQUEST_PRIORITIES.map((priority) => <option key={priority} value={priority}>{MODULE_REQUEST_PRIORITY_LABELS[priority]}</option>)}
+              </select>
+              <select aria-label="Request type" name="type" defaultValue={typeFilter ?? ""} className="h-9 rounded-md border bg-transparent px-3 text-sm">
+                <option value="">All types</option>
+                {MODULE_REQUEST_TYPES.map((type) => <option key={type} value={type}>{MODULE_REQUEST_TYPE_LABELS[type]}</option>)}
+              </select>
+              <Button type="submit" variant="outline">Filter</Button>
+            </form>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {view === "inbox" || (view === "queue" && inquiries.length > 0) ? (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">Unlinked public inquiries</h2>
+          {inquiries.length === 0 ? (
+            <EmptyState icon={Inbox} title="No new public inquiries" description="Demo and module inquiries from the public contact form will appear here." />
+          ) : inquiries.map((inquiry) => (
+            <Card key={inquiry.id}>
+              <CardHeader>
+                <CardTitle>{inquiry.company}</CardTitle>
+                <CardDescription>{inquiry.name} · {inquiry.email} · {inquiry.phone || "No phone"} · prefers {inquiry.preferredContact.toLowerCase()} · {inquiry.createdAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm font-medium">{inquiry.intent === "DEMO" ? "Demo" : "Module"} · {inquiry.module?.name ?? "Custom module"}</p>
+                <p className="whitespace-pre-wrap text-sm">{inquiry.message || "No additional message."}</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" nativeButton={false} render={<a href={`mailto:${inquiry.email}`} />}>Email</Button>
+                  {inquiry.phone ? <Button size="sm" variant="outline" nativeButton={false} render={<a href={`tel:${inquiry.phone}`} />}>Call</Button> : null}
+                  {inquiry.phone ? <Button size="sm" variant="outline" nativeButton={false} render={<a href={`https://wa.me/${inquiry.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" />}>WhatsApp</Button> : null}
                 </div>
+                <Button nativeButton={false} render={<Link href={`/app/platform/organizations/new?inquiry=${inquiry.id}`} />}>
+                  Create organization from inquiry
+                </Button>
+                <form action={convertContactSubmission} className="grid gap-3 md:grid-cols-4">
+                  <input type="hidden" name="contactSubmissionId" value={inquiry.id} />
+                  <select aria-label="Organization" name="organizationId" required defaultValue="" className="h-9 rounded-md border bg-transparent px-3 text-sm">
+                    <option value="" disabled>Link organization</option>
+                    {organizations.map((organization) => (
+                      <option key={organization.id} value={organization.id}>{organization.name}</option>
+                    ))}
+                  </select>
+                  <select aria-label="Request type" name="type" defaultValue={inquiry.intent === "CUSTOM_MODULE" ? "CUSTOM_MODULE" : inquiry.intent === "DEMO" ? "DEMO" : "ENABLE_EXISTING"} className="h-9 rounded-md border bg-transparent px-3 text-sm">
+                    {MODULE_REQUEST_TYPES.map((type) => (
+                      <option key={type} value={type}>{MODULE_REQUEST_TYPE_LABELS[type]}</option>
+                    ))}
+                  </select>
+                  <select aria-label="Existing module" name="moduleId" defaultValue="" className="h-9 rounded-md border bg-transparent px-3 text-sm">
+                    <option value="">No existing module</option>
+                    {modules.map((module_) => (
+                      <option key={module_.id} value={module_.id}>{module_.name}</option>
+                    ))}
+                  </select>
+                  <Button type="submit">Convert to request</Button>
+                </form>
                 <div className="flex gap-2">
-                  <Badge variant="outline">{MODULE_REQUEST_PRIORITY_LABELS[request.priority]}</Badge>
-                  <Badge>{MODULE_REQUEST_STATUS_LABELS[request.status]}</Badge>
+                  <form action={resolveContactSubmission}>
+                    <input type="hidden" name="contactSubmissionId" value={inquiry.id} />
+                    <input type="hidden" name="status" value="RESOLVED" />
+                    <Button type="submit" size="sm" variant="outline">Resolve without request</Button>
+                  </form>
+                  <form action={resolveContactSubmission}>
+                    <input type="hidden" name="contactSubmissionId" value={inquiry.id} />
+                    <input type="hidden" name="status" value="SPAM" />
+                    <Button type="submit" size="sm" variant="ghost">Mark spam</Button>
+                  </form>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div><p className="text-xs font-medium uppercase text-muted-foreground">Business need</p><p className="mt-1 whitespace-pre-wrap text-sm">{request.businessJustification}</p></div>
-                <div><p className="text-xs font-medium uppercase text-muted-foreground">Customization details</p><p className="mt-1 whitespace-pre-wrap text-sm">{request.customizationDetails || "None supplied."}</p></div>
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Timeline</p>
-                {request.events.map((event) => (
-                  <div key={event.id} className="rounded-md bg-muted/50 px-3 py-2 text-sm">
-                    <div className="flex justify-between gap-2 text-xs text-muted-foreground">
-                      <span>{event.author?.name || event.author?.email || "System"}{event.isInternal ? " · Internal" : ""}</span>
-                      <span>{event.createdAt.toLocaleString()}</span>
-                    </div>
-                    {event.note ? <p className="mt-1 whitespace-pre-wrap">{event.note}</p> : null}
-                  </div>
-                ))}
-              </div>
-              <form action={manageModuleRequest} className="grid gap-4 border-t pt-4 md:grid-cols-2">
-                <input type="hidden" name="requestId" value={request.id} />
-                <div className="space-y-2">
-                  <Label htmlFor={`assignee-${request.id}`}>Assigned operator</Label>
-                  <select id={`assignee-${request.id}`} name="assignedToId" defaultValue={request.assignedToId ?? ""} className="h-9 w-full rounded-md border bg-transparent px-3 text-sm">
-                    <option value="">Unassigned</option>
-                    {operators.map((operator) => <option key={operator.id} value={operator.id}>{operator.name || operator.email}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`status-${request.id}`}>Status</Label>
-                  <select id={`status-${request.id}`} name="status" defaultValue={request.status} className="h-9 w-full rounded-md border bg-transparent px-3 text-sm">
-                    {MODULE_REQUEST_STATUSES.map((status) => <option key={status} value={status}>{MODULE_REQUEST_STATUS_LABELS[status]}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`priority-${request.id}`}>Priority</Label>
-                  <select id={`priority-${request.id}`} name="priority" defaultValue={request.priority} className="h-9 w-full rounded-md border bg-transparent px-3 text-sm">
-                    {MODULE_REQUEST_PRIORITIES.map((priority) => <option key={priority} value={priority}>{MODULE_REQUEST_PRIORITY_LABELS[priority]}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`reference-${request.id}`}>Quote / external reference</Label>
-                  <Input id={`reference-${request.id}`} name="externalReference" defaultValue={request.externalReference ?? ""} />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor={`decision-${request.id}`}>Decision or customer-facing reason</Label>
-                  <Textarea id={`decision-${request.id}`} name="decisionReason" defaultValue={request.decisionReason ?? ""} rows={2} />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor={`note-${request.id}`}>Timeline note</Label>
-                  <Textarea id={`note-${request.id}`} name="note" rows={2} />
-                  <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <input type="checkbox" name="isInternal" value="true" /> Internal note — hidden from requester
-                  </label>
-                </div>
-                <div className="flex flex-wrap gap-2 md:col-span-2">
-                  <Button type="submit">Save update</Button>
-                  {request.type === "ENABLE_EXISTING" && request.moduleId ? (
-                    <Button type="submit" name="enableModule" value="true" variant="outline">Approve and enable module</Button>
-                  ) : null}
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        ))}
-      </section>
+              </CardContent>
+            </Card>
+          ))}
+        </section>
+      ) : null}
+
+      {view !== "inbox" ? (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">{view === "history" ? "Resolved requests" : "Request queue"}</h2>
+          {cardData.length === 0 ? (
+            <EmptyState
+              icon={Inbox}
+              title={search || priorityFilter || typeFilter ? "No requests match this filter" : view === "history" ? "No resolved requests yet" : "No open requests"}
+              description={search || priorityFilter || typeFilter ? "Try a different search term or clear the filters." : view === "history" ? "Completed, rejected, and cancelled requests will appear here." : "New requests from organizations will show up here for review."}
+            />
+          ) : (
+            <div className="space-y-3">
+              {cardData.map((request, index) => (
+                <RequestCard key={request.id} request={request} operators={operatorOptions} manageAction={manageModuleRequest} defaultOpen={cardData.length === 1 || (view === "queue" && index === 0 && !search && !priorityFilter && !typeFilter)} />
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
     </div>
   );
 }

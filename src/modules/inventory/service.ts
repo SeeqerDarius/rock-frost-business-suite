@@ -2,11 +2,27 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import type { InventoryMovementType } from "@prisma/client";
+import {
+  getOrganizationModuleConfiguration,
+  updateOrganizationModuleConfigurationValues,
+} from "@/platform/module-requests/configuration";
 
 /**
  * Fresh module (no reference implementation to migrate from). Every function
  * takes organizationId explicitly and filters on it, per docs/MODULE_BOUNDARIES.md.
  */
+
+/** Inventory has no dedicated settings table; the default reorder point
+ * lives in the generic `OrganizationModule.configuration` store. */
+export async function getInventorySettings(organizationId: string) {
+  const configuration = await getOrganizationModuleConfiguration(organizationId, "inventory");
+  const configured = configuration.limits.defaultReorderPoint;
+  return { defaultReorderPoint: Number.isFinite(configured) && configured >= 0 ? Math.round(configured) : 0 };
+}
+
+export async function updateInventorySettings(organizationId: string, data: { defaultReorderPoint: number }, actorId?: string | null) {
+  await updateOrganizationModuleConfigurationValues(organizationId, "inventory", { limits: { defaultReorderPoint: data.defaultReorderPoint } }, actorId);
+}
 
 // --- Categories ---
 

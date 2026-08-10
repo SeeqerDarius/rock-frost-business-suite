@@ -3,12 +3,33 @@ import "server-only";
 import { db } from "@/lib/db";
 import type { HrEmployeeStatus } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
+import {
+  getOrganizationModuleConfiguration,
+  updateOrganizationModuleConfigurationValues,
+} from "@/platform/module-requests/configuration";
 
 export class NotFoundError extends Error {}
 
 async function requireEmployee(organizationId: string, employeeId: string) {
   const employee = await db.hrEmployee.findFirst({ where: { id: employeeId, organizationId } });
   if (!employee) throw new NotFoundError("Employee not found.");
+}
+
+const DEFAULT_EMPLOYEE_NUMBER_PREFIX = "EMP";
+const PREFIX_PATTERN = /^[A-Z0-9]{2,8}$/;
+
+/** HR has no dedicated settings table; the employee numbering prefix lives
+ * in the generic `OrganizationModule.configuration` store. */
+export async function getHrSettings(organizationId: string) {
+  const configuration = await getOrganizationModuleConfiguration(organizationId, "hr");
+  const configured = configuration.workflow.employeeNumberPrefix;
+  return {
+    employeeNumberPrefix: configured && PREFIX_PATTERN.test(configured) ? configured : DEFAULT_EMPLOYEE_NUMBER_PREFIX,
+  };
+}
+
+export async function updateHrSettings(organizationId: string, data: { employeeNumberPrefix: string }, actorId?: string | null) {
+  await updateOrganizationModuleConfigurationValues(organizationId, "hr", { workflow: { employeeNumberPrefix: data.employeeNumberPrefix } }, actorId);
 }
 
 /**
@@ -34,8 +55,11 @@ export function listManagerCandidates(organizationId: string) {
 }
 
 async function generateEmployeeNumber(organizationId: string) {
-  const count = await db.hrEmployee.count({ where: { organizationId } });
-  return `EMP-${String(count + 1).padStart(4, "0")}`;
+  const [{ employeeNumberPrefix }, count] = await Promise.all([
+    getHrSettings(organizationId),
+    db.hrEmployee.count({ where: { organizationId } }),
+  ]);
+  return `${employeeNumberPrefix}-${String(count + 1).padStart(4, "0")}`;
 }
 
 interface EmployeeInput {

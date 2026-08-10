@@ -1,4 +1,4 @@
-import { Lock, Tag } from "lucide-react";
+import { Hash, Lock, Tag } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -9,12 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listExpenseCategories, listAccounts } from "@/modules/accounting/service";
-import { addExpenseCategory } from "./actions";
+import { getAccountingSettings, listExpenseCategories, listAccounts } from "@/modules/accounting/service";
+import { addExpenseCategory, saveAccountingSettings } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage Accounting settings.",
   "missing-fields": "A name is required.",
+  "invalid-prefix": "Use 2-8 uppercase letters or numbers.",
 };
 
 export default async function AccountingSettingsPage({
@@ -34,9 +35,10 @@ export default async function AccountingSettingsPage({
     );
   }
 
-  const [categories, accounts] = await Promise.all([
+  const [categories, accounts, settings] = await Promise.all([
     listExpenseCategories(tenant.organizationId),
     listAccounts(tenant.organizationId),
+    getAccountingSettings(tenant.organizationId),
   ]);
   const expenseAccountItems: Record<string, string> = Object.fromEntries(
     accounts.filter((a) => a.type === "EXPENSE").map((a) => [a.id, `${a.code} - ${a.name}`]),
@@ -56,6 +58,25 @@ export default async function AccountingSettingsPage({
           {ERROR_MESSAGES[error]}
         </div>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Hash className="size-5 text-muted-foreground" />
+            <CardTitle>Invoice numbering</CardTitle>
+          </div>
+          <CardDescription>e.g. &quot;INV&quot; → INV-0001. Existing invoice numbers are not renumbered.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={saveAccountingSettings} className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="invoiceNumberPrefix">Invoice number prefix</Label>
+              <Input id="invoiceNumberPrefix" name="invoiceNumberPrefix" defaultValue={settings.invoiceNumberPrefix} minLength={2} maxLength={8} className="w-32 uppercase" required />
+            </div>
+            <Button type="submit" size="sm" variant="outline">Save</Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

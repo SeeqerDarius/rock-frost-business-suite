@@ -52,11 +52,16 @@ export async function manageModuleRequest(formData: FormData): Promise<void> {
 
   try {
     const enableModule = formData.get("enableModule") === "true";
+    // The reject confirmation button posts a dedicated flag rather than
+    // reusing `name="status"`, which would collide with the form's own
+    // status <select> — FormData.get() returns only the first same-named
+    // value (the select's), silently dropping the button's intent.
+    const rejectRequest = formData.get("rejectRequest") === "true";
     await updateModuleRequest({
       requestId: parsed.data.requestId,
       actorId: tenant.userId,
       assignedToId: parsed.data.assignedToId || null,
-      status: enableModule ? "COMPLETED" : parsed.data.status,
+      status: enableModule ? "COMPLETED" : rejectRequest ? "REJECTED" : parsed.data.status,
       priority: parsed.data.priority,
       note: parsed.data.note || null,
       isInternal: formData.get("isInternal") === "true",

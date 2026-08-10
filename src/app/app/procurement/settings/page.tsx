@@ -1,19 +1,21 @@
-import { Lock, Warehouse } from "lucide-react";
+import { Hash, Lock, Warehouse } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getSettings } from "@/modules/procurement/service";
+import { getOrderNumberPrefix, getSettings } from "@/modules/procurement/service";
 import { listWarehouses } from "@/modules/inventory/service";
-import { updateDefaultWarehouse } from "./actions";
+import { saveOrderNumberPrefix, updateDefaultWarehouse } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage Procurement settings.",
   "invalid-input": "That warehouse selection isn't valid.",
+  "invalid-prefix": "Use 2-8 uppercase letters or numbers.",
 };
 
 export default async function ProcurementSettingsPage({
@@ -33,9 +35,10 @@ export default async function ProcurementSettingsPage({
     );
   }
 
-  const [settings, warehouses] = await Promise.all([
+  const [settings, warehouses, orderNumberPrefix] = await Promise.all([
     getSettings(tenant.organizationId),
     listWarehouses(tenant.organizationId),
+    getOrderNumberPrefix(tenant.organizationId),
   ]);
   const warehouseItems: Record<string, string> = Object.fromEntries(warehouses.map((w) => [w.id, w.name]));
 
@@ -53,6 +56,25 @@ export default async function ProcurementSettingsPage({
           {ERROR_MESSAGES[error]}
         </div>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Hash className="size-5 text-muted-foreground" />
+            <CardTitle>Order numbering</CardTitle>
+          </div>
+          <CardDescription>e.g. &quot;PO&quot; → PO-0001. Existing order numbers are not renumbered.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={saveOrderNumberPrefix} className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="orderNumberPrefix">Order number prefix</Label>
+              <Input id="orderNumberPrefix" name="orderNumberPrefix" defaultValue={orderNumberPrefix} minLength={2} maxLength={8} className="w-32 uppercase" required />
+            </div>
+            <Button type="submit" size="sm" variant="outline">Save</Button>
+          </form>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

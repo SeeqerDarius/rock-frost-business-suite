@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { setDefaultWarehouse } from "@/modules/procurement/service";
+import { setDefaultWarehouse, updateOrderNumberPrefix } from "@/modules/procurement/service";
 import { cuid, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null): string {
@@ -31,6 +31,22 @@ export async function updateDefaultWarehouse(formData: FormData): Promise<void> 
   }
 
   await setDefaultWarehouse(tenant.organizationId, parsed.data.defaultWarehouseId);
+  revalidatePath("/app/procurement/settings");
+  redirect("/app/procurement/settings?saved=1");
+}
+
+const prefixSchema = z.object({ orderNumberPrefix: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{2,8}$/, "Use 2-8 uppercase letters or numbers.") });
+
+export async function saveOrderNumberPrefix(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("procurement");
+  if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_SETTINGS_MANAGE)) {
+    redirect("/app/procurement/settings?error=forbidden");
+  }
+
+  const parsed = parseWithSchema(prefixSchema, { orderNumberPrefix: clean(formData.get("orderNumberPrefix")) });
+  if (!parsed.success) redirect("/app/procurement/settings?error=invalid-prefix");
+
+  await updateOrderNumberPrefix(tenant.organizationId, parsed.data.orderNumberPrefix, tenant.userId);
   revalidatePath("/app/procurement/settings");
   redirect("/app/procurement/settings?saved=1");
 }

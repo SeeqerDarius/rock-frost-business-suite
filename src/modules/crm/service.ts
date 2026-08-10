@@ -2,12 +2,49 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import type { CrmDealStage, CrmActivityType, CrmLeadStatus } from "@prisma/client";
+import {
+  getOrganizationModuleConfiguration,
+  updateOrganizationModuleConfigurationValues,
+} from "@/platform/module-requests/configuration";
 
 export class NotFoundError extends Error {}
 
 async function requireActiveMember(organizationId: string, userId: string) {
   const member = await db.organizationMember.findFirst({ where: { userId, organizationId, status: "ACTIVE" } });
   if (!member) throw new NotFoundError("User not found.");
+}
+
+/** CRM has no dedicated settings table; the default-owner assignment lives
+ * in the generic `OrganizationModule.configuration` store. */
+export async function getCrmSettings(organizationId: string) {
+  const configuration = await getOrganizationModuleConfiguration(organizationId, "crm");
+  return { defaultOwnerId: configuration.workflow.defaultOwnerId || null };
+}
+
+export async function updateCrmSettings(organizationId: string, data: { defaultOwnerId: string | null }, actorId?: string | null) {
+  if (data.defaultOwnerId) await requireActiveMember(organizationId, data.defaultOwnerId);
+  await updateOrganizationModuleConfigurationValues(organizationId, "crm", { workflow: { defaultOwnerId: data.defaultOwnerId ?? "" } }, actorId);
+}
+
+export async function listActiveMembers(organizationId: string) {
+  const members = await db.organizationMember.findMany({
+    where: { organizationId, status: "ACTIVE" },
+    include: { user: true },
+    orderBy: { user: { name: "asc" } },
+  });
+  return members.map((member) => member.user);
+}
+
+/** Falls back to the configured default owner when a new lead/deal is
+ * created without one, so nothing sits unowned by default. Silently skips
+ * an owner who is no longer an active member rather than failing the
+ * create — the record is simply left unowned, same as if none were set. */
+async function resolveDefaultOwnerId(organizationId: string, requestedOwnerId: string | null | undefined) {
+  if (requestedOwnerId) return requestedOwnerId;
+  const { defaultOwnerId } = await getCrmSettings(organizationId);
+  if (!defaultOwnerId) return requestedOwnerId ?? null;
+  const stillActive = await db.organizationMember.findFirst({ where: { userId: defaultOwnerId, organizationId, status: "ACTIVE" } });
+  return stillActive ? defaultOwnerId : requestedOwnerId ?? null;
 }
 
 async function requireContact(organizationId: string, contactId: string) {
@@ -86,7 +123,8 @@ interface LeadInput {
 
 export async function createLead(organizationId: string, data: LeadInput) {
   if (data.ownerId) await requireActiveMember(organizationId, data.ownerId);
-  return db.crmLead.create({ data: { organizationId, ...data } });
+  const ownerId = await resolveDefaultOwnerId(organizationId, data.ownerId);
+  return db.crmLead.create({ data: { organizationId, ...data, ownerId } });
 }
 
 export async function updateLead(organizationId: string, id: string, data: LeadInput & { status?: CrmLeadStatus }) {
@@ -163,7 +201,8 @@ interface DealInput {
 export async function createDeal(organizationId: string, data: DealInput) {
   if (data.contactId) await requireContact(organizationId, data.contactId);
   if (data.ownerId) await requireActiveMember(organizationId, data.ownerId);
-  return db.crmDeal.create({ data: { organizationId, ...data, stage: "NEW" } });
+  const ownerId = await resolveDefaultOwnerId(organizationId, data.ownerId);
+  return db.crmDeal.create({ data: { organizationId, ...data, ownerId, stage: "NEW" } });
 }
 
 export async function updateDeal(organizationId: string, id: string, data: DealInput) {

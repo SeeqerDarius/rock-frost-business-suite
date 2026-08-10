@@ -3,6 +3,10 @@ import "server-only";
 import { db } from "@/lib/db";
 import type { ProjectTaskStatus, ProjectTaskPriority } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
+import {
+  getOrganizationModuleConfiguration,
+  updateOrganizationModuleConfigurationValues,
+} from "@/platform/module-requests/configuration";
 
 /**
  * Fresh module (no reference implementation to migrate from). Every function
@@ -18,11 +22,31 @@ export async function listAssignableUsers(organizationId: string) {
   return members.map((m) => m.user);
 }
 
+const DEFAULT_PROJECT_CODE_PREFIX = "PRJ";
+const PREFIX_PATTERN = /^[A-Z0-9]{2,8}$/;
+
+/** Projects has no dedicated settings table; the code prefix lives in the
+ * generic `OrganizationModule.configuration` store. */
+export async function getProjectsSettings(organizationId: string) {
+  const configuration = await getOrganizationModuleConfiguration(organizationId, "projects");
+  const configured = configuration.workflow.projectCodePrefix;
+  return {
+    projectCodePrefix: configured && PREFIX_PATTERN.test(configured) ? configured : DEFAULT_PROJECT_CODE_PREFIX,
+  };
+}
+
+export async function updateProjectsSettings(organizationId: string, data: { projectCodePrefix: string }, actorId?: string | null) {
+  await updateOrganizationModuleConfigurationValues(organizationId, "projects", { workflow: { projectCodePrefix: data.projectCodePrefix } }, actorId);
+}
+
 // --- Projects ---
 
 async function generateProjectCode(organizationId: string) {
-  const count = await db.project.count({ where: { organizationId } });
-  return `PRJ-${String(count + 1).padStart(4, "0")}`;
+  const [{ projectCodePrefix }, count] = await Promise.all([
+    getProjectsSettings(organizationId),
+    db.project.count({ where: { organizationId } }),
+  ]);
+  return `${projectCodePrefix}-${String(count + 1).padStart(4, "0")}`;
 }
 
 export function listProjects(organizationId: string) {

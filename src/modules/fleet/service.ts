@@ -11,6 +11,37 @@ import type {
   FleetVehicleStatus,
 } from "@prisma/client";
 import { Prisma } from "@prisma/client";
+import {
+  getOrganizationModuleConfiguration,
+  updateOrganizationModuleConfigurationValues,
+} from "@/platform/module-requests/configuration";
+
+const DEFAULT_RENEWAL_REMINDER_DAYS = 30;
+
+/** Fleet has no dedicated `FleetSettings` table, so its one real module
+ * setting (the renewal reminder window) lives in the generic
+ * `OrganizationModule.configuration` store — see
+ * `src/platform/module-requests/configuration.ts`. */
+export async function getFleetSettings(organizationId: string) {
+  const configuration = await getOrganizationModuleConfiguration(organizationId, "fleet");
+  const configured = configuration.limits.documentRenewalReminderDays;
+  return {
+    documentRenewalReminderDays: Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_RENEWAL_REMINDER_DAYS,
+  };
+}
+
+export async function updateFleetSettings(
+  organizationId: string,
+  data: { documentRenewalReminderDays: number },
+  actorId?: string | null,
+) {
+  await updateOrganizationModuleConfigurationValues(
+    organizationId,
+    "fleet",
+    { limits: { documentRenewalReminderDays: data.documentRenewalReminderDays } },
+    actorId,
+  );
+}
 
 /**
  * Every function here takes organizationId explicitly and filters on it —
@@ -201,7 +232,8 @@ export async function createFleetVehicleDocument(
   }
 ) {
   await requireVehicle(organizationId, data.vehicleId);
-  return db.fleetVehicleDocument.create({ data: { organizationId, ...data, renewalStatus: computeRenewalStatus(data) } });
+  const { documentRenewalReminderDays } = await getFleetSettings(organizationId);
+  return db.fleetVehicleDocument.create({ data: { organizationId, ...data, renewalStatus: computeRenewalStatus(data, documentRenewalReminderDays) } });
 }
 
 export async function updateFleetVehicleDocument(
@@ -218,27 +250,31 @@ export async function updateFleetVehicleDocument(
   }
 ) {
   await requireVehicle(organizationId, data.vehicleId);
+  const { documentRenewalReminderDays } = await getFleetSettings(organizationId);
   return db.fleetVehicleDocument.update({
     where: { id, organizationId },
-    data: { ...data, renewalStatus: computeRenewalStatus(data) },
+    data: { ...data, renewalStatus: computeRenewalStatus(data, documentRenewalReminderDays) },
   });
 }
 
-function computeRenewalStatus(data: { insuranceExpiresAt: Date; roadworthyExpiresAt: Date }) {
+function computeRenewalStatus(data: { insuranceExpiresAt: Date; roadworthyExpiresAt: Date }, reminderDays: number) {
   const soonest = data.insuranceExpiresAt < data.roadworthyExpiresAt ? data.insuranceExpiresAt : data.roadworthyExpiresAt;
   const daysUntil = (soonest.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
   if (daysUntil < 0) return "DUE" as const;
-  if (daysUntil <= 30) return "READY" as const;
+  if (daysUntil <= reminderDays) return "READY" as const;
   return "CLEAR" as const;
 }
 
 export async function refreshFleetDocumentStatuses(organizationId: string) {
-  const documents = await db.fleetVehicleDocument.findMany({
-    where: { organizationId },
-    include: { vehicle: true },
-  });
+  const [documents, { documentRenewalReminderDays }] = await Promise.all([
+    db.fleetVehicleDocument.findMany({
+      where: { organizationId },
+      include: { vehicle: true },
+    }),
+    getFleetSettings(organizationId),
+  ]);
   for (const document of documents) {
-    const renewalStatus = computeRenewalStatus(document);
+    const renewalStatus = computeRenewalStatus(document, documentRenewalReminderDays);
     const documentStatus = renewalStatus === "DUE" ? "EXPIRED" : renewalStatus === "READY" ? "EXPIRING_SOON" : "VALID";
     if (document.renewalStatus === renewalStatus && document.vehicle.documentStatus === documentStatus) continue;
     await db.$transaction(async (tx) => {

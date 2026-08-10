@@ -4,8 +4,28 @@ import { db } from "@/lib/db";
 import { recordMovement } from "@/modules/inventory/service";
 import type { ProcurementRequestStatus, ProcurementOrderStatus } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
+import {
+  getOrganizationModuleConfiguration,
+  updateOrganizationModuleConfigurationValues,
+} from "@/platform/module-requests/configuration";
 
 export class NotFoundError extends Error {}
+
+const DEFAULT_ORDER_NUMBER_PREFIX = "PO";
+const PREFIX_PATTERN = /^[A-Z0-9]{2,8}$/;
+
+/** The default warehouse lives on the dedicated `ProcurementSettings` table
+ * (see below); the order numbering prefix has no column there, so it lives
+ * in the generic `OrganizationModule.configuration` store instead. */
+export async function getOrderNumberPrefix(organizationId: string) {
+  const configuration = await getOrganizationModuleConfiguration(organizationId, "procurement");
+  const configured = configuration.workflow.orderNumberPrefix;
+  return configured && PREFIX_PATTERN.test(configured) ? configured : DEFAULT_ORDER_NUMBER_PREFIX;
+}
+
+export async function updateOrderNumberPrefix(organizationId: string, orderNumberPrefix: string, actorId?: string | null) {
+  await updateOrganizationModuleConfigurationValues(organizationId, "procurement", { workflow: { orderNumberPrefix } }, actorId);
+}
 
 /**
  * Fresh module (no reference implementation to migrate from). Every function
@@ -104,8 +124,11 @@ export async function rejectRequest(organizationId: string, id: string, approved
 // --- Orders ---
 
 async function generateOrderNumber(organizationId: string) {
-  const count = await db.procurementOrder.count({ where: { organizationId } });
-  return `PO-${String(count + 1).padStart(4, "0")}`;
+  const [prefix, count] = await Promise.all([
+    getOrderNumberPrefix(organizationId),
+    db.procurementOrder.count({ where: { organizationId } }),
+  ]);
+  return `${prefix}-${String(count + 1).padStart(4, "0")}`;
 }
 
 export function listOrders(organizationId: string) {
