@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
+import { passwordResetEmail } from "@/lib/email-templates";
 import { issuePasswordResetToken, consumePasswordResetToken } from "@/lib/auth/tokens";
 import { revokeUserSessions } from "@/lib/auth/session-revocation";
 import { acceptInvitationNewUser, acceptInvitationExistingUser, InvitationAcceptError } from "@/lib/auth/invitations";
@@ -61,11 +62,7 @@ export async function requestPasswordReset(formData: FormData): Promise<void> {
       resetUrl.searchParams.set("email", email);
       resetUrl.searchParams.set("token", token);
 
-      await sendEmail({
-        to: email,
-        subject: "Reset your Rock Frost Business Suite password",
-        html: `<p>Someone requested a password reset for this account.</p><p><a href="${resetUrl.toString()}">Reset your password</a></p><p>This link expires in 1 hour. If you didn't request this, you can ignore this email.</p>`,
-      });
+      await sendEmail({ to: email, ...passwordResetEmail(resetUrl.toString()) });
     }
   }
 

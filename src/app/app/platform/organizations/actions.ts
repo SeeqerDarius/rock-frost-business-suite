@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 import { buildTenantAppUrl } from "@/lib/app-url";
 import { sendEmail } from "@/lib/email";
+import { invitationEmail } from "@/lib/email-templates";
 import {
   createInvitation,
   markInvitationDeliveryFailed,
@@ -15,7 +16,7 @@ import {
 import { isPlatformOperator } from "@/lib/auth/permissions";
 import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import { requireCurrentTenant } from "@/lib/tenant";
-import { cuid, email, escapeHtml, longText, parseWithSchema, shortText } from "@/lib/validation";
+import { cuid, email, longText, parseWithSchema, shortText } from "@/lib/validation";
 import { createModuleRequest } from "@/platform/module-requests/service";
 import { isPlatformUser } from "@/lib/auth/platform-identity";
 
@@ -182,11 +183,7 @@ export async function createOrganization(formData: FormData): Promise<void> {
     createdById: tenant.userId,
   });
   const inviteUrl = buildTenantAppUrl("/invite", { token });
-  const delivery = await sendEmail({
-    to: parsed.data.ownerEmail,
-    subject: `You have been invited to ${parsed.data.name}`,
-    html: `<p>You've been invited to join <strong>${escapeHtml(parsed.data.name)}</strong> as Organization Owner.</p><p><a href="${escapeHtml(inviteUrl)}">Accept the invitation</a></p><p>This link expires in 7 days.</p>`,
-  });
+  const delivery = await sendEmail({ to: parsed.data.ownerEmail, ...invitationEmail({ organizationName: parsed.data.name, roleName: "Organization Owner", inviteUrl }) });
   if (!delivery.ok) {
     await markInvitationDeliveryFailed(result.membershipId);
   }
@@ -303,11 +300,7 @@ export async function resendOrganizationInvitation(formData: FormData): Promise<
     redirect(`/app/platform/organizations/${parsed.data.organizationId}?error=invitation`);
   }
   const inviteUrl = buildTenantAppUrl("/invite", { token });
-  const delivery = await sendEmail({
-    to: member.user.email,
-    subject: `Reminder: invitation to ${member.organization.name}`,
-    html: `<p>You've been invited to join <strong>${escapeHtml(member.organization.name)}</strong> as ${escapeHtml(member.role?.name ?? "a member")}.</p><p><a href="${escapeHtml(inviteUrl)}">Accept the invitation</a></p><p>This link expires in 7 days.</p>`,
-  });
+  const delivery = await sendEmail({ to: member.user.email, ...invitationEmail({ organizationName: member.organization.name, roleName: member.role?.name ?? "a member", inviteUrl, reminder: true }) });
   if (!delivery.ok) {
     await markInvitationDeliveryFailed(member.id);
     redirect(`/app/platform/organizations/${member.organizationId}?error=delivery`);

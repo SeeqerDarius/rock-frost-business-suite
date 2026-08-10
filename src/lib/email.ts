@@ -16,7 +16,7 @@ export interface SendEmailResult {
   error?: string;
 }
 
-export async function sendEmail(args: { to: string; subject: string; html: string }): Promise<SendEmailResult> {
+export async function sendEmail(args: { to: string; subject: string; html: string; text?: string }): Promise<SendEmailResult> {
   const resend = getResendClient();
   const from = process.env.RESEND_FROM_EMAIL;
 
@@ -26,7 +26,14 @@ export async function sendEmail(args: { to: string; subject: string; html: strin
   }
 
   try {
-    await resend.emails.send({ from, to: args.to, subject: args.subject, html: args.html });
+    await resend.emails.send({
+      from,
+      to: args.to,
+      subject: args.subject,
+      html: args.html,
+      text: args.text,
+      replyTo: process.env.RESEND_REPLY_TO || undefined,
+    });
     return { ok: true };
   } catch (error) {
     console.error("[email] Send failed:", error);

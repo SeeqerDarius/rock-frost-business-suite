@@ -91,6 +91,9 @@ describe("authentication email links", () => {
     expect(mockSendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         html: expect.stringContaining(
+          "https://app.rockfrostgroup.com/reset-password?email=person%2Bops%40example.com&amp;token=token%26one",
+        ),
+        text: expect.stringContaining(
           "https://app.rockfrostgroup.com/reset-password?email=person%2Bops%40example.com&token=token%26one",
         ),
       }),
@@ -110,6 +113,9 @@ describe("authentication email links", () => {
     expect(mockSendEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         html: expect.stringContaining(
+          "https://admin.rockfrostgroup.com/reset-password?email=owner%40example.com&amp;token=owner-token",
+        ),
+        text: expect.stringContaining(
           "https://admin.rockfrostgroup.com/reset-password?email=owner%40example.com&token=owner-token",
         ),
       }),

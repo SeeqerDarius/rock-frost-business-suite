@@ -32,6 +32,7 @@ export default async function AccountPage({
   });
   if (!user) redirect("/login");
   const { error, saved } = await searchParams;
+  const securityHref = session.user.role === "Super Admin" ? "/app/platform/account/security" : "/app/account/security";
 
   return (
     <div className="space-y-6">
@@ -57,6 +58,11 @@ export default async function AccountPage({
           <Card>
             <CardHeader><CardTitle>Profile picture</CardTitle><CardDescription>JPG, PNG, or WebP, up to 1 MB.</CardDescription></CardHeader>
             <CardContent><ProfilePhotoForm image={user.image} name={user.name} email={user.email} /></CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>Account security</CardTitle><CardDescription>Add an authenticator code to every new sign-in.</CardDescription></CardHeader>
+            <CardContent><Button nativeButton={false} render={<Link href={securityHref} />}>Manage two-factor authentication</Button></CardContent>
           </Card>
 
           <Card>

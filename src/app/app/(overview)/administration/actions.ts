@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
+import { invitationEmail } from "@/lib/email-templates";
 import { createInvitation, resendInvitation, revokeInvitation, markInvitationDeliveryFailed, InvitationError } from "@/lib/auth/invitations";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
@@ -13,10 +14,6 @@ import { shortText, email as emailSchema, parseWithSchema } from "@/lib/validati
 import { logAuditEvent } from "@/lib/audit";
 import { buildTenantAppUrl } from "@/lib/app-url";
 import { isPlatformUser } from "@/lib/auth/platform-identity";
-
-function inviteEmailHtml(organizationName: string, roleName: string, inviteUrl: string) {
-  return `<p>You've been invited to join <strong>${organizationName}</strong> as ${roleName}.</p><p><a href="${inviteUrl}">Accept the invitation</a></p><p>This link expires in 7 days.</p>`;
-}
 
 function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
@@ -113,11 +110,7 @@ export async function inviteMember(formData: FormData): Promise<void> {
   });
   const inviteUrl = buildTenantAppUrl("/invite", { token });
 
-  const result = await sendEmail({
-    to: email,
-    subject: `You've been invited to join ${tenant.organization.name} on Rock Frost Business Suite`,
-    html: inviteEmailHtml(tenant.organization.name, role.name, inviteUrl),
-  });
+  const result = await sendEmail({ to: email, ...invitationEmail({ organizationName: tenant.organization.name, roleName: role.name, inviteUrl }) });
 
   if (!result.ok) {
     await markInvitationDeliveryFailed(membership.id);
@@ -163,11 +156,7 @@ export async function resendMemberInvitation(formData: FormData): Promise<void> 
   });
 
   const inviteUrl = buildTenantAppUrl("/invite", { token });
-  const result = await sendEmail({
-    to: member!.user.email,
-    subject: `Reminder: you've been invited to join ${tenant.organization.name} on Rock Frost Business Suite`,
-    html: inviteEmailHtml(tenant.organization.name, member!.role?.name ?? "a member", inviteUrl),
-  });
+  const result = await sendEmail({ to: member!.user.email, ...invitationEmail({ organizationName: tenant.organization.name, roleName: member!.role?.name ?? "a member", inviteUrl, reminder: true }) });
 
   if (!result.ok) {
     await markInvitationDeliveryFailed(membershipId);

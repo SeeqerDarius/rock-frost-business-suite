@@ -24,6 +24,8 @@ See `docs/HOTEL_AND_SCHOOL_MODULES.md` for boundaries, invariants, roles, integr
 
 Production uses host-separated authentication: platform owners use `admin.rockfrostgroup.com`, tenant users use `app.rockfrostgroup.com`, and public pages remain on `www.rockfrostgroup.com`. Host-only cookies allow both accounts to stay signed in concurrently in one browser profile.
 
+Platform administrators and organization users can enable authenticator-based two-factor authentication from Account Security. Organization administrators also have tenant-isolated, per-module JSON exports and password/2FA-protected merge restores; see `docs/BACKUP_AND_RECOVERY.md`.
+
 ## Stack
 
 - **Next.js 16.2.12** (App Router, Turbopack) — see `AGENTS.md` before writing Next.js-specific code; this project pins a version with breaking changes from what most training data assumes.
@@ -78,6 +80,8 @@ Start with `OPERATOR_HANDOFF.md` at the repo root for the current state and next
 - `docs/DEVELOPMENT_ROADMAP.md` — phased build history (all sixteen phases complete)
 - `docs/DATABASE_STRATEGY.md` — Prisma/Neon setup and migration workflow
 - `docs/AUTHENTICATION_AND_AUTHORIZATION.md` — real, enforced auth/RBAC (104 permission keys across 13 modules)
+- `docs/BACKUP_AND_RECOVERY.md` — tenant-isolated module exports, protected merge restore, and infrastructure recovery boundaries
+- `docs/EMAIL_DELIVERY.md` — transactional templates, sender-domain authentication, and deliverability operations
 - `docs/TESTING_STRATEGY.md` — how work is validated, current automated test coverage
 - `docs/MODULE_REQUESTS_AND_CUSTOMIZATION.md` — customer requests, operator assignment, approval/enablement, and per-organization module configuration
 - `docs/BILLING_AND_SUBSCRIPTIONS.md` — public acquisition, prefilled onboarding, offline/platform billing modes, activation, and expiry enforcement

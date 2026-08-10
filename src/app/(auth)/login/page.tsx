@@ -15,6 +15,8 @@ import { buildSurfaceUrl, classifyAppSurface, type AppSurface } from "@/lib/app-
 const NOTICE_MESSAGES: Record<string, string> = {
   reset: "Your password has been reset. Sign in with your new password.",
   activated: "Your account is now active. Sign in to continue.",
+  "2fa-enabled": "Two-factor authentication is enabled. Sign in again with your authenticator code.",
+  "2fa-disabled": "Two-factor authentication is disabled. Sign in to continue.",
 };
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -34,7 +36,10 @@ function LoginForm() {
     () => "unknown",
   );
 
-  const noticeKey = searchParams.get("reset") ? "reset" : searchParams.get("activated") ? "activated" : null;
+  const securityNotice = searchParams.get("security");
+  const noticeKey = securityNotice && NOTICE_MESSAGES[securityNotice]
+    ? securityNotice
+    : searchParams.get("reset") ? "reset" : searchParams.get("activated") ? "activated" : null;
   const notice = noticeKey ? NOTICE_MESSAGES[noticeKey] : null;
   const urlError = searchParams.get("error");
   const invitedEmail = searchParams.get("email")?.trim().toLowerCase() ?? "";
@@ -118,6 +123,10 @@ function LoginForm() {
           </Link>
         </div>
         <PasswordInput id="password" name="password" autoComplete="current-password" required />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="twoFactorCode">Authenticator code</Label>
+        <Input id="twoFactorCode" name="twoFactorCode" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" placeholder="Required only when 2FA is enabled" />
       </div>
       <Button type="submit" disabled={isSubmitting} className="w-full">
         {isSubmitting ? "Signing in..." : "Sign in"}

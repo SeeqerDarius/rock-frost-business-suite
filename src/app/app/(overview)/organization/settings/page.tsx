@@ -1,5 +1,6 @@
-import { CheckCircle2, ImageIcon, Lock, Palette, TriangleAlert } from "lucide-react";
+import { CheckCircle2, DatabaseBackup, ImageIcon, Lock, Palette, TriangleAlert } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -135,7 +136,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
       <Card>
         <CardHeader>
           <CardTitle>Backup and recovery policy</CardTitle>
-          <CardDescription>Tenant policy controls consumed by the platform&apos;s backup and recovery operations. Physical database snapshots remain encrypted and operated by the platform infrastructure.</CardDescription>
+          <CardDescription>Record your preferred retention and recovery policy. Downloadable module backups and protected merge restores are available from the backup workspace; physical database recovery remains a platform-operator procedure.</CardDescription>
         </CardHeader>
         <CardContent>
           <form action={updateWorkspaceSettings} className="space-y-4">
@@ -165,6 +166,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
               <input name="dataRecoveryEnabled" type="checkbox" defaultChecked={settings.dataRecoveryEnabled ?? true} /> Allow recovery requests for retained tenant data
             </label>
             <Button type="submit" size="sm" variant="outline">Save policy</Button>
+            <Button nativeButton={false} render={<Link href="/app/organization/backups" />}><DatabaseBackup />Open backup workspace</Button>
           </form>
         </CardContent>
       </Card>

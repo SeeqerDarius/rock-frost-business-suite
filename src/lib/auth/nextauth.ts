@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 import { hasPlatformRole } from "@/lib/auth/platform-identity";
+import { decryptTotpSecret, verifyTotpCode } from "@/lib/auth/totp";
 import {
   classifyAppSurface,
   isIdentityAllowedOnSurface,
@@ -20,6 +21,7 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
+        twoFactorCode: { label: "Two-factor code", type: "text" },
       },
       async authorize(credentials, request) {
         if (!credentials?.email || !credentials?.password) {
@@ -98,6 +100,40 @@ export const authOptions: NextAuthOptions = {
             metadata: { email, reason: "wrong_password", lockedOut: lockingOut },
           });
           return null;
+        }
+
+        if (user.twoFactorEnabled) {
+          let isValidTwoFactorCode = false;
+          try {
+            isValidTwoFactorCode = !!user.twoFactorSecret && verifyTotpCode(
+              decryptTotpSecret(user.twoFactorSecret),
+              credentials.twoFactorCode ?? "",
+            );
+          } catch {
+            isValidTwoFactorCode = false;
+          }
+          if (!isValidTwoFactorCode) {
+            const attempts = user.failedLoginAttempts + 1;
+            const lockingOut = attempts >= MAX_FAILED_ATTEMPTS;
+            await db.user.update({
+              where: { id: user.id },
+              data: {
+                failedLoginAttempts: lockingOut ? 0 : attempts,
+                lockedUntil: lockingOut ? new Date(Date.now() + LOCKOUT_DURATION_MS) : null,
+              },
+            });
+            await logAuditEvent({
+              organizationId: primaryMembership?.organizationId ?? null,
+              userId: user.id,
+              module: "auth",
+              action: "login.failed",
+              entityName: "User",
+              entityId: user.id,
+              status: "FAILURE",
+              metadata: { email, reason: "wrong_two_factor_code", lockedOut: lockingOut },
+            });
+            return null;
+          }
         }
 
         const requestHost =
