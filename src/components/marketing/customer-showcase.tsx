@@ -43,6 +43,22 @@ function initialsFor(name: string) {
 /** Bounded logo frame: consistent dimensions and background regardless of the source logo's own aspect ratio, with a graceful initials fallback if the image is missing or fails to load, and a soft skeleton while a (sometimes sizeable, real-world-uploaded) logo is still in flight. */
 function LogoFrame({ item }: { item: CustomerShowcaseItem }) {
   const [status, setStatus] = useState<"loading" | "loaded" | "failed">(item.logoUrl ? "loading" : "failed");
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  // The browser starts fetching an <img> the instant it parses the
+  // server-rendered HTML — often before React finishes hydrating and
+  // attaching onLoad/onError below, especially for these small, same-origin,
+  // frequently-cached logos. If the load event already fired into the void
+  // before the listener existed, it never fires again and the skeleton
+  // would stay frozen forever. Checking `.complete` on mount catches that
+  // race: it's true immediately whenever the image had already finished
+  // (loaded or errored) by the time this effect runs.
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img?.complete) {
+      setStatus(img.naturalWidth > 0 ? "loaded" : "failed");
+    }
+  }, [item.logoUrl]);
 
   if (status === "failed") {
     return (
@@ -71,6 +87,7 @@ function LogoFrame({ item }: { item: CustomerShowcaseItem }) {
           lazy-loading only adds a visible empty-frame flash for no benefit. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
+        ref={imgRef}
         src={item.logoUrl}
         alt={`${item.name} logo`}
         className={cn("relative max-h-full max-w-full object-contain transition-opacity duration-200", status === "loading" ? "opacity-0" : "opacity-100")}

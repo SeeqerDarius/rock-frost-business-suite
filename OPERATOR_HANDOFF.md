@@ -1,5 +1,33 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-11 — Fix: showcase logos permanently stuck on empty skeleton in production (Claude, on `main`)
+
+User reported via a live production screenshot that all three homepage customer-showcase cards rendered as empty gray skeleton boxes — no logo, not even the demo SVG marks — with no error. This was a regression from the same-day showcase redesign shipped in commit `941f71c` below.
+
+### Root cause
+
+`LogoFrame` (`src/components/marketing/customer-showcase.tsx`) tracked load state purely via the `<img>` element's `onLoad`/`onError` React handlers, initialized to `"loading"`. That's vulnerable to a standard SSR hydration race: the browser starts fetching a server-rendered `<img>` the instant it parses the HTML, which can finish (and fire its native `load`/`error` event) before React finishes hydrating and attaching the `onLoad`/`onError` listeners. The event fires into the void, the listener that would have flipped `status` to `"loaded"` never existed yet, and — critically — the native load event does not fire again later, so the component was left permanently in `"loading"`, hiding the actual (fully downloaded) image behind `opacity-0` forever. This hit small/fast/cached same-origin assets hardest, which is exactly the demo SVGs and any already-cached real logo — i.e., the common case on a live production load, not an edge case.
+
+### Fix
+
+Added a `useRef<HTMLImageElement>` on the `<img>` plus a `useEffect` that checks `imgRef.current?.complete` once on mount and immediately resolves `status` from `naturalWidth > 0` if the image had already finished loading (successfully or not) by the time the effect runs. This is the standard fix for this exact class of bug: `.complete` reflects the image's real current state regardless of whether any event listener was attached in time to observe the transition into that state.
+
+### Validation
+
+- `npx tsc --noEmit --incremental false`: clean in every file this change touches (one pre-existing, unrelated error remains in Codex's `test/tenant-excel-export.test.ts`, confirmed via `git log` to predate and be unrelated to this fix).
+- `npm run lint`: clean.
+- `npm run build`: `✓ Compiled successfully`.
+- `npx vitest run`: **46 files / 268 tests passed**, including both showcase test files, unchanged.
+- **Real production-build verification, not code-only reasoning:** ran `npm run start` (actual `next start`, not `next dev`) and screenshotted the live-equivalent homepage with Playwright. First load after the fix showed all logos (the real "God's Love Ventures" logo and both visible demo SVG marks) rendering correctly instead of empty boxes. Additionally reproduced and re-verified the worst case directly: reloaded in the same browser context so every asset served from cache (maximizing the race window), and inspected the actual `<img>` DOM state (`complete`/`naturalWidth`/computed `opacity`), not just pixels. Immediately after `domcontentloaded` nothing had loaded yet (expected — nothing anomalous). After a short realistic delay, the demo SVGs — the fastest assets and the ones the bug hit hardest — resolved to `complete: true, naturalWidth: 150, opacity: 1` and stayed resolved; the real tenant logo (served through the `private, no-store` external-showcase-logo API route, so never browser-cached) took roughly one second of genuine server round-trip time before resolving to `complete: true, naturalWidth: 371, opacity: 1` — normal in-flight latency correctly shown by the skeleton pulse, not the bug.
+
+### Files changed
+
+`src/components/marketing/customer-showcase.tsx` only (12 lines added to `LogoFrame`; no other component, route, or test changed).
+
+### Commit
+
+Committed directly to `main` per this repository's default production-release rule (a direct bug-fix request, not a branch-scoped task).
+
 ## 2026-08-11 — Customer Excel exports and showcase integration
 
 Added a customer-readable `.xlsx` export beside the existing JSON system backup in `/app/organization/backups`. Excel and JSON independently recompute the current tenant's active subscription/module scope on the server; inactive modules, other tenants, authentication/password data, and platform records remain excluded. The workbook contains an export summary and one filterable, frozen-header worksheet per selected data model, preserves scalar types, renders structured values readably, and neutralizes formula-like text to prevent spreadsheet formula injection. Excel is intentionally reporting-only; merge restore continues to accept only the lossless JSON backup. Added ExcelJS with its vulnerable transitive UUID dependency overridden to the patched major release; the remaining production audit findings pre-date this feature and are outside this dependency path. No schema migration or environment change is required. Also integrated Claude's reviewed customer-showcase carousel commits (`941f71c`, `f10c08d`) into the release candidate. Strict TypeScript, ESLint, focused workbook/route tests (2 files / 5 tests), the complete unit suite (46 files / 268 tests), the 164-page production build including `/api/organization/backup/excel`, and workbook ZIP/load verification passed. Commit `c972a51` deployed as Vercel production deployment `dpl_EKzwnT48TaTtTrM1KaUirK9K664H` (`READY`). The public homepage, production health endpoint, and showcase content returned successfully; the unauthenticated Excel route returned 401, and the post-probe runtime-error scan was empty.
