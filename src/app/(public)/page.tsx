@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { PUBLIC_SHOWCASE_FILTER, readPublicShowcase } from "@/lib/public-showcase";
 import { CustomerShowcase } from "@/components/marketing/customer-showcase";
 import { findPlatformOrganizationMetadata, readPlatformMarketing } from "@/lib/platform-marketing";
+import { buildShowcaseCustomers } from "@/lib/showcase-composition";
 
 export const metadata = createPublicMetadata({
   title: "Business Management Software Ghana",
@@ -49,7 +50,7 @@ export default async function HomePage() {
       quote: customer.quote,
       attribution: customer.attribution,
     }));
-  const customers = [...externalCustomers, ...tenantCustomers].slice(0, 12);
+  const { customers, hasDemoEntries } = buildShowcaseCustomers([...externalCustomers, ...tenantCustomers]);
 
   return (
     <>
@@ -90,6 +91,7 @@ export default async function HomePage() {
           eyebrow={marketing.eyebrow}
           headline={marketing.headline}
           description={marketing.description}
+          showDemoDisclosure={hasDemoEntries}
         />
       ) : null}
 

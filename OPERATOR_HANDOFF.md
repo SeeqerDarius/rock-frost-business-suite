@@ -1,5 +1,51 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-11 — Customer showcase redesign (Claude, branch `agent/claude-showcase-redesign`)
+
+Scoped exactly to the assigned task: redesign the public homepage customer-showcase/logo carousel to look premium and production-ready, without touching unrelated features. **Not merged to `main`, not deployed** — per the task brief, Codex reviews, merges, pushes, and deploys. Branch and commit hash are at the bottom of this entry.
+
+### What was wrong
+
+The showcase rendered as one oversized hero panel (a full-height dark logo panel beside a separate quote panel) plus a row of small logo "switcher" thumbnails underneath — a lot of empty space, no consistent card language, and a visual style that didn't match the rest of the marketing site. There was also no way to show the section credibly before enough real customers had approved publication, and no fallback for a logo that fails to load.
+
+### What changed
+
+**Card redesign** (`src/components/marketing/customer-showcase.tsx`, full rewrite): each customer is now a self-contained card — a bounded logo frame with a consistent size, soft `bg-muted` background, subtle border, and `object-contain` (so a wide wordmark and a square mark both sit correctly without cropping or an oversized empty box); name/industry; a quote that wraps naturally rather than truncating mid-sentence; and an attribution footer pinned to the bottom via flex so cards with different quote lengths still align in a row. Logos show a skeleton-pulse placeholder while loading (real uploaded logos can be a few hundred KB) and fall back to a deterministic colored initials mark — never a broken-image icon — if the source is missing or errors.
+
+**Carousel behavior:** rebuilt as a CSS scroll-snap track (1 card + a peek of the next on mobile, ~2 on tablet, ~3 on desktop) instead of a JS-transform slider — native touch/trackpad scrolling, no layout-shift risk, and `prefers-reduced-motion` handled for free by the existing app-wide rule in `globals.css` that already zeroes out animation/scroll durations, confirmed rather than assumed by reading that file. Previous/next buttons, a small position-dot row, and keyboard ArrowLeft/ArrowRight/Home/End all drive the same underlying scroll position (verified interactively — see Validation). There is deliberately no autoplay: `docs/UI_UX_REFRESH.md` already documented "without forced automatic rotation" as an intentional prior decision, so that was continued rather than second-guessed.
+
+**Demonstration entries** (`src/lib/demo-showcase-customers.ts`, new — isolated exactly as the brief required): four fictional organizations (Northstar Learning Academy, Harborview Suites, Greenline Mobility, Cedar & Stone Retail) with original SVG marks under `public/demo-logos/` and remarks phrased as descriptions of the demonstration itself ("the demonstration workspace shows...") rather than claims of a real result. `DEMO_SHOWCASE_ENABLED` is the configuration switch — set to `false`, or delete the file and its one import, to remove every demo entry with no other change. `src/lib/showcase-composition.ts` (new) holds `buildShowcaseCustomers()`, the pure composition rule: real approved entries always come first and are never displaced; demo entries only fill the gap up to `MIN_SHOWCASE_ENTRIES_BEFORE_DEMO_FILL` (4) and disappear automatically once real approvals reach that minimum, still capped at the pre-existing 12-item homepage limit. Every demo card renders a visible "Sample" badge, and the section shows a disclosure sentence whenever at least one demo entry is displayed. This logic was deliberately extracted out of `page.tsx` into its own file specifically so it has no I/O and can be unit-tested directly.
+
+**Consent/privacy rules preserved, not touched:** `src/lib/public-showcase.ts`, `src/lib/platform-marketing.ts`, both logo API routes (`/api/public/showcase-logo/[organizationId]`, `/api/public/external-showcase-logo/[customerId]`), and every file under `src/app/app/platform/settings/` are unmodified. Demo entries are pure static content with no database row and no privacy dimension — they don't go through the owner-managed external-customer system at all, so that system's consent/authorization rules couldn't be weakened even by accident. No new remote image domain was introduced; demo logos are local SVGs, and real logos continue to be served exactly as before.
+
+### Files changed
+
+**New:** `src/lib/demo-showcase-customers.ts`, `src/lib/showcase-composition.ts`, `public/demo-logos/{northstar-learning,harborview-suites,greenline-mobility,cedar-stone-retail}.svg`, `test/showcase-composition.test.ts`, `test/customer-showcase-component.test.ts`.
+
+**Modified:** `src/components/marketing/customer-showcase.tsx` (full rewrite), `src/app/(public)/page.tsx` (composition now delegated to `buildShowcaseCustomers()`; the literal `marketing.showcaseEnabled`/`marketing.externalCustomers` references the existing `platform-settings-showcase.test.ts` asserts on are unchanged), `docs/PLATFORM_SETTINGS.md`, `docs/UI_UX_REFRESH.md`.
+
+**Explicitly not modified:** `src/lib/public-showcase.ts`, `src/lib/platform-marketing.ts`, both logo API routes, `src/app/app/platform/settings/*`, `prisma/schema.prisma`, `next.config.ts`, `package.json`.
+
+### Validation
+
+- `npx tsc --noEmit` (and `--incremental false` during development): clean.
+- `npm run lint`: clean, 0 errors/warnings.
+- `npx vitest run` (full suite): **45 files / 266 tests passed**, including the 2 new files above (23 new tests) and both pre-existing showcase-related files (`test/public-customer-showcase.test.ts`, `test/platform-settings-showcase.test.ts`) unchanged and still passing.
+- `npm run build`: `✓ Compiled successfully`.
+- `git diff --check`: clean (only expected LF/CRLF autocrlf notices, no real whitespace errors).
+- **Visual verification against the real app, not a guess:** ran `next dev` and loaded the actual public homepage in a headless browser (the homepage needs no authentication and only reads already-public marketing data, so this was safe against the shared database — no mutation). Confirmed: a real production showcase entry ("God's Love Ventures") renders correctly alongside demo-filled entries with visible Sample badges and the disclosure line; the Previous/Next buttons and ArrowLeft keyboard navigation both move the carousel and update the active position dot; the focus-visible ring is visible on the carousel track; dark mode renders cleanly; mobile (390px) shows one card plus a peek of the next. Also caught and fixed a real (if minor) polish bug this way — the very first real logo, a ~215 KB uploaded PNG, showed as an empty frame for a moment before finishing loading in the automated screenshot; added the load-skeleton specifically because of that observation, not preemptively.
+- Not done: a real production deployment preview (out of scope — Codex deploys after review, per the task brief).
+
+### Remaining risks / recommendations for Codex
+
+- The demo-fill minimum (4) and cap (12) are reasonable defaults but not specified numbers in the brief — adjust `MIN_SHOWCASE_ENTRIES_BEFORE_DEMO_FILL` in `src/lib/demo-showcase-customers.ts` if a different threshold is wanted.
+- The carousel's outer `<section>` and the inner scroll track both compute to an ARIA landmark region (the section via `aria-labelledby`, the track via explicit `role="region"` per the standard APG carousel pattern), so a screen reader's landmark list shows two nested regions with similar names. Not a spec violation and matches the documented ARIA carousel pattern, but worth a look if it reads as redundant in practice.
+- Once real customer approvals consistently exceed `MIN_SHOWCASE_ENTRIES_BEFORE_DEMO_FILL`, demo entries stop appearing automatically — deleting `src/lib/demo-showcase-customers.ts` and its one import at that point is optional cleanup, not required.
+
+### Branch and commit
+
+Branch `agent/claude-showcase-redesign`, pushed to `origin`. Commit hash recorded below once pushed.
+
 ## 2026-08-11 — Active-module-only tenant backup and restore
 
 Closed the module-scope gap in `/app/organization/backups`. The UI now lists only the organization's currently active module scopes and labels the combined option **All active modules**. Download requests independently recompute active scope and return 403 for inactive/unrelated module parameters; “all” builds records only from active module model prefixes. Restore independently recomputes the same scope and rejects backup files containing inactive-module data, while retaining tenant ID/code, password, optional 2FA, file-size, and per-row isolation controls. Current ACTIVE subscriptions are authoritative when present; enabled assignments remain the fallback for trial/platform-managed workspaces without subscriptions. Export manifests now record `includedModules`. Files: shared active-module resolver, backup library, download/restore routes, backup page/controls, tests, and `docs/BACKUP_AND_RECOVERY.md`. No schema migration or environment change is required. ESLint, strict TypeScript, **43 files / 243 tests**, the 164-page Next.js production build, and `git diff --check` passed. Commit `c65924d` deployed as Vercel production deployment `dpl_9pT7iydRmBgoN5oBP7a6r4hGgBq4` (`READY`, all live domains). Production health returned 200, unauthenticated download/restore probes returned 401, and the post-probe five-minute runtime-error scan was empty.
