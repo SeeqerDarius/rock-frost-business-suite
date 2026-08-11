@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Upload } from "lucide-react";
+import { Download, FileSpreadsheet, Upload } from "lucide-react";
 import { BACKUP_MODULES } from "@/lib/backup/scopes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,9 +25,9 @@ export function BackupControls({ tenantCode, twoFactorEnabled, activeModules }: 
 
   return <div className="grid gap-6 lg:grid-cols-2">
     <section className="space-y-4 rounded-lg border p-5">
-      <div><h2 className="font-semibold">Download backup</h2><p className="text-sm text-muted-foreground">Export all active module data or one active module. Authentication, passwords, inactive modules, platform records, and other organizations are excluded.</p></div>
+      <div><h2 className="font-semibold">Export organization data</h2><p className="text-sm text-muted-foreground">Export all active module data or one active module. Authentication, passwords, inactive modules, platform records, and other organizations are excluded.</p></div>
       {activeModules.length ? <><div className="space-y-2"><Label>Backup scope</Label><Select value={scope} onValueChange={(value) => value && setScope(value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All active modules</SelectItem>{activeModules.map((module) => <SelectItem value={module} key={module}>{module[0].toUpperCase() + module.slice(1)}</SelectItem>)}</SelectContent></Select></div>
-      <Button nativeButton={false} render={<a href={`/api/organization/backup?module=${scope}`} download />}><Download />Download JSON backup</Button></> : <p className="rounded-md bg-muted p-3 text-sm text-muted-foreground">No active modules are available to back up.</p>}
+      <div className="flex flex-wrap gap-2"><Button nativeButton={false} render={<a href={`/api/organization/backup/excel?module=${scope}`} download />}><FileSpreadsheet />Export Excel</Button><Button variant="outline" nativeButton={false} render={<a href={`/api/organization/backup?module=${scope}`} download />}><Download />Download system backup (JSON)</Button></div><p className="text-xs text-muted-foreground">Excel is for viewing and reporting. Keep the JSON file when you need a restorable system backup.</p></> : <p className="rounded-md bg-muted p-3 text-sm text-muted-foreground">No active modules are available to export.</p>}
     </section>
     <section className="space-y-4 rounded-lg border p-5">
       <div><h2 className="font-semibold">Merge restore</h2><p className="text-sm text-muted-foreground">Restores matching records and adds missing records without deleting newer data. Only this organization&apos;s currently active module data is accepted.</p></div>

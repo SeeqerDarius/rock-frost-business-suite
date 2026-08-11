@@ -46,7 +46,7 @@ function delegate(client: unknown, modelName: string) {
   return (client as Record<string, unknown>)[delegateName(modelName)] as Delegate;
 }
 
-function modelsForScope(scope: BackupModule | "all", allowedModules: readonly BackupModule[] = BACKUP_MODULES) {
+export function modelsForScope(scope: BackupModule | "all", allowedModules: readonly BackupModule[] = BACKUP_MODULES) {
   const prefixes = scope === "all"
     ? allowedModules.flatMap((module) => MODEL_PREFIXES[module])
     : MODEL_PREFIXES[scope];
@@ -96,10 +96,7 @@ export function resolveBackupModules(scope: BackupModule | "all", activeModules:
 }
 
 export async function buildTenantBackup(organizationId: string, tenantCode: string, scope: BackupModule | "all", includedModules: BackupModule[]) {
-  const models: TenantBackup["models"] = {};
-  await Promise.all(modelsForScope(scope, includedModules).map(async (model) => {
-    models[model.name] = await delegate(db, model.name).findMany({ where: { organizationId } });
-  }));
+  const models = await readTenantModuleData(organizationId, scope, includedModules);
   return {
     kind: "ROCK_FROST_TENANT_BACKUP",
     version: 1,
@@ -110,6 +107,14 @@ export async function buildTenantBackup(organizationId: string, tenantCode: stri
     includedModules,
     models,
   } satisfies TenantBackup;
+}
+
+export async function readTenantModuleData(organizationId: string, scope: BackupModule | "all", includedModules: BackupModule[]) {
+  const models: TenantBackup["models"] = {};
+  await Promise.all(modelsForScope(scope, includedModules).map(async (model) => {
+    models[model.name] = await delegate(db, model.name).findMany({ where: { organizationId } });
+  }));
+  return models;
 }
 
 export function validateTenantBackup(value: unknown, organizationId: string, tenantCode: string, activeModules: readonly BackupModule[] = BACKUP_MODULES): value is TenantBackup {

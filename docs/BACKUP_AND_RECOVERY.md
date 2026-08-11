@@ -4,9 +4,10 @@ Rock Frost provides organization administrators with portable, tenant-isolated m
 
 ## Application-level module backups
 
-- An administrator with `org.settings.manage` can export all currently active module records or one currently active module as JSON. The selector never offers inactive or unrelated modules.
+- An administrator with `org.settings.manage` can export all currently active module records or one currently active module in two formats. Excel (`.xlsx`) is a customer-readable reporting export with a summary sheet and one filtered worksheet per data model. JSON is the lossless system backup used by merge restore. The selector never offers inactive or unrelated modules.
 - Active scope comes from current ACTIVE subscriptions when the organization has subscriptions. Trial and platform-managed workspaces without subscription records fall back to their enabled module assignments.
 - Exports contain only models that carry the active `organizationId`; authentication records, password hashes, platform records, and every other tenant are excluded.
+- Excel cells preserve dates, numbers, booleans, and readable JSON values; formula-like text is escaped to prevent spreadsheet formula injection. Excel exports are not accepted for restore because edited spreadsheets cannot preserve all relational and type fidelity safely.
 - Accounting, Analytics, CRM, Fleet, Hotel, HR, Installment, Inventory, Payroll, POS, Procurement, Projects, and School are valid scopes. Analytics currently owns no independent fact tables, so its scoped export is intentionally empty.
 - Restore accepts only a backup whose organization ID and tenant code exactly match the active organization. Every row is revalidated for that same organization, and every included model must belong to a module that is still active at restore time.
 - Restore is a merge operation: matching IDs are updated and missing IDs are inserted. It does not delete records absent from the file.
@@ -16,4 +17,4 @@ This adapts the single-tenant GLV export/restore workflow rather than copying it
 
 ## Infrastructure recovery
 
-Application JSON exports complement, but do not replace, Neon branch/PITR and provider backup controls. Physical database recovery remains an operator-only incident procedure. Preview database branches are disposable deployment environments and are not production backups.
+Application JSON backups and Excel exports complement, but do not replace, Neon branch/PITR and provider backup controls. Physical database recovery remains an operator-only incident procedure. Preview database branches are disposable deployment environments and are not production backups.

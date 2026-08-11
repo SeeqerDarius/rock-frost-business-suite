@@ -24,7 +24,7 @@ See `docs/HOTEL_AND_SCHOOL_MODULES.md` for boundaries, invariants, roles, integr
 
 Production uses host-separated authentication: platform owners use `admin.rockfrostgroup.com`, tenant users use `app.rockfrostgroup.com`, and public pages remain on `www.rockfrostgroup.com`. Host-only cookies allow both accounts to stay signed in concurrently in one browser profile.
 
-Platform administrators and organization users can enable authenticator-based two-factor authentication from Account Security. Organization administrators also have tenant-isolated, per-module JSON exports and password/2FA-protected merge restores; see `docs/BACKUP_AND_RECOVERY.md`.
+Platform administrators and organization users can enable authenticator-based two-factor authentication from Account Security. Organization administrators also have tenant-isolated, active-module Excel reporting exports, lossless JSON system backups, and password/2FA-protected merge restores; see `docs/BACKUP_AND_RECOVERY.md`.
 
 ## Stack
 
