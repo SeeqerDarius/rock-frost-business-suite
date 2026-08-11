@@ -1,8 +1,6 @@
-import Link from "next/link";
 import { Users, Target, Handshake, History } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getCrmSummary } from "@/modules/crm/service";
 
@@ -11,32 +9,17 @@ export default async function CrmOverviewPage() {
   const summary = await getCrmSummary(tenant.organizationId);
 
   const stats = [
-    { label: "Contacts", value: summary.contactCount, icon: Users, href: "/app/crm/contacts" },
-    { label: "Open leads", value: summary.openLeadCount, icon: Target, href: "/app/crm/leads" },
-    { label: "Open deals", value: summary.openDealCount, icon: Handshake, href: "/app/crm/deals" },
-    { label: "Activity this month", value: summary.activityCountThisMonth, icon: History, href: "/app/crm/activities" },
+    { label: "Contacts", value: summary.contactCount, description: "People and companies on file", icon: <Users className="size-4" />, href: "/app/crm/contacts" },
+    { label: "Open leads", value: summary.openLeadCount, description: "Leads not yet converted to a deal", icon: <Target className="size-4" />, href: "/app/crm/leads" },
+    { label: "Open deals", value: summary.openDealCount, description: "Deals still in the pipeline", icon: <Handshake className="size-4" />, href: "/app/crm/deals" },
+    { label: "Activity this month", value: summary.activityCountThisMonth, description: "Calls, emails, meetings, and notes logged", icon: <History className="size-4" />, href: "/app/crm/activities" },
   ];
 
   return (
     <div className="space-y-6">
       <PageHeader title="CRM Overview" description="Contacts, leads, deals, and activity at a glance." />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <Card key={stat.label}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardDescription>{stat.label}</CardDescription>
-                <stat.icon className="size-4 text-muted-foreground" />
-              </div>
-              <CardTitle className="text-3xl">{stat.value}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Button size="sm" variant="outline" nativeButton={false} render={<Link href={stat.href as never} />}>
-                View
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {stats.map((stat) => <OverviewMetricCard key={stat.label} {...stat} />)}
       </div>
     </div>
   );

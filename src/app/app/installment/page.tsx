@@ -1,9 +1,7 @@
-import Link from "next/link";
 import { Users, FileText, Wallet, Package, Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import {
   listCustomers,
@@ -52,34 +50,19 @@ export default async function InstallmentOverviewPage() {
   const outstandingBalance = accounts.reduce((sum, a) => sum + Number(a.balance), 0);
 
   const stats = [
-    { label: "Customers", value: customers.length, icon: Users, href: "/app/installment/customers" },
-    { label: "Active accounts", value: activeCount, icon: FileText, href: "/app/installment/accounts" },
+    { label: "Customers", value: customers.length, description: "Customers with an installment profile", icon: <Users className="size-4" />, href: "/app/installment/customers" },
+    { label: "Active accounts", value: activeCount, description: "Accounts currently active or overdue", icon: <FileText className="size-4" />, href: "/app/installment/accounts" },
     ...(canManageProducts
-      ? [{ label: "Products", value: products.length, icon: Package, href: "/app/installment/products" }]
+      ? [{ label: "Products", value: products.length, description: "Products available for installment sale", icon: <Package className="size-4" />, href: "/app/installment/products" }]
       : []),
-    { label: "Outstanding balance", value: outstandingBalance.toFixed(2), icon: Wallet, href: "/app/installment/accounts" },
+    { label: "Outstanding balance", value: outstandingBalance.toFixed(2), description: "Total balance still owed across accounts", icon: <Wallet className="size-4" />, href: "/app/installment/accounts" },
   ];
 
   return (
     <div className="space-y-6">
       <PageHeader title="Installment Overview" description="Customer accounts, collections, and product performance at a glance." />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <Card key={stat.label}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardDescription>{stat.label}</CardDescription>
-                <stat.icon className="size-4 text-muted-foreground" />
-              </div>
-              <CardTitle className="text-3xl">{stat.value}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Button size="sm" variant="outline" nativeButton={false} render={<Link href={stat.href as never} />}>
-                View
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {stats.map((stat) => <OverviewMetricCard key={stat.label} {...stat} />)}
       </div>
     </div>
   );

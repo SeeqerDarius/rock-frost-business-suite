@@ -24,6 +24,7 @@ shadcn/ui (Base UI primitives, `base-nova` preset) + Tailwind CSS v4. See `docs/
 - Reusable page-level components live in `src/components/layout/` (`AppShell`, `PageHeader`, `Logo`, `PublicHeader`/`PublicFooter`) and `src/components/navigation/` (`SidebarNav`, `ModuleLauncher`, `UserMenu`) — use these rather than rebuilding page chrome per-route.
 - `EmptyState` (`src/components/feedback/empty-state.tsx`) is the standard pattern for "no data yet" and "not built yet" states. Every placeholder page in this rebuild uses it rather than inventing ad-hoc placeholder markup per page.
 - `PageHeader` (`src/components/layout/page-header.tsx`) is the standard top-of-page title/description/actions pattern.
+- `OverviewMetricCard` (`src/components/dashboard/overview-metric-card.tsx`) is the standard stat card for every module's overview page: icon in a `bg-primary/10 text-primary` badge, the whole card is a clickable `Link` (not a separate "View" button), and a one-line `description` explaining what the number means. All 13 modules use it as of 2026-08-11 (fixed 11 pages — Fleet, Installment, CRM, Inventory, Accounting, HR, Payroll, Procurement, Projects, Analytics, POS — that had drifted onto a hand-rolled `Card` with a plain `text-muted-foreground` icon and a separate button; Hotel and School already used it). Don't hand-roll a new stat-card pattern per module — every module's overview stats go through this one component so icon color and card behavior can't drift apart again.
 
 ## Anti-patterns (explicitly rejected)
 

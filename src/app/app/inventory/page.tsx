@@ -1,8 +1,6 @@
-import Link from "next/link";
 import { Package, Warehouse, AlertTriangle, ArrowLeftRight } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getInventorySummary } from "@/modules/inventory/service";
 
@@ -11,32 +9,17 @@ export default async function InventoryOverviewPage() {
   const summary = await getInventorySummary(tenant.organizationId);
 
   const stats = [
-    { label: "Active items", value: summary.activeItemCount, icon: Package, href: "/app/inventory/items" },
-    { label: "Warehouses", value: summary.warehouseCount, icon: Warehouse, href: "/app/inventory/warehouses" },
-    { label: "Low stock items", value: summary.lowStockItems.length, icon: AlertTriangle, href: "/app/inventory/stock" },
-    { label: "Movements this month", value: summary.movementsThisMonth, icon: ArrowLeftRight, href: "/app/inventory/movements" },
+    { label: "Active items", value: summary.activeItemCount, description: "SKUs currently tracked in the catalog", icon: <Package className="size-4" />, href: "/app/inventory/items" },
+    { label: "Warehouses", value: summary.warehouseCount, description: "Stock locations in use", icon: <Warehouse className="size-4" />, href: "/app/inventory/warehouses" },
+    { label: "Low stock items", value: summary.lowStockItems.length, description: "Items at or below their reorder point", icon: <AlertTriangle className="size-4" />, href: "/app/inventory/stock" },
+    { label: "Movements this month", value: summary.movementsThisMonth, description: "Receipts, issues, adjustments, and transfers", icon: <ArrowLeftRight className="size-4" />, href: "/app/inventory/movements" },
   ];
 
   return (
     <div className="space-y-6">
       <PageHeader title="Inventory Overview" description="Stock levels, warehouses, and movement activity at a glance." />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <Card key={stat.label}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardDescription>{stat.label}</CardDescription>
-                <stat.icon className="size-4 text-muted-foreground" />
-              </div>
-              <CardTitle className="text-3xl">{stat.value}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Button size="sm" variant="outline" nativeButton={false} render={<Link href={stat.href as never} />}>
-                View
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {stats.map((stat) => <OverviewMetricCard key={stat.label} {...stat} />)}
       </div>
     </div>
   );
