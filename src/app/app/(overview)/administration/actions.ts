@@ -15,6 +15,7 @@ import { logAuditEvent } from "@/lib/audit";
 import { buildTenantAppUrl } from "@/lib/app-url";
 import { isPlatformUser } from "@/lib/auth/platform-identity";
 import { isRoleAssignableToOrganization, resolveAssignableModuleKeys, roleDisplayName } from "@/lib/administration-roles";
+import { assertRoleHasAvailableSeats, SeatLimitExceededError } from "@/platform/subscriptions/seats";
 
 function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
@@ -78,6 +79,12 @@ export async function inviteMember(formData: FormData): Promise<void> {
 
       if (await isPlatformUser(user.id, tx)) throw new PlatformOwnerTenantError();
 
+      const existingMembership = await tx.organizationMember.findUnique({
+        where: { organizationId_userId: { organizationId: tenant.organizationId, userId: user.id } },
+        select: { id: true },
+      });
+      await assertRoleHasAvailableSeats(tx, tenant.organizationId, roleId, existingMembership?.id);
+
       const member = await tx.organizationMember.upsert({
         where: { organizationId_userId: { organizationId: tenant.organizationId, userId: user.id } },
         update: { roleId, status: "INVITED" },
@@ -106,6 +113,7 @@ export async function inviteMember(formData: FormData): Promise<void> {
     });
   } catch (error) {
     if (error instanceof PlatformOwnerTenantError) redirect("/app/administration?error=platform-owner");
+    if (error instanceof SeatLimitExceededError) redirect("/app/administration?error=seat-limit");
     throw error;
   }
 

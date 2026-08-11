@@ -95,10 +95,13 @@ export async function resendInvitation(organizationId: string, membershipId: str
 
 /** Atomically claims PENDING -> REVOKED; a concurrent accept or a second revoke click resolves to a no-op count of zero. */
 export async function revokeInvitation(organizationId: string, membershipId: string): Promise<void> {
-  const invitation = await db.invitation.findFirst({ where: { membershipId, organizationId } });
-  if (!invitation) throw new InvitationError("Invitation not found.");
-  const claimed = await db.invitation.updateMany({ where: { id: invitation.id, status: "PENDING" }, data: { status: "REVOKED" } });
-  if (claimed.count === 0) throw new InvitationError("This invitation can no longer be revoked.");
+  await db.$transaction(async (tx) => {
+    const invitation = await tx.invitation.findFirst({ where: { membershipId, organizationId } });
+    if (!invitation) throw new InvitationError("Invitation not found.");
+    const claimed = await tx.invitation.updateMany({ where: { id: invitation.id, status: "PENDING" }, data: { status: "REVOKED" } });
+    if (claimed.count === 0) throw new InvitationError("This invitation can no longer be revoked.");
+    await tx.organizationMember.updateMany({ where: { id: membershipId, organizationId, status: "INVITED" }, data: { status: "REMOVED" } });
+  });
 }
 
 async function resolveInvitationForAccept(token: string) {

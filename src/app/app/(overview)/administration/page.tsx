@@ -14,6 +14,7 @@ import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { isRoleAssignableToOrganization, resolveAssignableModuleKeys, roleDisplayName } from "@/lib/administration-roles";
 import { inviteMember, removeMember, resendMemberInvitation, revokeMemberInvitation } from "./actions";
+import { getOrganizationSeatUsage } from "@/platform/subscriptions/seats";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to invite members.",
@@ -25,6 +26,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "self-remove": "You cannot remove your own organization access.",
   "last-owner": "The last active Organization Owner cannot be removed.",
   "platform-owner": "A platform owner cannot be added to a tenant organization. Use a separate tenant-user email.",
+  "seat-limit": "This role would exceed the subscribed user seats for one or more modules. Remove an unused member or ask Rock Frost to increase the subscription seats.",
 };
 
 export default async function AdministrationPage({
@@ -48,7 +50,7 @@ export default async function AdministrationPage({
     );
   }
 
-  const [members, roles, assignableModuleKeys] = await Promise.all([
+  const [members, roles, assignableModuleKeys, seatUsage] = await Promise.all([
     db.organizationMember.findMany({
       where: { organizationId: tenant.organizationId },
       include: { user: true, role: true, invitation: true },
@@ -63,6 +65,7 @@ export default async function AdministrationPage({
       orderBy: { name: "asc" },
     }),
     resolveAssignableModuleKeys(tenant.organizationId, tenant.enabledModuleKeys),
+    getOrganizationSeatUsage(tenant.organizationId),
   ]);
   const assignableRoles = roles.filter((role) => isRoleAssignableToOrganization(
     role,
@@ -102,6 +105,8 @@ export default async function AdministrationPage({
           {ERROR_MESSAGES[error]}
         </div>
       ) : null}
+
+      {seatUsage.length ? <Card><CardHeader><CardTitle>Module user seats</CardTitle><CardDescription>Active members and pending invitations count against every module their role can access.</CardDescription></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{seatUsage.map((usage) => <div key={usage.moduleId} className="rounded-lg border p-3"><div className="flex items-center justify-between gap-2"><span className="font-medium">{usage.moduleName}</span><Badge variant={usage.limit != null && usage.used >= usage.limit ? "destructive" : "outline"}>{usage.limit == null ? `${usage.used} used · Unlimited` : `${usage.used} of ${usage.limit}`}</Badge></div></div>)}</CardContent></Card> : null}
 
       <Card>
         <CardHeader>

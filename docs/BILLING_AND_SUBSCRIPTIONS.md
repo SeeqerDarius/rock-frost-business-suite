@@ -1,5 +1,11 @@
 # Billing and Subscriptions
 
+## Module user seats
+
+Each subscription can carry a positive user-seat limit or be explicitly unlimited. A seat is consumed by every `ACTIVE` or `INVITED` organization membership whose assigned role contains a permission under that module's permission prefix. A role spanning several modules consumes one seat in each applicable module. Pending invitations reserve seats immediately; revoking an invitation marks its membership removed and releases the seat.
+
+Tenant administrators see current usage in Administration and Billing. The platform owner sets the initial allowance while creating a subscription and can change it from the subscription ledger. A limit cannot be lowered below current usage. Invitation assignment takes an organization-scoped PostgreSQL advisory transaction lock, recomputes current active subscription entitlements, and fails before writing the membership if any applicable module is full. Legacy subscriptions with a null allowance remain unlimited until Rock Frost assigns a limit.
+
 ## Implemented lifecycle
 
 The public acquisition and platform-operator workflows share one record chain:

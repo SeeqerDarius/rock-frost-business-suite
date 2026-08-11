@@ -38,11 +38,12 @@ describe("subscription workflow", () => {
       amount: "1200.00",
       currency: "GHS",
       autoRenew: false,
+      seatLimit: 5,
       actorId: "operator-1",
     });
 
     expect(tx.subscription.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ status: "PENDING_PAYMENT", durationMonths: 6 }),
+      data: expect.objectContaining({ status: "PENDING_PAYMENT", durationMonths: 6, seatLimit: 5 }),
     });
     expect(tx.organizationModule.upsert).not.toHaveBeenCalled();
   });

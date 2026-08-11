@@ -2,7 +2,7 @@ import { afterEach, describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockDb = {
   project: { findFirst: vi.fn() },
-  organizationMember: { findFirst: vi.fn(), upsert: vi.fn() },
+  organizationMember: { findFirst: vi.fn(), findUnique: vi.fn(), count: vi.fn(), upsert: vi.fn() },
   projectMember: { upsert: vi.fn(), delete: vi.fn() },
   projectMilestone: { findFirst: vi.fn(), create: vi.fn() },
   projectTask: { create: vi.fn() },
@@ -13,6 +13,7 @@ const mockDb = {
   user: { findUnique: vi.fn(), upsert: vi.fn() },
   auditLog: { create: vi.fn() },
   $transaction: vi.fn(),
+  $executeRaw: vi.fn(),
 };
 
 const mockRequireCurrentTenant = vi.fn();
@@ -226,10 +227,11 @@ describe("Administration inviteMember() — cross-tenant role IDOR fix", () => {
 
   it("accepts a roleId that belongs to the caller's own organization", async () => {
     mockRequireCurrentTenant.mockResolvedValue(tenant());
-    mockDb.role.findFirst.mockResolvedValue({ id: "role-1", name: "CRM Manager", organizationId: ORG, isSystem: false });
+    mockDb.role.findFirst.mockResolvedValue({ id: "role-1", name: "School Manager", organizationId: ORG, isSystem: false, rolePermissions: [{ permission: { key: "school.view" } }] });
     mockGetServerAuthSession.mockResolvedValue({ user: { id: "actor-1" } });
     mockDb.$transaction.mockImplementation(async (fn: (tx: typeof mockDb) => Promise<unknown>) => fn(mockDb));
     mockDb.user.upsert.mockResolvedValue({ id: "user-new" });
+    mockDb.organizationMember.findUnique.mockResolvedValue(null);
     mockDb.organizationMember.upsert.mockResolvedValue({ id: "mem-new" });
     mockDb.auditLog.create.mockResolvedValue({});
     mockCreateInvitation.mockResolvedValue("tok-1");

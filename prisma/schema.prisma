@@ -815,6 +815,7 @@ model Subscription {
   startsAt            DateTime?
   endsAt              DateTime?
   autoRenew           Boolean                 @default(false)
+  seatLimit           Int?
   paymentReference    String?
   paymentMethod       String?
   gatewayProvider     PaymentGatewayProvider?

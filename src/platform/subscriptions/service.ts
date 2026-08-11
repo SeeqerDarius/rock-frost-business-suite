@@ -90,11 +90,15 @@ export async function createSubscription(input: {
   amount: string;
   currency: string;
   autoRenew: boolean;
+  seatLimit: number | null;
   notes?: string | null;
   actorId: string;
 }) {
   if (!Number.isInteger(input.durationMonths) || input.durationMonths < 1 || input.durationMonths > 120) {
     throw new Error("Subscription duration must be between 1 and 120 months.");
+  }
+  if (input.seatLimit != null && (!Number.isInteger(input.seatLimit) || input.seatLimit < 1 || input.seatLimit > 100_000)) {
+    throw new Error("Seat limit must be between 1 and 100,000.");
   }
   const amount = new Prisma.Decimal(input.amount);
   if (amount.isNegative()) throw new Error("Subscription amount cannot be negative.");
@@ -141,6 +145,7 @@ export async function createSubscription(input: {
         amount,
         currency: input.currency.toUpperCase(),
         autoRenew: input.autoRenew,
+        seatLimit: input.seatLimit,
         notes: input.notes || null,
         createdById: input.actorId,
         status: "PENDING_PAYMENT",
@@ -153,7 +158,7 @@ export async function createSubscription(input: {
       action: "subscription.created",
       entityName: "Subscription",
       entityId: subscription.id,
-      metadata: { moduleId: input.moduleId, mode: input.mode, durationMonths: input.durationMonths },
+      metadata: { moduleId: input.moduleId, mode: input.mode, durationMonths: input.durationMonths, seatLimit: input.seatLimit },
     }, tx);
     return subscription;
   });

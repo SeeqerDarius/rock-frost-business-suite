@@ -10,6 +10,7 @@ import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { configuredGatewayProviders } from "@/lib/payments";
 import { startGatewayPayment } from "./actions";
+import { getOrganizationSeatUsage } from "@/platform/subscriptions/seats";
 
 const ERRORS: Record<string, string> = {
   invalid: "That subscription could not be found.",
@@ -39,11 +40,10 @@ export default async function OrganizationBillingPage({
   }
 
   const { error } = await searchParams;
-  const subscriptions = await db.subscription.findMany({
-    where: { organizationId: tenant.organizationId },
-    include: { module: true },
-    orderBy: { createdAt: "desc" },
-  });
+  const [subscriptions, seatUsage] = await Promise.all([
+    db.subscription.findMany({ where: { organizationId: tenant.organizationId }, include: { module: true }, orderBy: { createdAt: "desc" } }),
+    getOrganizationSeatUsage(tenant.organizationId),
+  ]);
   const availableProviders = configuredGatewayProviders();
 
   return (
@@ -88,9 +88,10 @@ export default async function OrganizationBillingPage({
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {subscription.status === "ACTIVE" ? (
-                    <p className="text-sm text-muted-foreground">
-                      Active until {subscription.endsAt?.toLocaleDateString() ?? "—"}
-                    </p>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                      <p>Active until {subscription.endsAt?.toLocaleDateString() ?? "—"}</p>
+                      <p>{(() => { const usage = seatUsage.find((entry) => entry.moduleId === subscription.moduleId); return usage?.limit == null ? `${usage?.used ?? 0} users · Unlimited seats` : `${usage.used} of ${usage.limit} user seats`; })()}</p>
+                    </div>
                   ) : null}
                   {awaitingPayment ? (
                     availableProviders.length === 0 ? (
