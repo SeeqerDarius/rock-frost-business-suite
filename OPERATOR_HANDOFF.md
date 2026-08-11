@@ -1,5 +1,9 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-11 — Inventory item image upload
+
+Inventory managers can now attach an optional JPG, PNG, or WebP image (maximum 1 MB) while creating an item, replace it while editing, or explicitly remove it. Upload validation checks both size/MIME and file signatures. Images are stored on the tenant-owned `InventoryItem`, shown as bounded thumbnails in the catalog, and delivered through an authenticated Inventory-access route that scopes the item lookup to the active organization and uses `nosniff`/private cache headers. Migration `20260811030000_add_inventory_item_image` adds nullable `InventoryItem.imageData`; no environment change is required. Prisma generation/schema validation, focused image tests (2 files / 5 tests), strict TypeScript, ESLint, the full unit suite (48 files / 273 tests), and the 164-page production build including the protected image route passed. A local disposable PostgreSQL URL was unavailable, so the pushed branch's GitHub Actions disposable-Postgres integration job is the required migration/tenant-isolation release gate before production. Production release evidence will be appended after that gate passes.
+
 ## 2026-08-11 — Fix: showcase logos permanently stuck on empty skeleton in production (Claude, on `main`)
 
 User reported via a live production screenshot that all three homepage customer-showcase cards rendered as empty gray skeleton boxes — no logo, not even the demo SVG marks — with no error. This was a regression from the same-day showcase redesign shipped in commit `941f71c` below.

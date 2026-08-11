@@ -138,6 +138,12 @@ describe("Inventory tenant isolation (real Postgres)", () => {
     expect(items.some((i) => i.id === orgAItemId)).toBe(true);
   });
 
+  it("getItemImage never returns another organization's item image", async () => {
+    await testDb.inventoryItem.update({ where: { id: orgBItemId }, data: { imageData: "data:image/png;base64,iVBORw0KGgo=" } });
+    await expect(inventory.getItemImage(orgA.organizationId, orgBItemId)).resolves.toBeNull();
+    await expect(inventory.getItemImage(orgB.organizationId, orgBItemId)).resolves.toMatchObject({ imageData: expect.stringContaining("data:image/png") });
+  });
+
   it("sanity: Org B's item really exists in the real database, scoped to Org B", async () => {
     const row = await testDb.inventoryItem.findUnique({ where: { id: orgBItemId } });
     expect(row?.organizationId).toBe(orgB.organizationId);

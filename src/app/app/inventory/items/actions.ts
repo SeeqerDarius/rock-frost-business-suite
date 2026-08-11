@@ -7,6 +7,7 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createItem, updateItem, ItemSkuTakenError, NotFoundError } from "@/modules/inventory/service";
 import { shortText, moneyAmount, cuid, parseWithSchema } from "@/lib/validation";
+import { inventoryItemImageData } from "@/lib/inventory-item-image";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -32,6 +33,7 @@ export async function upsertItem(formData: FormData): Promise<void> {
   }
 
   const id = clean(formData.get("id"));
+  const imageFile = formData.get("image");
   const parsed = parseWithSchema(itemSchema, {
     sku: clean(formData.get("sku")) ?? "",
     name: clean(formData.get("name")) ?? "",
@@ -44,6 +46,14 @@ export async function upsertItem(formData: FormData): Promise<void> {
     redirect("/app/inventory/items?error=missing-fields");
   }
 
+  let imageData: string | null | undefined;
+  try {
+    imageData = imageFile instanceof File ? await inventoryItemImageData(imageFile) ?? undefined : undefined;
+  } catch {
+    redirect("/app/inventory/items?error=invalid-image");
+  }
+  if (id && formData.get("removeImage") === "on" && !imageData) imageData = null;
+
   const data = {
     sku: parsed.data.sku,
     name: parsed.data.name,
@@ -52,6 +62,7 @@ export async function upsertItem(formData: FormData): Promise<void> {
     costPrice: parsed.data.costPrice,
     reorderPoint: parsed.data.reorderPoint,
     active: formData.get("active") === "on",
+    ...(imageData !== undefined ? { imageData } : {}),
   };
 
   try {

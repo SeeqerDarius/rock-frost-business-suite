@@ -80,6 +80,7 @@ export function listItems(organizationId: string) {
 interface ItemInput {
   sku: string;
   name: string;
+  imageData?: string | null;
   categoryId?: string | null;
   unit?: string;
   costPrice: string;
@@ -116,6 +117,10 @@ export async function updateItem(organizationId: string, id: string, data: ItemI
     }
     throw error;
   }
+}
+
+export function getItemImage(organizationId: string, id: string) {
+  return db.inventoryItem.findFirst({ where: { id, organizationId }, select: { imageData: true, updatedAt: true } });
 }
 
 // --- Stock ---

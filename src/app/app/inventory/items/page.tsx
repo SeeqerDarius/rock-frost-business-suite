@@ -1,4 +1,5 @@
-import { Package, Plus } from "lucide-react";
+import Image from "next/image";
+import { ImageIcon, Package, Plus } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -19,10 +20,11 @@ const ERROR_MESSAGES: Record<string, string> = {
   "missing-fields": "SKU, name, and cost price are required.",
   "sku-taken": "That SKU is already in use by another item.",
   "not-found": "That category could not be found.",
+  "invalid-image": "Choose a valid JPG, PNG, or WebP image no larger than 1 MB.",
 };
 
 interface ItemFieldsProps {
-  item?: { sku: string; name: string; categoryId: string | null; unit: string; costPrice: string; reorderPoint: number; active: boolean };
+  item?: { id: string; sku: string; name: string; imageData: string | null; categoryId: string | null; unit: string; costPrice: string; reorderPoint: number; active: boolean };
   categoryItems: Record<string, string>;
   /** Only applied for a brand-new item — set on Inventory Settings ("Default reorder point for new items"). */
   defaultReorderPoint?: number;
@@ -41,6 +43,12 @@ function ItemFields({ item, categoryItems, defaultReorderPoint = 0 }: ItemFields
           <Label htmlFor={`name${idSuffix}`}>Name</Label>
           <Input id={`name${idSuffix}`} name="name" defaultValue={item?.name} required />
         </div>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`image${idSuffix}`}>{item?.imageData ? "Replace item image" : "Item image"}</Label>
+        {item?.imageData ? <div className="flex items-center gap-3 rounded-md border p-2"><Image src={`/api/inventory/items/${item.id}/image`} alt={`${item.name} item`} width={56} height={56} unoptimized className="size-14 rounded-md object-cover" /><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="removeImage" />Remove current image</label></div> : null}
+        <Input id={`image${idSuffix}`} name="image" type="file" accept="image/jpeg,image/png,image/webp" />
+        <p className="text-xs text-muted-foreground">Optional JPG, PNG, or WebP, up to 1 MB.</p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
@@ -125,6 +133,7 @@ export default async function InventoryItemsPage({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-16">Image</TableHead>
               <TableHead>SKU</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Category</TableHead>
@@ -140,6 +149,7 @@ export default async function InventoryItemsPage({
               const lowStock = totalQuantity <= item.reorderPoint;
               return (
                 <TableRow key={item.id}>
+                  <TableCell>{item.imageData ? <Image src={`/api/inventory/items/${item.id}/image`} alt="" width={44} height={44} unoptimized className="size-11 rounded-md border object-cover" /> : <div className="flex size-11 items-center justify-center rounded-md border bg-muted text-muted-foreground"><ImageIcon className="size-5" aria-hidden="true" /></div>}</TableCell>
                   <TableCell className="font-mono text-xs">{item.sku}</TableCell>
                   <TableCell className="font-medium">{item.name}</TableCell>
                   <TableCell className="text-muted-foreground">{item.category?.name ?? "-"}</TableCell>

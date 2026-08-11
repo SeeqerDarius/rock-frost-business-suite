@@ -12,6 +12,7 @@ The public marketing site has a generated sitemap and robots policy, unique cano
 
 - **Hotel Management:** rooms, guests, reservations, stay lifecycle, folios and payments, housekeeping, reporting, restaurant, channels, and enforced property settings for currency/timezone, stay policy, charges, numbering, settlement, and room-readiness workflow.
 - **School Management:** student/guardian administration, academic periods, classes, enrollment, attendance, fees and reporting, followed by examinations, grading, timetables, transport, library, campus services and education-specific payroll integration.
+- **Inventory Management:** tenant-isolated item/category/warehouse catalogs, optional item images, stock levels, controlled movements, low-stock alerts, reporting, and POS/Procurement integrations.
 
 School is undergoing an active customer-readiness expansion. The first tranche
 adds explicit student lifecycle history, reusable fee structures with

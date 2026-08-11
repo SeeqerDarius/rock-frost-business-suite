@@ -9,7 +9,7 @@ describe("tenant Excel export", () => {
     } });
     expect(buffer.subarray(0, 2).toString()).toBe("PK");
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
+    await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0]);
     expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(["Export Summary", "SchoolStudent"]);
     expect(workbook.getWorksheet("Export Summary")?.getCell("B1").value).toContain("not a restorable system backup");
     const sheet = workbook.getWorksheet("SchoolStudent");
