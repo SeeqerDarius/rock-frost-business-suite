@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { getCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { buildTenantBackup, parseBackupScope } from "@/lib/backup/tenant-backup";
+import { BACKUP_MODULES, type BackupModule } from "@/lib/backup/scopes";
+import { resolveActiveTenantModuleKeys } from "@/lib/active-tenant-modules";
+import { resolveBackupModules } from "@/lib/backup/tenant-backup";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +14,11 @@ export async function GET(request: Request) {
   if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const scope = parseBackupScope(new URL(request.url).searchParams.get("module"));
   if (!scope) return NextResponse.json({ error: "Invalid module scope" }, { status: 400 });
-  const backup = await buildTenantBackup(tenant.organizationId, tenant.organization.tenantCode, scope);
+  const activeKeys = await resolveActiveTenantModuleKeys(tenant.organizationId, tenant.enabledModuleKeys);
+  const activeBackupModules = activeKeys.filter((key): key is BackupModule => BACKUP_MODULES.includes(key as BackupModule));
+  const includedModules = resolveBackupModules(scope, activeBackupModules);
+  if (!includedModules) return NextResponse.json({ error: "That module is not active for this organization." }, { status: 403 });
+  const backup = await buildTenantBackup(tenant.organizationId, tenant.organization.tenantCode, scope, includedModules);
   const date = backup.generatedAt.slice(0, 10);
   return new NextResponse(JSON.stringify(backup), {
     headers: {

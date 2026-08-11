@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const page = readFileSync("src/app/app/(overview)/administration/page.tsx", "utf8");
 const actions = readFileSync("src/app/app/(overview)/administration/actions.ts", "utf8");
 const filtering = readFileSync("src/lib/administration-roles.ts", "utf8");
+const activeModules = readFileSync("src/lib/active-tenant-modules.ts", "utf8");
 
 describe("administration role filtering", () => {
   it("builds the role selector from the tenant's enabled modules", () => {
@@ -21,7 +22,7 @@ describe("administration role filtering", () => {
   });
 
   it("prefers active subscriptions and presents a compact, product-named selector", () => {
-    expect(filtering).toContain('status: "ACTIVE"');
+    expect(activeModules).toContain('status: "ACTIVE"');
     expect(filtering).toContain('return "Installment Manager"');
     expect(page).toContain('alignItemWithTrigger={false}');
     expect(page).toContain('className="max-h-72"');

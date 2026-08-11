@@ -6,6 +6,8 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import { decryptTotpSecret, verifyTotpCode } from "@/lib/auth/totp";
 import { mergeTenantBackup, validateTenantBackup } from "@/lib/backup/tenant-backup";
+import { BACKUP_MODULES, type BackupModule } from "@/lib/backup/scopes";
+import { resolveActiveTenantModuleKeys } from "@/lib/active-tenant-modules";
 
 const MAX_BACKUP_BYTES = 4 * 1024 * 1024;
 
@@ -30,7 +32,9 @@ export async function POST(request: Request) {
   if (!(file instanceof File) || !file.size || file.size > MAX_BACKUP_BYTES) return NextResponse.json({ error: "Choose a backup file no larger than 4 MB." }, { status: 400 });
   let parsed: unknown;
   try { parsed = JSON.parse(await file.text()); } catch { return NextResponse.json({ error: "Invalid backup JSON." }, { status: 400 }); }
-  if (!validateTenantBackup(parsed, tenant.organizationId, tenant.organization.tenantCode)) return NextResponse.json({ error: "This backup does not belong to the active organization or contains invalid data." }, { status: 400 });
+  const activeKeys = await resolveActiveTenantModuleKeys(tenant.organizationId, tenant.enabledModuleKeys);
+  const activeBackupModules = activeKeys.filter((key): key is BackupModule => BACKUP_MODULES.includes(key as BackupModule));
+  if (!validateTenantBackup(parsed, tenant.organizationId, tenant.organization.tenantCode, activeBackupModules)) return NextResponse.json({ error: "This backup does not belong to the active organization, contains inactive-module data, or is invalid." }, { status: 400 });
   const result = await mergeTenantBackup(parsed);
   await logAuditEvent({ organizationId: tenant.organizationId, userId: tenant.userId, module: "administration", action: "tenant_backup.restored", entityName: "Organization", entityId: tenant.organizationId, metadata: { scope: parsed.scope, restored: result.restored, models: result.models, generatedAt: parsed.generatedAt } });
   return NextResponse.json({ ok: true, ...result });

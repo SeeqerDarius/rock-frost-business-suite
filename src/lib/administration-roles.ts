@@ -1,7 +1,7 @@
 import "server-only";
 
 import { moduleRegistry } from "@/platform/modules/registry";
-import { db } from "@/lib/db";
+import { resolveActiveTenantModuleKeys } from "@/lib/active-tenant-modules";
 
 interface AssignableRole {
   name: string;
@@ -32,18 +32,7 @@ export function isRoleAssignableToOrganization(
 }
 
 export async function resolveAssignableModuleKeys(organizationId: string, fallbackKeys: string[]) {
-  const now = new Date();
-  const subscriptions = await db.subscription.findMany({
-    where: {
-      organizationId,
-      status: "ACTIVE",
-      startsAt: { lte: now },
-      endsAt: { gt: now },
-    },
-    select: { module: { select: { code: true } } },
-  });
-  if (subscriptions.length === 0) return fallbackKeys;
-  return [...new Set(subscriptions.map(({ module }) => module.code))];
+  return resolveActiveTenantModuleKeys(organizationId, fallbackKeys);
 }
 
 export function roleDisplayName(name: string) {

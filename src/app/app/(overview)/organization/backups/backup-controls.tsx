@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-export function BackupControls({ tenantCode, twoFactorEnabled }: { tenantCode: string; twoFactorEnabled: boolean }) {
+export function BackupControls({ tenantCode, twoFactorEnabled, activeModules }: { tenantCode: string; twoFactorEnabled: boolean; activeModules: readonly (typeof BACKUP_MODULES)[number][] }) {
   const [scope, setScope] = useState("all");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
@@ -25,12 +25,12 @@ export function BackupControls({ tenantCode, twoFactorEnabled }: { tenantCode: s
 
   return <div className="grid gap-6 lg:grid-cols-2">
     <section className="space-y-4 rounded-lg border p-5">
-      <div><h2 className="font-semibold">Download backup</h2><p className="text-sm text-muted-foreground">Export all tenant module data or one module. Authentication, passwords, platform records, and other organizations are excluded.</p></div>
-      <div className="space-y-2"><Label>Backup scope</Label><Select value={scope} onValueChange={(value) => value && setScope(value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All modules</SelectItem>{BACKUP_MODULES.map((module) => <SelectItem value={module} key={module}>{module[0].toUpperCase() + module.slice(1)}</SelectItem>)}</SelectContent></Select></div>
-      <Button nativeButton={false} render={<a href={`/api/organization/backup?module=${scope}`} download />}><Download />Download JSON backup</Button>
+      <div><h2 className="font-semibold">Download backup</h2><p className="text-sm text-muted-foreground">Export all active module data or one active module. Authentication, passwords, inactive modules, platform records, and other organizations are excluded.</p></div>
+      {activeModules.length ? <><div className="space-y-2"><Label>Backup scope</Label><Select value={scope} onValueChange={(value) => value && setScope(value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All active modules</SelectItem>{activeModules.map((module) => <SelectItem value={module} key={module}>{module[0].toUpperCase() + module.slice(1)}</SelectItem>)}</SelectContent></Select></div>
+      <Button nativeButton={false} render={<a href={`/api/organization/backup?module=${scope}`} download />}><Download />Download JSON backup</Button></> : <p className="rounded-md bg-muted p-3 text-sm text-muted-foreground">No active modules are available to back up.</p>}
     </section>
     <section className="space-y-4 rounded-lg border p-5">
-      <div><h2 className="font-semibold">Merge restore</h2><p className="text-sm text-muted-foreground">Restores matching records and adds missing records without deleting newer data. Only backups from this organization are accepted.</p></div>
+      <div><h2 className="font-semibold">Merge restore</h2><p className="text-sm text-muted-foreground">Restores matching records and adds missing records without deleting newer data. Only this organization&apos;s currently active module data is accepted.</p></div>
       <form onSubmit={restore} className="space-y-3">
         <div className="space-y-2"><Label htmlFor="backup">Backup JSON (maximum 4 MB)</Label><Input id="backup" name="backup" type="file" accept="application/json,.json" required /></div>
         <div className="space-y-2"><Label htmlFor="confirmation">Type RESTORE {tenantCode}</Label><Input id="confirmation" name="confirmation" required /></div>
