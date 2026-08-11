@@ -44,7 +44,7 @@ The showcase rendered as one oversized hero panel (a full-height dark logo panel
 
 ### Branch and commit
 
-Branch `agent/claude-showcase-redesign`, pushed to `origin`. Commit hash recorded below once pushed.
+Branch `agent/claude-showcase-redesign`, commit `941f71cd2454710483ed2138146e239c9baaf3bf`, pushed to `origin`. Not merged to `main`; Codex reviews, merges, pushes, and deploys per the task brief.
 
 ## 2026-08-11 — Active-module-only tenant backup and restore
 
