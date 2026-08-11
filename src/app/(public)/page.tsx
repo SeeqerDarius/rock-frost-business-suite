@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { connection } from "next/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { moduleRegistry } from "@/platform/modules/registry";
@@ -18,6 +19,9 @@ export const metadata = createPublicMetadata({
 });
 
 export default async function HomePage() {
+  // Public customer stories are database-backed and owner-controlled. Tie
+  // rendering to the incoming request so builds never require database access.
+  await connection();
   const [showcaseOrganizations, platformOrganization] = await Promise.all([
     db.organization.findMany({
       where: PUBLIC_SHOWCASE_FILTER,
