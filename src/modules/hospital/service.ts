@@ -4,6 +4,8 @@ import { Prisma, type HospitalAbnormalFlag, type HospitalAppointmentStatus, type
 import { db } from "@/lib/db";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 
+type Tx = Prisma.TransactionClient;
+
 export class HospitalStateError extends Error {}
 export class HospitalNotFoundError extends Error {}
 
@@ -121,8 +123,8 @@ export function listHospitalAppointments(organizationId: string) {
   return db.hospitalAppointment.findMany({ where: { organizationId }, include: { facility: true, department: true, provider: true, patient: true, encounter: true }, orderBy: { scheduledStart: "desc" } });
 }
 
-async function assertProviderAvailable(organizationId: string, providerId: string, start: Date, end: Date, excludeAppointmentId?: string) {
-  const conflict = await db.hospitalAppointment.findFirst({ where: { organizationId, providerId, id: excludeAppointmentId ? { not: excludeAppointmentId } : undefined, status: { in: ["SCHEDULED", "CHECKED_IN", "IN_PROGRESS"] }, scheduledStart: { lt: end }, scheduledEnd: { gt: start } } });
+async function assertProviderAvailable(tx: Tx, organizationId: string, providerId: string, start: Date, end: Date, excludeAppointmentId?: string) {
+  const conflict = await tx.hospitalAppointment.findFirst({ where: { organizationId, providerId, id: excludeAppointmentId ? { not: excludeAppointmentId } : undefined, status: { in: ["SCHEDULED", "CHECKED_IN", "IN_PROGRESS"] }, scheduledStart: { lt: end }, scheduledEnd: { gt: start } } });
   if (conflict) throw new HospitalStateError("Provider already has an appointment in that time window.");
 }
 
@@ -134,8 +136,11 @@ export async function createHospitalAppointment(organizationId: string, data: { 
     db.hospitalPatient.findFirst({ where: { id: data.patientId, organizationId } }),
   ]);
   if (!facility || !provider || !patient) throw new HospitalNotFoundError("Facility, provider, or patient not found.");
-  await assertProviderAvailable(organizationId, data.providerId, data.scheduledStart, data.scheduledEnd);
-  return createWithUniqueRetry(async () => db.hospitalAppointment.create({ data: { organizationId, appointmentNumber: await nextCode(facility.settings?.appointmentPrefix ?? "APT", () => db.hospitalAppointment.count({ where: { organizationId } })), ...data, status: "SCHEDULED" } }));
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`hospital-appointment:${organizationId}:${data.providerId}`}))`;
+    await assertProviderAvailable(tx, organizationId, data.providerId, data.scheduledStart, data.scheduledEnd);
+    return createWithUniqueRetry(async () => tx.hospitalAppointment.create({ data: { organizationId, appointmentNumber: await nextCode(facility.settings?.appointmentPrefix ?? "APT", () => tx.hospitalAppointment.count({ where: { organizationId } })), ...data, status: "SCHEDULED" } }));
+  });
 }
 
 export async function checkInHospitalAppointment(organizationId: string, appointmentId: string) {
