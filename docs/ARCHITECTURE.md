@@ -88,6 +88,11 @@ navigation, service layers, dashboard widgets, Prisma models, and `hotel.*` /
 `school.*` permission prefixes. See `HOTEL_AND_SCHOOL_MODULES.md` for their
 bounded contexts and integration rules.
 
+Hospital Management is implemented on branch `agent/claude-hospital-production`
+(not yet merged to `main`) with the same shape — its own route tree, navigation,
+service layer, dashboard widget, Prisma models, and `hospital.*` permission
+prefix. See `HOSPITAL_MODULE.md`.
+
 This section described Phase 1's UI-only shell (2026-07-19). None of it has been true since Phase 3. For the record, current reality:
 
 - **Prisma is used throughout `src/`** — every module's `service.ts` queries the database, always scoped by `organizationId`. See `docs/MODULE_BOUNDARIES.md`.

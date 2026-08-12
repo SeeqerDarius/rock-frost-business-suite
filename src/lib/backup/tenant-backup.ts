@@ -9,6 +9,7 @@ const MODEL_PREFIXES: Record<BackupModule, string[]> = {
   analytics: [],
   crm: ["Crm"],
   fleet: ["Fleet"],
+  hospital: ["Hospital"],
   hotel: ["Hotel"],
   hr: ["Hr"],
   installment: ["HirePurchase"],

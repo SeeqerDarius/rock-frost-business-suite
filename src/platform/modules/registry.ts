@@ -13,6 +13,7 @@ import {
   Building2,
   GraduationCap,
   Pill,
+  Hospital,
 } from "lucide-react";
 import type { ModuleDefinition } from "@/types/module";
 import { fleetNavigation } from "@/modules/fleet/navigation";
@@ -29,6 +30,7 @@ import { projectsNavigation } from "@/modules/projects/navigation";
 import { hotelNavigation } from "@/modules/hotel/navigation";
 import { schoolNavigation } from "@/modules/school/navigation";
 import { pharmacyNavigation } from "@/modules/pharmacy/navigation";
+import { hospitalNavigation } from "@/modules/hospital/navigation";
 
 /**
  * The module registry. Every business module the platform can offer is declared
@@ -179,6 +181,16 @@ const moduleDefinitions = [
     navigation: pharmacyNavigation,
     status: "available",
     permissionPrefix: "pharmacy.",
+  },
+  {
+    key: "hospital",
+    name: "Hospital Management",
+    description: "Patient records, appointments, encounters, admissions and beds, laboratory, imaging, medication orders, and billing.",
+    icon: Hospital,
+    routePrefix: "/app/hospital",
+    navigation: hospitalNavigation,
+    status: "available",
+    permissionPrefix: "hospital.",
   },
 ] as const satisfies readonly ModuleDefinition[];
 

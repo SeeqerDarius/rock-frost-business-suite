@@ -117,6 +117,19 @@ export const PERMISSIONS = {
   PHARMACY_RESTRICTED_VIEW: "pharmacy.restricted.view",
   PHARMACY_REPORTS_VIEW: "pharmacy.reports.view",
   PHARMACY_SETTINGS_MANAGE: "pharmacy.settings.manage",
+  HOSPITAL_VIEW: "hospital.view",
+  HOSPITAL_FACILITY_MANAGE: "hospital.facility.manage",
+  HOSPITAL_PATIENTS_MANAGE: "hospital.patients.manage",
+  HOSPITAL_APPOINTMENTS_MANAGE: "hospital.appointments.manage",
+  HOSPITAL_ENCOUNTERS_MANAGE: "hospital.encounters.manage",
+  HOSPITAL_ADMISSIONS_MANAGE: "hospital.admissions.manage",
+  HOSPITAL_LAB_MANAGE: "hospital.lab.manage",
+  HOSPITAL_IMAGING_MANAGE: "hospital.imaging.manage",
+  HOSPITAL_MEDICATIONS_MANAGE: "hospital.medications.manage",
+  HOSPITAL_NURSING_MANAGE: "hospital.nursing.manage",
+  HOSPITAL_BILLING_MANAGE: "hospital.billing.manage",
+  HOSPITAL_REPORTS_VIEW: "hospital.reports.view",
+  HOSPITAL_SETTINGS_MANAGE: "hospital.settings.manage",
 } as const;
 
 export function hasPermission(tenant: TenantContext, key: string): boolean {
