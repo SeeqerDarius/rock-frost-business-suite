@@ -2,7 +2,7 @@
 
 ## 2026-08-12 — Track alternate Rock Frost marketing wordmark
 
-Added the previously local-only `public/rfggggg.png` transparent “Rock Frost Technologies” wordmark to source control as an approved alternate marketing asset. Runtime branding remains unchanged: compact application and public navigation continue to use `public/RFGgg.png`, while favicon, Apple, Android/PWA, and loading artwork remain untouched. `docs/UI_UX_REFRESH.md` now records the asset's intended scope. The PNG signature and `git diff --check` passed; no application test/build was required because this is an unused static asset plus documentation only. Deployment evidence will be appended before handoff completion.
+Added the previously local-only `public/rfggggg.png` transparent “Rock Frost Technologies” wordmark to source control as an approved alternate marketing asset. Runtime branding remains unchanged: compact application and public navigation continue to use `public/RFGgg.png`, while favicon, Apple, Android/PWA, and loading artwork remain untouched. `docs/UI_UX_REFRESH.md` now records the asset's intended scope. The PNG signature and `git diff --check` passed; no application test/build was required because this is an unused static asset plus documentation only. Commit `ada8dd1` deployed as Vercel production deployment `dpl_DaLNry9YFaJvJAqtB9dpexa2e9rZ` (`READY`). Production returned the asset as `image/png` with the expected 158,795-byte size, `/api/health` returned 200, and the post-deploy error-log scan was empty.
 
 ## 2026-08-12 — Extended uniform icon treatment to the rest of the product (Claude, on `main`)
 
