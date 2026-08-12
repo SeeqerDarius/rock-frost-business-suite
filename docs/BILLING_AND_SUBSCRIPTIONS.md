@@ -6,6 +6,8 @@ Each subscription can carry a positive user-seat limit or be explicitly unlimite
 
 Tenant administrators see current usage in Administration and Billing. The platform owner sets the initial allowance while creating a subscription and can change it from the subscription ledger. A limit cannot be lowered below current usage. Invitation assignment takes an organization-scoped PostgreSQL advisory transaction lock, recomputes current active subscription entitlements, and fails before writing the membership if any applicable module is full. Legacy subscriptions with a null allowance remain unlimited until Rock Frost assigns a limit.
 
+Organization administrators can change a member's role, reversibly deactivate/reactivate active members, and see both used and remaining seats per module. Role changes are limited to roles compatible with the organization's currently active modules and are rejected if the destination role would exceed any applicable seat limit. Deactivation changes the membership to `SUSPENDED`, which immediately removes it from authentication and seat counts; reactivation rechecks current seat availability before restoring access. The acting administrator cannot deactivate themselves, and the final active Organization Owner cannot be deactivated or demoted.
+
 ## Implemented lifecycle
 
 The public acquisition and platform-operator workflows share one record chain:

@@ -13,7 +13,7 @@ import { db } from "@/lib/db";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { isRoleAssignableToOrganization, resolveAssignableModuleKeys, roleDisplayName } from "@/lib/administration-roles";
-import { inviteMember, removeMember, resendMemberInvitation, revokeMemberInvitation } from "./actions";
+import { changeMemberRole, deactivateMember, inviteMember, reactivateMember, removeMember, resendMemberInvitation, revokeMemberInvitation } from "./actions";
 import { getOrganizationSeatUsage } from "@/platform/subscriptions/seats";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -24,6 +24,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "not-found": "That member could not be found.",
   "resend-failed": "That invitation can no longer be resent or revoked.",
   "self-remove": "You cannot remove your own organization access.",
+  "self-deactivate": "You cannot deactivate your own organization access.",
   "last-owner": "The last active Organization Owner cannot be removed.",
   "platform-owner": "A platform owner cannot be added to a tenant organization. Use a separate tenant-user email.",
   "seat-limit": "This role would exceed the subscribed user seats for one or more modules. Remove an unused member or ask Rock Frost to increase the subscription seats.",
@@ -32,9 +33,9 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function AdministrationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ invited?: string; revoked?: string; removed?: string; error?: string }>;
+  searchParams: Promise<{ invited?: string; revoked?: string; removed?: string; roleChanged?: string; deactivated?: string; reactivated?: string; error?: string }>;
 }) {
-  const { invited, revoked, removed, error } = await searchParams;
+  const { invited, revoked, removed, roleChanged, deactivated, reactivated, error } = await searchParams;
   const tenant = await requireCurrentTenant();
 
   if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) {
@@ -100,13 +101,16 @@ export default async function AdministrationPage({
         </div>
       ) : null}
       {removed ? <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">Member access removed.</div> : null}
+      {roleChanged ? <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">Member role updated.</div> : null}
+      {deactivated ? <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">Member deactivated and their module seats were released.</div> : null}
+      {reactivated ? <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">Member reactivated.</div> : null}
       {error && ERROR_MESSAGES[error] ? (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {ERROR_MESSAGES[error]}
         </div>
       ) : null}
 
-      {seatUsage.length ? <Card><CardHeader><CardTitle>Module user seats</CardTitle><CardDescription>Active members and pending invitations count against every module their role can access.</CardDescription></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{seatUsage.map((usage) => <div key={usage.moduleId} className="rounded-lg border p-3"><div className="flex items-center justify-between gap-2"><span className="font-medium">{usage.moduleName}</span><Badge variant={usage.limit != null && usage.used >= usage.limit ? "destructive" : "outline"}>{usage.limit == null ? `${usage.used} used · Unlimited` : `${usage.used} of ${usage.limit}`}</Badge></div></div>)}</CardContent></Card> : null}
+      {seatUsage.length ? <Card><CardHeader><CardTitle>Module user seats</CardTitle><CardDescription>Active members and pending invitations count against every module their role can access. Deactivated members release their seats immediately.</CardDescription></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{seatUsage.map((usage) => { const remaining = usage.limit == null ? null : Math.max(usage.limit - usage.used, 0); return <div key={usage.moduleId} className="rounded-lg border p-3"><div className="flex items-center justify-between gap-2"><span className="font-medium">{usage.moduleName}</span><Badge variant={usage.limit != null && usage.used >= usage.limit ? "destructive" : "outline"}>{usage.limit == null ? `${usage.used} used · Unlimited` : `${usage.used} of ${usage.limit}`}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{remaining == null ? "Unlimited seats available" : `${remaining} seat${remaining === 1 ? "" : "s"} remaining`}</p></div>; })}</CardContent></Card> : null}
 
       <Card>
         <CardHeader>
@@ -136,7 +140,20 @@ export default async function AdministrationPage({
                   <TableRow key={member.id}>
                     <TableCell className="font-medium">{member.user.name ?? "-"}</TableCell>
                     <TableCell className="text-muted-foreground">{member.user.email}</TableCell>
-                    <TableCell>{member.role?.name ?? "-"}</TableCell>
+                    <TableCell>
+                      {member.status !== "REMOVED" ? (
+                        <form action={changeMemberRole} className="flex min-w-52 items-center gap-2">
+                          <input type="hidden" name="membershipId" value={member.id} />
+                          <Select name="roleId" defaultValue={member.roleId ?? undefined} items={Object.fromEntries(assignableRoles.map((role) => [role.id, roleDisplayName(role.name)]))}>
+                            <SelectTrigger className="h-8 min-w-36"><SelectValue placeholder="Select role" /></SelectTrigger>
+                            <SelectContent align="start" alignItemWithTrigger={false} className="max-h-72">
+                              {assignableRoles.map((role) => <SelectItem key={role.id} value={role.id}>{roleDisplayName(role.name)}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          <Button type="submit" size="sm" variant="outline">Save</Button>
+                        </form>
+                      ) : member.role ? roleDisplayName(member.role.name) : "-"}
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Badge variant={member.status === "ACTIVE" ? "default" : "outline"}>{member.status}</Badge>
@@ -164,10 +181,14 @@ export default async function AdministrationPage({
                           </form>
                         </div>
                       ) : member.status !== "REMOVED" && member.userId !== tenant.userId ? (
-                        <form action={removeMember}>
-                          <input type="hidden" name="membershipId" value={member.id} />
-                          <Button type="submit" size="sm" variant="ghost">Remove access</Button>
-                        </form>
+                        <div className="flex justify-end gap-1">
+                          {member.status === "ACTIVE" ? <form action={deactivateMember}><input type="hidden" name="membershipId" value={member.id} /><Button type="submit" size="sm" variant="outline">Deactivate</Button></form> : null}
+                          {member.status === "SUSPENDED" ? <form action={reactivateMember}><input type="hidden" name="membershipId" value={member.id} /><Button type="submit" size="sm" variant="outline">Reactivate</Button></form> : null}
+                          <form action={removeMember}>
+                            <input type="hidden" name="membershipId" value={member.id} />
+                            <Button type="submit" size="sm" variant="ghost">Remove</Button>
+                          </form>
+                        </div>
                       ) : null}
                     </TableCell>
                   </TableRow>
