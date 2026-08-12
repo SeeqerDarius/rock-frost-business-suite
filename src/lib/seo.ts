@@ -137,4 +137,10 @@ export const MODULE_SEO = {
     keywords: ["pharmacy management software Ghana", "pharmacy dispensing system Africa", "medicine batch expiry software"],
     features: ["Medicine and supplier records", "Batch, expiry, quarantine, and recall traceability", "Prescription-aware FEFO dispensing", "Restricted-medicine register and pharmacy reports"],
   },
+  hospital: {
+    shortName: "Hospital Management Software",
+    description: "Manage patient records, appointments, encounters, admissions and beds, laboratory, imaging, medication orders, billing, nursing workflows, referrals, and consent.",
+    keywords: ["hospital management software Ghana", "hospital information system Africa", "patient encounter laboratory billing software"],
+    features: ["Patients, appointments, and clinical encounters", "Admissions, wards, beds, and nursing workflows", "Laboratory and imaging with verified-result history", "Medication orders, billing, insurance claims, referrals, and consent"],
+  },
 } as const;

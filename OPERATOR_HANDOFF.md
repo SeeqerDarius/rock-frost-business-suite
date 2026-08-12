@@ -1,5 +1,9 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-12 — Hospital public module discovery
+
+Added Hospital to the authoritative public SEO/module catalog so `/modules/hospital` is statically generated alongside the other available modules. The page describes operational capabilities without presenting the product as a medical device or clinical-decision engine.
+
 ## 2026-08-12 — Direct module-route access hardening
 
 Post-deploy probes of Pharmacy and Hospital found that an authenticated account without an organization membership caused nested module pages to throw while the parent app layout rendered its intended “No organization access” state. Updated the shared module/platform access guards to redirect missing-tenant requests to the safe app dashboard state, and made both new module layouts tolerate the parent-owned empty state. This removes avoidable 500s and production error-log noise without weakening module, tenant, or permission checks.
