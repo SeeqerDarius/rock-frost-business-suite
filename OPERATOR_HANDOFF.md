@@ -1,5 +1,150 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-12 — Hospital Management vertical implemented (Claude, branch `agent/claude-hospital-production`)
+
+Full implementation of the Hospital Management vertical per task brief, built concurrently with Codex's Pharmacy
+work. **Not merged to `main`, not deployed** — Codex integrates after Pharmacy's own release gates pass, per
+`docs/PHARMACY_AND_HOSPITAL_ROADMAP.md`'s Pharmacy-first sequencing (this branch satisfies that ordering by never
+touching `main`; only simultaneous *production activation* of both verticals is what that rule guards against).
+
+### Working-tree safety note before this task started
+
+On session start, this shared working directory (`C:\Users\andre\rock-frost-business-suite`) was on
+`codex/pharmacy-production` with substantial **uncommitted** Codex work in progress (a ~300-line `prisma/schema.prisma`
+draft, `docs/PHARMACY_AND_HOSPITAL_ROADMAP.md`, and edits to `prisma/seed-data.ts`/`src/lib/auth/permissions.ts`/
+`src/platform/modules/registry.ts`), and more files were actively changing during this session (confirmed via a
+later `git status` showing additional modified files than the first check — Codex was live in this same directory).
+A direct attempt to preserve that work with a checkpoint commit on Codex's own branch was correctly blocked by the
+Claude Code auto-mode classifier (committing on another agent's behalf isn't something to route around). Rather than
+`git checkout` a branch in a shared dirty working tree — which risks corrupting a live concurrent session — this
+work was done in a **separate git worktree** (`git worktree add ../rock-frost-hospital -b
+agent/claude-hospital-production origin/main`), leaving Codex's directory and in-progress files completely
+untouched throughout. The worktree was removed after pushing; only the branch remains.
+
+### Scope delivered
+
+All 12 scope areas from the task brief: facility/department/service/provider configuration; patient registration
+with organization-unique MRN and advisory (never-blocking) duplicate detection; appointments with transactional
+provider-conflict prevention; encounters with append-only vitals, immutable-once-signed clinical notes, diagnoses,
+append-only care plans, and disposition; admissions/wards/beds with transactional double-occupancy prevention and
+append-only transfer history; laboratory and imaging with an order → result/finding → verify → correct-by-
+supersession pattern that never mutates a verified row; a Hospital-owned versioned medication-order contract that
+never reads or writes a Pharmacy table; billing with `Decimal(12,2)` money throughout and transactional payment
+application; nursing tasks, clinical alerts, referrals, append-only consent, and reference-only attachment metadata
+(no binary file/DICOM storage — an explicit boundary, matching the imaging PACS boundary); per-facility settings;
+and a real (not mocked) dashboard widget/overview page. Full detail, the invariant-to-enforcement table, and the
+regulatory/product boundary statement are in the new `docs/HOSPITAL_MODULE.md`.
+
+### Database
+
+New hand-reviewed migration `prisma/migrations/20260812050000_add_hospital_module/migration.sql` (1,180 lines),
+generated via `prisma migrate diff --from-schema-datamodel <pre-change schema> --to-schema-datamodel
+prisma/schema.prisma --script` (offline, no live database touched) and manually reviewed: 33 new `Hospital*` tables,
+21 new enums, zero `DROP` statements, every foreign key either references `Organization`/`Branch` (cascade, matching
+every other module) or another new `Hospital*` table. Timestamp is after the latest pre-existing migration
+(`20260811070000_add_subscription_seat_limit`) and does not touch or conflict with Codex's separate, still-
+uncommitted Pharmacy migration draft (different timestamp namespace; Codex's migration did not exist as a committed
+file at any point this branch could have collided with it).
+
+### Permissions, roles, and shared-file changes
+
+13 new `hospital.*` permission keys and 9 new least-privilege system roles (Hospital Administrator, Receptionist,
+Doctor, Nurse, Laboratory Scientist, Radiology Staff, Hospital Pharmacist, Billing Officer, Records Officer) — full
+per-role permission table in `docs/HOSPITAL_MODULE.md`. Every shared-file edit was additive only (new lines inserted
+at the end of an existing list/object, nothing reordered, reformatted, or removed) and no Pharmacy content was
+touched — Pharmacy's own draft edits to these same files exist only uncommitted in the other worktree and were never
+visible to or read by this branch:
+
+- `prisma/schema.prisma` — added 33 `Hospital*` models/21 enums at the end of the file, plus one relation line per
+  model appended to `Organization` and one appended to `Branch`.
+- `src/lib/auth/permissions.ts` / `prisma/seed-data.ts` — 13 `HOSPITAL_*` keys appended to each file's `PERMISSIONS`
+  object (kept identical between the two, as that file's own comment requires); 9 role descriptions appended to
+  `SYSTEM_ROLES`; 9 entries appended to `ROLE_PERMISSIONS`; one entry appended to `MODULES`.
+- `src/platform/modules/registry.ts` — one `hospital` entry appended to the module list, `Hospital` icon import added.
+- `src/platform/modules/dashboard-widgets.tsx` — one `hospital: HospitalDashboardWidget` entry appended.
+- `src/lib/backup/scopes.ts` — `"hospital"` appended to `BACKUP_MODULES`.
+- `src/lib/backup/tenant-backup.ts` — `hospital: ["Hospital"]` appended to `MODEL_PREFIXES`. No other backup/export
+  code needed changes — Excel export, JSON export, and merge restore are fully generic over `BackupModule`.
+- Docs (`ARCHITECTURE.md`, `MODULE_BOUNDARIES.md`, `AUTHENTICATION_AND_AUTHORIZATION.md`, `BACKUP_AND_RECOVERY.md`,
+  `README.md`) — one additive paragraph/line each pointing at `docs/HOSPITAL_MODULE.md`, matching the existing
+  Hotel/School references in the same files.
+
+**Expected merge conflict for Codex to resolve:** none of the above should produce a real content conflict against
+Pharmacy's eventual commits, since both branches only append to the *end* of the same lists/objects — Git will very
+likely report a textual conflict on adjacent-line-insertion in `prisma/schema.prisma`'s `Organization`/`Branch`
+relation blocks and in `permissions.ts`/`seed-data.ts`'s `PERMISSIONS`/`ROLE_PERMISSIONS` objects (both branches
+inserting new lines at the same location relative to the shared base), but the resolution in every case is simply
+"keep both additions" — there is no semantic overlap to reconcile.
+
+### Tests
+
+- `test/hospital-module-access.test.ts` (new, mocked-DB, 8 tests) — Hospital's counterpart to
+  `test/module-access.test.ts` (Hospital isn't folded into that shared file, matching the existing precedent that
+  Hotel/School aren't either): confirms every one of Hospital's 14 `page.tsx`/1 `actions.ts` file calls
+  `requireModuleAccess("hospital")` and never a bare `requireCurrentTenant`, confirms the layout/dashboard-widget
+  guard shape, confirms the module is registered in the registry/permissions/seed/backup-scope files, and confirms
+  every `HOSPITAL_*` permission key and role-permission grant is identical between `permissions.ts` and
+  `seed-data.ts`.
+- `test/integration/tenant-isolation/hospital.test.ts` (new, real-Postgres, 5 tests) — cross-tenant provider/
+  patient/bed/lab-test reference rejection, "lists only its own patients/providers."
+- `test/integration/concurrency/hospital.test.ts` (new, real-Postgres, 6 tests) — concurrent patient registration
+  (distinct MRNs), concurrent overlapping-appointment booking (exactly one succeeds), concurrent same-bed admission
+  (exactly one succeeds, bed never double-occupied), concurrent overpaying invoice payments (exactly one succeeds,
+  balance never negative), concurrent exact-settlement payments (both succeed, invoice reaches `PAID`), and a direct
+  database assertion that correcting a verified lab result never mutates the original row (value preserved,
+  `supersedesResultId` links the new row, history count is 2).
+
+### Validation — run and result
+
+- `npx prisma generate`: succeeded.
+- `npx prisma validate`: `The schema at prisma\schema.prisma is valid`.
+- `npx tsc --noEmit --incremental false`: clean, zero errors, across the entire repository including every new file.
+- `npm run lint`: clean, zero errors/warnings.
+- `npx vitest run` (full mocked suite): **51 files / 287 tests passed**, including the new 8-test Hospital file; no
+  pre-existing test was modified or broken.
+- `npm run build`: `✓ Compiled successfully`; all 14 `/app/hospital/*` routes present in the route manifest with no
+  build errors.
+- `git diff --check`: clean (only the repository's standard benign LF/CRLF autocrlf notice, no real whitespace errors).
+- `git status` inspected before starting (see the working-tree safety note above) and again immediately before this
+  commit: only the files listed above are staged; nothing belonging to Pharmacy, Codex, or any other concurrent
+  agent was ever staged or committed by this branch.
+
+**Not run — honestly disclosed, not claimed:** `npm run test:integration`. No `TEST_DATABASE_URL` was configured in
+this environment (only `DATABASE_URL`/`DIRECT_URL` were available), so the guarded integration-test safety check in
+`test/integration/setup/guard.ts` would correctly refuse to run against anything reachable here. The two new
+integration test files above are written and were manually reviewed against the exact same pattern as the passing
+Hotel/Accounting equivalents (`test/integration/tenant-isolation/hotel.test.ts`,
+`test/integration/concurrency/accounting.test.ts`), but per `docs/TESTING_STRATEGY.md`'s own instruction, "an agent
+without a reachable test database cannot honestly claim this step" — so it is not claimed here. **Before merging
+this branch, run `npm run db:test:migrate && npm run test:integration` against a real guarded disposable database
+and confirm all 11 new integration tests pass.**
+
+No browser/E2E verification was performed — no tenant login credentials were available in this session. This is a
+disclosed gap, not a hidden one; see `docs/HOSPITAL_MODULE.md`'s "Known gaps" section.
+
+### Remaining regulatory/integration risks
+
+1. **Pharmacy contract connection is not yet wired.** `HospitalMedicationOrder.externalDispenseReference` is a
+   plain nullable string today. Codex's Pharmacy branch needs to decide the actual shape of what it writes there
+   (a dispensing-record ID, a batch reference, etc.) after both branches merge — this was deliberately left as an
+   opaque string specifically so neither branch needs to agree on Pharmacy's internal schema before merging.
+2. **Regulatory/compliance claims are explicitly disclaimed, not implemented.** This module records operational
+   data only; it does not itself satisfy Ghana Health Service/HeFRA, Data Protection Commission, or NHIA
+   requirements — see `docs/HOSPITAL_MODULE.md`'s regulatory boundary section and the in-app disclosure text on the
+   Hospital overview and settings pages.
+3. **Real-Postgres integration suite unexecuted** — see "Validation" above. This is the single hardest blocker to
+   close before this branch could ever be considered for production activation.
+4. **Duplicate-patient detection not surfaced in the UI** — real, tested service function; not yet an inline
+   registration-form warning. Documented in `docs/HOSPITAL_MODULE.md`.
+5. **No E2E/browser verification.** Same "no credentials available" constraint noted elsewhere in this repository's
+   history for similar sessions.
+
+### Branch and commits
+
+Branch `agent/claude-hospital-production`, pushed to `origin`. Not merged to `main`; Codex integrates after
+Pharmacy's release gates pass. Implementation commit `b2be797` ("Add Hospital Management vertical: schema, module,
+routes, tests"), followed by this documentation-finalization commit.
+
 ## 2026-08-12 — Member lifecycle and seat-aware role management
 
 Tenant Administration now supports safe role changes plus reversible member deactivation/reactivation. Role assignment remains scoped to the tenant and its active modules, enforces destination-module seat capacity, protects the final active Organization Owner, and records audit events. Deactivation uses the existing `SUSPENDED` state, immediately removes the membership from both tenant authentication and seat usage, and prevents administrators from deactivating their own current membership; reactivation reacquires seats transactionally before restoring access. The seat summary now displays remaining capacity explicitly. Files: `src/app/app/(overview)/administration/{actions,page}.tsx`, `test/member-management.test.ts`, `docs/BILLING_AND_SUBSCRIPTIONS.md`, and `README.md`. Strict TypeScript, ESLint, the focused member/seat/tenant suite (4 files / 28 tests), the complete unit suite (50 files / 279 tests), `git diff --check`, and the full 164-page Next.js production build passed. Commit `bfae259` deployed as Vercel production deployment `dpl_L92gWaWSU7HYFgvY4GMyvxAHWtjX` (`READY`). Production health returned 200 and the unauthenticated Administration probe correctly redirected to `/login`; the only error-log entry was the expected missing-membership message caused by that deliberate protected-route probe.

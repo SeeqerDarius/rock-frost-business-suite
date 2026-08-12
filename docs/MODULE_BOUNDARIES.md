@@ -63,6 +63,12 @@ restaurant/stock workflows must call POS/Inventory services, and School
 workforce/payroll workflows must call HR/Payroll services; neither vertical may
 query another module's Prisma tables directly.
 
+Hospital Management (branch `agent/claude-hospital-production`, not yet merged)
+follows the same contract — see `HOSPITAL_MODULE.md`. Its one deliberate
+cross-module boundary is medication orders reaching Pharmacy through a
+versioned, Hospital-owned contract (`HospitalMedicationOrder`); it does not
+and must never read or write a Pharmacy table directly.
+
 1. Add its entry to `src/platform/modules/registry.ts` (key, name, description, icon, `routePrefix` — must be `/app`-prefixed, e.g. `/app/crm` — status).
 2. If it has real navigation, add `src/modules/<key>/navigation.tsx` and reference it from the registry entry. Every `href` in it must also be `/app`-prefixed.
 3. Create its route tree under `src/app/app/<key>/` with its own `layout.tsx` wrapping `AppShell` with that module's navigation — copy the pattern from `app/fleet/layout.tsx` or `app/installment/layout.tsx`.
