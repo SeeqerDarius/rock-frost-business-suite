@@ -1,5 +1,21 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-12 — Extended uniform icon treatment to the rest of the product (Claude, on `main`)
+
+Follow-up to the 2026-08-11 entry below. The user sent screenshots of the live site showing the same grey/black-vs-blue icon inconsistency was still visible in four places the first pass didn't reach: the `/app/modules` directory page, the header's module-launcher dialog, the home-dashboard's per-module tiles (both the generic fallback card and all 12 real per-module dashboard widgets), the platform-owner's own `/app/platform/dashboard` stat cards, and the public marketing site (home page module grid, `/modules` catalog, `/solutions`, `/industries`).
+
+### Fix
+
+Extracted the blue badge markup that `OverviewMetricCard` already used into a new standalone primitive, `IconBadge` (`src/components/ui/icon-badge.tsx`, three sizes), so there is now exactly one definition of the treatment instead of one real instance plus N copies waiting to drift. Applied it everywhere a plain `<Icon className="size-X text-muted-foreground" />` was standing in for a module, metric, or feature: `ModuleLauncher`, `/app/modules`, `/app/dashboard`'s fallback module card, all 12 `src/modules/*/dashboard-widget.tsx` files, and the four public pages listed above. Also made `OverviewMetricCard`'s `href` prop optional (falls back to a plain non-interactive card) and migrated the platform dashboard's three top-line stats onto it, since two of the three now have a sensible destination (Organizations, Module activations) and the component already existed for exactly this shape of data. Left untouched, deliberately: small icons that sit beside an already-titled section heading inside a card (`SettingsIcon`, `ImageIcon`, the `Activity` icon next to "Module adoption") — that's a different, already-uniform convention, not the inconsistency being reported.
+
+### Files changed
+
+New: `src/components/ui/icon-badge.tsx`. Modified: `src/components/dashboard/overview-metric-card.tsx`, `src/components/navigation/module-launcher.tsx`, `src/app/app/(overview)/modules/page.tsx`, `src/app/app/(overview)/dashboard/page.tsx`, `src/app/app/platform/dashboard/page.tsx`, all 12 `src/modules/*/dashboard-widget.tsx`, `src/app/(public)/page.tsx`, `src/app/(public)/modules/page.tsx`, `src/app/(public)/solutions/page.tsx`, `src/app/(public)/industries/page.tsx`, `docs/DESIGN_SYSTEM.md`.
+
+### Validation
+
+`npx tsc --noEmit --incremental false`: clean. `npm run lint`: clean. `npx vitest run`: **49 files / 276 tests passed**, no regressions. `npm run build`: `✓ Compiled successfully`. Visually verified this time (the public pages need no authentication, so this was safe against the shared database): ran a real `next start` production build and screenshotted `/solutions`, the home page's module grid, and `/modules` with Playwright — confirmed the RF-blue badge now renders identically everywhere the icon inconsistency had been reported, matching the user's own screenshots pixel-for-pixel in layout. Did not get a fresh authenticated screenshot of `/app/modules`, the module launcher, `/app/dashboard`, or `/app/platform/dashboard` (no tenant login credentials available in this session) — those four reuse the exact same `IconBadge` component just verified on the public pages, so the visual risk is the same component, not new styling.
+
 ## 2026-08-11 — Uniform icon treatment across all module overview pages (Claude, on `main`)
 
 User reported the app UI looked inconsistent — some icons rendered blue, some black — across modules.

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FolderKanban } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { IconBadge } from "@/components/ui/icon-badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getProjectsSummary } from "@/modules/projects/service";
 
@@ -13,7 +14,7 @@ export async function ProjectsDashboardWidget() {
   return (
     <Card>
       <CardHeader>
-        <FolderKanban className="size-6 text-muted-foreground" />
+        <IconBadge size="lg"><FolderKanban className="size-5" /></IconBadge>
         <CardTitle className="mt-3">Project Management</CardTitle>
         <CardDescription>
           {summary.activeProjectCount} active project{summary.activeProjectCount === 1 ? "" : "s"} · {openTasks} open task{openTasks === 1 ? "" : "s"} · {summary.overdueTaskCount} overdue

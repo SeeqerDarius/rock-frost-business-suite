@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { IconBadge } from "@/components/ui/icon-badge";
 import { moduleRegistry } from "@/platform/modules/registry";
 import { createPublicMetadata } from "@/lib/seo";
 
@@ -35,7 +36,7 @@ export default function PublicModulesPage() {
               <Card key={mod.key}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <mod.icon className="size-6 text-muted-foreground" />
+                    <IconBadge size="lg"><mod.icon className="size-5" /></IconBadge>
                     <Badge variant={mod.status === "available" ? "default" : "outline"}>
                       {mod.status === "available" ? "Available" : "Coming soon"}
                     </Badge>

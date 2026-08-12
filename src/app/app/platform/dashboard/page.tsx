@@ -1,6 +1,7 @@
 import { Activity, Building2, Users, Blocks } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card";
 import { db } from "@/lib/db";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
 import { getPlatformAnchorOrganizationIds } from "@/lib/platform-organizations";
@@ -25,9 +26,9 @@ export default async function PlatformDashboardPage() {
   const adoptedModules = moduleAdoption.filter((mod) => mod.organizationModules.length > 0);
 
   const stats = [
-    { label: "Organizations", value: organizationCount, icon: Building2 },
-    { label: "Active members", value: activeMemberCount, icon: Users },
-    { label: "Module activations", value: enabledModuleCount, icon: Blocks },
+    { label: "Organizations", value: organizationCount, description: "Tenant organizations on the platform", icon: <Building2 className="size-4" />, href: "/app/platform/organizations" },
+    { label: "Active members", value: activeMemberCount, description: "Members across every organization", icon: <Users className="size-4" /> },
+    { label: "Module activations", value: enabledModuleCount, description: "Modules enabled across all organizations", icon: <Blocks className="size-4" />, href: "/app/platform/modules" },
   ];
 
   return (
@@ -35,17 +36,7 @@ export default async function PlatformDashboardPage() {
       <PageHeader title="Platform overview" description="Organizations, subscriptions, and module activation across the whole platform." />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        {stats.map((stat) => (
-          <Card key={stat.label}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardDescription>{stat.label}</CardDescription>
-                <stat.icon className="size-4 text-muted-foreground" />
-              </div>
-              <CardTitle className="text-3xl">{stat.value}</CardTitle>
-            </CardHeader>
-          </Card>
-        ))}
+        {stats.map((stat) => <OverviewMetricCard key={stat.label} {...stat} />)}
       </div>
 
       <Card>

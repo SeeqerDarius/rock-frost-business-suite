@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Calculator } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { IconBadge } from "@/components/ui/icon-badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getAccountingSummary } from "@/modules/accounting/service";
 
@@ -12,7 +13,7 @@ export async function AccountingDashboardWidget() {
   return (
     <Card>
       <CardHeader>
-        <Calculator className="size-6 text-muted-foreground" />
+        <IconBadge size="lg"><Calculator className="size-5" /></IconBadge>
         <CardTitle className="mt-3">Accounting</CardTitle>
         <CardDescription>
           {summary.cashBalance.toFixed(2)} cash · {summary.outstandingInvoiceCount} outstanding invoice{summary.outstandingInvoiceCount === 1 ? "" : "s"} · {summary.netIncome.toFixed(2)} net income

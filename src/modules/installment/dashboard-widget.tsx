@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Lock, Wallet } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { IconBadge } from "@/components/ui/icon-badge";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
@@ -39,7 +40,7 @@ export async function InstallmentDashboardWidget() {
   return (
     <Card>
       <CardHeader>
-        <Wallet className="size-6 text-muted-foreground" />
+        <IconBadge size="lg"><Wallet className="size-5" /></IconBadge>
         <CardTitle className="mt-3">Installment Management</CardTitle>
         <CardDescription>
           {customers.length} customer{customers.length === 1 ? "" : "s"} · {activeCount} active account{activeCount === 1 ? "" : "s"}

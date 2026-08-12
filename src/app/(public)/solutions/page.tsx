@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Blocks, ShieldCheck, Layers, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { IconBadge } from "@/components/ui/icon-badge";
 import { createPublicMetadata } from "@/lib/seo";
 
 export const metadata = createPublicMetadata({
@@ -63,7 +64,7 @@ export default function SolutionsPage() {
             {pillars.map((pillar) => (
               <Card key={pillar.title}>
                 <CardHeader>
-                  <pillar.icon className="size-6 text-muted-foreground" />
+                  <IconBadge size="lg"><pillar.icon className="size-5" /></IconBadge>
                   <CardTitle className="mt-3">{pillar.title}</CardTitle>
                   <CardDescription>{pillar.description}</CardDescription>
                 </CardHeader>

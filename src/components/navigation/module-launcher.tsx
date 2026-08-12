@@ -6,6 +6,7 @@ import { Grid3x3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { IconBadge } from "@/components/ui/icon-badge";
 import { moduleRegistry } from "@/platform/modules/registry";
 
 export function ModuleLauncher({ enabledModuleKeys = [] }: { enabledModuleKeys?: string[] }) {
@@ -33,7 +34,7 @@ export function ModuleLauncher({ enabledModuleKeys = [] }: { enabledModuleKeys?:
                   onClick={() => setOpen(false)}
                   className="flex items-start gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-secondary/50"
                 >
-                  <mod.icon className="mt-0.5 size-5 text-muted-foreground" />
+                  <IconBadge size="sm"><mod.icon className="size-4" /></IconBadge>
                   <div>
                     <p className="text-sm font-medium">{mod.name}</p>
                     <p className="text-xs text-muted-foreground">{mod.description}</p>
@@ -49,7 +50,7 @@ export function ModuleLauncher({ enabledModuleKeys = [] }: { enabledModuleKeys?:
                 key={mod.key}
                 className="flex items-start gap-3 rounded-lg border border-dashed p-3 text-left opacity-60"
               >
-                <mod.icon className="mt-0.5 size-5 text-muted-foreground" />
+                <IconBadge size="sm"><mod.icon className="size-4" /></IconBadge>
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium">{mod.name}</p>

@@ -3,6 +3,7 @@ import { Blocks } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { IconBadge } from "@/components/ui/icon-badge";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { moduleRegistry } from "@/platform/modules/registry";
 import { requireCurrentTenant } from "@/lib/tenant";
@@ -36,7 +37,7 @@ export default async function ModulesPage() {
           {enabledModules.map((mod) => (
             <Card key={mod.key}>
               <CardHeader>
-                <mod.icon className="size-6 text-muted-foreground" />
+                <IconBadge size="lg"><mod.icon className="size-5" /></IconBadge>
                 <CardTitle className="mt-3">{mod.name}</CardTitle>
                 <CardDescription>{mod.description}</CardDescription>
               </CardHeader>

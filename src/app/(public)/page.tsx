@@ -2,6 +2,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { IconBadge } from "@/components/ui/icon-badge";
 import { moduleRegistry } from "@/platform/modules/registry";
 import { JsonLd } from "@/components/seo/json-ld";
 import { createPublicMetadata, DEFAULT_DESCRIPTION, SITE_URL } from "@/lib/seo";
@@ -116,7 +117,7 @@ export default async function HomePage() {
             {moduleRegistry.map((mod) => (
               <Card key={mod.key}>
                 <CardHeader>
-                  <mod.icon className="size-6 text-muted-foreground" />
+                  <IconBadge size="lg"><mod.icon className="size-5" /></IconBadge>
                   <CardTitle className="mt-3">{mod.name}</CardTitle>
                   <CardDescription>{mod.description}</CardDescription>
                 </CardHeader>

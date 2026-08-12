@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Truck, Wallet, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { IconBadge } from "@/components/ui/icon-badge";
 import { createPublicMetadata } from "@/lib/seo";
 
 export const metadata = createPublicMetadata({
@@ -52,7 +53,7 @@ export default function IndustriesPage() {
             {industries.map((industry) => (
               <Card key={industry.name}>
                 <CardHeader>
-                  <industry.icon className="size-6 text-muted-foreground" />
+                  <IconBadge size="lg"><industry.icon className="size-5" /></IconBadge>
                   <CardTitle className="mt-3">{industry.name}</CardTitle>
                   <CardDescription>{industry.description}</CardDescription>
                 </CardHeader>
