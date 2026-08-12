@@ -290,39 +290,6 @@ model User {
   projectTasksAssigned            ProjectTask[]             @relation("ProjectTasksAssigned")
   projectTasksCreated             ProjectTask[]             @relation("ProjectTasksCreated")
   moduleRequestsCreated           ModuleRequest[]           @relation("ModuleRequestsCreated")
-  hospitalFacilities              HospitalFacility[]
-  hospitalDepartments             HospitalDepartment[]
-  hospitalServiceItems            HospitalServiceItem[]
-  hospitalProviders               HospitalProvider[]
-  hospitalPatients                HospitalPatient[]
-  hospitalAppointments            HospitalAppointment[]
-  hospitalEncounters              HospitalEncounter[]
-  hospitalVitals                  HospitalVitals[]
-  hospitalClinicalNotes           HospitalClinicalNote[]
-  hospitalDiagnoses               HospitalDiagnosis[]
-  hospitalCarePlans               HospitalCarePlan[]
-  hospitalWards                   HospitalWard[]
-  hospitalBeds                    HospitalBed[]
-  hospitalAdmissions              HospitalAdmission[]
-  hospitalBedTransfers            HospitalBedTransfer[]
-  hospitalLabTests                HospitalLabTest[]
-  hospitalLabOrders               HospitalLabOrder[]
-  hospitalLabOrderItems           HospitalLabOrderItem[]
-  hospitalLabResults              HospitalLabResult[]
-  hospitalImagingTests            HospitalImagingTest[]
-  hospitalImagingOrders           HospitalImagingOrder[]
-  hospitalImagingFindings         HospitalImagingFinding[]
-  hospitalMedicationOrders        HospitalMedicationOrder[]
-  hospitalInvoices                HospitalInvoice[]
-  hospitalInvoiceLines            HospitalInvoiceLine[]
-  hospitalPayments                HospitalPayment[]
-  hospitalInsuranceClaims         HospitalInsuranceClaim[]
-  hospitalNursingTasks            HospitalNursingTask[]
-  hospitalClinicalAlerts          HospitalClinicalAlert[]
-  hospitalReferrals               HospitalReferral[]
-  hospitalConsents                HospitalConsent[]
-  hospitalAttachments             HospitalAttachment[]
-  hospitalSettings                HospitalSettings[]
   moduleRequestsAssigned          ModuleRequest[]           @relation("ModuleRequestsAssigned")
   moduleRequestEvents             ModuleRequestEvent[]
   contactSubmissionsAssigned      ContactSubmission[]       @relation("ContactSubmissionsAssigned")
@@ -503,6 +470,10 @@ model Organization {
   pharmacyPrescriptions           PharmacyPrescription[]
   pharmacyDispensings             PharmacyDispensing[]
   pharmacySettings                PharmacySettings?
+  moduleRequests                  ModuleRequest[]
+  contactSubmissions              ContactSubmission[]
+  subscriptions                   Subscription[]
+  deletionRequestedBy             User?                            @relation("OrganizationDeletionRequestedBy", fields: [deletionRequestedById], references: [id], onDelete: SetNull)
   hospitalFacilities              HospitalFacility[]
   hospitalDepartments             HospitalDepartment[]
   hospitalServiceItems            HospitalServiceItem[]
@@ -536,10 +507,6 @@ model Organization {
   hospitalConsents                HospitalConsent[]
   hospitalAttachments             HospitalAttachment[]
   hospitalSettings                HospitalSettings[]
-  moduleRequests                  ModuleRequest[]
-  contactSubmissions              ContactSubmission[]
-  subscriptions                   Subscription[]
-  deletionRequestedBy             User?                            @relation("OrganizationDeletionRequestedBy", fields: [deletionRequestedById], references: [id], onDelete: SetNull)
 
   @@index([industry])
   @@index([status])
@@ -709,43 +676,10 @@ model Module {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
-  organizationModules      OrganizationModule[]
-  hospitalFacilities       HospitalFacility[]
-  hospitalDepartments      HospitalDepartment[]
-  hospitalServiceItems     HospitalServiceItem[]
-  hospitalProviders        HospitalProvider[]
-  hospitalPatients         HospitalPatient[]
-  hospitalAppointments     HospitalAppointment[]
-  hospitalEncounters       HospitalEncounter[]
-  hospitalVitals           HospitalVitals[]
-  hospitalClinicalNotes    HospitalClinicalNote[]
-  hospitalDiagnoses        HospitalDiagnosis[]
-  hospitalCarePlans        HospitalCarePlan[]
-  hospitalWards            HospitalWard[]
-  hospitalBeds             HospitalBed[]
-  hospitalAdmissions       HospitalAdmission[]
-  hospitalBedTransfers     HospitalBedTransfer[]
-  hospitalLabTests         HospitalLabTest[]
-  hospitalLabOrders        HospitalLabOrder[]
-  hospitalLabOrderItems    HospitalLabOrderItem[]
-  hospitalLabResults       HospitalLabResult[]
-  hospitalImagingTests     HospitalImagingTest[]
-  hospitalImagingOrders    HospitalImagingOrder[]
-  hospitalImagingFindings  HospitalImagingFinding[]
-  hospitalMedicationOrders HospitalMedicationOrder[]
-  hospitalInvoices         HospitalInvoice[]
-  hospitalInvoiceLines     HospitalInvoiceLine[]
-  hospitalPayments         HospitalPayment[]
-  hospitalInsuranceClaims  HospitalInsuranceClaim[]
-  hospitalNursingTasks     HospitalNursingTask[]
-  hospitalClinicalAlerts   HospitalClinicalAlert[]
-  hospitalReferrals        HospitalReferral[]
-  hospitalConsents         HospitalConsent[]
-  hospitalAttachments      HospitalAttachment[]
-  hospitalSettings         HospitalSettings[]
-  moduleRequests           ModuleRequest[]
-  contactSubmissions       ContactSubmission[]
-  subscriptions            Subscription[]
+  organizationModules OrganizationModule[]
+  moduleRequests      ModuleRequest[]
+  contactSubmissions  ContactSubmission[]
+  subscriptions       Subscription[]
 }
 
 model OrganizationModule {
@@ -3794,10 +3728,6 @@ model HospitalFacility {
   wards        HospitalWard[]
   invoices     HospitalInvoice[]
   settings     HospitalSettings?
-  user         User?                 @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?               @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@unique([organizationId, code])
   @@index([organizationId, active])
@@ -3818,10 +3748,6 @@ model HospitalDepartment {
   facility     HospitalFacility      @relation(fields: [facilityId], references: [id], onDelete: Cascade)
   providers    HospitalProvider[]
   appointments HospitalAppointment[]
-  user         User?                 @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?               @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@unique([facilityId, code])
   @@index([organizationId, active])
@@ -3842,10 +3768,6 @@ model HospitalServiceItem {
   organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   facility     HospitalFacility      @relation(fields: [facilityId], references: [id], onDelete: Cascade)
   invoiceLines HospitalInvoiceLine[]
-  user         User?                 @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?               @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@unique([facilityId, code])
   @@index([organizationId, active])
@@ -3869,10 +3791,6 @@ model HospitalProvider {
   appointments HospitalAppointment[]
   encounters   HospitalEncounter[]
   admissions   HospitalAdmission[]
-  user         User?                 @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?               @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId, active])
   @@index([facilityId])
@@ -3930,10 +3848,6 @@ model HospitalPatient {
   referrals        HospitalReferral[]
   consents         HospitalConsent[]
   attachments      HospitalAttachment[]
-  user             User?                     @relation(fields: [userId], references: [id])
-  userId           String?
-  module           Module?                   @relation(fields: [moduleId], references: [id])
-  moduleId         String?
 
   @@unique([organizationId, mrn])
   @@index([organizationId, lastName, dateOfBirth])
@@ -3965,10 +3879,6 @@ model HospitalAppointment {
   provider     HospitalProvider    @relation(fields: [providerId], references: [id], onDelete: Restrict)
   patient      HospitalPatient     @relation(fields: [patientId], references: [id], onDelete: Restrict)
   encounter    HospitalEncounter?
-  user         User?               @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?             @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@unique([organizationId, appointmentNumber])
   @@index([organizationId, status, scheduledStart])
@@ -4011,10 +3921,6 @@ model HospitalEncounter {
   nursingTasks     HospitalNursingTask[]
   referrals        HospitalReferral[]
   attachments      HospitalAttachment[]
-  user             User?                     @relation(fields: [userId], references: [id])
-  userId           String?
-  module           Module?                   @relation(fields: [moduleId], references: [id])
-  moduleId         String?
 
   @@unique([organizationId, encounterNumber])
   @@index([organizationId, status])
@@ -4043,10 +3949,6 @@ model HospitalVitals {
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   encounter    HospitalEncounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
-  user         User?             @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?           @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId, recordedAt])
   @@index([encounterId])
@@ -4070,10 +3972,6 @@ model HospitalClinicalNote {
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   encounter    HospitalEncounter @relation(fields: [encounterId], references: [id], onDelete: Restrict)
-  user         User?             @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?           @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId, createdAt])
   @@index([encounterId])
@@ -4091,10 +3989,6 @@ model HospitalDiagnosis {
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   encounter    HospitalEncounter @relation(fields: [encounterId], references: [id], onDelete: Restrict)
-  user         User?             @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?           @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId, recordedAt])
   @@index([encounterId])
@@ -4115,10 +4009,6 @@ model HospitalCarePlan {
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   encounter    HospitalEncounter @relation(fields: [encounterId], references: [id], onDelete: Restrict)
-  user         User?             @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?           @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId, createdAt])
   @@index([encounterId])
@@ -4137,10 +4027,6 @@ model HospitalWard {
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   facility     HospitalFacility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
   beds         HospitalBed[]
-  user         User?            @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?          @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@unique([facilityId, code])
   @@index([organizationId, active])
@@ -4161,10 +4047,6 @@ model HospitalBed {
   admissions    HospitalAdmission[]
   transfersTo   HospitalBedTransfer[] @relation("BedTransferTo")
   transfersFrom HospitalBedTransfer[] @relation("BedTransferFrom")
-  user          User?                 @relation(fields: [userId], references: [id])
-  userId        String?
-  module        Module?               @relation(fields: [moduleId], references: [id])
-  moduleId      String?
 
   @@unique([wardId, code])
   @@index([organizationId, status])
@@ -4194,10 +4076,6 @@ model HospitalAdmission {
   admittingProvider HospitalProvider      @relation(fields: [admittingProviderId], references: [id], onDelete: Restrict)
   bed               HospitalBed           @relation(fields: [bedId], references: [id], onDelete: Restrict)
   transfers         HospitalBedTransfer[]
-  user              User?                 @relation(fields: [userId], references: [id])
-  userId            String?
-  module            Module?               @relation(fields: [moduleId], references: [id])
-  moduleId          String?
 
   @@unique([organizationId, admissionNumber])
   @@index([organizationId, status])
@@ -4221,10 +4099,6 @@ model HospitalBedTransfer {
   admission    HospitalAdmission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
   fromBed      HospitalBed?      @relation("BedTransferFrom", fields: [fromBedId], references: [id], onDelete: SetNull)
   toBed        HospitalBed       @relation("BedTransferTo", fields: [toBedId], references: [id], onDelete: Restrict)
-  user         User?             @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?           @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId, transferredAt])
   @@index([admissionId])
@@ -4243,10 +4117,6 @@ model HospitalLabTest {
 
   organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   orderItems   HospitalLabOrderItem[]
-  user         User?                  @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?                @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@unique([organizationId, code])
   @@index([organizationId, active])
@@ -4265,10 +4135,6 @@ model HospitalLabOrder {
   encounter    HospitalEncounter      @relation(fields: [encounterId], references: [id], onDelete: Restrict)
   patient      HospitalPatient        @relation(fields: [patientId], references: [id], onDelete: Restrict)
   items        HospitalLabOrderItem[]
-  user         User?                  @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?                @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId, status])
   @@index([encounterId])
@@ -4287,10 +4153,6 @@ model HospitalLabOrderItem {
   labOrder     HospitalLabOrder    @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
   labTest      HospitalLabTest     @relation(fields: [labTestId], references: [id], onDelete: Restrict)
   results      HospitalLabResult[]
-  user         User?               @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?             @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId, status])
   @@index([labOrderId])
@@ -4321,10 +4183,6 @@ model HospitalLabResult {
   labOrderItem     HospitalLabOrderItem @relation(fields: [labOrderItemId], references: [id], onDelete: Cascade)
   supersedesResult HospitalLabResult?   @relation("LabResultRevision", fields: [supersedesResultId], references: [id], onDelete: SetNull)
   supersededBy     HospitalLabResult?   @relation("LabResultRevision")
-  user             User?                @relation(fields: [userId], references: [id])
-  userId           String?
-  module           Module?              @relation(fields: [moduleId], references: [id])
-  moduleId         String?
 
   @@index([organizationId, enteredAt])
   @@index([labOrderItemId])
@@ -4343,10 +4201,6 @@ model HospitalImagingTest {
 
   organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   orders       HospitalImagingOrder[]
-  user         User?                  @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?                @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@unique([organizationId, code])
   @@index([organizationId, active])
@@ -4375,10 +4229,6 @@ model HospitalImagingOrder {
   patient      HospitalPatient          @relation(fields: [patientId], references: [id], onDelete: Restrict)
   imagingTest  HospitalImagingTest      @relation(fields: [imagingTestId], references: [id], onDelete: Restrict)
   findings     HospitalImagingFinding[]
-  user         User?                    @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?                  @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId, status])
   @@index([encounterId])
@@ -4405,10 +4255,6 @@ model HospitalImagingFinding {
   imagingOrder      HospitalImagingOrder    @relation(fields: [imagingOrderId], references: [id], onDelete: Cascade)
   supersedesFinding HospitalImagingFinding? @relation("ImagingFindingRevision", fields: [supersedesFindingId], references: [id], onDelete: SetNull)
   supersededBy      HospitalImagingFinding? @relation("ImagingFindingRevision")
-  user              User?                   @relation(fields: [userId], references: [id])
-  userId            String?
-  module            Module?                 @relation(fields: [moduleId], references: [id])
-  moduleId          String?
 
   @@index([organizationId, enteredAt])
   @@index([imagingOrderId])
@@ -4445,10 +4291,6 @@ model HospitalMedicationOrder {
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   encounter    HospitalEncounter @relation(fields: [encounterId], references: [id], onDelete: Restrict)
   patient      HospitalPatient   @relation(fields: [patientId], references: [id], onDelete: Restrict)
-  user         User?             @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?           @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId, status])
   @@index([encounterId])
@@ -4481,10 +4323,6 @@ model HospitalInvoice {
   lines           HospitalInvoiceLine[]
   payments        HospitalPayment[]
   insuranceClaims HospitalInsuranceClaim[]
-  user            User?                    @relation(fields: [userId], references: [id])
-  userId          String?
-  module          Module?                  @relation(fields: [moduleId], references: [id])
-  moduleId        String?
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, status])
@@ -4506,10 +4344,6 @@ model HospitalInvoiceLine {
   organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoice      HospitalInvoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   serviceItem  HospitalServiceItem? @relation(fields: [serviceItemId], references: [id], onDelete: SetNull)
-  user         User?                @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?              @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId])
   @@index([invoiceId])
@@ -4529,10 +4363,6 @@ model HospitalPayment {
 
   organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoice      HospitalInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  user         User?           @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?         @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@unique([organizationId, receiptNumber])
   @@index([organizationId, receivedAt])
@@ -4556,10 +4386,6 @@ model HospitalInsuranceClaim {
   organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoice      HospitalInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   patient      HospitalPatient @relation(fields: [patientId], references: [id], onDelete: Restrict)
-  user         User?           @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?         @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId, status])
   @@index([invoiceId])
@@ -4584,10 +4410,6 @@ model HospitalNursingTask {
   organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   encounter    HospitalEncounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
   patient      HospitalPatient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  user         User?              @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?            @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId, status])
   @@index([patientId])
@@ -4608,10 +4430,6 @@ model HospitalClinicalAlert {
 
   organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   patient      HospitalPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  user         User?           @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?         @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId, active])
   @@index([patientId])
@@ -4632,10 +4450,6 @@ model HospitalReferral {
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   encounter    HospitalEncounter @relation(fields: [encounterId], references: [id], onDelete: Restrict)
   patient      HospitalPatient   @relation(fields: [patientId], references: [id], onDelete: Restrict)
-  user         User?             @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?           @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId, status])
   @@index([patientId])
@@ -4659,10 +4473,6 @@ model HospitalConsent {
 
   organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   patient      HospitalPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  user         User?           @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?         @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId, type])
   @@index([patientId])
@@ -4688,10 +4498,6 @@ model HospitalAttachment {
   organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   patient      HospitalPatient?   @relation(fields: [patientId], references: [id], onDelete: Cascade)
   encounter    HospitalEncounter? @relation(fields: [encounterId], references: [id], onDelete: Cascade)
-  user         User?              @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?            @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId, category])
   @@index([patientId])
@@ -4718,10 +4524,6 @@ model HospitalSettings {
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   facility     HospitalFacility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
-  user         User?            @relation(fields: [userId], references: [id])
-  userId       String?
-  module       Module?          @relation(fields: [moduleId], references: [id])
-  moduleId     String?
 
   @@index([organizationId])
 }
