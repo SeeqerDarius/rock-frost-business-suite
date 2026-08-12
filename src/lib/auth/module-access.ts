@@ -1,7 +1,7 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
-import { requireCurrentTenant, type TenantContext } from "@/lib/tenant";
+import { getCurrentTenant, type TenantContext } from "@/lib/tenant";
 import { canAccessModule, isPlatformOperator } from "@/lib/auth/permissions";
 import type { BusinessModuleKey } from "@/platform/modules/registry";
 
@@ -12,7 +12,11 @@ import type { BusinessModuleKey } from "@/platform/modules/registry";
  * reused during client navigation.
  */
 export async function requireModuleAccess(moduleKey: BusinessModuleKey): Promise<TenantContext> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await getCurrentTenant();
+  // Nested layouts/pages can render in parallel. Redirect instead of throwing
+  // when the parent app layout has already identified an account without a
+  // workspace, so direct module URLs never become noisy 500 responses.
+  if (!tenant) redirect("/app/dashboard?error=no-organization-access");
   if (isPlatformOperator(tenant)) {
     redirect("/app/platform/dashboard");
   }
@@ -24,7 +28,8 @@ export async function requireModuleAccess(moduleKey: BusinessModuleKey): Promise
 
 /** Revalidates the Rock Frost operator role before any platform-wide read. */
 export async function requirePlatformOperator(): Promise<TenantContext> {
-  const tenant = await requireCurrentTenant();
+  const tenant = await getCurrentTenant();
+  if (!tenant) redirect("/app/dashboard?error=no-organization-access");
   if (!isPlatformOperator(tenant)) {
     redirect("/app/dashboard?error=forbidden");
   }

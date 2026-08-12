@@ -1,5 +1,9 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-12 — Direct module-route access hardening
+
+Post-deploy probes of Pharmacy and Hospital found that an authenticated account without an organization membership caused nested module pages to throw while the parent app layout rendered its intended “No organization access” state. Updated the shared module/platform access guards to redirect missing-tenant requests to the safe app dashboard state, and made both new module layouts tolerate the parent-owned empty state. This removes avoidable 500s and production error-log noise without weakening module, tenant, or permission checks.
+
 ## 2026-08-12 — Pharmacy and Hospital integration audit
 
 Merged the independently developed Hospital vertical into `codex/pharmacy-production`. All shared-file conflicts were additive and resolved to retain both verticals across the module registry, dashboard widgets, permissions, seed roles, backup scopes, schema, README, and operator documentation. During validation, the first schema merge placed organization-side Hospital relations inside `User`; Prisma caught the duplicate fields before migration or deployment, and the relations were corrected into `Organization`. A second validation caught the two module registry definitions sharing one object; they are now separate entries. Combined strict TypeScript and ESLint pass, and the merged mocked suite passes 52 files / 290 tests. Local `prisma validate` remains unable to complete because this workstation resolves `DIRECT_URL` to an empty value; schema formatting/client generation succeeded and the disposable-PostgreSQL CI integration job is the authoritative migration/schema gate before release.
