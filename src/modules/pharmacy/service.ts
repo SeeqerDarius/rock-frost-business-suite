@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Prisma, PharmacyMedicineClass } from "@prisma/client";
+import { Prisma, PharmacyBatchStatus, PharmacyMedicineClass } from "@prisma/client";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 
@@ -47,6 +47,18 @@ export async function receiveBatch(organizationId: string, actorId: string, data
     const batch = await tx.pharmacyBatch.create({ data: { organizationId, ...data, initialQuantity: data.quantity } });
     await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "batch.received", entityName: "PharmacyBatch", entityId: batch.id, metadata: { medicineId: medicine.id, batchNumber: batch.batchNumber, quantity: batch.quantity } }, tx);
     return batch;
+  });
+}
+
+export async function updateBatchStatus(organizationId: string, actorId: string, batchId: string, status: PharmacyBatchStatus, reason: string) {
+  if (!reason.trim()) throw new PharmacyStockError("A reason is required for every batch status change.");
+  return db.$transaction(async (tx) => {
+    const batch = await tx.pharmacyBatch.findFirst({ where: { id: batchId, organizationId }, include: { medicine: true } });
+    if (!batch) throw new PharmacyNotFoundError("Batch not found.");
+    if (status === "AVAILABLE" && (batch.quantity <= 0 || batch.expiryDate <= new Date())) throw new PharmacyStockError("An empty or expired batch cannot be released for dispensing.");
+    const updated = await tx.pharmacyBatch.update({ where: { id: batch.id }, data: { status } });
+    await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "batch.status_changed", entityName: "PharmacyBatch", entityId: batch.id, metadata: { medicine: batch.medicine.name, batchNumber: batch.batchNumber, from: batch.status, to: status, reason } }, tx);
+    return updated;
   });
 }
 
@@ -161,6 +173,40 @@ export async function dispense(organizationId: string, actorId: string, data: {
     }
     await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "dispensing.completed", entityName: "PharmacyDispensing", entityId: dispensing.id, metadata: { dispensingNumber: dispensing.dispensingNumber, total: dispensing.total.toString() } }, tx);
     return dispensing;
+  });
+}
+
+export async function reverseDispensing(organizationId: string, actorId: string, dispensingId: string, reason: string) {
+  if (!reason.trim()) throw new PharmacyStockError("A reversal reason is required.");
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pharmacy-dispense:${organizationId}`}))`;
+    const dispensing = await tx.pharmacyDispensing.findFirst({
+      where: { id: dispensingId, organizationId, status: "COMPLETED" },
+      include: { lines: true, restrictedEntries: true },
+    });
+    if (!dispensing) throw new PharmacyNotFoundError("Completed dispensing record not found.");
+
+    for (const line of dispensing.lines) {
+      const batch = await tx.pharmacyBatch.findFirst({ where: { id: line.batchId, organizationId } });
+      if (!batch) throw new PharmacyNotFoundError("Dispensed batch not found.");
+      const mayRestoreAvailability = batch.status === "DEPLETED" && batch.expiryDate > new Date();
+      await tx.pharmacyBatch.update({ where: { id: batch.id }, data: { quantity: { increment: line.quantity }, ...(mayRestoreAvailability ? { status: "AVAILABLE" } : {}) } });
+      if (line.prescriptionLineId) {
+        await tx.pharmacyPrescriptionLine.updateMany({ where: { id: line.prescriptionLineId, organizationId, quantityDispensed: { gte: line.quantity } }, data: { quantityDispensed: { decrement: line.quantity } } });
+      }
+    }
+
+    for (const entry of dispensing.restrictedEntries) {
+      await tx.pharmacyRestrictedRegister.create({ data: { organizationId, dispensingId: dispensing.id, medicineName: entry.medicineName, batchNumber: entry.batchNumber, quantity: -entry.quantity, patientName: entry.patientName, patientAddress: entry.patientAddress, prescriberName: entry.prescriberName, prescriberRegistration: entry.prescriberRegistration, recordedById: actorId, reversalOfId: entry.id, reason } });
+    }
+    if (dispensing.prescriptionId) {
+      const lines = await tx.pharmacyPrescriptionLine.findMany({ where: { prescriptionId: dispensing.prescriptionId } });
+      const status = lines.every((line) => line.quantityDispensed === 0) ? "ACTIVE" : lines.every((line) => line.quantityDispensed >= line.quantityPrescribed) ? "DISPENSED" : "PARTIALLY_DISPENSED";
+      await tx.pharmacyPrescription.updateMany({ where: { id: dispensing.prescriptionId, organizationId }, data: { status } });
+    }
+    const reversed = await tx.pharmacyDispensing.update({ where: { id: dispensing.id }, data: { status: "REVERSED", reversedAt: new Date(), reversalReason: reason } });
+    await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "dispensing.reversed", entityName: "PharmacyDispensing", entityId: dispensing.id, metadata: { dispensingNumber: dispensing.dispensingNumber, reason } }, tx);
+    return reversed;
   });
 }
 

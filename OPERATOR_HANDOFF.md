@@ -1,5 +1,9 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-12 — Pharmacy safety-control completion
+
+Added reason-required batch quarantine, recall, and safe release actions. Empty or expired batches cannot be released, and every transition is tenant-scoped and audited. Added dispensing reversal as an auditable compensating transaction: original dispensing records remain immutable, eligible stock and prescription quantities are restored, controlled-medicine register reversals are appended, and recalled/quarantined stock is never silently made available. Important files are `src/modules/pharmacy/service.ts`, `src/app/app/pharmacy/actions.ts`, `src/app/app/pharmacy/stock/page.tsx`, and `src/app/app/pharmacy/dispensing/page.tsx`. Strict TypeScript, ESLint, and the Pharmacy focused suite (1 file / 3 tests) pass; full-suite, build, and release evidence follow after the production gate.
+
 ## 2026-08-12 — Pharmacy-first healthcare expansion initiated
 
 Defined the production and regulatory boundary for a new Pharmacy vertical, the subsequent Hospital vertical, and a supported offline/on-premise edition in `docs/PHARMACY_AND_HOSPITAL_ROADMAP.md`. Pharmacy must be completed and released before Hospital implementation begins. The roadmap explicitly covers Ghana-focused medicine records, batch/expiry/recall traceability, prescription and restricted-medicine controls, tenant isolation, immutable audit history, safe inter-module contracts, and the non-certification/legal boundary. Implementation is in progress and must not be presented or deployed as complete until all listed release gates pass.

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { parseWithSchema, shortText, cuid, moneyAmount, positiveInt, email } from "@/lib/validation";
-import { createMedicine, createPatient, createPrescriber, createPrescription, createSupplier, dispense, receiveBatch, updatePharmacySettings } from "@/modules/pharmacy/service";
+import { createMedicine, createPatient, createPrescriber, createPrescription, createSupplier, dispense, receiveBatch, reverseDispensing, updateBatchStatus, updatePharmacySettings } from "@/modules/pharmacy/service";
 
 function requirePermission(permission: string, route: string) { return requireModuleAccess("pharmacy").then((tenant) => { if (!hasPermission(tenant, permission)) redirect(`${route}?error=forbidden`); return tenant; }); }
 
@@ -28,6 +28,14 @@ export async function addBatch(formData: FormData) {
   const tenant = await requirePermission(PERMISSIONS.PHARMACY_STOCK_MANAGE, "/app/pharmacy/stock");
   const parsed = parseWithSchema(z.object({ medicineId: cuid, supplierId: z.union([cuid, z.literal("")]).optional(), batchNumber: shortText, quantity: positiveInt, costPrice: moneyAmount, manufactureDate: z.coerce.date().optional(), expiryDate: z.coerce.date(), invoiceReference: shortText.optional() }), Object.fromEntries(formData));
   if (!parsed.success) redirect("/app/pharmacy/stock?error=invalid"); await receiveBatch(tenant.organizationId, tenant.userId, { ...parsed.data, supplierId: parsed.data.supplierId || null }); revalidatePath("/app/pharmacy"); redirect("/app/pharmacy/stock?saved=1");
+}
+
+export async function changeBatchStatus(formData: FormData) {
+  const tenant = await requirePermission(PERMISSIONS.PHARMACY_STOCK_MANAGE, "/app/pharmacy/stock");
+  const parsed = parseWithSchema(z.object({ batchId: cuid, status: z.enum(["AVAILABLE", "QUARANTINED", "RECALLED"]), reason: shortText }), Object.fromEntries(formData));
+  if (!parsed.success) redirect("/app/pharmacy/stock?error=invalid");
+  await updateBatchStatus(tenant.organizationId, tenant.userId, parsed.data.batchId, parsed.data.status, parsed.data.reason);
+  revalidatePath("/app/pharmacy"); redirect("/app/pharmacy/stock?saved=1");
 }
 
 export async function addPatient(formData: FormData) {
@@ -52,6 +60,14 @@ export async function completeDispensing(formData: FormData) {
   const tenant = await requirePermission(PERMISSIONS.PHARMACY_DISPENSING_MANAGE, "/app/pharmacy/dispensing");
   const parsed = parseWithSchema(z.object({ dispensingNumber: shortText, patientId: z.union([cuid, z.literal("")]).optional(), prescriptionId: z.union([cuid, z.literal("")]).optional(), medicineId: cuid, prescriptionLineId: z.union([cuid, z.literal("")]).optional(), quantity: positiveInt, discount: moneyAmount, paymentMethod: shortText.optional(), paymentReference: shortText.optional() }), Object.fromEntries(formData));
   if (!parsed.success) redirect("/app/pharmacy/dispensing?error=invalid"); await dispense(tenant.organizationId, tenant.userId, { dispensingNumber: parsed.data.dispensingNumber, patientId: parsed.data.patientId || null, prescriptionId: parsed.data.prescriptionId || null, discount: parsed.data.discount, paymentMethod: parsed.data.paymentMethod, paymentReference: parsed.data.paymentReference, lines: [{ medicineId: parsed.data.medicineId, prescriptionLineId: parsed.data.prescriptionLineId || null, quantity: parsed.data.quantity }] }); revalidatePath("/app/pharmacy"); redirect("/app/pharmacy/dispensing?saved=1");
+}
+
+export async function reverseCompletedDispensing(formData: FormData) {
+  const tenant = await requirePermission(PERMISSIONS.PHARMACY_DISPENSING_MANAGE, "/app/pharmacy/dispensing");
+  const parsed = parseWithSchema(z.object({ dispensingId: cuid, reason: shortText }), Object.fromEntries(formData));
+  if (!parsed.success) redirect("/app/pharmacy/dispensing?error=invalid");
+  await reverseDispensing(tenant.organizationId, tenant.userId, parsed.data.dispensingId, parsed.data.reason);
+  revalidatePath("/app/pharmacy"); redirect("/app/pharmacy/dispensing?saved=1");
 }
 
 export async function saveSettings(formData: FormData) {

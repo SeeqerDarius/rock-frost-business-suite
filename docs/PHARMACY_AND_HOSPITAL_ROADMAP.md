@@ -8,6 +8,8 @@ Pharmacy is delivered and released first. Hospital starts only after Pharmacy pa
 
 Pharmacy owns medicine/product registration, regulatory class, suppliers, purchase receipts, batch/lot and expiry stock, quarantine/recall, patients, prescribers, prescriptions, dispensing, payment records, restricted-medicine register, alerts, operational reports, and pharmacy-specific settings. It must enforce FEFO selection, prevent dispensing expired/quarantined/recalled stock, require a prescription for configured prescription-only classes, prevent negative batch stock under concurrency, and preserve immutable dispensing/restricted-register history through reversals rather than destructive edits.
 
+Batch quarantine, recall, and release require an operator reason and create an audit event. Dispensing reversal is a compensating transaction: it preserves the original sale, appends controlled-register reversals, restores prescription balances and eligible stock, and never silently releases recalled or quarantined stock.
+
 It integrates with shared Accounting/POS/Procurement only through explicit service contracts. A tenant may use Pharmacy independently; enabling it does not require enabling those horizontal modules.
 
 The product supports operational record keeping but does not itself grant a pharmacy licence, validate a clinician's professional registration, replace pharmacist judgement, submit statutory reports automatically, or certify regulatory compliance. Each deploying organization remains responsible for Pharmacy Council/FDA licensing, configuration, record-retention policy, and professional review.
