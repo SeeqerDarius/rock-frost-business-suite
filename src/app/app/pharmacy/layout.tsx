@@ -1,0 +1,12 @@
+import { Lock } from "lucide-react";
+import { AppShell } from "@/components/layout/app-shell";
+import { EmptyState } from "@/components/feedback/empty-state";
+import { pharmacyNavigation } from "@/modules/pharmacy/navigation";
+import { requireCurrentTenant } from "@/lib/tenant";
+import { canAccessModule } from "@/lib/auth/permissions";
+
+export default async function PharmacyLayout({ children }: { children: React.ReactNode }) {
+  const tenant = await requireCurrentTenant();
+  if (!canAccessModule(tenant, "pharmacy")) return <div className="flex min-h-screen items-center justify-center px-6"><EmptyState icon={Lock} title="Pharmacy isn't available to you" description="Your organization must activate Pharmacy and your role must include Pharmacy access." /></div>;
+  return <AppShell sectionLabel="Pharmacy Management" navigation={pharmacyNavigation} enabledModuleKeys={tenant.accessibleModuleKeys} organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}>{children}</AppShell>;
+}

@@ -108,6 +108,15 @@ export const PERMISSIONS = {
   SCHOOL_PAYROLL_MANAGE: "school.payroll.manage",
   SCHOOL_REPORTS_VIEW: "school.reports.view",
   SCHOOL_SETTINGS_MANAGE: "school.settings.manage",
+  PHARMACY_VIEW: "pharmacy.view",
+  PHARMACY_MEDICINES_MANAGE: "pharmacy.medicines.manage",
+  PHARMACY_STOCK_MANAGE: "pharmacy.stock.manage",
+  PHARMACY_PATIENTS_MANAGE: "pharmacy.patients.manage",
+  PHARMACY_PRESCRIPTIONS_MANAGE: "pharmacy.prescriptions.manage",
+  PHARMACY_DISPENSING_MANAGE: "pharmacy.dispensing.manage",
+  PHARMACY_RESTRICTED_VIEW: "pharmacy.restricted.view",
+  PHARMACY_REPORTS_VIEW: "pharmacy.reports.view",
+  PHARMACY_SETTINGS_MANAGE: "pharmacy.settings.manage",
 } as const;
 
 export function hasPermission(tenant: TenantContext, key: string): boolean {

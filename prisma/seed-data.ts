@@ -121,6 +121,15 @@ export const PERMISSIONS = {
   SCHOOL_PAYROLL_MANAGE: "school.payroll.manage",
   SCHOOL_REPORTS_VIEW: "school.reports.view",
   SCHOOL_SETTINGS_MANAGE: "school.settings.manage",
+  PHARMACY_VIEW: "pharmacy.view",
+  PHARMACY_MEDICINES_MANAGE: "pharmacy.medicines.manage",
+  PHARMACY_STOCK_MANAGE: "pharmacy.stock.manage",
+  PHARMACY_PATIENTS_MANAGE: "pharmacy.patients.manage",
+  PHARMACY_PRESCRIPTIONS_MANAGE: "pharmacy.prescriptions.manage",
+  PHARMACY_DISPENSING_MANAGE: "pharmacy.dispensing.manage",
+  PHARMACY_RESTRICTED_VIEW: "pharmacy.restricted.view",
+  PHARMACY_REPORTS_VIEW: "pharmacy.reports.view",
+  PHARMACY_SETTINGS_MANAGE: "pharmacy.settings.manage",
 } as const;
 
 export const ALL_PERMISSIONS = Object.values(PERMISSIONS);
@@ -156,6 +165,9 @@ export const SYSTEM_ROLES: { name: string; description: string }[] = [
   { name: "Bursar", description: "School fees, receipts, financial reporting, and payroll-input role." },
   { name: "Librarian", description: "School library catalog and circulation role." },
   { name: "Transport Manager", description: "School route and student transport assignment role." },
+  { name: "Pharmacy Manager", description: "Full operational Pharmacy Management role." },
+  { name: "Pharmacist", description: "Prescription validation, dispensing, restricted-register, and patient-care role." },
+  { name: "Pharmacy Technician", description: "Medicine, stock, patient, and supervised dispensing operations role." },
 ];
 
 function moduleRolePermissions(keys: (typeof ALL_PERMISSIONS)[number][]) {
@@ -297,6 +309,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   Bursar: moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_FEES_MANAGE, PERMISSIONS.SCHOOL_PAYROLL_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW]),
   Librarian: moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_LIBRARY_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW]),
   "Transport Manager": moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW]),
+  "Pharmacy Manager": moduleRolePermissions([PERMISSIONS.PHARMACY_VIEW, PERMISSIONS.PHARMACY_MEDICINES_MANAGE, PERMISSIONS.PHARMACY_STOCK_MANAGE, PERMISSIONS.PHARMACY_PATIENTS_MANAGE, PERMISSIONS.PHARMACY_PRESCRIPTIONS_MANAGE, PERMISSIONS.PHARMACY_DISPENSING_MANAGE, PERMISSIONS.PHARMACY_RESTRICTED_VIEW, PERMISSIONS.PHARMACY_REPORTS_VIEW, PERMISSIONS.PHARMACY_SETTINGS_MANAGE]),
+  Pharmacist: moduleRolePermissions([PERMISSIONS.PHARMACY_VIEW, PERMISSIONS.PHARMACY_MEDICINES_MANAGE, PERMISSIONS.PHARMACY_STOCK_MANAGE, PERMISSIONS.PHARMACY_PATIENTS_MANAGE, PERMISSIONS.PHARMACY_PRESCRIPTIONS_MANAGE, PERMISSIONS.PHARMACY_DISPENSING_MANAGE, PERMISSIONS.PHARMACY_RESTRICTED_VIEW, PERMISSIONS.PHARMACY_REPORTS_VIEW]),
+  "Pharmacy Technician": moduleRolePermissions([PERMISSIONS.PHARMACY_VIEW, PERMISSIONS.PHARMACY_MEDICINES_MANAGE, PERMISSIONS.PHARMACY_STOCK_MANAGE, PERMISSIONS.PHARMACY_PATIENTS_MANAGE, PERMISSIONS.PHARMACY_DISPENSING_MANAGE]),
 };
 
 /** Matches the `key`/`name` pairs in src/platform/modules/registry.ts. Keep in sync when adding a module. */
@@ -314,6 +329,7 @@ export const MODULES: { code: string; name: string }[] = [
   { code: "pos", name: "Point of Sale" },
   { code: "hotel", name: "Hotel Management" },
   { code: "school", name: "School Management" },
+  { code: "pharmacy", name: "Pharmacy Management" },
 ];
 
 /**

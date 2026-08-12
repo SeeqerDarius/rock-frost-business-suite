@@ -1,10 +1,10 @@
 # Rock Frost Business Suite
 
-A modular multi-tenant business platform. Organizations activate thirteen independent management modules — Fleet, Installment Sales, CRM, Inventory, Accounting, HR, Procurement, Payroll, Analytics, Point of Sale, Project Management, Hotel Management, and School Management — from one unified workspace, without mixing unrelated business data together.
+A modular multi-tenant business platform. Organizations activate fourteen independent management modules — Fleet, Installment Sales, CRM, Inventory, Accounting, HR, Procurement, Payroll, Analytics, Point of Sale, Project Management, Hotel Management, School Management, and Pharmacy Management — from one unified workspace, without mixing unrelated business data together.
 
 > This is a clean rebuild started 2026-07-19. The previous implementation is archived on branch `archive/pre-redesign-rfbs` and under `docs/archive/previous-implementation/`. See `docs/DECISIONS.md` for why.
 
-**Current status**: all thirteen business modules are implemented and have passed the complete local validation gate, including all real-PostgreSQL migration, tenant-isolation, and concurrency tests. The authenticated workspace uses a responsive, user-collapsible navigation shell with grouped Hotel and School workflows and operational overview pages. Release/deployment evidence is recorded in `OPERATOR_HANDOFF.md`. The production platform is live at [rockfrostgroup.com](https://www.rockfrostgroup.com). Public acquisition, subscriptions, hosted checkout, trial expiry, tenant isolation, and production monitoring remain implemented.
+**Current status**: thirteen established business modules are in production; Pharmacy Management is undergoing its final production release gates as the fourteenth module. The authenticated workspace uses a responsive, user-collapsible navigation shell with vertical-suite workflows and operational overview pages. Release/deployment evidence is recorded in `OPERATOR_HANDOFF.md`. The production platform is live at [rockfrostgroup.com](https://www.rockfrostgroup.com). Public acquisition, subscriptions, hosted checkout, trial expiry, tenant isolation, and production monitoring remain implemented.
 
 The public marketing site has a generated sitemap and robots policy, unique canonical metadata, Open Graph/Twitter sharing data, structured data, dedicated search landing pages for all thirteen modules, and a consent-controlled carousel for approved platform tenants and independent Rock Frost customers. Platform owners manage homepage copy, visibility, ordering, logos, and publication without code from the bottom-anchored Platform Settings workspace. Onboarded tenants and independent customers are never published automatically. See `docs/SEO.md` for the authoritative indexable surface, `docs/PLATFORM_SETTINGS.md` for owner controls, and the Search Console launch checklist.
 
@@ -13,6 +13,7 @@ The public marketing site has a generated sitemap and robots policy, unique cano
 - **Hotel Management:** rooms, guests, reservations, stay lifecycle, folios and payments, housekeeping, reporting, restaurant, channels, and enforced property settings for currency/timezone, stay policy, charges, numbering, settlement, and room-readiness workflow.
 - **School Management:** student/guardian administration, academic periods, classes, enrollment, attendance, fees and reporting, followed by examinations, grading, timetables, transport, library, campus services and education-specific payroll integration.
 - **Inventory Management:** tenant-isolated item/category/warehouse catalogs, optional item images, stock levels, controlled movements, low-stock alerts, reporting, and POS/Procurement integrations.
+- **Pharmacy Management:** tenant-isolated medicines, licensed suppliers, batch/expiry and FEFO stock, patients and prescribers, prescriptions, dispensing, controlled-medicine register, safety alerts, reports, settings, backups, and subscription seats.
 
 School is undergoing an active customer-readiness expansion. The first tranche
 adds explicit student lifecycle history, reusable fee structures with

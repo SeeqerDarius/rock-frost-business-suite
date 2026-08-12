@@ -131,4 +131,10 @@ export const MODULE_SEO = {
     keywords: ["school management software Ghana", "student information system Africa", "school fees attendance examination software"],
     features: ["Student, guardian, and enrollment records", "Attendance, fees, and payments", "Examinations, grading, and timetables", "Transport, library, and payroll inputs"],
   },
+  pharmacy: {
+    shortName: "Pharmacy Management Software",
+    description: "Manage medicines, batch and expiry stock, prescriptions, dispensing, restricted-medicine records, patients, suppliers, and pharmacy reports.",
+    keywords: ["pharmacy management software Ghana", "pharmacy dispensing system Africa", "medicine batch expiry software"],
+    features: ["Medicine and supplier records", "Batch, expiry, quarantine, and recall traceability", "Prescription-aware FEFO dispensing", "Restricted-medicine register and pharmacy reports"],
+  },
 } as const;

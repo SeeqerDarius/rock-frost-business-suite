@@ -12,6 +12,7 @@ import {
   Store,
   Building2,
   GraduationCap,
+  Pill,
 } from "lucide-react";
 import type { ModuleDefinition } from "@/types/module";
 import { fleetNavigation } from "@/modules/fleet/navigation";
@@ -27,13 +28,14 @@ import { posNavigation } from "@/modules/pos/navigation";
 import { projectsNavigation } from "@/modules/projects/navigation";
 import { hotelNavigation } from "@/modules/hotel/navigation";
 import { schoolNavigation } from "@/modules/school/navigation";
+import { pharmacyNavigation } from "@/modules/pharmacy/navigation";
 
 /**
  * The module registry. Every business module the platform can offer is declared
  * here — this is the single source of truth the module launcher, workspace
  * navigation, and (eventually) organization module-activation records read from.
  *
- * All thirteen modules are available. Hotel and School follow the vertical
+ * All available modules are declared here. Hotel, School, and Pharmacy follow the vertical
  * architecture contract in docs/HOTEL_AND_SCHOOL_MODULES.md. Billing/Subscriptions is a platform
  * capability rather than a tenant business module, so it does not belong here.
  */
@@ -167,6 +169,16 @@ const moduleDefinitions = [
     navigation: schoolNavigation,
     status: "available",
     permissionPrefix: "school.",
+  },
+  {
+    key: "pharmacy",
+    name: "Pharmacy Management",
+    description: "Medicines, batch and expiry stock, prescriptions, dispensing, restricted registers, and pharmacy reporting.",
+    icon: Pill,
+    routePrefix: "/app/pharmacy",
+    navigation: pharmacyNavigation,
+    status: "available",
+    permissionPrefix: "pharmacy.",
   },
 ] as const satisfies readonly ModuleDefinition[];
 

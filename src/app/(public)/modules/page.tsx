@@ -8,7 +8,7 @@ import { createPublicMetadata } from "@/lib/seo";
 
 export const metadata = createPublicMetadata({
   title: "Business Software Modules",
-  description: "Explore 13 available business modules, including complete Hotel and School Management vertical suites.",
+  description: "Explore modular business systems, including Hotel, School, and Pharmacy Management vertical suites.",
   path: "/modules",
   keywords: ["business software modules Ghana", "ERP modules Africa", "fleet CRM payroll inventory software"],
 });

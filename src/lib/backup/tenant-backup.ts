@@ -14,6 +14,7 @@ const MODEL_PREFIXES: Record<BackupModule, string[]> = {
   installment: ["HirePurchase"],
   inventory: ["Inventory"],
   payroll: ["Payroll"],
+  pharmacy: ["Pharmacy"],
   pos: ["Pos"],
   procurement: ["Procurement"],
   projects: ["Project"],

@@ -78,7 +78,7 @@ export default function SolutionsPage() {
         <div className="flex flex-col items-start justify-between gap-6 rounded-lg border p-8 sm:flex-row sm:items-center">
           <div className="space-y-1">
             <h2 className="text-xl font-semibold">See which modules fit your organization</h2>
-            <p className="text-muted-foreground">Explore thirteen available modules, including Hotel and School vertical suites.</p>
+            <p className="text-muted-foreground">Explore available modules, including Hotel, School, and Pharmacy vertical suites.</p>
           </div>
           <Button variant="outline" nativeButton={false} render={<Link href="/modules" />}>
             View modules

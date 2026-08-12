@@ -235,25 +235,25 @@ enum HirePurchaseCreditSource {
 }
 
 model User {
-  id                  String     @id @default(cuid())
-  name                String?
-  firstName           String?
-  lastName            String?
-  email               String     @unique
-  emailVerified       DateTime?
-  image               String?
-  passwordHash        String?
-  phone               String?
-  status              UserStatus @default(INVITED)
-  lastLoginAt         DateTime?
-  failedLoginAttempts Int        @default(0)
-  lockedUntil         DateTime?
-  sessionVersion      Int        @default(0)
-  twoFactorSecret     String?
-  twoFactorEnabled    Boolean    @default(false)
+  id                   String     @id @default(cuid())
+  name                 String?
+  firstName            String?
+  lastName             String?
+  email                String     @unique
+  emailVerified        DateTime?
+  image                String?
+  passwordHash         String?
+  phone                String?
+  status               UserStatus @default(INVITED)
+  lastLoginAt          DateTime?
+  failedLoginAttempts  Int        @default(0)
+  lockedUntil          DateTime?
+  sessionVersion       Int        @default(0)
+  twoFactorSecret      String?
+  twoFactorEnabled     Boolean    @default(false)
   twoFactorConfirmedAt DateTime?
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
 
   accounts                        Account[]
   sessions                        Session[]
@@ -462,6 +462,14 @@ model Organization {
   schoolLibraryLoans              SchoolLibraryLoan[]
   schoolPayrollAdjustments        SchoolPayrollAdjustment[]
   schoolSettings                  SchoolSettings[]
+  pharmacyMedicines               PharmacyMedicine[]
+  pharmacySuppliers               PharmacySupplier[]
+  pharmacyBatches                 PharmacyBatch[]
+  pharmacyPatients                PharmacyPatient[]
+  pharmacyPrescribers             PharmacyPrescriber[]
+  pharmacyPrescriptions           PharmacyPrescription[]
+  pharmacyDispensings             PharmacyDispensing[]
+  pharmacySettings                PharmacySettings?
   moduleRequests                  ModuleRequest[]
   contactSubmissions              ContactSubmission[]
   subscriptions                   Subscription[]
@@ -3219,4 +3227,280 @@ model SchoolSettings {
   campus       SchoolCampus @relation(fields: [campusId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+}
+
+enum PharmacyMedicineClass {
+  OTC
+  PHARMACY_ONLY
+  PRESCRIPTION_ONLY
+  CONTROLLED
+}
+
+enum PharmacyBatchStatus {
+  AVAILABLE
+  QUARANTINED
+  RECALLED
+  DEPLETED
+}
+
+enum PharmacyPrescriptionStatus {
+  DRAFT
+  ACTIVE
+  PARTIALLY_DISPENSED
+  DISPENSED
+  CANCELLED
+  EXPIRED
+}
+
+enum PharmacyDispensingStatus {
+  COMPLETED
+  REVERSED
+}
+
+model PharmacyMedicine {
+  id                   String                @id @default(cuid())
+  organizationId       String
+  sku                  String
+  name                 String
+  genericName          String?
+  strength             String?
+  dosageForm           String?
+  unit                 String                @default("unit")
+  medicineClass        PharmacyMedicineClass @default(OTC)
+  registrationNumber   String?
+  barcode              String?
+  sellingPrice         Decimal               @default(0) @db.Decimal(12, 2)
+  reorderPoint         Int                   @default(0)
+  requiresPrescription Boolean               @default(false)
+  active               Boolean               @default(true)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  organization      Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  batches           PharmacyBatch[]
+  prescriptionLines PharmacyPrescriptionLine[]
+  dispensingLines   PharmacyDispensingLine[]
+
+  @@unique([organizationId, sku])
+  @@index([organizationId, active])
+  @@index([organizationId, barcode])
+}
+
+model PharmacySupplier {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  licenceNumber  String?
+  contactPerson  String?
+  phone          String?
+  email          String?
+  address        String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  batches      PharmacyBatch[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, active])
+}
+
+model PharmacyBatch {
+  id               String              @id @default(cuid())
+  organizationId   String
+  medicineId       String
+  supplierId       String?
+  batchNumber      String
+  quantity         Int
+  initialQuantity  Int
+  costPrice        Decimal             @default(0) @db.Decimal(12, 2)
+  manufactureDate  DateTime?
+  expiryDate       DateTime
+  receivedAt       DateTime            @default(now())
+  status           PharmacyBatchStatus @default(AVAILABLE)
+  invoiceReference String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  organization    Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  medicine        PharmacyMedicine         @relation(fields: [medicineId], references: [id], onDelete: Restrict)
+  supplier        PharmacySupplier?        @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  dispensingLines PharmacyDispensingLine[]
+
+  @@unique([organizationId, medicineId, batchNumber])
+  @@index([organizationId, status, expiryDate])
+  @@index([medicineId, expiryDate])
+}
+
+model PharmacyPatient {
+  id             String    @id @default(cuid())
+  organizationId String
+  patientNumber  String
+  fullName       String
+  dateOfBirth    DateTime?
+  sex            String?
+  phone          String?
+  email          String?
+  address        String?
+  allergies      String?
+  notes          String?
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization  Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  prescriptions PharmacyPrescription[]
+  dispensings   PharmacyDispensing[]
+
+  @@unique([organizationId, patientNumber])
+  @@index([organizationId, fullName])
+}
+
+model PharmacyPrescriber {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  fullName           String
+  registrationNumber String
+  facilityName       String?
+  phone              String?
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization  Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  prescriptions PharmacyPrescription[]
+
+  @@unique([organizationId, registrationNumber])
+  @@index([organizationId, active])
+}
+
+model PharmacyPrescription {
+  id                 String                     @id @default(cuid())
+  organizationId     String
+  prescriptionNumber String
+  patientId          String
+  prescriberId       String
+  prescribedAt       DateTime
+  expiresAt          DateTime?
+  status             PharmacyPrescriptionStatus @default(ACTIVE)
+  clinicalNotes      String?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  patient      PharmacyPatient            @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  prescriber   PharmacyPrescriber         @relation(fields: [prescriberId], references: [id], onDelete: Restrict)
+  lines        PharmacyPrescriptionLine[]
+  dispensings  PharmacyDispensing[]
+
+  @@unique([organizationId, prescriptionNumber])
+  @@index([organizationId, status, prescribedAt])
+  @@index([patientId])
+}
+
+model PharmacyPrescriptionLine {
+  id                 String  @id @default(cuid())
+  organizationId     String
+  prescriptionId     String
+  medicineId         String
+  quantityPrescribed Int
+  quantityDispensed  Int     @default(0)
+  dosage             String
+  frequency          String
+  duration           String?
+  instructions       String?
+
+  prescription PharmacyPrescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  medicine     PharmacyMedicine     @relation(fields: [medicineId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([prescriptionId])
+}
+
+model PharmacyDispensing {
+  id               String                   @id @default(cuid())
+  organizationId   String
+  dispensingNumber String
+  patientId        String?
+  prescriptionId   String?
+  status           PharmacyDispensingStatus @default(COMPLETED)
+  subtotal         Decimal                  @db.Decimal(12, 2)
+  discount         Decimal                  @default(0) @db.Decimal(12, 2)
+  total            Decimal                  @db.Decimal(12, 2)
+  paymentMethod    String?
+  paymentReference String?
+  dispensedById    String
+  dispensedAt      DateTime                 @default(now())
+  reversedAt       DateTime?
+  reversalReason   String?
+  createdAt        DateTime                 @default(now())
+
+  organization      Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  patient           PharmacyPatient?             @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  prescription      PharmacyPrescription?        @relation(fields: [prescriptionId], references: [id], onDelete: Restrict)
+  lines             PharmacyDispensingLine[]
+  restrictedEntries PharmacyRestrictedRegister[]
+
+  @@unique([organizationId, dispensingNumber])
+  @@index([organizationId, status, dispensedAt])
+}
+
+model PharmacyDispensingLine {
+  id                 String  @id @default(cuid())
+  organizationId     String
+  dispensingId       String
+  medicineId         String
+  batchId            String
+  prescriptionLineId String?
+  quantity           Int
+  unitPrice          Decimal @db.Decimal(12, 2)
+  lineTotal          Decimal @db.Decimal(12, 2)
+
+  dispensing PharmacyDispensing @relation(fields: [dispensingId], references: [id], onDelete: Restrict)
+  medicine   PharmacyMedicine   @relation(fields: [medicineId], references: [id], onDelete: Restrict)
+  batch      PharmacyBatch      @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([dispensingId])
+  @@index([batchId])
+}
+
+model PharmacyRestrictedRegister {
+  id                     String   @id @default(cuid())
+  organizationId         String
+  dispensingId           String
+  medicineName           String
+  batchNumber            String
+  quantity               Int
+  patientName            String
+  patientAddress         String?
+  prescriberName         String?
+  prescriberRegistration String?
+  recordedById           String
+  recordedAt             DateTime @default(now())
+  reversalOfId           String?
+  reason                 String?
+
+  dispensing PharmacyDispensing @relation(fields: [dispensingId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, recordedAt])
+  @@index([dispensingId])
+}
+
+model PharmacySettings {
+  id                          String   @id @default(cuid())
+  organizationId              String   @unique
+  licenceNumber               String?
+  superintendentPharmacist    String?
+  superintendentRegistration  String?
+  receiptPrefix               String   @default("PHA")
+  prescriptionValidityDays    Int      @default(30)
+  expiryAlertDays             Int      @default(90)
+  allowNegativeStock          Boolean  @default(false)
+  requirePatientForControlled Boolean  @default(true)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
