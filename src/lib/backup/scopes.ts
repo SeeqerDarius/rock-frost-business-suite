@@ -1,5 +1,5 @@
 export const BACKUP_MODULES = [
-  "accounting", "analytics", "crm", "fleet", "hotel", "hr", "installment",
+  "accounting", "analytics", "crm", "fleet", "hospital", "hotel", "hr", "installment",
   "inventory", "payroll", "pos", "procurement", "projects", "school",
 ] as const;
 

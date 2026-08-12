@@ -235,25 +235,25 @@ enum HirePurchaseCreditSource {
 }
 
 model User {
-  id                  String     @id @default(cuid())
-  name                String?
-  firstName           String?
-  lastName            String?
-  email               String     @unique
-  emailVerified       DateTime?
-  image               String?
-  passwordHash        String?
-  phone               String?
-  status              UserStatus @default(INVITED)
-  lastLoginAt         DateTime?
-  failedLoginAttempts Int        @default(0)
-  lockedUntil         DateTime?
-  sessionVersion      Int        @default(0)
-  twoFactorSecret     String?
-  twoFactorEnabled    Boolean    @default(false)
+  id                   String     @id @default(cuid())
+  name                 String?
+  firstName            String?
+  lastName             String?
+  email                String     @unique
+  emailVerified        DateTime?
+  image                String?
+  passwordHash         String?
+  phone                String?
+  status               UserStatus @default(INVITED)
+  lastLoginAt          DateTime?
+  failedLoginAttempts  Int        @default(0)
+  lockedUntil          DateTime?
+  sessionVersion       Int        @default(0)
+  twoFactorSecret      String?
+  twoFactorEnabled     Boolean    @default(false)
   twoFactorConfirmedAt DateTime?
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
 
   accounts                        Account[]
   sessions                        Session[]
@@ -462,6 +462,39 @@ model Organization {
   schoolLibraryLoans              SchoolLibraryLoan[]
   schoolPayrollAdjustments        SchoolPayrollAdjustment[]
   schoolSettings                  SchoolSettings[]
+  hospitalFacilities              HospitalFacility[]
+  hospitalDepartments             HospitalDepartment[]
+  hospitalServiceItems            HospitalServiceItem[]
+  hospitalProviders               HospitalProvider[]
+  hospitalPatients                HospitalPatient[]
+  hospitalAppointments            HospitalAppointment[]
+  hospitalEncounters              HospitalEncounter[]
+  hospitalVitals                  HospitalVitals[]
+  hospitalClinicalNotes           HospitalClinicalNote[]
+  hospitalDiagnoses               HospitalDiagnosis[]
+  hospitalCarePlans               HospitalCarePlan[]
+  hospitalWards                   HospitalWard[]
+  hospitalBeds                    HospitalBed[]
+  hospitalAdmissions              HospitalAdmission[]
+  hospitalBedTransfers            HospitalBedTransfer[]
+  hospitalLabTests                HospitalLabTest[]
+  hospitalLabOrders               HospitalLabOrder[]
+  hospitalLabOrderItems           HospitalLabOrderItem[]
+  hospitalLabResults              HospitalLabResult[]
+  hospitalImagingTests            HospitalImagingTest[]
+  hospitalImagingOrders           HospitalImagingOrder[]
+  hospitalImagingFindings         HospitalImagingFinding[]
+  hospitalMedicationOrders        HospitalMedicationOrder[]
+  hospitalInvoices                HospitalInvoice[]
+  hospitalInvoiceLines            HospitalInvoiceLine[]
+  hospitalPayments                HospitalPayment[]
+  hospitalInsuranceClaims         HospitalInsuranceClaim[]
+  hospitalNursingTasks            HospitalNursingTask[]
+  hospitalClinicalAlerts          HospitalClinicalAlert[]
+  hospitalReferrals               HospitalReferral[]
+  hospitalConsents                HospitalConsent[]
+  hospitalAttachments             HospitalAttachment[]
+  hospitalSettings                HospitalSettings[]
   moduleRequests                  ModuleRequest[]
   contactSubmissions              ContactSubmission[]
   subscriptions                   Subscription[]
@@ -576,6 +609,7 @@ model Branch {
   projects              Project[]
   hotelProperties       HotelProperty[]
   schoolCampuses        SchoolCampus[]
+  hospitalFacilities    HospitalFacility[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -3217,6 +3251,995 @@ model SchoolSettings {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   campus       SchoolCampus @relation(fields: [campusId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+// =====================================================================
+// Hospital Management — operational hospital software, not a medical
+// device, diagnosis engine, clinical-decision system, or certification
+// guarantee. See docs/HOSPITAL_MODULE.md and
+// docs/PHARMACY_AND_HOSPITAL_ROADMAP.md. Medication orders are a
+// Hospital-owned, versioned contract only — Hospital never reads or
+// writes Pharmacy's tables directly.
+// =====================================================================
+
+enum HospitalPatientStatus {
+  ACTIVE
+  INACTIVE
+  DECEASED
+  MERGED
+}
+
+enum HospitalAppointmentStatus {
+  SCHEDULED
+  CHECKED_IN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum HospitalEncounterType {
+  OUTPATIENT
+  INPATIENT
+  EMERGENCY
+}
+
+enum HospitalEncounterStatus {
+  OPEN
+  CLOSED
+}
+
+enum HospitalDisposition {
+  PENDING
+  DISCHARGED_HOME
+  ADMITTED
+  REFERRED
+  DECEASED
+  TRANSFERRED
+}
+
+enum HospitalClinicalNoteType {
+  PROGRESS
+  TRIAGE
+  DISCHARGE_SUMMARY
+  CARE_PLAN
+  ADDENDUM
+}
+
+enum HospitalDiagnosisType {
+  PRIMARY
+  SECONDARY
+}
+
+enum HospitalBedStatus {
+  AVAILABLE
+  OCCUPIED
+  OUT_OF_SERVICE
+  CLEANING
+}
+
+enum HospitalAdmissionStatus {
+  ADMITTED
+  TRANSFERRED
+  DISCHARGED
+}
+
+enum HospitalLabOrderStatus {
+  ORDERED
+  SPECIMEN_COLLECTED
+  IN_PROGRESS
+  RESULTED
+  VERIFIED
+  CANCELLED
+}
+
+enum HospitalAbnormalFlag {
+  NORMAL
+  LOW
+  HIGH
+  CRITICAL
+}
+
+enum HospitalImagingStatus {
+  ORDERED
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum HospitalMedicationOrderStatus {
+  ORDERED
+  SENT_TO_PHARMACY
+  DISPENSED
+  CANCELLED
+  COMPLETED
+}
+
+enum HospitalInvoiceStatus {
+  OPEN
+  PARTIALLY_PAID
+  PAID
+  VOID
+}
+
+enum HospitalPaymentMethod {
+  CASH
+  CARD
+  MOBILE_MONEY
+  BANK_TRANSFER
+  INSURANCE
+  OTHER
+}
+
+enum HospitalClaimStatus {
+  SUBMITTED
+  IN_REVIEW
+  APPROVED
+  PARTIALLY_APPROVED
+  REJECTED
+  PAID
+}
+
+enum HospitalNursingTaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum HospitalAlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum HospitalReferralStatus {
+  PENDING
+  ACCEPTED
+  COMPLETED
+  CANCELLED
+}
+
+enum HospitalConsentType {
+  TREATMENT
+  PROCEDURE
+  DATA_SHARING
+  OTHER
+}
+
+enum HospitalAttachmentCategory {
+  LAB_EXTERNAL
+  IMAGING_EXTERNAL
+  DOCUMENT
+  OTHER
+}
+
+model HospitalFacility {
+  id             String   @id @default(cuid())
+  organizationId String
+  branchId       String?
+  code           String
+  name           String
+  address        String?
+  phone          String?
+  email          String?
+  timezone       String   @default("UTC")
+  currency       String   @default("USD")
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?               @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  departments  HospitalDepartment[]
+  serviceItems HospitalServiceItem[]
+  providers    HospitalProvider[]
+  appointments HospitalAppointment[]
+  encounters   HospitalEncounter[]
+  admissions   HospitalAdmission[]
+  wards        HospitalWard[]
+  invoices     HospitalInvoice[]
+  settings     HospitalSettings?
+
+  @@unique([organizationId, code])
+  @@index([organizationId, active])
+  @@index([branchId])
+}
+
+model HospitalDepartment {
+  id             String   @id @default(cuid())
+  organizationId String
+  facilityId     String
+  code           String
+  name           String
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  facility     HospitalFacility      @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  providers    HospitalProvider[]
+  appointments HospitalAppointment[]
+
+  @@unique([facilityId, code])
+  @@index([organizationId, active])
+}
+
+model HospitalServiceItem {
+  id             String   @id @default(cuid())
+  organizationId String
+  facilityId     String
+  code           String
+  name           String
+  category       String?
+  price          Decimal  @db.Decimal(12, 2)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  facility     HospitalFacility      @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  invoiceLines HospitalInvoiceLine[]
+
+  @@unique([facilityId, code])
+  @@index([organizationId, active])
+}
+
+model HospitalProvider {
+  id             String   @id @default(cuid())
+  organizationId String
+  facilityId     String
+  departmentId   String?
+  name           String
+  title          String?
+  specialty      String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  facility     HospitalFacility      @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  department   HospitalDepartment?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  appointments HospitalAppointment[]
+  encounters   HospitalEncounter[]
+  admissions   HospitalAdmission[]
+
+  @@index([organizationId, active])
+  @@index([facilityId])
+  @@index([departmentId])
+}
+
+/**
+ * Patient identity. mrn (Medical Record Number) is generated per-organization
+ * via the same count()+createWithUniqueRetry pattern Hotel uses for
+ * confirmation codes — the DB unique constraint plus retry is the actual
+ * safety net under concurrency, not the count() itself. Duplicate detection
+ * (name + date of birth + phone proximity) is a service-layer advisory
+ * check at registration time, not a hard DB constraint, since two real
+ * patients can legitimately share a name and birth date.
+ */
+model HospitalPatient {
+  id                       String                @id @default(cuid())
+  organizationId           String
+  mrn                      String
+  firstName                String
+  lastName                 String
+  dateOfBirth              DateTime
+  sex                      String
+  phone                    String?
+  email                    String?
+  address                  String?
+  nationalIdType           String?
+  nationalIdNumber         String?
+  bloodGroup               String?
+  allergies                String?               @db.Text
+  alerts                   String?               @db.Text
+  nextOfKinName            String?
+  nextOfKinPhone           String?
+  nextOfKinRelationship    String?
+  emergencyContactName     String?
+  emergencyContactPhone    String?
+  emergencyContactRelation String?
+  consentOnFile            Boolean               @default(false)
+  status                   HospitalPatientStatus @default(ACTIVE)
+  notes                    String?               @db.Text
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+
+  organization     Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  appointments     HospitalAppointment[]
+  encounters       HospitalEncounter[]
+  admissions       HospitalAdmission[]
+  labOrders        HospitalLabOrder[]
+  imagingOrders    HospitalImagingOrder[]
+  medicationOrders HospitalMedicationOrder[]
+  invoices         HospitalInvoice[]
+  insuranceClaims  HospitalInsuranceClaim[]
+  nursingTasks     HospitalNursingTask[]
+  clinicalAlerts   HospitalClinicalAlert[]
+  referrals        HospitalReferral[]
+  consents         HospitalConsent[]
+  attachments      HospitalAttachment[]
+
+  @@unique([organizationId, mrn])
+  @@index([organizationId, lastName, dateOfBirth])
+  @@index([organizationId, phone])
+  @@index([organizationId, status])
+}
+
+model HospitalAppointment {
+  id                 String                    @id @default(cuid())
+  organizationId     String
+  facilityId         String
+  departmentId       String?
+  providerId         String
+  patientId          String
+  appointmentNumber  String
+  scheduledStart     DateTime
+  scheduledEnd       DateTime
+  reason             String
+  status             HospitalAppointmentStatus @default(SCHEDULED)
+  checkedInAt        DateTime?
+  cancelledAt        DateTime?
+  cancellationReason String?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  facility     HospitalFacility    @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  department   HospitalDepartment? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  provider     HospitalProvider    @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  patient      HospitalPatient     @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  encounter    HospitalEncounter?
+
+  @@unique([organizationId, appointmentNumber])
+  @@index([organizationId, status, scheduledStart])
+  @@index([providerId, scheduledStart, scheduledEnd])
+  @@index([patientId])
+}
+
+model HospitalEncounter {
+  id              String                  @id @default(cuid())
+  organizationId  String
+  facilityId      String
+  patientId       String
+  appointmentId   String?                 @unique
+  providerId      String
+  encounterNumber String
+  type            HospitalEncounterType
+  status          HospitalEncounterStatus @default(OPEN)
+  chiefComplaint  String?
+  triageLevel     String?
+  disposition     HospitalDisposition     @default(PENDING)
+  openedAt        DateTime                @default(now())
+  closedAt        DateTime?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  organization     Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  facility         HospitalFacility          @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  patient          HospitalPatient           @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  appointment      HospitalAppointment?      @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  provider         HospitalProvider          @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  vitals           HospitalVitals[]
+  clinicalNotes    HospitalClinicalNote[]
+  diagnoses        HospitalDiagnosis[]
+  carePlans        HospitalCarePlan[]
+  admission        HospitalAdmission?
+  labOrders        HospitalLabOrder[]
+  imagingOrders    HospitalImagingOrder[]
+  medicationOrders HospitalMedicationOrder[]
+  invoices         HospitalInvoice[]
+  nursingTasks     HospitalNursingTask[]
+  referrals        HospitalReferral[]
+  attachments      HospitalAttachment[]
+
+  @@unique([organizationId, encounterNumber])
+  @@index([organizationId, status])
+  @@index([patientId])
+  @@index([facilityId])
+}
+
+/**
+ * Append-only observation history — every recording is a new row, never edited.
+ */
+model HospitalVitals {
+  id                     String   @id @default(cuid())
+  organizationId         String
+  encounterId            String
+  recordedById           String?
+  temperatureC           Decimal? @db.Decimal(4, 1)
+  pulseBpm               Int?
+  respiratoryRate        Int?
+  bloodPressureSystolic  Int?
+  bloodPressureDiastolic Int?
+  spo2                   Int?
+  weightKg               Decimal? @db.Decimal(5, 2)
+  heightCm               Decimal? @db.Decimal(5, 1)
+  notes                  String?  @db.Text
+  recordedAt             DateTime @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  encounter    HospitalEncounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, recordedAt])
+  @@index([encounterId])
+}
+
+/**
+ * Signed notes (signedAt set) are immutable at the service layer — a
+ * correction is a new row of type ADDENDUM with correctsNoteId pointing at
+ * the original, never an edit to signed content.
+ */
+model HospitalClinicalNote {
+  id             String                   @id @default(cuid())
+  organizationId String
+  encounterId    String
+  authorId       String?
+  correctsNoteId String?
+  type           HospitalClinicalNoteType
+  content        String                   @db.Text
+  signedAt       DateTime?
+  createdAt      DateTime                 @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  encounter    HospitalEncounter @relation(fields: [encounterId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@index([encounterId])
+  @@index([correctsNoteId])
+}
+
+model HospitalDiagnosis {
+  id             String                @id @default(cuid())
+  organizationId String
+  encounterId    String
+  code           String?
+  description    String
+  type           HospitalDiagnosisType @default(PRIMARY)
+  recordedAt     DateTime              @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  encounter    HospitalEncounter @relation(fields: [encounterId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, recordedAt])
+  @@index([encounterId])
+}
+
+/**
+ * Append-only care plan entries — never edited or deleted once created.
+ */
+model HospitalCarePlan {
+  id             String    @id @default(cuid())
+  organizationId String
+  encounterId    String
+  goal           String
+  instructions   String?   @db.Text
+  followUpDate   DateTime?
+  createdById    String?
+  createdAt      DateTime  @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  encounter    HospitalEncounter @relation(fields: [encounterId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@index([encounterId])
+}
+
+model HospitalWard {
+  id             String   @id @default(cuid())
+  organizationId String
+  facilityId     String
+  code           String
+  name           String
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  facility     HospitalFacility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  beds         HospitalBed[]
+
+  @@unique([facilityId, code])
+  @@index([organizationId, active])
+}
+
+model HospitalBed {
+  id             String            @id @default(cuid())
+  organizationId String
+  wardId         String
+  code           String
+  status         HospitalBedStatus @default(AVAILABLE)
+  active         Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization  Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ward          HospitalWard          @relation(fields: [wardId], references: [id], onDelete: Cascade)
+  admissions    HospitalAdmission[]
+  transfersTo   HospitalBedTransfer[] @relation("BedTransferTo")
+  transfersFrom HospitalBedTransfer[] @relation("BedTransferFrom")
+
+  @@unique([wardId, code])
+  @@index([organizationId, status])
+}
+
+model HospitalAdmission {
+  id                    String                  @id @default(cuid())
+  organizationId        String
+  facilityId            String
+  patientId             String
+  encounterId           String                  @unique
+  admittingProviderId   String
+  bedId                 String
+  admissionNumber       String
+  status                HospitalAdmissionStatus @default(ADMITTED)
+  admittedAt            DateTime                @default(now())
+  expectedDischargeDate DateTime?
+  dischargedAt          DateTime?
+  dischargeSummary      String?                 @db.Text
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  organization      Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  facility          HospitalFacility      @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  patient           HospitalPatient       @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  encounter         HospitalEncounter     @relation(fields: [encounterId], references: [id], onDelete: Restrict)
+  admittingProvider HospitalProvider      @relation(fields: [admittingProviderId], references: [id], onDelete: Restrict)
+  bed               HospitalBed           @relation(fields: [bedId], references: [id], onDelete: Restrict)
+  transfers         HospitalBedTransfer[]
+
+  @@unique([organizationId, admissionNumber])
+  @@index([organizationId, status])
+  @@index([patientId])
+  @@index([bedId])
+}
+
+/**
+ * Append-only transfer history — never edited or deleted, only added to.
+ */
+model HospitalBedTransfer {
+  id             String   @id @default(cuid())
+  organizationId String
+  admissionId    String
+  fromBedId      String?
+  toBedId        String
+  reason         String?
+  transferredAt  DateTime @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  admission    HospitalAdmission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  fromBed      HospitalBed?      @relation("BedTransferFrom", fields: [fromBedId], references: [id], onDelete: SetNull)
+  toBed        HospitalBed       @relation("BedTransferTo", fields: [toBedId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, transferredAt])
+  @@index([admissionId])
+}
+
+model HospitalLabTest {
+  id             String   @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  specimenType   String?
+  price          Decimal  @db.Decimal(12, 2)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orderItems   HospitalLabOrderItem[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, active])
+}
+
+model HospitalLabOrder {
+  id             String                 @id @default(cuid())
+  organizationId String
+  encounterId    String
+  patientId      String
+  orderedById    String?
+  status         HospitalLabOrderStatus @default(ORDERED)
+  orderedAt      DateTime               @default(now())
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  encounter    HospitalEncounter      @relation(fields: [encounterId], references: [id], onDelete: Restrict)
+  patient      HospitalPatient        @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  items        HospitalLabOrderItem[]
+
+  @@index([organizationId, status])
+  @@index([encounterId])
+  @@index([patientId])
+}
+
+model HospitalLabOrderItem {
+  id                  String                 @id @default(cuid())
+  organizationId      String
+  labOrderId          String
+  labTestId           String
+  status              HospitalLabOrderStatus @default(ORDERED)
+  specimenCollectedAt DateTime?
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  labOrder     HospitalLabOrder    @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
+  labTest      HospitalLabTest     @relation(fields: [labTestId], references: [id], onDelete: Restrict)
+  results      HospitalLabResult[]
+
+  @@index([organizationId, status])
+  @@index([labOrderId])
+}
+
+/**
+ * Immutable, append-only result history. A verified result (verifiedAt set)
+ * is never updated or deleted — a correction inserts a new row with
+ * supersedesResultId pointing at the row it corrects, and the current
+ * result is always the one with no newer row superseding it.
+ */
+model HospitalLabResult {
+  id                 String               @id @default(cuid())
+  organizationId     String
+  labOrderItemId     String
+  supersedesResultId String?              @unique
+  value              String
+  unit               String?
+  referenceRange     String?
+  abnormalFlag       HospitalAbnormalFlag @default(NORMAL)
+  enteredById        String?
+  enteredAt          DateTime             @default(now())
+  verifiedById       String?
+  verifiedAt         DateTime?
+  correctionReason   String?
+
+  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  labOrderItem     HospitalLabOrderItem @relation(fields: [labOrderItemId], references: [id], onDelete: Cascade)
+  supersedesResult HospitalLabResult?   @relation("LabResultRevision", fields: [supersedesResultId], references: [id], onDelete: SetNull)
+  supersededBy     HospitalLabResult?   @relation("LabResultRevision")
+
+  @@index([organizationId, enteredAt])
+  @@index([labOrderItemId])
+}
+
+model HospitalImagingTest {
+  id             String   @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  modality       String
+  price          Decimal  @db.Decimal(12, 2)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orders       HospitalImagingOrder[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, active])
+}
+
+/**
+ * externalAccessionNumber / externalSystemReference are the explicit
+ * boundary to an outside PACS/imaging system — this schema never stores
+ * DICOM or other binary imaging payloads.
+ */
+model HospitalImagingOrder {
+  id                      String                @id @default(cuid())
+  organizationId          String
+  encounterId             String
+  patientId               String
+  imagingTestId           String
+  orderedById             String?
+  status                  HospitalImagingStatus @default(ORDERED)
+  orderedAt               DateTime              @default(now())
+  scheduledAt             DateTime?
+  externalAccessionNumber String?
+  externalSystemReference String?
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  encounter    HospitalEncounter        @relation(fields: [encounterId], references: [id], onDelete: Restrict)
+  patient      HospitalPatient          @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  imagingTest  HospitalImagingTest      @relation(fields: [imagingTestId], references: [id], onDelete: Restrict)
+  findings     HospitalImagingFinding[]
+
+  @@index([organizationId, status])
+  @@index([encounterId])
+  @@index([patientId])
+}
+
+/**
+ * Same immutable-with-supersession pattern as HospitalLabResult.
+ */
+model HospitalImagingFinding {
+  id                  String    @id @default(cuid())
+  organizationId      String
+  imagingOrderId      String
+  supersedesFindingId String?   @unique
+  findings            String    @db.Text
+  impression          String?   @db.Text
+  enteredById         String?
+  enteredAt           DateTime  @default(now())
+  verifiedById        String?
+  verifiedAt          DateTime?
+  correctionReason    String?
+
+  organization      Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  imagingOrder      HospitalImagingOrder    @relation(fields: [imagingOrderId], references: [id], onDelete: Cascade)
+  supersedesFinding HospitalImagingFinding? @relation("ImagingFindingRevision", fields: [supersedesFindingId], references: [id], onDelete: SetNull)
+  supersededBy      HospitalImagingFinding? @relation("ImagingFindingRevision")
+
+  @@index([organizationId, enteredAt])
+  @@index([imagingOrderId])
+}
+
+/**
+ * A Hospital-owned, versioned medication-order contract. Hospital never
+ * reads or writes Pharmacy's tables — externalDispenseReference is a plain
+ * opaque string field Codex's Pharmacy branch will populate with its own
+ * dispensing record identifier after both branches merge. contractVersion
+ * exists so a future breaking change to this contract's shape can be
+ * detected and migrated deliberately rather than silently.
+ */
+model HospitalMedicationOrder {
+  id                        String                        @id @default(cuid())
+  organizationId            String
+  encounterId               String
+  patientId                 String
+  orderedById               String?
+  contractVersion           Int                           @default(1)
+  medicationName            String
+  strength                  String?
+  route                     String?
+  dose                      String
+  frequency                 String
+  durationDays              Int?
+  instructions              String?                       @db.Text
+  status                    HospitalMedicationOrderStatus @default(ORDERED)
+  externalDispenseReference String?
+  orderedAt                 DateTime                      @default(now())
+  cancelledAt               DateTime?
+  cancellationReason        String?
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  encounter    HospitalEncounter @relation(fields: [encounterId], references: [id], onDelete: Restrict)
+  patient      HospitalPatient   @relation(fields: [patientId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, status])
+  @@index([encounterId])
+  @@index([patientId])
+}
+
+model HospitalInvoice {
+  id             String                @id @default(cuid())
+  organizationId String
+  facilityId     String
+  patientId      String
+  encounterId    String?
+  invoiceNumber  String
+  status         HospitalInvoiceStatus @default(OPEN)
+  subtotal       Decimal               @default(0) @db.Decimal(12, 2)
+  discountTotal  Decimal               @default(0) @db.Decimal(12, 2)
+  taxTotal       Decimal               @default(0) @db.Decimal(12, 2)
+  total          Decimal               @default(0) @db.Decimal(12, 2)
+  issuedAt       DateTime              @default(now())
+  dueAt          DateTime?
+  voidedAt       DateTime?
+  voidReason     String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  organization    Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  facility        HospitalFacility         @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  patient         HospitalPatient          @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  encounter       HospitalEncounter?       @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  lines           HospitalInvoiceLine[]
+  payments        HospitalPayment[]
+  insuranceClaims HospitalInsuranceClaim[]
+
+  @@unique([organizationId, invoiceNumber])
+  @@index([organizationId, status])
+  @@index([patientId])
+  @@index([facilityId])
+}
+
+model HospitalInvoiceLine {
+  id             String   @id @default(cuid())
+  organizationId String
+  invoiceId      String
+  serviceItemId  String?
+  description    String
+  quantity       Int      @default(1)
+  unitPrice      Decimal  @db.Decimal(12, 2)
+  lineTotal      Decimal  @db.Decimal(12, 2)
+  createdAt      DateTime @default(now())
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      HospitalInvoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  serviceItem  HospitalServiceItem? @relation(fields: [serviceItemId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([invoiceId])
+}
+
+model HospitalPayment {
+  id             String                @id @default(cuid())
+  organizationId String
+  invoiceId      String
+  receiptNumber  String
+  amount         Decimal               @db.Decimal(12, 2)
+  method         HospitalPaymentMethod
+  reference      String?
+  receivedById   String?
+  receivedAt     DateTime              @default(now())
+  refundedAt     DateTime?
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      HospitalInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, receiptNumber])
+  @@index([organizationId, receivedAt])
+  @@index([invoiceId])
+}
+
+model HospitalInsuranceClaim {
+  id             String              @id @default(cuid())
+  organizationId String
+  invoiceId      String
+  patientId      String
+  insurerName    String
+  policyNumber   String
+  claimNumber    String?
+  status         HospitalClaimStatus @default(SUBMITTED)
+  submittedAt    DateTime            @default(now())
+  approvedAmount Decimal?            @db.Decimal(12, 2)
+  notes          String?             @db.Text
+  updatedAt      DateTime            @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      HospitalInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  patient      HospitalPatient @relation(fields: [patientId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, status])
+  @@index([invoiceId])
+  @@index([patientId])
+}
+
+model HospitalNursingTask {
+  id             String                    @id @default(cuid())
+  organizationId String
+  encounterId    String?
+  patientId      String
+  description    String
+  status         HospitalNursingTaskStatus @default(PENDING)
+  dueAt          DateTime?
+  assignedToId   String?
+  createdById    String?
+  completedById  String?
+  completedAt    DateTime?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  encounter    HospitalEncounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  patient      HospitalPatient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@index([patientId])
+  @@index([encounterId])
+}
+
+model HospitalClinicalAlert {
+  id             String                @id @default(cuid())
+  organizationId String
+  patientId      String
+  type           String
+  description    String
+  severity       HospitalAlertSeverity @default(MEDIUM)
+  active         Boolean               @default(true)
+  createdById    String?
+  createdAt      DateTime              @default(now())
+  resolvedAt     DateTime?
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  patient      HospitalPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, active])
+  @@index([patientId])
+}
+
+model HospitalReferral {
+  id                 String                 @id @default(cuid())
+  organizationId     String
+  encounterId        String
+  patientId          String
+  referredById       String?
+  referredToFacility String
+  reason             String
+  status             HospitalReferralStatus @default(PENDING)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  encounter    HospitalEncounter @relation(fields: [encounterId], references: [id], onDelete: Restrict)
+  patient      HospitalPatient   @relation(fields: [patientId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, status])
+  @@index([patientId])
+  @@index([encounterId])
+}
+
+/**
+ * Append-only — never deleted; a withdrawn consent is recorded via revokedAt.
+ */
+model HospitalConsent {
+  id                String              @id @default(cuid())
+  organizationId    String
+  patientId         String
+  type              HospitalConsentType
+  description       String
+  consentedByName   String
+  witnessedById     String?
+  documentReference String?
+  consentedAt       DateTime            @default(now())
+  revokedAt         DateTime?
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  patient      HospitalPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, type])
+  @@index([patientId])
+}
+
+/**
+ * Reference-only metadata for externally stored files (lab/imaging source
+ * documents, scanned consent forms, etc.) — this schema never stores
+ * binary file content itself.
+ */
+model HospitalAttachment {
+  id                String                     @id @default(cuid())
+  organizationId    String
+  patientId         String?
+  encounterId       String?
+  category          HospitalAttachmentCategory
+  fileName          String
+  externalReference String
+  description       String?
+  uploadedById      String?
+  uploadedAt        DateTime                   @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  patient      HospitalPatient?   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounter    HospitalEncounter? @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, category])
+  @@index([patientId])
+  @@index([encounterId])
+}
+
+model HospitalSettings {
+  id                         String   @id @default(cuid())
+  organizationId             String
+  facilityId                 String   @unique
+  mrnPrefix                  String   @default("MRN")
+  encounterPrefix            String   @default("ENC")
+  appointmentPrefix          String   @default("APT")
+  admissionPrefix            String   @default("ADM")
+  invoicePrefix              String   @default("INV")
+  receiptPrefix              String   @default("RCT")
+  resultVerificationRequired Boolean  @default(true)
+  bedTransferRequiresReason  Boolean  @default(true)
+  retentionYears             Int      @default(7)
+  currency                   String   @default("USD")
+  timezone                   String   @default("UTC")
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  facility     HospitalFacility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }

@@ -121,6 +121,19 @@ export const PERMISSIONS = {
   SCHOOL_PAYROLL_MANAGE: "school.payroll.manage",
   SCHOOL_REPORTS_VIEW: "school.reports.view",
   SCHOOL_SETTINGS_MANAGE: "school.settings.manage",
+  HOSPITAL_VIEW: "hospital.view",
+  HOSPITAL_FACILITY_MANAGE: "hospital.facility.manage",
+  HOSPITAL_PATIENTS_MANAGE: "hospital.patients.manage",
+  HOSPITAL_APPOINTMENTS_MANAGE: "hospital.appointments.manage",
+  HOSPITAL_ENCOUNTERS_MANAGE: "hospital.encounters.manage",
+  HOSPITAL_ADMISSIONS_MANAGE: "hospital.admissions.manage",
+  HOSPITAL_LAB_MANAGE: "hospital.lab.manage",
+  HOSPITAL_IMAGING_MANAGE: "hospital.imaging.manage",
+  HOSPITAL_MEDICATIONS_MANAGE: "hospital.medications.manage",
+  HOSPITAL_NURSING_MANAGE: "hospital.nursing.manage",
+  HOSPITAL_BILLING_MANAGE: "hospital.billing.manage",
+  HOSPITAL_REPORTS_VIEW: "hospital.reports.view",
+  HOSPITAL_SETTINGS_MANAGE: "hospital.settings.manage",
 } as const;
 
 export const ALL_PERMISSIONS = Object.values(PERMISSIONS);
@@ -156,6 +169,15 @@ export const SYSTEM_ROLES: { name: string; description: string }[] = [
   { name: "Bursar", description: "School fees, receipts, financial reporting, and payroll-input role." },
   { name: "Librarian", description: "School library catalog and circulation role." },
   { name: "Transport Manager", description: "School route and student transport assignment role." },
+  { name: "Hospital Administrator", description: "Full operational Hospital Management role." },
+  { name: "Receptionist", description: "Hospital patient registration and appointment scheduling role." },
+  { name: "Doctor", description: "Hospital clinical role for encounters, admissions, lab/imaging orders, and medication orders." },
+  { name: "Nurse", description: "Hospital clinical role for vitals, encounters, admissions, and nursing tasks." },
+  { name: "Laboratory Scientist", description: "Hospital laboratory order, specimen, and result role." },
+  { name: "Radiology Staff", description: "Hospital imaging order, scheduling, and finding role." },
+  { name: "Hospital Pharmacist", description: "Hospital medication-order review role for the dispensing-integration boundary." },
+  { name: "Billing Officer", description: "Hospital invoicing, payment, and insurance-claim role." },
+  { name: "Records Officer", description: "Hospital patient-record and reporting role." },
 ];
 
 function moduleRolePermissions(keys: (typeof ALL_PERMISSIONS)[number][]) {
@@ -297,6 +319,28 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   Bursar: moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_FEES_MANAGE, PERMISSIONS.SCHOOL_PAYROLL_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW]),
   Librarian: moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_LIBRARY_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW]),
   "Transport Manager": moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW]),
+  "Hospital Administrator": moduleRolePermissions([
+    PERMISSIONS.HOSPITAL_VIEW, PERMISSIONS.HOSPITAL_FACILITY_MANAGE, PERMISSIONS.HOSPITAL_PATIENTS_MANAGE,
+    PERMISSIONS.HOSPITAL_APPOINTMENTS_MANAGE, PERMISSIONS.HOSPITAL_ENCOUNTERS_MANAGE, PERMISSIONS.HOSPITAL_ADMISSIONS_MANAGE,
+    PERMISSIONS.HOSPITAL_LAB_MANAGE, PERMISSIONS.HOSPITAL_IMAGING_MANAGE, PERMISSIONS.HOSPITAL_MEDICATIONS_MANAGE,
+    PERMISSIONS.HOSPITAL_NURSING_MANAGE, PERMISSIONS.HOSPITAL_BILLING_MANAGE, PERMISSIONS.HOSPITAL_REPORTS_VIEW,
+    PERMISSIONS.HOSPITAL_SETTINGS_MANAGE,
+  ]),
+  Receptionist: moduleRolePermissions([PERMISSIONS.HOSPITAL_VIEW, PERMISSIONS.HOSPITAL_PATIENTS_MANAGE, PERMISSIONS.HOSPITAL_APPOINTMENTS_MANAGE]),
+  Doctor: moduleRolePermissions([
+    PERMISSIONS.HOSPITAL_VIEW, PERMISSIONS.HOSPITAL_PATIENTS_MANAGE, PERMISSIONS.HOSPITAL_ENCOUNTERS_MANAGE,
+    PERMISSIONS.HOSPITAL_ADMISSIONS_MANAGE, PERMISSIONS.HOSPITAL_LAB_MANAGE, PERMISSIONS.HOSPITAL_IMAGING_MANAGE,
+    PERMISSIONS.HOSPITAL_MEDICATIONS_MANAGE, PERMISSIONS.HOSPITAL_REPORTS_VIEW,
+  ]),
+  Nurse: moduleRolePermissions([
+    PERMISSIONS.HOSPITAL_VIEW, PERMISSIONS.HOSPITAL_PATIENTS_MANAGE, PERMISSIONS.HOSPITAL_ENCOUNTERS_MANAGE,
+    PERMISSIONS.HOSPITAL_ADMISSIONS_MANAGE, PERMISSIONS.HOSPITAL_NURSING_MANAGE,
+  ]),
+  "Laboratory Scientist": moduleRolePermissions([PERMISSIONS.HOSPITAL_VIEW, PERMISSIONS.HOSPITAL_LAB_MANAGE]),
+  "Radiology Staff": moduleRolePermissions([PERMISSIONS.HOSPITAL_VIEW, PERMISSIONS.HOSPITAL_IMAGING_MANAGE]),
+  "Hospital Pharmacist": moduleRolePermissions([PERMISSIONS.HOSPITAL_VIEW, PERMISSIONS.HOSPITAL_MEDICATIONS_MANAGE]),
+  "Billing Officer": moduleRolePermissions([PERMISSIONS.HOSPITAL_VIEW, PERMISSIONS.HOSPITAL_BILLING_MANAGE, PERMISSIONS.HOSPITAL_REPORTS_VIEW]),
+  "Records Officer": moduleRolePermissions([PERMISSIONS.HOSPITAL_VIEW, PERMISSIONS.HOSPITAL_PATIENTS_MANAGE, PERMISSIONS.HOSPITAL_REPORTS_VIEW]),
 };
 
 /** Matches the `key`/`name` pairs in src/platform/modules/registry.ts. Keep in sync when adding a module. */
@@ -314,6 +358,7 @@ export const MODULES: { code: string; name: string }[] = [
   { code: "pos", name: "Point of Sale" },
   { code: "hotel", name: "Hotel Management" },
   { code: "school", name: "School Management" },
+  { code: "hospital", name: "Hospital Management" },
 ];
 
 /**
