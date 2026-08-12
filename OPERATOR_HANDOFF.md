@@ -1,5 +1,9 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-12 — Track alternate Rock Frost marketing wordmark
+
+Added the previously local-only `public/rfggggg.png` transparent “Rock Frost Technologies” wordmark to source control as an approved alternate marketing asset. Runtime branding remains unchanged: compact application and public navigation continue to use `public/RFGgg.png`, while favicon, Apple, Android/PWA, and loading artwork remain untouched. `docs/UI_UX_REFRESH.md` now records the asset's intended scope. The PNG signature and `git diff --check` passed; no application test/build was required because this is an unused static asset plus documentation only. Deployment evidence will be appended before handoff completion.
+
 ## 2026-08-12 — Extended uniform icon treatment to the rest of the product (Claude, on `main`)
 
 Follow-up to the 2026-08-11 entry below. The user sent screenshots of the live site showing the same grey/black-vs-blue icon inconsistency was still visible in four places the first pass didn't reach: the `/app/modules` directory page, the header's module-launcher dialog, the home-dashboard's per-module tiles (both the generic fallback card and all 12 real per-module dashboard widgets), the platform-owner's own `/app/platform/dashboard` stat cards, and the public marketing site (home page module grid, `/modules` catalog, `/solutions`, `/industries`).

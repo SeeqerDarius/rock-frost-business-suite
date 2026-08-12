@@ -85,3 +85,5 @@ The navigation indicator uses the original `animate-ping`/`animate-pulse` RF tre
 ### Visible Rock Frost brand lockup
 
 The shared visible `Logo` component now uses the supplied single-line `public/RFGgg.png` wordmark by itself in the public home-page header and authenticated app fallback/sidebar branding. The separate square RF icon was removed from those visible lockups. This does not change the independently configured favicon, Apple touch icon, Android/PWA icons, `manifest.webmanifest`, or the round RF icon used inside the navigation loading indicator.
+
+The larger transparent `public/rfggggg.png` artwork is retained as an approved alternate marketing wordmark with the “Technologies” and tagline treatment. It is intentionally not used in compact application navigation, favicons, PWA icons, or loading indicators because those surfaces require the simpler `RFGgg.png` lockup.
