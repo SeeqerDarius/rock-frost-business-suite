@@ -7,6 +7,7 @@
 - Added a CI security job using `npm audit --audit-level=high` and full-history Gitleaks scanning. Applied non-breaking lockfile security updates; `npm audit --omit=dev --audit-level=high` now reports zero vulnerabilities.
 - Added `test/security-hardening.test.ts`, updated `.env.example`, `README.md`, and `docs/HARDENING_PLAN.md`. No schema or migration change. PostgreSQL RLS and broader business-field encryption remain a separate architecture phase, not silently represented as complete.
 - Validation: focused security/contact/auth tests passed (3 files, 11 tests); TypeScript and ESLint passed; dependency audit reported zero vulnerabilities; optimized production build compiled all 191 pages. The first full mocked-suite run found a pre-existing prohibited punctuation mark in two comments under the marketing component scan; those comments were corrected before the final suite rerun.
+- Released as commit `1c03997` on `main`. Vercel production deployment `dpl_2z6kNiFrgMX3KxrYPqhc2RzgqHM8` reached Ready and received all production aliases. Post-deploy checks: login and contact returned HTTP 200; `/api/health` returned HTTP 200 with the database reachable; live responses contained the expected CSP, HSTS, frame denial, MIME-sniffing, permissions, and referrer headers; deployment logs completed without a build or deployment error.
 
 ## 2026-08-13: Restrained public design and editorial punctuation
 
