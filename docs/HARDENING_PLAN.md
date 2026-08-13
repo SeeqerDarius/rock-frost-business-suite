@@ -1,5 +1,22 @@
 # Production Hardening Plan
 
+## Security controls release (2026-08-13)
+
+The application applies global CSP, HSTS, clickjacking protection,
+MIME-sniffing protection, referrer policy, permissions policy, and opener
+isolation through `next.config.ts`. CI blocks high-severity dependency
+vulnerabilities and scans full Git history with Gitleaks. Cloudflare Turnstile
+verification is wired into login, password-reset requests, and the public
+contact form. It becomes mandatory in production when
+`TURNSTILE_SECRET_KEY` is configured; the matching public site key is
+`NEXT_PUBLIC_TURNSTILE_SITE_KEY`.
+
+Prisma parameterization, tenant-scoped access checks, password hashing, TOTP
+secret encryption, login lockout, and upload signature checks remain in place.
+PostgreSQL row-level security is not enabled in this release. It requires a
+separate database-role and transaction-context design so it does not break
+migrations, authentication, platform administration, jobs, or backups.
+
 Tracks the remediation of the blockers identified in the 2026-07-20 full-project
 audit. This is a multi-pass effort — see `OPERATOR_HANDOFF.md` for which pass is
 currently active. Findings below were independently re-verified against the live

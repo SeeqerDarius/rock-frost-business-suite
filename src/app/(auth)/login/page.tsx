@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/auth/password-input";
 import { getAccountLockStatus } from "@/lib/auth/actions";
 import { buildSurfaceUrl, classifyAppSurface, type AppSurface } from "@/lib/app-surfaces";
+import { TurnstileWidget } from "@/components/security/turnstile-widget";
+import { verifyLoginBotProtection } from "@/lib/auth/actions";
 
 const NOTICE_MESSAGES: Record<string, string> = {
   reset: "Your password has been reset. Sign in with your new password.",
@@ -59,6 +61,13 @@ function LoginForm() {
 
     const formData = new FormData(event.currentTarget);
     const email = String(formData.get("email") ?? "").trim().toLowerCase();
+
+    const botCheck = await verifyLoginBotProtection(formData);
+    if (!botCheck) {
+      setError("We couldn't verify this sign-in attempt. Refresh the page and try again.");
+      setIsSubmitting(false);
+      return;
+    }
 
     const lockStatus = await getAccountLockStatus(email);
     if (lockStatus.locked) {
@@ -128,6 +137,7 @@ function LoginForm() {
         <Label htmlFor="twoFactorCode">Authenticator code</Label>
         <Input id="twoFactorCode" name="twoFactorCode" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" placeholder="Required only when 2FA is enabled" />
       </div>
+      <TurnstileWidget action="login" />
       <Button type="submit" disabled={isSubmitting} className="w-full">
         {isSubmitting ? "Signing in..." : "Sign in"}
       </Button>

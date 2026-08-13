@@ -13,6 +13,7 @@ import { email as emailSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
 import { headers } from "next/headers";
 import { buildSurfaceUrl, classifyAppSurface } from "@/lib/app-surfaces";
+import { verifyBotProtection } from "@/lib/bot-protection";
 
 function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
@@ -43,7 +44,14 @@ export async function getAccountLockStatus(email: string): Promise<{ locked: boo
   return { locked: true, minutesLeft: Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000) };
 }
 
+export async function verifyLoginBotProtection(formData: FormData): Promise<boolean> {
+  return verifyBotProtection(formData.get("cf-turnstile-response"), "login");
+}
+
 export async function requestPasswordReset(formData: FormData): Promise<void> {
+  if (!(await verifyBotProtection(formData.get("cf-turnstile-response"), "password-reset"))) {
+    redirect("/forgot-password?error=bot-check");
+  }
   const parsedEmail = emailSchema.safeParse(clean(formData.get("email")));
 
   if (parsedEmail.success) {

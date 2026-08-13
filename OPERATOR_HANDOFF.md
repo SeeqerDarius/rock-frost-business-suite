@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-13: Security control hardening
+
+- Added global CSP, HSTS, clickjacking, MIME-sniffing, referrer, permissions, DNS-prefetch, and opener-policy headers in `next.config.ts`.
+- Added server-verified Cloudflare Turnstile support for login, password-reset requests, and the public contact form. It requires `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`; without the secret, production remains available and the widget is not rendered.
+- Added a CI security job using `npm audit --audit-level=high` and full-history Gitleaks scanning. Applied non-breaking lockfile security updates; `npm audit --omit=dev --audit-level=high` now reports zero vulnerabilities.
+- Added `test/security-hardening.test.ts`, updated `.env.example`, `README.md`, and `docs/HARDENING_PLAN.md`. No schema or migration change. PostgreSQL RLS and broader business-field encryption remain a separate architecture phase, not silently represented as complete.
+- Validation: focused security/contact/auth tests passed (3 files, 11 tests); TypeScript and ESLint passed; dependency audit reported zero vulnerabilities; optimized production build compiled all 191 pages. The first full mocked-suite run found a pre-existing prohibited punctuation mark in two comments under the marketing component scan; those comments were corrected before the final suite rerun.
+
 ## 2026-08-13: Restrained public design and editorial punctuation
 
 - Reduced the shared public hero scale and description size, tightened its spacing, and simplified the Company hero proof panel.

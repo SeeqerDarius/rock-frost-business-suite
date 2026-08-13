@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
 import { shortText, longText, email as emailSchema, parseWithSchema, escapeHtml } from "@/lib/validation";
+import { verifyBotProtection } from "@/lib/bot-protection";
 
 const REASON_LABELS: Record<string, string> = {
   demo: "Request a demo",
@@ -44,6 +45,9 @@ function clean(value: FormDataEntryValue | null) {
 }
 
 export async function submitContactForm(formData: FormData): Promise<void> {
+  if (!(await verifyBotProtection(formData.get("cf-turnstile-response"), "contact"))) {
+    redirect("/contact?error=bot-check");
+  }
   const parsed = parseWithSchema(contactFormSchema, {
     name: clean(formData.get("name")),
     company: clean(formData.get("company")),

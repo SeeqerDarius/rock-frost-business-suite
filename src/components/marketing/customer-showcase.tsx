@@ -13,7 +13,7 @@ export interface CustomerShowcaseItem {
   logoUrl: string;
   quote: string;
   attribution: string;
-  /** Fictional demonstration entry — see src/lib/demo-showcase-customers.ts. */
+  /** Fictional demonstration entry. See src/lib/demo-showcase-customers.ts. */
   isDemo?: boolean;
 }
 
@@ -46,7 +46,7 @@ function LogoFrame({ item }: { item: CustomerShowcaseItem }) {
   const imgRef = useRef<HTMLImageElement>(null);
 
   // The browser starts fetching an <img> the instant it parses the
-  // server-rendered HTML — often before React finishes hydrating and
+  // server-rendered HTML, often before React finishes hydrating and
   // attaching onLoad/onError below, especially for these small, same-origin,
   // frequently-cached logos. If the load event already fired into the void
   // before the listener existed, it never fires again and the skeleton

@@ -4,10 +4,12 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { requestPasswordReset } from "@/lib/auth/actions";
+import { TurnstileWidget } from "@/components/security/turnstile-widget";
 
 const ERROR_MESSAGES: Record<string, string> = {
   "invalid-link": "That reset link is invalid.",
   "expired-link": "That reset link has expired or was already used. Request a new one below.",
+  "bot-check": "We couldn't verify this request. Refresh the page and try again.",
 };
 
 export default async function ForgotPasswordPage({
@@ -39,6 +41,7 @@ export default async function ForgotPasswordPage({
             <Label htmlFor="email">Email</Label>
             <Input id="email" name="email" type="email" placeholder="you@company.com" autoComplete="email" defaultValue={email?.trim().toLowerCase()} required />
           </div>
+          <TurnstileWidget action="password-reset" />
           <Button type="submit" className="w-full">
             Send reset link
           </Button>

@@ -7,6 +7,7 @@ import { submitContactForm } from "./actions";
 import { moduleRegistry } from "@/platform/modules/registry";
 import { createPublicMetadata } from "@/lib/seo";
 import { PublicHero } from "@/components/marketing/public-hero";
+import { TurnstileWidget } from "@/components/security/turnstile-widget";
 
 export const metadata = createPublicMetadata({
   title: "Request a Business Software Demo",
@@ -20,6 +21,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "send-failed": "We couldn't send your message just now. Please try again shortly.",
   "too-soon": "You've already sent a message recently. Please wait a moment before sending another.",
   "invalid-module": "Please choose an available module.",
+  "bot-check": "We couldn't verify this submission. Please refresh the page and try again.",
 };
 
 export default async function ContactPage({
@@ -107,6 +109,7 @@ export default async function ContactPage({
               <Label htmlFor="message">Message</Label>
               <Textarea id="message" name="message" rows={4} placeholder="Tell us a bit about your organization and what you&apos;re looking for." />
             </div>
+            <TurnstileWidget action="contact" />
             <Button type="submit" className="w-full">
               Send message
             </Button>
