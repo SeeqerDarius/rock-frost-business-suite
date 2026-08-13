@@ -54,8 +54,15 @@ components), confirming the generated CSS is real (not silently dropped), and th
 ### Deployment
 
 Direct request on `main`, not branch-scoped — taken through the full release lifecycle per this repository's
-default. See the commit/deployment/production-verification details appended immediately below this entry once
-release completes.
+default. Commit `0d3c150` was pushed to `origin/main`; Vercel production deployment `dpl_4RSHJyadFYb17CaBbAtxPCW3RuyT`
+reached `Ready` and was aliased to `www.rockfrostgroup.com`/`app.rockfrostgroup.com`/`admin.rockfrostgroup.com`.
+No schema change, so no migration ran.
+
+**Production verification:** `www.rockfrostgroup.com/api/health` returned 200 with `"database":"reachable"`.
+`app.rockfrostgroup.com/login` returned 200; `/app/dashboard` (where the bubble mounts) correctly redirected an
+unauthenticated visitor (307). Scanned post-deploy runtime logs for `error`-level entries: only the same
+pre-existing `"No organization membership found for the current user."` pattern already recorded as harmless in
+both prior support-messaging releases — no new error types introduced by this styling/animation change.
 
 ## 2026-08-13 — Support messaging follow-up: floating bubble, read receipts, quick-reply templates (Claude, on `main`)
 
