@@ -1,8 +1,15 @@
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+This version has breaking changes: APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
+
+## Editorial punctuation rule
+
+Do not use the em dash character (Unicode U+2014) in customer-facing website
+copy, labels, messages, or generated content. Use a full stop, comma, colon,
+parentheses, or a short sentence instead. Validate this rule before every
+release.
 
 ## Shared-agent documentation and handoff rules
 

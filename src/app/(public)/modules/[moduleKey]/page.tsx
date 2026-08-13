@@ -49,7 +49,7 @@ export default async function ModuleLandingPage({
         {
           "@context": "https://schema.org",
           "@type": "SoftwareApplication",
-          name: `${module_.name} — Rock Frost Business Suite`,
+          name: `${module_.name} | Rock Frost Business Suite`,
           url: `${SITE_URL}/modules/${moduleKey}`,
           applicationCategory: "BusinessApplication",
           operatingSystem: "Web",

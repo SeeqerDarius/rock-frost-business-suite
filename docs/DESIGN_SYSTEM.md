@@ -1,5 +1,14 @@
 # Design System
 
+## Public-site visual and editorial direction
+
+Public pages use restrained corporate layouts, moderate headline sizes, clear
+typographic hierarchy, solid surfaces, subtle borders, and limited shadow.
+Avoid decorative blurred orbs, oversized glow effects, glass-heavy panels,
+fixed multicolour gradients, and other patterns that make the site feel like a
+generic generated template. The em dash character is prohibited in all copy;
+rewrite with normal sentence punctuation instead.
+
 ## Foundation
 
 shadcn/ui (Base UI primitives, `base-nova` preset) + Tailwind CSS v4. See `docs/DECISIONS.md` for the license/rationale and why this was chosen over a purchased dashboard template.
@@ -7,8 +16,8 @@ shadcn/ui (Base UI primitives, `base-nova` preset) + Tailwind CSS v4. See `docs/
 - **Base color**: neutral, with RF blue reserved for primary actions, active navigation, focus, and operational emphasis. The accent is semantic rather than decorative.
 - **Icons**: `lucide-react`, size `size-4` (16px) in nav/inline contexts, `size-5`–`size-6` for feature/empty-state icons.
 - **Font**: Geist (via `next/font/google`), applied through the `--font-sans` CSS variable in the root layout.
-- **Dark mode**: `next-themes`, class-based (`.dark` on `<html>`), system-aware by default. Every shadcn component ships both light and dark tokens already — don't hardcode colors outside the token system.
-- **Theme tokens**: defined as CSS variables in `src/app/globals.css` (`--background`, `--foreground`, `--primary`, `--card`, `--border`, etc., plus matching `.dark` overrides). Use Tailwind's semantic classes (`bg-background`, `text-muted-foreground`, `border-border`) — never a raw hex/oklch value in a component.
+- **Dark mode**: `next-themes`, class-based (`.dark` on `<html>`), system-aware by default. Every shadcn component ships both light and dark tokens already: don't hardcode colors outside the token system.
+- **Theme tokens**: defined as CSS variables in `src/app/globals.css` (`--background`, `--foreground`, `--primary`, `--card`, `--border`, etc., plus matching `.dark` overrides). Use Tailwind's semantic classes (`bg-background`, `text-muted-foreground`, `border-border`): never a raw hex/oklch value in a component.
 
 ## Brand and application icons
 
@@ -19,13 +28,13 @@ shadcn/ui (Base UI primitives, `base-nova` preset) + Tailwind CSS v4. See `docs/
 
 ## Component conventions
 
-- shadcn primitives live in `src/components/ui/` — generated code. If you need to change one, prefer re-running `npx shadcn@latest add <name> --overwrite` after adjusting `components.json`/registry config, rather than hand-editing generated internals out of sync with upstream.
-- **`render` prop, not `asChild`.** This is Base UI, not Radix — see `docs/ARCHITECTURE.md`'s note on this. Getting this wrong produces a runtime error ("Functions cannot be passed directly to Client Components...") if the element also crosses a Server→Client boundary, or a silent accessibility warning if it doesn't.
-- Reusable page-level components live in `src/components/layout/` (`AppShell`, `PageHeader`, `Logo`, `PublicHeader`/`PublicFooter`) and `src/components/navigation/` (`SidebarNav`, `ModuleLauncher`, `UserMenu`) — use these rather than rebuilding page chrome per-route.
+- shadcn primitives live in `src/components/ui/`: generated code. If you need to change one, prefer re-running `npx shadcn@latest add <name> --overwrite` after adjusting `components.json`/registry config, rather than hand-editing generated internals out of sync with upstream.
+- **`render` prop, not `asChild`.** This is Base UI, not Radix: see `docs/ARCHITECTURE.md`'s note on this. Getting this wrong produces a runtime error ("Functions cannot be passed directly to Client Components...") if the element also crosses a Server→Client boundary, or a silent accessibility warning if it doesn't.
+- Reusable page-level components live in `src/components/layout/` (`AppShell`, `PageHeader`, `Logo`, `PublicHeader`/`PublicFooter`) and `src/components/navigation/` (`SidebarNav`, `ModuleLauncher`, `UserMenu`): use these rather than rebuilding page chrome per-route.
 - `EmptyState` (`src/components/feedback/empty-state.tsx`) is the standard pattern for "no data yet" and "not built yet" states. Every placeholder page in this rebuild uses it rather than inventing ad-hoc placeholder markup per page.
 - `PageHeader` (`src/components/layout/page-header.tsx`) is the standard top-of-page title/description/actions pattern.
-- `OverviewMetricCard` (`src/components/dashboard/overview-metric-card.tsx`) is the standard stat card for every module's overview page and every platform/organization-level metric: icon in an `IconBadge`, the whole card is a clickable `Link` when `href` is given (falls back to a plain non-interactive card when it isn't — e.g. a metric with no natural drill-down page), and a one-line `description` explaining what the number means. All 13 modules use it as of 2026-08-11 (fixed 11 pages — Fleet, Installment, CRM, Inventory, Accounting, HR, Payroll, Procurement, Projects, Analytics, POS — that had drifted onto a hand-rolled `Card` with a plain `text-muted-foreground` icon and a separate button; Hotel and School already used it), and `/app/platform/dashboard`'s three top-line stats were migrated onto it the same day. Don't hand-roll a new stat-card pattern per module — every numeric metric card goes through this one component so icon color and card behavior can't drift apart again.
-- `IconBadge` (`src/components/ui/icon-badge.tsx`) is the single definition of the RF-blue icon treatment (`bg-primary/10 text-primary`, three sizes: `sm`/`md`/`lg`) — never write `bg-primary/10 text-primary` inline. It backs `OverviewMetricCard` and every module/feature tile across the product: the per-module dashboard widgets on `/app/dashboard`, the `/app/modules` and `/app/dashboard` module cards, the header `ModuleLauncher` dialog, and the public marketing site's module grid (home, `/modules`), `/solutions` pillars, and `/industries` cards. A plain `text-muted-foreground` icon with no badge is reserved for a genuinely different role — a small icon sitting beside a section heading inside an already-titled card (e.g. `SettingsIcon` next to "Settings", `Activity` next to "Module adoption") — not for anything representing a module, metric, or feature in its own right.
+- `OverviewMetricCard` (`src/components/dashboard/overview-metric-card.tsx`) is the standard stat card for every module's overview page and every platform/organization-level metric: icon in an `IconBadge`, the whole card is a clickable `Link` when `href` is given (falls back to a plain non-interactive card when it isn't: e.g. a metric with no natural drill-down page), and a one-line `description` explaining what the number means. All 13 modules use it as of 2026-08-11 (fixed 11 pages: Fleet, Installment, CRM, Inventory, Accounting, HR, Payroll, Procurement, Projects, Analytics, POS: that had drifted onto a hand-rolled `Card` with a plain `text-muted-foreground` icon and a separate button; Hotel and School already used it), and `/app/platform/dashboard`'s three top-line stats were migrated onto it the same day. Don't hand-roll a new stat-card pattern per module: every numeric metric card goes through this one component so icon color and card behavior can't drift apart again.
+- `IconBadge` (`src/components/ui/icon-badge.tsx`) is the single definition of the RF-blue icon treatment (`bg-primary/10 text-primary`, three sizes: `sm`/`md`/`lg`): never write `bg-primary/10 text-primary` inline. It backs `OverviewMetricCard` and every module/feature tile across the product: the per-module dashboard widgets on `/app/dashboard`, the `/app/modules` and `/app/dashboard` module cards, the header `ModuleLauncher` dialog, and the public marketing site's module grid (home, `/modules`), `/solutions` pillars, and `/industries` cards. A plain `text-muted-foreground` icon with no badge is reserved for a genuinely different role: a small icon sitting beside a section heading inside an already-titled card (e.g. `SettingsIcon` next to "Settings", `Activity` next to "Module adoption"): not for anything representing a module, metric, or feature in its own right.
 
 ## Anti-patterns (explicitly rejected)
 
@@ -33,7 +42,7 @@ Per the project brief, the following are not acceptable anywhere in this product
 
 - Gradients used decoratively, glassmorphism, neon effects
 - Oversized cards, giant rounded corners
-- Dashboard widgets or metrics that don't correspond to real data (see `docs/DATABASE_STRATEGY.md` — placeholder pages must say "not built yet," never fabricate a number)
+- Dashboard widgets or metrics that don't correspond to real data (see `docs/DATABASE_STRATEGY.md`: placeholder pages must say "not built yet," never fabricate a number)
 - Every section wrapped in a card "by default" regardless of whether it needs one
 - Emoji used as interface icons (use `lucide-react`)
 - Crowded or duplicated navigation (see `docs/MODULE_BOUNDARIES.md`)
@@ -47,4 +56,4 @@ Long module menus may use `ModuleNavItem.group` to create quiet, noninteractive 
 
 ## Reference points (inspiration only, never copy proprietary UI)
 
-Linear, Stripe Dashboard, Ramp, Vercel, Notion, Shopify Admin — used only to calibrate information density, restraint, and interaction polish, not as a source of literal design assets.
+Linear, Stripe Dashboard, Ramp, Vercel, Notion, Shopify Admin: used only to calibrate information density, restraint, and interaction polish, not as a source of literal design assets.
