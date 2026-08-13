@@ -66,8 +66,20 @@ a disposable Postgres container in this repository's GitHub Actions CI on every 
 ### Deployment
 
 Direct request on `main`, not branch-scoped — taken through the full release lifecycle per this repository's
-default. See the commit/deployment/production-verification details appended immediately below this entry once
-release completes.
+default. Commit `c0dfade` was pushed to `origin/main`; Vercel production deployment `dpl_3jpWw6bikKrVb5ebKPn5kP5Svidm`
+reached `Ready` and was aliased to `www.rockfrostgroup.com`/`app.rockfrostgroup.com`/`admin.rockfrostgroup.com`. No
+schema change, so no migration ran as part of this build.
+
+**Production verification:** `www.rockfrostgroup.com/api/health` returned 200 with `"database":"reachable"`.
+`app.rockfrostgroup.com/login` and `admin.rockfrostgroup.com/login` both returned 200. `/app/support`,
+`/app/platform/support`, and `/app/dashboard` (where the floating bubble now also mounts, since it's global) all
+correctly redirect an unauthenticated visitor to `/login` (307). Scanned post-deploy runtime logs for `error`-level
+entries: only the same pre-existing `"No organization membership found for the current user."` pattern already
+recorded as harmless in the prior release's verification (an anonymous request racing the parent layout's
+`redirect("/login")` against the page's own `requireCurrentTenant()` call — the visitor still lands on `/login`
+correctly every time) — now also observed on `/app/dashboard`, confirming it is unrelated to this change. No other
+error patterns were present, and real authenticated traffic in the log window (`POST /app/support`, various nav
+`GET`s) returned clean 200s.
 
 ## 2026-08-13 — In-app support messaging (Claude, on `main`)
 
