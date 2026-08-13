@@ -158,9 +158,9 @@
    the logo's own alpha shape, via mask-image on the same PNG) lives on the
    static wrapper; the moving part is a plain child animated with `transform`
    only. Animating `background-position` directly on a masked element hits a
-   real Chromium repaint bug: confirmed by hand (the mask alone renders
+   real Chromium repaint bug — confirmed by hand (the mask alone renders
    correctly; adding an animated background-position under it silently stops
-   repainting): so the two responsibilities are deliberately kept on
+   repainting) — so the two responsibilities are deliberately kept on
    separate elements. Paused, not removed, under prefers-reduced-motion above. */
 @keyframes logo-shimmer-sweep {
   0%, 55% { transform: translateX(-210%); }
