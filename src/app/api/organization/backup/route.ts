@@ -5,13 +5,14 @@ import { buildTenantBackup, parseBackupScope } from "@/lib/backup/tenant-backup"
 import { BACKUP_MODULES, type BackupModule } from "@/lib/backup/scopes";
 import { resolveActiveTenantModuleKeys } from "@/lib/active-tenant-modules";
 import { resolveBackupModules } from "@/lib/backup/tenant-backup";
+import { logAuditEvent } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const tenant = await getCurrentTenant();
   if (!tenant) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!hasPermission(tenant, PERMISSIONS.ORG_DATA_EXPORT)) return NextResponse.json({ error: "You do not have permission to export organization data." }, { status: 403 });
   const scope = parseBackupScope(new URL(request.url).searchParams.get("module"));
   if (!scope) return NextResponse.json({ error: "Invalid module scope" }, { status: 400 });
   const activeKeys = await resolveActiveTenantModuleKeys(tenant.organizationId, tenant.enabledModuleKeys);
@@ -19,6 +20,15 @@ export async function GET(request: Request) {
   const includedModules = resolveBackupModules(scope, activeBackupModules);
   if (!includedModules) return NextResponse.json({ error: "That module is not active for this organization." }, { status: 403 });
   const backup = await buildTenantBackup(tenant.organizationId, tenant.organization.tenantCode, scope, includedModules);
+  await logAuditEvent({
+    organizationId: tenant.organizationId,
+    userId: tenant.userId,
+    module: "administration",
+    action: "tenant_data.exported",
+    entityName: "Organization",
+    entityId: tenant.organizationId,
+    metadata: { format: "json", scope, includedModules },
+  });
   const date = backup.generatedAt.slice(0, 10);
   return new NextResponse(JSON.stringify(backup), {
     headers: {

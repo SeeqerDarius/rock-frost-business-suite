@@ -1,5 +1,7 @@
 # Rock Frost Business Suite
 
+Security and compliance claims are tracked in [docs/COMPLIANCE_AND_ASSURANCE.md](docs/COMPLIANCE_AND_ASSURANCE.md). The register separates implemented product controls from provider-dependent controls and external certifications or regulatory determinations.
+
 A modular multi-tenant business platform. Organizations activate fourteen independent management modules — Fleet, Installment Sales, CRM, Inventory, Accounting, HR, Procurement, Payroll, Analytics, Point of Sale, Project Management, Hotel Management, School Management, and Pharmacy Management — from one unified workspace, without mixing unrelated business data together.
 
 > This is a clean rebuild started 2026-07-19. The previous implementation is archived on branch `archive/pre-redesign-rfbs` and under `docs/archive/previous-implementation/`. See `docs/DECISIONS.md` for why.

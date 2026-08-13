@@ -19,6 +19,7 @@ import type { PrismaClient } from "@prisma/client";
 export const PERMISSIONS = {
   DASHBOARD_VIEW: "dashboard.view",
   ORG_SETTINGS_MANAGE: "org.settings.manage",
+  ORG_DATA_EXPORT: "org.data.export",
   AI_ASSISTANT_USE: "ai.assistant.use",
   AUDIT_VIEW: "audit.view",
   AUDIT_EXPORT: "audit.export",

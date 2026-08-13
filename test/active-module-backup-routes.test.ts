@@ -12,6 +12,9 @@ describe("active-module backup routes", () => {
     expect(downloadRoute).toContain("resolveActiveTenantModuleKeys");
     expect(downloadRoute).toContain("resolveBackupModules");
     expect(downloadRoute).toContain('status: 403');
+    expect(downloadRoute).toContain("PERMISSIONS.ORG_DATA_EXPORT");
+    expect(downloadRoute).toContain('action: "tenant_data.exported"');
+    expect(downloadRoute).toContain('format: "json"');
   });
 
   it("enforces the same active-module boundary during restore", () => {
@@ -25,10 +28,15 @@ describe("active-module backup routes", () => {
     expect(excelRoute).toContain("resolveBackupModules");
     expect(excelRoute).toContain("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     expect(excelRoute).toContain('status: 403');
+    expect(excelRoute).toContain("PERMISSIONS.ORG_DATA_EXPORT");
+    expect(excelRoute).toContain('action: "tenant_data.exported"');
+    expect(excelRoute).toContain('format: "xlsx"');
   });
 
   it("shows only active module choices and labels all scope accurately", () => {
     expect(page).toContain("activeModules={activeModules}");
+    expect(page).toContain("PERMISSIONS.ORG_DATA_EXPORT");
+    expect(page).toContain("canExport={canExport}");
     expect(controls).toContain("activeModules.map");
     expect(controls).not.toContain("BACKUP_MODULES.map");
     expect(controls).toContain("All active modules");

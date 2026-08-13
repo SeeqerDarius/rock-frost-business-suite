@@ -8,7 +8,8 @@ import type { Prisma } from "@prisma/client";
 import { tenantAuditWhere } from "@/lib/audit-scope";
 
 function csvEscape(value: unknown): string {
-  const str = value === null || value === undefined ? "" : String(value);
+  let str = value === null || value === undefined ? "" : String(value);
+  if (/^[=+\-@]/.test(str)) str = `'${str}`;
   if (/[",\n]/.test(str)) {
     return `"${str.replace(/"/g, '""')}"`;
   }
@@ -86,6 +87,7 @@ export async function GET(request: NextRequest) {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="audit-log-${new Date().toISOString().slice(0, 10)}.csv"`,
+      "Cache-Control": "private, no-store",
     },
   });
 }
