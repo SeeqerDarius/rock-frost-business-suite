@@ -31,6 +31,8 @@ Platform administrators and organization users can enable authenticator-based tw
 
 Public pricing is available at `/pricing`. A centralized GHS catalogue covers all fifteen modules, annual savings, included and additional seats, industry bundles, and enterprise pricing. Platform operators receive catalogue-based amount and seat defaults while retaining the ability to record negotiated agreements.
 
+The public `/company` page positions Rock Frost Technologies as a broader technology partner covering bespoke software, digital commerce, websites, integrations, cloud modernization, and advisory work alongside the Business Suite. It presents selected work and carefully scoped Ghana Data Protection Act language without representing product controls as legal certification.
+
 Every tenant can reach in-app Support via a floating chat bubble available everywhere in the workspace, with an online indicator, read receipts, and optional quick-reply templates; platform operators reply from a two-pane inbox (`/app/platform/support`) across every organization, also reachable via its own floating bubble. No email is sent anywhere in this feature. See `docs/SUPPORT_MESSAGING.md`.
 
 ## Stack
