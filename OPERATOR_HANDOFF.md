@@ -50,7 +50,11 @@ under `prefers-reduced-motion`.
 ### Deployment
 
 Direct request on `main`, not branch-scoped — taken through the full release lifecycle per this repository's
-default. Commit, push, and production verification recorded immediately below this entry once deployed.
+default. Commit `2884aa7`, pushed to `origin`, deployed as the new Vercel production deployment (aliased to
+`git-main`, status `Ready`). Production health returned 200, and screenshotting `rockfrostgroup.com` directly
+(seeking the real animation to a mid-sweep frame via the Web Animations API) confirmed the shimmer is live on the
+actual production domain, not just the local build. The post-deploy runtime-log scan was clean — `info`-level
+entries only, no errors.
 
 ## 2026-08-12 — Hospital public module discovery
 
