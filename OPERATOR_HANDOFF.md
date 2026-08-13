@@ -1,5 +1,57 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-13 — Ambient shimmer on the Rock Frost wordmark (Claude, on `main`)
+
+Direct owner request: "can you animate this?" against `public/RFGgg.png`. Presented four scoped options (one-time
+entrance, hover-only, auth-screen-only, or an always-on ambient loop) since the app's own `docs/DESIGN_SYSTEM.md`
+explicitly rejects decorative gradients/motion in persistent chrome by default; the owner chose the always-on loop.
+
+### What shipped
+
+A masked light sweep — a bright diagonal band crosses the wordmark's own lettering (never a plain rectangle over
+the transparent background) roughly every 4.5 seconds. Implemented once in `src/app/globals.css`
+(`.logo-shimmer`/`.logo-shimmer-band`/`@keyframes logo-shimmer-sweep`) and consumed by the single shared
+`src/components/layout/logo.tsx`, so it applies everywhere the logo renders — public header, authenticated app
+shell/sidebar, and auth pages — with no per-call-site changes needed. Respects the existing app-wide
+`prefers-reduced-motion` rule already in `globals.css`; verified the animation's computed `animation-duration`
+collapses to `0.01ms` under reduced motion, same as every other animation in the app.
+
+### A real bug found and fixed during verification, worth recording
+
+The first implementation animated `background-position` directly on the same element carrying the `mask-image`.
+Screenshots showed no visible shimmer at all across many sampled frames. Isolated the cause by hand: a **static**
+masked fill (mask clipping a solid color to the wordmark's alpha shape) rendered correctly, but the same element
+with an **animated** `background-position` under that same mask silently stopped repainting per frame in
+Chromium — despite `getComputedStyle` reporting the animation as genuinely "running" the whole time. Fixed by
+splitting responsibilities across two elements: the mask stays static on the wrapper; the moving light band is a
+separate plain child animated with `transform: translateX(...)` only (compositor-driven, doesn't hit this issue).
+
+A second false trail during verification: my own test script paused the animation and then changed
+`animation-delay` to try to force specific frames — this doesn't work, a paused CSS animation stays frozen at
+whatever moment it was paused regardless of later delay changes, so every "forced" screenshot was silently showing
+the same frozen frame. Caught this by switching to the Web Animations API's `currentTime` property
+(`element.getAnimations()[0].currentTime = ms`), which does seek correctly, and confirmed the effect renders
+correctly both via forced seeking and natural real-time playback (real `next start` production build, screenshotted
+with Playwright). Full detail recorded in `docs/UI_UX_REFRESH.md`'s "Ambient shimmer" section for whoever touches
+this next.
+
+### Files changed
+
+`src/app/globals.css`, `src/components/layout/logo.tsx`, `docs/UI_UX_REFRESH.md`.
+
+### Validation
+
+`npx tsc --noEmit --incremental false`: clean. `npm run lint`: clean. `npx vitest run`: **52 files / 290 tests
+passed**, no regressions (this is a pure CSS/markup change with no logic to unit-test). `npm run build`:
+`✓ Compiled successfully`. Visually verified against a real `next start` production build with Playwright: the
+sweep is visible crossing the lettering in both forced-seek and natural real-time playback, and confirmed inert
+under `prefers-reduced-motion`.
+
+### Deployment
+
+Direct request on `main`, not branch-scoped — taken through the full release lifecycle per this repository's
+default. Commit, push, and production verification recorded immediately below this entry once deployed.
+
 ## 2026-08-12 — Hospital public module discovery
 
 Added Hospital to the authoritative public SEO/module catalog so `/modules/hospital` is statically generated alongside the other available modules. The page describes operational capabilities without presenting the product as a medical device or clinical-decision engine.

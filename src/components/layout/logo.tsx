@@ -17,17 +17,22 @@ export function Logo({
       aria-label={compact ? "Rock Frost home" : undefined}
       className={cn("flex min-w-0 items-center", className)}
     >
-      <Image
-        src="/RFGgg.png"
-        alt="Rock Frost"
-        width={1015}
-        height={129}
+      <span
         className={cn(
-          "w-auto object-contain drop-shadow-[0_1px_1px_rgba(0,0,0,0.85)]",
+          "logo-shimmer relative inline-block shrink-0",
           compact ? "h-4 max-w-12" : "h-6 max-w-[188px]",
         )}
-        priority
-      />
+      >
+        <Image
+          src="/RFGgg.png"
+          alt="Rock Frost"
+          width={1015}
+          height={129}
+          className="h-full w-full object-contain drop-shadow-[0_1px_1px_rgba(0,0,0,0.85)]"
+          priority
+        />
+        <span aria-hidden="true" className="logo-shimmer-band" />
+      </span>
     </Link>
   );
 }

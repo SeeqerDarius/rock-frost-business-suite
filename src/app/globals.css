@@ -139,3 +139,42 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Ambient light sweep across the Rock Frost wordmark. The mask (clipping to
+   the logo's own alpha shape, via mask-image on the same PNG) lives on the
+   static wrapper; the moving part is a plain child animated with `transform`
+   only. Animating `background-position` directly on a masked element hits a
+   real Chromium repaint bug — confirmed by hand (the mask alone renders
+   correctly; adding an animated background-position under it silently stops
+   repainting) — so the two responsibilities are deliberately kept on
+   separate elements. Paused, not removed, under prefers-reduced-motion above. */
+@keyframes logo-shimmer-sweep {
+  0%, 55% { transform: translateX(-210%); }
+  78% { transform: translateX(210%); }
+  100% { transform: translateX(210%); }
+}
+
+.logo-shimmer {
+  position: relative;
+  overflow: hidden;
+  -webkit-mask-image: url("/RFGgg.png");
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-image: url("/RFGgg.png");
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+}
+
+.logo-shimmer-band {
+  position: absolute;
+  inset: 0;
+  left: 22%;
+  width: 38%;
+  background-image: linear-gradient(100deg, transparent 4%, rgba(255, 255, 255, 0.55) 30%, rgba(255, 255, 255, 0.97) 50%, rgba(255, 255, 255, 0.55) 70%, transparent 96%);
+  mix-blend-mode: plus-lighter;
+  transform: translateX(-210%);
+  animation: logo-shimmer-sweep 4.5s ease-in-out infinite;
+  pointer-events: none;
+}
