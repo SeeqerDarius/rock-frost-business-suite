@@ -29,7 +29,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
   return (
     <AppShell
       sectionLabel="Platform Administration"
-      navigation={await getPlatformNavigation()}
+      navigation={getPlatformNavigation()}
       footerNavigation={platformFooterNavigation}
       homeHref="/app/platform/dashboard"
       showModuleLauncher={false}

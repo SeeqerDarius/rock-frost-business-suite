@@ -1,8 +1,7 @@
-import { LayoutGrid, Grid3x3, BarChart3, Bell, Building2, ShieldCheck, MessageSquarePlus, CreditCard, LifeBuoy } from "lucide-react";
+import { LayoutGrid, Grid3x3, BarChart3, Bell, Building2, ShieldCheck, MessageSquarePlus, CreditCard } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 import type { TenantContext } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getTenantUnreadCount } from "@/lib/support/service";
 
 /**
  * Top-level workspace navigation — organization scope, not tied to any one
@@ -10,15 +9,17 @@ import { getTenantUnreadCount } from "@/lib/support/service";
  * array: Administration and Organization both require org.settings.manage,
  * so a role like Fleet Manager or Hire Purchase Manager never sees links to
  * pages it would be blocked from anyway.
+ *
+ * Support is deliberately not listed here — it's reachable everywhere in the
+ * tenant workspace via the floating chat bubble (src/app/app/layout.tsx),
+ * not a sidebar destination. See docs/SUPPORT_MESSAGING.md.
  */
 export async function getWorkspaceNavigation(tenant: TenantContext): Promise<ModuleNavItem[]> {
-  const unreadSupportCount = await getTenantUnreadCount(tenant.organizationId);
   const items: ModuleNavItem[] = [
     { label: "Overview", href: "/app/dashboard", icon: <LayoutGrid className="size-4" /> },
     { label: "Modules", href: "/app/modules", icon: <Grid3x3 className="size-4" /> },
     { label: "Reports", href: "/app/reports", icon: <BarChart3 className="size-4" /> },
     { label: "Notifications", href: "/app/notifications", icon: <Bell className="size-4" /> },
-    { label: unreadSupportCount > 0 ? `Support (${unreadSupportCount})` : "Support", href: "/app/support", icon: <LifeBuoy className="size-4" /> },
   ];
 
   if (hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) {

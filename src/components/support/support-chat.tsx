@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
-import { Send } from "lucide-react";
+import Link from "next/link";
+import { Send, X, ExternalLink, Sparkles, CheckCheck, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarBadge } from "@/components/ui/avatar";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import type { SupportMessageTemplate } from "@/lib/support/templates";
 
 export interface SupportChatMessage {
   id: string;
@@ -14,6 +17,17 @@ export interface SupportChatMessage {
   createdAt: string;
   senderRole: "TENANT" | "PLATFORM";
   senderName: string;
+}
+
+interface SendResult {
+  message: SupportChatMessage;
+  otherPartyReadAt: string | null;
+}
+
+interface PollResult {
+  messages: SupportChatMessage[];
+  online: boolean;
+  otherPartyReadAt: string | null;
 }
 
 function initialsFor(name: string) {
@@ -39,12 +53,20 @@ interface SupportChatProps {
   otherPartyLabel: string;
   initialMessages: SupportChatMessage[];
   initialOnline: boolean;
+  /** When did the other side last read the conversation, as of the initial (SSR) fetch — drives "Read"/"Sent" receipts on the viewer's own messages. */
+  initialOtherPartyReadAt?: string | null;
   disabled?: boolean;
   disabledReason?: string;
-  onSend: (content: string) => Promise<SupportChatMessage>;
-  onPoll: (sinceIso: string | null) => Promise<{ messages: SupportChatMessage[]; online: boolean }>;
+  onSend: (content: string) => Promise<SendResult>;
+  onPoll: (sinceIso: string | null) => Promise<PollResult>;
   onHeartbeat: () => Promise<void>;
   onMarkRead?: () => Promise<void>;
+  /** Optional quick-start messages the viewer can pick and edit before sending — never sent automatically. */
+  templates?: SupportMessageTemplate[];
+  /** Renders a close (X) button in the header — for embedding inside a floating widget panel. */
+  onClose?: () => void;
+  /** Renders a small "Open full page" link in the header — lets a floating-widget user switch to the dedicated, larger page. */
+  expandHref?: string;
 }
 
 export function SupportChat({
@@ -52,15 +74,20 @@ export function SupportChat({
   otherPartyLabel,
   initialMessages,
   initialOnline,
+  initialOtherPartyReadAt = null,
   disabled = false,
   disabledReason,
   onSend,
   onPoll,
   onHeartbeat,
   onMarkRead,
+  templates,
+  onClose,
+  expandHref,
 }: SupportChatProps) {
   const [messages, setMessages] = useState<SupportChatMessage[]>(initialMessages);
   const [online, setOnline] = useState(initialOnline);
+  const [otherPartyReadAt, setOtherPartyReadAt] = useState(initialOtherPartyReadAt);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSending, startSendTransition] = useTransition();
@@ -94,8 +121,12 @@ export function SupportChat({
     return () => viewport?.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Poll for new messages and presence only while the tab is actually
-  // visible — no point spending network/battery on a background tab.
+  // Poll for new messages, presence, and read receipts only while the tab is
+  // actually visible — no point spending network/battery on a background
+  // tab. Fires once immediately (not just on the interval) so a component
+  // that mounts without SSR-provided history — e.g. the floating widget's
+  // panel, which lazy-loads on first open — populates right away instead of
+  // sitting empty for up to 4 seconds.
   useEffect(() => {
     let cancelled = false;
     async function tick() {
@@ -104,6 +135,7 @@ export function SupportChat({
         const result = await onPoll(lastTimestampRef.current);
         if (cancelled) return;
         setOnline(result.online);
+        setOtherPartyReadAt(result.otherPartyReadAt);
         if (result.messages.length > 0) {
           setMessages((prev) => {
             const known = new Set(prev.map((m) => m.id));
@@ -117,6 +149,7 @@ export function SupportChat({
         // A single missed poll isn't worth surfacing — it'll retry on the next tick.
       }
     }
+    void tick();
     const interval = setInterval(tick, 4000);
     document.addEventListener("visibilitychange", tick);
     return () => {
@@ -148,9 +181,10 @@ export function SupportChat({
     setError(null);
     startSendTransition(async () => {
       try {
-        const sent = await onSend(content);
-        setMessages((prev) => [...prev, sent]);
-        lastTimestampRef.current = sent.createdAt;
+        const result = await onSend(content);
+        setMessages((prev) => [...prev, result.message]);
+        lastTimestampRef.current = result.message.createdAt;
+        setOtherPartyReadAt(result.otherPartyReadAt);
         setDraft("");
         inputRef.current?.focus();
       } catch {
@@ -166,6 +200,11 @@ export function SupportChat({
     }
   }
 
+  function handleSelectTemplate(template: SupportMessageTemplate) {
+    setDraft(template.content);
+    inputRef.current?.focus();
+  }
+
   return (
     <div className="flex h-[32rem] flex-col overflow-hidden rounded-xl border bg-background">
       <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
@@ -176,12 +215,24 @@ export function SupportChat({
           </Avatar>
           <p className="truncate text-sm font-medium">{otherPartyLabel}</p>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-          <span
-            aria-hidden="true"
-            className={cn("size-2 rounded-full", online ? "bg-emerald-500" : "bg-muted-foreground/40")}
-          />
-          <span>{online ? "Online" : "Offline"}</span>
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span
+              aria-hidden="true"
+              className={cn("size-2 rounded-full", online ? "bg-emerald-500" : "bg-muted-foreground/40")}
+            />
+            <span>{online ? "Online" : "Offline"}</span>
+          </div>
+          {expandHref ? (
+            <Button variant="ghost" size="icon" className="size-7" nativeButton={false} render={<Link href={expandHref} />} aria-label="Open full page">
+              <ExternalLink className="size-3.5" />
+            </Button>
+          ) : null}
+          {onClose ? (
+            <Button variant="ghost" size="icon" className="size-7" onClick={onClose} aria-label="Close support chat">
+              <X className="size-4" />
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -197,6 +248,7 @@ export function SupportChat({
           ) : (
             messages.map((message) => {
               const isOwn = message.senderRole === viewerRole;
+              const isRead = isOwn && otherPartyReadAt !== null && message.createdAt <= otherPartyReadAt;
               return (
                 <div key={message.id} className={cn("flex items-end gap-2", isOwn ? "flex-row-reverse" : "flex-row")}>
                   <Avatar size="sm" className="mb-4 shrink-0">
@@ -211,8 +263,21 @@ export function SupportChat({
                     >
                       {message.content}
                     </div>
-                    <p className="px-1 text-[11px] text-muted-foreground">
-                      {isOwn ? "You" : message.senderName} · {formatTimestamp(message.createdAt)}
+                    <p className="flex items-center gap-1 px-1 text-[11px] text-muted-foreground">
+                      <span>{isOwn ? "You" : message.senderName} · {formatTimestamp(message.createdAt)}</span>
+                      {isOwn ? (
+                        isRead ? (
+                          <span className="flex items-center gap-0.5 text-primary" title="Read">
+                            <CheckCheck className="size-3" aria-hidden="true" />
+                            <span className="sr-only">Read</span>
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-0.5" title="Sent">
+                            <Check className="size-3" aria-hidden="true" />
+                            <span className="sr-only">Sent</span>
+                          </span>
+                        )
+                      ) : null}
                     </p>
                   </div>
                 </div>
@@ -228,6 +293,23 @@ export function SupportChat({
         ) : (
           <>
             <div className="flex items-end gap-2">
+              {templates && templates.length > 0 ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={<Button type="button" variant="outline" size="icon" disabled={isSending} aria-label="Insert a quick-reply template" />}
+                  >
+                    <Sparkles className="size-4" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" side="top">
+                    <DropdownMenuLabel>Quick replies</DropdownMenuLabel>
+                    {templates.map((template) => (
+                      <DropdownMenuItem key={template.label} onClick={() => handleSelectTemplate(template)}>
+                        {template.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
               <label htmlFor="support-chat-input" className="sr-only">
                 Message
               </label>
@@ -247,7 +329,7 @@ export function SupportChat({
                 <Send className="size-4" />
               </Button>
             </div>
-            {error ? <p className="mt-1.5 text-xs text-destructive">{error}</p> : <p className="mt-1.5 text-xs text-muted-foreground">Enter to send · Shift+Enter for a new line</p>}
+            {error ? <p className="mt-1.5 text-xs text-destructive">{error}</p> : <p className="mt-1.5 text-xs text-muted-foreground">Enter to send · Shift+Enter for a new line{templates && templates.length > 0 ? " · Quick replies available" : ""}</p>}
           </>
         )}
       </form>

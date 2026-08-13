@@ -16,21 +16,25 @@ async function currentSenderName() {
   return session?.user?.name || session?.user?.email || "You";
 }
 
-export async function sendTenantSupportMessage(content: string): Promise<SupportChatMessage> {
+export async function sendTenantSupportMessage(content: string): Promise<{ message: SupportChatMessage; otherPartyReadAt: string | null }> {
   const tenant = await requireCurrentTenant();
   const parsed = messageSchema.safeParse(content);
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid message.");
   const senderName = await currentSenderName();
-  const message = await support.sendTenantMessage(tenant.organizationId, tenant.userId, senderName, parsed.data);
+  const { message, conversation } = await support.sendTenantMessage(tenant.organizationId, tenant.userId, senderName, parsed.data);
   revalidatePath("/app/support");
-  return toChatMessage(message);
+  return { message: toChatMessage(message), otherPartyReadAt: support.otherPartyReadAt(conversation, "TENANT") };
 }
 
-export async function pollTenantSupportMessages(sinceIso: string | null): Promise<{ messages: SupportChatMessage[]; online: boolean }> {
+export async function pollTenantSupportMessages(sinceIso: string | null): Promise<{ messages: SupportChatMessage[]; online: boolean; otherPartyReadAt: string | null }> {
   const tenant = await requireCurrentTenant();
-  const { messages } = await support.listSupportMessages(tenant.organizationId, sinceIso ? new Date(sinceIso) : undefined);
+  const { conversation, messages } = await support.listSupportMessages(tenant.organizationId, sinceIso ? new Date(sinceIso) : undefined);
   const online = await support.isPlatformOnline();
-  return { messages: messages.map(toChatMessage), online };
+  return {
+    messages: messages.map(toChatMessage),
+    online,
+    otherPartyReadAt: conversation ? support.otherPartyReadAt(conversation, "TENANT") : null,
+  };
 }
 
 export async function tenantSupportHeartbeat(): Promise<void> {

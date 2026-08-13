@@ -44,11 +44,12 @@ describe("Support messaging service — tenant isolation", () => {
     expect(mockDb.supportMessage.findMany).not.toHaveBeenCalled();
   });
 
-  it("sendTenantMessage creates a TENANT-role message scoped to the sender's organization and marks the tenant side read", async () => {
+  it("sendTenantMessage creates a TENANT-role message scoped to the sender's organization, marks the tenant side read, and returns the updated conversation", async () => {
     mockDb.supportConversation.upsert.mockResolvedValue({ id: "conv-1", organizationId: ORG });
     mockDb.supportMessage.create.mockResolvedValue({ id: "msg-1", createdAt: new Date("2026-01-01") });
+    mockDb.supportConversation.update.mockResolvedValue({ id: "conv-1", organizationId: ORG, tenantLastReadAt: new Date("2026-01-01"), platformLastReadAt: null });
 
-    await support.sendTenantMessage(ORG, "user-1", "Jane Doe", "My invoice looks wrong");
+    const { message, conversation } = await support.sendTenantMessage(ORG, "user-1", "Jane Doe", "My invoice looks wrong");
 
     const createCall = mockDb.supportMessage.create.mock.calls[0][0];
     expect(createCall.data.organizationId).toBe(ORG);
@@ -58,11 +59,15 @@ describe("Support messaging service — tenant isolation", () => {
     const updateCall = mockDb.supportConversation.update.mock.calls[0][0];
     expect(updateCall.data.tenantLastReadAt).toBeInstanceOf(Date);
     expect(updateCall.data.platformLastReadAt).toBeUndefined();
+
+    expect(message.id).toBe("msg-1");
+    expect(conversation.id).toBe("conv-1");
   });
 
   it("sendPlatformMessage creates a PLATFORM-role message and marks the platform side read, not the tenant side", async () => {
     mockDb.supportConversation.upsert.mockResolvedValue({ id: "conv-1", organizationId: ORG });
     mockDb.supportMessage.create.mockResolvedValue({ id: "msg-1", createdAt: new Date("2026-01-01") });
+    mockDb.supportConversation.update.mockResolvedValue({ id: "conv-1", organizationId: ORG, tenantLastReadAt: null, platformLastReadAt: new Date("2026-01-01") });
 
     await support.sendPlatformMessage(ORG, "operator-1", "Rock Frost Support", "We're looking into this now");
 
@@ -72,6 +77,23 @@ describe("Support messaging service — tenant isolation", () => {
     const updateCall = mockDb.supportConversation.update.mock.calls[0][0];
     expect(updateCall.data.platformLastReadAt).toBeInstanceOf(Date);
     expect(updateCall.data.tenantLastReadAt).toBeUndefined();
+  });
+
+  describe("otherPartyReadAt (read receipts)", () => {
+    it("returns the platform's read cursor for a TENANT viewer, and the tenant's for a PLATFORM viewer", () => {
+      const platformRead = new Date("2026-01-02T00:00:00.000Z");
+      const tenantRead = new Date("2026-01-01T00:00:00.000Z");
+      const conversation = { tenantLastReadAt: tenantRead, platformLastReadAt: platformRead };
+
+      expect(support.otherPartyReadAt(conversation, "TENANT")).toBe(platformRead.toISOString());
+      expect(support.otherPartyReadAt(conversation, "PLATFORM")).toBe(tenantRead.toISOString());
+    });
+
+    it("returns null when the other side has never read the conversation", () => {
+      const conversation = { tenantLastReadAt: null, platformLastReadAt: null };
+      expect(support.otherPartyReadAt(conversation, "TENANT")).toBeNull();
+      expect(support.otherPartyReadAt(conversation, "PLATFORM")).toBeNull();
+    });
   });
 
   it("rejects an empty or whitespace-only message before touching the database", async () => {
@@ -144,22 +166,41 @@ describe("Support messaging — access-guard source coverage", () => {
     expect(actionsSource).toContain("isPlatformOperator");
   });
 
-  it("is registered in both sidebar navigations with a live unread count, and never emails anyone", () => {
+  it("is reachable via a floating chat bubble in the top-level app layout, not a sidebar link, and never emails anyone", () => {
     const workspaceNav = read("src/platform/modules/workspace-navigation.tsx");
-    expect(workspaceNav).toContain("/app/support");
-    expect(workspaceNav).toContain("getTenantUnreadCount");
+    expect(workspaceNav).not.toContain("/app/support");
 
     const platformNav = read("src/platform/modules/platform-navigation.tsx");
-    expect(platformNav).toContain("/app/platform/support");
-    expect(platformNav).toContain("getPlatformUnreadCount");
+    expect(platformNav).not.toContain("/app/platform/support");
+
+    const appLayout = read("src/app/app/layout.tsx");
+    expect(appLayout).toContain("FloatingSupportWidget");
+    expect(appLayout).toContain("PlatformSupportBubbleLink");
+    expect(appLayout).toContain("getTenantUnreadCount");
+    expect(appLayout).toContain("getPlatformUnreadCount");
 
     for (const file of [
       "src/lib/support/service.ts",
       "src/app/app/(overview)/support/actions.ts",
       "src/app/app/platform/support/actions.ts",
+      "src/components/support/support-chat.tsx",
+      "src/components/support/floating-support-widget.tsx",
+      "src/components/support/floating-support-link.tsx",
     ]) {
       const source = read(file);
       expect(source, file).not.toMatch(/sendEmail|resend|@\/lib\/email/i);
     }
+  });
+
+  it("both viewer roles get an optional, editable quick-reply template set", () => {
+    const templatesSource = read("src/lib/support/templates.ts");
+    expect(templatesSource).toContain("TENANT_SUPPORT_TEMPLATES");
+    expect(templatesSource).toContain("PLATFORM_SUPPORT_TEMPLATES");
+
+    const chatSource = read("src/components/support/support-chat.tsx");
+    // Selecting a template only populates the draft — it must never submit on its own.
+    const templateHandler = chatSource.match(/function handleSelectTemplate\([^)]*\)\s*\{([\s\S]*?)\n  \}/);
+    expect(templateHandler, "handleSelectTemplate function body").not.toBeNull();
+    expect(templateHandler![1]).not.toMatch(/handleSubmit|onSend|startSendTransition/);
   });
 });

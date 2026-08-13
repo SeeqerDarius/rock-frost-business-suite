@@ -1,5 +1,74 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-13 — Support messaging follow-up: floating bubble, read receipts, quick-reply templates (Claude, on `main`)
+
+Direct owner follow-up request on the support-messaging feature shipped earlier the same day: enable a read-receipt
+flow, add optional quick-reply message templates, and replace the sidebar "Support" nav entry with a floating chat
+bubble icon on both sides.
+
+### What shipped
+
+- **Floating chat bubble, not a sidebar link**: `src/app/app/layout.tsx` (the one layout every authenticated route
+  nests under) now mounts a floating bottom-right widget for every tenant page. Tenant identity gets
+  `FloatingSupportWidget` — a self-contained bubble that expands into a full chat panel in place, lazy-loading its
+  message history on first open rather than fetching it on every page navigation (only a cheap unread-count query
+  runs on every request). Platform identity gets `PlatformSupportBubbleLink` — a bubble that links to the existing
+  `/app/platform/support` two-pane inbox rather than an inline panel, since triaging many tenant conversations at
+  once needs that page's list-plus-detail layout, not a small floating box. Both dedicated pages (`/app/support`,
+  `/app/platform/support`) are kept and fully functional — only their `workspace-navigation.tsx`/
+  `platform-navigation.tsx` sidebar entries were removed, and the tenant panel links back to the full page for
+  anyone who needs the larger surface.
+- **Read receipts**: `otherPartyReadAt(conversation, viewerRole)` (`src/lib/support/service.ts`) exposes the other
+  side's existing read cursor from the viewer's perspective. `sendMessage` now returns `{ message, conversation }`
+  (a signature change propagated through both actions.ts files and `SupportChat`'s `onSend`/`onPoll` prop types).
+  Each of the viewer's own sent messages renders a `Check`/`CheckCheck` icon with an accessible "Sent"/"Read" text
+  equivalent — never icon-only, matching the existing online-indicator convention.
+- **Optional quick-reply templates**: `src/lib/support/templates.ts` exports `TENANT_SUPPORT_TEMPLATES` and
+  `PLATFORM_SUPPORT_TEMPLATES` (plain label/content data). `SupportChat` renders them behind a "Quick replies"
+  dropdown next to the composer; selecting one only populates the draft — it never auto-sends, so the user can
+  still edit before submitting.
+- `SupportChat`'s message-poll effect now fires once immediately on mount (previously only on the 4-second
+  interval) — necessary so the floating widget's lazy-loaded panel populates right away instead of sitting empty;
+  harmless extra request on the full pages, which already had accurate SSR data.
+
+### Important files
+
+`src/components/support/floating-support-widget.tsx` (new), `src/components/support/floating-support-link.tsx`
+(new), `src/lib/support/templates.ts` (new), `src/lib/support/service.ts` (`otherPartyReadAt`, `sendMessage`
+return-shape change), `src/components/support/support-chat.tsx` (read receipts, templates dropdown, optional
+`onClose`/`expandHref` header actions, immediate first poll), both support `actions.ts` files (return
+`otherPartyReadAt`; added `getPlatformSupportUnreadCount`), `src/app/app/layout.tsx` (mounts the widgets),
+`src/platform/modules/workspace-navigation.tsx` and `platform-navigation.tsx` (Support nav entries removed;
+`getPlatformNavigation` reverted from async to sync now that it no longer queries unread count itself — its one
+call site in `src/app/app/platform/layout.tsx` updated to match), `docs/SUPPORT_MESSAGING.md`,
+`docs/ARCHITECTURE.md`, `README.md`. No schema or migration change — purely additive to the existing
+`SupportConversation`/`SupportMessage` read-cursor fields.
+
+### Validation
+
+`npx tsc --noEmit --incremental false`: clean (after fixing two real issues found during this pass — a return-type
+mismatch in the concurrency integration test after `sendMessage`'s shape changed, and an unsupported regex `s`
+flag under this project's TS target). `npm run lint`: clean (after fixing one real `react-hooks/set-state-in-effect`
+violation — `FloatingSupportWidget` was calling `setUnread(0)` synchronously inside an effect on open; moved into
+the click handler that toggles `open` instead). `npx vitest run`: **53 files / 306 tests passed** (16 in
+`test/support-messaging.test.ts`, up from 13 — added `otherPartyReadAt` coverage, a template-selection-never-
+auto-sends regression test via source inspection, and updated the nav-registration test to assert Support is
+**absent** from both sidebar nav files and present in `src/app/app/layout.tsx` instead). `npm run build`: succeeded,
+190 routes. Also ran a local `next start` smoke test (real production server, real dev database) and curled `/`,
+`/login`, and `/api/health` — all 200, health reachable, no errors in server logs.
+
+No authenticated browser verification of the floating bubble's actual open/close/send/template UI was performed
+(no tenant/platform login credentials available in this environment) — disclosed gap, not a claimed pass. The
+existing real-Postgres integration suites continue to be written-but-unexecuted locally (no `TEST_DATABASE_URL`
+here) and now also type-check cleanly against the updated `sendMessage` return shape; they do run for real against
+a disposable Postgres container in this repository's GitHub Actions CI on every push to `main`.
+
+### Deployment
+
+Direct request on `main`, not branch-scoped — taken through the full release lifecycle per this repository's
+default. See the commit/deployment/production-verification details appended immediately below this entry once
+release completes.
+
 ## 2026-08-13 — In-app support messaging (Claude, on `main`)
 
 Direct owner request: an in-app chat so tenants can reach out with enquiries/problems, with a reply pane for the

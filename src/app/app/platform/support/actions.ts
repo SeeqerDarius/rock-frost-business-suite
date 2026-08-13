@@ -23,25 +23,34 @@ async function currentSenderName() {
   return session?.user?.name || session?.user?.email || "Rock Frost Support";
 }
 
-export async function sendPlatformSupportMessage(organizationId: string, content: string): Promise<SupportChatMessage> {
+export async function sendPlatformSupportMessage(organizationId: string, content: string): Promise<{ message: SupportChatMessage; otherPartyReadAt: string | null }> {
   const tenant = await requirePlatformOperatorTenant();
   const parsedOrg = cuid.safeParse(organizationId);
   const parsedContent = messageSchema.safeParse(content);
   if (!parsedOrg.success) throw new Error("Invalid organization.");
   if (!parsedContent.success) throw new Error(parsedContent.error.issues[0]?.message ?? "Invalid message.");
   const senderName = await currentSenderName();
-  const message = await support.sendPlatformMessage(parsedOrg.data, tenant.userId, senderName, parsedContent.data);
+  const { message, conversation } = await support.sendPlatformMessage(parsedOrg.data, tenant.userId, senderName, parsedContent.data);
   revalidatePath("/app/platform/support");
-  return toChatMessage(message);
+  return { message: toChatMessage(message), otherPartyReadAt: support.otherPartyReadAt(conversation, "PLATFORM") };
 }
 
-export async function pollPlatformSupportMessages(organizationId: string, sinceIso: string | null): Promise<{ messages: SupportChatMessage[]; online: boolean }> {
+export async function pollPlatformSupportMessages(organizationId: string, sinceIso: string | null): Promise<{ messages: SupportChatMessage[]; online: boolean; otherPartyReadAt: string | null }> {
   await requirePlatformOperatorTenant();
   const parsedOrg = cuid.safeParse(organizationId);
   if (!parsedOrg.success) throw new Error("Invalid organization.");
-  const { messages } = await support.listSupportMessages(parsedOrg.data, sinceIso ? new Date(sinceIso) : undefined);
+  const { conversation, messages } = await support.listSupportMessages(parsedOrg.data, sinceIso ? new Date(sinceIso) : undefined);
   const online = await support.isTenantOnline(parsedOrg.data);
-  return { messages: messages.map(toChatMessage), online };
+  return {
+    messages: messages.map(toChatMessage),
+    online,
+    otherPartyReadAt: conversation ? support.otherPartyReadAt(conversation, "PLATFORM") : null,
+  };
+}
+
+export async function getPlatformSupportUnreadCount(): Promise<number> {
+  await requirePlatformOperatorTenant();
+  return support.getPlatformUnreadCount();
 }
 
 export async function platformSupportHeartbeat(): Promise<void> {

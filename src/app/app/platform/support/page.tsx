@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { SupportChat } from "@/components/support/support-chat";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
 import * as support from "@/lib/support/service";
+import { PLATFORM_SUPPORT_TEMPLATES } from "@/lib/support/templates";
 import { sendPlatformSupportMessage, pollPlatformSupportMessages, platformSupportHeartbeat, markPlatformSupportRead, setPlatformSupportStatus } from "./actions";
 
 function relativeTime(date: Date) {
@@ -29,10 +30,12 @@ export default async function PlatformSupportPage({ searchParams }: { searchPara
 
   let initialMessages: ReturnType<typeof support.toChatMessage>[] = [];
   let online = false;
+  let initialOtherPartyReadAt: string | null = null;
   if (selected) {
-    const { messages } = await support.listSupportMessages(selected.organizationId);
+    const { conversation, messages } = await support.listSupportMessages(selected.organizationId);
     initialMessages = messages.map(support.toChatMessage);
     online = await support.isTenantOnline(selected.organizationId);
+    initialOtherPartyReadAt = conversation ? support.otherPartyReadAt(conversation, "PLATFORM") : null;
   }
 
   return (
@@ -88,6 +91,8 @@ export default async function PlatformSupportPage({ searchParams }: { searchPara
                 otherPartyLabel={selected.organization.name}
                 initialMessages={initialMessages}
                 initialOnline={online}
+                initialOtherPartyReadAt={initialOtherPartyReadAt}
+                templates={PLATFORM_SUPPORT_TEMPLATES}
                 onSend={sendPlatformSupportMessage.bind(null, selected.organizationId)}
                 onPoll={pollPlatformSupportMessages.bind(null, selected.organizationId)}
                 onHeartbeat={platformSupportHeartbeat}

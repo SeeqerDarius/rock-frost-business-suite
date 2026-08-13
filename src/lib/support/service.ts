@@ -60,11 +60,11 @@ async function sendMessage(organizationId: string, data: { senderId: string | nu
       data: { organizationId, conversationId: conversation.id, senderId: data.senderId, senderName: data.senderName, senderRole: data.senderRole, content },
     });
     // Sending implicitly marks your own side as caught up.
-    await tx.supportConversation.update({
+    const updated = await tx.supportConversation.update({
       where: { id: conversation.id },
       data: data.senderRole === "TENANT" ? { tenantLastReadAt: message.createdAt } : { platformLastReadAt: message.createdAt },
     });
-    return message;
+    return { message, conversation: updated };
   });
 }
 
@@ -74,6 +74,16 @@ export function sendTenantMessage(organizationId: string, senderId: string, send
 
 export function sendPlatformMessage(organizationId: string, senderId: string, senderName: string, content: string) {
   return sendMessage(organizationId, { senderId, senderName, senderRole: "PLATFORM", content });
+}
+
+/**
+ * When did the OTHER side last read this conversation, from viewerRole's
+ * perspective — the cursor a viewer's own sent messages must be compared
+ * against to know whether they've been seen yet.
+ */
+export function otherPartyReadAt(conversation: { tenantLastReadAt: Date | null; platformLastReadAt: Date | null }, viewerRole: "TENANT" | "PLATFORM"): string | null {
+  const date = viewerRole === "TENANT" ? conversation.platformLastReadAt : conversation.tenantLastReadAt;
+  return date ? date.toISOString() : null;
 }
 
 export async function markReadByTenant(organizationId: string) {

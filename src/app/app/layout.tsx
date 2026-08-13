@@ -11,6 +11,18 @@ import { isPlatformOperator } from "@/lib/auth/permissions";
 import type { Metadata } from "next";
 import { getTrialDaysRemaining } from "@/platform/trials/service";
 import { AppNavigationLoader } from "@/components/feedback/app-navigation-loader";
+import { FloatingSupportWidget } from "@/components/support/floating-support-widget";
+import { PlatformSupportBubbleLink } from "@/components/support/floating-support-link";
+import { TENANT_SUPPORT_TEMPLATES } from "@/lib/support/templates";
+import { getTenantUnreadCount, getPlatformUnreadCount } from "@/lib/support/service";
+import {
+  sendTenantSupportMessage,
+  pollTenantSupportMessages,
+  tenantSupportHeartbeat,
+  markTenantSupportRead,
+  getTenantSupportUnreadCount,
+} from "@/app/app/(overview)/support/actions";
+import { getPlatformSupportUnreadCount } from "@/app/app/platform/support/actions";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false, nocache: true },
@@ -73,6 +85,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const trialDaysRemaining = getTrialDaysRemaining(organization?.createdAt ?? new Date());
 
+  const supportUnread = platformIdentity
+    ? await getPlatformUnreadCount()
+    : await getTenantUnreadCount(tenant.organizationId);
+
   return (
     <OrganizationBrandingProvider branding={{ logoUrl: organization?.logoUrl ?? null, name: organization?.name ?? null }}>
       <OrganizationThemeSync theme={theme} />
@@ -89,6 +105,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       ) : null}
       {children}
+      {platformIdentity ? (
+        <PlatformSupportBubbleLink initialUnread={supportUnread} onUnreadPoll={getPlatformSupportUnreadCount} />
+      ) : (
+        <FloatingSupportWidget
+          initialUnread={supportUnread}
+          templates={TENANT_SUPPORT_TEMPLATES}
+          expandHref="/app/support"
+          onSend={sendTenantSupportMessage}
+          onPoll={pollTenantSupportMessages}
+          onHeartbeat={tenantSupportHeartbeat}
+          onMarkRead={markTenantSupportRead}
+          onUnreadPoll={getTenantSupportUnreadCount}
+        />
+      )}
     </OrganizationBrandingProvider>
   );
 }

@@ -4,9 +4,18 @@
 
 ## What this is
 
-A persistent, one-conversation-per-organization chat, not a multi-thread ticketing system. Any signed-in member of a tenant organization can open `/app/support` and message Rock Frost; any platform operator can open `/app/platform/support` to see every tenant's conversation and reply. There is no email delivery anywhere in this feature — see "No email" below.
+A persistent, one-conversation-per-organization chat, not a multi-thread ticketing system. Any signed-in member of a tenant organization gets a floating chat bubble (bottom-right, everywhere in the tenant workspace) to message Rock Frost; any platform operator gets a floating bubble linking to a two-pane inbox (`/app/platform/support`) listing every tenant's conversation. There is no email delivery anywhere in this feature — see "No email" below.
 
 This is deliberately **not a business module**: no `platform/modules/registry.ts` entry, no module-prefix permission gate, and no inclusion in the tenant backup/export system (`BACKUP_MODULES`). It follows the same precedent as `Notification`/`AuditLog` — cross-cutting organization-scope + platform-scope infrastructure available unconditionally to every tenant regardless of which business modules they've enabled. Excluding it from tenant backups is deliberate, not an oversight: message history can contain a platform operator's name, and that identity must never leak into a tenant's own data export.
+
+## Entry point: a floating chat bubble, not a sidebar link
+
+Support is intentionally not a sidebar navigation destination. `src/app/app/layout.tsx` — the one layout every authenticated route (every module, organization scope, and platform scope) already renders under — mounts one of two floating widgets in the bottom-right corner, chosen by identity:
+
+- **Tenant** (`src/components/support/floating-support-widget.tsx`): a self-contained bubble that expands into a full chat panel in place, without navigating away from whatever page the user is on. The panel lazy-loads its message history on first open (`SupportChat`'s own poll effect fires immediately on mount) rather than fetching it on every page navigation across the workspace — only a cheap unread-count query runs on every request. While the panel is closed, a lightweight 12-second poll keeps the bubble's unread badge current; opening the panel stops that poll and hands off to `SupportChat`'s own 4-second message poll. The panel also links to the dedicated `/app/support` page (kept, not removed) for anyone who prefers — or needs — a full-page surface: a larger hit target, more history visible at once, easier for screen magnifier or motor-impaired users than a small floating box.
+- **Platform** (`src/components/support/floating-support-link.tsx`): a bubble that links to the full `/app/platform/support` two-pane inbox rather than opening an inline panel. An operator triaging conversations across many tenant organizations needs the list-plus-detail layout that page provides; a small floating widget can't do that justice, so the bubble here is purely a low-friction entry point, refreshing its own unread badge every 15 seconds.
+
+Both dedicated pages (`/app/support`, `/app/platform/support`) still exist and are fully functional — only their sidebar nav entries were removed (`workspace-navigation.tsx`, `platform-navigation.tsx`).
 
 ## Data model
 
@@ -30,7 +39,15 @@ This intentionally answers "is a support surface currently open," not "is this u
 
 ## Message delivery (polling, not push)
 
-`SupportChat` (`src/components/support/support-chat.tsx`) polls for new messages and presence every 4 seconds via a Server Action, gated the same way as the heartbeat (visible tabs only). New messages are deduplicated against a client-side `Set` of known IDs and appended past a `lastTimestampRef` cursor, so a message the sender just sent (appended optimistically on send) is never duplicated when the next poll also returns it.
+`SupportChat` (`src/components/support/support-chat.tsx`) polls for new messages, presence, and read receipts every 4 seconds via a Server Action, gated the same way as the heartbeat (visible tabs only) — and fires once immediately on mount, not just on the interval, so a panel that lazy-loads without server-rendered history (the floating widget) populates right away instead of sitting empty for up to 4 seconds. New messages are deduplicated against a client-side `Set` of known IDs and appended past a `lastTimestampRef` cursor, so a message the sender just sent (appended optimistically on send) is never duplicated when the next poll also returns it.
+
+## Read receipts
+
+Each side of a `SupportConversation` already tracks its own `tenantLastReadAt`/`platformLastReadAt` cursor (used for unread counts). `otherPartyReadAt(conversation, viewerRole)` in `src/lib/support/service.ts` reads the *other* side's cursor from the viewer's perspective — the value a viewer's own sent messages must be compared against to know whether they've been seen. Both `sendTenantSupportMessage`/`sendPlatformSupportMessage` and `pollTenantSupportMessages`/`pollPlatformSupportMessages` return this value alongside messages; `SupportChat` compares each of the viewer's own messages' `createdAt` against it (ISO 8601 UTC strings compare correctly lexicographically) and renders a `Check`/`CheckCheck` icon with an accessible "Sent"/"Read" label — never a bare icon with no text equivalent, matching this codebase's existing "never color/icon alone" convention for the online indicator.
+
+## Optional quick-reply templates
+
+`src/lib/support/templates.ts` exports `TENANT_SUPPORT_TEMPLATES` and `PLATFORM_SUPPORT_TEMPLATES` — short, plain-data label/content pairs (billing question, technical issue, etc. for tenants; acknowledge, need more info, resolved, following up for operators). `SupportChat` renders them behind an optional "Quick replies" dropdown next to the composer only when a `templates` prop is passed. Selecting one **only populates the draft textarea** (`handleSelectTemplate`) — it never sends automatically, so the user can still edit before submitting. Enforced by a source-inspection test (`test/support-messaging.test.ts`) asserting `handleSelectTemplate`'s function body never calls `handleSubmit`/`onSend`/`startSendTransition`.
 
 ## No email — by explicit design
 
@@ -44,16 +61,19 @@ This feature must never send anything to the owner's email or any tenant's email
 
 ## HCI / accessibility notes
 
-- Presence is never color-only: an `AvatarBadge` dot on the header avatar is paired with an explicit "Online"/"Offline" text label.
+- Presence is never color-only: an `AvatarBadge` dot on the header avatar is paired with an explicit "Online"/"Offline" text label. Read receipts follow the same rule — a `Check`/`CheckCheck` icon always carries a "Sent"/"Read" text equivalent (visually a `title` tooltip, an `sr-only` span for assistive tech).
 - New messages are announced to screen readers via an `aria-live="polite"` sr-only region.
 - Enter sends; Shift+Enter inserts a newline. The message textarea has a visually-hidden `<label>`.
 - Auto-scroll-to-bottom only fires if the viewer was already near the bottom (within 120px) — scrolling up to re-read history is never interrupted by an incoming message.
 - The send button and textarea disable during send (`useTransition`), and a failed send surfaces an inline retry message rather than silently dropping the draft.
 - Polling and heartbeats both respect `document.visibilityState`, avoiding wasted requests (and, on a laptop, wasted battery) on backgrounded tabs.
+- The floating bubble is keyboard-operable: a real `<button>` with `aria-expanded`/`aria-label` reflecting open/unread state, `Escape` closes the panel and returns focus to the bubble, and the panel is marked `role="dialog"` with an accessible label. It is deliberately *not* the only way to reach support — the dedicated full pages remain linked and functional for anyone who finds a small floating widget harder to use.
+- Templates are additive, not a constraint: choosing one only fills the composer, so a user who prefers to type their own message freely is never forced through a template.
 
 ## Known gaps
 
-- No push notifications outside the app (by design — see "No email" above); a tenant or operator only learns of a new message by having the page open or by the sidebar's live unread-count badge, which itself only updates on server-rendered navigation, not in real time.
+- No push notifications outside the app (by design — see "No email" above); a tenant or operator only learns of a new message by having a support surface open or via the floating bubble's periodically-refreshed unread badge, which is polling-based, not instant.
 - No file/image attachments — text only.
 - No multi-thread history; resolving a conversation (`setConversationStatus`) only changes its status badge, it does not archive or hide prior messages, and a new message from either side reopens it to `OPEN` automatically.
-- The real-Postgres integration tests (`test/integration/tenant-isolation/support-messaging.test.ts`, `test/integration/concurrency/support-messaging.test.ts`) are written but unexecuted in this environment — see `docs/TESTING_STRATEGY.md`. The mocked-DB unit suite (`test/support-messaging.test.ts`, 13 tests) does run in CI/local validation and passes.
+- Read receipts are conversation-level granularity (one shared "other side's last-read cursor"), not literal per-message read events — accurate for a two-party conversation (which this always is: one tenant side, one platform side), but would need a different design if this ever became a multi-party thread.
+- The real-Postgres integration tests (`test/integration/tenant-isolation/support-messaging.test.ts`, `test/integration/concurrency/support-messaging.test.ts`) are written but unexecuted in this environment — see `docs/TESTING_STRATEGY.md`. The mocked-DB unit suite (`test/support-messaging.test.ts`, 16 tests) does run in CI/local validation and passes.

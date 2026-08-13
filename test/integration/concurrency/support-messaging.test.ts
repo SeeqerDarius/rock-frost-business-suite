@@ -25,7 +25,7 @@ afterAll(async () => {
 
 describe("Support messaging concurrency (real Postgres)", () => {
   it("two concurrent first-ever messages (tenant and platform, racing to create the conversation) both succeed and both persist", async () => {
-    const [tenantMessage, platformMessage] = await Promise.all([
+    const [{ message: tenantMessage }, { message: platformMessage }] = await Promise.all([
       support.sendTenantMessage(org.organizationId, org.userId, "Org User", "Hello, we need help"),
       support.sendPlatformMessage(org.organizationId, "platform-operator", "Rock Frost Support", "Hi, how can we help?"),
     ]);
@@ -57,7 +57,7 @@ describe("Support messaging concurrency (real Postgres)", () => {
   it("a tenant marking their side read concurrently with a new platform reply does not crash and settles to a correct unread count", async () => {
     await support.markReadByTenant(org.organizationId);
 
-    const [, reply] = await Promise.all([
+    const [, { message: reply }] = await Promise.all([
       support.markReadByTenant(org.organizationId),
       support.sendPlatformMessage(org.organizationId, "platform-operator", "Rock Frost Support", "One more thing"),
     ]);
