@@ -1,5 +1,62 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-13 — Support bubble: open/close animation and mobile responsiveness (Claude, on `main`)
+
+Direct owner follow-up on the floating support bubble shipped earlier the same day: "let the animation be in nice
+style when you click on the chat bubble" and "let the chat pop up be responsive enough."
+
+### What shipped
+
+- **Open/close animation**: switched from an abrupt conditional-mount to a real enter/exit animation using
+  `tw-animate-css` (the same animation system already used by this design system's dropdown/menu components — no
+  new dependency). Opening plays `fade-in-0 zoom-in-95 slide-in-from-bottom-4` (200ms, `origin-bottom-right` so the
+  panel visually grows out of the bubble). Closing doesn't unmount instantly: `FloatingSupportWidget` now tracks
+  `open` (logical state) separately from `rendered` (DOM presence) — closing flips `open` immediately (playing a
+  150ms `fade-out-0 zoom-out-95 slide-out-to-bottom-2`, with `pointer-events-none` so the fading panel can't still
+  be clicked), then unmounts ~160ms later once the animation has had time to finish. The bubble's own icon morphs
+  between a message icon and a close (X) icon via a crossfade + rotate transition instead of swapping abruptly, and
+  both bubbles (tenant and platform) get a brief scale/fade entrance on first mount plus `hover:scale-105`/
+  `active:scale-95` press feedback, consistent with this design system's existing button press behavior.
+- **Responsiveness**: below the `sm` breakpoint the panel is now `inset-4` (near-full-screen, a real single-hand
+  mobile chat surface) instead of a small fixed-size corner card; at `sm`+ it's the original `w-96`/`h-[32rem]`
+  anchored card. `SupportChat` gained an optional `className` prop (merged via `cn`/`tailwind-merge`) specifically
+  so the floating widget can override its default fixed height with responsive sizing, without touching the two
+  full, non-floating `/app/support` / `/app/platform/support` pages that still use the component's default size.
+- Everything above collapses to near-instant automatically under `prefers-reduced-motion`, via this codebase's
+  existing blanket rule in `globals.css` — no new reduced-motion handling was required.
+
+### Important files
+
+`src/components/support/floating-support-widget.tsx` (open/close animation state machine, icon morph, responsive
+panel), `src/components/support/floating-support-link.tsx` (matching entrance/press micro-interaction),
+`src/components/support/support-chat.tsx` (new optional `className` prop), `docs/SUPPORT_MESSAGING.md`. No schema,
+migration, Server Action, or test-behavior change — this is a client-side styling/animation pass only, so the
+existing `test/support-messaging.test.ts` suite required no changes.
+
+### Validation
+
+`npx tsc --noEmit --incremental false`: clean. `npm run lint`: clean (after removing one now-unnecessary
+`eslint-disable` comment). `npx vitest run`: **53 files / 306 tests passed**, unchanged — no test logic touches
+CSS/animation. `npm run build`: succeeded, 190 routes. Directly inspected the compiled production CSS
+(`.next/static/chunks/*.css`) and confirmed every `tw-animate-css` utility class used
+(`zoom-in-75`, `zoom-in-95`, `zoom-out-95`, `slide-in-from-bottom-4`, `slide-out-to-bottom-2`, `fade-in-0`,
+`fade-out-0`, `animate-in`, `animate-out`, `origin-bottom-right`) resolved to real generated CSS rules (e.g.
+`.zoom-in-75{--tw-enter-scale:.75}`) rather than being silently dropped as unrecognized by Tailwind's JIT — the
+concrete risk with hand-typed utility class names that don't error if wrong. Also ran a local `next start` smoke
+test (real production server, real dev database): `/`, `/login`, `/api/health` all returned 200/reachable.
+
+No authenticated browser verification of the actual animation motion or mobile layout was possible in this
+environment (no tenant/platform login credentials available) — disclosed gap, not a claimed pass. Confidence here
+rests on: the same animation utilities already working correctly elsewhere in this codebase (dropdown/menu
+components), confirming the generated CSS is real (not silently dropped), and the standard, well-established
+"delay unmount past animation duration" React pattern used for the exit transition.
+
+### Deployment
+
+Direct request on `main`, not branch-scoped — taken through the full release lifecycle per this repository's
+default. See the commit/deployment/production-verification details appended immediately below this entry once
+release completes.
+
 ## 2026-08-13 — Support messaging follow-up: floating bubble, read receipts, quick-reply templates (Claude, on `main`)
 
 Direct owner follow-up request on the support-messaging feature shipped earlier the same day: enable a read-receipt

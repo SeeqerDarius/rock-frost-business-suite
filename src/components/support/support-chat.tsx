@@ -67,6 +67,8 @@ interface SupportChatProps {
   onClose?: () => void;
   /** Renders a small "Open full page" link in the header — lets a floating-widget user switch to the dedicated, larger page. */
   expandHref?: string;
+  /** Merged onto the outer container — lets a floating widget override the default fixed height/corner styling with responsive sizing of its own. */
+  className?: string;
 }
 
 export function SupportChat({
@@ -84,6 +86,7 @@ export function SupportChat({
   templates,
   onClose,
   expandHref,
+  className,
 }: SupportChatProps) {
   const [messages, setMessages] = useState<SupportChatMessage[]>(initialMessages);
   const [online, setOnline] = useState(initialOnline);
@@ -206,7 +209,7 @@ export function SupportChat({
   }
 
   return (
-    <div className="flex h-[32rem] flex-col overflow-hidden rounded-xl border bg-background">
+    <div className={cn("flex h-[32rem] flex-col overflow-hidden rounded-xl border bg-background", className)}>
       <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <Avatar size="sm">

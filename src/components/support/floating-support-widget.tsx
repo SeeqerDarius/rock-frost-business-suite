@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SupportChat, type SupportChatMessage } from "@/components/support/support-chat";
 import type { SupportMessageTemplate } from "@/lib/support/templates";
+import { cn } from "@/lib/utils";
+
+/** Must be >= the panel's exit-animation `duration-*` class below (150ms) — controls how long the panel stays mounted (but non-interactive) while it fades/slides out, before actually unmounting. */
+const EXIT_ANIMATION_MS = 160;
 
 interface FloatingSupportWidgetProps {
   initialUnread: number;
@@ -24,6 +28,13 @@ interface FloatingSupportWidgetProps {
  * sidebar nav entry — the panel lazy-loads its message history on first
  * open (SupportChat's own poll effect fires immediately on mount) rather
  * than fetching it on every page navigation across the tenant workspace.
+ *
+ * Open/close plays a short fade + scale + slide animation (`tw-animate-css`
+ * utilities, already used elsewhere in this design system's dropdown/menu
+ * components). Closing doesn't unmount immediately — it keeps the panel in
+ * the DOM (non-interactive) for EXIT_ANIMATION_MS so the closing animation
+ * can actually play, then unmounts. Everything collapses to near-instant
+ * under prefers-reduced-motion via this codebase's existing global rule.
  */
 export function FloatingSupportWidget({
   initialUnread,
@@ -36,9 +47,10 @@ export function FloatingSupportWidget({
   onUnreadPoll,
 }: FloatingSupportWidgetProps) {
   const [open, setOpen] = useState(false);
+  const [rendered, setRendered] = useState(false);
   const [unread, setUnread] = useState(initialUnread);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep the badge fresh only while the panel is closed — once it's open,
   // SupportChat's own polling and mark-read calls take over.
@@ -66,31 +78,52 @@ export function FloatingSupportWidget({
   useEffect(() => {
     if (!open) return;
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
+      if (event.key === "Escape") closePanel();
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [open]);
 
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+    };
+  }, []);
+
+  function openPanel() {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+    setRendered(true);
+    setOpen(true);
+    setUnread(0);
+  }
+
+  function closePanel() {
+    setOpen(false);
+    closeTimeoutRef.current = setTimeout(() => setRendered(false), EXIT_ANIMATION_MS);
+    triggerRef.current?.focus();
+  }
+
   function handleToggle() {
-    setOpen((value) => {
-      const next = !value;
-      if (next) setUnread(0);
-      return next;
-    });
+    if (open) closePanel();
+    else openPanel();
   }
 
   return (
     <>
-      {open ? (
+      {rendered ? (
         <div
-          ref={panelRef}
           role="dialog"
           aria-label="Support chat"
-          className="fixed bottom-24 right-4 z-50 w-[calc(100vw-2rem)] max-w-sm sm:right-6"
+          className={cn(
+            "fixed z-50 origin-bottom-right",
+            "inset-4 sm:inset-auto sm:bottom-24 sm:right-6 sm:w-96",
+            open
+              ? "animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 duration-200"
+              : "pointer-events-none animate-out fade-out-0 zoom-out-95 slide-out-to-bottom-2 duration-150",
+          )}
         >
           <SupportChat
             viewerRole="TENANT"
@@ -104,10 +137,8 @@ export function FloatingSupportWidget({
             onPoll={onPoll}
             onHeartbeat={onHeartbeat}
             onMarkRead={onMarkRead}
-            onClose={() => {
-              setOpen(false);
-              triggerRef.current?.focus();
-            }}
+            onClose={closePanel}
+            className="h-full max-h-[calc(100vh-2rem)] sm:h-[32rem] sm:max-h-[32rem]"
           />
         </div>
       ) : null}
@@ -119,9 +150,24 @@ export function FloatingSupportWidget({
         onClick={handleToggle}
         aria-label={open ? "Close support chat" : unread > 0 ? `Open support chat, ${unread} unread` : "Open support chat"}
         aria-expanded={open}
-        className="fixed bottom-4 right-4 z-50 size-14 rounded-full shadow-lg sm:bottom-6 sm:right-6"
+        className="fixed bottom-4 right-4 z-50 size-14 animate-in fade-in-0 zoom-in-75 rounded-full shadow-lg duration-300 hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6"
       >
-        {open ? <X className="size-6" /> : <MessageCircle className="size-6" />}
+        <span className="relative flex size-6 items-center justify-center">
+          <MessageCircle
+            aria-hidden="true"
+            className={cn(
+              "absolute size-6 transition-all duration-200 ease-out",
+              open ? "scale-50 rotate-45 opacity-0" : "scale-100 rotate-0 opacity-100",
+            )}
+          />
+          <X
+            aria-hidden="true"
+            className={cn(
+              "absolute size-6 transition-all duration-200 ease-out",
+              open ? "scale-100 rotate-0 opacity-100" : "scale-50 -rotate-45 opacity-0",
+            )}
+          />
+        </span>
         {!open && unread > 0 ? (
           <Badge variant="destructive" className="absolute -top-1 -right-1 min-w-5 justify-center border-2 border-background bg-destructive text-destructive-foreground" aria-hidden="true">
             {unread > 99 ? "99+" : unread}

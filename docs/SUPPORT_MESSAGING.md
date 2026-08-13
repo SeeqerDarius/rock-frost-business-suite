@@ -17,6 +17,17 @@ Support is intentionally not a sidebar navigation destination. `src/app/app/layo
 
 Both dedicated pages (`/app/support`, `/app/platform/support`) still exist and are fully functional — only their sidebar nav entries were removed (`workspace-navigation.tsx`, `platform-navigation.tsx`).
 
+### Open/close animation and responsiveness
+
+The panel and both bubble triggers use `tw-animate-css` utilities (the same animation system already powering this design system's dropdown/menu components — see `src/components/ui/dropdown-menu.tsx`), not a bespoke transition system:
+
+- **Opening**: the panel mounts with `animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4` (`origin-bottom-right`, so it visually grows out of the bubble it came from) over 200ms.
+- **Closing**: `FloatingSupportWidget` doesn't unmount the panel the instant it's dismissed. Closing sets a `pointer-events-none` exit-animation state (`animate-out fade-out-0 zoom-out-95 slide-out-to-bottom-2`, 150ms) and only unmounts ~160ms later, once the animation has actually had time to play — the standard "delay unmount past the animation duration" pattern for conditionally-rendered exit animations in React.
+- **Trigger icon**: the bubble morphs between a message icon and a close (X) icon via a small crossfade + rotate transition (`transition-all duration-200`), rather than an abrupt swap.
+- **Entrance**: both bubbles play a brief scale/fade-in (`zoom-in-75`, 300ms) on first mount, plus a `hover:scale-105`/`active:scale-95` micro-interaction, consistent with this design system's existing button press feedback (`active:translate-y-px` in `button.tsx`).
+- All of the above collapses to near-instant automatically under `prefers-reduced-motion` via this codebase's existing blanket rule in `globals.css` (`animation-duration`/`transition-duration: 0.01ms !important`) — no per-component reduced-motion handling was needed.
+- **Responsiveness**: below the `sm` breakpoint the panel is `inset-4` (near-full-screen, a comfortable single-hand chat surface on a phone) rather than a small corner card; at `sm` and above it reverts to a fixed `w-96`/`h-[32rem]` card anchored to the bottom-right corner. `SupportChat` gained an optional `className` prop (merged via `cn`/`tailwind-merge`) specifically so the floating widget can override its default fixed height with this responsive sizing without changing the component used by the two full, non-floating pages.
+
 ## Data model
 
 Three Prisma models (see `prisma/schema.prisma`, bottom section):

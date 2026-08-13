@@ -48,7 +48,7 @@ export function PlatformSupportBubbleLink({ initialUnread, onUnreadPoll }: Platf
       render={<Link href="/app/platform/support" />}
       size="icon"
       aria-label={unread > 0 ? `Open support inbox, ${unread} unread` : "Open support inbox"}
-      className="fixed bottom-4 right-4 z-50 size-14 rounded-full shadow-lg sm:bottom-6 sm:right-6"
+      className="fixed bottom-4 right-4 z-50 size-14 animate-in fade-in-0 zoom-in-75 rounded-full shadow-lg duration-300 hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6"
     >
       <LifeBuoy className="size-6" />
       {unread > 0 ? (
