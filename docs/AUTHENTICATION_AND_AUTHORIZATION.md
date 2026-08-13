@@ -60,6 +60,10 @@ Authentication determines who the user is. Authorization determines what they ca
 
 The Administration invitation form derives assignable roles from the organization's active subscribed modules when subscriptions exist, falling back to enabled modules for trial or platform-managed workspaces without subscriptions. This prevents stale legacy enablement records from exposing unrelated roles. An organization with only School access sees School roles (plus Organization Owner), not Fleet, Installment, Hotel, or other module roles. The invitation server action repeats this compatibility check, so submitting a hidden or stale unrelated role ID cannot bypass the interface. Legacy “Hire Purchase” role records are presented to tenants as “Installment” roles to match the current product name.
 
+## Support messaging is deliberately not permission-gated
+
+`/app/support` is reachable by any active tenant member via `requireCurrentTenant()` alone — no module-prefix permission check, unlike every business-module page above. `/app/platform/support` uses the same role-name check as the rest of platform scope (`isPlatformOperator()`, both at the page level and re-checked inside every Server Action). See `docs/SUPPORT_MESSAGING.md`.
+
 ## Known gaps carried forward
 
 - No public self-registration/signup flow (the Phase 4 invite UI covers admin-initiated onboarding, not self-signup) — a deliberate choice for an invite-only B2B platform, not an oversight.

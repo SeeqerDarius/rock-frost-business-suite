@@ -1,5 +1,75 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-13 — In-app support messaging (Claude, on `main`)
+
+Direct owner request: an in-app chat so tenants can reach out with enquiries/problems, with a reply pane for the
+owner, an online indicator both directions, and — explicit constraint — **nothing sent to the owner's email**.
+Delivered as a new cross-cutting feature (not a business module), taken through the full production release
+lifecycle since the request had no branch-scoping instruction.
+
+### What shipped
+
+- **Tenant side**: `/app/support` — any active organization member (`requireCurrentTenant()` only, no module
+  permission gate) can message Rock Frost and read the full history in one persistent conversation. Sidebar nav
+  entry with a live unread-count badge (`workspace-navigation.tsx`).
+- **Platform side**: `/app/platform/support` — a two-pane inbox (`requirePlatformOperator()` at the page, plus a
+  role re-check inside every Server Action) listing every real tenant conversation with unread counts, a
+  resolve/reopen control, and the same chat UI. Sidebar nav entry with a live unread-count badge
+  (`platform-navigation.tsx`, whose exported nav array became an async function to support the live count).
+- **Presence ("online indicator")**: no WebSocket infrastructure exists in this app, so presence is a lightweight
+  heartbeat (`UserPresence.lastSeenAt`, upserted every 20s while a support surface is open and the tab is visible)
+  with a 45-second online window — never color-only in the UI, paired with an explicit "Online"/"Offline" label.
+- **Message delivery**: polling every 4 seconds, gated on `document.visibilityState === "visible"` (a
+  `visibilitychange` listener stops both polling and heartbeats the instant a tab backgrounds), with client-side
+  deduplication so a just-sent message is never double-appended when the next poll also returns it.
+- **No email, verified**: there is no `sendEmail`/Resend call anywhere in the feature's service or actions files;
+  enforced by a source-grep regression test (`test/support-messaging.test.ts`), not just by omission.
+- **HCI**: `aria-live="polite"` announcement region for new messages, sr-only form label, Enter-to-send/
+  Shift+Enter-newline, auto-scroll that only fires when the viewer was already near the bottom, disabled-while-
+  sending state with an inline retry message on failure.
+- Deliberately **not a module**: no `platform/modules/registry.ts` entry, no permission prefix, and excluded from
+  the tenant backup/export system — matching the existing `Notification`/`AuditLog` precedent, since message
+  history can reference a platform operator's identity that must never leak into a tenant's own data export.
+
+### Important files
+
+`prisma/schema.prisma` (new models `SupportConversation`/`SupportMessage`/`UserPresence`, new enums
+`SupportConversationStatus`/`SupportSenderRole`), migration `20260813040000_add_support_messaging`,
+`src/lib/support/service.ts`, `src/components/support/support-chat.tsx`,
+`src/app/app/(overview)/support/{page,actions}.tsx`, `src/app/app/platform/support/{page,actions}.tsx`,
+`src/platform/modules/workspace-navigation.tsx` (now async), `src/platform/modules/platform-navigation.tsx`
+(`platformNavigation` array renamed to async `getPlatformNavigation()` — its one call site in
+`src/app/app/platform/layout.tsx` was updated), `docs/SUPPORT_MESSAGING.md`, plus additive pointers in
+`docs/ARCHITECTURE.md`, `docs/AUTHENTICATION_AND_AUTHORIZATION.md`, `docs/MODULE_BOUNDARIES.md`, and `README.md`.
+No environment variable was added.
+
+### Validation
+
+`npx prisma validate`/`generate`: passed (with the documented harmless local `DIRECT_URL` mirror; empty in this
+checkout's `.env` by design). `npx tsc --noEmit --incremental false`: clean. `npm run lint`: clean. `npx vitest
+run`: **53 files / 303 tests passed** (up from the pre-existing 52/290 baseline — the 13 new tests are
+`test/support-messaging.test.ts`, a mocked-DB suite covering tenant-isolation behavior and a source-level
+regression guard against any email code path). `npm run build`: succeeded, both new routes compiled
+(`/app/support`, `/app/platform/support`).
+
+Two real-Postgres integration suites were written
+(`test/integration/tenant-isolation/support-messaging.test.ts`,
+`test/integration/concurrency/support-messaging.test.ts`) covering cross-org isolation, read-state isolation,
+presence isolation, platform-inbox correctness, and concurrent sends/reads/heartbeats (relying on Prisma's atomic
+`upsert` for the conversation-creation race rather than an app-level retry, since there is no sequential number to
+compute the way tenant-facing record numbering needs one). **These did not run** — this checkout has no
+`TEST_DATABASE_URL`/disposable test database, consistent with every other integration suite added this session;
+they type-check cleanly under the same `tsc` run as the rest of the repository.
+
+No authenticated browser verification was performed (no tenant/platform login credentials available in this
+environment) — this is a disclosed gap, not a claimed pass.
+
+### Deployment
+
+Direct request on `main`, not branch-scoped — taken through the full release lifecycle per this repository's
+default. See the commit/deployment/production-verification details appended immediately below this entry once
+release completes.
+
 ## 2026-08-13 — Ambient shimmer on the Rock Frost wordmark (Claude, on `main`)
 
 Direct owner request: "can you animate this?" against `public/RFGgg.png`. Presented four scoped options (one-time

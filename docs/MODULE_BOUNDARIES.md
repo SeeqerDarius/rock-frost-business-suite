@@ -55,6 +55,10 @@ As of Phase 6 this is real for Fleet, not just aspirational — `src/modules/fle
 - Projects's service layer (`src/modules/projects/service.ts`, Phase 16) is the eleventh module on this pattern, with organization-wide visibility only (same as CRM/Inventory/HR). It has no cross-module service calls, but does have two real guard-rail state transitions: `completeMilestone()` requires every task under the milestone to be `DONE`, and `completeProject()` requires every milestone on the project to be `COMPLETED` — the same "real validation logic, not just CRUD" discipline as HR's rating-required-before-review-completion.
 - **Every mutating Server Action that redirects to a list page must call `revalidatePath()` on that page's path immediately before the `redirect()`** — see `docs/DEVELOPMENT_ROADMAP.md`'s "Router-cache bug fix" entry. Omitting this was a systemic gap across all of Fleet, Installment, and the first pass of CRM; it is now the required pattern for every action file, not an optional optimization.
 
+## Cross-cutting infrastructure that is deliberately not a module
+
+Not everything under organization scope or platform scope is a module. `Notification`, `AuditLog`, and Support messaging (`/app/support`, `/app/platform/support` — see `docs/SUPPORT_MESSAGING.md`) are cross-cutting infrastructure available to every organization unconditionally: no `registry.ts` entry, no module-prefix permission, no `OrganizationModule.enabled` check, and excluded from the tenant backup/export system (`BACKUP_MODULES`) since their records can reference platform-operator identities that must never leak into a tenant's own export. Don't add a new one of these lightly — most new cross-cutting needs still belong in `/app/reports` (Analytics) as documented below; this category is reserved for genuinely infrastructural, always-on concerns.
+
 ## Adding a new module
 
 The approved Hotel and School verticals follow the staged boundaries and

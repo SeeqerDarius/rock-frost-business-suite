@@ -21,7 +21,7 @@ export default async function OverviewLayout({ children }: { children: React.Rea
   return (
     <AppShell
       sectionLabel="Workspace"
-      navigation={getWorkspaceNavigation(tenant)}
+      navigation={await getWorkspaceNavigation(tenant)}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
     >

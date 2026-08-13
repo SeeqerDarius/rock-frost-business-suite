@@ -296,6 +296,8 @@ model User {
   subscriptionsCreated            Subscription[]            @relation("SubscriptionsCreated")
   subscriptionsActivated          Subscription[]            @relation("SubscriptionsActivated")
   organizationDeletionsRequested  Organization[]            @relation("OrganizationDeletionRequestedBy")
+  supportMessages                 SupportMessage[]
+  presence                        UserPresence?
 }
 
 model Account {
@@ -507,6 +509,8 @@ model Organization {
   hospitalConsents                HospitalConsent[]
   hospitalAttachments             HospitalAttachment[]
   hospitalSettings                HospitalSettings[]
+  supportConversation             SupportConversation?
+  supportMessages                 SupportMessage[]
 
   @@index([industry])
   @@index([status])
@@ -4526,4 +4530,77 @@ model HospitalSettings {
   facility     HospitalFacility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+}
+
+// =====================================================================
+// Support messaging — in-app conversation between a tenant organization
+// and Rock Frost platform operators. Deliberately not a business module
+// (no registry entry, no permission prefix, no backup-scope inclusion —
+// same precedent as Notification/AuditLog): every tenant always has
+// access regardless of which modules are enabled, and platform-operator
+// identities appearing in message history must never leak into a
+// tenant's own data export. See docs/SUPPORT_MESSAGING.md.
+// =====================================================================
+
+enum SupportConversationStatus {
+  OPEN
+  RESOLVED
+}
+
+enum SupportSenderRole {
+  TENANT
+  PLATFORM
+}
+
+/**
+ * One ongoing conversation per organization — a persistent support channel, not a multi-thread ticket system.
+ */
+model SupportConversation {
+  id                 String                    @id @default(cuid())
+  organizationId     String                    @unique
+  status             SupportConversationStatus @default(OPEN)
+  tenantLastReadAt   DateTime?
+  platformLastReadAt DateTime?
+  lastMessageAt      DateTime                  @default(now())
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  messages     SupportMessage[]
+
+  @@index([status, lastMessageAt])
+}
+
+/**
+ * senderName is a denormalized snapshot of the sender's display name at
+ * send time — message history must still read correctly if a user's name
+ * later changes or the account itself is removed (senderId then goes
+ * null via SetNull, same pattern as AuditLog.userId).
+ */
+model SupportMessage {
+  id             String            @id @default(cuid())
+  conversationId String
+  organizationId String
+  senderId       String?
+  senderName     String
+  senderRole     SupportSenderRole
+  content        String            @db.Text
+  createdAt      DateTime          @default(now())
+
+  conversation SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sender       User?               @relation(fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@index([organizationId, createdAt])
+}
+
+/**
+ * Lightweight heartbeat-driven presence, updated only while a support chat surface is actually open — not a global "is this user active anywhere" tracker.
+ */
+model UserPresence {
+  userId     String   @id
+  lastSeenAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

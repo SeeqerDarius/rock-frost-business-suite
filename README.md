@@ -29,6 +29,8 @@ Production uses host-separated authentication: platform owners use `admin.rockfr
 
 Platform administrators and organization users can enable authenticator-based two-factor authentication from Account Security. Module subscriptions support enforced per-module user seats (including pending invitations and multi-module roles), with used and remaining capacity visible to tenant administrators. Organization administrators can safely change roles and deactivate/reactivate members, with immediate seat release and capacity checks on restored access. They also have tenant-isolated, active-module Excel reporting exports, lossless JSON system backups, and password/2FA-protected merge restores; see `docs/BILLING_AND_SUBSCRIPTIONS.md` and `docs/BACKUP_AND_RECOVERY.md`.
 
+Every tenant can reach in-app Support (`/app/support`) to message Rock Frost directly, with an online indicator and unread-count nav badge; platform operators reply from a two-pane inbox (`/app/platform/support`) across every organization. No email is sent anywhere in this feature. See `docs/SUPPORT_MESSAGING.md`.
+
 ## Stack
 
 - **Next.js 16.2.12** (App Router, Turbopack) — see `AGENTS.md` before writing Next.js-specific code; this project pins a version with breaking changes from what most training data assumes.
@@ -91,6 +93,7 @@ Start with `OPERATOR_HANDOFF.md` at the repo root for the current state and next
 - `docs/ORGANIZATION_LIFECYCLE.md` — Super Admin onboarding, profile/status management, protected platform organizations, and recoverable deletion
 - `docs/HARDENING_PLAN.md` — the production-hardening track: what's fixed, what's deferred, why
 - `docs/OPERATIONS_AND_MONITORING.md` — trial-expiry cron, health checks, logs, performance monitoring, and accessibility operations
+- `docs/SUPPORT_MESSAGING.md` — in-app tenant/platform support chat, presence, and why it's deliberately not email or a business module
 - `docs/DECISIONS.md` — dated log of consequential technical decisions
 
 `docs/archive/previous-implementation/` contains the retired implementation's docs, marked obsolete. Do not follow them.
