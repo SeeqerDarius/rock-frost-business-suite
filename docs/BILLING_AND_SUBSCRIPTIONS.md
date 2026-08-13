@@ -2,6 +2,14 @@
 
 ## Module user seats
 
+## Production pricing catalogue
+
+The launch catalogue is defined in `src/lib/pricing.ts` and is the single source of truth for public prices and platform-operator quote defaults. Individual modules range from GHS 199 to GHS 1,499 monthly and include a module-specific user allowance. Twelve-month subscriptions use the explicit annual catalogue amount (approximately two months of savings); other terms multiply the monthly price by the selected duration. Additional-user guidance is also stored per module.
+
+The public `/pricing` page publishes individual modules, included seats, annual amounts, popular suites, and the enterprise starting price. The platform subscription form uses the same catalogue to prefill the agreed amount and seat limit when an operator selects a module. These values remain editable because negotiated discounts, migrations, extra branches, custom development, and enterprise agreements must still be recorded at their actually agreed amount.
+
+Bundles are sales packages rather than a new entitlement object. Operators must create the underlying module subscriptions with the correct module-specific seat limits so access, roles, backups, cancellation, and expiry remain isolated per module. Students, guardians, patients, and customer records are business records and do not consume staff-user seats.
+
 Each subscription can carry a positive user-seat limit or be explicitly unlimited. A seat is consumed by every `ACTIVE` or `INVITED` organization membership whose assigned role contains a permission under that module's permission prefix. A role spanning several modules consumes one seat in each applicable module. Pending invitations reserve seats immediately; revoking an invitation marks its membership removed and releases the seat.
 
 Tenant administrators see current usage in Administration and Billing. The platform owner sets the initial allowance while creating a subscription and can change it from the subscription ledger. A limit cannot be lowered below current usage. Invitation assignment takes an organization-scoped PostgreSQL advisory transaction lock, recomputes current active subscription entitlements, and fails before writing the membership if any applicable module is full. Legacy subscriptions with a null allowance remain unlimited until Rock Frost assigns a limit.

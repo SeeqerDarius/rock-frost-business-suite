@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 const primaryLinks = [
   { label: "Solutions", href: "/solutions" },
   { label: "Modules", href: "/modules" },
+  { label: "Pricing", href: "/pricing" },
   { label: "Industries", href: "/industries" },
   { label: "Company", href: "/company" },
   { label: "Contact", href: "/contact" },

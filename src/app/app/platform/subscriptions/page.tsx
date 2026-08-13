@@ -10,6 +10,8 @@ import { db } from "@/lib/db";
 import { getPlatformAnchorOrganizationIds } from "@/lib/platform-organizations";
 import { activateSubscriptionAction, cancelSubscriptionAction, createSubscriptionAction, updateSubscriptionSeatLimitAction } from "./actions";
 import { getOrganizationSeatUsage } from "@/platform/subscriptions/seats";
+import { MODULE_PRICE_BY_KEY } from "@/lib/pricing";
+import { SubscriptionQuoteFields } from "./subscription-quote-fields";
 
 const ERROR_MESSAGES: Record<string, string> = { invalid: "Enter a valid subscription and seat limit.", "seats-below-usage": "The seat limit cannot be lower than the module's current assigned users.", seats: "The seat limit could not be updated." };
 
@@ -34,12 +36,12 @@ export default async function PlatformSubscriptionsPage({ searchParams }: { sear
         <CardContent>
           <form action={createSubscriptionAction} className="grid gap-4 md:grid-cols-3">
             <FieldSelect name="organizationId" label="Organization" items={organizations.map((x) => [x.id, x.name])} />
-            <FieldSelect name="moduleId" label="Module" items={modules.map((x) => [x.id, x.name])} />
+            <SubscriptionQuoteFields modules={modules.flatMap((module) => {
+              const price = MODULE_PRICE_BY_KEY.get(module.code as never);
+              return price ? [{ id: module.id, name: module.name, moduleKey: module.code, monthlyGhs: price.monthlyGhs, annualGhs: price.annualGhs, includedSeats: price.includedSeats }] : [];
+            })} />
             <FieldSelect name="mode" label="Billing mode" items={[["MANUAL_OFFLINE", "Manual / offline agreement"], ["PLATFORM_MANAGED", "Platform-managed billing"]]} />
-            <div><Label htmlFor="durationMonths">Duration (months)</Label><Input id="durationMonths" name="durationMonths" type="number" min="1" max="120" defaultValue="12" required /></div>
-            <div><Label htmlFor="seatLimit">User seats</Label><Input id="seatLimit" name="seatLimit" type="number" min="1" max="100000" defaultValue="5" required /></div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="unlimitedSeats" value="true" /> Unlimited seats</label>
-            <div><Label htmlFor="amount">Agreed amount</Label><Input id="amount" name="amount" type="number" min="0" step="0.01" required /></div>
             <div><Label htmlFor="currency">Currency</Label><Input id="currency" name="currency" defaultValue="GHS" maxLength={3} required /></div>
             <div className="md:col-span-3"><Label htmlFor="moduleRequestId">Related request</Label><select id="moduleRequestId" name="moduleRequestId" defaultValue="" className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"><option value="">No linked request</option>{requests.map((r) => <option key={r.id} value={r.id}>{r.organization.name} · {r.module?.name ?? r.title}</option>)}</select></div>
             <div className="md:col-span-3"><Label htmlFor="notes">Agreement notes</Label><Textarea id="notes" name="notes" /></div>

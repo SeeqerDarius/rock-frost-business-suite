@@ -8,6 +8,7 @@ export function PublicFooter() {
         <nav aria-label="Footer navigation" className="flex flex-wrap gap-x-4 gap-y-2">
           <Link href="/solutions" className="hover:text-foreground">Solutions</Link>
           <Link href="/modules" className="hover:text-foreground">Modules</Link>
+          <Link href="/pricing" className="hover:text-foreground">Pricing</Link>
           <Link href="/industries" className="hover:text-foreground">Industries</Link>
           <Link href="/company" className="hover:text-foreground">Company</Link>
           <Link href="/contact" className="hover:text-foreground">Contact</Link>

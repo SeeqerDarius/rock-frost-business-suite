@@ -1768,3 +1768,10 @@ and the optimized Next.js 16.2.12 build with all 160 pages. The initial
 top-level `serverActions` configuration was rejected by this installed Next.js
 type definition and was corrected to the version-documented
 `experimental.serverActions.bodySizeLimit` before release.
+# 2026-08-13 - Production subscription pricing catalogue
+
+- Added `src/lib/pricing.ts` as the authoritative GHS catalogue for all fifteen modules, including monthly and annual prices, included seats, additional-seat guidance, seven popular bundles, and the enterprise starting price.
+- Added the public `/pricing` route and linked it from the public header, footer, and sitemap. The page explains annual savings, seat treatment, exclusions, bundles, and quote paths without claiming that quoted implementation services are included.
+- Updated the platform-owner subscription form to prefill the catalogue amount and included seats based on the selected module and duration. Defaults remain editable for real negotiated agreements. No schema or environment change is required.
+- Tests added/updated: `test/pricing-catalogue.test.ts` and `test/seo.test.ts`. Validation passed: `npx.cmd tsc --noEmit`; focused tests 2 files / 7 tests; ESLint clean; full mocked suite 54 files / 310 tests; Next.js 16.2.12 production build compiled and generated all 191 static pages, including `/pricing`.
+- No schema migration, integration-database run, or new environment variable is required because this release changes catalogue/UI defaults only. Remaining release work: commit, push, deploy, and post-deploy verification.

@@ -8,8 +8,8 @@ describe("public SEO", () => {
     const urls = sitemap().map((entry) => entry.url);
     expect(urls).toContain(`${SITE_URL}/solutions`);
     expect(urls).toContain(`${SITE_URL}/company`);
+    expect(urls).toContain(`${SITE_URL}/pricing`);
     expect(urls).not.toContain(`${SITE_URL}/features`);
-    expect(urls).not.toContain(`${SITE_URL}/pricing`);
     expect(urls).not.toContain(`${SITE_URL}/about`);
     expect(urls).not.toContain(`${SITE_URL}/login`);
     for (const key of Object.keys(MODULE_SEO)) {

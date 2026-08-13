@@ -29,6 +29,8 @@ Production uses host-separated authentication: platform owners use `admin.rockfr
 
 Platform administrators and organization users can enable authenticator-based two-factor authentication from Account Security. Module subscriptions support enforced per-module user seats (including pending invitations and multi-module roles), with used and remaining capacity visible to tenant administrators. Organization administrators can safely change roles and deactivate/reactivate members, with immediate seat release and capacity checks on restored access. They also have tenant-isolated, active-module Excel reporting exports, lossless JSON system backups, and password/2FA-protected merge restores; see `docs/BILLING_AND_SUBSCRIPTIONS.md` and `docs/BACKUP_AND_RECOVERY.md`.
 
+Public pricing is available at `/pricing`. A centralized GHS catalogue covers all fifteen modules, annual savings, included and additional seats, industry bundles, and enterprise pricing. Platform operators receive catalogue-based amount and seat defaults while retaining the ability to record negotiated agreements.
+
 Every tenant can reach in-app Support via a floating chat bubble available everywhere in the workspace, with an online indicator, read receipts, and optional quick-reply templates; platform operators reply from a two-pane inbox (`/app/platform/support`) across every organization, also reachable via its own floating bubble. No email is sent anywhere in this feature. See `docs/SUPPORT_MESSAGING.md`.
 
 ## Stack
