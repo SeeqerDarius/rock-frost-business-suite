@@ -67,8 +67,21 @@ environment) — this is a disclosed gap, not a claimed pass.
 ### Deployment
 
 Direct request on `main`, not branch-scoped — taken through the full release lifecycle per this repository's
-default. See the commit/deployment/production-verification details appended immediately below this entry once
-release completes.
+default. Commit `bffb32d` was pushed to `origin/main`, and Vercel production deployment `dpl_FD8V5WkLDJ56Uce7XvJUKZ7eHTUu`
+reached `Ready` and was aliased to `www.rockfrostgroup.com`/`app.rockfrostgroup.com`/`admin.rockfrostgroup.com`.
+The production build's `prisma migrate deploy` step applied migration `20260813040000_add_support_messaging`
+before `next build`, so no separate manual migration step was needed.
+
+**Production verification:** `www.rockfrostgroup.com/api/health` returned 200 with `"database":"reachable"`.
+`app.rockfrostgroup.com/login` and `admin.rockfrostgroup.com/login` both returned 200. Both new routes correctly
+redirect an unauthenticated visitor to `/login` (307, `Location: /login`): `app.rockfrostgroup.com/app/support`
+and `admin.rockfrostgroup.com/app/platform/support`. Scanned post-deploy runtime logs: the only `error`-level
+entries were `"No organization membership found for the current user."` on `/app/support` — and confirmed this
+is **pre-existing, unrelated behavior**, not a regression: the exact same error appears for `/app/dashboard` and
+`/app/notifications` (unmodified pages) under the identical anonymous-request condition, a known Next.js RSC race
+between the parent layout's `redirect("/login")` and the page's own `requireCurrentTenant()` call — the visitor
+still lands on `/login` correctly (307) in every case, matching this repository's existing accepted behavior. No
+other error/warning log entries were present.
 
 ## 2026-08-13 — Ambient shimmer on the Rock Frost wordmark (Claude, on `main`)
 
