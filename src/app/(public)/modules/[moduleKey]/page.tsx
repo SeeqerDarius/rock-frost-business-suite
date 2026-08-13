@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { JsonLd } from "@/components/seo/json-ld";
 import { getModule, moduleRegistry } from "@/platform/modules/registry";
 import { createPublicMetadata, MODULE_SEO, SITE_URL } from "@/lib/seo";
+import { PublicHero } from "@/components/marketing/public-hero";
 
 type ModuleKey = keyof typeof MODULE_SEO;
 
@@ -66,23 +67,16 @@ export default async function ModuleLandingPage({
           ],
         },
       ]} />
-      <section className="mx-auto max-w-6xl px-6 py-24">
-        <div className="max-w-3xl space-y-6">
-          <p className="text-sm font-medium text-muted-foreground">Rock Frost Business Suite module</p>
-          <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">{seo.shortName}</h1>
-          <p className="text-lg text-muted-foreground">{seo.description}</p>
-          <div className="flex flex-wrap gap-3">
+      <PublicHero eyebrow="Rock Frost Business Suite module" title={seo.shortName} description={seo.description} actions={<>
             <Button size="lg" nativeButton={false} render={<Link href={`/contact?intent=demo&module=${moduleKey}`} />}>
               Request a demo
             </Button>
             <Button size="lg" variant="outline" nativeButton={false} render={<Link href={`/contact?intent=module&module=${moduleKey}`} />}>
               Request this module
             </Button>
-          </div>
-        </div>
-      </section>
+          </>} />
 
-      <section className="border-y bg-muted/30">
+      <section className="public-section-tint">
         <div className="mx-auto max-w-6xl px-6 py-20">
           <h2 className="text-2xl font-semibold tracking-tight">What you can manage</h2>
           <div className="mt-8 grid gap-4 sm:grid-cols-2">

@@ -11,6 +11,7 @@ import { PUBLIC_SHOWCASE_FILTER, readPublicShowcase } from "@/lib/public-showcas
 import { CustomerShowcase } from "@/components/marketing/customer-showcase";
 import { findPlatformOrganizationMetadata, readPlatformMarketing } from "@/lib/platform-marketing";
 import { buildShowcaseCustomers } from "@/lib/showcase-composition";
+import { PublicHero } from "@/components/marketing/public-hero";
 
 export const metadata = createPublicMetadata({
   title: "Business Management Software Ghana",
@@ -69,27 +70,10 @@ export default async function HomePage() {
         description: DEFAULT_DESCRIPTION,
         provider: { "@id": `${SITE_URL}/#organization` },
       }} />
-      <section className="mx-auto max-w-6xl px-6 py-24">
-        <div className="max-w-2xl space-y-6">
-          <p className="text-sm font-medium text-muted-foreground">Rock Frost Business Suite</p>
-          <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-            One platform. Every business system your organization runs on.
-          </h1>
-          <p className="text-lg text-muted-foreground">
-            Activate independent management modules, including fleet and installment sales, from a single,
-            unified workspace, without mixing unrelated business data together.
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <Button size="lg" nativeButton={false} render={<Link href="/login" />}>
-              Sign in
-            </Button>
-            <Button size="lg" variant="outline" nativeButton={false} render={<Link href="/contact" />}>
-              Request a demo
-            </Button>
-          </div>
-        </div>
-      </section>
-
+      <PublicHero eyebrow="Rock Frost Business Suite" title="One platform. Every business system your organization runs on." description="Activate independent management modules, including fleet and installment sales, from a single, unified workspace, without mixing unrelated business data together." actions={<>
+            <Button size="lg" nativeButton={false} render={<Link href="/login" />}>Sign in</Button>
+            <Button size="lg" variant="outline" nativeButton={false} render={<Link href="/contact" />}>Request a demo</Button>
+          </>} />
       {marketing.showcaseEnabled && customers.length > 0 ? (
         <CustomerShowcase
           customers={customers}
@@ -100,7 +84,7 @@ export default async function HomePage() {
         />
       ) : null}
 
-      <section className="border-t bg-muted/30">
+      <section className="public-section-tint">
         <div className="mx-auto max-w-6xl px-6 py-20">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div className="max-w-2xl space-y-2">

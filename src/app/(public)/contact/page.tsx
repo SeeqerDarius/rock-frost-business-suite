@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { submitContactForm } from "./actions";
 import { moduleRegistry } from "@/platform/modules/registry";
 import { createPublicMetadata } from "@/lib/seo";
+import { PublicHero } from "@/components/marketing/public-hero";
 
 export const metadata = createPublicMetadata({
   title: "Request a Business Software Demo",
@@ -31,16 +32,9 @@ export default async function ContactPage({
   const selectedModule = moduleRegistry.find((item) => item.key === moduleCode);
 
   return (
-    <section className="mx-auto max-w-2xl px-6 py-24">
-      <div className="mb-10 space-y-3 text-center">
-        <p className="text-sm font-medium text-muted-foreground">Contact</p>
-        <h1 className="text-4xl font-semibold tracking-tight">Talk to us</h1>
-        <p className="text-lg text-muted-foreground">
-          Tell us about your organization and what you&apos;re looking to run on Rock Frost Business Suite.
-        </p>
-      </div>
-
-      <Card>
+    <>
+      <PublicHero centered eyebrow="Start a conversation" title="Tell us what you need technology to accomplish." description="Share your organization, operational challenge, or product idea. We will help define the right platform, website, integration, or bespoke solution." />
+      <section className="mx-auto max-w-2xl px-6 py-20"><Card className="public-panel">
         <CardHeader>
           <CardTitle>Get in touch</CardTitle>
           <CardDescription>We typically respond within one business day.</CardDescription>
@@ -118,7 +112,7 @@ export default async function ContactPage({
             </Button>
           </form>
         </CardContent>
-      </Card>
-    </section>
+      </Card></section>
+    </>
   );
 }

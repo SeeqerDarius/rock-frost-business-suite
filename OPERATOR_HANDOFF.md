@@ -1784,3 +1784,10 @@ type definition and was corrected to the version-documented
 - Added `test/company-page.test.ts`; no schema or environment changes.
 - Validation: `npx.cmd tsc --noEmit` passed; focused company/SEO tests 2 files / 5 tests passed; ESLint clean; full mocked suite 55 files / 312 tests passed; Next.js 16.2.12 production build compiled and generated all 191 static pages.
 - Released as commit `38a1284` on `main`. Vercel production deployment `dpl_FXK8a2GSuRZMda5AvKUJbgrkPwKB` reached Ready. Live verification: `/company` returned HTTP 200 with the new premium heading, Blend & Beam portfolio entry, and Act 843 compliance copy; `/api/health` returned HTTP 200 with the database reachable; the deployment error-log scan returned no errors.
+# 2026-08-13 - Unified premium public-site redesign
+
+- Added `PublicHero` and public-layout design tokens for a consistent editorial headline scale, plain eyebrow treatment, atmospheric blue-white background, translucent panels, and softly tinted sections.
+- Applied the shared visual language to the homepage, Company, Solutions, Modules, all module landing pages, Industries, Pricing, Contact, and the customer showcase. Authenticated application surfaces are deliberately unchanged.
+- Removed the outlined Company-page eyebrow badge. Replaced the four-cell statistics box with a compact premium proof panel focused on specialized modules, secure architecture, and continuous delivery/support; avoided the unsupported `24/7 cloud availability target` claim.
+- Added `test/public-design-system.test.ts` and extended the Company page test. No schema or environment changes.
+- Validation: TypeScript clean; focused visual-system/company/SEO tests 3 files / 8 tests passed; ESLint clean; full mocked suite 56 files / 315 tests passed; Next.js 16.2.12 production build compiled and generated all 191 static pages.

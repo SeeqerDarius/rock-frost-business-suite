@@ -16,4 +16,9 @@ describe("public company positioning", () => {
     expect(source).toContain("Each client remains responsible");
     expect(source).not.toContain("guarantees compliance");
   });
+
+  it("uses the shared editorial hero instead of the outlined eyebrow badge", () => {
+    expect(source).toContain("<PublicHero eyebrow=\"Rock Frost Technologies · Ghana\"");
+    expect(source).not.toContain("rounded-full px-3 py-1");
+  });
 });

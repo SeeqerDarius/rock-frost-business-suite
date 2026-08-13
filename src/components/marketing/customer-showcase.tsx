@@ -218,7 +218,7 @@ export function CustomerShowcase({
   const showControls = customers.length > 1;
 
   return (
-    <section className="border-y bg-muted/25" aria-labelledby="customer-showcase-title">
+    <section className="public-section-tint" aria-labelledby="customer-showcase-title">
       <div className="mx-auto max-w-6xl px-6 py-20">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-2xl">

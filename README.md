@@ -33,6 +33,8 @@ Public pricing is available at `/pricing`. A centralized GHS catalogue covers al
 
 The public `/company` page positions Rock Frost Technologies as a broader technology partner covering bespoke software, digital commerce, websites, integrations, cloud modernization, and advisory work alongside the Business Suite. It presents selected work and carefully scoped Ghana Data Protection Act language without representing product controls as legal certification.
 
+All public marketing pages share an editorial hero system, fluid display typography, translucent premium panels, and a restrained blue-white atmospheric background. This visual system is scoped to the public site and does not alter authenticated tenant or platform workspaces.
+
 Every tenant can reach in-app Support via a floating chat bubble available everywhere in the workspace, with an online indicator, read receipts, and optional quick-reply templates; platform operators reply from a two-pane inbox (`/app/platform/support`) across every organization, also reachable via its own floating bubble. No email is sent anywhere in this feature. See `docs/SUPPORT_MESSAGING.md`.
 
 ## Stack

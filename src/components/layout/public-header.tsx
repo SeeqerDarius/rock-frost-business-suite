@@ -13,7 +13,7 @@ const primaryLinks = [
 
 export function PublicHeader() {
   return (
-    <header className="border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
+    <header className="sticky top-0 z-50 border-b bg-background/75 backdrop-blur-xl supports-backdrop-filter:bg-background/65">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
         <Logo />
         <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">

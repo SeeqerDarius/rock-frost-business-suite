@@ -14,10 +14,10 @@ import {
   ShoppingBag,
   Sparkles,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { createPublicMetadata } from "@/lib/seo";
+import { PublicHero } from "@/components/marketing/public-hero";
 
 export const metadata = createPublicMetadata({
   title: "Technology Company Ghana | Rock Frost Technologies",
@@ -44,20 +44,9 @@ const principles = [
 
 export default function CompanyPage() {
   return <>
-    <section className="relative overflow-hidden border-b">
-      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_75%_20%,color-mix(in_oklab,var(--primary)_14%,transparent),transparent_38%),linear-gradient(to_bottom,var(--background),color-mix(in_oklab,var(--muted)_45%,transparent))]" />
-      <div className="mx-auto grid max-w-6xl gap-12 px-6 py-24 lg:grid-cols-[1.25fr_.75fr] lg:items-end lg:py-32">
-        <div className="space-y-7">
-          <Badge variant="outline" className="rounded-full px-3 py-1">Rock Frost Technologies · Ghana</Badge>
-          <h1 className="max-w-4xl text-4xl font-semibold tracking-[-0.035em] sm:text-6xl">Technology engineered around the way serious organizations work.</h1>
-          <p className="max-w-2xl text-lg leading-8 text-muted-foreground">We design and deliver high-value software, digital commerce, websites, cloud platforms, integrations, and tailored IT solutions. Rock Frost Business Suite is one expression of a broader capability: turning complex operations into technology that feels precise, secure, and effortless.</p>
-          <div className="flex flex-wrap gap-3"><Button size="lg" nativeButton={false} render={<Link href="/contact?intent=demo" />}>Discuss a project</Button><Button size="lg" variant="outline" nativeButton={false} render={<Link href="/solutions" />}>Explore our platform</Button></div>
-        </div>
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border bg-border shadow-2xl shadow-primary/10">
-          {[['15','production business modules'],['1','technology partner'],['24/7','cloud availability target'],['100%','tailored to purpose']].map(([value,label]) => <div key={label} className="bg-background p-6"><p className="text-3xl font-semibold tracking-tight">{value}</p><p className="mt-1 text-sm text-muted-foreground">{label}</p></div>)}
-        </div>
-      </div>
-    </section>
+    <PublicHero eyebrow="Rock Frost Technologies · Ghana" title="Technology engineered around the way serious organizations work." description="We design and deliver high-value software, digital commerce, websites, cloud platforms, integrations, and tailored IT solutions. Rock Frost Business Suite is one expression of a broader capability: turning complex operations into technology that feels precise, secure, and effortless." actions={<><Button size="lg" nativeButton={false} render={<Link href="/contact?intent=demo" />}>Discuss a project</Button><Button size="lg" variant="outline" nativeButton={false} render={<Link href="/solutions" />}>Explore our platform</Button></>}>
+      <div className="public-panel relative overflow-hidden rounded-3xl p-7 sm:p-9"><div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-primary/10 blur-3xl" /><p className="relative text-sm font-medium text-primary">Built for demanding operations</p><h2 className="relative mt-4 text-2xl font-semibold tracking-tight">One accountable partner from strategy to production.</h2><div className="relative mt-8 space-y-5">{[['15','specialized business modules'],['Secure','tenant-isolated architecture'],['Continuous','updates, monitoring and support']].map(([value,label]) => <div key={label} className="flex items-end justify-between gap-6 border-t pt-5 first:border-t-0 first:pt-0"><p className="text-2xl font-semibold tracking-tight">{value}</p><p className="max-w-44 text-right text-sm text-muted-foreground">{label}</p></div>)}</div></div>
+    </PublicHero>
 
     <section className="mx-auto max-w-6xl px-6 py-20">
       <div className="max-w-3xl"><p className="text-sm font-medium text-primary">What we build</p><h2 className="mt-3 text-3xl font-semibold tracking-tight">Far more than management software.</h2><p className="mt-4 text-muted-foreground">We select the right architecture for the problem rather than forcing every client into the same product. Engagements can range from a focused commercial website to an organization-wide operating platform.</p></div>

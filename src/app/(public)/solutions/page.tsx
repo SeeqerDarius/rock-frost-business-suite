@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { IconBadge } from "@/components/ui/icon-badge";
 import { createPublicMetadata } from "@/lib/seo";
+import { PublicHero } from "@/components/marketing/public-hero";
 
 export const metadata = createPublicMetadata({
   title: "Modular Business Software Solutions",
@@ -42,23 +43,9 @@ const pillars = [
 export default function SolutionsPage() {
   return (
     <>
-      <section className="mx-auto max-w-6xl px-6 py-24">
-        <div className="max-w-2xl space-y-6">
-          <p className="text-sm font-medium text-muted-foreground">Solutions</p>
-          <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-            Built to run your whole business, one module at a time.
-          </h1>
-          <p className="text-lg text-muted-foreground">
-            Rock Frost Business Suite is a modular business operating platform. You activate the modules your
-            organization needs; the platform keeps them working together without mixing their data.
-          </p>
-          <Button size="lg" nativeButton={false} render={<Link href="/contact" />}>
-            Talk to us
-          </Button>
-        </div>
-      </section>
+      <PublicHero eyebrow="Solutions" title="Built to run your whole business, one module at a time." description="Rock Frost Business Suite is a modular business operating platform. Activate the systems your organization needs while the platform keeps their data boundaries clear." actions={<Button size="lg" nativeButton={false} render={<Link href="/contact" />}>Talk to us</Button>} />
 
-      <section className="border-t bg-muted/30">
+      <section className="public-section-tint">
         <div className="mx-auto max-w-6xl px-6 py-20">
           <div className="grid gap-6 sm:grid-cols-2">
             {pillars.map((pillar) => (

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { IconBadge } from "@/components/ui/icon-badge";
 import { moduleRegistry } from "@/platform/modules/registry";
 import { createPublicMetadata } from "@/lib/seo";
+import { PublicHero } from "@/components/marketing/public-hero";
 
 export const metadata = createPublicMetadata({
   title: "Business Software Modules",
@@ -16,20 +17,9 @@ export const metadata = createPublicMetadata({
 export default function PublicModulesPage() {
   return (
     <>
-      <section className="mx-auto max-w-6xl px-6 py-24">
-        <div className="max-w-2xl space-y-6">
-          <p className="text-sm font-medium text-muted-foreground">Modules</p>
-          <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-            Independent business systems, one platform.
-          </h1>
-          <p className="text-lg text-muted-foreground">
-            Every module is a complete, self-contained business system with its own data, navigation, and
-            workflows. Activate only the ones your organization needs and add others as your operations grow.
-          </p>
-        </div>
-      </section>
+      <PublicHero eyebrow="Rock Frost Business Suite" title="Independent business systems. One exceptional platform." description="Every module is a complete, self-contained operating system with its own data, navigation, permissions, and workflows. Activate only what your organization needs." />
 
-      <section className="border-t bg-muted/30">
+      <section className="public-section-tint">
         <div className="mx-auto max-w-6xl px-6 py-20">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {moduleRegistry.map((mod) => (

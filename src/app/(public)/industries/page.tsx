@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { IconBadge } from "@/components/ui/icon-badge";
 import { createPublicMetadata } from "@/lib/seo";
+import { PublicHero } from "@/components/marketing/public-hero";
 
 export const metadata = createPublicMetadata({
   title: "Business Software for Ghanaian Industries",
@@ -36,18 +37,9 @@ const industries = [
 export default function IndustriesPage() {
   return (
     <>
-      <section className="mx-auto max-w-6xl px-6 py-24">
-        <div className="max-w-2xl space-y-6">
-          <p className="text-sm font-medium text-muted-foreground">Industries</p>
-          <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Where the platform fits today.</h1>
-          <p className="text-lg text-muted-foreground">
-            Rock Frost Business Suite is built module-first, so it grows into new industries as new modules are
-            added. Here&apos;s where it fits right now.
-          </p>
-        </div>
-      </section>
+      <PublicHero eyebrow="Industries" title="Technology shaped around real operating environments." description="Our modular platform and bespoke engineering capability serve organizations whose workflows, teams, customers, and regulatory responsibilities demand more than generic software." />
 
-      <section className="border-t bg-muted/30">
+      <section className="public-section-tint">
         <div className="mx-auto max-w-6xl px-6 py-20">
           <div className="grid gap-4 sm:grid-cols-3">
             {industries.map((industry) => (
