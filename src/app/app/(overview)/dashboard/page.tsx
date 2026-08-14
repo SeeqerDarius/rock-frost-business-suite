@@ -5,13 +5,18 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { IconBadge } from "@/components/ui/icon-badge";
-import { moduleRegistry } from "@/platform/modules/registry";
+import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry";
+import { productGroupKeys } from "@/platform/modules/product-groups";
 import { dashboardWidgets } from "@/platform/modules/dashboard-widgets";
 import { requireCurrentTenant } from "@/lib/tenant";
 
 export default async function OrganizationDashboardPage() {
   const tenant = await requireCurrentTenant();
-  const enabledModules = moduleRegistry.filter((mod) => tenant.accessibleModuleKeys.includes(mod.key));
+  const enabledModules = catalogueModuleRegistry.flatMap((mod) => {
+    const accessibleKey = productGroupKeys(mod.key).find((key) => tenant.accessibleModuleKeys.includes(key));
+    const accessibleModule = accessibleKey ? getModule(accessibleKey) : null;
+    return accessibleModule ? [{ definition: mod, accessibleModule }] : [];
+  });
 
   return (
     <div className="space-y-6">
@@ -32,8 +37,8 @@ export default async function OrganizationDashboardPage() {
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {enabledModules.map((mod) => {
-            const Widget = dashboardWidgets[mod.key];
+          {enabledModules.map(({ definition: mod, accessibleModule }) => {
+            const Widget = dashboardWidgets[accessibleModule.key];
             if (Widget) {
               return <Widget key={mod.key} />;
             }
@@ -46,7 +51,7 @@ export default async function OrganizationDashboardPage() {
                   <CardDescription>{mod.description}</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button size="sm" variant="outline" nativeButton={false} render={<Link href={mod.routePrefix as never} />}>
+                  <Button size="sm" variant="outline" nativeButton={false} render={<Link href={accessibleModule.routePrefix as never} />}>
                     Open {mod.name}
                   </Button>
                 </CardContent>

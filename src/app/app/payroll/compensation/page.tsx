@@ -11,13 +11,14 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listCompensation, listEmployeesWithoutCompensation } from "@/modules/payroll/service";
-import { saveCompensation } from "./actions";
+import { createPayrollEmployee, saveCompensation } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage compensation.",
   "missing-fields": "Employee, base salary, and effective date are required.",
   "not-found": "That employee could not be found.",
   "invalid-salary": "Base salary must be a positive number.",
+  "invalid-employee": "Enter a valid employee name, hire date, and optional contact details.",
 };
 
 const FREQUENCY_ITEMS: Record<string, string> = { MONTHLY: "Monthly", BIWEEKLY: "Bi-weekly", WEEKLY: "Weekly" };
@@ -25,9 +26,9 @@ const FREQUENCY_ITEMS: Record<string, string> = { MONTHLY: "Monthly", BIWEEKLY: 
 export default async function PayrollCompensationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string }>;
+  searchParams: Promise<{ saved?: string; employeeCreated?: string; error?: string }>;
 }) {
-  const { saved, error } = await searchParams;
+  const { saved, employeeCreated, error } = await searchParams;
   const tenant = await requireModuleAccess("payroll");
   const canManage = hasPermission(tenant, PERMISSIONS.PAYROLL_COMPENSATION_MANAGE);
   const [compensations, uncoveredEmployees] = await Promise.all([
@@ -41,7 +42,21 @@ export default async function PayrollCompensationPage({
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <PageHeader title="Compensation" description="Base salary on record for each employee." />
-        {canManage && uncoveredEmployees.length > 0 ? (
+        {canManage ? <div className="flex flex-wrap gap-2">
+          <EntityDialog trigger={<Button size="sm" variant="outline"><Plus />New employee</Button>} title="Add employee for payroll" action={createPayrollEmployee} submitLabel="Add employee">
+            <div className="space-y-2">
+              <Label htmlFor="fullName">Full name</Label>
+              <Input id="fullName" name="fullName" autoComplete="name" required />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2"><Label htmlFor="employeeEmail">Email</Label><Input id="employeeEmail" name="email" type="email" autoComplete="email" /></div>
+              <div className="space-y-2"><Label htmlFor="employeePhone">Phone</Label><Input id="employeePhone" name="phone" type="tel" autoComplete="tel" /></div>
+              <div className="space-y-2"><Label htmlFor="jobTitle">Job title</Label><Input id="jobTitle" name="jobTitle" /></div>
+              <div className="space-y-2"><Label htmlFor="department">Department</Label><Input id="department" name="department" /></div>
+            </div>
+            <div className="space-y-2"><Label htmlFor="hireDate">Hire date</Label><Input id="hireDate" name="hireDate" type="date" defaultValue={today} required /></div>
+          </EntityDialog>
+          {uncoveredEmployees.length > 0 ? (
           <EntityDialog trigger={<Button size="sm"><Plus />Set compensation</Button>} title="Set employee compensation" action={saveCompensation}>
             <div className="space-y-2">
               <Label htmlFor="employeeId">Employee</Label>
@@ -83,13 +98,18 @@ export default async function PayrollCompensationPage({
               <Label htmlFor="effectiveDate">Effective date</Label>
               <Input id="effectiveDate" name="effectiveDate" type="date" defaultValue={today} required />
             </div>
-          </EntityDialog>
-        ) : null}
+          </EntityDialog>) : null}
+        </div> : null}
       </div>
 
       {saved ? (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
           Saved.
+        </div>
+      ) : null}
+      {employeeCreated ? (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
+          Employee added. Set their compensation to include them in payroll runs.
         </div>
       ) : null}
       {error && ERROR_MESSAGES[error] ? (

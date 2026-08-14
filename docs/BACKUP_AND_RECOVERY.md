@@ -17,4 +17,6 @@ This adapts the single-tenant GLV export/restore workflow rather than copying it
 
 ## Infrastructure recovery
 
+Customer-facing Human Resources & Payroll and Inventory & Procurement entitlements expand to both internal backup scopes. Existing JSON restore compatibility is preserved because the internal scope keys remain `hr`, `payroll`, `inventory`, and `procurement`; no tables or historical backup identifiers are renamed.
+
 Application JSON backups and Excel exports complement, but do not replace, Neon branch/PITR and provider backup controls. Physical database recovery remains an operator-only incident procedure. Preview database branches are disposable deployment environments and are not production backups.

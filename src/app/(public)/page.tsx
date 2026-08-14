@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { IconBadge } from "@/components/ui/icon-badge";
-import { moduleRegistry } from "@/platform/modules/registry";
+import { catalogueModuleRegistry } from "@/platform/modules/registry";
 import { JsonLd } from "@/components/seo/json-ld";
 import { createPublicMetadata, DEFAULT_DESCRIPTION, SITE_URL } from "@/lib/seo";
 import { db } from "@/lib/db";
@@ -98,7 +98,7 @@ export default async function HomePage() {
             </Link>
           </div>
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {moduleRegistry.map((mod) => (
+            {catalogueModuleRegistry.map((mod) => (
               <Card key={mod.key}>
                 <CardHeader>
                   <IconBadge size="lg"><mod.icon className="size-5" /></IconBadge>

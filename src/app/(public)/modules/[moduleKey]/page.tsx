@@ -1,18 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { JsonLd } from "@/components/seo/json-ld";
-import { getModule, moduleRegistry } from "@/platform/modules/registry";
+import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry";
 import { createPublicMetadata, MODULE_SEO, SITE_URL } from "@/lib/seo";
 import { PublicHero } from "@/components/marketing/public-hero";
 
 type ModuleKey = keyof typeof MODULE_SEO;
 
 export function generateStaticParams() {
-  return Object.keys(MODULE_SEO).map((moduleKey) => ({ moduleKey }));
+  return catalogueModuleRegistry.map(({ key: moduleKey }) => ({ moduleKey }));
 }
 
 export async function generateMetadata({
@@ -21,6 +21,8 @@ export async function generateMetadata({
   params: Promise<{ moduleKey: string }>;
 }): Promise<Metadata> {
   const { moduleKey } = await params;
+  if (moduleKey === "payroll") permanentRedirect("/modules/hr");
+  if (moduleKey === "procurement") permanentRedirect("/modules/inventory");
   const seo = MODULE_SEO[moduleKey as ModuleKey];
   if (!seo) return {};
   return createPublicMetadata({
@@ -41,7 +43,7 @@ export default async function ModuleLandingPage({
   const module_ = getModule(moduleKey);
   if (!seo || !module_) notFound();
 
-  const related = moduleRegistry.filter((item) => item.key !== moduleKey).slice(0, 3);
+  const related = catalogueModuleRegistry.filter((item) => item.key !== moduleKey).slice(0, 3);
 
   return (
     <>

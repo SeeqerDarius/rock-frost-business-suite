@@ -12,6 +12,7 @@ import { activateSubscriptionAction, cancelSubscriptionAction, createSubscriptio
 import { getOrganizationSeatUsage } from "@/platform/subscriptions/seats";
 import { MODULE_PRICE_BY_KEY } from "@/lib/pricing";
 import { SubscriptionQuoteFields } from "./subscription-quote-fields";
+import { catalogueModuleKeys } from "@/platform/modules/registry";
 
 const ERROR_MESSAGES: Record<string, string> = { invalid: "Enter a valid subscription and seat limit.", "seats-below-usage": "The seat limit cannot be lower than the module's current assigned users.", seats: "The seat limit could not be updated." };
 
@@ -21,7 +22,7 @@ export default async function PlatformSubscriptionsPage({ searchParams }: { sear
   const platformAnchorIds = await getPlatformAnchorOrganizationIds();
   const [organizations, modules, requests, subscriptions] = await Promise.all([
     db.organization.findMany({ where: { id: { notIn: platformAnchorIds }, status: { in: ["ACTIVE", "TRIAL"] } }, orderBy: { name: "asc" } }),
-    db.module.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" } }),
+    db.module.findMany({ where: { status: "ACTIVE", code: { in: [...catalogueModuleKeys] } }, orderBy: { name: "asc" } }),
     db.moduleRequest.findMany({ where: { status: { in: ["SUBMITTED", "UNDER_REVIEW", "QUOTED", "APPROVED"] } }, include: { organization: true, module: true, contactSubmission: true }, orderBy: { createdAt: "desc" } }),
     db.subscription.findMany({ include: { organization: true, module: true }, orderBy: { createdAt: "desc" } }),
   ]);

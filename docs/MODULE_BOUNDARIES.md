@@ -33,6 +33,12 @@ There must be no ambiguous pages — a page that shows a bit of Fleet and a bit 
 
 ## Cross-module data
 
+### Consolidated product groups
+
+Human Resources and Payroll are sold and presented as one customer-facing product, while retaining `hr.*` and `payroll.*` permission namespaces, routes, and data models. Inventory and Procurement follow the same pattern with `inventory.*` and `procurement.*`. This is a product and entitlement consolidation, not a destructive database merge. The internal boundaries remain deliberate because Payroll references employee records and Procurement posts receipts through Inventory's public service.
+
+An active entitlement for either a primary or legacy group member expands to both internal module keys. This keeps existing subscriptions working and gives new primary-product subscriptions the complete workflow. Role permissions still determine which pages and actions a member can use. Public catalogue, request, pricing, sitemap, and platform sales controls expose only the primary `hr` and `inventory` products. Old public Payroll and Procurement URLs permanently redirect to their combined product pages.
+
 CRM data must not appear inside Fleet or Installment pages unless there is a deliberate, documented integration (recorded in `docs/DECISIONS.md`, not silently added). The same applies to Accounting data appearing inside any other module. If a future feature genuinely needs cross-module data (e.g. an organization-wide report combining Fleet revenue and Installment collections), it belongs in **organization scope** (`/reports`), built as its own explicit cross-module reporting feature — not smuggled into a module page.
 
 ## How this is enforced today

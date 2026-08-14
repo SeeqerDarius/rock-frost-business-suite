@@ -8,6 +8,7 @@ import { isPlatformOperator } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { cuid, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
+import { productGroupKeys } from "@/platform/modules/product-groups";
 
 const toggleSchema = z.object({
   organizationId: cuid,
@@ -41,11 +42,17 @@ export async function toggleOrganizationModule(formData: FormData): Promise<void
   }
 
   await db.$transaction(async (tx) => {
-    await tx.organizationModule.upsert({
-      where: { organizationId_moduleId: { organizationId, moduleId } },
-      update: { enabled, enabledAt: enabled ? new Date() : undefined },
-      create: { organizationId, moduleId, enabled, enabledAt: enabled ? new Date() : null },
+    const groupedModules = await tx.module.findMany({
+      where: { code: { in: [...productGroupKeys(module_.code)] } },
+      select: { id: true },
     });
+    for (const groupedModule of groupedModules) {
+      await tx.organizationModule.upsert({
+        where: { organizationId_moduleId: { organizationId, moduleId: groupedModule.id } },
+        update: { enabled, enabledAt: enabled ? new Date() : undefined },
+        create: { organizationId, moduleId: groupedModule.id, enabled, enabledAt: enabled ? new Date() : null },
+      });
+    }
 
     await logAuditEvent(
       {

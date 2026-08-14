@@ -4,18 +4,30 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/lib/db";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
+import { catalogueModuleKeys, getModule } from "@/platform/modules/registry";
+import { primaryProductKey } from "@/platform/modules/product-groups";
 
 export default async function PlatformModulesPage() {
   await requirePlatformOperator();
 
-  const modules = await db.module.findMany({
-    include: { organizationModules: { where: { enabled: true } } },
+  const internalModules = await db.module.findMany({
+    include: { organizationModules: { where: { enabled: true }, select: { organizationId: true } } },
     orderBy: { name: "asc" },
+  });
+  const modules = catalogueModuleKeys.flatMap((productKey) => {
+    const record = internalModules.find((module) => module.code === productKey);
+    if (!record) return [];
+    const organizationIds = new Set(
+      internalModules
+        .filter((module) => primaryProductKey(module.code) === productKey)
+        .flatMap((module) => module.organizationModules.map((assignment) => assignment.organizationId)),
+    );
+    return [{ ...record, name: getModule(productKey)?.name ?? record.name, organizationCount: organizationIds.size }];
   });
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Modules" description="Every module registered on the platform and its current build status." />
+      <PageHeader title="Products" description="Every customer-facing product registered on the platform and its current build status." />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {modules.map((mod) => (
           <Card key={mod.id}>
@@ -28,10 +40,10 @@ export default async function PlatformModulesPage() {
               </div>
               <CardTitle className="mt-3">{mod.name}</CardTitle>
               <CardDescription>
-                {mod.organizationModules.length} organization{mod.organizationModules.length === 1 ? "" : "s"} enabled
+                {mod.organizationCount} organization{mod.organizationCount === 1 ? "" : "s"} enabled
               </CardDescription>
             </CardHeader>
-            <CardContent className="text-xs text-muted-foreground">Key: {mod.code}</CardContent>
+            <CardContent className="text-xs text-muted-foreground">Product key: {mod.code}</CardContent>
           </Card>
         ))}
       </div>

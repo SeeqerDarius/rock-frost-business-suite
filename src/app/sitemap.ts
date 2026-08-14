@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL, MODULE_SEO } from "@/lib/seo";
+import { catalogueModuleKeys } from "@/platform/modules/registry";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date("2026-08-13T00:00:00.000Z");
@@ -20,7 +21,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: page.changeFrequency,
       priority: page.priority,
     })),
-    ...Object.keys(MODULE_SEO).map((key) => ({
+    ...catalogueModuleKeys.filter((key) => key in MODULE_SEO).map((key) => ({
       url: `${SITE_URL}/modules/${key}`,
       lastModified,
       changeFrequency: "monthly" as const,

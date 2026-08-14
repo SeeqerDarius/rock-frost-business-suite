@@ -10,11 +10,9 @@ export type ModulePrice = {
 
 export const MODULE_PRICES: readonly ModulePrice[] = [
   { moduleKey: "crm", monthlyGhs: 249, annualGhs: 2490, includedSeats: 5, additionalSeatGhs: 25 },
-  { moduleKey: "inventory", monthlyGhs: 299, annualGhs: 2990, includedSeats: 5, additionalSeatGhs: 25 },
+  { moduleKey: "inventory", monthlyGhs: 499, annualGhs: 4990, includedSeats: 8, additionalSeatGhs: 25 },
   { moduleKey: "accounting", monthlyGhs: 349, annualGhs: 3490, includedSeats: 5, additionalSeatGhs: 25 },
-  { moduleKey: "hr", monthlyGhs: 299, annualGhs: 2990, includedSeats: 10, additionalSeatGhs: 25 },
-  { moduleKey: "payroll", monthlyGhs: 349, annualGhs: 3490, includedSeats: 10, additionalSeatGhs: 25 },
-  { moduleKey: "procurement", monthlyGhs: 299, annualGhs: 2990, includedSeats: 5, additionalSeatGhs: 25 },
+  { moduleKey: "hr", monthlyGhs: 549, annualGhs: 5490, includedSeats: 15, additionalSeatGhs: 25 },
   { moduleKey: "projects", monthlyGhs: 249, annualGhs: 2490, includedSeats: 10, additionalSeatGhs: 25 },
   { moduleKey: "pos", monthlyGhs: 349, annualGhs: 3490, includedSeats: 5, additionalSeatGhs: 25 },
   { moduleKey: "analytics", monthlyGhs: 199, annualGhs: 1990, includedSeats: 5, additionalSeatGhs: 25 },
@@ -29,13 +27,13 @@ export const MODULE_PRICES: readonly ModulePrice[] = [
 export const MODULE_PRICE_BY_KEY = new Map(MODULE_PRICES.map((price) => [price.moduleKey, price]));
 
 export const PRICING_BUNDLES = [
-  { name: "Business Starter", monthlyGhs: 699, modules: ["CRM", "Inventory", "Accounting"] },
-  { name: "Retail Suite", monthlyGhs: 999, modules: ["POS", "Inventory", "Accounting", "CRM"] },
-  { name: "Operations Suite", monthlyGhs: 999, modules: ["HR", "Payroll", "Procurement", "Projects"] },
-  { name: "Business Complete", monthlyGhs: 1799, modules: ["CRM", "Inventory", "Accounting", "HR", "Payroll", "Procurement", "Projects", "Analytics"] },
-  { name: "School Complete", monthlyGhs: 1499, modules: ["School", "Accounting", "HR", "Payroll", "Inventory"] },
-  { name: "Pharmacy Complete", monthlyGhs: 1599, modules: ["Pharmacy", "Inventory", "POS", "Accounting"] },
-  { name: "Hospital Complete", monthlyGhs: 2999, modules: ["Hospital", "Pharmacy", "Inventory", "Accounting", "HR", "Payroll"] },
+  { name: "Business Starter", monthlyGhs: 849, modules: ["CRM", "Inventory & Procurement", "Accounting"] },
+  { name: "Retail Suite", monthlyGhs: 1199, modules: ["POS", "Inventory & Procurement", "Accounting", "CRM"] },
+  { name: "Operations Suite", monthlyGhs: 1199, modules: ["Human Resources & Payroll", "Inventory & Procurement", "Projects"] },
+  { name: "Business Complete", monthlyGhs: 1899, modules: ["CRM", "Inventory & Procurement", "Accounting", "Human Resources & Payroll", "Projects", "Analytics"] },
+  { name: "School Complete", monthlyGhs: 1599, modules: ["School", "Accounting", "Human Resources & Payroll", "Inventory & Procurement"] },
+  { name: "Pharmacy Complete", monthlyGhs: 1799, modules: ["Pharmacy", "Inventory & Procurement", "POS", "Accounting"] },
+  { name: "Hospital Complete", monthlyGhs: 3199, modules: ["Hospital", "Pharmacy", "Inventory & Procurement", "Accounting", "Human Resources & Payroll"] },
 ] as const;
 
 export function recommendedSubscriptionQuote(moduleKey: string, durationMonths: number) {

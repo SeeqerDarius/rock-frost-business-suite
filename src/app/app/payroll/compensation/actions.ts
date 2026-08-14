@@ -6,7 +6,8 @@ import { revalidatePath } from "next/cache";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { setCompensation, NotFoundError, InvalidCompensationError } from "@/modules/payroll/service";
-import { moneyAmount, cuid, dateInput, parseWithSchema } from "@/lib/validation";
+import { createEmployee } from "@/modules/hr/service";
+import { moneyAmount, cuid, dateInput, email, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -21,6 +22,36 @@ const compensationSchema = z.object({
   payFrequency: z.enum(PAY_FREQUENCIES).optional(),
   effectiveDate: dateInput,
 });
+
+const payrollEmployeeSchema = z.object({
+  fullName: z.string().trim().min(2).max(160),
+  email: email.nullable(),
+  phone: z.string().trim().max(40).nullable(),
+  jobTitle: z.string().trim().max(120).nullable(),
+  department: z.string().trim().max(120).nullable(),
+  hireDate: dateInput,
+});
+
+export async function createPayrollEmployee(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("payroll");
+  if (!hasPermission(tenant, PERMISSIONS.PAYROLL_COMPENSATION_MANAGE)) {
+    redirect("/app/payroll/compensation?error=forbidden");
+  }
+
+  const parsed = parseWithSchema(payrollEmployeeSchema, {
+    fullName: clean(formData.get("fullName")),
+    email: clean(formData.get("email")),
+    phone: clean(formData.get("phone")),
+    jobTitle: clean(formData.get("jobTitle")),
+    department: clean(formData.get("department")),
+    hireDate: clean(formData.get("hireDate")),
+  });
+  if (!parsed.success) redirect("/app/payroll/compensation?error=invalid-employee");
+
+  await createEmployee(tenant.organizationId, parsed.data);
+  revalidatePath("/app/payroll/compensation");
+  redirect("/app/payroll/compensation?employeeCreated=1");
+}
 
 export async function saveCompensation(formData: FormData): Promise<void> {
   const tenant = await requireModuleAccess("payroll");

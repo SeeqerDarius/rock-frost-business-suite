@@ -5,16 +5,19 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/button";
 import { IconBadge } from "@/components/ui/icon-badge";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { moduleRegistry } from "@/platform/modules/registry";
+import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry";
+import { productGroupKeys } from "@/platform/modules/product-groups";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 
 export default async function ModulesPage() {
   const tenant = await requireCurrentTenant();
   const canRequestModules = hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE);
-  const enabledModules = moduleRegistry.filter(
-    (mod) => mod.status === "available" && tenant.accessibleModuleKeys.includes(mod.key),
-  );
+  const enabledModules = catalogueModuleRegistry.flatMap((mod) => {
+    const accessibleKey = productGroupKeys(mod.key).find((key) => tenant.accessibleModuleKeys.includes(key));
+    const accessibleModule = accessibleKey ? getModule(accessibleKey) : null;
+    return mod.status === "available" && accessibleModule ? [{ ...mod, routePrefix: accessibleModule.routePrefix }] : [];
+  });
 
   return (
     <div className="space-y-6">

@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { submitContactForm } from "./actions";
-import { moduleRegistry } from "@/platform/modules/registry";
+import { catalogueModuleRegistry } from "@/platform/modules/registry";
 import { createPublicMetadata } from "@/lib/seo";
 import { PublicHero } from "@/components/marketing/public-hero";
 import { TurnstileWidget } from "@/components/security/turnstile-widget";
@@ -31,7 +31,7 @@ export default async function ContactPage({
 }) {
   const { sent, error, intent, module: moduleCode } = await searchParams;
   const initialIntent = intent === "module" ? "MODULE" : intent === "demo" ? "DEMO" : "GENERAL";
-  const selectedModule = moduleRegistry.find((item) => item.key === moduleCode);
+  const selectedModule = catalogueModuleRegistry.find((item) => item.key === moduleCode);
 
   return (
     <>
@@ -96,7 +96,7 @@ export default async function ContactPage({
                 <Label htmlFor="moduleCode">Module</Label>
                 <select id="moduleCode" name="moduleCode" defaultValue={selectedModule?.key ?? ""} className="h-9 w-full rounded-md border bg-transparent px-3 text-sm">
                   <option value="">Choose a module</option>
-                  {moduleRegistry.map((item) => <option key={item.key} value={item.key}>{item.name}</option>)}
+                  {catalogueModuleRegistry.map((item) => <option key={item.key} value={item.key}>{item.name}</option>)}
                 </select>
               </div>
             </div>

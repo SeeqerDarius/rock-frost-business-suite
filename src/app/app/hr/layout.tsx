@@ -1,7 +1,7 @@
 import { Lock } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { hrNavigation } from "@/modules/hr/navigation";
+import { getPeopleAndPayrollNavigation } from "@/modules/people/navigation";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { canAccessModule } from "@/lib/auth/permissions";
 
@@ -22,8 +22,8 @@ export default async function HrLayout({ children }: { children: React.ReactNode
 
   return (
     <AppShell
-      sectionLabel="Human Resources"
-      navigation={hrNavigation}
+      sectionLabel="Human Resources & Payroll"
+      navigation={getPeopleAndPayrollNavigation(tenant)}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
     >

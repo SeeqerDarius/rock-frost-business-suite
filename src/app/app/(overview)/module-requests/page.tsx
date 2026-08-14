@@ -21,6 +21,7 @@ import {
 } from "@/platform/module-requests/constants";
 import { addModuleRequestMessage, submitModuleRequest } from "./actions";
 import { RequestTimelineCard, type TenantRequestCardData } from "./_components/request-timeline-card";
+import { catalogueModuleKeys } from "@/platform/modules/registry";
 
 const ERRORS: Record<string, string> = {
   invalid: "Check the request details and try again.",
@@ -52,7 +53,7 @@ export default async function ModuleRequestsPage({
     view === "open" ? { notIn: terminalStatuses } : view === "resolved" ? { in: terminalStatuses } : undefined;
 
   const [modules, requests, openCount, resolvedCount] = await Promise.all([
-    db.module.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" } }),
+    db.module.findMany({ where: { status: "ACTIVE", code: { in: [...catalogueModuleKeys] } }, orderBy: { name: "asc" } }),
     db.moduleRequest.findMany({
       where: {
         organizationId: tenant.organizationId,

@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { moduleRegistry } from "@/platform/modules/registry";
+import { expandProductModuleKeys, primaryProductKey } from "@/platform/modules/product-groups";
 import { hasPlatformRole } from "@/lib/auth/platform-identity";
 
 export const ACTIVE_ORG_COOKIE = "active_org";
@@ -125,7 +126,7 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
     }),
     db.subscription.findMany({
       where: { organizationId: membership.organizationId },
-      select: { moduleId: true },
+      select: { moduleId: true, module: { select: { code: true } } },
       distinct: ["moduleId"],
     }),
     db.subscription.findMany({
@@ -135,16 +136,21 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
         startsAt: { lte: new Date() },
         endsAt: { gt: new Date() },
       },
-      select: { moduleId: true },
+      select: { moduleId: true, module: { select: { code: true } } },
     }),
   ]);
 
   const permissions = membership.role?.rolePermissions.map((rp) => rp.permission.key) ?? [];
-  const subscriptionControlled = new Set(subscriptionModules.map((item) => item.moduleId));
-  const paidAndCurrent = new Set(activeSubscriptions.map((item) => item.moduleId));
-  const enabledModuleKeys = enabledModules
-    .filter((om) => !subscriptionControlled.has(om.moduleId) || paidAndCurrent.has(om.moduleId))
-    .map((om) => om.module.code);
+  const subscriptionProductKey = (item: { moduleId: string; module?: { code: string } }) =>
+    primaryProductKey(item.module?.code ?? enabledModules.find((assignment) => assignment.moduleId === item.moduleId)?.module.code ?? item.moduleId);
+  const subscriptionControlled = new Set(subscriptionModules.map(subscriptionProductKey));
+  const paidAndCurrent = new Set(activeSubscriptions.map(subscriptionProductKey));
+  const enabledModuleKeys = expandProductModuleKeys(enabledModules
+    .filter((om) => {
+      const productKey = primaryProductKey(om.module.code);
+      return !subscriptionControlled.has(productKey) || paidAndCurrent.has(productKey);
+    })
+    .map((om) => om.module.code));
   const accessibleModuleKeys = enabledModuleKeys.filter((key) => {
     const module_ = moduleRegistry.find((mod) => mod.key === key);
     if (!module_ || module_.status !== "available") return false;

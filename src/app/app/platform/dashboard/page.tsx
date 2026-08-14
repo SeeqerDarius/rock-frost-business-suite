@@ -5,25 +5,36 @@ import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card"
 import { db } from "@/lib/db";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
 import { getPlatformAnchorOrganizationIds } from "@/lib/platform-organizations";
+import { catalogueModuleKeys, getModule } from "@/platform/modules/registry";
+import { primaryProductKey } from "@/platform/modules/product-groups";
 
 export default async function PlatformDashboardPage() {
   await requirePlatformOperator();
   const platformAnchorIds = await getPlatformAnchorOrganizationIds();
 
-  const [organizationCount, activeMemberCount, enabledModuleCount, moduleAdoption] = await Promise.all([
+  const [organizationCount, activeMemberCount, internalModuleAdoption] = await Promise.all([
     db.organization.count({ where: { id: { notIn: platformAnchorIds } } }),
     db.organizationMember.count({ where: { status: "ACTIVE", organizationId: { notIn: platformAnchorIds } } }),
-    db.organizationModule.count({ where: { enabled: true, organizationId: { notIn: platformAnchorIds } } }),
     db.module.findMany({
       where: { status: "ACTIVE" },
-      select: { name: true, organizationModules: { where: { enabled: true, organizationId: { notIn: platformAnchorIds } }, select: { id: true } } },
+      select: { code: true, name: true, organizationModules: { where: { enabled: true, organizationId: { notIn: platformAnchorIds } }, select: { organizationId: true } } },
       orderBy: { name: "asc" },
     }),
   ]);
 
+  const moduleAdoption = catalogueModuleKeys.map((productKey) => {
+    const organizationIds = new Set(
+      internalModuleAdoption
+        .filter((module) => primaryProductKey(module.code) === productKey)
+        .flatMap((module) => module.organizationModules.map((assignment) => assignment.organizationId)),
+    );
+    return { key: productKey, name: getModule(productKey)?.name ?? productKey, organizationIds };
+  });
+  const enabledModuleCount = moduleAdoption.reduce((total, module) => total + module.organizationIds.size, 0);
+
   // Only modules at least one organization has actually enabled — a module
   // nobody uses yet has no adoption to report.
-  const adoptedModules = moduleAdoption.filter((mod) => mod.organizationModules.length > 0);
+  const adoptedModules = moduleAdoption.filter((mod) => mod.organizationIds.size > 0);
 
   const stats = [
     { label: "Organizations", value: organizationCount, description: "Tenant organizations on the platform", icon: <Building2 className="size-4" />, href: "/app/platform/organizations" },
@@ -52,10 +63,10 @@ export default async function PlatformDashboardPage() {
             <p className="text-sm text-muted-foreground">No organization has enabled any module yet.</p>
           ) : (
             adoptedModules.map((mod) => (
-              <div key={mod.name} className="flex items-center justify-between rounded-lg border p-3">
+              <div key={mod.key} className="flex items-center justify-between rounded-lg border p-3">
                 <p className="text-sm font-medium">{mod.name}</p>
                 <p className="text-sm text-muted-foreground">
-                  {mod.organizationModules.length} organization{mod.organizationModules.length === 1 ? "" : "s"}
+                  {mod.organizationIds.size} organization{mod.organizationIds.size === 1 ? "" : "s"}
                 </p>
               </div>
             ))

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
 import { MODULE_SEO, SITE_URL, createPublicMetadata } from "@/lib/seo";
+import { catalogueModuleKeys } from "@/platform/modules/registry";
 
 describe("public SEO", () => {
   it("publishes only real public pages and every module landing page", () => {
@@ -12,9 +13,12 @@ describe("public SEO", () => {
     expect(urls).not.toContain(`${SITE_URL}/features`);
     expect(urls).not.toContain(`${SITE_URL}/about`);
     expect(urls).not.toContain(`${SITE_URL}/login`);
-    for (const key of Object.keys(MODULE_SEO)) {
+    for (const key of catalogueModuleKeys) {
+      expect(key in MODULE_SEO).toBe(true);
       expect(urls).toContain(`${SITE_URL}/modules/${key}`);
     }
+    expect(urls).not.toContain(`${SITE_URL}/modules/payroll`);
+    expect(urls).not.toContain(`${SITE_URL}/modules/procurement`);
   });
 
   it("blocks private application, API, and authentication routes from crawling", () => {

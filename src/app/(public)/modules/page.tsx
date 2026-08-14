@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { IconBadge } from "@/components/ui/icon-badge";
-import { moduleRegistry } from "@/platform/modules/registry";
+import { catalogueModuleRegistry } from "@/platform/modules/registry";
 import { createPublicMetadata } from "@/lib/seo";
 import { PublicHero } from "@/components/marketing/public-hero";
 
@@ -22,7 +22,7 @@ export default function PublicModulesPage() {
       <section className="public-section-tint">
         <div className="mx-auto max-w-6xl px-6 py-20">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {moduleRegistry.map((mod) => (
+            {catalogueModuleRegistry.map((mod) => (
               <Card key={mod.key}>
                 <CardHeader>
                   <div className="flex items-center justify-between">

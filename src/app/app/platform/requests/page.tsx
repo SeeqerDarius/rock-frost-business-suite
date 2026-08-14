@@ -20,6 +20,7 @@ import {
 } from "@/platform/module-requests/constants";
 import { convertContactSubmission, manageModuleRequest, resolveContactSubmission } from "./actions";
 import { RequestCard, type PlatformRequestCardData } from "./_components/request-card";
+import { catalogueModuleKeys } from "@/platform/modules/registry";
 
 const ERRORS: Record<string, string> = {
   invalid: "Check the update fields.",
@@ -103,7 +104,7 @@ export default async function PlatformRequestsPage({
       orderBy: { name: "asc" },
     }),
     db.organization.findMany({ where: { id: { notIn: platformAnchorIds }, status: { in: ["ACTIVE", "TRIAL"] } }, orderBy: { name: "asc" } }),
-    db.module.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" } }),
+    db.module.findMany({ where: { status: "ACTIVE", code: { in: [...catalogueModuleKeys] } }, orderBy: { name: "asc" } }),
     view === "inbox" || view === "queue"
       ? db.contactSubmission.findMany({
           where: { status: "NEW", intent: { in: ["DEMO", "MODULE", "CUSTOM_MODULE"] } },

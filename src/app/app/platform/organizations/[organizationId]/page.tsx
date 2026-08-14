@@ -14,6 +14,8 @@ import { requirePlatformOperator } from "@/lib/auth/module-access";
 import { isPlatformAnchorOrganization } from "@/lib/platform-organizations";
 import { readPublicShowcase } from "@/lib/public-showcase";
 import { MODULE_REQUEST_STATUS_LABELS, MODULE_REQUEST_TYPE_LABELS } from "@/platform/module-requests/constants";
+import { catalogueModuleKeys } from "@/platform/modules/registry";
+import { productGroupKeys } from "@/platform/modules/product-groups";
 import { ModuleToggle } from "../module-toggle";
 import {
   permanentlyDeleteOrganization,
@@ -82,11 +84,11 @@ export default async function OrganizationDetailPage({
         },
       },
     }),
-    db.module.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" } }),
+    db.module.findMany({ where: { status: "ACTIVE", code: { in: [...catalogueModuleKeys] } }, orderBy: { name: "asc" } }),
   ]);
   if (!organization) notFound();
 
-  const enabledByModuleId = new Map(organization.organizationModules.map((assignment) => [assignment.moduleId, assignment.enabled]));
+  const enabledByModuleCode = new Map(organization.organizationModules.map((assignment) => [assignment.module.code, assignment.enabled]));
   const deletionReady = Boolean(
     organization.deletionScheduledFor && organization.deletionScheduledFor <= new Date(),
   );
@@ -246,7 +248,11 @@ export default async function OrganizationDetailPage({
               <p className="text-sm font-medium">{module_.name}</p>
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="ghost" nativeButton={false} render={<Link href={`/app/platform/organizations/${organization.id}/modules/${module_.id}`} />}>Configure</Button>
-                <ModuleToggle organizationId={organization.id} moduleId={module_.id} enabled={enabledByModuleId.get(module_.id) ?? false} />
+                <ModuleToggle
+                  organizationId={organization.id}
+                  moduleId={module_.id}
+                  enabled={productGroupKeys(module_.code).some((key) => enabledByModuleCode.get(key) === true)}
+                />
               </div>
             </div>
           ))}

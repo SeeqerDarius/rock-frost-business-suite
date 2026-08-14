@@ -74,13 +74,14 @@ const moduleDefinitions = [
   },
   {
     key: "inventory",
-    name: "Inventory Management",
-    description: "Stock levels, warehouses, transfers, and stock adjustments.",
+    name: "Inventory & Procurement",
+    description: "Stock, warehouses, suppliers, purchase approvals, orders, receiving, and replenishment.",
     icon: Boxes,
     routePrefix: "/app/inventory",
     navigation: inventoryNavigation,
     status: "available",
     permissionPrefix: "inventory.",
+    productKey: "inventory",
   },
   {
     key: "accounting",
@@ -94,13 +95,14 @@ const moduleDefinitions = [
   },
   {
     key: "hr",
-    name: "Human Resources",
-    description: "Employee records, onboarding, leave, and performance management.",
+    name: "Human Resources & Payroll",
+    description: "Employees, onboarding, leave, performance, compensation, payroll runs, and payslips.",
     icon: UsersRound,
     routePrefix: "/app/hr",
     navigation: hrNavigation,
     status: "available",
     permissionPrefix: "hr.",
+    productKey: "hr",
   },
   {
     key: "payroll",
@@ -111,6 +113,8 @@ const moduleDefinitions = [
     navigation: payrollNavigation,
     status: "available",
     permissionPrefix: "payroll.",
+    catalogueVisible: false,
+    productKey: "hr",
   },
   {
     key: "procurement",
@@ -121,6 +125,8 @@ const moduleDefinitions = [
     navigation: procurementNavigation,
     status: "available",
     permissionPrefix: "procurement.",
+    catalogueVisible: false,
+    productKey: "inventory",
   },
   {
     key: "projects",
@@ -199,6 +205,8 @@ export type BusinessModuleKey = (typeof moduleDefinitions)[number]["key"];
 // Expose the registry through the full definition type so consumers can
 // handle future statuses while the guard retains the exact module-key union.
 export const moduleRegistry: readonly ModuleDefinition[] = moduleDefinitions;
+export const catalogueModuleRegistry: readonly ModuleDefinition[] = moduleRegistry.filter((module_) => module_.catalogueVisible !== false);
+export const catalogueModuleKeys = catalogueModuleRegistry.map((module_) => module_.key);
 
 export function getModule(key: string): ModuleDefinition | undefined {
   return moduleRegistry.find((mod) => mod.key === key);

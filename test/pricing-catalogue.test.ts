@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { MODULE_PRICES, PRICING_BUNDLES, recommendedSubscriptionQuote } from "@/lib/pricing";
-import { moduleRegistry } from "@/platform/modules/registry";
+import { catalogueModuleRegistry } from "@/platform/modules/registry";
 
 describe("subscription pricing catalogue", () => {
   it("prices every available module exactly once", () => {
     expect(new Set(MODULE_PRICES.map((price) => price.moduleKey)).size).toBe(MODULE_PRICES.length);
-    expect(MODULE_PRICES.map((price) => price.moduleKey).sort()).toEqual(moduleRegistry.map((module) => module.key).sort());
+    expect(MODULE_PRICES.map((price) => price.moduleKey).sort()).toEqual(catalogueModuleRegistry.map((module) => module.key).sort());
   });
 
   it("provides positive prices, included seats, and annual savings", () => {

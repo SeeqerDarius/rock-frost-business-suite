@@ -64,11 +64,11 @@ export const MODULE_SEO = {
     features: ["Lead and contact management", "Deal pipeline tracking", "Customer activity history", "Sales performance reports"],
   },
   inventory: {
-    shortName: "Inventory Management Software",
+    shortName: "Inventory and Procurement Software",
     description:
-      "Track stock, warehouses, transfers, adjustments, and inventory movement history across your organization.",
-    keywords: ["inventory management software Ghana", "warehouse management system", "stock control software Africa"],
-    features: ["Multi-warehouse stock control", "Transfers and adjustments", "Inventory movement history", "Low-stock visibility and reports"],
+      "Control stock, warehouses, suppliers, purchase approvals, orders, receiving, and replenishment from one connected workspace.",
+    keywords: ["inventory management software Ghana", "procurement software Ghana", "warehouse management system", "stock control software Africa"],
+    features: ["Multi-warehouse stock control", "Supplier and purchase management", "Approval and receiving workflows", "Low-stock visibility and replenishment"],
   },
   accounting: {
     shortName: "Accounting Software",
@@ -78,11 +78,11 @@ export const MODULE_SEO = {
     features: ["Chart of accounts and ledgers", "Invoices and payment tracking", "Expense management", "Financial statements and reports"],
   },
   hr: {
-    shortName: "Human Resources Management Software",
+    shortName: "Human Resources and Payroll Software",
     description:
-      "Manage employee records, onboarding, leave, reviews, and workforce reports with secure HR management software.",
-    keywords: ["HR software Ghana", "human resource management system Africa", "employee leave management"],
-    features: ["Employee profiles and onboarding", "Leave requests and approvals", "Performance reviews", "Workforce reporting"],
+      "Manage employee records, onboarding, leave, reviews, compensation, payroll runs, payslips, and workforce reporting in one secure system.",
+    keywords: ["HR and payroll software Ghana", "human resource management system Africa", "employee leave management", "payroll software Ghana"],
+    features: ["Employee profiles and onboarding", "Leave and performance workflows", "Compensation and payroll runs", "Payslips and workforce reporting"],
   },
   payroll: {
     shortName: "Payroll Management Software",

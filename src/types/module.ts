@@ -38,4 +38,8 @@ export interface ModuleDefinition {
    * is "available"; omitted for "coming-soon" placeholders that have no permissions yet.
    */
   permissionPrefix?: string;
+  /** Hidden legacy capability behind a consolidated customer-facing product. */
+  catalogueVisible?: boolean;
+  /** Stable customer-facing product key shared by consolidated capabilities. */
+  productKey?: string;
 }

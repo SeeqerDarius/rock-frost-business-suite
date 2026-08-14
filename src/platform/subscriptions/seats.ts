@@ -3,6 +3,7 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getModule } from "@/platform/modules/registry";
+import { productGroupKeys } from "@/platform/modules/product-groups";
 import { logAuditEvent } from "@/lib/audit";
 
 type DbClient = typeof db | Prisma.TransactionClient;
@@ -26,13 +27,23 @@ function permissionPrefix(moduleCode: string) {
   return getModule(moduleCode)?.permissionPrefix ?? `${moduleCode}.`;
 }
 
+function permissionPrefixes(moduleCode: string) {
+  return productGroupKeys(moduleCode).map(permissionPrefix);
+}
+
 async function countModuleMembers(client: DbClient, organizationId: string, moduleCode: string, excludeMembershipId?: string) {
   return client.organizationMember.count({
     where: {
       organizationId,
       status: { in: [...COUNTED_MEMBER_STATUSES] },
       id: excludeMembershipId ? { not: excludeMembershipId } : undefined,
-      role: { rolePermissions: { some: { permission: { key: { startsWith: permissionPrefix(moduleCode) } } } } },
+      role: {
+        rolePermissions: {
+          some: {
+            OR: permissionPrefixes(moduleCode).map((prefix) => ({ permission: { key: { startsWith: prefix } } })),
+          },
+        },
+      },
     },
   });
 }
@@ -49,10 +60,19 @@ export async function getOrganizationSeatUsage(organizationId: string, client: D
   const subscriptions = await currentSeatSubscriptions(client, organizationId);
   const grouped = new Map<string, { moduleId: string; moduleCode: string; moduleName: string; limits: number[]; hasUnlimited: boolean }>();
   for (const subscription of subscriptions) {
-    const entry = grouped.get(subscription.moduleId) ?? { moduleId: subscription.moduleId, moduleCode: subscription.module.code, moduleName: subscription.module.name, limits: [], hasUnlimited: false };
+    const moduleDefinition = getModule(subscription.module.code);
+    const productCode = moduleDefinition?.productKey ?? subscription.module.code;
+    const productDefinition = getModule(productCode);
+    const entry = grouped.get(productCode) ?? {
+      moduleId: subscription.moduleId,
+      moduleCode: productCode,
+      moduleName: productDefinition?.name ?? subscription.module.name,
+      limits: [],
+      hasUnlimited: false,
+    };
     if (subscription.seatLimit == null) entry.hasUnlimited = true;
     else entry.limits.push(subscription.seatLimit);
-    grouped.set(subscription.moduleId, entry);
+    grouped.set(productCode, entry);
   }
   return Promise.all([...grouped.values()].map(async (entry) => ({
     moduleId: entry.moduleId,
@@ -77,7 +97,7 @@ export async function assertRoleHasAvailableSeats(
   if (!role) throw new Error("Role not found.");
   const keys = role.rolePermissions.map((entry) => entry.permission.key);
   const usage = await getOrganizationSeatUsage(organizationId, tx, excludeMembershipId);
-  const exceeded = usage.filter((module) => module.limit != null && keys.some((key) => key.startsWith(permissionPrefix(module.moduleCode))) && module.used >= module.limit);
+  const exceeded = usage.filter((module) => module.limit != null && keys.some((key) => permissionPrefixes(module.moduleCode).some((prefix) => key.startsWith(prefix))) && module.used >= module.limit);
   if (exceeded.length) throw new SeatLimitExceededError(exceeded);
 }
 

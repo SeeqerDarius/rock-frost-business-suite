@@ -2,6 +2,7 @@ import "server-only";
 
 import { moduleRegistry } from "@/platform/modules/registry";
 import { resolveActiveTenantModuleKeys } from "@/lib/active-tenant-modules";
+import { expandProductModuleKeys } from "@/platform/modules/product-groups";
 
 interface AssignableRole {
   name: string;
@@ -19,7 +20,7 @@ export function isRoleAssignableToOrganization(
   if (role.organizationId !== null && role.organizationId !== organizationId) return false;
   if (role.name === "Organization Owner" && role.isSystem) return true;
 
-  const enabledModules = new Set(enabledModuleKeys);
+  const enabledModules = new Set(expandProductModuleKeys(enabledModuleKeys));
   const roleModuleKeys = (role.rolePermissions ?? []).flatMap(({ permission }) => {
     const module_ = moduleRegistry.find((entry) =>
       entry.permissionPrefix && permission.key.startsWith(entry.permissionPrefix),

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { db } from "@/lib/db";
+import { expandProductModuleKeys } from "@/platform/modules/product-groups";
 
 export async function resolveActiveTenantModuleKeys(organizationId: string, fallbackKeys: string[]) {
   const now = new Date();
@@ -13,6 +14,6 @@ export async function resolveActiveTenantModuleKeys(organizationId: string, fall
     },
     select: { module: { select: { code: true } } },
   });
-  if (subscriptions.length === 0) return fallbackKeys;
-  return [...new Set(subscriptions.map(({ module }) => module.code))];
+  if (subscriptions.length === 0) return expandProductModuleKeys(fallbackKeys);
+  return expandProductModuleKeys(subscriptions.map(({ module }) => module.code));
 }

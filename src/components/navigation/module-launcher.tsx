@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { IconBadge } from "@/components/ui/icon-badge";
-import { moduleRegistry } from "@/platform/modules/registry";
+import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry";
+import { productGroupKeys } from "@/platform/modules/product-groups";
 
 export function ModuleLauncher({ enabledModuleKeys = [] }: { enabledModuleKeys?: string[] }) {
   const [open, setOpen] = useState(false);
@@ -23,14 +24,16 @@ export function ModuleLauncher({ enabledModuleKeys = [] }: { enabledModuleKeys?:
           <DialogDescription>Switch to any module enabled for your organization.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-2 sm:grid-cols-2">
-          {moduleRegistry.map((mod) => {
-            const isEnabled = mod.status === "available" && enabledModuleKeys.includes(mod.key);
+          {catalogueModuleRegistry.map((mod) => {
+            const accessibleKey = productGroupKeys(mod.key).find((key) => enabledModuleKeys.includes(key));
+            const accessibleModule = accessibleKey ? getModule(accessibleKey) : null;
+            const isEnabled = mod.status === "available" && Boolean(accessibleModule);
 
             if (isEnabled) {
               return (
                 <Link
                   key={mod.key}
-                  href={mod.routePrefix as never}
+                  href={(accessibleModule?.routePrefix ?? mod.routePrefix) as never}
                   onClick={() => setOpen(false)}
                   className="flex items-start gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-secondary/50"
                 >
