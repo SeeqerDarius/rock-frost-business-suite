@@ -1,4 +1,5 @@
-import { Hash, Lock, Warehouse } from "lucide-react";
+import Link from "next/link";
+import { Hash, Lock, Warehouse, Boxes, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -7,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { requireModuleAccess } from "@/lib/auth/module-access";
-import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { hasPermission, canAccessModule, PERMISSIONS } from "@/lib/auth/permissions";
 import { getOrderNumberPrefix, getSettings } from "@/modules/procurement/service";
 import { listWarehouses } from "@/modules/inventory/service";
 import { saveOrderNumberPrefix, updateDefaultWarehouse } from "./actions";
@@ -41,10 +42,24 @@ export default async function ProcurementSettingsPage({
     getOrderNumberPrefix(tenant.organizationId),
   ]);
   const warehouseItems: Record<string, string> = Object.fromEntries(warehouses.map((w) => [w.id, w.name]));
+  const canReachInventorySettings = canAccessModule(tenant, "inventory") && hasPermission(tenant, PERMISSIONS.INVENTORY_SETTINGS_MANAGE);
 
   return (
     <div className="space-y-6">
       <PageHeader title="Procurement Settings" description="Module-wide configuration for Procurement." />
+
+      {canReachInventorySettings ? (
+        <Link
+          href="/app/inventory/settings"
+          className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3 text-sm transition-colors hover:bg-muted/50"
+        >
+          <span className="flex items-center gap-2">
+            <Boxes className="size-4 text-muted-foreground" aria-hidden="true" />
+            Looking for reorder points or item categories? See Inventory Settings.
+          </span>
+          <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </Link>
+      ) : null}
 
       {saved ? (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">

@@ -1,11 +1,10 @@
-import { LayoutGrid, Building2, FileText, PackageCheck, BarChart3, Settings } from "lucide-react";
-import type { ModuleNavItem } from "@/types/module";
-
-export const procurementNavigation: ModuleNavItem[] = [
-  { label: "Procurement Overview", href: "/app/procurement", icon: <LayoutGrid className="size-4" /> },
-  { label: "Vendors", href: "/app/procurement/vendors", icon: <Building2 className="size-4" /> },
-  { label: "Requests", href: "/app/procurement/requests", icon: <FileText className="size-4" /> },
-  { label: "Orders", href: "/app/procurement/orders", icon: <PackageCheck className="size-4" /> },
-  { label: "Reports", href: "/app/procurement/reports", icon: <BarChart3 className="size-4" /> },
-  { label: "Procurement Settings", href: "/app/procurement/settings", icon: <Settings className="size-4" /> },
-];
+/**
+ * Re-exports the shared Inventory & Procurement navigation definition under
+ * this module's existing name, since src/platform/modules/registry.ts
+ * imports `procurementNavigation` by this exact name and path (registry.ts
+ * is centrally owned and not edited here). The live sidebar is actually
+ * built by getInventoryProcurementNavigation(tenant) in
+ * src/modules/inventory-procurement/navigation.tsx, consumed directly by
+ * src/app/app/procurement/layout.tsx.
+ */
+export { inventoryProcurementNavigation as procurementNavigation } from "@/modules/inventory-procurement/navigation";

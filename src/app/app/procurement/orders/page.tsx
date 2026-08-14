@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PackageCheck, Plus } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
@@ -10,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listOrders, listVendors, listRequests } from "@/modules/procurement/service";
+import { listOrders, listVendors, listRequests, getSettings } from "@/modules/procurement/service";
 import { listItems, listWarehouses } from "@/modules/inventory/service";
 import { createNewOrder, sendExistingOrder, cancelExistingOrder, receiveExistingOrderLine } from "./actions";
 
@@ -19,6 +20,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "missing-fields": "All required fields must be filled in.",
   "invalid-state": "That action isn't valid for this order's current status.",
   "invalid-quantity": "Quantity received must be between 1 and the remaining quantity.",
+  "warehouse-required": "Select a warehouse to receive this item into stock. Only a line with no linked item can be received without one.",
   "inventory-error": "There isn't enough capacity to record that receipt.",
   "not-found": "That vendor, request, item, order, or warehouse could not be found.",
 };
@@ -39,12 +41,13 @@ export default async function ProcurementOrdersPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("procurement");
   const canManage = hasPermission(tenant, PERMISSIONS.PROCUREMENT_ORDERS_MANAGE);
-  const [orders, vendors, requests, items, warehouses] = await Promise.all([
+  const [orders, vendors, requests, items, warehouses, settings] = await Promise.all([
     listOrders(tenant.organizationId),
     listVendors(tenant.organizationId),
     listRequests(tenant.organizationId),
     listItems(tenant.organizationId),
     listWarehouses(tenant.organizationId),
+    getSettings(tenant.organizationId),
   ]);
   const vendorItems: Record<string, string> = Object.fromEntries(vendors.map((v) => [v.id, v.name]));
   const approvedRequestItems: Record<string, string> = Object.fromEntries(
@@ -58,7 +61,12 @@ export default async function ProcurementOrdersPage({
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <PageHeader title="Orders" description="Purchase orders sent to vendors." />
-        {canManage ? (
+        {canManage && vendors.length === 0 ? (
+          <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/procurement/vendors" />}>
+            <Plus />Add a vendor first
+          </Button>
+        ) : null}
+        {canManage && vendors.length > 0 ? (
           <EntityDialog trigger={<Button size="sm"><Plus />New order</Button>} title="New purchase order" action={createNewOrder}>
             <div className="space-y-2">
               <Label htmlFor="vendorId">Vendor</Label>
@@ -196,7 +204,7 @@ export default async function ProcurementOrdersPage({
                           {line.itemId ? (
                             <div className="space-y-2">
                               <Label htmlFor={`wh-${line.id}`}>Warehouse</Label>
-                              <Select name="warehouseId" items={warehouseItems}>
+                              <Select name="warehouseId" defaultValue={settings?.defaultWarehouseId ?? undefined} items={warehouseItems}>
                                 <SelectTrigger id={`wh-${line.id}`} className="w-full">
                                   <SelectValue placeholder="Select a warehouse" />
                                 </SelectTrigger>
@@ -208,8 +216,15 @@ export default async function ProcurementOrdersPage({
                                   ))}
                                 </SelectContent>
                               </Select>
+                              <p className="text-xs text-muted-foreground">
+                                This line is linked to an inventory item, so a warehouse is required to add the received quantity to stock.
+                              </p>
                             </div>
-                          ) : null}
+                          ) : (
+                            <p className="text-xs text-muted-foreground">
+                              This line has no linked inventory item, so it can be received without a warehouse. Only the order line updates.
+                            </p>
+                          )}
                         </EntityDialog>
                       ) : null}
                     </div>

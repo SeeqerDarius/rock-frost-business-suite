@@ -1,7 +1,7 @@
 import { Lock } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { procurementNavigation } from "@/modules/procurement/navigation";
+import { getInventoryProcurementNavigation, getInventoryProcurementSectionLabel } from "@/modules/inventory-procurement/navigation";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { canAccessModule } from "@/lib/auth/permissions";
 
@@ -20,10 +20,12 @@ export default async function ProcurementLayout({ children }: { children: React.
     );
   }
 
+  const access = { hasInventory: canAccessModule(tenant, "inventory"), hasProcurement: true };
+
   return (
     <AppShell
-      sectionLabel="Procurement"
-      navigation={procurementNavigation}
+      sectionLabel={getInventoryProcurementSectionLabel(access)}
+      navigation={getInventoryProcurementNavigation(access)}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
     >
