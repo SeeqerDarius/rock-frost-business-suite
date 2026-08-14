@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound, permanentRedirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,8 +21,6 @@ export async function generateMetadata({
   params: Promise<{ moduleKey: string }>;
 }): Promise<Metadata> {
   const { moduleKey } = await params;
-  if (moduleKey === "payroll") permanentRedirect("/modules/hr");
-  if (moduleKey === "procurement") permanentRedirect("/modules/inventory");
   const seo = MODULE_SEO[moduleKey as ModuleKey];
   if (!seo) return {};
   return createPublicMetadata({

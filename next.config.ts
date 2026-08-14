@@ -29,6 +29,12 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  async redirects() {
+    return [
+      { source: "/modules/payroll", destination: "/modules/hr", permanent: true },
+      { source: "/modules/procurement", destination: "/modules/inventory", permanent: true },
+    ];
+  },
   experimental: {
     serverActions: {
       // Profile photos are capped at 1 MiB by application validation, but the

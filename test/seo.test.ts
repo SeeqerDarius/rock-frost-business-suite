@@ -3,6 +3,7 @@ import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
 import { MODULE_SEO, SITE_URL, createPublicMetadata } from "@/lib/seo";
 import { catalogueModuleKeys } from "@/platform/modules/registry";
+import nextConfig from "../next.config";
 
 describe("public SEO", () => {
   it("publishes only real public pages and every module landing page", () => {
@@ -38,5 +39,13 @@ describe("public SEO", () => {
     expect(metadata.alternates).toEqual({ canonical: `${SITE_URL}/example` });
     expect(metadata.openGraph).toMatchObject({ url: `${SITE_URL}/example`, title: "Example" });
     expect(metadata.twitter).toMatchObject({ card: "summary_large_image", title: "Example" });
+  });
+
+  it("returns permanent HTTP redirects for retired companion product pages", async () => {
+    const redirects = await nextConfig.redirects?.();
+    expect(redirects).toEqual(expect.arrayContaining([
+      { source: "/modules/payroll", destination: "/modules/hr", permanent: true },
+      { source: "/modules/procurement", destination: "/modules/inventory", permanent: true },
+    ]));
   });
 });
