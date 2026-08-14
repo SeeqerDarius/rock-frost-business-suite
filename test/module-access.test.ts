@@ -137,11 +137,11 @@ describe("module authorization source coverage", () => {
       return collectEntryFiles(moduleDirectory).map((filePath) => ({ moduleKey, filePath }));
     });
 
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(77);
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(80);
     // 47, up from 45: fleet/settings/actions.ts and projects/settings/actions.ts
     // were added (both previously had no actions.ts — Fleet and Projects had
     // no real settings to save yet).
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(47);
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(50);
 
     for (const { moduleKey, filePath } of guardedFiles) {
       const source = readFileSync(filePath, "utf8");

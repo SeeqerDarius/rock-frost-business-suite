@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-import type { AccountingAccountType, AccountingInvoiceStatus } from "@prisma/client";
+import type { AccountingAccountType, AccountingInvoiceStatus, AccountingLiquidityType } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import {
   getOrganizationModuleConfiguration,
@@ -37,8 +37,8 @@ export async function updateAccountingSettings(organizationId: string, data: { i
  * expense paid -> Expense/Cash) rather than at creation time.
  */
 
-const DEFAULT_ACCOUNTS: { code: string; name: string; type: AccountingAccountType }[] = [
-  { code: "1000", name: "Cash", type: "ASSET" },
+const DEFAULT_ACCOUNTS: { code: string; name: string; type: AccountingAccountType; liquidityType?: AccountingLiquidityType }[] = [
+  { code: "1000", name: "Cash", type: "ASSET", liquidityType: "CASH" },
   { code: "1100", name: "Accounts Receivable", type: "ASSET" },
   { code: "2000", name: "Accounts Payable", type: "LIABILITY" },
   { code: "4000", name: "Revenue", type: "REVENUE" },
@@ -96,6 +96,48 @@ interface AccountInput {
   name: string;
   type: AccountingAccountType;
   active?: boolean;
+  liquidityType?: AccountingLiquidityType;
+  bankName?: string | null;
+  accountNumberLast4?: string | null;
+}
+
+export async function postOpeningBalance(organizationId: string, accountId: string, amountInput: string, asOfDate: Date, createdById?: string | null) {
+  const amount = new Prisma.Decimal(amountInput);
+  if (!amount.isFinite() || amount.isZero()) throw new InvalidPaymentError("Opening balance cannot be zero.");
+  const [account, existingEquity] = await Promise.all([
+    db.accountingAccount.findFirst({ where: { id: accountId, organizationId } }),
+    db.accountingAccount.findFirst({ where: { organizationId, code: "3000" } }),
+  ]);
+  if (!account) throw new NotFoundError("Account not found.");
+  const equity = existingEquity ?? await db.accountingAccount.create({ data: { organizationId, code: "3000", name: "Opening Balance Equity", type: "EQUITY", isSystem: true } });
+  if (account.openingBalancePostedAt) throw new InvoiceStateError("An opening balance was already posted for this account.");
+  const absolute = amount.abs().toFixed(2);
+  const positiveDebitNormal = account.type === "ASSET" || account.type === "EXPENSE";
+  const debitAccount = amount.isPositive() === positiveDebitNormal ? account.id : equity.id;
+  const creditAccount = debitAccount === account.id ? equity.id : account.id;
+  return db.$transaction(async (tx) => {
+    const claimed = await tx.accountingAccount.updateMany({ where: { id: account.id, organizationId, openingBalancePostedAt: null }, data: { openingBalancePostedAt: new Date() } });
+    if (claimed.count === 0) throw new InvoiceStateError("An opening balance was already posted for this account.");
+    return postJournalEntry(tx, organizationId, { entryDate: asOfDate, description: `Opening balance for ${account.name}`, sourceType: "OPENING_BALANCE", sourceId: account.id, createdById, lines: [{ accountId: debitAccount, debit: absolute }, { accountId: creditAccount, credit: absolute }] });
+  });
+}
+
+export async function getCashbook(organizationId: string, accountId?: string | null) {
+  const accounts = await db.accountingAccount.findMany({ where: { organizationId, liquidityType: { not: "NONE" }, ...(accountId ? { id: accountId } : {}) }, select: { id: true } });
+  const ids = accounts.map((account) => account.id);
+  return db.accountingJournalLine.findMany({ where: { accountId: { in: ids }, account: { organizationId } }, include: { account: true, journalEntry: true }, orderBy: { journalEntry: { entryDate: "desc" } }, take: 500 });
+}
+
+export function listReconciliations(organizationId: string) {
+  return db.accountingReconciliation.findMany({ where: { organizationId }, include: { account: true }, orderBy: { periodEnd: "desc" } });
+}
+
+export async function completeReconciliation(organizationId: string, data: { accountId: string; periodStart: Date; periodEnd: Date; statementBalance: string; notes?: string | null; completedById?: string | null }) {
+  const account = (await listAccounts(organizationId)).find((item) => item.id === data.accountId && item.liquidityType !== "NONE");
+  if (!account) throw new NotFoundError("Cash or bank account not found.");
+  const statementBalance = new Prisma.Decimal(data.statementBalance);
+  const ledgerBalance = new Prisma.Decimal(account.balance);
+  return db.accountingReconciliation.create({ data: { organizationId, accountId: account.id, periodStart: data.periodStart, periodEnd: data.periodEnd, statementBalance, ledgerBalance, difference: statementBalance.minus(ledgerBalance), status: "COMPLETED", notes: data.notes, completedById: data.completedById, completedAt: new Date() } });
 }
 
 export async function createAccount(organizationId: string, data: AccountInput) {

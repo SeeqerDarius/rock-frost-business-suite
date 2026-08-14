@@ -14,12 +14,14 @@ function clean(value: FormDataEntryValue | null) {
 }
 
 const ACCOUNT_TYPES = ["ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"] as const;
+const LIQUIDITY_TYPES = ["NONE", "CASH", "BANK", "MOBILE_MONEY"] as const;
 
 const accountSchema = z.object({
   id: cuid.nullable().optional(),
   code: shortText,
   name: shortText,
   type: z.enum(ACCOUNT_TYPES),
+  liquidityType: z.enum(LIQUIDITY_TYPES),
 });
 
 export async function upsertAccount(formData: FormData): Promise<void> {
@@ -33,13 +35,14 @@ export async function upsertAccount(formData: FormData): Promise<void> {
     code: clean(formData.get("code")),
     name: clean(formData.get("name")),
     type: clean(formData.get("type")),
+    liquidityType: clean(formData.get("liquidityType")) ?? "NONE",
   });
   if (!parsed.success) {
     redirect("/app/accounting/accounts?error=missing-fields");
   }
-  const { id, code, name, type } = parsed.data;
+  const { id, code, name, type, liquidityType } = parsed.data;
 
-  const data = { code, name, type, active: formData.get("active") === "on" };
+  const data = { code, name, type, liquidityType, bankName: clean(formData.get("bankName")), accountNumberLast4: clean(formData.get("accountNumberLast4")), active: formData.get("active") === "on" };
 
   try {
     if (id) {
@@ -55,5 +58,6 @@ export async function upsertAccount(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/app/accounting/accounts");
+  revalidatePath("/app/accounting/cashbook");
   redirect("/app/accounting/accounts?saved=1");
 }

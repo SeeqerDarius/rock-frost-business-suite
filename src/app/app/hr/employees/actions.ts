@@ -14,7 +14,7 @@ function clean(value: FormDataEntryValue | null) {
 
 export async function upsertEmployee(formData: FormData): Promise<void> {
   const tenant = await requireModuleAccess("hr");
-  if (!hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE)) {
+  if (!hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_EDIT) && !hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE)) {
     redirect("/app/hr/employees?error=forbidden");
   }
 
@@ -53,7 +53,7 @@ export async function upsertEmployee(formData: FormData): Promise<void> {
 
 export async function activateExistingEmployee(formData: FormData): Promise<void> {
   const tenant = await requireModuleAccess("hr");
-  if (!hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE)) {
+  if (!hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_EDIT) && !hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE)) {
     redirect("/app/hr/employees?error=forbidden");
   }
   const id = clean(formData.get("id"));
@@ -72,12 +72,12 @@ export async function activateExistingEmployee(formData: FormData): Promise<void
 
 export async function changeEmployeeStatus(formData: FormData): Promise<void> {
   const tenant = await requireModuleAccess("hr");
-  if (!hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE)) {
+  if (!hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_EDIT) && !hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE)) {
     redirect("/app/hr/employees?error=forbidden");
   }
   const id = clean(formData.get("id"));
   const status = clean(formData.get("status")) as HrEmployeeStatus | null;
-  if (!id || !status) return;
+  if (!id || !status || !["ACTIVE", "ON_LEAVE", "SUSPENDED"].includes(status)) redirect("/app/hr/employees?error=invalid-state");
 
   await setEmployeeStatus(tenant.organizationId, id, status);
   revalidatePath("/app/hr/employees");

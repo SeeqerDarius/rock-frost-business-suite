@@ -68,6 +68,7 @@ export default async function HrSettingsPage({
               <Label htmlFor="employeeNumberPrefix">Employee number prefix</Label>
               <Input id="employeeNumberPrefix" name="employeeNumberPrefix" defaultValue={settings.employeeNumberPrefix} minLength={2} maxLength={8} className="w-32 uppercase" required />
             </div>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="terminationApprovalRequired" defaultChecked={settings.terminationApprovalRequired} />Require a different HR approver for termination</label>
             <Button type="submit" size="sm" variant="outline">Save</Button>
           </form>
         </CardContent>

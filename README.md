@@ -17,7 +17,9 @@ The public marketing site has a generated sitemap and robots policy, unique cano
 - **Hotel Management:** rooms, guests, reservations, stay lifecycle, folios and payments, housekeeping, reporting, restaurant, channels, and enforced property settings for currency/timezone, stay policy, charges, numbering, settlement, and room-readiness workflow.
 - **School Management:** student/guardian administration, academic periods, classes, enrollment, attendance, fees and reporting, followed by examinations, grading, timetables, transport, library, campus services and education-specific payroll integration.
 - **Inventory & Procurement:** tenant-isolated item/category/warehouse catalogues, optional item images, stock levels, controlled movements, supplier management, purchasing approvals, orders, receiving, low-stock alerts, reporting, and POS integration.
-- **Human Resources & Payroll:** employee records, onboarding, leave, performance reviews, compensation, payroll runs, payslips, settings, and reporting in one product and subscription.
+- **Human Resources & Payroll:** employee records, onboarding, leave, performance reviews, controlled maker-checker termination and reinstatement, offboarding, access and final-pay coordination, compensation, payroll runs, payslips, settings, and reporting in one product and subscription.
+- **Fleet Management:** administrator-linked driver logins, assigned-vehicle self-service, ownership-checked maintenance reporting, and manager-verified weekly and work-and-pay submissions.
+- **Accounting:** double-entry invoicing and expenses plus classified cash, bank and mobile-money accounts, locked opening-balance entries, a derived cashbook, and period reconciliation history.
 - **Pharmacy Management:** tenant-isolated medicines, licensed suppliers, batch/expiry and FEFO stock, patients and prescribers, prescriptions, dispensing, controlled-medicine register, safety alerts, reports, settings, backups, and subscription seats.
 - **Hospital Management (branch `agent/claude-hospital-production`, not yet merged or deployed):** patient registration with organization-unique MRN, appointments, encounters with vitals/notes/diagnoses/care plans, admissions/wards/beds, laboratory and imaging with immutable verified results, a versioned Hospital-owned medication-order contract that never touches Pharmacy's tables directly, billing/invoicing/insurance claims, nursing tasks, and clinical alerts/referrals/consent. Operational record-keeping software, not a medical device or diagnosis engine — see `docs/HOSPITAL_MODULE.md`.
 
@@ -104,6 +106,7 @@ Start with `OPERATOR_HANDOFF.md` at the repo root for the current state and next
 - `docs/ORGANIZATION_LIFECYCLE.md` — Super Admin onboarding, profile/status management, protected platform organizations, and recoverable deletion
 - `docs/HARDENING_PLAN.md` — the production-hardening track: what's fixed, what's deferred, why
 - `docs/OPERATIONS_AND_MONITORING.md` — trial-expiry cron, health checks, logs, performance monitoring, and accessibility operations
+- `docs/OPERATIONAL_WORKFLOW_UPGRADES.md` - Fleet driver, Accounting liquidity, and HR termination workflow controls
 - `docs/SUPPORT_MESSAGING.md` — in-app tenant/platform support chat, presence, and why it's deliberately not email or a business module
 - `docs/DECISIONS.md` — dated log of consequential technical decisions
 

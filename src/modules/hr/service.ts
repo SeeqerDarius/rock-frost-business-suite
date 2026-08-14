@@ -25,11 +25,12 @@ export async function getHrSettings(organizationId: string) {
   const configured = configuration.workflow.employeeNumberPrefix;
   return {
     employeeNumberPrefix: configured && PREFIX_PATTERN.test(configured) ? configured : DEFAULT_EMPLOYEE_NUMBER_PREFIX,
+    terminationApprovalRequired: configuration.workflow.terminationApprovalRequired !== "false",
   };
 }
 
-export async function updateHrSettings(organizationId: string, data: { employeeNumberPrefix: string }, actorId?: string | null) {
-  await updateOrganizationModuleConfigurationValues(organizationId, "hr", { workflow: { employeeNumberPrefix: data.employeeNumberPrefix } }, actorId);
+export async function updateHrSettings(organizationId: string, data: { employeeNumberPrefix: string; terminationApprovalRequired?: boolean }, actorId?: string | null) {
+  await updateOrganizationModuleConfigurationValues(organizationId, "hr", { workflow: { employeeNumberPrefix: data.employeeNumberPrefix, terminationApprovalRequired: String(data.terminationApprovalRequired ?? true) } }, actorId);
 }
 
 /**
@@ -100,6 +101,106 @@ export function setEmployeeStatus(organizationId: string, id: string, status: Hr
     where: { id, organizationId },
     data: { status, terminationDate: status === "TERMINATED" ? new Date() : undefined },
   });
+}
+
+const OFFBOARDING_TASKS = [
+  "Suspend or retain system access as approved", "Recover company assets", "Transfer active projects and approvals",
+  "Resolve leave balance", "Calculate final salary", "Resolve loans and deductions", "Process benefits and statutory obligations",
+  "Issue termination or service documents", "Remove physical and digital access", "Confirm data-retention requirements",
+];
+
+export class HrWorkflowError extends Error {}
+
+export function listTerminationRequests(organizationId: string) {
+  return db.hrTerminationRequest.findMany({ where: { organizationId }, include: { employee: true }, orderBy: { createdAt: "desc" } });
+}
+
+export function getEmployeeStatusHistory(organizationId: string, employeeId: string) {
+  return db.hrEmployeeStatusHistory.findMany({ where: { organizationId, employeeId }, orderBy: { effectiveDate: "desc" } });
+}
+
+export function listOffboardingTasks(organizationId: string, terminationId: string) {
+  return db.hrOffboardingTask.findMany({ where: { organizationId, terminationId }, orderBy: { createdAt: "asc" } });
+}
+
+export async function initiateTermination(organizationId: string, employeeId: string, actorId: string, data: {
+  category: "RESIGNATION" | "DISMISSAL" | "REDUNDANCY" | "RETIREMENT" | "CONTRACT_COMPLETION" | "DEATH" | "OTHER";
+  reason: string; effectiveDate: Date; lastWorkingDate: Date; notes?: string | null; attachmentAssetId?: string | null;
+  accessDisposition: "SUSPEND_IMMEDIATELY" | "SUSPEND_ON_EFFECTIVE_DATE" | "LEAVE_UNCHANGED";
+  makerCheckerEnabled: boolean; finalSalary?: string | null; leaveEncashment?: string; severance?: string; outstandingDeductions?: string; benefitsSettlement?: string;
+}) {
+  if (data.lastWorkingDate > data.effectiveDate) throw new HrWorkflowError("Last working date cannot be after the effective date.");
+  return db.$transaction(async (tx) => {
+    const employee = await tx.hrEmployee.findFirst({ where: { id: employeeId, organizationId } });
+    if (!employee || ["TERMINATED", "TERMINATION_PENDING"].includes(employee.status)) throw new HrWorkflowError("Employee cannot enter termination workflow.");
+    const request = await tx.hrTerminationRequest.create({ data: { organizationId, employeeId, initiatedById: actorId, ...data, finalSalary: data.finalSalary || null, leaveEncashment: data.leaveEncashment || "0", severance: data.severance || "0", outstandingDeductions: data.outstandingDeductions || "0", benefitsSettlement: data.benefitsSettlement || "0", status: data.makerCheckerEnabled ? "PENDING" : "APPROVED", approvedById: data.makerCheckerEnabled ? null : actorId, reviewedAt: data.makerCheckerEnabled ? null : new Date() } });
+    await tx.hrEmployee.update({ where: { id: employee.id }, data: { status: "TERMINATION_PENDING" } });
+    await tx.hrEmployeeStatusHistory.create({ data: { organizationId, employeeId, previousStatus: employee.status, newStatus: "TERMINATION_PENDING", effectiveDate: new Date(), reason: data.reason, initiatedById: actorId, approvedById: data.makerCheckerEnabled ? null : actorId, terminationId: request.id } });
+    if (data.accessDisposition === "SUSPEND_IMMEDIATELY" && employee.userId) await tx.organizationMember.updateMany({ where: { organizationId, userId: employee.userId, status: "ACTIVE" }, data: { status: "SUSPENDED" } });
+    await tx.hrOffboardingTask.createMany({ data: OFFBOARDING_TASKS.map((title) => ({ organizationId, employeeId, terminationId: request.id, title })) });
+    if (!data.makerCheckerEnabled && data.effectiveDate <= new Date()) await applyApprovedTermination(tx, request, actorId);
+    return request;
+  });
+}
+
+export async function reviewTermination(organizationId: string, id: string, reviewerId: string, approved: boolean, reason?: string | null) {
+  return db.$transaction(async (tx) => {
+    const request = await tx.hrTerminationRequest.findFirst({ where: { id, organizationId, status: "PENDING" }, include: { employee: true } });
+    if (!request) throw new NotFoundError("Pending termination not found.");
+    if (request.makerCheckerEnabled && request.initiatedById === reviewerId) throw new HrWorkflowError("The initiator cannot approve this termination.");
+    await tx.hrTerminationRequest.update({ where: { id }, data: approved ? { status: "APPROVED", approvedById: reviewerId, reviewedAt: new Date() } : { status: "REJECTED", rejectedById: reviewerId, reviewedAt: new Date(), cancellationReason: reason } });
+    if (!approved) {
+      const previous = await tx.hrEmployeeStatusHistory.findFirst({ where: { terminationId: id }, orderBy: { createdAt: "asc" } });
+      await tx.hrEmployee.update({ where: { id: request.employeeId }, data: { status: previous?.previousStatus ?? "ACTIVE" } });
+      await tx.hrEmployeeStatusHistory.create({ data: { organizationId, employeeId: request.employeeId, previousStatus: "TERMINATION_PENDING", newStatus: previous?.previousStatus ?? "ACTIVE", effectiveDate: new Date(), reason: reason || "Termination rejected", initiatedById: request.initiatedById, approvedById: reviewerId, terminationId: id, metadata: { rejected: true } } });
+      return request;
+    }
+    return applyApprovedTermination(tx, request, reviewerId);
+  });
+}
+
+async function applyApprovedTermination(tx: Parameters<Parameters<typeof db.$transaction>[0]>[0], request: Awaited<ReturnType<typeof db.hrTerminationRequest.findFirst>> & { employee?: { userId: string | null } }, actorId?: string | null) {
+  if (!request || request.status === "REJECTED" || request.effectiveDate > new Date()) return request;
+  const employee = await tx.hrEmployee.findUniqueOrThrow({ where: { id: request.employeeId } });
+  await tx.hrEmployee.update({ where: { id: employee.id }, data: { status: "TERMINATED", terminationDate: request.effectiveDate, payrollEligible: false } });
+  await tx.hrTerminationRequest.update({ where: { id: request.id }, data: { status: "EFFECTIVE", effectiveAt: new Date() } });
+  await tx.hrEmployeeStatusHistory.create({ data: { organizationId: request.organizationId, employeeId: employee.id, previousStatus: "TERMINATION_PENDING", newStatus: "TERMINATED", effectiveDate: request.effectiveDate, reason: request.reason, initiatedById: request.initiatedById, approvedById: request.approvedById || actorId, terminationId: request.id } });
+  if (request.accessDisposition === "SUSPEND_ON_EFFECTIVE_DATE" && employee.userId) await tx.organizationMember.updateMany({ where: { organizationId: request.organizationId, userId: employee.userId, status: "ACTIVE" }, data: { status: "SUSPENDED" } });
+  return request;
+}
+
+export async function processEffectiveTerminations(now = new Date()) {
+  const ids = await db.hrTerminationRequest.findMany({ where: { status: "APPROVED", effectiveDate: { lte: now } }, select: { id: true, organizationId: true } });
+  for (const item of ids) await db.$transaction(async (tx) => { const request = await tx.hrTerminationRequest.findFirst({ where: { id: item.id, organizationId: item.organizationId, status: "APPROVED" } }); if (request) await applyApprovedTermination(tx, request); });
+  return ids.length;
+}
+
+export async function cancelTermination(organizationId: string, id: string, actorId: string, reason: string) {
+  return db.$transaction(async (tx) => {
+    const request = await tx.hrTerminationRequest.findFirst({ where: { id, organizationId, status: { in: ["PENDING", "APPROVED"] } } });
+    if (!request) throw new NotFoundError("Cancellable termination not found.");
+    const previous = await tx.hrEmployeeStatusHistory.findFirst({ where: { terminationId: id }, orderBy: { createdAt: "asc" } });
+    await tx.hrTerminationRequest.update({ where: { id }, data: { status: "CANCELLED", cancelledById: actorId, cancellationReason: reason } });
+    await tx.hrEmployee.update({ where: { id: request.employeeId }, data: { status: previous?.previousStatus ?? "ACTIVE" } });
+    await tx.hrEmployeeStatusHistory.create({ data: { organizationId, employeeId: request.employeeId, previousStatus: "TERMINATION_PENDING", newStatus: previous?.previousStatus ?? "ACTIVE", effectiveDate: new Date(), reason, initiatedById: actorId, terminationId: id, metadata: { cancelled: true } } });
+  });
+}
+
+export async function reinstateEmployee(organizationId: string, employeeId: string, actorId: string, data: { reason: string; effectiveDate: Date; jobTitle?: string | null; department?: string | null; managerId?: string | null; payrollEligible: boolean; restoreAccess: boolean }) {
+  return db.$transaction(async (tx) => {
+    const employee = await tx.hrEmployee.findFirst({ where: { id: employeeId, organizationId, status: "TERMINATED" } });
+    if (!employee) throw new HrWorkflowError("Only a terminated employee can be reinstated.");
+    if (data.managerId) { const manager = await tx.hrEmployee.findFirst({ where: { id: data.managerId, organizationId } }); if (!manager) throw new NotFoundError("Manager not found."); }
+    await tx.hrEmployee.update({ where: { id: employee.id }, data: { status: "REINSTATED", terminationDate: null, payrollEligible: data.payrollEligible, jobTitle: data.jobTitle, department: data.department, managerId: data.managerId } });
+    await tx.hrEmployeeStatusHistory.create({ data: { organizationId, employeeId, previousStatus: "TERMINATED", newStatus: "REINSTATED", effectiveDate: data.effectiveDate, reason: data.reason, initiatedById: actorId, approvedById: actorId, metadata: { payrollEligible: data.payrollEligible, restoreAccess: data.restoreAccess } } });
+    if (data.restoreAccess && employee.userId) await tx.organizationMember.updateMany({ where: { organizationId, userId: employee.userId, status: "SUSPENDED" }, data: { status: "ACTIVE" } });
+    const last = await tx.hrTerminationRequest.findFirst({ where: { organizationId, employeeId, status: "EFFECTIVE" }, orderBy: { effectiveDate: "desc" } });
+    if (last) await tx.hrTerminationRequest.update({ where: { id: last.id }, data: { status: "REVERSED", reversalReason: data.reason } });
+  });
+}
+
+export async function setOffboardingTaskCompletion(organizationId: string, taskId: string, actorId: string, completed: boolean, notes?: string | null) {
+  return db.hrOffboardingTask.update({ where: { id: taskId, organizationId }, data: { completed, completedById: completed ? actorId : null, completedAt: completed ? new Date() : null, notes } });
 }
 
 // --- Leave types ---

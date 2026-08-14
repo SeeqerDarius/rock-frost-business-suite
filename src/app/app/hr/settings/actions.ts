@@ -53,7 +53,7 @@ export async function saveHrSettings(formData: FormData): Promise<void> {
   const parsed = parseWithSchema(employeeNumberSchema, { employeeNumberPrefix: clean(formData.get("employeeNumberPrefix")) ?? "" });
   if (!parsed.success) redirect("/app/hr/settings?error=invalid-prefix");
 
-  await updateHrSettings(tenant.organizationId, parsed.data, tenant.userId);
+  await updateHrSettings(tenant.organizationId, { ...parsed.data, terminationApprovalRequired: formData.get("terminationApprovalRequired") === "on" }, tenant.userId);
   revalidatePath("/app/hr/settings");
   revalidatePath("/app/hr/employees");
   redirect("/app/hr/settings?saved=1");

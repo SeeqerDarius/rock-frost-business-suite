@@ -1,5 +1,7 @@
 # Operations and Monitoring
 
+The authenticated daily `/api/cron/expire-trials` operations job also applies approved HR terminations whose effective date has arrived. It reports `effectiveTerminations` in its structured completion log and response. `CRON_SECRET` authorization remains mandatory.
+
 ## Production health
 
 `GET /api/health` is the external uptime probe. It performs a minimal

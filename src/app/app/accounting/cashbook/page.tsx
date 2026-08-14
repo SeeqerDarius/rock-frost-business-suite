@@ -1,0 +1,28 @@
+import { PageHeader } from "@/components/layout/page-header";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { requireModuleAccess } from "@/lib/auth/module-access";
+import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { listAccounts, getCashbook, listReconciliations } from "@/modules/accounting/service";
+import { createOpeningBalance, reconcileAccount } from "./actions";
+
+export default async function CashbookPage({ searchParams }: { searchParams: Promise<{ saved?: string; reconciled?: string; error?: string }> }) {
+  const params = await searchParams; const tenant = await requireModuleAccess("accounting");
+  const [accounts, entries, reconciliations] = await Promise.all([listAccounts(tenant.organizationId), getCashbook(tenant.organizationId), listReconciliations(tenant.organizationId)]);
+  const liquidity = accounts.filter((account) => account.liquidityType !== "NONE");
+  const canCashbook = hasPermission(tenant, PERMISSIONS.ACCOUNTING_CASHBOOK_MANAGE); const canReconcile = hasPermission(tenant, PERMISSIONS.ACCOUNTING_RECONCILIATIONS_MANAGE);
+  return <div className="space-y-6"><PageHeader title="Cash and bank" description="Control opening balances, cashbook movements, bank balances, and period reconciliations." />
+    {params.saved || params.reconciled ? <p className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm">Accounting record saved.</p> : null}
+    {params.error ? <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">The accounting control could not be completed. Review the values and permissions.</p> : null}
+    <section className="grid gap-4 md:grid-cols-3">{liquidity.map((account) => <div key={account.id} className="rounded-xl border p-5"><p className="text-sm text-muted-foreground">{account.liquidityType.replace("_", " ")}</p><h2 className="font-semibold">{account.name}</h2><p className="mt-3 text-2xl font-semibold">{account.balance.toFixed(2)}</p></div>)}</section>
+    <section className="grid gap-6 lg:grid-cols-2">
+      {canCashbook ? <form action={createOpeningBalance} className="space-y-4 rounded-xl border p-5"><h2 className="font-semibold">Post opening balance</h2><p className="text-sm text-muted-foreground">Posted once as a locked double-entry journal entry. Corrections require a reversing journal.</p><div><Label>Account</Label><select name="accountId" className="mt-2 h-10 w-full rounded-md border bg-background px-3" required>{accounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select></div><div><Label htmlFor="amount">Balance</Label><Input id="amount" name="amount" type="number" step="0.01" required /></div><div><Label htmlFor="asOfDate">As of date</Label><Input id="asOfDate" name="asOfDate" type="date" required /></div><Button type="submit">Post opening balance</Button></form> : null}
+      {canReconcile ? <form action={reconcileAccount} className="space-y-4 rounded-xl border p-5"><h2 className="font-semibold">Complete reconciliation</h2><div><Label>Cash or bank account</Label><select name="accountId" className="mt-2 h-10 w-full rounded-md border bg-background px-3" required>{liquidity.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div><div className="grid grid-cols-2 gap-3"><div><Label>Period start</Label><Input name="periodStart" type="date" required /></div><div><Label>Period end</Label><Input name="periodEnd" type="date" required /></div></div><div><Label>Statement closing balance</Label><Input name="statementBalance" type="number" step="0.01" required /></div><div><Label>Notes</Label><Textarea name="notes" /></div><Button type="submit">Complete reconciliation</Button></form> : null}
+    </section>
+    <section className="rounded-xl border p-5"><h2 className="font-semibold">Cashbook</h2><div className="mt-3 space-y-2">{entries.map((line) => <div key={line.id} className="grid grid-cols-[1fr_auto_auto] gap-4 border-b py-2 text-sm"><span>{line.journalEntry.entryDate.toLocaleDateString()} · {line.account.name}<small className="block text-muted-foreground">{line.journalEntry.description}</small></span><span className="text-emerald-600">{line.debit.isZero() ? "" : `+${line.debit.toFixed(2)}`}</span><span className="text-destructive">{line.credit.isZero() ? "" : `-${line.credit.toFixed(2)}`}</span></div>)}</div></section>
+    <section className="rounded-xl border p-5"><h2 className="font-semibold">Reconciliation history</h2><div className="mt-3 space-y-2">{reconciliations.map((item) => <div key={item.id} className="flex items-center justify-between border-b py-2 text-sm"><span>{item.account.name} · {item.periodEnd.toLocaleDateString()} · Difference {item.difference.toFixed(2)}</span><Badge variant={item.difference.isZero() ? "default" : "destructive"}>{item.difference.isZero() ? "Balanced" : "Difference"}</Badge></div>)}</div></section>
+  </div>;
+}

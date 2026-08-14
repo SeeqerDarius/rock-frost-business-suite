@@ -23,6 +23,7 @@ const driverSchema = z.object({
   email: emailSchema.optional(),
   status: driverStatusSchema.optional(),
   employmentStartDate: dateInput.optional(),
+  userId: z.string().cuid().optional(),
 });
 
 export async function upsertFleetDriver(formData: FormData): Promise<void> {
@@ -45,6 +46,7 @@ export async function upsertFleetDriver(formData: FormData): Promise<void> {
     email: clean(formData.get("email")) ?? undefined,
     status: clean(formData.get("status")) ?? undefined,
     employmentStartDate: clean(formData.get("employmentStartDate")) ?? undefined,
+    userId: clean(formData.get("userId")) ?? undefined,
   });
   if (!parsed.success) {
     redirect("/app/fleet/drivers?error=invalid-input");
@@ -58,6 +60,7 @@ export async function upsertFleetDriver(formData: FormData): Promise<void> {
     email: parsed.data.email ?? null,
     status: parsed.data.status ?? "ACTIVE",
     employmentStartDate: parsed.data.employmentStartDate ?? null,
+    userId: parsed.data.userId ?? null,
   };
 
   if (id) {

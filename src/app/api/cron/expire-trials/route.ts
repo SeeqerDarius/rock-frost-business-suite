@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { expireTrials } from "@/platform/trials/service";
 import { generateCorrelationId } from "@/lib/audit";
+import { processEffectiveTerminations } from "@/modules/hr/service";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -40,7 +41,7 @@ export async function GET(request: Request) {
   }));
 
   try {
-    const result = await expireTrials();
+    const [result, effectiveTerminations] = await Promise.all([expireTrials(), processEffectiveTerminations()]);
     console.log(JSON.stringify({
       level: "info",
       message: "Trial-expiry cron completed",
@@ -49,6 +50,7 @@ export async function GET(request: Request) {
       requestId,
       candidates: result.candidates,
       expired: result.expired,
+      effectiveTerminations,
       durationMs: Date.now() - startedAt,
     }));
     return Response.json({
@@ -56,6 +58,7 @@ export async function GET(request: Request) {
       correlationId,
       candidates: result.candidates,
       expired: result.expired,
+      effectiveTerminations,
       cutoff: result.cutoff.toISOString(),
     });
   } catch (error) {

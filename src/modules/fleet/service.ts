@@ -104,7 +104,7 @@ export async function listAssignableFleetUsers(organizationId: string) {
 // --- Drivers ---
 
 export function listFleetDrivers(organizationId: string) {
-  return db.fleetDriver.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+  return db.fleetDriver.findMany({ where: { organizationId }, include: { user: true }, orderBy: { name: "asc" } });
 }
 
 export function createFleetDriver(
@@ -118,6 +118,7 @@ export function createFleetDriver(
     status?: FleetDriverStatus;
     employmentStartDate?: Date | null;
     branchId?: string | null;
+    userId?: string | null;
   }
 ) {
   return db.fleetDriver.create({ data: { organizationId, ...data } });
@@ -135,9 +136,80 @@ export function updateFleetDriver(
     status?: FleetDriverStatus;
     employmentStartDate?: Date | null;
     branchId?: string | null;
+    userId?: string | null;
   }
 ) {
   return db.fleetDriver.update({ where: { id, organizationId }, data });
+}
+
+export async function getFleetDriverWorkspace(organizationId: string, userId: string) {
+  return db.fleetDriver.findFirst({
+    where: { organizationId, userId, status: "ACTIVE" },
+    include: {
+      assignedVehicles: {
+        include: {
+          maintenanceRequests: { orderBy: { requestedAt: "desc" }, take: 10 },
+          workAndPayContracts: { where: { contractStatus: "ACTIVE" }, orderBy: { createdAt: "desc" } },
+        },
+      },
+      paymentSubmissions: { orderBy: { createdAt: "desc" }, take: 20 },
+    },
+  });
+}
+
+export async function submitFleetDriverPayment(
+  organizationId: string,
+  userId: string,
+  data: { vehicleId?: string | null; contractId?: string | null; amount: string; paymentDate: Date; paymentMethod: string; reference?: string | null; notes?: string | null },
+) {
+  const driver = await db.fleetDriver.findFirst({ where: { organizationId, userId, status: "ACTIVE" } });
+  if (!driver) throw new NotFoundError("Driver profile not found.");
+  const amount = new Prisma.Decimal(data.amount);
+  if (!amount.isPositive()) throw new InvalidPaymentAmountError("Payment amount must be positive.");
+  if (data.vehicleId) {
+    const assigned = await db.fleetVehicle.findFirst({ where: { id: data.vehicleId, organizationId, assignedDriverId: driver.id } });
+    if (!assigned) throw new NotFoundError("Assigned vehicle not found.");
+  }
+  if (data.contractId) {
+    const contract = await db.fleetWorkAndPayContract.findFirst({ where: { id: data.contractId, organizationId, vehicle: { assignedDriverId: driver.id } } });
+    if (!contract) throw new NotFoundError("Assigned contract not found.");
+  }
+  return db.fleetDriverPaymentSubmission.create({
+    data: { organizationId, driverId: driver.id, ...data, amount },
+  });
+}
+
+export function listFleetDriverPaymentSubmissions(organizationId: string) {
+  return db.fleetDriverPaymentSubmission.findMany({ where: { organizationId }, include: { driver: true }, orderBy: { createdAt: "desc" } });
+}
+
+export async function reviewFleetDriverPaymentSubmission(organizationId: string, id: string, reviewerId: string, approved: boolean, rejectionReason?: string | null) {
+  return db.$transaction(async (tx) => {
+    const submission = await tx.fleetDriverPaymentSubmission.findFirst({ where: { id, organizationId, status: "PENDING" } });
+    if (!submission) throw new NotFoundError("Pending submission not found.");
+    let fleetPaymentId: string | null = null;
+    if (approved) {
+      const payment = await tx.fleetPayment.create({
+        data: {
+          organizationId,
+          reference: submission.reference || `DRV-${submission.id.slice(-8).toUpperCase()}`,
+          date: submission.paymentDate,
+          type: "WORK_AND_PAY",
+          amount: submission.amount,
+          status: "VERIFIED",
+          relatedEntity: submission.contractId ? "FleetWorkAndPayContract" : "FleetDriver",
+          relatedEntityId: submission.contractId || submission.driverId,
+          verified: true,
+          metadata: { driverSubmissionId: submission.id, paymentMethod: submission.paymentMethod },
+        },
+      });
+      fleetPaymentId = payment.id;
+    }
+    return tx.fleetDriverPaymentSubmission.update({
+      where: { id },
+      data: { status: approved ? "APPROVED" : "REJECTED", reviewedById: reviewerId, reviewedAt: new Date(), rejectionReason: approved ? null : rejectionReason, fleetPaymentId },
+    });
+  });
 }
 
 // --- Vehicles ---

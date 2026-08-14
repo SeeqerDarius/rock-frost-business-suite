@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-14: Fleet, Accounting, and HR controlled workflow upgrade
+
+- Added a tenant-scoped Fleet Driver Workspace. Active organization users can be linked to a driver profile, view only assigned vehicles, report maintenance through the existing ownership check, and submit weekly or work-and-pay collections. Submissions remain pending until a Fleet payments manager approves or rejects them; approval atomically creates a verified Fleet payment.
+- Added Accounting liquidity classification for cash, bank, and mobile-money ledger accounts, a journal-derived cashbook, locked one-time opening-balance posting against Opening Balance Equity, and preserved period reconciliation records with visible differences.
+- Replaced direct HR termination with password and optional 2FA step-up, category/reason/dates, explicit account-access handling, maker-checker approval, pending/effective states, cancellation, reinstatement, append-only status history, final-pay inputs, and a generated offboarding checklist. The existing authenticated daily cron now applies approved future-dated terminations.
+- Added granular permissions, schema migration `20260814130000_operational_workflow_upgrades`, `docs/OPERATIONAL_WORKFLOW_UPGRADES.md`, and focused workflow contract tests. No new environment variable is required; the existing `CRON_SECRET` protects scheduled effective-date processing.
+- Local validation: Prisma schema format/validate passed; Prisma client generation passed with `--no-engine` after the standard Windows engine DLL was locked by another process; TypeScript passed; ESLint passed; the full mocked suite passed with 62 files and 359 tests; the Next.js 16.2.12 production build compiled all 192 pages; `git diff --check` passed. The disposable PostgreSQL migration/integration suite, CI, production deploy, and post-deploy verification remain release gates and must be appended here before this entry is considered complete.
+
 ## 2026-08-13: Security control hardening
 
 - Added global CSP, HSTS, clickjacking, MIME-sniffing, referrer, permissions, DNS-prefetch, and opener-policy headers in `next.config.ts`.

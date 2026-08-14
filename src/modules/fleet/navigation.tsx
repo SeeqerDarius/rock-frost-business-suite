@@ -1,10 +1,11 @@
-import { Truck, Users, UserRound, ShieldCheck, Wrench, Handshake, Receipt, BarChart3, Settings, Landmark } from "lucide-react";
+import { Truck, Users, UserRound, ShieldCheck, Wrench, Handshake, Receipt, BarChart3, Settings, Landmark, Gauge } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const fleetNavigation: ModuleNavItem[] = [
   { label: "Fleet Overview", href: "/app/fleet", icon: <Truck className="size-4" /> },
   { label: "Vehicles", href: "/app/fleet/vehicles", icon: <Truck className="size-4" /> },
   { label: "Drivers", href: "/app/fleet/drivers", icon: <UserRound className="size-4" /> },
+  { label: "Driver Workspace", href: "/app/fleet/driver-portal", icon: <Gauge className="size-4" /> },
   { label: "Owners", href: "/app/fleet/owners", icon: <Users className="size-4" /> },
   { label: "Maintenance", href: "/app/fleet/maintenance", icon: <Wrench className="size-4" /> },
   { label: "Insurance & Roadworthy", href: "/app/fleet/insurance-roadworthy", icon: <ShieldCheck className="size-4" /> },

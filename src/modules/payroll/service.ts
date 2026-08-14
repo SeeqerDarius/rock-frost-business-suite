@@ -32,7 +32,7 @@ export function listCompensation(organizationId: string) {
 
 export function listEmployeesWithoutCompensation(organizationId: string) {
   return db.hrEmployee.findMany({
-    where: { organizationId, status: { in: ["ACTIVE", "ON_LEAVE"] }, payrollCompensation: null },
+    where: { organizationId, status: { in: ["ACTIVE", "ON_LEAVE", "REINSTATED"] }, payrollEligible: true, payrollCompensation: null },
     orderBy: { fullName: "asc" },
   });
 }
@@ -131,7 +131,7 @@ export async function processRun(organizationId: string, runId: string) {
   const [settings, compensations] = await Promise.all([
     getSettings(organizationId),
     db.payrollCompensation.findMany({
-      where: { organizationId, employee: { status: { in: ["ACTIVE", "ON_LEAVE"] } } },
+      where: { organizationId, employee: { status: { in: ["ACTIVE", "ON_LEAVE", "REINSTATED"] }, payrollEligible: true } },
     }),
   ]);
 

@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockExpireTrials = vi.fn();
 const mockGenerateCorrelationId = vi.fn(() => "req_test");
+const mockProcessEffectiveTerminations = vi.fn();
 
 vi.mock("@/platform/trials/service", () => ({ expireTrials: mockExpireTrials }));
 vi.mock("@/lib/audit", () => ({ generateCorrelationId: mockGenerateCorrelationId }));
+vi.mock("@/modules/hr/service", () => ({ processEffectiveTerminations: mockProcessEffectiveTerminations }));
 
 const { GET } = await import("@/app/api/cron/expire-trials/route");
 
@@ -16,6 +18,7 @@ beforeEach(() => {
     candidates: 2,
     expired: 2,
   });
+  mockProcessEffectiveTerminations.mockResolvedValue(1);
 });
 
 describe("trial-expiry cron route", () => {
@@ -36,8 +39,10 @@ describe("trial-expiry cron route", () => {
       correlationId: "req_test",
       candidates: 2,
       expired: 2,
+      effectiveTerminations: 1,
       cutoff: "2026-07-14T01:15:00.000Z",
     });
     expect(mockExpireTrials).toHaveBeenCalledTimes(1);
+    expect(mockProcessEffectiveTerminations).toHaveBeenCalledTimes(1);
   });
 });

@@ -10,8 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listFleetPayments } from "@/modules/fleet/service";
-import { createPayment, verifyPayment } from "./actions";
+import { listFleetPayments, listFleetDriverPaymentSubmissions } from "@/modules/fleet/service";
+import { createPayment, verifyPayment, reviewDriverSubmission } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage payments.",
@@ -44,7 +44,7 @@ export default async function FleetPaymentsPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_PAYMENTS_MANAGE);
-  const payments = await listFleetPayments(tenant.organizationId);
+  const [payments, driverSubmissions] = await Promise.all([listFleetPayments(tenant.organizationId), listFleetDriverPaymentSubmissions(tenant.organizationId)]);
 
   return (
     <div className="space-y-6">
@@ -162,6 +162,7 @@ export default async function FleetPaymentsPage({
           </TableBody>
         </Table>
       )}
+      {canManage ? <section className="rounded-xl border p-5"><h2 className="font-semibold">Driver-submitted collections</h2><p className="text-sm text-muted-foreground">Review before a submission becomes a verified fleet payment.</p><div className="mt-3 space-y-2">{driverSubmissions.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm"><span>{item.driver.name} · {item.paymentDate.toLocaleDateString()} · {item.amount.toFixed(2)} · {item.paymentMethod}</span><div className="flex items-center gap-2"><Badge variant={item.status === "APPROVED" ? "default" : item.status === "REJECTED" ? "destructive" : "outline"}>{item.status}</Badge>{item.status === "PENDING" ? <><form action={reviewDriverSubmission}><input type="hidden" name="id" value={item.id} /><Button size="sm" name="decision" value="approve">Approve</Button></form><form action={reviewDriverSubmission}><input type="hidden" name="id" value={item.id} /><Button size="sm" name="decision" value="reject" variant="destructive">Reject</Button></form></> : null}</div></div>)}</div></section> : null}
     </div>
   );
 }

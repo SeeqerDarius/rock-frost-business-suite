@@ -377,6 +377,7 @@ model Organization {
   fileAssets                      FileAsset[]
   fleetOwners                     FleetOwner[]
   fleetDrivers                    FleetDriver[]
+  fleetDriverPaymentSubmissions   FleetDriverPaymentSubmission[]
   fleetVehicles                   FleetVehicle[]
   fleetVehicleDocuments           FleetVehicleDocument[]
   maintenanceRequests             FleetMaintenanceRequest[]
@@ -408,7 +409,11 @@ model Organization {
   accountingInvoices              AccountingInvoice[]
   accountingExpenses              AccountingExpense[]
   accountingJournalEntries        AccountingJournalEntry[]
+  accountingReconciliations       AccountingReconciliation[]
   hrEmployees                     HrEmployee[]
+  hrTerminationRequests           HrTerminationRequest[]
+  hrEmployeeStatusHistory         HrEmployeeStatusHistory[]
+  hrOffboardingTasks              HrOffboardingTask[]
   hrLeaveTypes                    HrLeaveType[]
   hrLeaveRequests                 HrLeaveRequest[]
   hrPerformanceReviews            HrPerformanceReview[]
@@ -971,14 +976,15 @@ model FleetDriver {
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 
-  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch           Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  user             User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
-  assignedVehicles FleetVehicle[]
+  organization       Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch             Branch?                        @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  user               User?                          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  assignedVehicles   FleetVehicle[]
+  paymentSubmissions FleetDriverPaymentSubmission[]
 
+  @@unique([organizationId, userId])
   @@index([organizationId])
   @@index([branchId])
-  @@index([userId])
   @@index([licenceNumber])
 }
 
@@ -1678,6 +1684,19 @@ enum AccountingAccountType {
   EXPENSE
 }
 
+enum AccountingLiquidityType {
+  NONE
+  CASH
+  BANK
+  MOBILE_MONEY
+}
+
+enum AccountingReconciliationStatus {
+  DRAFT
+  COMPLETED
+  REOPENED
+}
+
 enum AccountingInvoiceStatus {
   DRAFT
   SENT
@@ -1694,18 +1713,23 @@ enum AccountingExpenseStatus {
 }
 
 model AccountingAccount {
-  id             String                @id @default(cuid())
-  organizationId String
-  code           String
-  name           String
-  type           AccountingAccountType
-  isSystem       Boolean               @default(false)
-  active         Boolean               @default(true)
-  createdAt      DateTime              @default(now())
+  id                     String                  @id @default(cuid())
+  organizationId         String
+  code                   String
+  name                   String
+  type                   AccountingAccountType
+  isSystem               Boolean                 @default(false)
+  active                 Boolean                 @default(true)
+  liquidityType          AccountingLiquidityType @default(NONE)
+  bankName               String?
+  accountNumberLast4     String?
+  openingBalancePostedAt DateTime?
+  createdAt              DateTime                @default(now())
 
   organization    Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   journalLines    AccountingJournalLine[]
   expenseCategory AccountingExpenseCategory[]
+  reconciliations AccountingReconciliation[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -1816,7 +1840,91 @@ enum HrEmployeeStatus {
   ONBOARDING
   ACTIVE
   ON_LEAVE
+  SUSPENDED
+  TERMINATION_PENDING
   TERMINATED
+  REINSTATED
+}
+
+model AccountingReconciliation {
+  id               String                         @id @default(cuid())
+  organizationId   String
+  accountId        String
+  periodStart      DateTime
+  periodEnd        DateTime
+  statementBalance Decimal                        @db.Decimal(14, 2)
+  ledgerBalance    Decimal                        @db.Decimal(14, 2)
+  difference       Decimal                        @db.Decimal(14, 2)
+  status           AccountingReconciliationStatus @default(DRAFT)
+  notes            String?                        @db.Text
+  completedById    String?
+  completedAt      DateTime?
+  createdAt        DateTime                       @default(now())
+  updatedAt        DateTime                       @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  account      AccountingAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, accountId, periodStart, periodEnd])
+  @@index([organizationId, status])
+}
+
+enum FleetDriverSubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model FleetDriverPaymentSubmission {
+  id              String                      @id @default(cuid())
+  organizationId  String
+  driverId        String
+  vehicleId       String?
+  contractId      String?
+  amount          Decimal                     @db.Decimal(12, 2)
+  paymentDate     DateTime
+  paymentMethod   String
+  reference       String?
+  notes           String?                     @db.Text
+  status          FleetDriverSubmissionStatus @default(PENDING)
+  reviewedById    String?
+  reviewedAt      DateTime?
+  rejectionReason String?                     @db.Text
+  fleetPaymentId  String?
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  driver       FleetDriver  @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status, createdAt])
+  @@index([driverId, paymentDate])
+}
+
+enum HrTerminationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  EFFECTIVE
+  REVERSED
+}
+
+enum HrTerminationCategory {
+  RESIGNATION
+  DISMISSAL
+  REDUNDANCY
+  RETIREMENT
+  CONTRACT_COMPLETION
+  DEATH
+  OTHER
+}
+
+enum HrAccessDisposition {
+  SUSPEND_IMMEDIATELY
+  SUSPEND_ON_EFFECTIVE_DATE
+  LEAVE_UNCHANGED
 }
 
 enum HrLeaveStatus {
@@ -1844,27 +1952,109 @@ model HrEmployee {
   hireDate        DateTime
   terminationDate DateTime?
   status          HrEmployeeStatus @default(ONBOARDING)
+  payrollEligible Boolean          @default(true)
   managerId       String?
   userId          String?
   notes           String?          @db.Text
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
-  organization        Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch              Branch?               @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  manager             HrEmployee?           @relation("EmployeeManager", fields: [managerId], references: [id], onDelete: SetNull)
-  reports             HrEmployee[]          @relation("EmployeeManager")
-  user                User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization        Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch              Branch?                   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  manager             HrEmployee?               @relation("EmployeeManager", fields: [managerId], references: [id], onDelete: SetNull)
+  reports             HrEmployee[]              @relation("EmployeeManager")
+  user                User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
   leaveRequests       HrLeaveRequest[]
   reviews             HrPerformanceReview[]
   payrollCompensation PayrollCompensation?
   payslips            PayrollPayslip[]
+  terminationRequests HrTerminationRequest[]
+  statusHistory       HrEmployeeStatusHistory[]
+  offboardingTasks    HrOffboardingTask[]
 
   @@unique([organizationId, employeeNumber])
   @@index([organizationId, status])
   @@index([branchId])
   @@index([managerId])
   @@index([userId])
+}
+
+model HrTerminationRequest {
+  id                    String                @id @default(cuid())
+  organizationId        String
+  employeeId            String
+  category              HrTerminationCategory
+  reason                String                @db.Text
+  effectiveDate         DateTime
+  lastWorkingDate       DateTime
+  notes                 String?               @db.Text
+  attachmentAssetId     String?
+  status                HrTerminationStatus   @default(PENDING)
+  accessDisposition     HrAccessDisposition
+  makerCheckerEnabled   Boolean               @default(true)
+  payrollEligibleUntil  DateTime?
+  initiatedById         String
+  approvedById          String?
+  rejectedById          String?
+  cancelledById         String?
+  effectiveAt           DateTime?
+  reviewedAt            DateTime?
+  cancellationReason    String?               @db.Text
+  reversalReason        String?               @db.Text
+  finalSalary           Decimal?              @db.Decimal(12, 2)
+  leaveEncashment       Decimal               @default(0) @db.Decimal(12, 2)
+  severance             Decimal               @default(0) @db.Decimal(12, 2)
+  outstandingDeductions Decimal               @default(0) @db.Decimal(12, 2)
+  benefitsSettlement    Decimal               @default(0) @db.Decimal(12, 2)
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     HrEmployee   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, status, effectiveDate])
+  @@index([employeeId, createdAt])
+}
+
+model HrEmployeeStatusHistory {
+  id             String           @id @default(cuid())
+  organizationId String
+  employeeId     String
+  previousStatus HrEmployeeStatus
+  newStatus      HrEmployeeStatus
+  effectiveDate  DateTime
+  reason         String           @db.Text
+  initiatedById  String?
+  approvedById   String?
+  terminationId  String?
+  metadata       Json?
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     HrEmployee   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@index([employeeId, effectiveDate])
+}
+
+model HrOffboardingTask {
+  id             String    @id @default(cuid())
+  organizationId String
+  employeeId     String
+  terminationId  String
+  title          String
+  completed      Boolean   @default(false)
+  completedById  String?
+  completedAt    DateTime?
+  notes          String?   @db.Text
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     HrEmployee   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, completed])
+  @@index([terminationId])
 }
 
 model HrLeaveType {

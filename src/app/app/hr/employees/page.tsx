@@ -25,7 +25,10 @@ const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "seco
   ONBOARDING: "secondary",
   ACTIVE: "default",
   ON_LEAVE: "outline",
+  SUSPENDED: "destructive",
+  TERMINATION_PENDING: "secondary",
   TERMINATED: "destructive",
+  REINSTATED: "default",
 };
 
 interface EmployeeFieldsProps {
@@ -104,7 +107,7 @@ export default async function HrEmployeesPage({
 }) {
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("hr");
-  const canManage = hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE);
+  const canManage = hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_EDIT) || hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE);
   const [employees, managers] = await Promise.all([
     listEmployees(tenant.organizationId),
     listManagerCandidates(tenant.organizationId),
@@ -182,13 +185,7 @@ export default async function HrEmployeesPage({
                           <Button type="submit" size="sm" variant="ghost">Mark active</Button>
                         </form>
                       ) : null}
-                      {employee.status !== "TERMINATED" ? (
-                        <form action={changeEmployeeStatus}>
-                          <input type="hidden" name="id" value={employee.id} />
-                          <input type="hidden" name="status" value="TERMINATED" />
-                          <Button type="submit" size="sm" variant="ghost">Terminate</Button>
-                        </form>
-                      ) : null}
+                      {!["TERMINATED", "TERMINATION_PENDING"].includes(employee.status) ? <a href={`/app/hr/terminations?employeeId=${employee.id}`}><Button type="button" size="sm" variant="ghost">Termination workflow</Button></a> : null}
                       <EntityDialog
                         trigger={<Button size="sm" variant="ghost">Edit</Button>}
                         title="Edit employee"

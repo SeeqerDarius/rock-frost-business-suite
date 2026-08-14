@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listFleetDrivers } from "@/modules/fleet/service";
+import { listFleetDrivers, listAssignableFleetUsers } from "@/modules/fleet/service";
 import { upsertFleetDriver } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -25,7 +25,7 @@ function toDateInputValue(date: Date | null) {
   return date ? date.toISOString().slice(0, 10) : "";
 }
 
-function DriverFields({ driver }: { driver?: { name: string; licenceNumber: string | null; licenceExpiry: Date | null; phone: string | null; email: string | null; status: string; employmentStartDate: Date | null } }) {
+function DriverFields({ driver, users }: { driver?: { name: string; licenceNumber: string | null; licenceExpiry: Date | null; phone: string | null; email: string | null; status: string; employmentStartDate: Date | null; userId: string | null }; users: { id: string; name: string | null; email: string }[] }) {
   const idSuffix = driver ? "-edit" : "";
   return (
     <>
@@ -43,6 +43,7 @@ function DriverFields({ driver }: { driver?: { name: string; licenceNumber: stri
           <Input id={`licenceExpiry${idSuffix}`} name="licenceExpiry" type="date" defaultValue={toDateInputValue(driver?.licenceExpiry ?? null)} />
         </div>
       </div>
+      <div className="space-y-2"><Label htmlFor={`userId${idSuffix}`}>Driver login</Label><select id={`userId${idSuffix}`} name="userId" defaultValue={driver?.userId ?? ""} className="h-10 w-full rounded-md border bg-background px-3"><option value="">No login linked</option>{users.map((user) => <option key={user.id} value={user.id}>{user.name || user.email} ({user.email})</option>)}</select><p className="text-xs text-muted-foreground">Invite the driver from Administration with the Driver role, then link the active login here.</p></div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor={`phone${idSuffix}`}>Phone</Label>
@@ -91,7 +92,7 @@ export default async function FleetDriversPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_DRIVERS_MANAGE);
-  const drivers = await listFleetDrivers(tenant.organizationId);
+  const [drivers, users] = await Promise.all([listFleetDrivers(tenant.organizationId), listAssignableFleetUsers(tenant.organizationId)]);
 
   return (
     <div className="space-y-6">
@@ -108,7 +109,7 @@ export default async function FleetDriversPage({
             title="New driver"
             action={upsertFleetDriver}
           >
-            <DriverFields />
+            <DriverFields users={users} />
           </EntityDialog>
         ) : null}
       </div>
@@ -134,6 +135,7 @@ export default async function FleetDriversPage({
               <TableHead>Licence</TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Login</TableHead>
               {canManage ? <TableHead /> : null}
             </TableRow>
           </TableHeader>
@@ -146,6 +148,7 @@ export default async function FleetDriversPage({
                 <TableCell>
                   <Badge variant={driver.status === "ACTIVE" ? "default" : "outline"}>{STATUS_OPTIONS[driver.status]}</Badge>
                 </TableCell>
+                <TableCell className="text-muted-foreground">{driver.user?.email ?? "Not linked"}</TableCell>
                 {canManage ? (
                   <TableCell className="text-right">
                     <EntityDialog
@@ -159,7 +162,7 @@ export default async function FleetDriversPage({
                       submitLabel="Save changes"
                     >
                       <input type="hidden" name="id" value={driver.id} />
-                      <DriverFields driver={driver} />
+                      <DriverFields driver={driver} users={users} />
                     </EntityDialog>
                   </TableCell>
                 ) : null}
