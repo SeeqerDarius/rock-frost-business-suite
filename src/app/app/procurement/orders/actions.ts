@@ -13,9 +13,10 @@ import {
   receiveOrderLine,
   OrderStateError,
   ReceiveQuantityError,
+  WarehouseRequiredError,
   NotFoundError,
 } from "@/modules/procurement/service";
-import { InsufficientStockError } from "@/modules/inventory/service";
+import { InsufficientStockError, NotFoundError as InventoryNotFoundError } from "@/modules/inventory/service";
 import { shortText, positiveInt, moneyAmount, longText, dateInput, cuid, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
 
@@ -170,7 +171,7 @@ export async function receiveExistingOrderLine(formData: FormData): Promise<void
       createdById: session?.user?.id ?? null,
     });
   } catch (error) {
-    if (error instanceof ReceiveQuantityError) {
+    if (error instanceof ReceiveQuantityError || error instanceof WarehouseRequiredError) {
       await logAuditEvent({
         organizationId: tenant.organizationId,
         userId: session?.user?.id ?? null,
@@ -181,11 +182,17 @@ export async function receiveExistingOrderLine(formData: FormData): Promise<void
         status: "FAILURE",
         metadata: { reason: error.constructor.name },
       });
-      redirect("/app/procurement/orders?error=invalid-quantity");
+      redirect(
+        error instanceof WarehouseRequiredError
+          ? "/app/procurement/orders?error=warehouse-required"
+          : "/app/procurement/orders?error=invalid-quantity",
+      );
     }
     if (error instanceof OrderStateError) redirect("/app/procurement/orders?error=invalid-state");
     if (error instanceof InsufficientStockError) redirect("/app/procurement/orders?error=inventory-error");
-    if (error instanceof NotFoundError) redirect("/app/procurement/orders?error=not-found");
+    if (error instanceof NotFoundError || error instanceof InventoryNotFoundError) {
+      redirect("/app/procurement/orders?error=not-found");
+    }
     throw error;
   }
 

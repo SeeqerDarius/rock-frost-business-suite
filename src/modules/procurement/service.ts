@@ -241,6 +241,17 @@ async function recomputeOrderStatus(tx: Parameters<Parameters<typeof db.$transac
 export class ReceiveQuantityError extends Error {}
 
 /**
+ * Thrown when an order line linked to a real InventoryItem is received
+ * without a warehouse. A non-stock line (no itemId — an order for a service
+ * or an untracked one-off item) never needs a warehouse, so this only fires
+ * for the linked case. See docs/DECISIONS.md's 2026-08-14 entry: an earlier
+ * version silently skipped the Inventory stock movement in this situation
+ * while still marking the line received, leaving a purchase order that
+ * claimed stock arrived when no InventoryStock row was ever touched.
+ */
+export class WarehouseRequiredError extends Error {}
+
+/**
  * Receiving a line, posting its Inventory stock movement, and recomputing
  * the order's overall status now commit as one all-or-nothing transaction —
  * previously these were three separate statements, so a failure after the
@@ -267,6 +278,10 @@ export async function receiveOrderLine(
 
   const line = await db.procurementOrderLine.findFirst({ where: { id: input.lineId, orderId: input.orderId } });
   if (!line) throw new NotFoundError("Order line not found.");
+
+  if (line.itemId && !input.warehouseId) {
+    throw new WarehouseRequiredError("Select a warehouse to receive this item into stock.");
+  }
 
   const remaining = line.quantity - line.receivedQuantity;
   if (input.quantity > remaining) {
@@ -325,9 +340,12 @@ export function setDefaultWarehouse(organizationId: string, defaultWarehouseId: 
 // --- Reports ---
 
 export async function getProcurementSummary(organizationId: string) {
-  const [requests, orders] = await Promise.all([
-    db.procurementRequest.findMany({ where: { organizationId } }),
-    db.procurementOrder.findMany({ where: { organizationId }, include: { lines: true } }),
+  const now = new Date();
+  const [requests, orders, vendorCount, activeVendorCount] = await Promise.all([
+    db.procurementRequest.findMany({ where: { organizationId }, orderBy: { createdAt: "desc" } }),
+    db.procurementOrder.findMany({ where: { organizationId }, include: { lines: true, vendor: true }, orderBy: { createdAt: "desc" } }),
+    db.procurementVendor.count({ where: { organizationId } }),
+    db.procurementVendor.count({ where: { organizationId, active: true } }),
   ]);
 
   const pendingRequests = requests.filter((r) => r.status === "PENDING");
@@ -336,14 +354,33 @@ export async function getProcurementSummary(organizationId: string) {
     (sum, o) => sum + o.lines.reduce((lineSum, l) => lineSum + (l.quantity - l.receivedQuantity) * Number(l.unitCost), 0),
     0,
   );
+  // "Overdue" — an open order whose expected date has already passed and
+  // still isn't fully received. Distinct from openOrderCount: every open
+  // order is outstanding, but only some are actually late.
+  const overdueOrders = openOrders.filter((o) => o.expectedDate !== null && o.expectedDate < now);
 
   return {
     pendingRequestCount: pendingRequests.length,
     totalRequestCount: requests.length,
     openOrderCount: openOrders.length,
     openOrderValue,
+    overdueOrderCount: overdueOrders.length,
     receivedOrderCount: orders.filter((o) => o.status === "RECEIVED").length,
     totalOrderCount: orders.length,
+    vendorCount,
+    activeVendorCount,
+    pendingRequestsPreview: pendingRequests.slice(0, 5).map((r) => ({
+      id: r.id,
+      requestNumber: r.requestNumber,
+      description: r.description,
+      quantity: r.quantity,
+    })),
+    overdueOrdersPreview: overdueOrders.slice(0, 5).map((o) => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      vendorName: o.vendor.name,
+      expectedDate: o.expectedDate as Date,
+    })),
   };
 }
 

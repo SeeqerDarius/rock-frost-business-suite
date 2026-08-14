@@ -1,4 +1,5 @@
-import { AlertTriangle, Lock, Tag } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, Lock, Tag, ShoppingBag, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -7,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { requireModuleAccess } from "@/lib/auth/module-access";
-import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { hasPermission, canAccessModule, PERMISSIONS } from "@/lib/auth/permissions";
 import { getInventorySettings, listCategories } from "@/modules/inventory/service";
 import { addCategory, saveInventorySettings } from "./actions";
 
@@ -38,10 +39,24 @@ export default async function InventorySettingsPage({
     listCategories(tenant.organizationId),
     getInventorySettings(tenant.organizationId),
   ]);
+  const canReachProcurementSettings = canAccessModule(tenant, "procurement") && hasPermission(tenant, PERMISSIONS.PROCUREMENT_SETTINGS_MANAGE);
 
   return (
     <div className="space-y-6">
       <PageHeader title="Inventory Settings" description="Module-wide configuration for Inventory." />
+
+      {canReachProcurementSettings ? (
+        <Link
+          href="/app/procurement/settings"
+          className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3 text-sm transition-colors hover:bg-muted/50"
+        >
+          <span className="flex items-center gap-2">
+            <ShoppingBag className="size-4 text-muted-foreground" aria-hidden="true" />
+            Looking for order numbering or the default receiving warehouse? See Procurement Settings.
+          </span>
+          <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </Link>
+      ) : null}
 
       {saved ? (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">

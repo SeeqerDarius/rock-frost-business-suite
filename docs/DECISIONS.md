@@ -1,5 +1,17 @@
 # Architecture & Tooling Decisions
 
+## 2026-08-14 — Inventory & Procurement consolidated as one customer-facing product; linked receiving now requires a warehouse
+
+**Decision:** Inventory and Procurement are presented to tenants as one product, "Inventory & Procurement" — a shared sidebar navigation and a combined overview at `/app/inventory` (see `docs/INVENTORY_PROCUREMENT_CONSOLIDATION.md`). This is presentation only: the two modules keep their own route trees, permission prefixes, database tables, and service functions, unrenamed. Separately, `receiveOrderLine()` (`src/modules/procurement/service.ts`) now throws `WarehouseRequiredError` if a purchase order line linked to a real `InventoryItem` is received without a warehouse, rather than silently marking the line received while never touching Inventory. A non-stock line (no linked item) is unaffected and still requires no warehouse.
+
+**Why:** The original 2026-07-20 Procurement/Inventory integration decision (below) described "no warehouse selected at receiving time" as an accepted no-op alongside "no linked item," treating both as reasons a receipt might legitimately not touch Inventory. That conflated two different situations: an order for a service or untracked item genuinely has no inventory consequence, but an order for a *real, linked* item with no warehouse chosen is an operator omission, not a valid non-stock order. Letting it through silently meant a purchase order could read as fully received with no `InventoryStock` row ever updated — a real correctness gap, not a deliberate feature.
+
+**How the boundary is preserved:** The fix is a pre-condition check inside `receiveOrderLine()` itself, before any write — it does not change how Procurement calls Inventory (still only `recordMovement()`, still inside the same transaction as the line/order status update). `docs/DECISIONS.md`'s 2026-07-20 Procurement entry is amended in place to point here rather than being silently rewritten.
+
+**Not done (and deliberately so):** No change to the module registry, entitlements, subscription/pricing catalogue, or permission prefixes — those remain centrally owned and are tracked separately for whoever owns that follow-up.
+
+---
+
 ## 2026-08-03 — Vercel previews never apply database migrations
 
 **Decision:** `npm run vercel-build` runs `prisma migrate deploy` only when `VERCEL_ENV=production`; preview builds compile the application without mutating a database. Production retains the migration-before-build gate.
@@ -55,7 +67,7 @@ query POS, Inventory, Accounting, HR, or Payroll tables directly.
 
 **Why:** A purchase order that doesn't actually move stock when received isn't a real procurement flow — it would just be a form with no consequence, the same class of problem this rebuild exists to avoid (see the 2026-07-19 full-rebuild entry). Procurement genuinely needs Inventory's stock-movement logic; duplicating `recordMovement()`'s validation (insufficient/negative-stock checks, the `InventoryStock` upsert-or-create logic) inside Procurement would be pure duplication, not module independence.
 
-**How the boundary is preserved:** Procurement only calls Inventory's public, already-permission-agnostic service function (`recordMovement`) — it never reaches into Inventory's Prisma models directly, and Inventory has no reciprocal dependency on Procurement (it doesn't know purchase orders exist). If the order line has no linked `InventoryItem`, or no warehouse is selected at receiving time, the receipt is tracked on the `ProcurementOrderLine.receivedQuantity` alone and no Inventory call is made — receiving is not required to be tied to real inventory, since some procurement requests are for non-stocked items or services.
+**How the boundary is preserved:** Procurement only calls Inventory's public, already-permission-agnostic service function (`recordMovement`) — it never reaches into Inventory's Prisma models directly, and Inventory has no reciprocal dependency on Procurement (it doesn't know purchase orders exist). If the order line has no linked `InventoryItem`, the receipt is tracked on the `ProcurementOrderLine.receivedQuantity` alone and no Inventory call is made — receiving is not required to be tied to real inventory, since some procurement requests are for non-stocked items or services. **Corrected 2026-08-14** (see that entry below): a line that *is* linked to a real `InventoryItem` now requires a warehouse to be received at all — the original version of this decision let that case silently skip the Inventory call too, which is no longer true.
 
 **Not done (and deliberately so):** Procurement does not post anything to Accounting (e.g., an Accounts Payable liability when an order is received) in this pass — see `OPERATOR_HANDOFF.md`'s Phase 12 entry for the same reasoning already applied to Payroll↔Accounting.
 
