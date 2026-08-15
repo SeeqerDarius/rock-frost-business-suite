@@ -17,9 +17,9 @@ export interface DeviceLockState {
 export interface DeviceLockControllerOptions {
   inactivityTimeoutMs?: number;
   offlineGracePeriodMs?: number;
-  /** Injectable clock for tests — defaults to Date.now. */
+  /** Injectable clock for tests: defaults to Date.now. */
   now?: () => number;
-  /** Injectable timer functions for tests — default to the real globals. */
+  /** Injectable timer functions for tests: default to the real globals. */
   setIntervalFn?: typeof setInterval;
   clearIntervalFn?: typeof clearInterval;
   /** How often the controller re-checks inactivity/offline-expiry. Kept short relative to the timeout so the UI reacts promptly. */
@@ -32,7 +32,7 @@ type Listener = (state: DeviceLockState) => void;
  * Wires session-policy.ts's pure decisions to a real polling timer and
  * exposes a small pub/sub surface the shell UI subscribes to. Locking
  * itself only changes in-memory UI state and (for the "revoked" reason)
- * triggers a cached-data purge via security/revocation.ts — it never
+ * triggers a cached-data purge via security/revocation.ts: it never
  * touches the encrypted database's own key, so a correctly-unlocked app
  * regains access to its cache instantly without re-syncing.
  */
@@ -55,6 +55,7 @@ export class DeviceLockController {
   private accessTokenExpiresAt: number | null = null;
   private lastSuccessfulServerContactAt: number | null = null;
   private isCurrentlyOnline = false;
+  private offlineAccessUntil: number | null = null;
 
   constructor(options: DeviceLockControllerOptions = {}) {
     this.inactivityTimeoutMs = options.inactivityTimeoutMs ?? DEFAULT_INACTIVITY_TIMEOUT_MS;
@@ -80,16 +81,17 @@ export class DeviceLockController {
   recordActivity(): void {
     this.lastActivityAt = this.now();
     if (this.state.locked && this.state.reason === "inactivity") {
-      // Recording activity alone does not unlock — see unlock(). This just
+      // Recording activity alone does not unlock: see unlock(). This just
       // keeps the timestamp fresh so a subsequent explicit unlock doesn't
       // immediately re-lock on the very next check.
     }
   }
 
-  updateSyncStatus(input: { accessTokenExpiresAt: number | null; lastSuccessfulServerContactAt: number | null; isOnline: boolean }): void {
+  updateSyncStatus(input: { accessTokenExpiresAt: number | null; offlineAccessUntil?: number | null; lastSuccessfulServerContactAt: number | null; isOnline: boolean }): void {
     this.accessTokenExpiresAt = input.accessTokenExpiresAt;
     this.lastSuccessfulServerContactAt = input.lastSuccessfulServerContactAt;
     this.isCurrentlyOnline = input.isOnline;
+    this.offlineAccessUntil = input.offlineAccessUntil ?? this.offlineAccessUntil;
   }
 
   lockForRevocation(): void {
@@ -100,7 +102,7 @@ export class DeviceLockController {
     this.setState({ locked: true, reason: "manual", offlineExpiryReason: null });
   }
 
-  /** Only inactivity and manual locks can be cleared this way — offline-expiry and revocation locks require going back through activation/re-authentication, since they mean this device's credentials can no longer be trusted at face value. */
+  /** Only inactivity and manual locks can be cleared this way: offline-expiry and revocation locks require going back through activation/re-authentication, since they mean this device's credentials can no longer be trusted at face value. */
   unlock(): boolean {
     if (this.state.reason === "offline_session_expired" || this.state.reason === "revoked") return false;
     this.recordActivity();
@@ -119,6 +121,11 @@ export class DeviceLockController {
 
   private check(): void {
     if (this.state.locked) return;
+
+    if (!this.isCurrentlyOnline && this.offlineAccessUntil !== null && this.now() >= this.offlineAccessUntil) {
+      this.setState({ locked: true, reason: "offline_session_expired", offlineExpiryReason: "token_expired_and_offline" });
+      return;
+    }
 
     if (this.accessTokenExpiresAt !== null) {
       const expiryReason = evaluateOfflineSessionExpiry({

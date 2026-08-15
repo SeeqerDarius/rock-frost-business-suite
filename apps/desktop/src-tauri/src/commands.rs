@@ -1,5 +1,5 @@
 //! Tauri commands invoked from `src/db/tauri-database.ts`. One function
-//! per `LocalDatabase` interface method (`src/db/local-database.ts`) — the
+//! per `LocalDatabase` interface method (`src/db/local-database.ts`): the
 //! command name and argument shape here must match that file's `invoke()`
 //! calls exactly. See db.rs's module doc comment for verification status.
 
@@ -222,7 +222,7 @@ const QUEUED_MUTATION_COLUMNS: &str =
 pub fn db_enqueue_mutation(db: State<AppDb>, mutation: NewQueuedMutation) -> Result<QueuedMutationRecord, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 
-    // Idempotent on mutationId — a retried logical mutation reusing the
+    // Idempotent on mutationId: a retried logical mutation reusing the
     // same client-generated id returns the existing row rather than
     // inserting a duplicate. See src/sync/mutation-queue.ts.
     if let Some(existing) = conn

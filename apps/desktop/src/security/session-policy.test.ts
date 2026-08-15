@@ -23,7 +23,7 @@ describe("evaluateOfflineSessionExpiry", () => {
     offlineGracePeriodMs: 10_000,
   };
 
-  it("never expires an online session, even with an expired token — an online device can refresh instead", () => {
+  it("never expires an online session, even with an expired token: an online device can refresh instead", () => {
     expect(evaluateOfflineSessionExpiry({ ...baseInput, now: 500_000, isCurrentlyOnline: true })).toBeNull();
   });
 

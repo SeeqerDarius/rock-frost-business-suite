@@ -1,10 +1,10 @@
 /**
  * The device lock screen (security/device-lock.ts) must be able to unlock
- * while genuinely offline — that's the entire point of a local-first app —
+ * while genuinely offline: that's the entire point of a local-first app -
  * so it cannot depend on re-validating the cloud password against the
  * server. Instead, activation asks the user to set a short local unlock
  * passcode, and only a PBKDF2 hash + random salt of it is ever persisted
- * (via the credential store, alongside the sync tokens) — never the raw
+ * (via the credential store, alongside the sync tokens): never the raw
  * passcode, and this passcode is never sent to the server or reused as the
  * cloud account password.
  */
@@ -55,7 +55,7 @@ export async function hashPasscode(passcode: string): Promise<StoredPasscode> {
  * Constant-time-ish comparison: both hashes are fixed-length base64 of a
  * fixed-length digest, so a simple loop comparing every character (rather
  * than short-circuiting `===`) avoids leaking early-mismatch timing for
- * what is, admittedly, a low-value target (a 4-8 digit local passcode) —
+ * what is, admittedly, a low-value target (a 4-8 digit local passcode) -
  * cheap to do correctly, so it's done correctly.
  */
 function timingSafeEqual(a: string, b: string): boolean {

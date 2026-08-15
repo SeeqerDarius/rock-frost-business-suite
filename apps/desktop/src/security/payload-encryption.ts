@@ -9,7 +9,7 @@
  * This implementation is genuinely wired and covered by real round-trip
  * unit tests (see payload-encryption.test.ts) using the Web Crypto API
  * (`crypto.subtle`), which is available both in the Tauri webview (a real
- * browser engine) and in this repository's Node-based test runner — unlike
+ * browser engine) and in this repository's Node-based test runner: unlike
  * the OS-credential-store abstraction in credential-store.ts, this one does
  * not depend on anything this environment couldn't actually exercise.
  */
@@ -21,7 +21,7 @@ const IV_LENGTH_BYTES = 12; // 96-bit IV is the AES-GCM-recommended size.
 export interface EncryptedPayload {
   /** Base64-encoded ciphertext (includes the GCM authentication tag, per the Web Crypto API's own output format). */
   ciphertext: string;
-  /** Base64-encoded initialization vector, unique per encryption call. Not secret — required to decrypt. */
+  /** Base64-encoded initialization vector, unique per encryption call. Not secret: required to decrypt. */
   iv: string;
 }
 
@@ -43,7 +43,7 @@ function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-/** Generates a fresh random AES-256-GCM key. Callers are responsible for handing the exported key to CredentialStore for OS-backed persistence — this module never persists anything itself. */
+/** Generates a fresh random AES-256-GCM key. Callers are responsible for handing the exported key to CredentialStore for OS-backed persistence: this module never persists anything itself. */
 export async function generateEncryptionKey(): Promise<CryptoKey> {
   return crypto.subtle.generateKey({ name: ALGORITHM, length: KEY_LENGTH_BITS }, true, ["encrypt", "decrypt"]);
 }
@@ -58,7 +58,7 @@ export async function importEncryptionKey(exported: string): Promise<CryptoKey> 
   return crypto.subtle.importKey("raw", raw, { name: ALGORITHM }, true, ["encrypt", "decrypt"]);
 }
 
-/** The real {@link PayloadEncryptor}, backed by a single in-memory AES-256-GCM CryptoKey supplied at construction. The key itself is never written by this class — see credential-store.ts for where it's persisted. */
+/** The real {@link PayloadEncryptor}, backed by a single in-memory AES-256-GCM CryptoKey supplied at construction. The key itself is never written by this class: see credential-store.ts for where it's persisted. */
 export class AesGcmPayloadEncryptor implements PayloadEncryptor {
   constructor(private readonly key: CryptoKey) {}
 
@@ -82,7 +82,7 @@ export class AesGcmPayloadEncryptor implements PayloadEncryptor {
 }
 
 /**
- * A deliberately non-functional {@link PayloadEncryptor} — throws on every
+ * A deliberately non-functional {@link PayloadEncryptor}: throws on every
  * call. Used as the default before a session key has been established
  * (before sign-in / after lock), so a programming error that tries to
  * encrypt or decrypt outside an unlocked session fails loudly instead of

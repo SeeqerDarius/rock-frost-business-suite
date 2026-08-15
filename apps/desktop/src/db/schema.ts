@@ -1,6 +1,6 @@
 /**
  * Local, device-side data model. Every row here lives only inside the
- * encrypted on-device SQLite database (see src-tauri/src/db.rs) — none of
+ * encrypted on-device SQLite database (see src-tauri/src/db.rs): none of
  * these tables, or their names, are shared with or dictated by the cloud
  * schema Codex owns. The desktop client never connects to Neon/PostgreSQL
  * directly; everything it knows comes through the sync contract in
@@ -25,7 +25,7 @@ export interface DeviceRecord {
 
 /**
  * A cached, cloud-authoritative business record last seen from a pull.
- * Keyed by (moduleKey, entityType, entityId) — one row per entity, holding
+ * Keyed by (moduleKey, entityType, entityId): one row per entity, holding
  * only the latest known state, never a history.
  */
 export interface CachedRecord {
@@ -34,7 +34,7 @@ export interface CachedRecord {
   entityId: string;
   version: number;
   payload: unknown;
-  /** True once a local queued mutation against this entity hasn't been confirmed applied by the server yet — the UI must never present this record's fields as cloud-confirmed while true. */
+  /** True once a local queued mutation against this entity hasn't been confirmed applied by the server yet: the UI must never present this record's fields as cloud-confirmed while true. */
   hasPendingLocalChange: boolean;
   updatedAt: string;
   updatedByUserId: string | null;
@@ -44,7 +44,7 @@ export interface CachedRecord {
 export type QueuedMutationStatus = "pending" | "sending" | "applied" | "conflict" | "rejected";
 
 /**
- * One row per offline mutation, in the exact order it was recorded — this
+ * One row per offline mutation, in the exact order it was recorded: this
  * order is the queue's contract. `mutationId` is the idempotency key
  * (see src/sync/mutation-queue.ts) and is therefore also this table's
  * natural unique key, even though `id` (an autoincrement-style local
@@ -53,21 +53,21 @@ export type QueuedMutationStatus = "pending" | "sending" | "applied" | "conflict
  * `changedAt` alone.
  */
 export interface QueuedMutationRecord {
-  /** Monotonically increasing local sequence number — the true ordering key. Assigned by the local database on insert, never by the client in memory, so ordering survives an app restart mid-queue. */
+  /** Monotonically increasing local sequence number: the true ordering key. Assigned by the local database on insert, never by the client in memory, so ordering survives an app restart mid-queue. */
   id: number;
   mutationId: string;
   organizationId: string;
   moduleKey: OfflineModuleKey;
   entityType: string;
   entityId: string;
-  baseVersion: number | null;
+  baseVersion: 0;
   operation: MutationOperation;
   changedAt: string;
   payload: unknown;
   status: QueuedMutationStatus;
   attemptCount: number;
   lastAttemptAt: string | null;
-  /** Set only when status is "rejected" — the server's rejectionReason, kept for the audit trail and any manual support follow-up. */
+  /** Set only when status is "rejected": the server's rejectionReason, kept for the audit trail and any manual support follow-up. */
   rejectionReason: string | null;
 }
 
@@ -119,7 +119,7 @@ export type AuditEventType =
 /**
  * Local, append-only audit trail. This is a device-local operational log
  * for support/debugging and for proving to the user what happened to their
- * offline work — it is not, and does not replace, the server's own audit
+ * offline work: it is not, and does not replace, the server's own audit
  * log for the entities it authoritatively owns.
  */
 export interface AuditEventRecord {

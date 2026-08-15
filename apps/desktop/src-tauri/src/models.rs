@@ -1,5 +1,5 @@
 //! Rust-side mirrors of the TypeScript types in `src/db/schema.ts`. Field
-//! names and shapes must stay in lockstep with that file — this is the
+//! names and shapes must stay in lockstep with that file: this is the
 //! wire contract for every `invoke()` call in `src/db/tauri-database.ts`.
 //! Unverified in this environment; see `CLAUDE_HANDOFF.md`.
 
@@ -26,7 +26,7 @@ pub struct CachedRecord {
     pub entity_type: String,
     pub entity_id: String,
     pub version: i64,
-    /// Stored as opaque JSON text in SQLite (see db.rs) — this app's Rust
+    /// Stored as opaque JSON text in SQLite (see db.rs): this app's Rust
     /// side never needs to interpret a module's payload shape, only
     /// persist and return it verbatim.
     pub payload: serde_json::Value,
@@ -55,7 +55,7 @@ pub struct QueuedMutationRecord {
     pub rejection_reason: Option<String>,
 }
 
-/// Shape of the object `db.enqueueMutation()` sends — everything
+/// Shape of the object `db.enqueueMutation()` sends: everything
 /// `QueuedMutationRecord` has except the server-assigned/derived fields.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]

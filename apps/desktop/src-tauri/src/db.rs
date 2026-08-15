@@ -1,5 +1,5 @@
 //! Encrypted, device-local SQLite storage. This is the ONLY module in the
-//! whole application that opens the database connection or writes SQL —
+//! whole application that opens the database connection or writes SQL -
 //! every table this app has (device metadata, cached records, mutation
 //! queue, sync cursors, conflicts, audit events) is defined and queried
 //! here. `src/db/tauri-database.ts` on the TypeScript side never sees a
@@ -8,20 +8,18 @@
 //!
 //! # Encryption
 //! Uses SQLCipher (via `rusqlite`'s `bundled-sqlcipher-vendored-openssl`
-//! feature — see Cargo.toml) rather than plain SQLite, so the database
+//! feature: see Cargo.toml) rather than plain SQLite, so the database
 //! file on disk is encrypted at rest. The SQLCipher key itself is a
 //! randomly generated 256-bit value, created once on first launch and
 //! persisted through `credentials.rs` (Windows Credential Manager via the
-//! `keyring` crate) — never written to disk in plaintext, never derived
+//! `keyring` crate): never written to disk in plaintext, never derived
 //! from the user's cloud password, and never transmitted anywhere.
 //!
-//! # Honesty about verification status
-//! This module has been written against `rusqlite` 0.32's documented
-//! SQLCipher API and Tauri 2's app-data-dir conventions, but this
-//! environment has no Rust toolchain — it has never been compiled, and the
-//! SQLCipher `PRAGMA key` handshake in particular has not been exercised
-//! end-to-end. Treat this as a solid starting implementation to compile,
-//! fix, and verify, not as proven-working code. See CLAUDE_HANDOFF.md.
+//! # Verification status
+//! This module has passed Rust compilation, optimized Tauri packaging, and
+//! application startup with `rusqlite` 0.32 and SQLCipher. A fully activated
+//! device workflow remains a required distribution gate. See
+//! CLAUDE_HANDOFF.md.
 
 use rusqlite::Connection;
 use std::sync::Mutex;

@@ -2,7 +2,7 @@
  * Rock Frost desktop shell theme. Standalone (this package has its own
  * manifest and configuration per the assignment brief) but deliberately
  * matches the brand tokens used by the web app's design system
- * (src/app/globals.css in the main repo — same blue primary, same base
+ * (src/app/globals.css in the main repo: same blue primary, same base
  * radius) so the desktop client reads as the same product, not a
  * reskinned generic app shell.
  */
@@ -82,7 +82,7 @@ body {
 }
 
 /* A single, consistent focus ring for keyboard navigation across every
-   interactive element in the shell — never suppressed with outline: none
+   interactive element in the shell: never suppressed with outline: none
    without an explicit, equally visible replacement. */
 :focus-visible {
   outline: 2px solid var(--rf-primary);

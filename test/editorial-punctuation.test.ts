@@ -7,7 +7,7 @@ async function sourceFiles(directory: string): Promise<string[]> {
   const files = await Promise.all(entries.map(async (entry) => {
     const target = path.join(directory, entry.name);
     if (entry.isDirectory()) return sourceFiles(target);
-    return /\.(?:css|ts|tsx)$/.test(entry.name) ? [target] : [];
+    return /\.(?:css|rs|ts|tsx)$/.test(entry.name) ? [target] : [];
   }));
   return files.flat();
 }
@@ -17,6 +17,8 @@ describe("editorial punctuation", () => {
     const roots = [
       path.join(process.cwd(), "src", "app", "(public)"),
       path.join(process.cwd(), "src", "components", "marketing"),
+      path.join(process.cwd(), "apps", "desktop", "src"),
+      path.join(process.cwd(), "apps", "desktop", "src-tauri", "src"),
     ];
     const files = (await Promise.all(roots.map(sourceFiles))).flat();
     const violations = [];

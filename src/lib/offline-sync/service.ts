@@ -39,7 +39,7 @@ export async function createOfflineActivationCode(tenant: TenantContext, request
   if (moduleKeys.length === 0) throw new OfflineMutationDeniedError("None of the requested modules is available to this account.");
   const membership = await db.organizationMember.findUnique({
     where: { organizationId_userId: { organizationId: tenant.organizationId, userId: tenant.userId } },
-    select: { id: true, status: true },
+    select: { id: true, status: true, user: { select: { name: true, email: true } } },
   });
   if (!membership || membership.status !== "ACTIVE") throw new OfflineMutationDeniedError("The organization membership is not active.");
 
@@ -109,7 +109,7 @@ export async function activateOfflineDevice(
 
   const membership = await db.organizationMember.findUnique({
     where: { organizationId_userId: { organizationId: tenant.organizationId, userId: tenant.userId } },
-    select: { id: true, status: true },
+    select: { id: true, status: true, user: { select: { name: true, email: true } } },
   });
   if (!membership || membership.status !== "ACTIVE") throw new OfflineMutationDeniedError("The organization membership is not active.");
 
@@ -174,6 +174,10 @@ export async function activateOfflineDevice(
 
   return {
     deviceId: device.id,
+    organizationId: tenant.organizationId,
+    organizationName: tenant.organization.name,
+    userId: tenant.userId,
+    userName: membership.user.name ?? membership.user.email,
     token: credential.token,
     tokenExpiresAt: device.tokenExpiresAt.toISOString(),
     offlineAccessUntil: device.offlineAccessUntil.toISOString(),
@@ -287,17 +291,21 @@ export async function processOfflineMutation(context: OfflineDeviceContext, inpu
       ? error
       : new OfflineMutationConflictError("The operation could not be synchronized safely.", "SERVER_STATE_CHANGED");
     const conflicted = await db.$transaction(async (tx) => {
-      const updated = await tx.offlineMutation.update({
-        where: { id: ledger.id },
-        data: { status: "CONFLICT", errorCode: conflict.conflictType, result: { message: conflict.message } },
-      });
-      await tx.offlineConflict.create({
+      const conflictRecord = await tx.offlineConflict.create({
         data: {
           organizationId: context.device.organizationId,
           deviceId: context.device.id,
           mutationId: ledger.id,
           conflictType: conflict.conflictType,
           allowedResolutions: ["KEEP_CLOUD"],
+        },
+      });
+      const updated = await tx.offlineMutation.update({
+        where: { id: ledger.id },
+        data: {
+          status: "CONFLICT",
+          errorCode: conflict.conflictType,
+          result: { message: conflict.message, conflictId: conflictRecord.id, allowedResolutions: conflictRecord.allowedResolutions },
         },
       });
       return updated;

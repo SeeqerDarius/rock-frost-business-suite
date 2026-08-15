@@ -1,31 +1,5 @@
-/** See fleet/types.ts's file-level note — draft shapes, not a confirmed server schema. */
-
-export interface PosOfflineSaleLine {
-  itemId: string | null;
-  description: string;
-  quantity: number;
-  unitPrice: string;
+export interface PosSaleLine extends Record<string, unknown> { itemId?: string | null; description: string; quantity: number; unitPrice: string }
+export interface PosSalePayload extends Record<string, unknown> {
+  sessionId: string; customerName?: string | null; paymentMethod: "CASH" | "CARD" | "MOBILE_MONEY" | "OTHER"; lines: PosSaleLine[];
 }
-
-/** Financial. */
-export interface PosOfflineSalePayload {
-  registerId: string;
-  soldAt: string;
-  lines: PosOfflineSaleLine[];
-  totalAmount: string;
-  currency: string;
-  paymentMethod: "cash" | "card" | "mobile_money";
-  cashierName: string;
-}
-
-/** Financial. */
-export interface PosOfflineReceiptPayload {
-  saleId: string;
-  issuedAt: string;
-  receiptNumber: string;
-}
-
-export const POS_ENTITY_TYPES = {
-  OFFLINE_SALE: "pos.offline_sale",
-  OFFLINE_RECEIPT: "pos.offline_receipt",
-} as const;
+export const POS_ENTITY_TYPES = { SALE: "pos.sale" } as const;

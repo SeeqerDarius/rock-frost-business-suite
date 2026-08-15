@@ -9,9 +9,7 @@ import type { ConflictRecord } from "@/db/schema";
 import type { ConflictResolutionChoice } from "@/contract/sync-contract";
 
 const CHOICE_LABEL: Record<ConflictResolutionChoice, string> = {
-  keep_cloud: "Keep cloud version",
-  retry_local: "Retry my local version",
-  manual_merge: "Merge manually",
+  KEEP_CLOUD: "Keep cloud version",
 };
 
 function formatValue(value: unknown): string {
@@ -25,7 +23,7 @@ function formatValue(value: unknown): string {
 /**
  * Renders every open conflict with both values side by side, who made
  * each change and when, and only the resolution buttons the server's
- * `allowedResolutions` actually permits for that specific conflict — see
+ * `allowedResolutions` actually permits for that specific conflict: see
  * conflict/conflict-policy.ts. There is no "resolve all" shortcut and no
  * automatic pick-a-winner path anywhere in this component.
  */
@@ -110,7 +108,7 @@ export function ConflictResolutionPanel() {
               {choices.map((choice) => (
                 <Button
                   key={choice}
-                  variant={choice === "keep_cloud" ? "secondary" : "primary"}
+                  variant="secondary"
                   loading={resolvingId === conflict.conflictId}
                   onClick={() => void handleResolve(conflict, choice)}
                 >

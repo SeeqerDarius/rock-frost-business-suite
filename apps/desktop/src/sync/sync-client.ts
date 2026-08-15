@@ -1,7 +1,7 @@
 /**
  * Thin, typed HTTP layer over the five endpoints in
  * contract/sync-contract.ts. This is the only module in the whole app that
- * constructs a fetch() call to the cloud API — every other layer (sync
+ * constructs a fetch() call to the cloud API: every other layer (sync
  * engine, module adapters, shell UI) goes through this class, never fetch
  * directly, so the error-classification and auth-header behavior below is
  * applied uniformly everywhere.
@@ -23,7 +23,7 @@ import {
 import { computeBackoffDelayMs, DEFAULT_BACKOFF_OPTIONS, hasAttemptsRemaining, type BackoffOptions } from "@/sync/retry";
 
 export interface SyncClientOptions {
-  /** The public API origin only — e.g. https://api.rockfrostgroup.com. Never a database connection string; see .env.example. */
+  /** The public API origin only: e.g. https://api.rockfrostgroup.com. Never a database connection string; see .env.example. */
   apiBaseUrl: string;
   /** Supplies the current bearer token for every authenticated call. A function (not a static string) because the token can be refreshed mid-session by the caller without reconstructing this client. */
   getAccessToken: () => string | null;
@@ -43,7 +43,7 @@ async function parseJsonSafely(response: Response): Promise<unknown> {
 }
 
 /**
- * SyncClient never retries on its own for a *single* call — retry policy
+ * SyncClient never retries on its own for a *single* call: retry policy
  * (how many attempts, how long to wait) is the caller's decision, since
  * only the caller knows whether it's mid-user-interaction (retry once,
  * fail fast) or a background sync sweep (retry patiently). What this class
@@ -68,7 +68,7 @@ export class SyncClient {
 
   async activateDevice(request: ActivateDeviceRequest): Promise<ActivateDeviceResponse> {
     // Deliberately not authenticated (no token exists yet) and never
-    // retried automatically — a failed activation attempt must surface
+    // retried automatically: a failed activation attempt must surface
     // immediately to the sign-in screen, not silently retry with the same
     // password payload in the background.
     return this.request<ActivateDeviceResponse>("POST", "/api/desktop/activate", request, { authenticated: false });
@@ -78,16 +78,15 @@ export class SyncClient {
     return this.request<SyncPushResponse>("POST", "/api/desktop/sync/push", request);
   }
 
-  async pull(cursor: string): Promise<SyncPullResponse> {
-    const query = new URLSearchParams({ cursor });
-    return this.request<SyncPullResponse>("GET", `/api/desktop/sync/pull?${query.toString()}`);
+  async pull(): Promise<SyncPullResponse> {
+    return this.request<SyncPullResponse>("GET", "/api/desktop/sync/pull");
   }
 
   async resolveConflict(conflictId: string, request: ResolveConflictRequest): Promise<ResolveConflictResponse> {
     return this.request<ResolveConflictResponse>("POST", `/api/desktop/sync/conflicts/${encodeURIComponent(conflictId)}/resolve`, request);
   }
 
-  async deactivateDevice(request: DeactivateDeviceRequest): Promise<DeactivateDeviceResponse> {
+  async deactivateDevice(request: DeactivateDeviceRequest = {}): Promise<DeactivateDeviceResponse> {
     return this.request<DeactivateDeviceResponse>("POST", "/api/desktop/deactivate", request);
   }
 
@@ -99,7 +98,7 @@ export class SyncClient {
         return await operation();
       } catch (error) {
         // See retry.ts's withBackoffRetry for why this checks attempt + 1
-        // (total calls made so far) rather than the raw 0-indexed attempt —
+        // (total calls made so far) rather than the raw 0-indexed attempt -
         // maxAttempts is a total-calls cap, not "N retries on top of it".
         const retryable = error instanceof SyncClientError && error.retryable;
         if (!retryable || !hasAttemptsRemaining(attempt + 1, this.backoffOptions)) throw error;
@@ -143,6 +142,8 @@ export class SyncClient {
       const message =
         errorBody && typeof errorBody === "object" && "message" in errorBody && typeof errorBody.message === "string"
           ? errorBody.message
+          : errorBody && typeof errorBody === "object" && "error" in errorBody && typeof errorBody.error === "string"
+            ? errorBody.error
           : `Sync request to ${path} failed with status ${response.status}.`;
       throw new SyncClientError(kind, message, response.status);
     }

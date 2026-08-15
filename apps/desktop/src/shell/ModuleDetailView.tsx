@@ -13,17 +13,17 @@ import type { CachedRecord } from "@/db/schema";
 
 /**
  * One representative "record a new offline entry" action per module,
- * wired to the real adapter functions in src/modules/<key>/adapter.ts —
+ * wired to the real adapter functions in src/modules/<key>/adapter.ts -
  * this is the example implementation the assignment brief asks for, not a
  * full CRUD UI for every entity type. Each module has several entity
  * types (see the adapter files); this view demonstrates one to keep the
  * shell's scope proportional to "foundation," not a finished business app.
  */
 const DEMO_ENTITY_TYPE: Record<OfflineModuleKey, string> = {
-  fleet: "fleet.driver_payment",
-  installment: "installment.collection_entry",
-  pos: "pos.offline_sale",
-  inventory: "inventory.stock_movement",
+  fleet: "fleet.maintenance_request",
+  installment: "installment.payment",
+  pos: "pos.sale",
+  inventory: "inventory.movement",
 };
 
 function formatRelativeTime(iso: string): string {
@@ -60,42 +60,33 @@ export function ModuleDetailView({ moduleKey }: { moduleKey: OfflineModuleKey })
       const nowIso = new Date().toISOString();
 
       if (moduleKey === "fleet") {
-        await createFleetAdapter(ctx).recordDriverPayment(entityId, {
-          driverId: "demo-driver",
-          amount: "50.00",
-          currency: "GHS",
-          paidAt: nowIso,
-          method: "cash",
-          reference: null,
+        await createFleetAdapter(ctx).recordMaintenanceRequest(entityId, {
+          vehicleId: "demo-vehicle",
+          faultDescription: "Example maintenance request",
+          ownerApprovalRequired: false,
         });
       } else if (moduleKey === "installment") {
-        await createInstallmentAdapter(ctx).recordCollectionEntry(entityId, {
+        await createInstallmentAdapter(ctx).recordPayment(entityId, {
           accountId: "demo-account",
-          collectedAt: nowIso,
           amount: "25.00",
-          currency: "GHS",
-          collectorName: device.userName,
-          location: null,
+          paymentDate: nowIso,
+          method: "CASH",
           notes: null,
         });
       } else if (moduleKey === "pos") {
-        await createPosAdapter(ctx).recordOfflineSale(entityId, {
-          registerId: "demo-register",
-          soldAt: nowIso,
+        await createPosAdapter(ctx).recordSale(entityId, {
+          sessionId: "demo-session",
           lines: [{ itemId: null, description: "Sample item", quantity: 1, unitPrice: "10.00" }],
-          totalAmount: "10.00",
-          currency: "GHS",
-          paymentMethod: "cash",
-          cashierName: device.userName,
+          paymentMethod: "CASH",
         });
       } else {
-        await createInventoryAdapter(ctx).recordStockMovement(entityId, {
+        await createInventoryAdapter(ctx).recordMovement(entityId, {
           warehouseId: "demo-warehouse",
           itemId: "demo-item",
-          type: "adjustment",
+          type: "ADJUSTMENT",
           quantity: 1,
-          toWarehouseId: null,
           reference: null,
+          notes: null,
           occurredAt: nowIso,
         });
       }

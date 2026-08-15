@@ -34,7 +34,6 @@ describe("handleRemoteRevocation", () => {
       updatedByUserName: null,
     });
     await credentials.set("accessToken", "secret-token");
-    await credentials.set("refreshToken", "secret-refresh");
 
     return { db, credentials, lockController, deviceId };
   }
@@ -56,7 +55,6 @@ describe("handleRemoteRevocation", () => {
     const { db, credentials, lockController, deviceId } = await setUp();
     await handleRemoteRevocation({ db, credentials, lockController }, deviceId);
     expect(await credentials.get("accessToken")).toBeNull();
-    expect(await credentials.get("refreshToken")).toBeNull();
   });
 
   it("marks the device row deactivated with reason revoked_by_server", async () => {

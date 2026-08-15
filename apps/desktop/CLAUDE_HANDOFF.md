@@ -1,55 +1,33 @@
-# Desktop Client Handoff
+# Desktop client handoff
 
-**Scope:** Windows desktop client foundation for the Rock Frost Business Suite, built under `apps/desktop/` as a fully self-contained package (Tauri 2 + React + TypeScript, encrypted local SQLite via SQLCipher, its own manifest/config, no dependency on the root Next.js app's build). This was built concurrently with Codex's cloud sync backend work; no files outside `apps/desktop/` were touched, and no Prisma schema, server API route, auth internals, `permissions.ts`, `seed-data.ts`, root `package.json`, root `README.md`, or root `OPERATOR_HANDOFF.md` were edited.
+## 2026-08-15 contract reconciliation
 
-**Branch:** `agent/claude-offline-desktop-client`
-**Base:** `origin/main` at `ccd46fe`
-**Not merged, not deployed.** Pushed to origin for Codex's review and integration.
+The desktop TypeScript client was reconciled with offline sync contract version 1.
 
-## What was built
+Changed behavior:
 
-1. **Desktop shell** (`src/shell/`, `src/App.tsx`, `src/state/AppProvider.tsx`): device activation screen (email/password + device naming + a local unlock passcode), a lock screen with reason-specific copy for inactivity/manual/offline-session-expired/revoked, a module launcher gated on the activated device's `enabledModuleKeys`, a sync status bar (StatusPill for online/offline/syncing/conflict/session-expired/revoked, pending-mutation count, last-successful-sync time, a manual "Sync now" button), keyboard navigation (a skip-to-content link, visible focus rings, Enter/native form semantics throughout), `aria-live` regions for loading and sync-count changes, and a global `prefers-reduced-motion` rule collapsing every animation to near-instant. Reuses the existing Rock Frost brand: icons under `src-tauri/icons/` were generated from `public/icon-512.png` in the main repo via `npx tauri icon` (a real, working step — see Validation below); the public favicon/Apple/Android icons in the main app were only read, never modified.
+- Replaced email and password activation with a one-time activation code, installation ID, device name, selected modules, and a local unlock passcode.
+- Removed refresh-token assumptions. The server issues one device bearer token with explicit token and offline-access expiry times.
+- Added tenant and user metadata from the activation response so queued mutations can carry the required organization assertion.
+- Changed push requests to `{ mutations }` and removed `deviceId` from the body.
+- Restricted mutations to uppercase `CREATE`, `baseVersion: 0`, and the five entity types currently implemented by the server.
+- Replaced cursor pagination with the bounded full-snapshot pull response.
+- Restricted conflict resolution to `KEEP_CLOUD`.
+- Changed deactivation to an empty authenticated POST.
+- Preserved encrypted persistence, stable mutation IDs, local pending badges, bounded batches, remote-revocation purge, and local passcode locking.
 
-2. **Local database + security abstraction** (`src/db/`, `src/security/`, `src-tauri/src/db.rs`, `src-tauri/src/credentials.rs`): a `LocalDatabase` TypeScript interface with a real in-memory implementation (tests, browser preview) and a Tauri-IPC-backed implementation, matched 1:1 by Rust `#[tauri::command]` functions that are the only code touching the encrypted SQLite connection. Six local tables: device metadata, cached business records, mutation queue, sync cursors, conflicts, audit events. Encryption: SQLCipher for the whole database file (key generated once, held only in the OS credential store via the `keyring` crate — Windows Credential Manager), plus a second, independent application-layer AES-256-GCM encryption abstraction (`src/security/payload-encryption.ts`, genuinely implemented with the Web Crypto API and covered by real round-trip tests) as defense in depth on top of it. No raw password, cloud DB credential, or reusable server secret is ever stored — the credential store's allowed-key list (`CredentialKey`) is a closed, reviewed set: `accessToken`, `refreshToken`, `payloadEncryptionKey`, `unlockPasscodeHash`, `unlockPasscodeSalt`. The local unlock passcode itself is never stored, only a PBKDF2 (210,000 iterations) hash + random salt of it. Device lock covers both an inactivity timeout and offline session expiry (the latter only fires once the access token has expired *and* an additional offline grace period has elapsed *and* the device is currently offline — an online device always gets the chance to reconnect instead); a revoked-device response locks the client and purges every cached business record, deletes every stored credential, and marks the device row deactivated, in that order, all recorded to the local audit trail.
+Conflict results now include the server conflict ID and allowed resolutions. The desktop stores that real identifier and can submit the only supported resolution, `KEEP_CLOUD`. It never invents retry-local or merge behavior.
 
-3. **Sync client contract** (`src/contract/sync-contract.ts`): one file with typed request/response models for all five endpoints (`activate`, `sync/push`, `sync/pull`, `sync/conflicts/{id}/resolve`, `deactivate`), the exact `MutationEnvelope` shape from the brief (`organizationId`, `moduleKey`, `entityType`, `entityId`, `mutationId`, `baseVersion`, `operation`, `changedAt`, `payload`), and the HTTP-status error taxonomy (401 -> expired auth, 403 -> revoked/unauthorized, 409 -> conflict, 429/5xx/network -> retryable). `src/sync/retry.ts` implements full-jitter exponential backoff; `src/sync/sync-client.ts` is the only module that calls `fetch()`; `src/sync/sync-engine.ts` orchestrates a full sync cycle (drain the queue in bounded batches, paginate pulls via cursor until `hasMore` is false, apply push outcomes, react to revocation/expired-auth/network-error). `mutationId` is generated once per logical mutation (`crypto.randomUUID()`) and reused on retry, making retries idempotent both client-side (the queue dedupes on it) and, by contract, server-side.
+The pull response is a full reference-data snapshot and may report `truncated: true`. The current cache stores one snapshot record per module. A production user interface must prevent users from assuming a truncated collection is complete.
 
-4. **Module adapters** (`src/modules/{fleet,installment,pos,inventory}/`): typed payload interfaces and working `create*`/`record*` adapter functions for the eight entity types named in the brief (Fleet: maintenance report, inspection, trip, driver payment; Installment: collection entry, payment receipt; POS: offline sale, offline receipt; Inventory: stock count, stock movement). Every adapter method routes through one shared helper, `src/modules/offline-mutation-recorder.ts`, which is the single place that both enqueues the mutation and marks the cached record `hasPendingLocalChange: true` — so "never look cloud-confirmed before server acknowledgement" can't be accidentally skipped by an individual adapter. `src/shell/ModuleDetailView.tsx` demonstrates this end-to-end (record an example entry, see it listed with a "Pending sync" badge) for one representative entity type per module; it is explicitly a demonstration of the plumbing, not a finished CRUD UI for all eight entity types.
+After reconciliation, the native Rust source was compile-checked with Rust 1.97.1 and Visual Studio Build Tools. One missing `tauri::Manager` import was found and fixed. The full optimized Tauri build then produced working NSIS and MSI bundles, and the release executable remained alive during a five-second startup smoke test. Windows installer signing and signed-update configuration are still required before customer distribution.
 
-5. **Conflict experience** (`src/conflict/`): `conflict-policy.ts` lists the protected entity-type categories from the brief verbatim (payments, inventory movements, posted accounting, payroll, prescriptions, clinical data) and asserts every conflict in this client requires explicit user action — there is no auto-resolve code path anywhere in `sync-engine.ts` at all, for any entity type, so this is a structural guarantee the policy module makes explicit and tested rather than a check that could be routed around. `ConflictResolutionPanel.tsx` shows local value, cloud value, both timestamps, and both users' names where supplied, and renders only the resolution buttons (`keep_cloud`/`retry_local`/`manual_merge`) the server's own `allowedResolutions` for that specific conflict actually permits.
+Validation from `apps/desktop/`:
 
-## Central follow-up for Codex (things this client is built against, not built by this task)
-
-- **No token-refresh endpoint** exists in the five-endpoint contract given. `ActivateDeviceResponse.refreshToken` is stored (via the credential store) but never consumed — on a 401, the client currently forces the user back through the sign-in/activation screen rather than silently refreshing. If a refresh endpoint is added, `sync-engine.ts`'s `expired_auth` handling is the one place to wire it. See the doc comment on `refreshToken` in `sync-contract.ts`.
-- **Module adapter payload field names are this client's best-effort draft**, not copied from a confirmed server schema (see the file-level comment in each `src/modules/*/types.ts`). These need reconciling against whatever `entityType` payload shapes the sync backend actually expects before going live.
-- **Entitlement/registry/subscription integration** (whether the desktop client's four offline modules map onto the same module-enablement system as the web app) is out of this task's scope entirely and untouched.
-
-## Validation results (exact)
-
-Run from `apps/desktop/` in the environment this was built in:
-
-| Check | Result |
-|---|---|
-| `npx tsc --noEmit` | Clean, no errors |
-| `npx eslint .` | Clean, no errors or warnings |
-| `npx vitest run` | **10 files, 83 tests, all passing** |
-| `npm run build` (`tsc --noEmit && vite build`) | Succeeded — `dist/index.html`, ~240 KB JS bundle (73 KB gzipped) |
-| `npx tauri icon public/icon-512.png -o src-tauri/icons` | **Succeeded** — this is a real, verified step; the `@tauri-apps/cli` package ships a prebuilt binary that generated genuine `.ico`/`.icns`/PNG files (confirmed non-trivial file sizes) without needing a Rust toolchain |
-| `git diff --check` (staged `apps/desktop/`) | Clean — only expected LF/CRLF line-ending warnings, no conflict markers or trailing-whitespace errors |
-| `cargo check` / `cargo build` / `npm run tauri:build` | **Not run — no Rust toolchain in this environment** (`cargo`/`rustc` not on PATH). This is the one honest, load-bearing blocker in this handoff. |
-
-Two real bugs were found and fixed during this pass, both while writing the required unit tests (not found any other way, since they only surfaced under specific attempt-count/timing conditions):
-
-1. **Off-by-one in the retry attempt cap**: `withBackoffRetry` (`sync/retry.ts`) and `SyncClient.callWithRetry` (`sync/sync-client.ts`) both checked `hasAttemptsRemaining` against the raw 0-indexed loop counter *before* incrementing it, which let `maxAttempts: N` produce `N + 1` total calls instead of `N`. Fixed by checking against attempts-already-made (`attempt + 1`) instead. Caught by `retry.test.ts`'s "gives up... exhausted" test failing with `calls: 4` where `3` was expected.
-2. A test-only timing bug in `sync-engine.test.ts`'s overlapping-sync test (a promise resolver captured inside a mock's executor function raced against the mock actually being invoked) — fixed by creating the deferred promise before calling `syncNow()` rather than inside the mock implementation. Not a production bug, but worth noting since it could have masked a real one.
-
-## Known limitations / what to verify next with a real Rust toolchain
-
-- **`src-tauri/` has never been compiled.** `db.rs` (SQLCipher connection + schema + PRAGMA key handshake), `credentials.rs` (the `keyring` crate's Windows Credential Manager integration), and every `#[tauri::command]` in `commands.rs` are written against each crate's documented 2.x/3.x/0.32 API from training knowledge, matched field-for-field and command-name-for-command-name against the TypeScript `TauriLocalDatabase`/`TauriCredentialStore` classes that call them — but none of it has run. Expect to need at minimum a `cargo check` pass and likely small fixes (exact `rusqlite`/`keyring`/`tauri` API surface can drift between minor versions).
-- **Do not describe OS-credential-store encryption, or SQLCipher-at-rest encryption, as "tested."** They are wired and, to the best of this implementation's knowledge, correct, but genuinely unverified end-to-end in this environment. The one crypto path that *is* real and tested is the application-layer AES-256-GCM payload encryption and the PBKDF2 local-passcode hashing, both pure TypeScript/Web Crypto, both covered by passing round-trip unit tests.
-- **Signed updates are documented, not implemented** — `tauri.conf.json` sets `createUpdaterArtifacts: false` and no signing keypair exists anywhere in this repository. See `README.md`'s "Signed updates" section for the real steps to wire this later; no certificate or key was invented.
-- No visual/manual verification of the actual running desktop window was possible (no Rust toolchain to launch `tauri dev`) — everything above is verified via types, lint, unit tests, and the frontend production build only.
-
-## Files changed
-
-Entirely new — `apps/desktop/` did not exist before this branch. 84 files, all under `apps/desktop/`: see `git show --stat` on this branch's commit for the exact list (package manifest/config, `src/` TypeScript source and tests, `src-tauri/` Rust source and Tauri config, generated icons, `.env.example`, `README.md`, this file).
+- `npm run typecheck`: passed with no errors.
+- `npm run lint`: passed with no errors or warnings.
+- `npm test`: 10 files and 60 tests passed.
+- `npm run build`: passed. Vite transformed 1,629 modules and produced a 240.17 kB JavaScript bundle (73.31 kB gzip).
+- `cargo check`: passed after the Tauri trait-import fix.
+- `npm run tauri:build`: passed and produced x64 NSIS and MSI bundles.
+- Release executable startup smoke: passed.

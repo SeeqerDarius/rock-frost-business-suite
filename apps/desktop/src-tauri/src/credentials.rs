@@ -2,7 +2,7 @@
 //! Credential Manager integration. Backs both:
 //!   - the `credentials_*` commands `src/security/credential-store.ts`
 //!     invokes (access/refresh tokens, the local-unlock-passcode hash/salt,
-//!     the payload encryption key export) — see CredentialKey in that file
+//!     the payload encryption key export): see CredentialKey in that file
 //!     for the exhaustive allowed list;
 //!   - `db.rs`'s SQLCipher database key, which is never exposed to the
 //!     TypeScript side at all (it has its own dedicated keyring entry, not
@@ -10,7 +10,7 @@
 //!
 //! # Honesty about verification status
 //! Written against `keyring` 3.x's documented API. Not compiled or run in
-//! this environment — see db.rs's module doc comment for the same caveat,
+//! this environment: see db.rs's module doc comment for the same caveat,
 //! and CLAUDE_HANDOFF.md for what must be verified before this is relied
 //! on for a release. Do not describe this as "tested" until it has
 //! actually been exercised against a real Windows Credential Manager.
@@ -22,7 +22,7 @@ const SERVICE_NAME: &str = "com.rockfrostgroup.desktop";
 const SQLCIPHER_KEY_ACCOUNT: &str = "sqlcipher-database-key";
 
 /// The exhaustive set of secrets the TypeScript side may ask this module to
-/// store — mirrors `CredentialKey` in `src/security/credential-store.ts`
+/// store: mirrors `CredentialKey` in `src/security/credential-store.ts`
 /// exactly. Validated here too (not just trusted from the JS side) so a
 /// bug on the TypeScript side can't smuggle an unexpected key name into
 /// the OS credential store.
@@ -78,7 +78,7 @@ pub fn credentials_clear() -> Result<(), String> {
     Ok(())
 }
 
-/// Not exposed as a `#[tauri::command]` — only `db.rs`'s `init_db` calls
+/// Not exposed as a `#[tauri::command]`: only `db.rs`'s `init_db` calls
 /// this directly, since the SQLCipher key must never be reachable from the
 /// TypeScript/webview process at all, unlike the credentials above.
 pub fn get_or_create_sqlcipher_key(_app_handle: &AppHandle) -> Result<String, String> {

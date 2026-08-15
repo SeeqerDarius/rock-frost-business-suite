@@ -49,7 +49,7 @@ All responses containing tenant or device data use `Cache-Control: private, no-s
 
 ### Activation
 
-`POST /api/desktop/activate` accepts the single-use activation code, installation identifier, device name, supported desktop platform, and requested module keys. Requested keys are intersected with the code, subscription, module, and role scope. The response returns the one-time device token, device ID, token expiry, offline lease expiry, and final module keys.
+`POST /api/desktop/activate` accepts the single-use activation code, installation identifier, device name, supported desktop platform, and requested module keys. Requested keys are intersected with the code, subscription, module, and role scope. The response returns the one-time device token, device ID, organization and user display metadata, token expiry, offline lease expiry, and final module keys. The organization identifier populates the defense-in-depth assertion on queued mutations; the server still derives the authoritative tenant from the device token.
 
 ### Push
 
@@ -63,7 +63,7 @@ All responses containing tenant or device data use `Cache-Control: private, no-s
 
 ### Conflicts and deactivation
 
-`POST /api/desktop/sync/conflicts/{conflictId}/resolve` currently allows only `KEEP_CLOUD`. Financial and stock conflicts never use silent last-write-wins. The user must refresh cloud state and create a new local operation when the server later permits a retry.
+`POST /api/desktop/sync/conflicts/{conflictId}/resolve` currently allows only `KEEP_CLOUD`. Conflict push results include the server conflict identifier and allowed resolutions so the desktop can submit that explicit choice. Financial and stock conflicts never use silent last-write-wins. The user must refresh cloud state and create a new local operation when the server later permits a retry.
 
 `POST /api/desktop/deactivate` revokes the calling device. Users can also revoke installations from `/app/account/desktop`. The desktop must lock and remove protected cached business data when it receives a revocation.
 

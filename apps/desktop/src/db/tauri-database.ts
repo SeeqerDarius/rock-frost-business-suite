@@ -18,15 +18,14 @@ import type { OfflineModuleKey, SyncCursor } from "@/contract/sync-contract";
  * src-tauri/src/commands.rs, which is the only code in the whole
  * application that opens the encrypted SQLite connection (see
  * src-tauri/src/db.rs). No SQL string, table name, or encryption key is
- * ever constructed or held in this TypeScript process — that boundary is
+ * ever constructed or held in this TypeScript process: that boundary is
  * the entire point of this file being a thin, typed pass-through rather
  * than a query builder.
  *
- * IMPORTANT: this file's command names and argument shapes must stay in
- * lockstep with src-tauri/src/commands.rs. This has not been exercised
- * against a compiled Tauri binary in this environment (no Rust toolchain
- * was available — see apps/desktop/CLAUDE_HANDOFF.md) and must be smoke
- * tested end-to-end before this is relied on for a release build.
+ * This file's command names and argument shapes must stay in lockstep with
+ * src-tauri/src/commands.rs. The native code has passed compilation,
+ * packaging, and application startup. A fully activated workflow smoke test
+ * remains required before customer distribution.
  */
 export class TauriLocalDatabase implements LocalDatabase {
   async getActiveDevice(): Promise<DeviceRecord | null> {

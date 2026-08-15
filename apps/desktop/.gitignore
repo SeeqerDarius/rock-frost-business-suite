@@ -7,6 +7,7 @@ dist-ssr/
 # this is an application, not a library, so it should be committed once a
 # real Rust toolchain has generated it for reproducible builds.
 src-tauri/target/
+src-tauri/gen/
 
 # Never commit real environment values, only .env.example
 .env

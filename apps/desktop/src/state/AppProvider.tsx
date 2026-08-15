@@ -22,10 +22,10 @@ interface AppContextValue {
   syncStatus: SyncEngineStatus | null;
   isActivating: boolean;
   activationError: string | null;
-  activate: (email: string, password: string, deviceName: string, unlockPasscode: string) => Promise<void>;
+  activate: (activationCode: string, deviceName: string, moduleKeys: OfflineModuleKey[], unlockPasscode: string) => Promise<void>;
   signOut: () => Promise<void>;
   syncNow: () => Promise<void>;
-  /** Verifies the passcode locally (no network required — see security/local-passcode.ts) before unlocking. Returns false on a wrong passcode or when the lock reason isn't unlockable this way (offline-expired/revoked locks require re-activation, not a passcode). */
+  /** Verifies the passcode locally (no network required: see security/local-passcode.ts) before unlocking. Returns false on a wrong passcode or when the lock reason isn't unlockable this way (offline-expired/revoked locks require re-activation, not a passcode). */
   unlockWithPasscode: (passcode: string) => Promise<boolean>;
   recordActivity: () => void;
   configured: boolean;
@@ -72,6 +72,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [lockController]);
 
+  useEffect(() => {
+    const updateConnectivity = () => lockController.updateSyncStatus({
+      accessTokenExpiresAt: null,
+      lastSuccessfulServerContactAt: null,
+      isOnline: navigator.onLine,
+    });
+    window.addEventListener("online", updateConnectivity);
+    window.addEventListener("offline", updateConnectivity);
+    updateConnectivity();
+    return () => {
+      window.removeEventListener("online", updateConnectivity);
+      window.removeEventListener("offline", updateConnectivity);
+    };
+  }, [lockController]);
+
   const buildSyncEngine = useCallback(
     (activeDevice: DeviceRecord) => {
       if (!API_BASE_URL) return null;
@@ -102,7 +117,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   // Holds the in-memory access token separately from React state, since
-  // SyncClient reads it synchronously and frequently — routing every read
+  // SyncClient reads it synchronously and frequently: routing every read
   // through a state setter/getter pair would be needless re-render churn.
   const cachedAccessTokenRef = useRef<string | null>(null);
 
@@ -117,10 +132,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       syncEngineRef.current = engine;
       void engine?.refreshPendingCounts();
     });
-  }, [device, credentials, buildSyncEngine]);
+    const moduleKey = device.enabledModuleKeys[0];
+    if (moduleKey) {
+      void db.getCachedRecord(moduleKey, `${moduleKey}.offline_authorization`, device.deviceId).then((record) => {
+        const value = record?.payload;
+        if (value && typeof value === "object" && "offlineAccessUntil" in value && typeof value.offlineAccessUntil === "string") {
+          lockController.updateSyncStatus({ accessTokenExpiresAt: null, offlineAccessUntil: new Date(value.offlineAccessUntil).getTime(), lastSuccessfulServerContactAt: null, isOnline: navigator.onLine });
+        }
+      });
+    }
+  }, [device, credentials, buildSyncEngine, db, lockController]);
 
   const activate = useCallback(
-    async (email: string, password: string, deviceName: string, unlockPasscode: string) => {
+    async (activationCode: string, deviceName: string, moduleKeys: OfflineModuleKey[], unlockPasscode: string) => {
       if (!API_BASE_URL) {
         setActivationError("This build has no VITE_API_BASE_URL configured. See apps/desktop/.env.example.");
         return;
@@ -129,42 +153,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActivationError(null);
       try {
         const bootstrapClient = new SyncClient({ apiBaseUrl: API_BASE_URL, getAccessToken: () => null });
-        const deviceId = getOrCreateDeviceId();
+        const installationId = getOrCreateDeviceId();
         const response: ActivateDeviceResponse = await bootstrapClient.activateDevice({
-          email,
-          password,
-          deviceId,
-          deviceName: deviceName || getDeviceDisplayName(),
+          activationCode: activationCode.trim().toUpperCase(),
+          installationId,
+          name: deviceName || getDeviceDisplayName(),
           platform: "windows",
-          appVersion: import.meta.env.VITE_APP_VERSION ?? "0.1.0",
+          moduleKeys,
         });
 
-        await credentials.set("accessToken", response.accessToken);
-        await credentials.set("refreshToken", response.refreshToken);
-        cachedAccessTokenRef.current = response.accessToken;
+        await credentials.set("accessToken", response.token);
+        cachedAccessTokenRef.current = response.token;
 
         const storedPasscode = await hashPasscode(unlockPasscode);
         await credentials.set("unlockPasscodeHash", storedPasscode.hash);
         await credentials.set("unlockPasscodeSalt", storedPasscode.salt);
 
         const activeDevice: DeviceRecord = {
-          deviceId,
+          deviceId: response.deviceId,
           deviceName: deviceName || getDeviceDisplayName(),
           organizationId: response.organizationId,
           userId: response.userId,
           userName: response.userName,
-          enabledModuleKeys: response.enabledModuleKeys,
+          enabledModuleKeys: response.moduleKeys,
           activatedAt: new Date().toISOString(),
           deactivatedAt: null,
           deactivationReason: null,
         };
         await db.saveDevice(activeDevice);
 
-        for (const moduleKey of response.enabledModuleKeys) {
-          await db.setSyncCursor(moduleKey as OfflineModuleKey, response.initialCursor);
+        const authorizationModule = response.moduleKeys[0];
+        if (authorizationModule) await db.upsertCachedRecord({
+          moduleKey: authorizationModule,
+          entityType: `${authorizationModule}.offline_authorization`,
+          entityId: response.deviceId,
+          version: 0,
+          payload: { offlineAccessUntil: response.offlineAccessUntil },
+          hasPendingLocalChange: false,
+          updatedAt: new Date().toISOString(),
+          updatedByUserId: null,
+          updatedByUserName: null,
+        });
+
+        for (const moduleKey of response.moduleKeys) {
+          await db.setSyncCursor(moduleKey, "");
         }
 
-        await db.appendAuditEvent("device_activated", { deviceId, organizationId: response.organizationId });
+        lockController.updateSyncStatus({
+          accessTokenExpiresAt: new Date(response.tokenExpiresAt).getTime(),
+          offlineAccessUntil: new Date(response.offlineAccessUntil).getTime(),
+          lastSuccessfulServerContactAt: Date.now(),
+          isOnline: true,
+        });
+        await db.appendAuditEvent("device_activated", { deviceId: response.deviceId, organizationId: response.organizationId });
         setDevice(activeDevice);
       } catch (error) {
         setActivationError(
@@ -176,7 +217,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setIsActivating(false);
       }
     },
-    [db, credentials],
+    [db, credentials, lockController],
   );
 
   const signOut = useCallback(async () => {
@@ -185,10 +226,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const token = cachedAccessTokenRef.current;
       if (API_BASE_URL && token) {
         const client = new SyncClient({ apiBaseUrl: API_BASE_URL, getAccessToken: () => token });
-        await client.deactivateDevice({ deviceId: device.deviceId, reason: "user_signed_out" });
+        await client.deactivateDevice();
       }
     } catch {
-      // Best-effort — the device still deactivates locally even if the
+      // Best-effort: the device still deactivates locally even if the
       // server couldn't be reached; it simply won't push again.
     }
     await db.deactivateDevice(device.deviceId, "user_signed_out");
@@ -203,7 +244,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const syncNow = useCallback(async () => {
     await syncEngineRef.current?.syncNow();
-  }, []);
+    if (!device) return;
+    const moduleKey = device.enabledModuleKeys[0];
+    if (!moduleKey) return;
+    const authorization = await db.getCachedRecord(moduleKey, `${moduleKey}.offline_authorization`, device.deviceId);
+    const value = authorization?.payload;
+    if (value && typeof value === "object" && "offlineAccessUntil" in value && typeof value.offlineAccessUntil === "string") {
+      lockController.updateSyncStatus({ accessTokenExpiresAt: null, offlineAccessUntil: new Date(value.offlineAccessUntil).getTime(), lastSuccessfulServerContactAt: Date.now(), isOnline: navigator.onLine });
+    }
+  }, [db, device, lockController]);
 
   const unlockWithPasscode = useCallback(
     async (passcode: string) => {

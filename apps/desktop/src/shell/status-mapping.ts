@@ -1,8 +1,8 @@
 /**
  * Reduces the sync engine's state and the device lock's state down to the
  * single status indicator the shell chrome shows at all times. Kept as
- * pure logic (no React) so the precedence rules — revoked beats everything,
- * an expired offline session beats "just conflicts", etc. — are directly
+ * pure logic (no React) so the precedence rules: revoked beats everything,
+ * an expired offline session beats "just conflicts", etc.: are directly
  * unit-testable. See shell/status-mapping.test.ts.
  */
 

@@ -16,7 +16,7 @@ describe("computeBackoffDelayMs", () => {
     expect(delay2).toBeGreaterThan(delay1);
   });
 
-  it("applies full jitter — a random() of 0 always yields a 0ms delay", () => {
+  it("applies full jitter: a random() of 0 always yields a 0ms delay", () => {
     const delay = computeBackoffDelayMs(3, { baseDelayMs: 1000, maxDelayMs: 30_000, maxAttempts: 6, random: () => 0 });
     expect(delay).toBe(0);
   });

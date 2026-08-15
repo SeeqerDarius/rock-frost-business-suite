@@ -1,6 +1,6 @@
 /**
  * Bounded exponential backoff with jitter, for exactly the error kinds the
- * contract marks retryable (429, 5xx, network failure — see
+ * contract marks retryable (429, 5xx, network failure: see
  * SyncClientError.retryable in contract/sync-contract.ts). 401/403/409/400
  * are never retried by this module; the caller (sync-client.ts) handles
  * those as immediate, distinct outcomes.
@@ -10,7 +10,7 @@ export interface BackoffOptions {
   baseDelayMs: number;
   maxDelayMs: number;
   maxAttempts: number;
-  /** Injectable for deterministic tests — defaults to Math.random. */
+  /** Injectable for deterministic tests: defaults to Math.random. */
   random?: () => number;
 }
 
@@ -23,7 +23,7 @@ export const DEFAULT_BACKOFF_OPTIONS: BackoffOptions = {
 /**
  * Full-jitter exponential backoff (AWS's well-known formula:
  * `random(0, min(maxDelay, base * 2^attempt))`) rather than a fixed
- * multiplier — spreads out retries from many devices reconnecting at once
+ * multiplier: spreads out retries from many devices reconnecting at once
  * after a server blip, instead of having them all hammer the server in
  * lockstep on the same schedule.
  *
@@ -62,7 +62,7 @@ export async function withBackoffRetry<T>(
       // `attempt` (0-indexed) is the call that just failed; `attemptsMade`
       // is how many calls have happened in total so far. maxAttempts is a
       // total-attempts cap (including the first try, not "N retries on top
-      // of it") — checking with attemptsMade, not the raw 0-indexed
+      // of it"): checking with attemptsMade, not the raw 0-indexed
       // `attempt`, is what makes maxAttempts: 3 mean exactly 3 calls total,
       // not 4. See retry.test.ts.
       const attemptsMade = attempt + 1;

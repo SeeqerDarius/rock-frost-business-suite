@@ -3,7 +3,7 @@
  * its session as expired. Deliberately factored out of DeviceLockController
  * (device-lock.ts), which wires this to real timers/wall-clock time, so the
  * actual policy is fully unit-testable without fake timers or a running
- * event loop — see session-policy.test.ts.
+ * event loop: see session-policy.test.ts.
  */
 
 export interface InactivityLockInput {
@@ -20,7 +20,7 @@ export function shouldLockForInactivity(input: InactivityLockInput): boolean {
 }
 
 export interface OfflineSessionExpiryInput {
-  /** From ActivateDeviceResponse.accessTokenExpiresAt (or the latest refreshed value) — epoch milliseconds. */
+  /** From ActivateDeviceResponse.accessTokenExpiresAt (or the latest refreshed value): epoch milliseconds. */
   accessTokenExpiresAt: number;
   /** Epoch milliseconds of the last moment this device successfully reached the sync server (a successful push, pull, or token refresh). Null if it has never reached the server since activation. */
   lastSuccessfulServerContactAt: number | null;
@@ -29,7 +29,7 @@ export interface OfflineSessionExpiryInput {
   /**
    * How much additional time past accessTokenExpiresAt the app tolerates
    * while offline before forcing a re-authentication, on top of the
-   * token's own expiry — a deliberately short grace window, not an
+   * token's own expiry: a deliberately short grace window, not an
    * offline-forever allowance. Financial/business data must not remain
    * writable indefinitely on a device that can't prove its session is
    * still valid.
@@ -40,7 +40,7 @@ export interface OfflineSessionExpiryInput {
 export type OfflineSessionExpiryReason = "token_expired_and_offline" | "never_contacted_server_and_token_expired";
 
 /**
- * Online sessions are never force-expired here — an online device always
+ * Online sessions are never force-expired here: an online device always
  * gets the chance to silently refresh its token instead (see
  * sync/sync-client.ts's refresh handling); this function only governs the
  * case where the device cannot reach the server to refresh at all.

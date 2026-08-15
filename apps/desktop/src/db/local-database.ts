@@ -3,7 +3,7 @@
  * shell UI) programs against. Two implementations exist:
  *
  *  - TauriLocalDatabase (tauri-database.ts): the real, production
- *    implementation — every method is a single typed `invoke()` call into
+ *    implementation: every method is a single typed `invoke()` call into
  *    the Rust side (src-tauri/src/db.rs), which is the only code that ever
  *    touches the encrypted SQLite file. No SQL, and no encryption key,
  *    exists anywhere in the TypeScript/webview process.
@@ -40,12 +40,12 @@ export interface LocalDatabase {
   listCachedRecords(moduleKey: OfflineModuleKey, entityType: string): Promise<CachedRecord[]>;
   upsertCachedRecord(record: CachedRecord): Promise<void>;
   deleteCachedRecord(moduleKey: OfflineModuleKey, entityType: string, entityId: string): Promise<void>;
-  /** Used by the revocation flow to remove every cached business record for every module in one atomic sweep — see src/security/revocation.ts. */
+  /** Used by the revocation flow to remove every cached business record for every module in one atomic sweep: see src/security/revocation.ts. */
   purgeAllCachedRecords(): Promise<void>;
 
   // --- Mutation queue ---
   enqueueMutation(mutation: Omit<QueuedMutationRecord, "id" | "status" | "attemptCount" | "lastAttemptAt" | "rejectionReason">): Promise<QueuedMutationRecord>;
-  /** Returns queued mutations in FIFO order (by the local sequence id, never by changedAt or wall-clock time — see schema.ts). */
+  /** Returns queued mutations in FIFO order (by the local sequence id, never by changedAt or wall-clock time: see schema.ts). */
   listQueuedMutations(status?: QueuedMutationStatus): Promise<QueuedMutationRecord[]>;
   getQueuedMutationByMutationId(mutationId: string): Promise<QueuedMutationRecord | null>;
   updateMutationStatus(
@@ -70,6 +70,6 @@ export interface LocalDatabase {
   listAuditEvents(limit?: number): Promise<AuditEventRecord[]>;
 
   // --- Lifecycle ---
-  /** Wipes every table. Used by the revocation flow (after purging cached business data specifically is not enough — a full reset is used when the device itself is being fully deactivated) and by tests. */
+  /** Wipes every table. Used by the revocation flow (after purging cached business data specifically is not enough: a full reset is used when the device itself is being fully deactivated) and by tests. */
   resetAll(): Promise<void>;
 }

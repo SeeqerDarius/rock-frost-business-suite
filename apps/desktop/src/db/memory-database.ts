@@ -21,11 +21,11 @@ function cacheKey(moduleKey: OfflineModuleKey, entityType: string, entityId: str
  *    ordering, cursor handling, revocation, etc.).
  *  - `npm run dev` in a plain browser preview, where there is no Tauri
  *    runtime to invoke into. This is explicitly a development convenience,
- *    never used for a real activated device — see AppProviders in
+ *    never used for a real activated device: see AppProviders in
  *    src/App.tsx, which selects TauriLocalDatabase whenever
  *    `window.__TAURI_INTERNALS__` is present.
  *
- * Data does not survive a reload. That is intentional here, not a bug —
+ * Data does not survive a reload. That is intentional here, not a bug -
  * persistence is the one thing this implementation deliberately does not
  * attempt to fake.
  */

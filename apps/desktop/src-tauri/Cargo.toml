@@ -5,7 +5,7 @@ description = "Rock Frost Business Suite desktop client - local-first Windows ap
 edition = "2021"
 rust-version = "1.77"
 
-# main.rs is a thin entry point calling into this library crate's run() —
+# main.rs is a thin entry point calling into this library crate's run() -
 # the standard Tauri 2 scaffold shape (also what enables a future mobile
 # target to reuse the same core, even though this pass is Windows-only).
 [lib]
@@ -26,15 +26,12 @@ serde_json = "1"
 # Encrypted local SQLite. `bundled-sqlcipher-vendored-openssl` compiles
 # SQLCipher (not plain SQLite) from source with a vendored OpenSSL, so the
 # encrypted-at-rest database file requires no separate system OpenSSL
-# install on the build machine. This is the crate this scaffold is written
-# against — see src/db.rs's module doc comment for what has and hasn't been
-# verified, since this repository's environment has no Rust toolchain to
-# compile it.
+# install on the build machine. The native release gate compiles and packages
+# this exact feature set; see src/db.rs for the remaining workflow check.
 rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"] }
 
 # Wraps the real Windows Credential Manager on this target platform. See
-# src/credentials.rs's module doc comment for the same unverified-in-this-
-# environment caveat.
+# src/credentials.rs for the remaining activated-device workflow check.
 keyring = { version = "3", features = ["windows-native"] }
 
 # Cryptographically-random encryption-key/session material generated on the
@@ -47,7 +44,7 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1"
 
 [profile.release]
-# Smaller, slightly slower-to-build release binaries — a deliberate
+# Smaller, slightly slower-to-build release binaries: a deliberate
 # trade-off for a distributed desktop installer over build speed.
 panic = "abort"
 codegen-units = 1

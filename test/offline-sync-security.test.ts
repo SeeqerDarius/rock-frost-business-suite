@@ -40,4 +40,12 @@ describe("offline synchronization security boundaries", () => {
       expect(source(file)).toContain('"Cache-Control": "private, no-store"');
     }
   });
+
+  it("returns a resolvable server conflict identifier without enabling local overwrite", () => {
+    const service = source("src/lib/offline-sync/service.ts");
+    const resolutionRoute = source("src/app/api/desktop/sync/conflicts/[conflictId]/resolve/route.ts");
+    expect(service).toContain("conflictId: conflictRecord.id");
+    expect(service).toContain('allowedResolutions: ["KEEP_CLOUD"]');
+    expect(resolutionRoute).toContain("conflictResolutionSchema.safeParse");
+  });
 });
