@@ -7,6 +7,7 @@
 - Important files: `apps/desktop/public/startup-guard.js`, `apps/desktop/src/main.tsx`, `apps/desktop/src/packaging/bundled-assets.test.ts`, desktop version manifests, `docs/OFFLINE_DESKTOP.md`, and desktop/root README files.
 - Validation: desktop TypeScript passed, desktop ESLint passed, 12 test files with 66 tests passed, Vite production build compiled 1,634 modules, and the signed native Tauri build produced both NSIS and MSI `0.2.1` bundles. The NSIS installer is 3,480,349 bytes with SHA-256 `EED1586F2560527B8A34CFF585452875D10636E9934A1C382D9BD381C70F4E52`; its updater signature SHA-256 is `24587DA670801AA9C6337BADCAF3A948BB0746A224F3ABB24136EB810E7F6885`. The verified installer upgraded the existing local installation without deleting protected data, and the installed executable remained responsive after 15.6 seconds, beyond the former eight-second false timeout. `git diff --check` passed.
 - Schema and environment changes: none. Existing activation, encrypted local database, credentials, and pending work are preserved by the upgrade.
+- Release: commit `d4c5fd3` was pushed to `origin/main`. Vercel production deployment `dpl_4d2WdaFNgoD8t6YPTXXNqwR6vkLv` reached Ready and owns the public aliases. Post-deploy `/api/health` returned HTTP 200 with the database reachable; `/api/desktop/releases/latest` returned the expected uncached HTTP 204 because no public GitHub desktop release has been published yet.
 
 ## 2026-08-15: Authenticated Windows desktop automatic updates
 
