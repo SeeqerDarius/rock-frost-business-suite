@@ -1,5 +1,12 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-15: Installed desktop blank-window correction
+
+- Corrected the packaged Vite asset base from an implicit root path to `./`. The previous installer could launch its native Tauri window while failing to load `/assets/*`, leaving the entire client blank.
+- Traced the remaining WebView startup failure with a temporary native page-state diagnostic. The exact exception was `Illegal invocation`: `DeviceLockController` stored unbound WebView2 timer functions and later invoked them with the controller as receiver. The production implementation now binds `setInterval` and `clearInterval` to `globalThis`, with a regression test covering the default timer path.
+- Added a generated-build regression test that requires relative script and stylesheet references, a static startup state, React root-level error handling, a user-visible fatal startup fallback, a production API default, and minimal native stage logging that excludes credentials and business payloads. Temporary release developer tools and page-snapshot diagnostics were removed before the final customer build.
+- Validation: desktop TypeScript and Vite production build passed with 1,629 modules; ESLint passed; 11 test files with 62 tests passed; the final optimized Tauri 0.1.1 build completed and produced replacement NSIS and MSI bundles. The exact 0.1.1 release EXE launched, remained alive and responsive, and initialized the encrypted SQLCipher database. The NSIS bundle is 2,978,946 bytes with SHA-256 `45B513BD8381B313BF479D5EACA57D9BCCEE411AB7161877CAA76706B2D2364A`; the MSI bundle is 3,940,352 bytes with SHA-256 `4807460A1895753797C2072CA45DD4268008C53B7DCF205933D459A3BDA884F6`.
+
 ## 2026-08-15: Offline desktop synchronization server foundation
 
 - Added a fail-closed server synchronization boundary for registered desktop devices. Activation uses short-lived, single-use hashed codes; device bearer secrets are hashed at rest; every request revalidates the user, membership, tenant, active subscription, enabled module, permission, token expiry, and device revocation state.

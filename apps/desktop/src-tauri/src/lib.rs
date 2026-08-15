@@ -4,15 +4,34 @@ mod db;
 mod models;
 
 use tauri::Manager;
+use std::io::Write;
+
+fn startup_log(message: &str) {
+    let log_dir = std::env::var_os("LOCALAPPDATA")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("com.rockfrostgroup.desktop");
+    let _ = std::fs::create_dir_all(&log_dir);
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_dir.join("startup.log"))
+    {
+        let _ = writeln!(file, "{} {}", chrono::Utc::now().to_rfc3339(), message);
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    startup_log("native startup began");
+    let result = tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            startup_log("tauri setup began");
             let database = db::init_db(app.handle())?;
             app.manage(database);
+            startup_log("encrypted database initialized");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -43,6 +62,13 @@ pub fn run() {
             credentials::credentials_delete,
             credentials::credentials_clear,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running the Rock Frost desktop application");
+        .run(tauri::generate_context!());
+
+    match result {
+        Ok(()) => startup_log("tauri event loop exited normally"),
+        Err(error) => {
+            startup_log(&format!("tauri startup failed: {error}"));
+            panic!("error while running the Rock Frost desktop application: {error}");
+        }
+    }
 }

@@ -8,6 +8,10 @@ import react from "@vitejs/plugin-react";
 const HOST = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
+  // Packaged Tauri windows load index.html through a custom protocol. Asset
+  // URLs must stay relative or the webview opens successfully but renders a
+  // blank page because `/assets/*` resolves outside the bundled frontend.
+  base: "./",
   plugins: [react()],
   resolve: {
     alias: {

@@ -30,6 +30,20 @@ function createFakeClock(startAt = 0) {
 }
 
 describe("DeviceLockController: inactivity", () => {
+  it("keeps browser timer functions bound to the global receiver", () => {
+    const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+    const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval");
+    const controller = new DeviceLockController({ checkIntervalMs: 60_000 });
+
+    expect(() => controller.start()).not.toThrow();
+    controller.stop();
+
+    expect(setIntervalSpy).toHaveBeenCalledOnce();
+    expect(clearIntervalSpy).toHaveBeenCalledOnce();
+    setIntervalSpy.mockRestore();
+    clearIntervalSpy.mockRestore();
+  });
+
   it("locks once the inactivity timeout elapses with no recorded activity", () => {
     const clock = createFakeClock();
     const controller = new DeviceLockController({

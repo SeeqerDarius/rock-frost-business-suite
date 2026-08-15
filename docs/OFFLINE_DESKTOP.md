@@ -4,6 +4,10 @@
 
 The cloud synchronization foundation is implemented for the first controlled offline release. The desktop client is a separate deliverable under `apps/desktop/`. Offline support is not a general copy of the cloud database. The cloud remains authoritative and every device receives only the records and operations allowed for its tenant, user, role, subscription, and activated module set.
 
+The first corrected Windows test package is version `0.1.1`. It replaces the
+blank-window `0.1.0` package and must be installed using only one installer
+format per computer.
+
 ## Security model
 
 1. A signed-in tenant user opens `/app/account/desktop` and creates a single-use activation code for selected supported modules.
@@ -79,3 +83,13 @@ All responses containing tenant or device data use `Cache-Control: private, no-s
 ## Remaining launch requirements
 
 The offline product cannot be offered to customers until the integrated desktop package passes Windows installer testing, local encryption and credential-store verification, signed update configuration, online-to-offline workflow tests, loss-of-network tests, conflict tests, stolen-device tests, and a controlled customer pilot. Code-signing certificates and the final desktop update channel are external operational requirements and must not be claimed until configured and verified.
+
+The packaged Vite frontend must use relative asset URLs. Root-relative asset
+URLs are invalid for the installed Tauri application and result in a blank
+native window even though the application process starts normally. A
+packaging test guards the generated HTML before installer release.
+
+WebView2 browser timer functions are receiver-sensitive. Desktop services
+that retain `setInterval` or `clearInterval` must bind them to `globalThis`.
+Calling an unbound timer as an object method raises `Illegal invocation` and
+can prevent the initial activation screen from rendering.

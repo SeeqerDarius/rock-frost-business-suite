@@ -12,7 +12,7 @@ import { SyncClient } from "@/sync/sync-client";
 import { SyncEngine, type SyncEngineStatus } from "@/sync/sync-engine";
 import { SyncClientError, type ActivateDeviceResponse, type OfflineModuleKey } from "@/contract/sync-contract";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string | undefined;
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "https://app.rockfrostgroup.com";
 
 interface AppContextValue {
   db: LocalDatabase;

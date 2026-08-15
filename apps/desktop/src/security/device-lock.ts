@@ -61,8 +61,12 @@ export class DeviceLockController {
     this.inactivityTimeoutMs = options.inactivityTimeoutMs ?? DEFAULT_INACTIVITY_TIMEOUT_MS;
     this.offlineGracePeriodMs = options.offlineGracePeriodMs ?? DEFAULT_OFFLINE_GRACE_PERIOD_MS;
     this.now = options.now ?? (() => Date.now());
-    this.setIntervalFn = options.setIntervalFn ?? setInterval;
-    this.clearIntervalFn = options.clearIntervalFn ?? clearInterval;
+    // WebView2 timer functions require `window` as their receiver. Storing a
+    // bare reference and later calling it through `this.setIntervalFn(...)`
+    // changes the receiver to this controller and throws "Illegal invocation"
+    // before the first screen can render.
+    this.setIntervalFn = options.setIntervalFn ?? globalThis.setInterval.bind(globalThis);
+    this.clearIntervalFn = options.clearIntervalFn ?? globalThis.clearInterval.bind(globalThis);
     this.checkIntervalMs = options.checkIntervalMs ?? 15_000;
     this.lastActivityAt = this.now();
   }

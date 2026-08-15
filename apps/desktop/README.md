@@ -2,6 +2,10 @@
 
 Local-first Windows client built with Tauri 2, React, and TypeScript. It uses an encrypted device-local SQLite store and communicates only with the Rock Frost desktop sync API. It never connects directly to Neon or PostgreSQL.
 
+The corrected Windows package is version `0.1.1`. Remove any installed `0.1.0`
+copy before testing it, then install either the NSIS EXE or the MSI. Do not
+install both package formats on the same computer.
+
 ## Activation
 
 1. Sign in to the Rock Frost web application.
@@ -52,5 +56,13 @@ npm test
 npm run build
 npm run tauri:build
 ```
+
+The Vite build must retain `base: "./"`. Tauri loads the bundled frontend
+through its application protocol, so root-relative `/assets/*` references
+produce a native window with a blank body in installed builds. The desktop
+test suite checks the generated `dist/index.html` to prevent this regression.
+WebView timer functions must also remain bound to `globalThis`; invoking a
+stored unbound timer through another object raises `Illegal invocation` in
+WebView2 before the first React screen can render.
 
 The TypeScript checks validate the webview portion. The native Rust layer has also passed `cargo check`, and `npm run tauri:build` has produced x64 NSIS and MSI bundles. Customer distribution still requires a trusted Windows code-signing certificate and a configured signed-update channel. Do not distribute the unsigned local bundles as production software.
