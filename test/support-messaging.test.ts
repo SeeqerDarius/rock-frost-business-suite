@@ -3,11 +3,12 @@ import path from "node:path";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockDb = {
-  supportConversation: { upsert: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+  supportConversation: { upsert: vi.fn(), findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn(), findMany: vi.fn() },
   supportMessage: { create: vi.fn(), findMany: vi.fn(), count: vi.fn() },
   organizationMember: { findMany: vi.fn() },
   userPresence: { findFirst: vi.fn(), upsert: vi.fn() },
   $transaction: vi.fn(),
+  $executeRaw: vi.fn(),
 };
 
 vi.mock("@/lib/db", () => ({ db: mockDb }));
@@ -48,6 +49,7 @@ describe("Support messaging service — tenant isolation", () => {
     mockDb.supportConversation.upsert.mockResolvedValue({ id: "conv-1", organizationId: ORG });
     mockDb.supportMessage.create.mockResolvedValue({ id: "msg-1", createdAt: new Date("2026-01-01") });
     mockDb.supportConversation.update.mockResolvedValue({ id: "conv-1", organizationId: ORG, tenantLastReadAt: new Date("2026-01-01"), platformLastReadAt: null });
+    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValue({ id: "conv-1", organizationId: ORG, tenantLastReadAt: new Date("2026-01-01"), platformLastReadAt: null });
 
     const { message, conversation } = await support.sendTenantMessage(ORG, "user-1", "Jane Doe", "My invoice looks wrong");
 
@@ -68,6 +70,7 @@ describe("Support messaging service — tenant isolation", () => {
     mockDb.supportConversation.upsert.mockResolvedValue({ id: "conv-1", organizationId: ORG });
     mockDb.supportMessage.create.mockResolvedValue({ id: "msg-1", createdAt: new Date("2026-01-01") });
     mockDb.supportConversation.update.mockResolvedValue({ id: "conv-1", organizationId: ORG, tenantLastReadAt: null, platformLastReadAt: new Date("2026-01-01") });
+    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValue({ id: "conv-1", organizationId: ORG, tenantLastReadAt: null, platformLastReadAt: new Date("2026-01-01") });
 
     await support.sendPlatformMessage(ORG, "operator-1", "Rock Frost Support", "We're looking into this now");
 

@@ -298,6 +298,11 @@ model User {
   organizationDeletionsRequested  Organization[]            @relation("OrganizationDeletionRequestedBy")
   supportMessages                 SupportMessage[]
   presence                        UserPresence?
+  offlineDevices                  OfflineDevice[]           @relation("OfflineDeviceUser")
+  offlineDevicesRevoked           OfflineDevice[]           @relation("OfflineDeviceRevokedBy")
+  offlineMutations                OfflineMutation[]
+  offlineConflictsResolved        OfflineConflict[]
+  offlineActivationCodes          OfflineActivationCode[]
 }
 
 model Account {
@@ -375,6 +380,10 @@ model Organization {
   auditLogs                       AuditLog[]
   notifications                   Notification[]
   fileAssets                      FileAsset[]
+  offlineDevices                  OfflineDevice[]
+  offlineMutations                OfflineMutation[]
+  offlineConflicts                OfflineConflict[]
+  offlineActivationCodes          OfflineActivationCode[]
   fleetOwners                     FleetOwner[]
   fleetDrivers                    FleetDriver[]
   fleetDriverPaymentSubmissions   FleetDriverPaymentSubmission[]
@@ -533,12 +542,14 @@ model OrganizationMember {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role         Role?        @relation(fields: [roleId], references: [id], onDelete: SetNull)
-  branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  invitation   Invitation?
-  auditLogs    AuditLog[]
+  organization           Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                   User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role                   Role?                   @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  branch                 Branch?                 @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  invitation             Invitation?
+  auditLogs              AuditLog[]
+  offlineDevices         OfflineDevice[]
+  offlineActivationCodes OfflineActivationCode[]
 
   @@unique([organizationId, userId])
   @@index([organizationId])
@@ -766,6 +777,23 @@ enum AuditEventStatus {
   FAILURE
 }
 
+enum OfflineDeviceStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum OfflineMutationStatus {
+  PROCESSING
+  APPLIED
+  CONFLICT
+  REJECTED
+}
+
+enum OfflineConflictStatus {
+  OPEN
+  RESOLVED
+}
+
 /**
  * Append-only through application logic (no update/delete path is ever
  * exposed — see docs/HARDENING_PLAN.md's Pass 4 audit-logging section).
@@ -809,6 +837,130 @@ model AuditLog {
   @@index([entityName, entityId])
   @@index([module])
   @@index([correlationId])
+}
+
+/**
+ * A tenant-scoped desktop installation. Only a SHA-256 hash of the bearer
+ * token is persisted. Revocation is checked on every sync request.
+ */
+model OfflineDevice {
+  id                 String              @id @default(cuid())
+  organizationId     String
+  userId             String
+  membershipId       String
+  name               String
+  platform           String
+  installationId     String
+  tokenHash          String              @unique
+  status             OfflineDeviceStatus @default(ACTIVE)
+  moduleKeys         String[]
+  tokenExpiresAt     DateTime
+  offlineAccessUntil DateTime
+  lastSeenAt         DateTime?
+  lastSyncAt         DateTime?
+  revokedAt          DateTime?
+  revokedById        String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User               @relation("OfflineDeviceUser", fields: [userId], references: [id], onDelete: Cascade)
+  membership   OrganizationMember @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  revokedBy    User?              @relation("OfflineDeviceRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+  mutations    OfflineMutation[]
+  conflicts    OfflineConflict[]
+
+  @@unique([organizationId, installationId])
+  @@index([organizationId, status])
+  @@index([userId, status])
+  @@index([membershipId])
+}
+
+/**
+ * Single-use, short-lived bridge between an authenticated web session and a desktop installation.
+ */
+model OfflineActivationCode {
+  id             String    @id @default(cuid())
+  organizationId String
+  userId         String
+  membershipId   String
+  codeHash       String    @unique
+  moduleKeys     String[]
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  membership   OrganizationMember @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, userId, expiresAt])
+  @@index([membershipId])
+}
+
+/**
+ * Durable idempotency record for one desktop mutation. The unique tenant and
+ * mutation ID pair prevents retries from applying a financial or stock event
+ * twice. Payloads are bounded and validated before persistence.
+ */
+model OfflineMutation {
+  id             String                @id @default(cuid())
+  organizationId String
+  deviceId       String
+  userId         String
+  mutationId     String
+  moduleKey      String
+  entityType     String
+  entityId       String
+  operation      String
+  baseVersion    Int
+  payload        Json
+  status         OfflineMutationStatus @default(PROCESSING)
+  result         Json?
+  errorCode      String?
+  changedAt      DateTime
+  appliedAt      DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  device       OfflineDevice    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conflict     OfflineConflict?
+
+  @@unique([organizationId, mutationId])
+  @@index([deviceId, createdAt])
+  @@index([organizationId, moduleKey, createdAt])
+  @@index([organizationId, status])
+}
+
+/**
+ * Conflicts are resolved explicitly and never overwritten in place. The
+ * original local payload remains on OfflineMutation for audit history.
+ */
+model OfflineConflict {
+  id                 String                @id @default(cuid())
+  organizationId     String
+  deviceId           String
+  mutationId         String                @unique
+  conflictType       String
+  cloudVersion       Int?
+  cloudSnapshot      Json?
+  allowedResolutions String[]
+  status             OfflineConflictStatus @default(OPEN)
+  resolution         String?
+  resolutionPayload  Json?
+  resolvedById       String?
+  resolvedAt         DateTime?
+  createdAt          DateTime              @default(now())
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  device       OfflineDevice   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  mutation     OfflineMutation @relation(fields: [mutationId], references: [id], onDelete: Cascade)
+  resolvedBy   User?           @relation(fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, createdAt])
+  @@index([deviceId, status])
 }
 
 /**

@@ -173,7 +173,7 @@ export async function dispense(organizationId: string, actorId: string, data: {
     }
     await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "dispensing.completed", entityName: "PharmacyDispensing", entityId: dispensing.id, metadata: { dispensingNumber: dispensing.dispensingNumber, total: dispensing.total.toString() } }, tx);
     return dispensing;
-  });
+  }, { timeout: 15_000 });
 }
 
 export async function reverseDispensing(organizationId: string, actorId: string, dispensingId: string, reason: string) {

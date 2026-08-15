@@ -1,18 +1,29 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as support from "@/lib/support/service";
 import { cleanupTestOrg, createTestOrg, type TestOrg } from "../setup/fixtures";
+import { testDb } from "../setup/db";
 
 let orgA: TestOrg;
 let orgB: TestOrg;
+let platformUserId: string;
 
 beforeAll(async () => {
   orgA = await createTestOrg("orgA-support");
   orgB = await createTestOrg("orgB-support");
+  const platformUser = await testDb.user.create({
+    data: {
+      name: "Integration Platform Operator",
+      email: `support-platform-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.invalid`,
+      status: "ACTIVE",
+    },
+  });
+  platformUserId = platformUser.id;
 });
 
 afterAll(async () => {
   await cleanupTestOrg(orgA);
   await cleanupTestOrg(orgB);
+  await testDb.user.delete({ where: { id: platformUserId } }).catch(() => {});
 });
 
 describe("Support messaging — real tenant isolation", () => {
@@ -31,7 +42,7 @@ describe("Support messaging — real tenant isolation", () => {
   });
 
   it("marking one organization's conversation read never touches another organization's read state", async () => {
-    await support.sendPlatformMessage(orgA.organizationId, "platform-user", "Rock Frost Support", "Reply to org A");
+    await support.sendPlatformMessage(orgA.organizationId, platformUserId, "Rock Frost Support", "Reply to org A");
     await support.markReadByTenant(orgA.organizationId);
 
     const unreadA = await support.getTenantUnreadCount(orgA.organizationId);

@@ -89,3 +89,11 @@ hardening pass upgraded Next.js to 16.2.12 and NextAuth to 4.24.15, and pins
 patched PostCSS/Sharp transitive versions through `package.json` overrides.
 Run `npm audit --omit=dev` on every dependency change and document any accepted
 advisory with scope and compensating controls.
+
+## Offline desktop operations
+
+Offline-capable desktop installations are registered devices, not direct database clients. Monitor audit events for device activation, revocation, applied mutations, rejected mutations, and open synchronization conflicts. A revoked device is denied on its next request, and every synchronization request rechecks the user, membership, tenant, subscription, module, permission, and device status.
+
+Operational responders should treat a mutation left in `PROCESSING` as an uncertain delivery that requires investigation. Do not replay it manually into a business table. Resolve the device or network incident first, inspect the mutation ledger and associated audit events, and use a supported corrective business workflow if needed. Financial, approval, refund, payroll, HR, and clinical actions remain online-only unless the offline contract explicitly lists them.
+
+Before offering the Windows client externally, configure a trusted code-signing certificate and controlled update channel. Never distribute an unsigned installer as production software. See `docs/OFFLINE_DESKTOP.md` for the operation allowlist and launch blockers.

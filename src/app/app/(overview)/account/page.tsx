@@ -62,7 +62,7 @@ export default async function AccountPage({
 
           <Card>
             <CardHeader><CardTitle>Account security</CardTitle><CardDescription>Add an authenticator code to every new sign-in.</CardDescription></CardHeader>
-            <CardContent><Button nativeButton={false} render={<Link href={securityHref} />}>Manage two-factor authentication</Button></CardContent>
+            <CardContent className="flex flex-wrap gap-3"><Button nativeButton={false} render={<Link href={securityHref} />}>Manage two-factor authentication</Button>{session.user.role !== "Super Admin" ? <Button variant="outline" nativeButton={false} render={<Link href="/app/account/desktop" />}>Desktop and offline access</Button> : null}</CardContent>
           </Card>
 
           <Card>

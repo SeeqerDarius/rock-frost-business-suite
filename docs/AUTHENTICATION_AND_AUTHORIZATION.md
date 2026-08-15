@@ -1,5 +1,11 @@
 # Authentication and Authorization
 
+## Offline desktop devices
+
+Desktop devices do not reuse browser session cookies and do not receive user passwords or database credentials. A signed-in tenant user generates a single-use, ten-minute activation code from `/app/account/desktop`. The server stores only the code hash and atomically marks it used during exchange. The issued device bearer token is also stored only as a SHA-256 hash and expires after 30 days.
+
+Every desktop API request revalidates the device, user, membership, organization, current subscriptions, enabled modules, and role permissions. Revoked devices receive HTTP 403. Expired credentials receive HTTP 401. A successful connection renews a 72-hour offline lease that the desktop must enforce locally. See `docs/OFFLINE_DESKTOP.md`.
+
 **Status: authentication, role/module-level authorization, and action-level permissions across all thirteen modules—including Hotel and School—are real and enforced.**
 
 ## Current implementation (Phase 3 authentication + Phase 4 authorization)

@@ -14,20 +14,30 @@ import { createTestOrg, cleanupTestOrg, type TestOrg } from "../setup/fixtures";
  */
 
 let org: TestOrg;
+let platformUserId: string;
 
 beforeAll(async () => {
   org = await createTestOrg("support-concurrency");
+  const platformUser = await testDb.user.create({
+    data: {
+      name: "Integration Platform Operator",
+      email: `support-platform-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.invalid`,
+      status: "ACTIVE",
+    },
+  });
+  platformUserId = platformUser.id;
 });
 
 afterAll(async () => {
   await cleanupTestOrg(org);
+  await testDb.user.delete({ where: { id: platformUserId } }).catch(() => {});
 });
 
 describe("Support messaging concurrency (real Postgres)", () => {
   it("two concurrent first-ever messages (tenant and platform, racing to create the conversation) both succeed and both persist", async () => {
     const [{ message: tenantMessage }, { message: platformMessage }] = await Promise.all([
       support.sendTenantMessage(org.organizationId, org.userId, "Org User", "Hello, we need help"),
-      support.sendPlatformMessage(org.organizationId, "platform-operator", "Rock Frost Support", "Hi, how can we help?"),
+      support.sendPlatformMessage(org.organizationId, platformUserId, "Rock Frost Support", "Hi, how can we help?"),
     ]);
 
     expect(tenantMessage.id).not.toBe(platformMessage.id);
@@ -59,7 +69,7 @@ describe("Support messaging concurrency (real Postgres)", () => {
 
     const [, { message: reply }] = await Promise.all([
       support.markReadByTenant(org.organizationId),
-      support.sendPlatformMessage(org.organizationId, "platform-operator", "Rock Frost Support", "One more thing"),
+      support.sendPlatformMessage(org.organizationId, platformUserId, "Rock Frost Support", "One more thing"),
     ]);
 
     // The reply's own timestamp is the honest upper bound for what "read" could possibly have captured concurrently.

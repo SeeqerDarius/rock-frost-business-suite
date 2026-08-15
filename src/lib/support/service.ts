@@ -60,12 +60,18 @@ async function sendMessage(organizationId: string, data: { senderId: string | nu
       data: { organizationId, conversationId: conversation.id, senderId: data.senderId, senderName: data.senderName, senderRole: data.senderRole, content },
     });
     // Sending implicitly marks your own side as caught up.
-    const updated = await tx.supportConversation.update({
+    await tx.supportConversation.update({
       where: { id: conversation.id },
       data: data.senderRole === "TENANT" ? { tenantLastReadAt: message.createdAt } : { platformLastReadAt: message.createdAt },
     });
+    await tx.$executeRaw`
+      UPDATE "SupportConversation"
+      SET "lastMessageAt" = GREATEST("lastMessageAt", ${message.createdAt})
+      WHERE "id" = ${conversation.id}
+    `;
+    const updated = await tx.supportConversation.findUniqueOrThrow({ where: { id: conversation.id } });
     return { message, conversation: updated };
-  });
+  }, { timeout: 15_000 });
 }
 
 export function sendTenantMessage(organizationId: string, senderId: string, senderName: string, content: string) {
