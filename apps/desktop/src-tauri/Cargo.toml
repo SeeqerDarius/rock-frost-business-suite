@@ -1,0 +1,56 @@
+[package]
+name = "rock-frost-desktop"
+version = "0.1.0"
+description = "Rock Frost Business Suite desktop client - local-first Windows app"
+edition = "2021"
+rust-version = "1.77"
+
+# main.rs is a thin entry point calling into this library crate's run() —
+# the standard Tauri 2 scaffold shape (also what enables a future mobile
+# target to reuse the same core, even though this pass is Windows-only).
+[lib]
+name = "rock_frost_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+# See build.rs.
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-os = "2"
+tauri-plugin-process = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Encrypted local SQLite. `bundled-sqlcipher-vendored-openssl` compiles
+# SQLCipher (not plain SQLite) from source with a vendored OpenSSL, so the
+# encrypted-at-rest database file requires no separate system OpenSSL
+# install on the build machine. This is the crate this scaffold is written
+# against — see src/db.rs's module doc comment for what has and hasn't been
+# verified, since this repository's environment has no Rust toolchain to
+# compile it.
+rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"] }
+
+# Wraps the real Windows Credential Manager on this target platform. See
+# src/credentials.rs's module doc comment for the same unverified-in-this-
+# environment caveat.
+keyring = { version = "3", features = ["windows-native"] }
+
+# Cryptographically-random encryption-key/session material generated on the
+# Rust side (e.g. for anything not covered by the webview's own Web Crypto
+# usage in src/security/payload-encryption.ts).
+rand = "0.8"
+
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1"
+
+[profile.release]
+# Smaller, slightly slower-to-build release binaries — a deliberate
+# trade-off for a distributed desktop installer over build speed.
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
