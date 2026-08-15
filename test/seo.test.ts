@@ -11,6 +11,7 @@ describe("public SEO", () => {
     expect(urls).toContain(`${SITE_URL}/solutions`);
     expect(urls).toContain(`${SITE_URL}/company`);
     expect(urls).toContain(`${SITE_URL}/pricing`);
+    expect(urls).toContain(`${SITE_URL}/cookie-policy`);
     expect(urls).not.toContain(`${SITE_URL}/features`);
     expect(urls).not.toContain(`${SITE_URL}/about`);
     expect(urls).not.toContain(`${SITE_URL}/login`);

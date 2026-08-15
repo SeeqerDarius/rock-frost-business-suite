@@ -3,7 +3,7 @@ import { SITE_URL, MODULE_SEO } from "@/lib/seo";
 import { catalogueModuleKeys } from "@/platform/modules/registry";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const lastModified = new Date("2026-08-13T00:00:00.000Z");
+  const lastModified = new Date("2026-08-15T00:00:00.000Z");
   const pages = [
     { path: "", priority: 1, changeFrequency: "weekly" as const },
     { path: "/solutions", priority: 0.9, changeFrequency: "monthly" as const },
@@ -12,6 +12,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: "/industries", priority: 0.8, changeFrequency: "monthly" as const },
     { path: "/company", priority: 0.7, changeFrequency: "monthly" as const },
     { path: "/contact", priority: 0.8, changeFrequency: "monthly" as const },
+    { path: "/cookie-policy", priority: 0.4, changeFrequency: "yearly" as const },
   ];
 
   return [

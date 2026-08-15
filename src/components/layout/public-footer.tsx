@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CookieSettingsButton } from "@/components/privacy/cookie-settings-button";
 
 export function PublicFooter() {
   return (
@@ -12,6 +13,8 @@ export function PublicFooter() {
           <Link href="/industries" className="hover:text-foreground">Industries</Link>
           <Link href="/company" className="hover:text-foreground">Company</Link>
           <Link href="/contact" className="hover:text-foreground">Contact</Link>
+          <Link href="/cookie-policy" className="hover:text-foreground">Cookie policy</Link>
+          <CookieSettingsButton />
         </nav>
       </div>
     </footer>

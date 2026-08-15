@@ -34,6 +34,8 @@ See `docs/HOTEL_AND_SCHOOL_MODULES.md` for boundaries, invariants, roles, integr
 
 Production uses host-separated authentication: platform owners use `admin.rockfrostgroup.com`, tenant users use `app.rockfrostgroup.com`, and public pages remain on `www.rockfrostgroup.com`. Host-only cookies allow both accounts to stay signed in concurrently in one browser profile.
 
+The public site publishes canonical metadata, structured data, `robots.txt`, and a complete XML sitemap for Google discovery. Optional Vercel Analytics and Speed Insights remain disabled until a visitor accepts them through the cookie preferences interface; essential authentication and security cookies remain available independently.
+
 Platform administrators and organization users can enable authenticator-based two-factor authentication from Account Security. Module subscriptions support enforced per-module user seats (including pending invitations and multi-module roles), with used and remaining capacity visible to tenant administrators. Organization administrators can safely change roles and deactivate/reactivate members, with immediate seat release and capacity checks on restored access. They also have tenant-isolated, active-module Excel reporting exports, lossless JSON system backups, and password/2FA-protected merge restores; see `docs/BILLING_AND_SUBSCRIPTIONS.md` and `docs/BACKUP_AND_RECOVERY.md`.
 
 Public pricing is available at `/pricing`. A centralized GHS catalogue covers all thirteen customer-facing products, annual savings, included and additional seats, industry bundles, and enterprise pricing. Platform operators receive catalogue-based amount and seat defaults while retaining the ability to record negotiated agreements.

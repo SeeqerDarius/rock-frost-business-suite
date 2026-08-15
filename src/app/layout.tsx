@@ -7,8 +7,7 @@ import { SessionProvider } from "@/components/session-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { DEFAULT_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo";
-import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
+import { ConsentManagedAnalytics } from "@/components/privacy/consent-managed-analytics";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -25,6 +24,9 @@ export const metadata: Metadata = {
   publisher: "Rock Frost Technologies",
   formatDetection: { email: false, address: false, telephone: false },
   manifest: "/manifest.webmanifest",
+  verification: process.env.GOOGLE_SITE_VERIFICATION
+    ? { google: process.env.GOOGLE_SITE_VERIFICATION }
+    : undefined,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -41,8 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
             <TooltipProvider>{children}</TooltipProvider>
             <Toaster />
-            <Analytics />
-            <SpeedInsights />
+            <ConsentManagedAnalytics />
           </ThemeProvider>
         </SessionProvider>
       </body>

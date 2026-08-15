@@ -56,9 +56,12 @@ success is itself an operational incident.
 
 ## Performance monitoring
 
-The root layout includes Vercel Web Analytics and Speed Insights, and both
-project-side services were enabled in production on 2026-07-28. Track Core
-Web Vitals by route, with these operational targets:
+The root layout makes Vercel Web Analytics and Speed Insights available, but
+the browser mounts them only after the visitor accepts optional analytics in
+the cookie preferences interface. Choosing Essential only leaves both tools
+disabled. The saved first-party preference expires after 180 days and can be
+changed with Cookie settings in the public footer. Track Core Web Vitals for
+consenting traffic by route, with these operational targets:
 
 - LCP below 2.5 seconds at the 75th percentile.
 - INP below 200 milliseconds at the 75th percentile.

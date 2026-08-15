@@ -19,6 +19,7 @@ The indexable surface is deliberately limited to:
 - `/industries`
 - `/company`
 - `/contact`
+- `/cookie-policy`
 
 `/app/*`, `/api/*`, and all authentication/token routes are disallowed in
 `robots.ts`. Authenticated and authentication layouts additionally emit
@@ -58,9 +59,14 @@ The owner must complete these external actions after deployment:
 
 The verification TXT value is account-specific and must never be invented or
 committed without the owner's actual value. On 2026-07-28 the application-side
-SEO work and live sitemap validation were complete: the production sitemap
-returned HTTP 200 as XML with 17 canonical URLs and `robots.txt` returned HTTP
-200. No controllable authenticated browser session was available for the
-Google account workflow, however. Search Console ownership verification and
-sitemap submission must only be marked complete after Google visibly confirms
-both actions.
+SEO work and live sitemap validation were complete. The 2026-08-15 indexing
+upgrade expands the sitemap to 21 canonical URLs, including the cookie policy,
+and adds optional `GOOGLE_SITE_VERIFICATION` metadata support for Google's
+URL-prefix verification method. A Domain property remains the preferred setup
+and must be verified with Google's account-specific DNS TXT value.
+
+No authenticated Google Search Console action is performed by the application.
+Search Console ownership verification, sitemap submission, and URL inspection
+must only be marked complete after Google visibly confirms them in the owner's
+account. The Google Indexing API must not be used for these ordinary website
+pages because it is reserved for Google's supported specialist content types.

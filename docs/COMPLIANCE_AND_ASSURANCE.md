@@ -1,6 +1,22 @@
 # Compliance and assurance register
 
-Last reviewed: 2026-08-13
+Last reviewed: 2026-08-15
+
+## Website cookie consent
+
+Optional Vercel Web Analytics and Speed Insights are consent-gated. They do
+not mount in the browser until a visitor selects Accept optional analytics.
+Essential only leaves them disabled. The first-party `rf_cookie_consent`
+preference uses `SameSite=Lax`, uses `Secure` on HTTPS, applies site-wide, and
+expires after 180 days. Visitors can reopen the choice from Cookie settings in
+the public footer. Essential authentication, security, and organization-state
+cookies remain independent because the application cannot operate safely
+without them. The public `/cookie-policy` route documents these categories.
+
+This control supports privacy compliance but is not a legal certification.
+Rock Frost must keep the published category list aligned with any future
+analytics, advertising, embedded-media, or profiling technology before that
+technology is enabled.
 
 ## Purpose and claims policy
 
