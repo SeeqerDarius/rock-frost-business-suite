@@ -36,7 +36,9 @@ const ALLOWED_CREDENTIAL_KEYS: &[&str] = &[
 
 fn entry_for(key: &str) -> Result<Entry, String> {
     if !ALLOWED_CREDENTIAL_KEYS.contains(&key) {
-        return Err(format!("Refusing to store an unrecognized credential key: {key}"));
+        return Err(format!(
+            "Refusing to store an unrecognized credential key: {key}"
+        ));
     }
     Entry::new(SERVICE_NAME, key).map_err(|e| e.to_string())
 }
@@ -90,7 +92,10 @@ pub fn get_or_create_sqlcipher_key(_app_handle: &AppHandle) -> Result<String, St
             use rand::RngCore;
             let mut key_bytes = [0u8; 32];
             rand::thread_rng().fill_bytes(&mut key_bytes);
-            let hex_key = key_bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+            let hex_key = key_bytes
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>();
             entry.set_password(&hex_key).map_err(|e| e.to_string())?;
             Ok(hex_key)
         }

@@ -3,8 +3,8 @@ mod credentials;
 mod db;
 mod models;
 
-use tauri::Manager;
 use std::io::Write;
+use tauri::Manager;
 
 fn startup_log(message: &str) {
     let log_dir = std::env::var_os("LOCALAPPDATA")
@@ -25,6 +25,7 @@ fn startup_log(message: &str) {
 pub fn run() {
     startup_log("native startup began");
     let result = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {

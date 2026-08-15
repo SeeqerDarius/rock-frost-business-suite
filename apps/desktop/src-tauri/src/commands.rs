@@ -89,7 +89,11 @@ pub fn db_save_device(db: State<AppDb>, device: DeviceRecord) -> Result<(), Stri
 }
 
 #[tauri::command]
-pub fn db_deactivate_device(db: State<AppDb>, device_id: String, reason: String) -> Result<(), String> {
+pub fn db_deactivate_device(
+    db: State<AppDb>,
+    device_id: String,
+    reason: String,
+) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "UPDATE device SET deactivated_at = ?1, deactivation_reason = ?2 WHERE device_id = ?3",
@@ -136,7 +140,11 @@ pub fn db_get_cached_record(
 }
 
 #[tauri::command]
-pub fn db_list_cached_records(db: State<AppDb>, module_key: String, entity_type: String) -> Result<Vec<CachedRecord>, String> {
+pub fn db_list_cached_records(
+    db: State<AppDb>,
+    module_key: String,
+    entity_type: String,
+) -> Result<Vec<CachedRecord>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare(&format!("SELECT {CACHED_RECORD_COLUMNS} FROM cached_record WHERE module_key = ?1 AND entity_type = ?2"))
@@ -144,7 +152,8 @@ pub fn db_list_cached_records(db: State<AppDb>, module_key: String, entity_type:
     let rows = stmt
         .query_map(params![module_key, entity_type], map_cached_record)
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -177,7 +186,12 @@ pub fn db_upsert_cached_record(db: State<AppDb>, record: CachedRecord) -> Result
 }
 
 #[tauri::command]
-pub fn db_delete_cached_record(db: State<AppDb>, module_key: String, entity_type: String, entity_id: String) -> Result<(), String> {
+pub fn db_delete_cached_record(
+    db: State<AppDb>,
+    module_key: String,
+    entity_type: String,
+    entity_id: String,
+) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "DELETE FROM cached_record WHERE module_key = ?1 AND entity_type = ?2 AND entity_id = ?3",
@@ -190,7 +204,8 @@ pub fn db_delete_cached_record(db: State<AppDb>, module_key: String, entity_type
 #[tauri::command]
 pub fn db_purge_all_cached_records(db: State<AppDb>) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM cached_record", []).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM cached_record", [])
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -219,7 +234,10 @@ const QUEUED_MUTATION_COLUMNS: &str =
     "id, mutation_id, organization_id, module_key, entity_type, entity_id, base_version, operation, changed_at, payload, status, attempt_count, last_attempt_at, rejection_reason";
 
 #[tauri::command]
-pub fn db_enqueue_mutation(db: State<AppDb>, mutation: NewQueuedMutation) -> Result<QueuedMutationRecord, String> {
+pub fn db_enqueue_mutation(
+    db: State<AppDb>,
+    mutation: NewQueuedMutation,
+) -> Result<QueuedMutationRecord, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 
     // Idempotent on mutationId: a retried logical mutation reusing the
@@ -227,7 +245,9 @@ pub fn db_enqueue_mutation(db: State<AppDb>, mutation: NewQueuedMutation) -> Res
     // inserting a duplicate. See src/sync/mutation-queue.ts.
     if let Some(existing) = conn
         .query_row(
-            &format!("SELECT {QUEUED_MUTATION_COLUMNS} FROM queued_mutation WHERE mutation_id = ?1"),
+            &format!(
+                "SELECT {QUEUED_MUTATION_COLUMNS} FROM queued_mutation WHERE mutation_id = ?1"
+            ),
             params![mutation.mutation_id],
             map_queued_mutation,
         )
@@ -263,19 +283,28 @@ pub fn db_enqueue_mutation(db: State<AppDb>, mutation: NewQueuedMutation) -> Res
 }
 
 #[tauri::command]
-pub fn db_list_queued_mutations(db: State<AppDb>, status: Option<String>) -> Result<Vec<QueuedMutationRecord>, String> {
+pub fn db_list_queued_mutations(
+    db: State<AppDb>,
+    status: Option<String>,
+) -> Result<Vec<QueuedMutationRecord>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare(&format!(
             "SELECT {QUEUED_MUTATION_COLUMNS} FROM queued_mutation WHERE (?1 IS NULL OR status = ?1) ORDER BY id ASC"
         ))
         .map_err(|e| e.to_string())?;
-    let rows = stmt.query_map(params![status], map_queued_mutation).map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    let rows = stmt
+        .query_map(params![status], map_queued_mutation)
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn db_get_queued_mutation(db: State<AppDb>, mutation_id: String) -> Result<Option<QueuedMutationRecord>, String> {
+pub fn db_get_queued_mutation(
+    db: State<AppDb>,
+    mutation_id: String,
+) -> Result<Option<QueuedMutationRecord>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     conn.query_row(
         &format!("SELECT {QUEUED_MUTATION_COLUMNS} FROM queued_mutation WHERE mutation_id = ?1"),
@@ -301,7 +330,13 @@ pub fn db_update_mutation_status(
            last_attempt_at = COALESCE(?3, last_attempt_at),
            rejection_reason = COALESCE(?4, rejection_reason)
          WHERE mutation_id = ?5",
-        params![status, fields.attempt_count, fields.last_attempt_at, fields.rejection_reason, mutation_id],
+        params![
+            status,
+            fields.attempt_count,
+            fields.last_attempt_at,
+            fields.rejection_reason,
+            mutation_id
+        ],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -323,13 +358,21 @@ pub fn db_count_pending_mutations(db: State<AppDb>) -> Result<i64, String> {
 #[tauri::command]
 pub fn db_get_sync_cursor(db: State<AppDb>, module_key: String) -> Result<Option<String>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    conn.query_row("SELECT cursor FROM sync_cursor WHERE module_key = ?1", params![module_key], |row| row.get(0))
-        .optional()
-        .map_err(|e| e.to_string())
+    conn.query_row(
+        "SELECT cursor FROM sync_cursor WHERE module_key = ?1",
+        params![module_key],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn db_set_sync_cursor(db: State<AppDb>, module_key: String, cursor: String) -> Result<(), String> {
+pub fn db_set_sync_cursor(
+    db: State<AppDb>,
+    module_key: String,
+    cursor: String,
+) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO sync_cursor (module_key, cursor, updated_at) VALUES (?1, ?2, ?3)
@@ -405,17 +448,28 @@ pub fn db_upsert_conflict(db: State<AppDb>, conflict: ConflictRecord) -> Result<
 }
 
 #[tauri::command]
-pub fn db_list_conflicts(db: State<AppDb>, status: Option<String>) -> Result<Vec<ConflictRecord>, String> {
+pub fn db_list_conflicts(
+    db: State<AppDb>,
+    status: Option<String>,
+) -> Result<Vec<ConflictRecord>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare(&format!("SELECT {CONFLICT_COLUMNS} FROM conflict WHERE (?1 IS NULL OR status = ?1)"))
+        .prepare(&format!(
+            "SELECT {CONFLICT_COLUMNS} FROM conflict WHERE (?1 IS NULL OR status = ?1)"
+        ))
         .map_err(|e| e.to_string())?;
-    let rows = stmt.query_map(params![status], map_conflict).map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    let rows = stmt
+        .query_map(params![status], map_conflict)
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn db_get_conflict(db: State<AppDb>, conflict_id: String) -> Result<Option<ConflictRecord>, String> {
+pub fn db_get_conflict(
+    db: State<AppDb>,
+    conflict_id: String,
+) -> Result<Option<ConflictRecord>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     conn.query_row(
         &format!("SELECT {CONFLICT_COLUMNS} FROM conflict WHERE conflict_id = ?1"),
@@ -427,7 +481,11 @@ pub fn db_get_conflict(db: State<AppDb>, conflict_id: String) -> Result<Option<C
 }
 
 #[tauri::command]
-pub fn db_resolve_conflict(db: State<AppDb>, conflict_id: String, resolved_with: String) -> Result<(), String> {
+pub fn db_resolve_conflict(
+    db: State<AppDb>,
+    conflict_id: String,
+    resolved_with: String,
+) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "UPDATE conflict SET status = 'resolved', resolved_at = ?1, resolved_with = ?2 WHERE conflict_id = ?3",
@@ -440,7 +498,11 @@ pub fn db_resolve_conflict(db: State<AppDb>, conflict_id: String, resolved_with:
 // --- Audit trail ---
 
 #[tauri::command]
-pub fn db_append_audit_event(db: State<AppDb>, event_type: String, details: Json) -> Result<(), String> {
+pub fn db_append_audit_event(
+    db: State<AppDb>,
+    event_type: String,
+    details: Json,
+) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO audit_event (event_type, occurred_at, details) VALUES (?1, ?2, ?3)",
@@ -466,7 +528,8 @@ pub fn db_list_audit_events(db: State<AppDb>, limit: i64) -> Result<Vec<AuditEve
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 // --- Lifecycle ---

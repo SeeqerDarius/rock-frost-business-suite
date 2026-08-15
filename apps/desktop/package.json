@@ -1,6 +1,6 @@
 {
   "name": "@rock-frost/desktop",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "Rock Frost Business Suite - local-first Windows desktop client (Tauri 2 + React + TypeScript).",
   "type": "module",
@@ -23,6 +23,7 @@
     "@tauri-apps/api": "^2.9.0",
     "@tauri-apps/plugin-os": "^2.3.1",
     "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "lucide-react": "^0.475.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

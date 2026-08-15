@@ -1,6 +1,6 @@
 [package]
 name = "rock-frost-desktop"
-version = "0.1.1"
+version = "0.2.0"
 description = "Rock Frost Business Suite desktop client - local-first Windows app"
 edition = "2021"
 rust-version = "1.77"
@@ -51,3 +51,6 @@ codegen-units = 1
 lto = true
 opt-level = "s"
 strip = true
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"

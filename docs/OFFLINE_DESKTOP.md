@@ -4,9 +4,9 @@
 
 The cloud synchronization foundation is implemented for the first controlled offline release. The desktop client is a separate deliverable under `apps/desktop/`. Offline support is not a general copy of the cloud database. The cloud remains authoritative and every device receives only the records and operations allowed for its tenant, user, role, subscription, and activated module set.
 
-The first corrected Windows test package is version `0.1.1`. It replaces the
-blank-window `0.1.0` package and must be installed using only one installer
-format per computer.
+The first updater-enabled Windows package is version `0.2.0`. Version `0.1.1`
+requires one final manual upgrade to `0.2.0`; subsequent releases can use the
+authenticated in-app update flow.
 
 ## Security model
 
@@ -81,6 +81,24 @@ All responses containing tenant or device data use `Cache-Control: private, no-s
 - Migration `20260815020000_add_offline_sync_foundation` adds device, activation-code, idempotency-ledger, and conflict tables.
 
 ## Remaining launch requirements
+
+### Automatic update release path
+
+- The client checks at startup, after connectivity returns, and every six
+  hours. Update-service failure does not block offline work.
+- The Rock Frost endpoint validates and proxies the newest public GitHub
+  `latest.json`, or returns HTTP 204 when no release exists.
+- The user starts the download. Tauri verifies its signature before passive
+  installation and application restart.
+- Local SQLCipher data and queued operations remain outside the installation
+  directory and survive updates.
+- `.github/workflows/desktop-release.yml` builds Windows installers, updater
+  signatures, and `latest.json`, then publishes a public GitHub release.
+- The Tauri private key must be configured as a GitHub Actions secret and must
+  never be committed.
+- Windows Authenticode signing remains pending. Public distribution stays
+  enabled, but Windows may show Unknown publisher or SmartScreen warnings until
+  Rock Frost configures a trusted certificate.
 
 The offline product cannot be offered to customers until the integrated desktop package passes Windows installer testing, local encryption and credential-store verification, signed update configuration, online-to-offline workflow tests, loss-of-network tests, conflict tests, stolen-device tests, and a controlled customer pilot. Code-signing certificates and the final desktop update channel are external operational requirements and must not be claimed until configured and verified.
 

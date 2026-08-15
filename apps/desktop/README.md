@@ -2,9 +2,10 @@
 
 Local-first Windows client built with Tauri 2, React, and TypeScript. It uses an encrypted device-local SQLite store and communicates only with the Rock Frost desktop sync API. It never connects directly to Neon or PostgreSQL.
 
-The corrected Windows package is version `0.1.1`. Remove any installed `0.1.0`
-copy before testing it, then install either the NSIS EXE or the MSI. Do not
-install both package formats on the same computer.
+Version `0.2.0` introduces authenticated automatic updates. A user who already
+has `0.1.1` must install `0.2.0` once because the older client does not contain
+the updater. Starting with `0.2.0`, the application checks for updates at
+startup, when connectivity returns, and every six hours while running.
 
 ## Activation
 
@@ -65,4 +66,25 @@ WebView timer functions must also remain bound to `globalThis`; invoking a
 stored unbound timer through another object raises `Illegal invocation` in
 WebView2 before the first React screen can render.
 
-The TypeScript checks validate the webview portion. The native Rust layer has also passed `cargo check`, and `npm run tauri:build` has produced x64 NSIS and MSI bundles. Customer distribution still requires a trusted Windows code-signing certificate and a configured signed-update channel. Do not distribute the unsigned local bundles as production software.
+The TypeScript checks validate the webview portion. The native Rust layer has also passed `cargo check`, and `npm run tauri:build` has produced x64 NSIS and MSI bundles.
+
+## Desktop releases and automatic updates
+
+The updater checks `https://app.rockfrostgroup.com/api/desktop/releases/latest`.
+That endpoint validates and proxies the `latest.json` generated for the newest
+public GitHub desktop release. When no release is available, it returns HTTP
+204 so offline work and normal startup continue without interruption.
+
+Updates require user confirmation. The app displays the available version,
+downloads after the user selects Update and restart, verifies the Tauri
+signature, installs in passive Windows mode, and restarts. The encrypted local
+database, pending queue, credentials, and activation remain outside the
+installation directory and survive installer replacement.
+
+Run the `Desktop release` GitHub Actions workflow after increasing the version
+in `package.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`. Configure
+`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` as GitHub
+Actions secrets first. The free Tauri update key authenticates update packages.
+It is separate from a commercial Windows Authenticode certificate, which
+identifies Rock Frost to Windows and reduces SmartScreen warnings. Public
+releases remain enabled while Authenticode procurement is pending.

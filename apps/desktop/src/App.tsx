@@ -2,6 +2,7 @@ import { AppProvider, useApp } from "@/state/AppProvider";
 import { DeviceActivationScreen } from "@/shell/DeviceActivationScreen";
 import { LockScreen } from "@/shell/LockScreen";
 import { AppShell } from "@/shell/AppShell";
+import { UpdateBanner } from "@/update/UpdateBanner";
 
 /**
  * The entire screen-selection logic for the app, in one place:
@@ -29,6 +30,7 @@ function Screens() {
 export function App() {
   return (
     <AppProvider>
+      <UpdateBanner />
       <Screens />
     </AppProvider>
   );
