@@ -7,6 +7,9 @@ has `0.1.1` must install `0.2.0` once because the older client does not contain
 the updater. Starting with `0.2.0`, the application checks for updates at
 startup, when connectivity returns, and every six hours while running.
 
+Version `0.2.1` fixes a startup timer race that could replace a correctly
+rendered activation or workspace screen with a false startup error.
+
 ## Activation
 
 1. Sign in to the Rock Frost web application.

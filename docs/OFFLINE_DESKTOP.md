@@ -8,6 +8,10 @@ The first updater-enabled Windows package is version `0.2.0`. Version `0.1.1`
 requires one final manual upgrade to `0.2.0`; subsequent releases can use the
 authenticated in-app update flow.
 
+Version `0.2.1` corrects the packaged startup guard. The guard is cancelled as
+soon as React commits the activation, lock, or workspace screen, and it also
+refuses to show a timeout error after the original startup marker has gone.
+
 ## Security model
 
 1. A signed-in tenant user opens `/app/account/desktop` and creates a single-use activation code for selected supported modules.

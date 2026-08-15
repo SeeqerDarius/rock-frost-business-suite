@@ -6,6 +6,9 @@ import "@/styles/theme.css";
 const rootContainer = document.getElementById("root");
 if (!rootContainer) throw new Error("Root element #root not found in index.html.");
 const container: HTMLElement = rootContainer;
+const startupWindow = window as Window & {
+  __ROCK_FROST_MARK_READY__?: () => void;
+};
 
 function showFatalStartupError(error: unknown) {
   const message = error instanceof Error ? error.message : "An unexpected startup error occurred.";
@@ -31,8 +34,18 @@ root.render(
   </StrictMode>,
 );
 
-window.requestAnimationFrame(() => {
+const readinessObserver = new MutationObserver(() => {
   if (container.childElementCount > 0 && !container.querySelector("#startup-status")) {
+    startupWindow.__ROCK_FROST_MARK_READY__?.();
     container.dataset.appReady = "true";
+    readinessObserver.disconnect();
   }
 });
+
+readinessObserver.observe(container, { childList: true, subtree: true });
+
+if (container.childElementCount > 0 && !container.querySelector("#startup-status")) {
+  startupWindow.__ROCK_FROST_MARK_READY__?.();
+  container.dataset.appReady = "true";
+  readinessObserver.disconnect();
+}
