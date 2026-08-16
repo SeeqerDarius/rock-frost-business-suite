@@ -10,6 +10,13 @@ startup, when connectivity returns, and every six hours while running.
 Version `0.2.1` fixes a startup timer race that could replace a correctly
 rendered activation or workspace screen with a false startup error.
 
+Version `0.2.2` fixes device activation. The default `fetch` used by
+`SyncClient` was not bound to a receiver, so WebView2 rejected it with
+`Illegal invocation` on every activation attempt, before any request left the
+device. A valid activation code, correct module selection, and a correct
+local passcode did not matter: the request never reached the server, and the
+single-use activation code was never consumed by a failed attempt.
+
 ## Activation
 
 1. Sign in to the Rock Frost web application.
@@ -70,6 +77,8 @@ stored unbound timer through another object raises `Illegal invocation` in
 WebView2 before the first React screen can render.
 
 The TypeScript checks validate the webview portion. The native Rust layer has also passed `cargo check`, and `npm run tauri:build` has produced x64 NSIS and MSI bundles.
+
+WebView timer functions and `fetch` must both remain bound to `globalThis`. `SyncClient` is the only module that calls `fetch`, and its default fetch function is bound in the constructor so device activation and sync calls work under WebView2.
 
 ## Desktop releases and automatic updates
 

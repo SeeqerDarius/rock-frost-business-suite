@@ -12,6 +12,19 @@ Version `0.2.1` corrects the packaged startup guard. The guard is cancelled as
 soon as React commits the activation, lock, or workspace screen, and it also
 refuses to show a timeout error after the original startup marker has gone.
 
+Version `0.2.2` fixes device activation itself. `SyncClient` stored WebView2's
+native `fetch` as a bare function reference and called it as `this.fetchFn(...)`.
+WebView2's `fetch` is receiver-sensitive: it only works when invoked with
+`window`/`globalThis` as the receiver, and rejected the mis-bound call with
+`Failed to execute 'fetch' on 'Window': Illegal invocation` before any network
+request was attempted. Every field on the activation form (activation code,
+selected modules, local passcode) was validated and correct; the failure was
+entirely a client-side JavaScript binding defect, not a data problem. Because
+the throw happened before `fetch` dispatched anything, no request reached
+`POST /api/desktop/activate`, so the single-use activation code was never
+checked and never consumed. The fix binds the default fetch function once, in
+the constructor, to `globalThis`.
+
 ## Security model
 
 1. A signed-in tenant user opens `/app/account/desktop` and creates a single-use activation code for selected supported modules.
@@ -115,3 +128,10 @@ WebView2 browser timer functions are receiver-sensitive. Desktop services
 that retain `setInterval` or `clearInterval` must bind them to `globalThis`.
 Calling an unbound timer as an object method raises `Illegal invocation` and
 can prevent the initial activation screen from rendering.
+
+The same rule applies to `fetch`. `SyncClient` is the only module that calls
+`fetch` directly; its default fetch function is bound to `globalThis` in the
+constructor (`apps/desktop/src/sync/sync-client.ts`) so device activation and
+every other sync call work under WebView2. A repository-wide audit of
+`apps/desktop/src` found no other retained, receiver-sensitive native
+function besides this one and the already-fixed timer pair.

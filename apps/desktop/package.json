@@ -1,6 +1,6 @@
 {
   "name": "@rock-frost/desktop",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "Rock Frost Business Suite - local-first Windows desktop client (Tauri 2 + React + TypeScript).",
   "type": "module",

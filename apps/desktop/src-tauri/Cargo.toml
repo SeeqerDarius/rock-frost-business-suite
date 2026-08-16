@@ -1,6 +1,6 @@
 [package]
 name = "rock-frost-desktop"
-version = "0.2.1"
+version = "0.2.2"
 description = "Rock Frost Business Suite desktop client - local-first Windows app"
 edition = "2021"
 rust-version = "1.77"

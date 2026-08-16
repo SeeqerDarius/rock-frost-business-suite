@@ -62,7 +62,14 @@ export class SyncClient {
     this.apiBaseUrl = options.apiBaseUrl.replace(/\/+$/, "");
     this.getAccessToken = options.getAccessToken;
     this.backoffOptions = options.backoffOptions ?? DEFAULT_BACKOFF_OPTIONS;
-    this.fetchFn = options.fetchFn ?? fetch;
+    // WebView2's native fetch is receiver-sensitive (see device-lock.ts's
+    // identical setInterval/clearInterval binding): storing the bare
+    // `fetch` reference and later calling it as `this.fetchFn(...)` invokes
+    // it with `this` (the SyncClient instance) as the receiver instead of
+    // `window`/`globalThis`, which throws "Illegal invocation" before the
+    // request ever reaches the network. Binding it here, once, keeps every
+    // call site free to just call `this.fetchFn(...)`.
+    this.fetchFn = options.fetchFn ?? globalThis.fetch.bind(globalThis);
     this.sleepFn = options.sleepFn ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
 
