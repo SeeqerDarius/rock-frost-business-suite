@@ -7,7 +7,7 @@
 - Production data verification found the latest affected `GENERAL` inquiry at `2026-08-16T10:38:57.626Z` still in `NEW` state, plus one `SUPPORT` inquiry in `NEW` state. Neither customer needs to resubmit, and no data repair is required.
 - Important files: `src/app/app/platform/requests/page.tsx`, `test/platform-request-inbox.test.ts`, and `docs/MODULE_REQUESTS_AND_CUSTOMIZATION.md`.
 - Schema and environment changes: none.
-- Validation: the platform inbox, module request workflow, and contact form tests passed with 3 files and 10 tests; ESLint and strict TypeScript passed; the full mocked suite passed with 68 files and 376 tests; Next.js 16.2.12 produced a fresh optimized production build with all 194 pages; and `git diff --check` passed. Deployment and post-deploy results are recorded below after release.
+- Validation and release: the platform inbox, module request workflow, and contact form tests passed with 3 files and 10 tests; ESLint and strict TypeScript passed; the full mocked suite passed with 68 files and 376 tests; Next.js 16.2.12 produced a fresh optimized production build with all 194 pages; and `git diff --check` passed. Commit `9b1701d` was pushed to `origin/main`. Vercel production deployment `dpl_9T5x2Q6e3PdwmDQBAZGSGDAVRXde` reached Ready. The live health endpoint returned HTTP 200 with the database reachable, the protected admin request route returned the expected HTTP 307 login redirect without credentials, and the post-deploy error scan was clean.
 
 ## 2026-08-16: Public contact verification outage
 
