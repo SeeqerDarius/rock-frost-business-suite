@@ -1,5 +1,14 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-16: Complete platform request inbox coverage
+
+- Root cause: the public contact form correctly stored the customer's successful submission as a `GENERAL` inquiry with `NEW` status, but `/app/platform/requests` queried and counted only `DEMO`, `MODULE`, and `CUSTOM_MODULE` intents. General inquiries and support requests were therefore present in production data but invisible to platform operators.
+- Updated the platform inbox to show every `NEW` public inquiry. Added clear labels for demo, module, general, support, and custom-module requests, while preserving the existing active queue and history workflows.
+- Production data verification found the latest affected `GENERAL` inquiry at `2026-08-16T10:38:57.626Z` still in `NEW` state, plus one `SUPPORT` inquiry in `NEW` state. Neither customer needs to resubmit, and no data repair is required.
+- Important files: `src/app/app/platform/requests/page.tsx`, `test/platform-request-inbox.test.ts`, and `docs/MODULE_REQUESTS_AND_CUSTOMIZATION.md`.
+- Schema and environment changes: none.
+- Validation: the platform inbox, module request workflow, and contact form tests passed with 3 files and 10 tests; ESLint and strict TypeScript passed; the full mocked suite passed with 68 files and 376 tests; Next.js 16.2.12 produced a fresh optimized production build with all 194 pages; and `git diff --check` passed. Deployment and post-deploy results are recorded below after release.
+
 ## 2026-08-16: Public contact verification outage
 
 - Root cause: production had neither Turnstile environment variable. The contact widget therefore rendered nothing, while `verifyBotProtection` rejected every production submission without a secret. The visible `bot-check` message was a deliberate redirect, so no 500 appeared in runtime error logs.

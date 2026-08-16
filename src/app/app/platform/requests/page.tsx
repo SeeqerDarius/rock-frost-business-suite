@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { db } from "@/lib/db";
 import { getPlatformAnchorOrganizationIds } from "@/lib/platform-organizations";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
-import type { ModuleRequestPriority, ModuleRequestStatus, ModuleRequestType, Prisma } from "@prisma/client";
+import type { EnquiryIntent, ModuleRequestPriority, ModuleRequestStatus, ModuleRequestType, Prisma } from "@prisma/client";
 import {
   MODULE_REQUEST_PRIORITIES,
   MODULE_REQUEST_PRIORITY_LABELS,
@@ -32,6 +32,14 @@ const ERRORS: Record<string, string> = {
 
 const VIEWS = ["queue", "inbox", "history"] as const;
 type View = (typeof VIEWS)[number];
+
+const ENQUIRY_INTENT_LABELS: Record<EnquiryIntent, string> = {
+  DEMO: "Demo request",
+  MODULE: "Module subscription",
+  GENERAL: "General inquiry",
+  SUPPORT: "Customer support",
+  CUSTOM_MODULE: "Custom module",
+};
 
 function isView(value: string | undefined): value is View {
   return VIEWS.includes(value as View);
@@ -107,13 +115,13 @@ export default async function PlatformRequestsPage({
     db.module.findMany({ where: { status: "ACTIVE", code: { in: [...catalogueModuleKeys] } }, orderBy: { name: "asc" } }),
     view === "inbox" || view === "queue"
       ? db.contactSubmission.findMany({
-          where: { status: "NEW", intent: { in: ["DEMO", "MODULE", "CUSTOM_MODULE"] } },
+          where: { status: "NEW" },
           include: { module: true },
           orderBy: { createdAt: "desc" },
         })
       : Promise.resolve([]),
     db.moduleRequest.count({ where: { status: { notIn: Array.from(TERMINAL_MODULE_REQUEST_STATUSES) as ModuleRequestStatus[] } } }),
-    db.contactSubmission.count({ where: { status: "NEW", intent: { in: ["DEMO", "MODULE", "CUSTOM_MODULE"] } } }),
+    db.contactSubmission.count({ where: { status: "NEW" } }),
     db.moduleRequest.count({ where: { status: { in: Array.from(TERMINAL_MODULE_REQUEST_STATUSES) as ModuleRequestStatus[] } } }),
   ]);
 
@@ -153,8 +161,8 @@ export default async function PlatformRequestsPage({
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
-        title="Module requests"
-        description="Review customer demand, assign ownership, enable existing modules, and manage custom work."
+        title="Customer requests"
+        description="Review every public inquiry and organization request, contact the requester, assign ownership, and manage the next action."
       />
 
       {query.updated || query.converted ? (
@@ -216,7 +224,7 @@ export default async function PlatformRequestsPage({
         <section className="space-y-3">
           <h2 className="text-lg font-semibold">Unlinked public inquiries</h2>
           {inquiries.length === 0 ? (
-            <EmptyState icon={Inbox} title="No new public inquiries" description="Demo and module inquiries from the public contact form will appear here." />
+            <EmptyState icon={Inbox} title="No new public inquiries" description="Demo, module, general, support, and custom-work inquiries will appear here." />
           ) : inquiries.map((inquiry) => (
             <Card key={inquiry.id}>
               <CardHeader>
@@ -224,7 +232,10 @@ export default async function PlatformRequestsPage({
                 <CardDescription>{inquiry.name} · {inquiry.email} · {inquiry.phone || "No phone"} · prefers {inquiry.preferredContact.toLowerCase()} · {inquiry.createdAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <p className="text-sm font-medium">{inquiry.intent === "DEMO" ? "Demo" : "Module"} · {inquiry.module?.name ?? "Custom module"}</p>
+                <p className="text-sm font-medium">
+                  {ENQUIRY_INTENT_LABELS[inquiry.intent]}
+                  {inquiry.module ? ` · ${inquiry.module.name}` : ""}
+                </p>
                 <p className="whitespace-pre-wrap text-sm">{inquiry.message || "No additional message."}</p>
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" nativeButton={false} render={<a href={`mailto:${inquiry.email}`} />}>Email</Button>

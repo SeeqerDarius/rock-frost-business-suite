@@ -19,10 +19,10 @@ The request stores the organization and authenticated requester automatically. T
 customer-visible timeline, status, decision, assignee, and quotation/reference value, and can add more information.
 Internal operator notes are never returned by the tenant page.
 
-Prospects can choose **Request a module** or **Request a custom module** on `/contact`. These submissions appear
-as unlinked inquiries in `/app/platform/requests`. A platform operator must explicitly link the inquiry to an
-existing organization before converting it. This avoids guessing tenant identity from a company name or email
-domain.
+Prospects can submit demo requests, module requests, general inquiries, support requests, or custom-module
+requests on `/contact`. Every new public submission appears as an unlinked inquiry in the **Inbox** view of
+`/app/platform/requests`. A platform operator must explicitly link an inquiry to an existing organization before
+converting it. This avoids guessing tenant identity from a company name or email domain.
 
 ## Platform workflow
 
@@ -40,9 +40,9 @@ Every request mutation writes an audit event. Customer-visible changes create an
 authenticated requester. Enabling a module still does not bypass RBAC: users need an appropriate module permission
 before they can enter it.
 
-`/app/platform/requests` is organized into three views — **Active queue** (the default; excludes terminal
-statuses), **Inbox** (unlinked public inquiries), and **History** (`COMPLETED`/`REJECTED`/`CANCELLED` requests,
-previously not viewable at all in this UI once they left the active queue) — plus search and priority/type filters,
+`/app/platform/requests` is organized into three views: **Active queue** (the default; excludes terminal
+statuses), **Inbox** (all new unlinked public inquiries), and **History** (`COMPLETED`/`REJECTED`/`CANCELLED` requests,
+previously not viewable at all in this UI once they left the active queue), plus search and priority/type filters,
 all driven by URL query params so results are shareable/bookmarkable. Each request is a collapsed row by default;
 opening it reveals the full management form. **Approve and enable module** and **Reject** both require an explicit
 confirmation dialog before submitting, since both are consequential and were previously one accidental click away.
