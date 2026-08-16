@@ -17,6 +17,13 @@ device. A valid activation code, correct module selection, and a correct
 local passcode did not matter: the request never reached the server, and the
 single-use activation code was never consumed by a failed attempt.
 
+Version `0.2.3` fixes a second defect that only became visible once `0.2.2`
+let `fetch` actually run: the packaged Content-Security-Policy's
+`connect-src` never allowed the real sync API origin, so every request was
+blocked with `Failed to fetch`, which looks identical to a real network
+outage. `connect-src` now allows `https://app.rockfrostgroup.com` in both
+`index.html` and `src-tauri/tauri.conf.json`.
+
 ## Activation
 
 1. Sign in to the Rock Frost web application.
@@ -78,7 +85,7 @@ WebView2 before the first React screen can render.
 
 The TypeScript checks validate the webview portion. The native Rust layer has also passed `cargo check`, and `npm run tauri:build` has produced x64 NSIS and MSI bundles.
 
-WebView timer functions and `fetch` must both remain bound to `globalThis`. `SyncClient` is the only module that calls `fetch`, and its default fetch function is bound in the constructor so device activation and sync calls work under WebView2.
+WebView timer functions and `fetch` must both remain bound to `globalThis`. `SyncClient` is the only module that calls `fetch`, and its default fetch function is bound in the constructor so device activation and sync calls work under WebView2. The CSP `connect-src` in `index.html` and `src-tauri/tauri.conf.json` must include the real API origin, or WebView2 blocks every request with `Failed to fetch` regardless of how `fetch` is bound; `src/packaging/bundled-assets.test.ts` checks the built CSP for this.
 
 ## Desktop releases and automatic updates
 

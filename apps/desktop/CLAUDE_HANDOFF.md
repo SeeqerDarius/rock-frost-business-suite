@@ -1,5 +1,57 @@
 # Desktop client handoff
 
+## 2026-08-16 CSP connect-src fix, found via live install testing (0.2.2 to 0.2.3)
+
+After installing and manually testing `0.2.2` on a real Windows machine, the
+operator reported a new error on Activate device: `Failed to fetch`, instead
+of the fixed `Illegal invocation`. This confirmed the fetch-binding fix
+below worked, but exposed a second, previously-unreachable defect.
+
+Root cause: `apps/desktop/src-tauri/tauri.conf.json`'s `app.security.csp`
+(duplicated in `apps/desktop/index.html` for `vite dev`) sets `connect-src`
+to `'self' ipc: https://ipc.localhost` only. It never allowed the real sync
+API origin. WebView2 enforces this CSP exactly like a browser enforces a
+page's CSP header: any `fetch()` to `https://app.rockfrostgroup.com` is
+blocked before the request leaves the renderer, and the promise rejects with
+a generic `TypeError: Failed to fetch` - indistinguishable in the UI from an
+actual network outage. Diagnosis: raw TCP to `app.rockfrostgroup.com:443`
+from the test machine succeeded (`Test-NetConnection`), ruling out a real
+connectivity problem; no `apps/desktop/.env` override existed, so the app
+was using the documented default origin; the CSP string was the only thing
+left that could reject a well-formed, correctly-bound `fetch()` call.
+
+This was invisible during `0.2.1`/`0.2.2` development and their automated
+tests because the fetch-receiver bug always threw before the CSP was ever
+evaluated - fixing one bug was necessary to discover the other.
+
+Also found and fixed in passing: `apps/desktop/.env.example` documented
+`VITE_API_BASE_URL=https://api.rockfrostgroup.com`, an origin that does not
+exist; the real production origin (matching the CSP, the docs, and every
+other reference in this repository) is `https://app.rockfrostgroup.com`.
+
+Fix: added `https://app.rockfrostgroup.com` to `connect-src` in both
+`tauri.conf.json` and `index.html`, and corrected `.env.example`.
+
+Test: added a case to `apps/desktop/src/packaging/bundled-assets.test.ts`
+that parses the built `dist/index.html`'s CSP meta tag and asserts
+`connect-src` contains the real API origin. Verified it fails against the
+pre-fix built output and passes after rebuilding with the fix.
+
+Version: `0.2.2` to `0.2.3` across the same manifest set as the previous
+entry.
+
+Validation from `apps/desktop/`: `npm run typecheck` passed (after fixing a
+`noUncheckedIndexedAccess` type error in the new test); `npm run lint`
+passed; `npm test` passed 13 files and 74 tests; `npm run build` passed;
+`cargo check` and `npm run tauri:build` passed and produced NSIS and MSI
+`0.2.3` installers. `git diff --check` passed.
+
+Installed `0.2.3` over the previous `0.2.2` install on this machine (silent
+NSIS `/S`) and confirmed the exe launches and stays running. Clicking
+Activate against the live backend with a fresh code was handed back to the
+operator to retest, since this environment still has no native WebView2
+UI-automation tool - the same disclosed limitation as the previous entry.
+
 ## 2026-08-16 activation fetch-binding fix (0.2.1 to 0.2.2)
 
 Production symptom: a customer entering a valid activation code, selecting
