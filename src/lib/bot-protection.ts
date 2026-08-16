@@ -8,6 +8,7 @@ type TurnstileResponse = {
   success?: boolean;
   action?: string;
   hostname?: string;
+  "error-codes"?: string[];
 };
 
 export function isBotProtectionConfigured() {
@@ -32,10 +33,29 @@ export async function verifyBotProtection(token: FormDataEntryValue | null, expe
       cache: "no-store",
       signal: AbortSignal.timeout(5_000),
     });
-    if (!response.ok) return false;
+    if (!response.ok) {
+      console.warn("[bot-protection] Turnstile verification request failed", {
+        expectedAction,
+        status: response.status,
+      });
+      return false;
+    }
     const result = await response.json() as TurnstileResponse;
-    return result.success === true && (!result.action || result.action === expectedAction);
-  } catch {
+    const verified = result.success === true && (!result.action || result.action === expectedAction);
+    if (!verified) {
+      console.warn("[bot-protection] Turnstile rejected a submission", {
+        expectedAction,
+        returnedAction: result.action ?? null,
+        hostname: result.hostname ?? null,
+        errorCodes: result["error-codes"] ?? [],
+      });
+    }
+    return verified;
+  } catch (error) {
+    console.warn("[bot-protection] Turnstile verification was unavailable", {
+      expectedAction,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return false;
   }
 }

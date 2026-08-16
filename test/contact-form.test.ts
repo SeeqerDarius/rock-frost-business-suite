@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createContactFormProof } from "@/lib/contact-form-protection";
 
 const mockDb = {
   contactSubmission: { findFirst: vi.fn(), create: vi.fn() },
@@ -27,11 +28,13 @@ const { submitContactForm } = await import("@/app/(public)/contact/actions");
 function formData(fields: Record<string, string>) {
   const fd = new FormData();
   for (const [key, value] of Object.entries(fields)) fd.set(key, value);
+  fd.set("contactProof", createContactFormProof("contact-test-secret", Date.now() - 2_000));
   return fd;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  process.env.NEXTAUTH_SECRET = "contact-test-secret";
   process.env.RESEND_TO_EMAIL = "sales@rockfrostgroup.com";
   mockDb.contactSubmission.create.mockResolvedValue({ id: "submission-1" });
   mockDb.organizationMember.findMany.mockResolvedValue([]);

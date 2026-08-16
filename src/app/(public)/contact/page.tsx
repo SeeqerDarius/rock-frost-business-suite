@@ -8,6 +8,8 @@ import { catalogueModuleRegistry } from "@/platform/modules/registry";
 import { createPublicMetadata } from "@/lib/seo";
 import { PublicHero } from "@/components/marketing/public-hero";
 import { TurnstileWidget } from "@/components/security/turnstile-widget";
+import { isBotProtectionConfigured } from "@/lib/bot-protection";
+import { createContactFormProof } from "@/lib/contact-form-protection";
 
 export const metadata = createPublicMetadata({
   title: "Request a Business Software Demo",
@@ -32,6 +34,10 @@ export default async function ContactPage({
   const { sent, error, intent, module: moduleCode } = await searchParams;
   const initialIntent = intent === "module" ? "MODULE" : intent === "demo" ? "DEMO" : "GENERAL";
   const selectedModule = catalogueModuleRegistry.find((item) => item.key === moduleCode);
+  const turnstileConfigured = isBotProtectionConfigured();
+  const contactProof = turnstileConfigured
+    ? null
+    : createContactFormProof(process.env.NEXTAUTH_SECRET ?? "");
 
   return (
     <>
@@ -53,6 +59,11 @@ export default async function ContactPage({
             </div>
           ) : null}
           <form action={submitContactForm} className="space-y-4">
+            {contactProof ? <input type="hidden" name="contactProof" value={contactProof} /> : null}
+            <div className="absolute -left-[10000px] h-px w-px overflow-hidden" aria-hidden="true">
+              <Label htmlFor="website">Website</Label>
+              <Input id="website" name="website" tabIndex={-1} autoComplete="off" />
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="name">Full name</Label>
@@ -109,7 +120,7 @@ export default async function ContactPage({
               <Label htmlFor="message">Message</Label>
               <Textarea id="message" name="message" rows={4} placeholder="Tell us a bit about your organization and what you&apos;re looking for." />
             </div>
-            <TurnstileWidget action="contact" />
+            {turnstileConfigured ? <TurnstileWidget action="contact" /> : null}
             <Button type="submit" className="w-full">
               Send message
             </Button>

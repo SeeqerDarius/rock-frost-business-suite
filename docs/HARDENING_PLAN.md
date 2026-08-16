@@ -7,9 +7,13 @@ MIME-sniffing protection, referrer policy, permissions policy, and opener
 isolation through `next.config.ts`. CI blocks high-severity dependency
 vulnerabilities and scans full Git history with Gitleaks. Cloudflare Turnstile
 verification is wired into login, password-reset requests, and the public
-contact form. It becomes mandatory in production when
-`TURNSTILE_SECRET_KEY` is configured; the matching public site key is
-`NEXT_PUBLIC_TURNSTILE_SITE_KEY`.
+contact form. It becomes mandatory when both `TURNSTILE_SECRET_KEY` and the
+matching `NEXT_PUBLIC_TURNSTILE_SITE_KEY` are configured. If Turnstile is not
+configured, the public contact form uses a server-signed proof that expires
+after two hours, enforces a minimum completion time, checks a hidden honeypot,
+and retains the database-backed email cooldown. Login and password-reset
+forms do not use this fallback and continue to fail closed. Verification
+failures are logged without recording challenge tokens or submitted content.
 
 Prisma parameterization, tenant-scoped access checks, password hashing, TOTP
 secret encryption, login lockout, and upload signature checks remain in place.

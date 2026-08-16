@@ -1,5 +1,14 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-16: Public contact verification outage
+
+- Root cause: production had neither Turnstile environment variable. The contact widget therefore rendered nothing, while `verifyBotProtection` rejected every production submission without a secret. The visible `bot-check` message was a deliberate redirect, so no 500 appeared in runtime error logs.
+- Fixed contact submissions without weakening authentication. Contact uses Turnstile when both keys are configured; otherwise it requires a server-signed, time-limited proof, a minimum completion time, an empty honeypot, valid Zod input, and the existing database cooldown. Login and password-reset verification remain fail-closed.
+- Added privacy-safe diagnostics for Turnstile provider errors, action/hostname mismatch, timeouts, and fallback rejection. Tokens and submitted contact content are not logged.
+- Important files: `src/lib/contact-form-protection.ts`, `src/lib/bot-protection.ts`, `src/app/(public)/contact/actions.ts`, `src/app/(public)/contact/page.tsx`, `test/contact-form-protection.test.ts`, `test/contact-form.test.ts`, `docs/HARDENING_PLAN.md`, and `README.md`.
+- Schema and environment changes: none. Configuring both documented Turnstile keys remains recommended but is no longer required for contact-form availability.
+- Validation before release: 3 focused test files with 11 tests passed; the full mocked suite passed with 67 files and 375 tests; ESLint and TypeScript passed; Next.js 16.2.12 produced a fresh optimized production build and route manifest; the editorial punctuation release test passed; and `git diff --check` passed. Deployment, live submission verification, and the post-deploy error scan are recorded after completion.
+
 ## 2026-08-15: Desktop false startup timeout fix
 
 - Bumped the Windows desktop client to `0.2.1` and fixed a startup race where the activation screen rendered successfully but an uncancelled safety timer replaced it with a false error eight seconds later.

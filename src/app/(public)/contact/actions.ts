@@ -5,7 +5,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
 import { shortText, longText, email as emailSchema, parseWithSchema, escapeHtml } from "@/lib/validation";
-import { verifyBotProtection } from "@/lib/bot-protection";
+import { isBotProtectionConfigured, verifyBotProtection } from "@/lib/bot-protection";
+import { isContactHoneypotClear, verifyContactFormProof } from "@/lib/contact-form-protection";
 
 const REASON_LABELS: Record<string, string> = {
   demo: "Request a demo",
@@ -45,7 +46,18 @@ function clean(value: FormDataEntryValue | null) {
 }
 
 export async function submitContactForm(formData: FormData): Promise<void> {
-  if (!(await verifyBotProtection(formData.get("cf-turnstile-response"), "contact"))) {
+  const turnstileConfigured = isBotProtectionConfigured();
+  const botVerified = turnstileConfigured
+    ? await verifyBotProtection(formData.get("cf-turnstile-response"), "contact")
+    : verifyContactFormProof(formData.get("contactProof"), process.env.NEXTAUTH_SECRET ?? "")
+      && isContactHoneypotClear(formData.get("website"));
+
+  if (!botVerified) {
+    console.warn("[contact] Submission verification failed", {
+      mode: turnstileConfigured ? "turnstile" : "signed-fallback",
+      hasTurnstileToken: Boolean(clean(formData.get("cf-turnstile-response"))),
+      honeypotFilled: !isContactHoneypotClear(formData.get("website")),
+    });
     redirect("/contact?error=bot-check");
   }
   const parsed = parseWithSchema(contactFormSchema, {
