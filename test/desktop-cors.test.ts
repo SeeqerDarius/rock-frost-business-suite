@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { DESKTOP_APP_ORIGIN } from "@/lib/offline-sync/desktop-cors";
 import { OPTIONS as activateOptions, POST as activatePost } from "@/app/api/desktop/activate/route";
 import { OPTIONS as pushOptions, POST as pushPost } from "@/app/api/desktop/sync/push/route";
 import { OPTIONS as pullOptions, GET as pullGet } from "@/app/api/desktop/sync/pull/route";
@@ -10,60 +9,85 @@ import { OPTIONS as deactivateOptions, POST as deactivatePost } from "@/app/api/
  * The desktop client's WebView origin is cross-origin from
  * app.rockfrostgroup.com, so the browser preflights every request with
  * OPTIONS and then enforces Access-Control-Allow-Origin on the *response*
- * to both the preflight and the real request. A CSP fix alone (allowing
- * connect-src) is not enough: without these headers, the browser still
- * blocks the request client-side and fetch() rejects with "Failed to
- * fetch", indistinguishable from a real outage. These tests exercise the
- * route handlers directly (no live server needed) and would fail against
- * the pre-fix routes, which never set any Access-Control-* header.
+ * to both the preflight and the real request, matched exactly against the
+ * request's own Origin header. A CSP fix alone is not enough, and neither
+ * is a hardcoded Access-Control-Allow-Origin guess that doesn't match the
+ * real Origin the app sends: either way the browser blocks the request
+ * client-side and fetch() rejects with "Failed to fetch", indistinguishable
+ * from a real outage. These tests exercise the route handlers directly (no
+ * live server needed) and would fail against routes that never set the
+ * header, or that echo back a fixed value instead of the real Origin.
  */
+const REAL_DESKTOP_ORIGIN = "https://tauri.localhost";
+
+function requestWithOrigin(url: string, origin: string | null, init: RequestInit = {}) {
+  const headers = new Headers(init.headers);
+  if (origin) headers.set("Origin", origin);
+  return new Request(url, { ...init, headers });
+}
+
 describe("desktop API CORS", () => {
-  it("answers the CORS preflight for every desktop sync-contract route", async () => {
+  it("reflects the real desktop app Origin on the preflight for every desktop sync-contract route", async () => {
     for (const options of [activateOptions, pushOptions, pullOptions, resolveOptions, deactivateOptions]) {
-      const response = await options();
+      const request = requestWithOrigin("https://app.rockfrostgroup.com/api/desktop/x", REAL_DESKTOP_ORIGIN);
+      const response = await options(request);
       expect(response.status).toBe(204);
-      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(DESKTOP_APP_ORIGIN);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(REAL_DESKTOP_ORIGIN);
       expect(response.headers.get("Access-Control-Allow-Methods")).toContain("POST");
       expect(response.headers.get("Access-Control-Allow-Headers")).toContain("Authorization");
     }
   });
 
+  it("does not guess or hardcode a single allowed origin: a different, still-valid desktop-shaped Origin is also reflected", async () => {
+    // Guards against the exact regression this test file previously missed:
+    // a hardcoded Access-Control-Allow-Origin that happens to equal one
+    // specific guessed value passes a naive test but silently breaks CORS
+    // for the real app if its actual Origin differs even slightly.
+    const otherOrigin = "https://rock-frost-desktop.localhost";
+    const response = await activateOptions(requestWithOrigin("https://app.rockfrostgroup.com/api/desktop/activate", otherOrigin));
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(otherOrigin);
+  });
+
+  it("does not set Access-Control-Allow-Origin for a request Origin that does not look like the desktop app", async () => {
+    const response = await activateOptions(requestWithOrigin("https://app.rockfrostgroup.com/api/desktop/activate", "https://evil.example.com"));
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
+
   it("sets Access-Control-Allow-Origin on activate's error responses, not only success", async () => {
-    const invalidJson = await activatePost(new Request("https://app.rockfrostgroup.com/api/desktop/activate", {
+    const invalidJson = await activatePost(requestWithOrigin("https://app.rockfrostgroup.com/api/desktop/activate", REAL_DESKTOP_ORIGIN, {
       method: "POST",
       body: "not json",
     }));
     expect(invalidJson.status).toBe(400);
-    expect(invalidJson.headers.get("Access-Control-Allow-Origin")).toBe(DESKTOP_APP_ORIGIN);
+    expect(invalidJson.headers.get("Access-Control-Allow-Origin")).toBe(REAL_DESKTOP_ORIGIN);
 
-    const invalidBody = await activatePost(new Request("https://app.rockfrostgroup.com/api/desktop/activate", {
+    const invalidBody = await activatePost(requestWithOrigin("https://app.rockfrostgroup.com/api/desktop/activate", REAL_DESKTOP_ORIGIN, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
     }));
     expect(invalidBody.status).toBe(400);
-    expect(invalidBody.headers.get("Access-Control-Allow-Origin")).toBe(DESKTOP_APP_ORIGIN);
+    expect(invalidBody.headers.get("Access-Control-Allow-Origin")).toBe(REAL_DESKTOP_ORIGIN);
   });
 
   it("sets Access-Control-Allow-Origin on the 401 an unauthenticated device gets from every authenticated route", async () => {
-    const unauthenticated = new Request("https://app.rockfrostgroup.com/api/desktop/sync/pull");
-    const pullResponse = await pullGet(unauthenticated);
+    const pullResponse = await pullGet(requestWithOrigin("https://app.rockfrostgroup.com/api/desktop/sync/pull", REAL_DESKTOP_ORIGIN));
     expect(pullResponse.status).toBe(401);
-    expect(pullResponse.headers.get("Access-Control-Allow-Origin")).toBe(DESKTOP_APP_ORIGIN);
+    expect(pullResponse.headers.get("Access-Control-Allow-Origin")).toBe(REAL_DESKTOP_ORIGIN);
 
-    const pushResponse = await pushPost(new Request("https://app.rockfrostgroup.com/api/desktop/sync/push", { method: "POST" }));
+    const pushResponse = await pushPost(requestWithOrigin("https://app.rockfrostgroup.com/api/desktop/sync/push", REAL_DESKTOP_ORIGIN, { method: "POST" }));
     expect(pushResponse.status).toBe(401);
-    expect(pushResponse.headers.get("Access-Control-Allow-Origin")).toBe(DESKTOP_APP_ORIGIN);
+    expect(pushResponse.headers.get("Access-Control-Allow-Origin")).toBe(REAL_DESKTOP_ORIGIN);
 
-    const deactivateResponse = await deactivatePost(new Request("https://app.rockfrostgroup.com/api/desktop/deactivate", { method: "POST" }));
+    const deactivateResponse = await deactivatePost(requestWithOrigin("https://app.rockfrostgroup.com/api/desktop/deactivate", REAL_DESKTOP_ORIGIN, { method: "POST" }));
     expect(deactivateResponse.status).toBe(401);
-    expect(deactivateResponse.headers.get("Access-Control-Allow-Origin")).toBe(DESKTOP_APP_ORIGIN);
+    expect(deactivateResponse.headers.get("Access-Control-Allow-Origin")).toBe(REAL_DESKTOP_ORIGIN);
 
     const resolveResponse = await resolvePost(
-      new Request("https://app.rockfrostgroup.com/api/desktop/sync/conflicts/c1/resolve", { method: "POST" }),
+      requestWithOrigin("https://app.rockfrostgroup.com/api/desktop/sync/conflicts/c1/resolve", REAL_DESKTOP_ORIGIN, { method: "POST" }),
       { params: Promise.resolve({ conflictId: "c1" }) },
     );
     expect(resolveResponse.status).toBe(401);
-    expect(resolveResponse.headers.get("Access-Control-Allow-Origin")).toBe(DESKTOP_APP_ORIGIN);
+    expect(resolveResponse.headers.get("Access-Control-Allow-Origin")).toBe(REAL_DESKTOP_ORIGIN);
   });
 });

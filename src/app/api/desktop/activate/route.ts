@@ -6,8 +6,8 @@ import { desktopPreflightResponse, withDesktopCors } from "@/lib/offline-sync/de
 
 export const dynamic = "force-dynamic";
 
-export async function OPTIONS() {
-  return desktopPreflightResponse();
+export async function OPTIONS(request: Request) {
+  return desktopPreflightResponse(request);
 }
 
 export async function POST(request: Request) {
@@ -15,18 +15,18 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return withDesktopCors(NextResponse.json({ error: "Invalid JSON body." }, { status: 400 }));
+    return withDesktopCors(NextResponse.json({ error: "Invalid JSON body." }, { status: 400 }), request);
   }
   const parsed = activationSchema.safeParse(body);
-  if (!parsed.success) return withDesktopCors(NextResponse.json({ error: "Invalid activation request." }, { status: 400 }));
+  if (!parsed.success) return withDesktopCors(NextResponse.json({ error: "Invalid activation request." }, { status: 400 }), request);
   try {
     const activated = await exchangeOfflineActivationCode(parsed.data);
-    return withDesktopCors(NextResponse.json(activated, { headers: { "Cache-Control": "private, no-store" } }));
+    return withDesktopCors(NextResponse.json(activated, { headers: { "Cache-Control": "private, no-store" } }), request);
   } catch (error) {
     if (error instanceof OfflineMutationDeniedError) {
-      return withDesktopCors(NextResponse.json({ error: error.message }, { status: 403 }));
+      return withDesktopCors(NextResponse.json({ error: error.message }, { status: 403 }), request);
     }
     console.error("Desktop activation failed", { error });
-    return withDesktopCors(NextResponse.json({ error: "Desktop activation failed." }, { status: 500 }));
+    return withDesktopCors(NextResponse.json({ error: "Desktop activation failed." }, { status: 500 }), request);
   }
 }
