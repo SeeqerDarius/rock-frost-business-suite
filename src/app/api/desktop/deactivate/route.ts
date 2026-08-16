@@ -2,8 +2,13 @@ import { NextResponse } from "next/server";
 import { authenticateOfflineDevice, OfflineAuthenticationError } from "@/lib/offline-sync/auth";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
+import { desktopPreflightResponse, withDesktopCors } from "@/lib/offline-sync/desktop-cors";
 
 export const dynamic = "force-dynamic";
+
+export async function OPTIONS() {
+  return desktopPreflightResponse();
+}
 
 export async function POST(request: Request) {
   try {
@@ -21,12 +26,12 @@ export async function POST(request: Request) {
       entityName: "OfflineDevice",
       entityId: context.device.id,
     });
-    return NextResponse.json({ deactivated: true }, { headers: { "Cache-Control": "private, no-store" } });
+    return withDesktopCors(NextResponse.json({ deactivated: true }, { headers: { "Cache-Control": "private, no-store" } }));
   } catch (error) {
     if (error instanceof OfflineAuthenticationError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return withDesktopCors(NextResponse.json({ error: error.message }, { status: error.status }));
     }
     console.error("Desktop deactivation failed", { error });
-    return NextResponse.json({ error: "Desktop deactivation failed." }, { status: 500 });
+    return withDesktopCors(NextResponse.json({ error: "Desktop deactivation failed." }, { status: 500 }));
   }
 }

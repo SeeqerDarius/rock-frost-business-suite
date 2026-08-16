@@ -68,6 +68,8 @@ These operations are excluded because stale information, double application, or 
 
 All responses containing tenant or device data use `Cache-Control: private, no-store`.
 
+The desktop client's WebView origin is cross-origin from `https://app.rockfrostgroup.com`, so every request is browser-preflighted with `OPTIONS`. All five endpoints below answer that preflight and set `Access-Control-Allow-Origin` on every response, success and error alike, restricted to the desktop client's own origin (`src/lib/offline-sync/desktop-cors.ts`). A CSP `connect-src` allowance alone is not sufficient: without these headers, WebView2 still blocks the request client-side after a correctly-answered preflight, and `fetch()` rejects with a generic `Failed to fetch` that looks identical to a real network outage.
+
 ### Activation
 
 `POST /api/desktop/activate` accepts the single-use activation code, installation identifier, device name, supported desktop platform, and requested module keys. Requested keys are intersected with the code, subscription, module, and role scope. The response returns the one-time device token, device ID, organization and user display metadata, token expiry, offline lease expiry, and final module keys. The organization identifier populates the defense-in-depth assertion on queued mutations; the server still derives the authoritative tenant from the device token.

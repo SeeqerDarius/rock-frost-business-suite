@@ -3,14 +3,19 @@ import { authenticateOfflineDevice, OfflineAuthenticationError } from "@/lib/off
 import { pushBatchSchema } from "@/lib/offline-sync/contract";
 import { processOfflineMutation } from "@/lib/offline-sync/service";
 import { OfflineMutationDeniedError } from "@/lib/offline-sync/adapters";
+import { desktopPreflightResponse, withDesktopCors } from "@/lib/offline-sync/desktop-cors";
 
 export const dynamic = "force-dynamic";
+
+export async function OPTIONS() {
+  return desktopPreflightResponse();
+}
 
 export async function POST(request: Request) {
   try {
     const context = await authenticateOfflineDevice(request);
     const parsed = pushBatchSchema.safeParse(await request.json());
-    if (!parsed.success) return NextResponse.json({ error: "Invalid synchronization batch." }, { status: 400 });
+    if (!parsed.success) return withDesktopCors(NextResponse.json({ error: "Invalid synchronization batch." }, { status: 400 }));
     const results = [];
     for (const mutation of parsed.data.mutations) {
       try {
@@ -23,16 +28,16 @@ export async function POST(request: Request) {
         throw error;
       }
     }
-    return NextResponse.json(
+    return withDesktopCors(NextResponse.json(
       { results, offlineAccessUntil: context.device.offlineAccessUntil.toISOString() },
       { headers: { "Cache-Control": "private, no-store" } },
-    );
+    ));
   } catch (error) {
     if (error instanceof OfflineAuthenticationError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return withDesktopCors(NextResponse.json({ error: error.message }, { status: error.status }));
     }
-    if (error instanceof SyntaxError) return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+    if (error instanceof SyntaxError) return withDesktopCors(NextResponse.json({ error: "Invalid JSON body." }, { status: 400 }));
     console.error("Desktop push synchronization failed", { error });
-    return NextResponse.json({ error: "Synchronization failed." }, { status: 500 });
+    return withDesktopCors(NextResponse.json({ error: "Synchronization failed." }, { status: 500 }));
   }
 }
