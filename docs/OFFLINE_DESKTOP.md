@@ -137,3 +137,21 @@ constructor (`apps/desktop/src/sync/sync-client.ts`) so device activation and
 every other sync call work under WebView2. A repository-wide audit of
 `apps/desktop/src` found no other retained, receiver-sensitive native
 function besides this one and the already-fixed timer pair.
+
+Version `0.2.3` fixes a second, previously-hidden defect that live testing of
+`0.2.2` uncovered: the packaged app's Content-Security-Policy `connect-src`
+allowed only `'self'`, `ipc:`, and `https://ipc.localhost`, and never
+included the real sync API origin. WebView2 enforces the page's CSP exactly
+like a browser would, so every `fetch()` to `https://app.rockfrostgroup.com`
+was silently blocked and rejected with `Failed to fetch`, indistinguishable
+in the UI from a genuine network outage. This was invisible before `0.2.2`
+because the `Illegal invocation` defect always threw before the CSP check
+was ever reached. The CSP's `connect-src` now also allows
+`https://app.rockfrostgroup.com`, in both `apps/desktop/index.html` (used by
+`vite dev`) and `apps/desktop/src-tauri/tauri.conf.json` (the built app's
+`security.csp`). `apps/desktop/.env.example` previously documented the wrong
+origin (`https://api.rockfrostgroup.com`, which does not exist); it now
+matches the real one. A packaging test
+(`apps/desktop/src/packaging/bundled-assets.test.ts`) now asserts the built
+`dist/index.html`'s CSP `connect-src` includes the real API origin, so this
+class of regression fails CI instead of only surfacing in a live install.
