@@ -1,21 +1,24 @@
 import { NextResponse } from "next/server";
 
 /**
- * Tauri 2's WebView2 apps load their content from a `https://<host>.localhost`
- * style custom-protocol origin (e.g. `https://tauri.localhost`), never from
- * the API's own origin. A hardcoded guess at the exact host is fragile and,
- * worse, the browser's CORS check requires Access-Control-Allow-Origin to
- * exactly equal the request's real Origin header - a guessed constant that
- * doesn't match still gets silently rejected client-side with "Failed to
- * fetch", indistinguishable from every other cause of that message. This
- * matches the general shape instead and echoes back the real Origin that
- * was actually sent. No public website can forge this Origin: getting the
- * browser to send "Origin: https://X.localhost" requires the request to
- * genuinely originate from something already running on the local machine
- * under that hostname, which is exactly the desktop app and nothing an
- * internet-hosted page can spoof.
+ * Tauri 2's WebView2 apps load their content from a `<scheme>://<host>.localhost`
+ * style custom-protocol origin, never from the API's own origin. The real
+ * origin, confirmed from a production Vercel log line this route's own
+ * console.warn below produced, is exactly `http://tauri.localhost` - plain
+ * HTTP, not HTTPS, despite Tauri's asset: and ipc: helper origins (see the
+ * CSP in apps/desktop/src-tauri/tauri.conf.json) using https. A hardcoded
+ * guess at the exact origin is fragile and, worse, the browser's CORS check
+ * requires Access-Control-Allow-Origin to exactly equal the request's real
+ * Origin header - a guessed constant that doesn't match still gets silently
+ * rejected client-side with "Failed to fetch", indistinguishable from every
+ * other cause of that message. This matches the general shape instead and
+ * echoes back the real Origin that was actually sent. No public website can
+ * forge this Origin: getting the browser to send "Origin: <scheme>://X.localhost"
+ * requires the request to genuinely originate from something already
+ * running on the local machine under that hostname, which is exactly the
+ * desktop app and nothing an internet-hosted page can spoof.
  */
-const DESKTOP_ORIGIN_PATTERN = /^https:\/\/[a-z0-9-]+\.localhost$/i;
+const DESKTOP_ORIGIN_PATTERN = /^https?:\/\/[a-z0-9-]+\.localhost$/i;
 
 function resolveAllowedOrigin(request: Request): string | null {
   const origin = request.headers.get("origin");

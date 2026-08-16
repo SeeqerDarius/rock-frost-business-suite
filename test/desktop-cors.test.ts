@@ -18,7 +18,11 @@ import { OPTIONS as deactivateOptions, POST as deactivatePost } from "@/app/api/
  * live server needed) and would fail against routes that never set the
  * header, or that echo back a fixed value instead of the real Origin.
  */
-const REAL_DESKTOP_ORIGIN = "https://tauri.localhost";
+// Confirmed from a production Vercel log line (this file's own
+// console.warn diagnostic) rather than assumed: the real desktop app
+// sends plain HTTP, not HTTPS, despite Tauri's other helper origins
+// (asset:, ipc:) using https in the CSP.
+const REAL_DESKTOP_ORIGIN = "http://tauri.localhost";
 
 function requestWithOrigin(url: string, origin: string | null, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
@@ -38,14 +42,16 @@ describe("desktop API CORS", () => {
     }
   });
 
-  it("does not guess or hardcode a single allowed origin: a different, still-valid desktop-shaped Origin is also reflected", async () => {
-    // Guards against the exact regression this test file previously missed:
-    // a hardcoded Access-Control-Allow-Origin that happens to equal one
-    // specific guessed value passes a naive test but silently breaks CORS
-    // for the real app if its actual Origin differs even slightly.
-    const otherOrigin = "https://rock-frost-desktop.localhost";
-    const response = await activateOptions(requestWithOrigin("https://app.rockfrostgroup.com/api/desktop/activate", otherOrigin));
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(otherOrigin);
+  it("does not guess or hardcode a single allowed origin: both http and https desktop-shaped Origins are reflected", async () => {
+    // Guards against the exact regression this test file previously missed
+    // twice: first a hardcoded Access-Control-Allow-Origin that happened to
+    // equal one guessed value (passed a naive test, broke the real app
+    // anyway), then a pattern that only accepted https:// when the real app
+    // actually sends http://tauri.localhost.
+    for (const otherOrigin of ["https://rock-frost-desktop.localhost", "http://tauri.localhost", "https://tauri.localhost"]) {
+      const response = await activateOptions(requestWithOrigin("https://app.rockfrostgroup.com/api/desktop/activate", otherOrigin));
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(otherOrigin);
+    }
   });
 
   it("does not set Access-Control-Allow-Origin for a request Origin that does not look like the desktop app", async () => {
