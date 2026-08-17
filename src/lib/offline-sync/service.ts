@@ -12,8 +12,11 @@ import {
 } from "@/lib/offline-sync/contract";
 import { applyOfflineMutation, OfflineMutationConflictError, OfflineMutationDeniedError } from "@/lib/offline-sync/adapters";
 import { createOfflineToken, resolveTenantForOfflineIdentity, type OfflineDeviceContext } from "@/lib/offline-sync/auth";
-import { resolveInstallmentAccessScope } from "@/modules/installment/access";
-import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { buildFleetSnapshot } from "@/lib/offline-sync/snapshot-builders/fleet";
+import { buildInstallmentSnapshot } from "@/lib/offline-sync/snapshot-builders/installment";
+import { buildInventorySnapshot } from "@/lib/offline-sync/snapshot-builders/inventory";
+import { buildPosSnapshot } from "@/lib/offline-sync/snapshot-builders/pos";
+import type { OfflineSnapshotRow } from "@/lib/offline-sync/snapshot-builders/types";
 
 function addDays(date: Date, days: number) {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
@@ -325,77 +328,27 @@ export async function processOfflineMutation(context: OfflineDeviceContext, inpu
   }
 }
 
+/**
+ * Builds the device's pull response as a flat, per-entity row list rather
+ * than one nested blob per module (see snapshot-builders/types.ts). Each
+ * module's builder owns its own row-level scoping (driver-assigned
+ * vehicles, staff-owned accounts, POS-session-linked warehouses, etc.) -
+ * this function only decides *which* builders run, based on the same
+ * `authorizedModuleKeys` gating as before, and flattens their results.
+ */
 export async function buildOfflineSnapshot(context: OfflineDeviceContext) {
-  const organizationId = context.device.organizationId;
-  const take = OFFLINE_SYNC_LIMITS.snapshotRowsPerCollection;
-  const snapshot: Record<string, unknown> = {};
-  let truncated = false;
+  const builders: Promise<{ rows: OfflineSnapshotRow[]; truncated: boolean }>[] = [];
 
-  if (context.authorizedModuleKeys.includes("fleet")) {
-    const canManageFleet = hasPermission(context.tenant, PERMISSIONS.FLEET_MAINTENANCE_MANAGE);
-    const [vehicles, driver, contracts] = await Promise.all([
-      db.fleetVehicle.findMany({
-        where: canManageFleet ? { organizationId } : { organizationId, assignedDriver: { userId: context.device.userId } },
-        select: { id: true, assetTag: true, plateNumber: true, make: true, model: true, status: true, assignedDriverId: true, updatedAt: true },
-        orderBy: { id: "asc" },
-        take: take + 1,
-      }),
-      db.fleetDriver.findFirst({
-        where: { organizationId, userId: context.device.userId, status: "ACTIVE" },
-        select: { id: true, assignedVehicles: { select: { id: true } } },
-      }),
-      db.fleetWorkAndPayContract.findMany({
-        where: { organizationId, contractStatus: "ACTIVE", vehicle: { assignedDriver: { userId: context.device.userId } } },
-        select: { id: true, vehicleId: true, outstandingBalance: true, weeklyPaymentAmount: true },
-        take: 100,
-      }),
-    ]);
-    truncated ||= vehicles.length > take;
-    snapshot.fleet = { vehicles: vehicles.slice(0, take), driver, contracts };
-  }
-
-  if (context.authorizedModuleKeys.includes("installment")) {
-    const scope = await resolveInstallmentAccessScope(context.tenant);
-    const accountWhere = scope.kind === "organization" ? {} : scope.kind === "staff" ? { customer: { staffId: scope.staffId } } : { id: "__denied__" };
-    const accounts = await db.hirePurchaseAccount.findMany({
-      where: { organizationId, ...accountWhere },
-      select: { id: true, customerId: true, productId: true, balance: true, totalPaid: true, status: true, updatedAt: true, customer: { select: { customerCode: true, fullName: true, phone: true } } },
-      orderBy: { id: "asc" },
-      take: take + 1,
-    });
-    truncated ||= accounts.length > take;
-    snapshot.installment = { accounts: accounts.slice(0, take) };
-  }
-
+  if (context.authorizedModuleKeys.includes("fleet")) builders.push(buildFleetSnapshot(context));
+  if (context.authorizedModuleKeys.includes("installment")) builders.push(buildInstallmentSnapshot(context));
   if (context.authorizedModuleKeys.includes("inventory") || context.authorizedModuleKeys.includes("pos")) {
-    const canManageInventory = context.authorizedModuleKeys.includes("inventory");
-    const posWarehouseIds = canManageInventory ? null : (await db.posSession.findMany({
-      where: { organizationId, status: "OPEN", openedById: context.device.userId, register: { warehouseId: { not: null } } },
-      select: { register: { select: { warehouseId: true } } },
-    })).flatMap(({ register }) => register.warehouseId ? [register.warehouseId] : []);
-    const warehouseWhere = canManageInventory
-      ? { organizationId }
-      : { organizationId, id: { in: posWarehouseIds ?? [] } };
-    const [items, warehouses, stock] = await Promise.all([
-      canManageInventory
-        ? db.inventoryItem.findMany({ where: { organizationId, active: true }, select: { id: true, sku: true, name: true, unit: true, costPrice: true, updatedAt: true }, orderBy: { id: "asc" }, take: take + 1 })
-        : db.inventoryItem.findMany({ where: { organizationId, active: true }, select: { id: true, sku: true, name: true, unit: true, updatedAt: true }, orderBy: { id: "asc" }, take: take + 1 }),
-      db.inventoryWarehouse.findMany({ where: warehouseWhere, select: { id: true, name: true, location: true, active: true }, orderBy: { id: "asc" }, take: take + 1 }),
-      db.inventoryStock.findMany({ where: { item: { organizationId }, warehouse: warehouseWhere }, select: { itemId: true, warehouseId: true, quantity: true, updatedAt: true }, orderBy: { id: "asc" }, take: take + 1 }),
-    ]);
-    truncated ||= items.length > take || warehouses.length > take || stock.length > take;
-    snapshot.inventory = { items: items.slice(0, take), warehouses: warehouses.slice(0, take), stock: stock.slice(0, take) };
+    builders.push(buildInventorySnapshot(context, context.authorizedModuleKeys));
   }
+  if (context.authorizedModuleKeys.includes("pos")) builders.push(buildPosSnapshot(context));
 
-  if (context.authorizedModuleKeys.includes("pos")) {
-    const sessions = await db.posSession.findMany({
-      where: { organizationId, status: "OPEN", openedById: context.device.userId },
-      select: { id: true, registerId: true, openedAt: true, openingFloat: true, register: { select: { name: true, warehouseId: true } } },
-      orderBy: { openedAt: "desc" },
-      take: 10,
-    });
-    snapshot.pos = { sessions };
-  }
+  const results = await Promise.all(builders);
+  const rows = results.flatMap((result) => result.rows);
+  const truncated = results.some((result) => result.truncated);
 
   await db.offlineDevice.update({ where: { id: context.device.id }, data: { lastSyncAt: new Date() } });
   return {
@@ -403,6 +356,6 @@ export async function buildOfflineSnapshot(context: OfflineDeviceContext) {
     offlineAccessUntil: context.device.offlineAccessUntil.toISOString(),
     fullSnapshot: true,
     truncated,
-    snapshot,
+    rows,
   };
 }
