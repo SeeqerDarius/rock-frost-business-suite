@@ -6,9 +6,9 @@ const root = process.cwd();
 const source = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
 
 /** Per-module offline adapter files (src/lib/offline-sync/modules/*.adapters.ts) - the actual home of entity-type handlers since the adapters.ts registry refactor. Forbidden-string checks against adapters.ts alone would silently stop covering anything once code lives here instead. */
-function offlineAdapterModuleSources(): string[] {
+function offlineAdapterModuleSources(): { file: string; content: string }[] {
   const dir = path.join(root, "src/lib/offline-sync/modules");
-  return fs.readdirSync(dir).map((file) => source(path.join("src/lib/offline-sync/modules", file)));
+  return fs.readdirSync(dir).map((file) => ({ file, content: source(path.join("src/lib/offline-sync/modules", file)) }));
 }
 
 describe("offline synchronization security boundaries", () => {
@@ -24,16 +24,34 @@ describe("offline synchronization security boundaries", () => {
     expect(auth).not.toContain("DATABASE_URL");
   });
 
-  it("uses tenant idempotency and forbids high-risk mutation operations", () => {
+  it("uses tenant idempotency and forbids high-risk mutation operations outside their explicitly approved module", () => {
     const schema = source("prisma/schema.prisma");
     const contract = source("src/lib/offline-sync/contract.ts");
     const adapters = source("src/lib/offline-sync/adapters.ts");
     const moduleAdapters = offlineAdapterModuleSources();
     expect(schema).toContain("@@unique([organizationId, mutationId])");
-    expect(contract).toContain('operation: z.literal("CREATE")');
-    for (const forbidden of ["refundSale", "recordFleetWorkAndPayPayment", "HOSPITAL_", "PHARMACY_"]) {
+    // CREATE and UPDATE only - never widened to a bare z.string() or an
+    // enum that could admit DELETE, which the offline contract has never
+    // supported and this test exists specifically to keep it that way.
+    expect(contract).toContain('operation: z.enum(["CREATE", "UPDATE"])');
+
+    // refundSale is a deliberate, approved exception starting with the POS
+    // offline-parity expansion (see OPERATOR_HANDOFF.md's milestone 4
+    // entry): every action in POS, including refunds, is intentionally
+    // offline-capable now, re-validated server-side at sync exactly like
+    // every other offline mutation. It stays forbidden everywhere else -
+    // this still catches an accidental refundSale import landing in
+    // fleet/installment/inventory (or a future module not yet approved
+    // for full parity), which would be the actual regression to prevent.
+    for (const { file, content } of moduleAdapters) {
+      if (file === "pos.adapters.ts") continue;
+      expect(content).not.toContain("refundSale");
+    }
+    expect(adapters).not.toContain("refundSale");
+
+    for (const forbidden of ["recordFleetWorkAndPayPayment", "HOSPITAL_", "PHARMACY_"]) {
       expect(adapters).not.toContain(forbidden);
-      for (const moduleSource of moduleAdapters) expect(moduleSource).not.toContain(forbidden);
+      for (const { content } of moduleAdapters) expect(content).not.toContain(forbidden);
     }
   });
 

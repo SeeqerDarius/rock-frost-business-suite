@@ -21,8 +21,14 @@ describe("offline synchronization contract", () => {
   it("rejects cross-module entity declarations and unsupported mutation shapes at the contract boundary", () => {
     expect(offlineMutationSchema.safeParse({ ...mutation, entityType: "hospital.patient" }).success).toBe(false);
     expect(offlineMutationSchema.safeParse({ ...mutation, operation: "DELETE" }).success).toBe(false);
-    expect(offlineMutationSchema.safeParse({ ...mutation, baseVersion: 2 }).success).toBe(false);
+    expect(offlineMutationSchema.safeParse({ ...mutation, baseVersion: -1 }).success).toBe(false);
+    expect(offlineMutationSchema.safeParse({ ...mutation, baseVersion: 1.5 }).success).toBe(false);
     expect(pushBatchSchema.safeParse({ mutations: Array.from({ length: 51 }, () => mutation) }).success).toBe(false);
+  });
+
+  it("accepts UPDATE with a nonzero baseVersion, since pos.register (and later modules) genuinely edit an existing record rather than only ever creating one", () => {
+    const update = { ...mutation, entityType: "pos.register", moduleKey: "pos", operation: "UPDATE", baseVersion: 1723680000000, payload: { name: "Front Desk" } };
+    expect(offlineMutationSchema.safeParse(update).success).toBe(true);
   });
 
   it("requires a human-readable single-use activation code and supported desktop platform", () => {

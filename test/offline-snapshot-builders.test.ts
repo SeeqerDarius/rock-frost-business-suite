@@ -17,6 +17,9 @@ const mockDb = {
   inventoryWarehouse: { findMany: vi.fn() },
   inventoryStock: { findMany: vi.fn() },
   posSession: { findMany: vi.fn() },
+  posRegister: { findMany: vi.fn() },
+  posSale: { findMany: vi.fn() },
+  posSettings: { findUnique: vi.fn() },
   offlineDevice: { update: vi.fn() },
 };
 
@@ -24,6 +27,7 @@ vi.mock("@/lib/db", () => ({ db: mockDb }));
 vi.mock("@/modules/installment/access", () => ({
   resolveInstallmentAccessScope: vi.fn(async () => ({ kind: "organization" as const })),
 }));
+vi.mock("@/modules/pos/service", () => ({ getSaleNumberPrefix: vi.fn(async () => "SALE") }));
 
 const { buildFleetSnapshot } = await import("@/lib/offline-sync/snapshot-builders/fleet");
 const { buildInstallmentSnapshot } = await import("@/lib/offline-sync/snapshot-builders/installment");
@@ -135,16 +139,47 @@ describe("inventory snapshot builder", () => {
 });
 
 describe("pos snapshot builder", () => {
-  it("decomposes the user's own open sessions into rows versioned 0, never truncated", async () => {
+  function stubEmptyPos() {
+    mockDb.posRegister.findMany.mockResolvedValue([]);
+    mockDb.posSession.findMany.mockResolvedValue([]);
+    mockDb.posSale.findMany.mockResolvedValue([]);
+    mockDb.posSettings.findUnique.mockResolvedValue(null);
+  }
+
+  it("decomposes registers, sessions, and sales into rows, each versioned 0 except registers which have updatedAt", async () => {
+    stubEmptyPos();
+    mockDb.posRegister.findMany.mockResolvedValue([{ id: "r1", name: "Front", warehouseId: "w1", active: true, updatedAt: new Date("2026-08-07T00:00:00.000Z") }]);
     mockDb.posSession.findMany.mockResolvedValue([
-      { id: "sess1", registerId: "r1", openedAt: new Date("2026-08-07T00:00:00.000Z"), openingFloat: "50.00", register: { name: "Front", warehouseId: "w1" } },
+      { id: "sess1", registerId: "r1", status: "OPEN", openedAt: new Date("2026-08-07T00:00:00.000Z"), openingFloat: "50.00", closingCash: null, closedAt: null, register: { name: "Front", warehouseId: "w1" } },
+    ]);
+    mockDb.posSale.findMany.mockResolvedValue([
+      { id: "sale1", registerId: "r1", sessionId: "sess1", saleNumber: "SALE-00001", customerName: null, paymentMethod: "CASH", status: "COMPLETED", subtotal: "10.00", total: "10.00", createdAt: new Date("2026-08-07T01:00:00.000Z"), lines: [] },
     ]);
 
     const result = await buildPosSnapshot(fakeContext());
     expect(result.truncated).toBe(false);
-    expect(result.rows).toEqual([
-      { entityType: "pos.session", entityId: "sess1", version: 0, payload: { registerId: "r1", openedAt: new Date("2026-08-07T00:00:00.000Z"), openingFloat: "50.00", register: { name: "Front", warehouseId: "w1" } } },
-    ]);
+
+    const registerRow = result.rows.find((row) => row.entityType === "pos.register");
+    expect(registerRow).toMatchObject({ entityId: "r1", version: Date.parse("2026-08-07T00:00:00.000Z") });
+
+    const sessionRow = result.rows.find((row) => row.entityType === "pos.session");
+    expect(sessionRow).toMatchObject({ entityId: "sess1", version: 0 });
+
+    const saleRow = result.rows.find((row) => row.entityType === "pos.sale_record");
+    expect(saleRow).toMatchObject({ entityId: "sale1", version: 0, payload: { saleNumber: "SALE-00001" } });
+
+    const settingsRow = result.rows.find((row) => row.entityType === "pos.settings");
+    expect(settingsRow).toMatchObject({ entityId: "default", version: 0, payload: { saleNumberPrefix: "SALE" } });
+  });
+
+  it("gives every POS-authorized user org-wide session visibility when they hold POS_SESSIONS_MANAGE, and only their own sessions otherwise", async () => {
+    stubEmptyPos();
+    await buildPosSnapshot(fakeContext({ tenant: { permissions: ["pos.sessions.manage"], enabledModuleKeys: ["pos"] } }));
+    expect(mockDb.posSession.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: "org-1" } }));
+
+    mockDb.posSession.findMany.mockClear();
+    await buildPosSnapshot(fakeContext({ tenant: { permissions: ["pos.sales.manage"], enabledModuleKeys: ["pos"] } }));
+    expect(mockDb.posSession.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: "org-1", openedById: "user-1" } }));
   });
 });
 
@@ -170,6 +205,9 @@ describe("buildOfflineSnapshot composition (service.ts)", () => {
     mockDb.inventoryWarehouse.findMany.mockResolvedValue([]);
     mockDb.inventoryStock.findMany.mockResolvedValue([]);
     mockDb.posSession.findMany.mockResolvedValue([]);
+    mockDb.posRegister.findMany.mockResolvedValue([]);
+    mockDb.posSale.findMany.mockResolvedValue([]);
+    mockDb.posSettings.findUnique.mockResolvedValue(null);
 
     const context = fakeContext({ authorizedModuleKeys: ["inventory", "pos"] });
     await buildOfflineSnapshot(context);

@@ -45,24 +45,27 @@ The desktop never connects to Neon/PostgreSQL and never receives database creden
 | Installment | Field collection payment | Current staff ownership, account state, positive amount, balance, and receipt generation are rechecked atomically |
 | Inventory | Receipt or stock-count adjustment | Tenant item and warehouse ownership plus non-negative stock rules are rechecked atomically |
 | POS | Sale in an existing open session | Session ownership/status, register, stock, line values, and stock deduction are rechecked atomically |
+| POS | Register create/edit | `pos.registers.manage`; edits use optimistic concurrency (a stale `baseVersion` conflicts instead of overwriting) |
+| POS | Session open/close | `pos.sessions.manage`; open requires no existing open session on the register, close requires the session is currently open |
+| POS | Sale refund | `pos.sales.manage` (the same permission that authorizes creating a sale); the same atomic `COMPLETED -> REFUNDED` claim `refundSale()` already uses online prevents a duplicate refund even from two racing offline devices |
+| POS | Receipt footer / sale-number-prefix settings | `pos.settings.manage`; optimistic concurrency on the underlying settings row |
 
 The server generates authoritative record identifiers, receipts, and sale numbers. A desktop-generated identifier is only a local mapping key.
 
 ## Online-only safety boundary
 
-The following remain online-only in the first release:
+Fleet, Installment, and Inventory remain scoped to the operations above; everything else in those three modules stays online-only, unchanged from the first release:
 
 - Fleet payment approval, maintenance decisions, repairs, verification, and direct work-and-pay ledger posting.
 - Installment payment editing or deletion, refunds, credits, account status, pricing, delivery, and reassignment.
 - Inventory issues, transfers, absolute stock replacement, item management, warehouse management, and image upload.
-- POS session opening or closing, refunds, register changes, and settings.
 - Accounting posting, reconciliation, and approvals.
 - Payroll finalization and payment.
 - HR termination, reinstatement, and access suspension.
 - Pharmacy dispensing and restricted-medicine activity.
 - Hospital clinical, medication, laboratory, imaging, admission, billing, and consent decisions.
 
-These operations are excluded because stale information, double application, or silent conflict resolution could create financial, employment, inventory, or patient-safety harm.
+**POS is a deliberate exception, not a relaxation of the underlying safety mechanism.** Every POS action, including register edits, session lifecycle, refunds, and settings, is offline-capable, reflecting a considered decision that the target field-operations use case needs full POS parity offline. This does not mean the desktop is trusted: every action still goes through the same ledger-first write and full server-side re-validation as every other offline mutation (see Push above), and a conflicting or now-invalid action (a refund attempted twice, a stale register edit) is rejected and surfaced to the user as a conflict to resolve when back online, never silently applied or overwritten. The other modules' operations remain excluded above because stale information, double application, or silent conflict resolution in those specific areas could create financial, employment, inventory, or patient-safety harm that this project has not (yet) taken through the same expansion.
 
 ## Server-side adapter architecture
 
@@ -84,7 +87,9 @@ The desktop client's WebView origin is cross-origin from `https://app.rockfrostg
 
 ### Push
 
-`POST /api/desktop/sync/push` accepts at most 50 mutations per batch and 64 KiB per payload. Each mutation contains a UUID `mutationId`, checked `organizationId`, `moduleKey`, `entityType`, local `entityId`, `CREATE` operation, zero `baseVersion`, `changedAt`, and a schema-validated payload.
+`POST /api/desktop/sync/push` accepts at most 50 mutations per batch and 64 KiB per payload. Each mutation contains a UUID `mutationId`, checked `organizationId`, `moduleKey`, `entityType`, local `entityId`, `CREATE` or `UPDATE` operation, `baseVersion`, `changedAt`, and a schema-validated payload.
+
+An `UPDATE` mutation's `baseVersion` must match the target record's current version (its `updatedAt` as epoch milliseconds) or the server rejects it as a `STALE_VERSION` conflict rather than overwrite a change it never saw; a target that no longer exists conflicts as `ENTITY_DELETED`. `pos.register` is the first entity type to use `UPDATE`. Actions modeled as an event rather than an entity edit (opening/closing a POS session, refunding a sale) stay `CREATE`: there is no pre-existing local row to hold a `baseVersion` against before the server assigns the real target its id, and their safety comes from the same service-layer guard the web UI already relies on (an atomic status claim, a one-open-session-per-register check), not from optimistic concurrency.
 
 `OfflineMutation` has a unique `(organizationId, mutationId)` constraint. A retry returns the stored outcome and never reapplies an already completed mutation. The server creates the ledger entry before touching a business record. If a process stops while a record is marked `PROCESSING`, automatic replay remains blocked to prefer manual recovery over duplicating a payment, sale, or stock movement.
 

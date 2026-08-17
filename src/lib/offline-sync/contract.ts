@@ -9,6 +9,12 @@ export const OFFLINE_ENTITY_TYPES = [
   "installment.payment",
   "inventory.movement",
   "pos.sale",
+  "pos.register",
+  "pos.session_open",
+  "pos.session_close",
+  "pos.sale_refund",
+  "pos.settings_receipt_footer",
+  "pos.settings_sale_prefix",
 ] as const;
 
 export const activationSchema = z.object({
@@ -29,8 +35,12 @@ export const offlineMutationSchema = z.object({
   moduleKey: z.enum(OFFLINE_SUPPORTED_MODULES),
   entityType: z.enum(OFFLINE_ENTITY_TYPES),
   entityId: z.string().min(1).max(128),
-  operation: z.literal("CREATE"),
-  baseVersion: z.literal(0),
+  // UPDATE exists starting with pos.register (a real edit, not a
+  // create-as-event); baseVersion carries the cached record's version at
+  // edit time so the server can reject a stale write as a conflict rather
+  // than silently overwrite - see registry.ts's loadCurrentVersion check.
+  operation: z.enum(["CREATE", "UPDATE"]),
+  baseVersion: z.number().int().min(0),
   changedAt: z.coerce.date(),
   payload: z.record(z.string(), z.unknown()),
 });

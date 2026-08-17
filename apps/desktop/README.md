@@ -35,15 +35,16 @@ The client does not collect or store a Rock Frost email or password. The activat
 
 ## Offline scope
 
-The current server accepts append-only `CREATE` mutations with `baseVersion: 0` for exactly these entity types:
+Fleet, Installment, and Inventory accept append-only `CREATE` mutations for exactly these entity types:
 
 - `fleet.maintenance_request`
 - `fleet.driver_payment_submission`
 - `installment.payment`
-- `inventory.movement`
-- `pos.sale`
+- `inventory.movement` (limited to `RECEIPT`/`ADJUSTMENT`)
 
-Approvals, refunds, payroll, HR changes, accounting postings, pharmacy work, and clinical work remain online-only. Inventory offline movements are limited to `RECEIPT` and `ADJUSTMENT`. Every local write remains visibly pending until the server reports it as applied.
+Approvals, refunds, payroll, HR changes, accounting postings, pharmacy work, and clinical work remain online-only for those three modules.
+
+POS is offline-capable end to end: `pos.sale`, `pos.register` (`CREATE`/`UPDATE`), `pos.session_open`, `pos.session_close`, `pos.sale_refund`, `pos.settings_receipt_footer` (`UPDATE`), `pos.settings_sale_prefix` (`UPDATE`) - including refunds and settings, deliberately, unlike the other three modules. `UPDATE` mutations carry a real `baseVersion` (the cached record's own version) rather than the fixed `0` every `CREATE` uses; a stale edit conflicts instead of silently overwriting. See `docs/OFFLINE_DESKTOP.md`'s "Online-only safety boundary" for why POS is the exception and what still bounds the risk. Every local write remains visibly pending until the server reports it as applied.
 
 ## Sync contract
 
