@@ -35,6 +35,8 @@ export async function buildSchoolSnapshot(context: OfflineDeviceContext): Promis
     subjects,
     enrollments,
     attendance,
+    feeInvoices,
+    feeStructures,
   ] = await Promise.all([
     db.schoolCampus.findMany({
       where: { organizationId, active: true },
@@ -94,6 +96,22 @@ export async function buildSchoolSnapshot(context: OfflineDeviceContext): Promis
       orderBy: { date: "desc" },
       take: RECENT_ATTENDANCE_TAKE + 1,
     }),
+    db.schoolFeeInvoice.findMany({
+      where: { organizationId },
+      select: {
+        id: true, academicYearId: true, termId: true, studentId: true, feeStructureId: true, invoiceNumber: true,
+        description: true, amount: true, discount: true, status: true, dueDate: true, issuedAt: true, voidedAt: true, updatedAt: true,
+        payments: { select: { id: true, amount: true, method: true, reference: true, receivedAt: true, refundedAt: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: take + 1,
+    }),
+    db.schoolFeeStructure.findMany({
+      where: { organizationId, active: true },
+      select: { id: true, campusId: true, academicYearId: true, termId: true, classId: true, name: true, description: true, amount: true, dueDate: true, active: true, updatedAt: true },
+      orderBy: { createdAt: "desc" },
+      take: take + 1,
+    }),
   ]);
 
   const truncated =
@@ -106,7 +124,9 @@ export async function buildSchoolSnapshot(context: OfflineDeviceContext): Promis
     classes.length > take ||
     subjects.length > take ||
     enrollments.length > take ||
-    attendance.length > RECENT_ATTENDANCE_TAKE;
+    attendance.length > RECENT_ATTENDANCE_TAKE ||
+    feeInvoices.length > take ||
+    feeStructures.length > take;
   const rows: OfflineSnapshotRow[] = [];
 
   for (const { id, updatedAt, ...payload } of campuses.slice(0, take)) {
@@ -144,6 +164,18 @@ export async function buildSchoolSnapshot(context: OfflineDeviceContext): Promis
   }
   for (const { id, updatedAt, ...payload } of attendance.slice(0, RECENT_ATTENDANCE_TAKE)) {
     rows.push({ entityType: "school.attendance", entityId: id, version: versionOf(updatedAt), payload });
+  }
+  // Named school.fee_invoice_record, not school.fee_invoice: the mutation
+  // type creates one ad-hoc invoice at a time, but most invoices come from
+  // school.fee_structure_issuance's server-side bulk fan-out, which has no
+  // per-invoice client mutation at all - the same pos.sale/pos.sale_record
+  // naming split, for the same reason (a queued write vs. a read-only
+  // pulled record are not the same thing under one cache key).
+  for (const { id, updatedAt, ...payload } of feeInvoices.slice(0, take)) {
+    rows.push({ entityType: "school.fee_invoice_record", entityId: id, version: versionOf(updatedAt), payload });
+  }
+  for (const { id, updatedAt, ...payload } of feeStructures.slice(0, take)) {
+    rows.push({ entityType: "school.fee_structure", entityId: id, version: versionOf(updatedAt), payload });
   }
 
   return { rows, truncated };

@@ -31,6 +31,12 @@ export const OFFLINE_ENTITY_TYPES = [
   "school.subject",
   "school.enrollment",
   "school.attendance",
+  // Milestone 8: fees. school.fee_structure_issuance is a bulk fan-out
+  // event, not tied to any single invoice.
+  "school.fee_invoice",
+  "school.fee_payment",
+  "school.fee_structure",
+  "school.fee_structure_issuance",
 ] as const;
 
 export const activationSchema = z.object({

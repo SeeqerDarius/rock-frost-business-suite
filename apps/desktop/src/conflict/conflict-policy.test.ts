@@ -11,6 +11,9 @@ describe("conflict policy", () => {
     "pos.register",
     "pos.settings_receipt_footer",
     "pos.settings_sale_prefix",
+    "school.fee_invoice",
+    "school.fee_payment",
+    "school.fee_structure_issuance",
   ])("protects supported sensitive type %s", (entityType) => expect(isProtectedEntityType(entityType)).toBe(true));
   it("requires explicit resolution", () => expect(requiresExplicitResolution("fleet", "fleet.maintenance_request")).toBe(true));
   it("offers only the server-supported KEEP_CLOUD choice", () => expect(getPermittedResolutionChoices({ allowedResolutions: ["KEEP_CLOUD", "UNSUPPORTED"] })).toEqual(["KEEP_CLOUD"]));

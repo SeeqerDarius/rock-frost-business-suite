@@ -13,6 +13,10 @@ import {
   type SchoolSubjectPayload,
   type SchoolEnrollmentPayload,
   type SchoolAttendancePayload,
+  type SchoolFeeInvoicePayload,
+  type SchoolFeePaymentPayload,
+  type SchoolFeeStructurePayload,
+  type SchoolFeeStructureIssuancePayload,
 } from "@/modules/school/types";
 
 export interface SchoolAdapterContext { db: LocalDatabase; organizationId: string; actingUserName: string | null }
@@ -63,6 +67,19 @@ export function createSchoolAdapter(ctx: SchoolAdapterContext) {
 
     recordAttendance: (entityId: string, payload: SchoolAttendancePayload) =>
       recordOfflineMutation({ ...base, entityType: SCHOOL_ENTITY_TYPES.ATTENDANCE, entityId, operation: "CREATE", baseVersion: 0, payload }),
+
+    createFeeInvoice: (entityId: string, payload: SchoolFeeInvoicePayload) =>
+      recordOfflineMutation({ ...base, entityType: SCHOOL_ENTITY_TYPES.FEE_INVOICE, entityId, operation: "CREATE", baseVersion: 0, payload }),
+
+    recordFeePayment: (entityId: string, payload: SchoolFeePaymentPayload) =>
+      recordOfflineMutation({ ...base, entityType: SCHOOL_ENTITY_TYPES.FEE_PAYMENT, entityId, operation: "CREATE", baseVersion: 0, payload }),
+
+    createFeeStructure: (entityId: string, payload: SchoolFeeStructurePayload) =>
+      recordOfflineMutation({ ...base, entityType: SCHOOL_ENTITY_TYPES.FEE_STRUCTURE, entityId, operation: "CREATE", baseVersion: 0, payload }),
+
+    /** entityId is a client-generated correlation id, not tied to any single invoice: the eligible-student set is computed fresh at sync time, matching the bulk fan-out design (see school.adapters.ts server-side). */
+    issueFeeStructure: (entityId: string, payload: SchoolFeeStructureIssuancePayload) =>
+      recordOfflineMutation({ ...base, entityType: SCHOOL_ENTITY_TYPES.FEE_STRUCTURE_ISSUANCE, entityId, operation: "CREATE", baseVersion: 0, payload }),
   };
 }
 

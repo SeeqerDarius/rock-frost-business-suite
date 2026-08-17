@@ -183,6 +183,77 @@ export interface SchoolAttendanceRecord extends Record<string, unknown> {
   reason: string | null;
 }
 
+export interface SchoolFeeInvoicePayload extends Record<string, unknown> {
+  academicYearId: string;
+  termId?: string | null;
+  studentId: string;
+  description: string;
+  amount: string;
+  discount?: number;
+  dueDate?: string | null;
+}
+
+export interface SchoolFeePaymentPayload extends Record<string, unknown> {
+  invoiceId: string;
+  amount: string;
+  method: "CASH" | "CARD" | "MOBILE_MONEY" | "BANK_TRANSFER" | "ONLINE" | "OTHER";
+  reference?: string | null;
+}
+
+export interface SchoolFeeStructurePayload extends Record<string, unknown> {
+  campusId: string;
+  academicYearId: string;
+  termId?: string | null;
+  classId?: string | null;
+  name: string;
+  description?: string | null;
+  amount: string;
+  dueDate?: string | null;
+}
+
+export interface SchoolFeeStructureIssuancePayload extends Record<string, unknown> {
+  feeStructureId: string;
+}
+
+export interface SchoolFeePaymentRecord extends Record<string, unknown> {
+  id: string;
+  amount: string;
+  method: "CASH" | "CARD" | "MOBILE_MONEY" | "BANK_TRANSFER" | "ONLINE" | "OTHER";
+  reference: string | null;
+  receivedAt: string;
+  refundedAt: string | null;
+}
+
+/** Shape of a pulled `school.fee_invoice_record` row's payload - embeds its payments directly (mirrors pos.sale_record's embedded `lines`), so the desktop never needs a separate per-payment cache read to compute an outstanding balance. */
+export interface SchoolFeeInvoiceRecord extends Record<string, unknown> {
+  academicYearId: string;
+  termId: string | null;
+  studentId: string;
+  feeStructureId: string | null;
+  invoiceNumber: string;
+  description: string;
+  amount: string;
+  discount: string;
+  status: "DRAFT" | "ISSUED" | "PART_PAID" | "PAID" | "VOID";
+  dueDate: string | null;
+  issuedAt: string | null;
+  voidedAt: string | null;
+  payments: SchoolFeePaymentRecord[];
+}
+
+/** Shape of a pulled `school.fee_structure` row's payload. */
+export interface SchoolFeeStructureRecord extends Record<string, unknown> {
+  campusId: string;
+  academicYearId: string;
+  termId: string | null;
+  classId: string | null;
+  name: string;
+  description: string | null;
+  amount: string;
+  dueDate: string | null;
+  active: boolean;
+}
+
 export const SCHOOL_ENTITY_TYPES = {
   CAMPUS: "school.campus",
   ACADEMIC_YEAR: "school.academic_year",
@@ -195,4 +266,9 @@ export const SCHOOL_ENTITY_TYPES = {
   SUBJECT: "school.subject",
   ENROLLMENT: "school.enrollment",
   ATTENDANCE: "school.attendance",
+  FEE_INVOICE: "school.fee_invoice",
+  FEE_PAYMENT: "school.fee_payment",
+  FEE_STRUCTURE: "school.fee_structure",
+  FEE_STRUCTURE_ISSUANCE: "school.fee_structure_issuance",
+  FEE_INVOICE_RECORD: "school.fee_invoice_record",
 } as const;

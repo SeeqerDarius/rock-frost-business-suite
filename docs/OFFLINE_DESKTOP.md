@@ -57,6 +57,10 @@ The desktop never connects to Neon/PostgreSQL and never receives database creden
 | School | Class / subject | `school.academics.manage` |
 | School | Enrollment | `school.enrollment.manage`; class capacity and campus/academic-year consistency are rechecked atomically |
 | School | Attendance | `school.attendance.manage`; active enrollment, future-date rejection, and the campus's attendance correction window are all rechecked server-side |
+| School | Ad-hoc fee invoice | `school.fees.manage`; amount and discount bounds are rechecked server-side |
+| School | Fee payment | `school.fees.manage`; the outstanding-balance CAS (`recordSchoolFeePayment`'s advisory-locked, atomic check) prevents an overpayment even from two racing offline devices |
+| School | Fee structure | `school.fees.manage` |
+| School | Fee structure issuance (bulk) | `school.fees.manage`; the eligible-student set is recomputed fresh at sync time from live enrollment data, and `issueSchoolFeeStructure`'s own per-student dedup prevents a duplicate invoice even from a retried or racing issuance |
 
 The server generates authoritative record identifiers, receipts, and sale numbers. A desktop-generated identifier is only a local mapping key.
 
@@ -73,7 +77,7 @@ Fleet, Installment, and Inventory remain scoped to the operations above; everyth
 - Pharmacy dispensing and restricted-medicine activity.
 - Hospital clinical, medication, laboratory, imaging, admission, billing, and consent decisions.
 
-**School is being built out incrementally, module by module, toward the same full parity POS already has.** Milestone 6 shipped the foundational reference data (campus, academic year, term). Milestone 7 adds students, student status transitions, guardians, guardian links, classes, subjects, enrollment, and attendance. Fees, exams, timetable, library, transport, and payroll adjustments remain online-only until their own milestones land; each will follow the same approved no-exceptions policy POS did once built, re-validated server-side exactly like every other offline action.
+**School is being built out incrementally, module by module, toward the same full parity POS already has.** Milestone 6 shipped the foundational reference data (campus, academic year, term). Milestone 7 added students, student status transitions, guardians, guardian links, classes, subjects, enrollment, and attendance. Milestone 8 adds fees, including the bulk fee-structure issuance fan-out, deliberately offline-capable like every other POS/School financial action approved so far. Exams, timetable, library, transport, and payroll adjustments remain online-only until their own milestones land; each will follow the same approved no-exceptions policy once built, re-validated server-side exactly like every other offline action.
 
 **POS is a deliberate exception, not a relaxation of the underlying safety mechanism.** Every POS action, including register edits, session lifecycle, refunds, and settings, is offline-capable, reflecting a considered decision that the target field-operations use case needs full POS parity offline. This does not mean the desktop is trusted: every action still goes through the same ledger-first write and full server-side re-validation as every other offline mutation (see Push above), and a conflicting or now-invalid action (a refund attempted twice, a stale register edit) is rejected and surfaced to the user as a conflict to resolve when back online, never silently applied or overwritten. The other modules' operations remain excluded above because stale information, double application, or silent conflict resolution in those specific areas could create financial, employment, inventory, or patient-safety harm that this project has not (yet) taken through the same expansion.
 
@@ -98,12 +102,15 @@ Fleet, Installment, and Inventory remain scoped to the operations above; everyth
 
 ## Desktop client: School
 
-`apps/desktop/src/modules/school/screens/SchoolModuleShell.tsx` is School's real offline mini-app, structured like `PosModuleShell.tsx` (a tab bar over a shared snapshot hook) so each later School milestone adds a tab instead of a new top-level component. Four tabs ship so far:
+`apps/desktop/src/modules/school/screens/SchoolModuleShell.tsx` is School's real offline mini-app, structured like `PosModuleShell.tsx` (a tab bar over a shared snapshot hook) so each later School milestone adds a tab instead of a new top-level component. Five tabs ship so far:
 
 - **Academic setup** (milestone 6, extended in 7): campuses, academic years, terms, classes, and subjects.
 - **Students & guardians** (milestone 7): create students, change a student's status, create guardians, and link a guardian to a student.
 - **Enrollment** (milestone 7): enroll a student into a class for an academic year.
 - **Attendance** (milestone 7): record a student's attendance for a class/term/date.
+- **Fees** (milestone 8): create fee structures and issue them in bulk to eligible students, create ad-hoc single-student invoices, and record payments against already-synced invoices. `apps/desktop/src/modules/school/fee-utils.ts`'s `computeFeeInvoiceOutstanding` mirrors `recordSchoolFeePayment`'s own outstanding-balance formula (amount minus discount minus non-refunded payments) for the desktop's own display and form guardrails only - the server independently recomputes and enforces this at sync time, so a stale local figure can never let an overpayment actually apply.
+
+**Recording a payment requires an already-synced invoice, structurally, not just by convention.** Ad-hoc invoices pull as `school.fee_invoice_record` (a different entity type from the `school.fee_invoice` CREATE mutation - the same `pos.sale`/`pos.sale_record` naming split, since most invoices come from bulk issuance, which has no per-invoice client mutation at all). The Fees screen's invoice list and payment picker read only from `school.fee_invoice_record`, so a just-created ad-hoc invoice cannot even appear as payable until it syncs - there is no filtering to get this right, the two entity types are simply disjoint.
 
 `Field`/`inputStyle`/`ErrorText`/`SyncBadge`/`formatMoney`/`formatRelativeTime` moved from POS's screens folder to `apps/desktop/src/components/form-fields.tsx` once School needed the same primitives, so neither module's screens import from the other's folder.
 

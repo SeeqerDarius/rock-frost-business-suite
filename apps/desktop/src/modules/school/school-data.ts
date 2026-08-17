@@ -12,6 +12,8 @@ import {
   type SchoolSubjectRecord,
   type SchoolEnrollmentRecord,
   type SchoolAttendanceRecord,
+  type SchoolFeeInvoiceRecord,
+  type SchoolFeeStructureRecord,
 } from "@/modules/school/types";
 
 export interface SchoolCampusRow { entityId: string; hasPendingLocalChange: boolean; data: SchoolCampusRecord }
@@ -24,6 +26,8 @@ export interface SchoolClassRow { entityId: string; hasPendingLocalChange: boole
 export interface SchoolSubjectRow { entityId: string; hasPendingLocalChange: boolean; data: SchoolSubjectRecord }
 export interface SchoolEnrollmentRow { entityId: string; hasPendingLocalChange: boolean; data: SchoolEnrollmentRecord }
 export interface SchoolAttendanceRow { entityId: string; hasPendingLocalChange: boolean; data: SchoolAttendanceRecord }
+export interface SchoolFeeInvoiceRow { entityId: string; hasPendingLocalChange: boolean; data: SchoolFeeInvoiceRecord }
+export interface SchoolFeeStructureRow { entityId: string; version: number; hasPendingLocalChange: boolean; data: SchoolFeeStructureRecord }
 
 export interface SchoolSnapshot {
   campuses: SchoolCampusRow[];
@@ -36,11 +40,14 @@ export interface SchoolSnapshot {
   subjects: SchoolSubjectRow[];
   enrollments: SchoolEnrollmentRow[];
   attendance: SchoolAttendanceRow[];
+  feeInvoices: SchoolFeeInvoiceRow[];
+  feeStructures: SchoolFeeStructureRow[];
 }
 
 const EMPTY_SNAPSHOT: SchoolSnapshot = {
   campuses: [], academicYears: [], terms: [], students: [], guardians: [],
   guardianLinks: [], classes: [], subjects: [], enrollments: [], attendance: [],
+  feeInvoices: [], feeStructures: [],
 };
 
 /** Reads every School entity type this device has cached. Mirrors pos-data.ts's usePosSnapshot; will grow with each later School milestone. */
@@ -48,7 +55,7 @@ export function useSchoolSnapshot(db: LocalDatabase) {
   const [snapshot, setSnapshot] = useState<SchoolSnapshot>(EMPTY_SNAPSHOT);
 
   const reload = useCallback(async () => {
-    const [campuses, academicYears, terms, students, guardians, guardianLinks, classes, subjects, enrollments, attendance] = await Promise.all([
+    const [campuses, academicYears, terms, students, guardians, guardianLinks, classes, subjects, enrollments, attendance, feeInvoices, feeStructures] = await Promise.all([
       db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.CAMPUS),
       db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.ACADEMIC_YEAR),
       db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.TERM),
@@ -59,6 +66,8 @@ export function useSchoolSnapshot(db: LocalDatabase) {
       db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.SUBJECT),
       db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.ENROLLMENT),
       db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.ATTENDANCE),
+      db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.FEE_INVOICE_RECORD),
+      db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.FEE_STRUCTURE),
     ]);
 
     setSnapshot({
@@ -88,6 +97,12 @@ export function useSchoolSnapshot(db: LocalDatabase) {
       attendance: attendance
         .map((r) => ({ entityId: r.entityId, hasPendingLocalChange: r.hasPendingLocalChange, data: r.payload as SchoolAttendanceRecord }))
         .sort((a, b) => (a.data.date < b.data.date ? 1 : -1)),
+      feeInvoices: feeInvoices
+        .map((r) => ({ entityId: r.entityId, hasPendingLocalChange: r.hasPendingLocalChange, data: r.payload as SchoolFeeInvoiceRecord }))
+        .sort((a, b) => (a.data.issuedAt ?? "") < (b.data.issuedAt ?? "") ? 1 : -1),
+      feeStructures: feeStructures
+        .map((r) => ({ entityId: r.entityId, version: r.version, hasPendingLocalChange: r.hasPendingLocalChange, data: r.payload as SchoolFeeStructureRecord }))
+        .sort((a, b) => a.data.name.localeCompare(b.data.name)),
     });
   }, [db]);
 

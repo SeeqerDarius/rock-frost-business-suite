@@ -31,6 +31,8 @@ const mockDb = {
   schoolSubject: { findMany: vi.fn() },
   schoolEnrollment: { findMany: vi.fn() },
   schoolAttendance: { findMany: vi.fn() },
+  schoolFeeInvoice: { findMany: vi.fn() },
+  schoolFeeStructure: { findMany: vi.fn() },
   offlineDevice: { update: vi.fn() },
 };
 
@@ -208,6 +210,8 @@ describe("school snapshot builder", () => {
     mockDb.schoolSubject.findMany.mockResolvedValue([]);
     mockDb.schoolEnrollment.findMany.mockResolvedValue([]);
     mockDb.schoolAttendance.findMany.mockResolvedValue([]);
+    mockDb.schoolFeeInvoice.findMany.mockResolvedValue([]);
+    mockDb.schoolFeeStructure.findMany.mockResolvedValue([]);
   }
 
   it("decomposes campuses, academic years, and terms into rows, versioned by updatedAt where it exists and 0 otherwise", async () => {
@@ -267,6 +271,41 @@ describe("school snapshot builder", () => {
     expect(result.rows.find((r) => r.entityType === "school.enrollment")).toMatchObject({ entityId: "e1", version: 0, payload: { studentId: "s1", classId: "cl1" } });
     expect(result.rows.find((r) => r.entityType === "school.attendance")).toMatchObject({ entityId: "a1", version: Date.parse("2026-08-15T00:00:00.000Z"), payload: { status: "PRESENT" } });
   });
+
+  it("decomposes fee invoices (with embedded payments, named fee_invoice_record) and active fee structures", async () => {
+    stubEmptySchool();
+    mockDb.schoolFeeInvoice.findMany.mockResolvedValue([
+      {
+        id: "inv1", academicYearId: "y1", termId: "t1", studentId: "s1", feeStructureId: null, invoiceNumber: "INV-00001",
+        description: "Term 1 fees", amount: "500.00", discount: "0", status: "PART_PAID", dueDate: null, issuedAt: new Date("2026-08-01T00:00:00.000Z"), voidedAt: null,
+        updatedAt: new Date("2026-08-05T00:00:00.000Z"),
+        payments: [{ id: "pay1", amount: "200.00", method: "CASH", reference: null, receivedAt: new Date("2026-08-05T00:00:00.000Z"), refundedAt: null }],
+      },
+    ]);
+    mockDb.schoolFeeStructure.findMany.mockResolvedValue([
+      { id: "fs1", campusId: "c1", academicYearId: "y1", termId: "t1", classId: null, name: "Term 1 tuition", description: null, amount: "500.00", dueDate: null, active: true, updatedAt: new Date("2026-08-01T00:00:00.000Z") },
+    ]);
+
+    const result = await buildSchoolSnapshot(fakeContext());
+    expect(result.truncated).toBe(false);
+
+    const invoiceRow = result.rows.find((r) => r.entityType === "school.fee_invoice_record");
+    expect(invoiceRow).toMatchObject({
+      entityId: "inv1",
+      version: Date.parse("2026-08-05T00:00:00.000Z"),
+      payload: { invoiceNumber: "INV-00001", payments: [{ id: "pay1", amount: "200.00" }] },
+    });
+    expect(result.rows.find((r) => r.entityType === "school.fee_invoice")).toBeUndefined();
+
+    const structureRow = result.rows.find((r) => r.entityType === "school.fee_structure");
+    expect(structureRow).toMatchObject({ entityId: "fs1", version: Date.parse("2026-08-01T00:00:00.000Z"), payload: { name: "Term 1 tuition" } });
+  });
+
+  it("only pulls active fee structures", async () => {
+    stubEmptySchool();
+    await buildSchoolSnapshot(fakeContext());
+    expect(mockDb.schoolFeeStructure.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: "org-1", active: true } }));
+  });
 });
 
 describe("buildOfflineSnapshot composition (service.ts)", () => {
@@ -313,6 +352,8 @@ describe("buildOfflineSnapshot composition (service.ts)", () => {
     mockDb.schoolSubject.findMany.mockResolvedValue([]);
     mockDb.schoolEnrollment.findMany.mockResolvedValue([]);
     mockDb.schoolAttendance.findMany.mockResolvedValue([]);
+    mockDb.schoolFeeInvoice.findMany.mockResolvedValue([]);
+    mockDb.schoolFeeStructure.findMany.mockResolvedValue([]);
 
     const context = fakeContext({ authorizedModuleKeys: ["school"] });
     await buildOfflineSnapshot(context);

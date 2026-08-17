@@ -15,6 +15,10 @@ import {
   createSchoolSubject,
   enrollSchoolStudent,
   recordSchoolAttendance,
+  createSchoolFeeInvoice,
+  recordSchoolFeePayment,
+  createSchoolFeeStructure,
+  issueSchoolFeeStructure,
 } from "@/modules/school/service";
 import { versionOf } from "@/lib/offline-sync/version";
 import { defineOfflineAdapter } from "@/lib/offline-sync/registry";
@@ -23,6 +27,11 @@ const shortText = z.string().trim().min(1).max(200);
 const longText = z.string().trim().max(5000);
 const cuid = z.string().trim().min(1).max(50);
 const dateInput = z.coerce.date();
+const moneyAmountPositive = z
+  .string()
+  .trim()
+  .regex(/^\d{1,12}(\.\d{1,2})?$/, "Must be a positive number with at most 2 decimal places.")
+  .refine((value) => Number(value) > 0, "Must be greater than zero.");
 
 const campusSchema = z.object({
   code: shortText,
@@ -106,6 +115,38 @@ const attendanceSchema = z.object({
   date: dateInput,
   status: z.enum(["PRESENT", "ABSENT", "LATE", "EXCUSED"]),
   reason: shortText.nullable().optional(),
+});
+
+const feeInvoiceSchema = z.object({
+  academicYearId: cuid,
+  termId: cuid.nullable().optional(),
+  studentId: cuid,
+  description: shortText,
+  amount: moneyAmountPositive,
+  discount: z.number().min(0).optional(),
+  dueDate: dateInput.nullable().optional(),
+});
+
+const feePaymentSchema = z.object({
+  invoiceId: cuid,
+  amount: moneyAmountPositive,
+  method: z.enum(["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "ONLINE", "OTHER"]),
+  reference: shortText.nullable().optional(),
+});
+
+const feeStructureSchema = z.object({
+  campusId: cuid,
+  academicYearId: cuid,
+  termId: cuid.nullable().optional(),
+  classId: cuid.nullable().optional(),
+  name: shortText,
+  description: longText.nullable().optional(),
+  amount: moneyAmountPositive,
+  dueDate: dateInput.nullable().optional(),
+});
+
+const feeStructureIssuanceSchema = z.object({
+  feeStructureId: cuid,
 });
 
 /**
@@ -243,6 +284,58 @@ export const schoolOfflineAdapters = [
     apply: async (tenant, _entityId, payload) => {
       const record = await recordSchoolAttendance(tenant.organizationId, payload);
       return { id: record.id, status: record.status };
+    },
+  }),
+
+  // --- Milestone 8: fees. school.fee_structure_issuance is a bulk fan-out
+  // modeled as a CREATE of an issuance *event* (payload only carries
+  // feeStructureId), not N individual invoice mutations: the eligible-
+  // student set is computed fresh at sync time from live server data, so
+  // the offline mutation is an instruction ("issue this structure now"),
+  // never a client-side snapshot of who to bill. Safety is double-covered
+  // - the ledger's (organizationId, mutationId) uniqueness prevents a
+  // retried push from re-running the whole fan-out, and
+  // issueSchoolFeeStructure's own per-student dedup (skips anyone already
+  // invoiced for that structure) prevents a duplicate bill even if two
+  // devices queue the same issuance while both offline.
+  defineOfflineAdapter({
+    entityType: "school.fee_invoice",
+    operation: "CREATE",
+    payloadSchema: feeInvoiceSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_FEES_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await createSchoolFeeInvoice(tenant.organizationId, payload);
+      return { id: record.id, invoiceNumber: record.invoiceNumber };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.fee_payment",
+    operation: "CREATE",
+    payloadSchema: feePaymentSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_FEES_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const { invoiceId, ...data } = payload;
+      const record = await recordSchoolFeePayment(tenant.organizationId, invoiceId, data);
+      return { id: record.id, receiptNumber: record.receiptNumber };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.fee_structure",
+    operation: "CREATE",
+    payloadSchema: feeStructureSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_FEES_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await createSchoolFeeStructure(tenant.organizationId, payload);
+      return { id: record.id, name: record.name };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.fee_structure_issuance",
+    operation: "CREATE",
+    payloadSchema: feeStructureIssuanceSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_FEES_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      return issueSchoolFeeStructure(tenant.organizationId, payload.feeStructureId);
     },
   }),
 ];

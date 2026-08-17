@@ -36,6 +36,7 @@ const PROTECTED_ENTITY_TYPE_PREFIXES = [
   "pos.sale_refund",
   "pos.register",
   "pos.settings",
+  "school.fee_",
   "inventory.movement",
   "accounting.",
   "payroll.",

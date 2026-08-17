@@ -36,7 +36,17 @@ export type OfflineEntityType =
   | "school.class"
   | "school.subject"
   | "school.enrollment"
-  | "school.attendance";
+  | "school.attendance"
+  // Milestone 8: fees. school.fee_structure_issuance is a bulk fan-out
+  // event; school.fee_invoice_record is pulled-only, distinct from the
+  // school.fee_invoice mutation for the same reason pos.sale_record is
+  // distinct from pos.sale - most invoices come from the bulk fan-out,
+  // not the ad-hoc mutation.
+  | "school.fee_invoice"
+  | "school.fee_payment"
+  | "school.fee_structure"
+  | "school.fee_structure_issuance"
+  | "school.fee_invoice_record";
 
 /** UPDATE is real: pos.register edits and both pos.settings_* actions carry the cached record's own version as baseVersion, and the server rejects a stale one as a conflict rather than silently overwriting. Every other action still queues CREATE with baseVersion 0. */
 export type MutationOperation = "CREATE" | "UPDATE";

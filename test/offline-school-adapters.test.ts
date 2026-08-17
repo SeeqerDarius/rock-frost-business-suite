@@ -25,6 +25,10 @@ const mockSchoolService = {
   createSchoolSubject: vi.fn(),
   enrollSchoolStudent: vi.fn(),
   recordSchoolAttendance: vi.fn(),
+  createSchoolFeeInvoice: vi.fn(),
+  recordSchoolFeePayment: vi.fn(),
+  createSchoolFeeStructure: vi.fn(),
+  issueSchoolFeeStructure: vi.fn(),
 };
 
 const mockDb = {
@@ -319,6 +323,97 @@ describe("school.attendance", () => {
   it("is denied without school.attendance.manage", async () => {
     await expect(
       applyOfflineMutation(tenant([]), mutation({ entityType: "school.attendance", payload: { termId: "t1", classId: "cl1", studentId: "s1", date: "2026-08-17", status: "PRESENT" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.fee_invoice", () => {
+  it("requires school.fees.manage and calls createSchoolFeeInvoice", async () => {
+    mockSchoolService.createSchoolFeeInvoice.mockResolvedValue({ id: "inv1", invoiceNumber: "INV-00001" });
+    const result = await applyOfflineMutation(
+      tenant(["school.fees.manage"]),
+      mutation({ entityType: "school.fee_invoice", payload: { academicYearId: "y1", studentId: "s1", description: "Term 1 fees", amount: "500.00" } }),
+    );
+    expect(mockSchoolService.createSchoolFeeInvoice).toHaveBeenCalledWith("org-1", { academicYearId: "y1", studentId: "s1", description: "Term 1 fees", amount: "500.00" });
+    expect(result).toEqual({ id: "inv1", invoiceNumber: "INV-00001" });
+  });
+
+  it("is denied without school.fees.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.fee_invoice", payload: { academicYearId: "y1", studentId: "s1", description: "Term 1 fees", amount: "500.00" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.fee_payment", () => {
+  it("requires school.fees.manage and calls recordSchoolFeePayment with invoiceId split out of the payload", async () => {
+    mockSchoolService.recordSchoolFeePayment.mockResolvedValue({ id: "pay1", receiptNumber: "SCH-00001" });
+    const result = await applyOfflineMutation(
+      tenant(["school.fees.manage"]),
+      mutation({ entityType: "school.fee_payment", payload: { invoiceId: "inv1", amount: "200.00", method: "CASH" } }),
+    );
+    expect(mockSchoolService.recordSchoolFeePayment).toHaveBeenCalledWith("org-1", "inv1", { amount: "200.00", method: "CASH" });
+    expect(result).toEqual({ id: "pay1", receiptNumber: "SCH-00001" });
+  });
+
+  it("a payment exceeding the outstanding balance surfaces as a conflict rather than a crash", async () => {
+    class SchoolStateError extends Error {}
+    mockSchoolService.recordSchoolFeePayment.mockRejectedValue(new SchoolStateError("Payment exceeds the outstanding invoice balance."));
+    await expect(
+      applyOfflineMutation(
+        tenant(["school.fees.manage"]),
+        mutation({ entityType: "school.fee_payment", payload: { invoiceId: "inv1", amount: "9999.00", method: "CASH" } }),
+      ),
+    ).rejects.toMatchObject({ conflictType: "SERVER_STATE_CHANGED" });
+  });
+
+  it("is denied without school.fees.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.fee_payment", payload: { invoiceId: "inv1", amount: "200.00", method: "CASH" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.fee_structure", () => {
+  it("requires school.fees.manage and calls createSchoolFeeStructure", async () => {
+    mockSchoolService.createSchoolFeeStructure.mockResolvedValue({ id: "fs1", name: "Term 1 tuition" });
+    const result = await applyOfflineMutation(
+      tenant(["school.fees.manage"]),
+      mutation({ entityType: "school.fee_structure", payload: { campusId: "c1", academicYearId: "y1", name: "Term 1 tuition", amount: "500.00" } }),
+    );
+    expect(mockSchoolService.createSchoolFeeStructure).toHaveBeenCalledWith("org-1", { campusId: "c1", academicYearId: "y1", name: "Term 1 tuition", amount: "500.00" });
+    expect(result).toEqual({ id: "fs1", name: "Term 1 tuition" });
+  });
+
+  it("is denied without school.fees.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.fee_structure", payload: { campusId: "c1", academicYearId: "y1", name: "Term 1 tuition", amount: "500.00" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.fee_structure_issuance", () => {
+  it("requires school.fees.manage and calls issueSchoolFeeStructure, returning its eligible/issued/skipped counts", async () => {
+    mockSchoolService.issueSchoolFeeStructure.mockResolvedValue({ eligible: 30, issued: 28, skipped: 2 });
+    const result = await applyOfflineMutation(
+      tenant(["school.fees.manage"]),
+      mutation({ entityType: "school.fee_structure_issuance", payload: { feeStructureId: "fs1" } }),
+    );
+    expect(mockSchoolService.issueSchoolFeeStructure).toHaveBeenCalledWith("org-1", "fs1");
+    expect(result).toEqual({ eligible: 30, issued: 28, skipped: 2 });
+  });
+
+  it("an inactive fee structure surfaces as a conflict rather than a crash", async () => {
+    class SchoolNotFoundError extends Error {}
+    mockSchoolService.issueSchoolFeeStructure.mockRejectedValue(new SchoolNotFoundError("Active fee structure not found."));
+    await expect(
+      applyOfflineMutation(tenant(["school.fees.manage"]), mutation({ entityType: "school.fee_structure_issuance", payload: { feeStructureId: "fs1" } })),
+    ).rejects.toMatchObject({ conflictType: "SERVER_STATE_CHANGED" });
+  });
+
+  it("is denied without school.fees.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.fee_structure_issuance", payload: { feeStructureId: "fs1" } })),
     ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
   });
 });
