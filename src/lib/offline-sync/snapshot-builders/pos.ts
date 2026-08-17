@@ -23,7 +23,7 @@ export async function buildPosSnapshot(context: OfflineDeviceContext): Promise<O
   const canManageSessions = hasPermission(context.tenant, PERMISSIONS.POS_SESSIONS_MANAGE);
   const canManageSettings = hasPermission(context.tenant, PERMISSIONS.POS_SETTINGS_MANAGE);
 
-  const [registers, sessions, sales, settings, saleNumberPrefix] = await Promise.all([
+  const [registers, sessions, sales, settings, saleNumberPrefix, saleNumberPrefixAssignment] = await Promise.all([
     db.posRegister.findMany({
       where: { organizationId },
       select: { id: true, name: true, warehouseId: true, active: true, updatedAt: true },
@@ -54,6 +54,14 @@ export async function buildPosSnapshot(context: OfflineDeviceContext): Promise<O
     // who can see it printed on a receipt; only gated for editing, not
     // viewing, so it is included regardless of canManageSettings.
     getSaleNumberPrefix(organizationId),
+    // The prefix's own version, mirroring the adapter's loadCurrentVersion
+    // for pos.settings_sale_prefix exactly (src/lib/offline-sync/modules/
+    // pos.adapters.ts): it lives on the OrganizationModule assignment row,
+    // not on PosSettings, so the single pos.settings row's own top-level
+    // `version` (PosSettings.updatedAt) cannot double as this field's
+    // baseVersion - a client that used it would send the wrong version
+    // and fail every offline prefix edit as a false conflict.
+    db.organizationModule.findFirst({ where: { organizationId, module: { code: "pos" } }, select: { updatedAt: true } }),
   ]);
 
   const truncated = registers.length > take || sessions.length > RECENT_SESSIONS_TAKE || sales.length > RECENT_SALES_TAKE;
@@ -75,8 +83,17 @@ export async function buildPosSnapshot(context: OfflineDeviceContext): Promise<O
   rows.push({
     entityType: "pos.settings",
     entityId: SETTINGS_ENTITY_ID,
+    // This row's own version is the receipt footer's baseVersion
+    // (pos.settings_receipt_footer). The prefix's baseVersion travels as
+    // its own payload field (saleNumberPrefixVersion) since it is versioned
+    // independently server-side; see the comment above.
     version: settings ? versionOf(settings.updatedAt) : 0,
-    payload: { receiptFooterText: settings?.receiptFooterText ?? null, saleNumberPrefix, canManageSettings },
+    payload: {
+      receiptFooterText: settings?.receiptFooterText ?? null,
+      saleNumberPrefix,
+      saleNumberPrefixVersion: saleNumberPrefixAssignment ? versionOf(saleNumberPrefixAssignment.updatedAt) : 0,
+      canManageSettings,
+    },
   });
 
   return { rows, truncated };

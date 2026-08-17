@@ -4,6 +4,7 @@ import { Button } from "@/components/Button";
 import { useApp } from "@/state/AppProvider";
 import { ModuleLauncher } from "@/shell/ModuleLauncher";
 import { ModuleDetailView } from "@/shell/ModuleDetailView";
+import { PosModuleShell } from "@/modules/pos/screens/PosModuleShell";
 import { SyncStatusBar } from "@/shell/SyncStatusBar";
 import { ConflictResolutionPanel } from "@/conflict/ConflictResolutionPanel";
 import type { OfflineModuleKey } from "@/contract/sync-contract";
@@ -73,7 +74,11 @@ export function AppShell() {
           <ModuleLauncher enabledModuleKeys={device.enabledModuleKeys} selected={selectedModule} onSelect={setSelectedModule} />
         </section>
 
-        {selectedModule ? <ModuleDetailView moduleKey={selectedModule} /> : null}
+        {selectedModule === "pos" ? (
+          <PosModuleShell />
+        ) : selectedModule ? (
+          <ModuleDetailView moduleKey={selectedModule} />
+        ) : null}
       </main>
     </div>
   );

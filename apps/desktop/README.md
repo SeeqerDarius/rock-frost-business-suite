@@ -24,6 +24,8 @@ blocked with `Failed to fetch`, which looks identical to a real network
 outage. `connect-src` now allows `https://app.rockfrostgroup.com` in both
 `index.html` and `src-tauri/tauri.conf.json`.
 
+POS now has a real six-tab offline terminal (`src/modules/pos/screens/PosModuleShell.tsx`: Overview, Sell, Registers, Sales history, Reports, Settings) instead of the generic one-button demo view Fleet, Installment, and Inventory still use. See "Offline scope" below and `docs/OFFLINE_DESKTOP.md`'s "Desktop client: POS" section for what it can and cannot do fully offline.
+
 ## Activation
 
 1. Sign in to the Rock Frost web application.
@@ -45,6 +47,8 @@ Fleet, Installment, and Inventory accept append-only `CREATE` mutations for exac
 Approvals, refunds, payroll, HR changes, accounting postings, pharmacy work, and clinical work remain online-only for those three modules.
 
 POS is offline-capable end to end: `pos.sale`, `pos.register` (`CREATE`/`UPDATE`), `pos.session_open`, `pos.session_close`, `pos.sale_refund`, `pos.settings_receipt_footer` (`UPDATE`), `pos.settings_sale_prefix` (`UPDATE`) - including refunds and settings, deliberately, unlike the other three modules. `UPDATE` mutations carry a real `baseVersion` (the cached record's own version) rather than the fixed `0` every `CREATE` uses; a stale edit conflicts instead of silently overwriting. See `docs/OFFLINE_DESKTOP.md`'s "Online-only safety boundary" for why POS is the exception and what still bounds the risk. Every local write remains visibly pending until the server reports it as applied.
+
+Selling requires an already-synced open session (its real `sessionId` must be known to the device): open the day's session while online, then sell offline against it for the rest of the day. See `docs/OFFLINE_DESKTOP.md`'s "Desktop client: POS" section.
 
 ## Sync contract
 

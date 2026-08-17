@@ -6,9 +6,22 @@ export type OfflineEntityType =
   | "fleet.driver_payment_submission"
   | "installment.payment"
   | "inventory.movement"
-  | "pos.sale";
+  | "pos.sale"
+  | "pos.register"
+  | "pos.session_open"
+  | "pos.session_close"
+  | "pos.sale_refund"
+  | "pos.settings_receipt_footer"
+  | "pos.settings_sale_prefix"
+  // Pulled-only reference rows: never used as a mutation entityType, only
+  // as the entityType of a pulled OfflineSnapshotRow. pos.session_record and
+  // pos.sale_record are deliberately distinct from pos.session_open/close
+  // and pos.sale, matching the server-side snapshot builder's naming.
+  | "pos.session"
+  | "pos.sale_record"
+  | "pos.settings";
 
-/** UPDATE exists in the wire contract and the server's adapter registry (see registry.ts server-side), but no module adapter produces one yet - every module still only ever queues CREATE with baseVersion 0. Widened here ahead of that so this type doesn't need to change again when the first real UPDATE case (a POS register edit) ships. */
+/** UPDATE is real: pos.register edits and both pos.settings_* actions carry the cached record's own version as baseVersion, and the server rejects a stale one as a conflict rather than silently overwriting. Every other action still queues CREATE with baseVersion 0. */
 export type MutationOperation = "CREATE" | "UPDATE";
 
 export interface MutationEnvelope<TPayload extends Record<string, unknown> = Record<string, unknown>> {

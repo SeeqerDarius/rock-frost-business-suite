@@ -73,6 +73,21 @@ Fleet, Installment, and Inventory remain scoped to the operations above; everyth
 
 `processOfflineMutation` in `service.ts` is unchanged by this: the ledger-first write, idempotency check, and conflict-on-error handling still wrap `applyOfflineMutation` exactly as before.
 
+## Desktop client: POS
+
+`apps/desktop/src/modules/pos/screens/PosModuleShell.tsx` is POS's real offline terminal, replacing the generic one-button demo view (`ModuleDetailView.tsx`) that Fleet, Installment, and Inventory still use. It has six tabs, all reading from one shared hook (`pos-data.ts`'s `usePosSnapshot`) over the decomposed cached rows so every tab reflects the same state without a manual refresh:
+
+- **Overview** - register/session/sales counts and totals, and a pending-sync summary.
+- **Registers** - list, create, and edit registers; edits carry the cached record's own version as `baseVersion` and surface a `STALE_VERSION` conflict on the next sync if it has moved.
+- **Sell** - the terminal. A cart accepts either a catalog line (from the same `inventory.item`/`inventory.stock` rows a POS-only device already receives, see the Pull section) or a free-text line, matching `createSale`'s payload exactly. A non-authoritative `local-stock-overlay.ts` subtracts what has been rung up offline from the last-synced stock quantity for the low-stock hint only; it blocks nothing, and the real check remains `createSale`'s server-side stock validation at sync time.
+- **Sales history** - lists cached sales and offers Refund on any `COMPLETED` sale not already queued for refund.
+- **Reports** - read-only figures derived from the same cached rows the other tabs use; on a device that has not synced recently, these reflect only this device's own activity plus its last pull, not the whole organization.
+- **Settings** - receipt footer and sale-number prefix, each with its own independent `baseVersion` (see below).
+
+**A session must sync once before it can be sold against.** `openSession`/`closeSession`/`refundSale` are modeled as events with a client-generated correlation id (see the Push section); the server assigns the session's or sale's real id, which the device does not know until the next pull. `createSale` requires a real `sessionId`. The practical model this supports: open the day's register session while online (typical - most sites have connectivity at open), then sell offline against that already-synced session for the rest of the day even if connectivity drops, syncing sales and any session close whenever it returns. The Sell screen only offers sessions present in the last-pulled `pos.session` rows for this reason, and shows a queued-but-unsyncable notice for a session opened while already offline.
+
+**The sale-number prefix has its own version, separate from the settings row's version.** The single pulled `pos.settings` row carries one `version` (the receipt footer's `baseVersion`, from `PosSettings.updatedAt`) and a separate `saleNumberPrefixVersion` payload field (the prefix's own `baseVersion`, from the `OrganizationModule` assignment row's `updatedAt` - see `pos.settings_sale_prefix`'s `loadCurrentVersion` in `pos.adapters.ts`). These two settings live on different server-side rows with independent update times; sending the row's own version as the prefix's `baseVersion` would fail nearly every offline prefix edit as a false `STALE_VERSION` conflict. `snapshot-builders/pos.ts` now fetches both.
+
 ## API contract
 
 All responses containing tenant or device data use `Cache-Control: private, no-store`.

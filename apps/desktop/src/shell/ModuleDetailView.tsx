@@ -5,7 +5,6 @@ import { Card } from "@/components/Card";
 import { useApp } from "@/state/AppProvider";
 import { createFleetAdapter } from "@/modules/fleet/adapter";
 import { createInstallmentAdapter } from "@/modules/installment/adapter";
-import { createPosAdapter } from "@/modules/pos/adapter";
 import { createInventoryAdapter } from "@/modules/inventory/adapter";
 import { MODULES } from "@/shell/ModuleLauncher";
 import type { OfflineModuleKey } from "@/contract/sync-contract";
@@ -18,11 +17,14 @@ import type { CachedRecord } from "@/db/schema";
  * full CRUD UI for every entity type. Each module has several entity
  * types (see the adapter files); this view demonstrates one to keep the
  * shell's scope proportional to "foundation," not a finished business app.
+ * POS has since graduated to a full real UI (PosModuleShell) and is never
+ * routed here; this demo view remains for Fleet/Installment/Inventory,
+ * which are explicitly out of scope for full offline parity.
  */
-const DEMO_ENTITY_TYPE: Record<OfflineModuleKey, string> = {
+type DemoModuleKey = Exclude<OfflineModuleKey, "pos">;
+const DEMO_ENTITY_TYPE: Record<DemoModuleKey, string> = {
   fleet: "fleet.maintenance_request",
   installment: "installment.payment",
-  pos: "pos.sale",
   inventory: "inventory.movement",
 };
 
@@ -34,7 +36,7 @@ function formatRelativeTime(iso: string): string {
   return diffHours < 24 ? `${diffHours}h ago` : new Date(iso).toLocaleDateString();
 }
 
-export function ModuleDetailView({ moduleKey }: { moduleKey: OfflineModuleKey }) {
+export function ModuleDetailView({ moduleKey }: { moduleKey: DemoModuleKey }) {
   const { db, device, recordActivity } = useApp();
   const [records, setRecords] = useState<CachedRecord[]>([]);
   const [recording, setRecording] = useState(false);
@@ -72,12 +74,6 @@ export function ModuleDetailView({ moduleKey }: { moduleKey: OfflineModuleKey })
           paymentDate: nowIso,
           method: "CASH",
           notes: null,
-        });
-      } else if (moduleKey === "pos") {
-        await createPosAdapter(ctx).recordSale(entityId, {
-          sessionId: "demo-session",
-          lines: [{ itemId: null, description: "Sample item", quantity: 1, unitPrice: "10.00" }],
-          paymentMethod: "CASH",
         });
       } else {
         await createInventoryAdapter(ctx).recordMovement(entityId, {

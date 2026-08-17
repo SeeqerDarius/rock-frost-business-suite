@@ -20,6 +20,7 @@ const mockDb = {
   posRegister: { findMany: vi.fn() },
   posSale: { findMany: vi.fn() },
   posSettings: { findUnique: vi.fn() },
+  organizationModule: { findFirst: vi.fn() },
   offlineDevice: { update: vi.fn() },
 };
 
@@ -144,6 +145,7 @@ describe("pos snapshot builder", () => {
     mockDb.posSession.findMany.mockResolvedValue([]);
     mockDb.posSale.findMany.mockResolvedValue([]);
     mockDb.posSettings.findUnique.mockResolvedValue(null);
+    mockDb.organizationModule.findFirst.mockResolvedValue(null);
   }
 
   it("decomposes registers, sessions, and sales into rows, each versioned 0 except registers which have updatedAt", async () => {
@@ -169,7 +171,7 @@ describe("pos snapshot builder", () => {
     expect(saleRow).toMatchObject({ entityId: "sale1", version: 0, payload: { saleNumber: "SALE-00001" } });
 
     const settingsRow = result.rows.find((row) => row.entityType === "pos.settings");
-    expect(settingsRow).toMatchObject({ entityId: "default", version: 0, payload: { saleNumberPrefix: "SALE" } });
+    expect(settingsRow).toMatchObject({ entityId: "default", version: 0, payload: { saleNumberPrefix: "SALE", saleNumberPrefixVersion: 0 } });
   });
 
   it("gives every POS-authorized user org-wide session visibility when they hold POS_SESSIONS_MANAGE, and only their own sessions otherwise", async () => {
@@ -208,6 +210,7 @@ describe("buildOfflineSnapshot composition (service.ts)", () => {
     mockDb.posRegister.findMany.mockResolvedValue([]);
     mockDb.posSale.findMany.mockResolvedValue([]);
     mockDb.posSettings.findUnique.mockResolvedValue(null);
+    mockDb.organizationModule.findFirst.mockResolvedValue(null);
 
     const context = fakeContext({ authorizedModuleKeys: ["inventory", "pos"] });
     await buildOfflineSnapshot(context);
