@@ -20,8 +20,8 @@ export interface RecordOfflineMutationInput {
   entityId: string;
   operation: MutationOperation;
   payload: unknown;
-  /** The version this write was based on (from the last known cached record): null for a brand-new, offline-created entity. */
-  baseVersion: 0;
+  /** The version this write was based on (from the last known cached record). 0 for a brand-new, offline-created entity - every module still only ever creates today, so this is always 0 in practice until the first UPDATE-capable module adapter ships. */
+  baseVersion: number;
   /** Who made this change, for display in the cached record before the server assigns its own audit identity: never sent as part of the mutation envelope itself (the server derives the acting user from the authenticated session). */
   actingUserName: string | null;
 }

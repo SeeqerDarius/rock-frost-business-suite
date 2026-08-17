@@ -28,7 +28,7 @@ export interface EnqueueMutationInput {
   moduleKey: OfflineModuleKey;
   entityType: OfflineEntityType;
   entityId: string;
-  baseVersion: 0;
+  baseVersion: number;
   operation: MutationOperation;
   payload: unknown;
   /** Injectable for tests; defaults to now. */
@@ -79,8 +79,8 @@ export function toMutationEnvelopes(records: QueuedMutationRecord[]): MutationEn
     entityType: record.entityType as OfflineEntityType,
     entityId: record.entityId,
     mutationId: record.mutationId,
-    baseVersion: 0,
-    operation: "CREATE",
+    baseVersion: record.baseVersion,
+    operation: record.operation,
     changedAt: record.changedAt,
     payload: record.payload as Record<string, unknown>,
   }));

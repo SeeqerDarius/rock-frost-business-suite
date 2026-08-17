@@ -60,7 +60,7 @@ export interface QueuedMutationRecord {
   moduleKey: OfflineModuleKey;
   entityType: string;
   entityId: string;
-  baseVersion: 0;
+  baseVersion: number;
   operation: MutationOperation;
   changedAt: string;
   payload: unknown;

@@ -55,6 +55,8 @@ Approvals, refunds, payroll, HR changes, accounting postings, pharmacy work, and
 
 The pull response can report `truncated: true`. This must be surfaced before a production installer is distributed because a truncated full snapshot is not a complete offline dataset. Push results may be `processing`, `applied`, `conflict`, or `rejected`. The client retries `processing` safely with the same mutation ID.
 
+The pull response's `rows` field is a flat list of `{entityType, entityId, version, payload}`, one entry per pulled entity, not one nested object per module. `sync-engine.ts`'s `pullSnapshot()` upserts one `CachedRecord` per row, so `db.listCachedRecords(moduleKey, entityType)` returns real, individually queryable entities from the last pull, not just locally-queued ones.
+
 ## Development
 
 ```powershell

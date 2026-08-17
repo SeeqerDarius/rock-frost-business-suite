@@ -8,7 +8,8 @@ export type OfflineEntityType =
   | "inventory.movement"
   | "pos.sale";
 
-export type MutationOperation = "CREATE";
+/** UPDATE exists in the wire contract and the server's adapter registry (see registry.ts server-side), but no module adapter produces one yet - every module still only ever queues CREATE with baseVersion 0. Widened here ahead of that so this type doesn't need to change again when the first real UPDATE case (a POS register edit) ships. */
+export type MutationOperation = "CREATE" | "UPDATE";
 
 export interface MutationEnvelope<TPayload extends Record<string, unknown> = Record<string, unknown>> {
   mutationId: string;
@@ -16,8 +17,9 @@ export interface MutationEnvelope<TPayload extends Record<string, unknown> = Rec
   moduleKey: OfflineModuleKey;
   entityType: OfflineEntityType;
   entityId: string;
-  operation: "CREATE";
-  baseVersion: 0;
+  operation: MutationOperation;
+  /** 0 for every CREATE queued today. For a future UPDATE, this is the cached record's own `version` at the moment the edit was made - the server rejects a stale one as a conflict rather than silently overwriting. */
+  baseVersion: number;
   changedAt: string;
   payload: TPayload;
 }
@@ -57,18 +59,19 @@ export interface SyncPushResponse {
   offlineAccessUntil: string;
 }
 
-export interface OfflineSnapshot {
-  fleet?: Record<string, unknown>;
-  installment?: Record<string, unknown>;
-  inventory?: Record<string, unknown>;
-  pos?: Record<string, unknown>;
+/** One entity in a pull response. `payload` holds every field except the ones already promoted to `entityId`/`version` - mirrors OfflineSnapshotRow server-side (src/lib/offline-sync/snapshot-builders/types.ts). `version` is 0 for models with no updatedAt column server-side; that is not a client-trust gap, since any subsequent mutation against the row is still fully re-validated server-side regardless of what version the client last saw. */
+export interface OfflineSnapshotRow {
+  entityType: string;
+  entityId: string;
+  version: number;
+  payload: Record<string, unknown>;
 }
 export interface SyncPullResponse {
   generatedAt: string;
   offlineAccessUntil: string;
   fullSnapshot: true;
   truncated: boolean;
-  snapshot: OfflineSnapshot;
+  rows: OfflineSnapshotRow[];
 }
 
 export type ConflictResolutionChoice = "KEEP_CLOUD";

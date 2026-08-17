@@ -57,17 +57,29 @@ export class SyncEngine {
       await this.deps.db.appendAuditEvent("sync_completed", { deviceId: this.deps.deviceId });
     } catch (error) { await this.handleSyncError(error); }
   }
+  /**
+   * The pull response is a flat row list (one row per entity, not one
+   * blob per module), each already scoped/authorized server-side - see
+   * OfflineSnapshotRow in contract/sync-contract.ts. One CachedRecord per
+   * row means db.listCachedRecords(moduleKey, entityType) returns real,
+   * individually queryable entities, which is what a real per-entity list
+   * or detail screen needs.
+   */
   private async pullSnapshot() {
     const response = await this.deps.client.callWithRetry(() => this.deps.client.pull());
     await this.persistOfflineAuthorization(response.offlineAccessUntil, response.generatedAt);
-    for (const moduleKey of this.deps.enabledModuleKeys) {
-      const payload = response.snapshot[moduleKey];
-      if (!payload) continue;
+    for (const row of response.rows) {
+      const moduleKey = row.entityType.split(".")[0] as OfflineModuleKey;
       await this.deps.db.upsertCachedRecord({
-        moduleKey, entityType: `${moduleKey}.snapshot`, entityId: "full", version: 0, payload,
+        moduleKey, entityType: row.entityType, entityId: row.entityId, version: row.version, payload: row.payload,
         hasPendingLocalChange: false, updatedAt: response.generatedAt,
         updatedByUserId: null, updatedByUserName: null,
       });
+    }
+    // Cursor is set per module this device is authorized for, independent
+    // of whether that module happened to have any rows this pull - same
+    // as the enabledModuleKeys-driven behavior before decomposition.
+    for (const moduleKey of this.deps.enabledModuleKeys) {
       await this.deps.db.setSyncCursor(moduleKey, response.generatedAt);
     }
   }

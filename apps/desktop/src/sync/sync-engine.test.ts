@@ -4,7 +4,7 @@ import { SyncEngine } from "@/sync/sync-engine";
 import type { SyncClient } from "@/sync/sync-client";
 import { SyncClientError, type SyncPullResponse, type SyncPushResponse } from "@/contract/sync-contract";
 
-const emptyPull = (): SyncPullResponse => ({ generatedAt: "2026-08-15T00:00:00.000Z", offlineAccessUntil: "2026-08-18T00:00:00.000Z", fullSnapshot: true, truncated: false, snapshot: {} });
+const emptyPull = (): SyncPullResponse => ({ generatedAt: "2026-08-15T00:00:00.000Z", offlineAccessUntil: "2026-08-18T00:00:00.000Z", fullSnapshot: true, truncated: false, rows: [] });
 const emptyPush = (): SyncPushResponse => ({ results: [], offlineAccessUntil: "2026-08-18T00:00:00.000Z" });
 function fakeClient(overrides: Partial<Pick<SyncClient, "pull" | "push">> = {}): SyncClient {
   return { pull: overrides.pull ?? vi.fn(async () => emptyPull()), push: overrides.push ?? vi.fn(async () => emptyPush()), callWithRetry: async (operation: () => Promise<unknown>) => operation() } as unknown as SyncClient;
@@ -14,13 +14,28 @@ function deps(overrides: Record<string, unknown> = {}) {
 }
 
 describe("SyncEngine", () => {
-  it("stores the bounded full snapshot and its generated timestamp", async () => {
-    const pull = vi.fn(async (): Promise<SyncPullResponse> => ({ ...emptyPull(), snapshot: { fleet: { vehicles: [{ id: "v1" }] } } }));
+  it("decomposes each pulled row into its own individually queryable cached record", async () => {
+    const pull = vi.fn(async (): Promise<SyncPullResponse> => ({
+      ...emptyPull(),
+      rows: [
+        { entityType: "fleet.vehicle", entityId: "v1", version: 1723680000000, payload: { plateNumber: "GR-1" } },
+        { entityType: "fleet.driver_profile", entityId: "d1", version: 1723680000001, payload: { assignedVehicles: [{ id: "v1" }] } },
+      ],
+    }));
     const setup = deps({ client: fakeClient({ pull }) }); const engine = new SyncEngine(setup as never); await engine.syncNow();
     expect(pull).toHaveBeenCalledWith();
-    expect(await setup.db.getCachedRecord("fleet", "fleet.snapshot", "full")).toMatchObject({ payload: { vehicles: [{ id: "v1" }] } });
+    expect(await setup.db.getCachedRecord("fleet", "fleet.vehicle", "v1")).toMatchObject({ version: 1723680000000, payload: { plateNumber: "GR-1" } });
+    expect(await setup.db.getCachedRecord("fleet", "fleet.driver_profile", "d1")).toMatchObject({ version: 1723680000001, payload: { assignedVehicles: [{ id: "v1" }] } });
     expect(await setup.db.getCachedRecord("fleet", "fleet.offline_authorization", "device-1")).toMatchObject({ payload: { offlineAccessUntil: "2026-08-18T00:00:00.000Z" } });
     expect(await setup.db.getSyncCursor("fleet")).toBe("2026-08-15T00:00:00.000Z");
+  });
+
+  it("sets the sync cursor for every enabled module even when a pull returns zero rows for it", async () => {
+    const setup = deps({ enabledModuleKeys: ["fleet", "pos"] });
+    const engine = new SyncEngine(setup as never);
+    await engine.syncNow();
+    expect(await setup.db.getSyncCursor("fleet")).toBe("2026-08-15T00:00:00.000Z");
+    expect(await setup.db.getSyncCursor("pos")).toBe("2026-08-15T00:00:00.000Z");
   });
 
   it("pushes without a deviceId and clears a successfully applied pending badge", async () => {
