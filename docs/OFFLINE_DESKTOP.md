@@ -64,6 +64,12 @@ The following remain online-only in the first release:
 
 These operations are excluded because stale information, double application, or silent conflict resolution could create financial, employment, inventory, or patient-safety harm.
 
+## Server-side adapter architecture
+
+`src/lib/offline-sync/adapters.ts` no longer contains per-entity-type business logic directly. It is a thin dispatcher over a registry (`src/lib/offline-sync/registry.ts`): each supported module registers its own handlers from `src/lib/offline-sync/modules/<module>.adapters.ts` (currently `fleet`, `installment`, `inventory`, `pos`), keyed by `(entityType, operation)`. A handler declares a coarse, payload-independent `checkPermission`, a `payloadSchema`, and an `apply` function that performs any payload-dependent checks and then calls the same service-layer function the web UI itself calls (for example `createFleetMaintenanceRequest` from `@/modules/fleet/service`) - the offline path never reimplements business logic, it re-validates and re-invokes it. Adding a new offline-capable action means adding one handler to the relevant module file (or a new module file for a new module), not editing `adapters.ts`.
+
+`processOfflineMutation` in `service.ts` is unchanged by this: the ledger-first write, idempotency check, and conflict-on-error handling still wrap `applyOfflineMutation` exactly as before.
+
 ## API contract
 
 All responses containing tenant or device data use `Cache-Control: private, no-store`.
