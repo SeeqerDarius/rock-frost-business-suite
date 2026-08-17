@@ -1,4 +1,4 @@
-import { Boxes, PackageSearch, ShoppingCart, Truck } from "lucide-react";
+import { Boxes, GraduationCap, PackageSearch, ShoppingCart, Truck } from "lucide-react";
 import { Card } from "@/components/Card";
 import type { OfflineModuleKey } from "@/contract/sync-contract";
 
@@ -14,6 +14,7 @@ const MODULES: ModuleMeta[] = [
   { key: "installment", label: "Installment", description: "Collection entries and payment receipts.", Icon: PackageSearch },
   { key: "pos", label: "Point of Sale", description: "Offline sales and receipts.", Icon: ShoppingCart },
   { key: "inventory", label: "Inventory", description: "Stock counts and stock movements.", Icon: Boxes },
+  { key: "school", label: "School", description: "Campuses, academic years, and terms.", Icon: GraduationCap },
 ];
 
 interface ModuleLauncherProps {

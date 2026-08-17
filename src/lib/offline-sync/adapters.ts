@@ -8,6 +8,7 @@ import { fleetOfflineAdapters } from "@/lib/offline-sync/modules/fleet.adapters"
 import { installmentOfflineAdapters } from "@/lib/offline-sync/modules/installment.adapters";
 import { inventoryOfflineAdapters } from "@/lib/offline-sync/modules/inventory.adapters";
 import { posOfflineAdapters } from "@/lib/offline-sync/modules/pos.adapters";
+import { schoolOfflineAdapters } from "@/lib/offline-sync/modules/school.adapters";
 
 export { OfflineMutationDeniedError, OfflineMutationConflictError } from "@/lib/offline-sync/errors";
 
@@ -15,6 +16,7 @@ registerModuleAdapters(fleetOfflineAdapters);
 registerModuleAdapters(installmentOfflineAdapters);
 registerModuleAdapters(inventoryOfflineAdapters);
 registerModuleAdapters(posOfflineAdapters);
+registerModuleAdapters(schoolOfflineAdapters);
 
 /**
  * Dispatches to the handler registered for (entityType, operation) in

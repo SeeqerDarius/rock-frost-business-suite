@@ -1,7 +1,7 @@
 import { Card } from "@/components/Card";
 import type { PosSnapshot } from "@/modules/pos/pos-data";
 import { computePosSummary } from "@/modules/pos/pos-summary";
-import { formatMoney } from "@/modules/pos/screens/shared";
+import { formatMoney } from "@/components/form-fields";
 
 function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (

@@ -4,7 +4,7 @@ import { Button } from "@/components/Button";
 import { useApp } from "@/state/AppProvider";
 import { createPosAdapter } from "@/modules/pos/adapter";
 import type { PosSnapshot } from "@/modules/pos/pos-data";
-import { Field, inputStyle, ErrorText, SyncBadge } from "@/modules/pos/screens/shared";
+import { Field, inputStyle, ErrorText, SyncBadge } from "@/components/form-fields";
 
 export function PosSettingsScreen({ snapshot, onChanged }: { snapshot: PosSnapshot; onChanged: () => Promise<void> }) {
   const { db, device, recordActivity } = useApp();

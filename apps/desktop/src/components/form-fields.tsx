@@ -1,6 +1,12 @@
 import type { ReactNode, CSSProperties } from "react";
 import { Clock3 } from "lucide-react";
 
+/**
+ * Shared form/list primitives used by every module's real (non-demo)
+ * screens - originally written for POS (screens/PosModuleShell.tsx and
+ * friends), promoted here once School's screens needed the same pieces,
+ * so no module's screens import from another module's folder.
+ */
 export const inputStyle: CSSProperties = {
   width: "100%",
   padding: "0.6rem 0.75rem",
@@ -32,7 +38,7 @@ export function ErrorText({ children }: { children: ReactNode }) {
   );
 }
 
-/** The same "Pending sync" / "Synced" indicator ModuleDetailView.tsx uses, factored out here since every POS list row needs it. */
+/** The same "Pending sync" / "Synced" indicator ModuleDetailView.tsx uses, factored out here since every real module screen's list rows need it. */
 export function SyncBadge({ pending }: { pending: boolean }) {
   if (!pending) return <span style={{ fontSize: "0.75rem", color: "var(--rf-muted-foreground)", flexShrink: 0 }}>Synced</span>;
   return (

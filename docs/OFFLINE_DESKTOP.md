@@ -49,6 +49,8 @@ The desktop never connects to Neon/PostgreSQL and never receives database creden
 | POS | Session open/close | `pos.sessions.manage`; open requires no existing open session on the register, close requires the session is currently open |
 | POS | Sale refund | `pos.sales.manage` (the same permission that authorizes creating a sale); the same atomic `COMPLETED -> REFUNDED` claim `refundSale()` already uses online prevents a duplicate refund even from two racing offline devices |
 | POS | Receipt footer / sale-number-prefix settings | `pos.settings.manage`; optimistic concurrency on the underlying settings row |
+| School | Campus | `school.campuses.manage` |
+| School | Academic year / term | `school.academics.manage`; the service layer's own date-ordering and academic-year-membership checks are rechecked server-side, same as online |
 
 The server generates authoritative record identifiers, receipts, and sale numbers. A desktop-generated identifier is only a local mapping key.
 
@@ -64,6 +66,8 @@ Fleet, Installment, and Inventory remain scoped to the operations above; everyth
 - HR termination, reinstatement, and access suspension.
 - Pharmacy dispensing and restricted-medicine activity.
 - Hospital clinical, medication, laboratory, imaging, admission, billing, and consent decisions.
+
+**School is being built out incrementally, module by module, toward the same full parity POS already has.** Milestone 6 ships only the foundational reference data - campus, academic year, term - all CREATE-only, matching the web app (there is no edit action for any of the three today). Students, guardians, classes, enrollment, attendance, fees, exams, timetable, library, transport, and payroll adjustments remain online-only until their own milestones land; each will follow the same approved no-exceptions policy POS did once built, re-validated server-side exactly like every other offline action.
 
 **POS is a deliberate exception, not a relaxation of the underlying safety mechanism.** Every POS action, including register edits, session lifecycle, refunds, and settings, is offline-capable, reflecting a considered decision that the target field-operations use case needs full POS parity offline. This does not mean the desktop is trusted: every action still goes through the same ledger-first write and full server-side re-validation as every other offline mutation (see Push above), and a conflicting or now-invalid action (a refund attempted twice, a stale register edit) is rejected and surfaced to the user as a conflict to resolve when back online, never silently applied or overwritten. The other modules' operations remain excluded above because stale information, double application, or silent conflict resolution in those specific areas could create financial, employment, inventory, or patient-safety harm that this project has not (yet) taken through the same expansion.
 
@@ -85,6 +89,10 @@ Fleet, Installment, and Inventory remain scoped to the operations above; everyth
 - **Settings** - receipt footer and sale-number prefix, each with its own independent `baseVersion` (see below).
 
 **A session must sync once before it can be sold against.** `openSession`/`closeSession`/`refundSale` are modeled as events with a client-generated correlation id (see the Push section); the server assigns the session's or sale's real id, which the device does not know until the next pull. `createSale` requires a real `sessionId`. The practical model this supports: open the day's register session while online (typical - most sites have connectivity at open), then sell offline against that already-synced session for the rest of the day even if connectivity drops, syncing sales and any session close whenever it returns. The Sell screen only offers sessions present in the last-pulled `pos.session` rows for this reason, and shows a queued-but-unsyncable notice for a session opened while already offline.
+
+## Desktop client: School
+
+`apps/desktop/src/modules/school/screens/SchoolModuleShell.tsx` is School's real offline mini-app, structured like `PosModuleShell.tsx` (a tab bar over a shared snapshot hook) so each later School milestone adds a tab instead of a new top-level component. Milestone 6 ships one tab, **Academic setup**: create and list campuses, academic years, and terms, all CREATE-only and unscoped by any per-user ownership at this layer (any device authorized for the school module sees every campus in the organization, matching the web app's own read access). `Field`/`inputStyle`/`ErrorText`/`SyncBadge`/`formatMoney`/`formatRelativeTime` moved from POS's screens folder to `apps/desktop/src/components/form-fields.tsx` once School needed the same primitives, so neither module's screens import from the other's folder.
 
 **The sale-number prefix has its own version, separate from the settings row's version.** The single pulled `pos.settings` row carries one `version` (the receipt footer's `baseVersion`, from `PosSettings.updatedAt`) and a separate `saleNumberPrefixVersion` payload field (the prefix's own `baseVersion`, from the `OrganizationModule` assignment row's `updatedAt` - see `pos.settings_sale_prefix`'s `loadCurrentVersion` in `pos.adapters.ts`). These two settings live on different server-side rows with independent update times; sending the row's own version as the prefix's `baseVersion` would fail nearly every offline prefix edit as a false `STALE_VERSION` conflict. `snapshot-builders/pos.ts` now fetches both.
 

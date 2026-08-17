@@ -10,6 +10,7 @@ import type { OfflineModuleKey } from "@/contract/sync-contract";
 const MODULES: { key: OfflineModuleKey; label: string }[] = [
   { key: "fleet", label: "Fleet" }, { key: "installment", label: "Installment" },
   { key: "inventory", label: "Inventory" }, { key: "pos", label: "Point of sale" },
+  { key: "school", label: "School" },
 ];
 
 export function DeviceActivationScreen() {

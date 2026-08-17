@@ -50,6 +50,8 @@ POS is offline-capable end to end: `pos.sale`, `pos.register` (`CREATE`/`UPDATE`
 
 Selling requires an already-synced open session (its real `sessionId` must be known to the device): open the day's session while online, then sell offline against it for the rest of the day. See `docs/OFFLINE_DESKTOP.md`'s "Desktop client: POS" section.
 
+School is being built out toward the same full parity, one milestone at a time. So far: `school.campus`, `school.academic_year`, `school.term` - all `CREATE`-only, matching the web app. Students, guardians, classes, enrollment, attendance, fees, exams, timetable, library, transport, and payroll adjustments remain online-only until their own milestones land.
+
 ## Sync contract
 
 - `POST /api/desktop/activate` exchanges a one-time code and installation identity for a device token.

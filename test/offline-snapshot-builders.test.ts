@@ -21,6 +21,9 @@ const mockDb = {
   posSale: { findMany: vi.fn() },
   posSettings: { findUnique: vi.fn() },
   organizationModule: { findFirst: vi.fn() },
+  schoolCampus: { findMany: vi.fn() },
+  schoolAcademicYear: { findMany: vi.fn() },
+  schoolTerm: { findMany: vi.fn() },
   offlineDevice: { update: vi.fn() },
 };
 
@@ -34,6 +37,7 @@ const { buildFleetSnapshot } = await import("@/lib/offline-sync/snapshot-builder
 const { buildInstallmentSnapshot } = await import("@/lib/offline-sync/snapshot-builders/installment");
 const { buildInventorySnapshot } = await import("@/lib/offline-sync/snapshot-builders/inventory");
 const { buildPosSnapshot } = await import("@/lib/offline-sync/snapshot-builders/pos");
+const { buildSchoolSnapshot } = await import("@/lib/offline-sync/snapshot-builders/school");
 const { buildOfflineSnapshot } = await import("@/lib/offline-sync/service");
 
 function fakeContext(overrides: Record<string, unknown> = {}) {
@@ -185,6 +189,36 @@ describe("pos snapshot builder", () => {
   });
 });
 
+describe("school snapshot builder", () => {
+  it("decomposes campuses, academic years, and terms into rows, versioned by updatedAt where it exists and 0 otherwise", async () => {
+    mockDb.schoolCampus.findMany.mockResolvedValue([
+      { id: "c1", code: "MAIN", name: "Main Campus", address: null, phone: null, email: null, active: true, updatedAt: new Date("2026-08-01T00:00:00.000Z") },
+    ]);
+    mockDb.schoolAcademicYear.findMany.mockResolvedValue([
+      { id: "y1", name: "2026/2027", startDate: new Date("2026-09-01T00:00:00.000Z"), endDate: new Date("2027-07-31T00:00:00.000Z"), current: true, closedAt: null },
+    ]);
+    mockDb.schoolTerm.findMany.mockResolvedValue([
+      { id: "t1", academicYearId: "y1", name: "Term 1", startDate: new Date("2026-09-01T00:00:00.000Z"), endDate: new Date("2026-12-15T00:00:00.000Z"), current: true, closedAt: null },
+    ]);
+
+    const result = await buildSchoolSnapshot(fakeContext());
+    expect(result.truncated).toBe(false);
+    expect(result.rows).toEqual([
+      { entityType: "school.campus", entityId: "c1", version: Date.parse("2026-08-01T00:00:00.000Z"), payload: { code: "MAIN", name: "Main Campus", address: null, phone: null, email: null, active: true } },
+      { entityType: "school.academic_year", entityId: "y1", version: 0, payload: { name: "2026/2027", startDate: new Date("2026-09-01T00:00:00.000Z"), endDate: new Date("2027-07-31T00:00:00.000Z"), current: true, closedAt: null } },
+      { entityType: "school.term", entityId: "t1", version: 0, payload: { academicYearId: "y1", name: "Term 1", startDate: new Date("2026-09-01T00:00:00.000Z"), endDate: new Date("2026-12-15T00:00:00.000Z"), current: true, closedAt: null } },
+    ]);
+  });
+
+  it("only pulls active campuses", async () => {
+    mockDb.schoolCampus.findMany.mockResolvedValue([]);
+    mockDb.schoolAcademicYear.findMany.mockResolvedValue([]);
+    mockDb.schoolTerm.findMany.mockResolvedValue([]);
+    await buildSchoolSnapshot(fakeContext());
+    expect(mockDb.schoolCampus.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: "org-1", active: true } }));
+  });
+});
+
 describe("buildOfflineSnapshot composition (service.ts)", () => {
   it("only builds sections for authorized modules and flattens their rows into one list", async () => {
     mockDb.fleetVehicle.findMany.mockResolvedValue([{ id: "v1", assetTag: "A", plateNumber: "P", make: "M", model: "M", status: "ACTIVE", assignedDriverId: null, updatedAt: new Date() }]);
@@ -216,6 +250,18 @@ describe("buildOfflineSnapshot composition (service.ts)", () => {
     await buildOfflineSnapshot(context);
 
     expect(mockDb.inventoryItem.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("builds the school section only when school is authorized", async () => {
+    mockDb.schoolCampus.findMany.mockResolvedValue([]);
+    mockDb.schoolAcademicYear.findMany.mockResolvedValue([]);
+    mockDb.schoolTerm.findMany.mockResolvedValue([]);
+
+    const context = fakeContext({ authorizedModuleKeys: ["school"] });
+    await buildOfflineSnapshot(context);
+
+    expect(mockDb.schoolCampus.findMany).toHaveBeenCalledTimes(1);
+    expect(mockDb.fleetVehicle.findMany).not.toHaveBeenCalled();
   });
 
   it("aggregates truncated as true if any builder reports truncation", async () => {

@@ -17,11 +17,12 @@ import type { CachedRecord } from "@/db/schema";
  * full CRUD UI for every entity type. Each module has several entity
  * types (see the adapter files); this view demonstrates one to keep the
  * shell's scope proportional to "foundation," not a finished business app.
- * POS has since graduated to a full real UI (PosModuleShell) and is never
- * routed here; this demo view remains for Fleet/Installment/Inventory,
- * which are explicitly out of scope for full offline parity.
+ * POS and School have since graduated to full real UIs (PosModuleShell,
+ * SchoolModuleShell) and are never routed here; this demo view remains for
+ * Fleet/Installment/Inventory, which are explicitly out of scope for full
+ * offline parity.
  */
-type DemoModuleKey = Exclude<OfflineModuleKey, "pos">;
+type DemoModuleKey = Exclude<OfflineModuleKey, "pos" | "school">;
 const DEMO_ENTITY_TYPE: Record<DemoModuleKey, string> = {
   fleet: "fleet.maintenance_request",
   installment: "installment.payment",

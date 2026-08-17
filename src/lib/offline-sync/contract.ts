@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const OFFLINE_SUPPORTED_MODULES = ["fleet", "installment", "inventory", "pos"] as const;
+export const OFFLINE_SUPPORTED_MODULES = ["fleet", "installment", "inventory", "pos", "school"] as const;
 export type OfflineSupportedModule = (typeof OFFLINE_SUPPORTED_MODULES)[number];
 
 export const OFFLINE_ENTITY_TYPES = [
@@ -15,6 +15,12 @@ export const OFFLINE_ENTITY_TYPES = [
   "pos.sale_refund",
   "pos.settings_receipt_footer",
   "pos.settings_sale_prefix",
+  // School foundational slice (milestone 6 of the offline expansion): the
+  // reference data every other School entity type will hang off of once
+  // later milestones add students, enrollment, fees, and exams.
+  "school.campus",
+  "school.academic_year",
+  "school.term",
 ] as const;
 
 export const activationSchema = z.object({
@@ -22,11 +28,11 @@ export const activationSchema = z.object({
   installationId: z.string().trim().min(12).max(128).regex(/^[A-Za-z0-9._:-]+$/),
   name: z.string().trim().min(1).max(100),
   platform: z.enum(["windows", "macos", "linux"]),
-  moduleKeys: z.array(z.enum(OFFLINE_SUPPORTED_MODULES)).min(1).max(4),
+  moduleKeys: z.array(z.enum(OFFLINE_SUPPORTED_MODULES)).min(1).max(5),
 });
 
 export const activationCodeRequestSchema = z.object({
-  moduleKeys: z.array(z.enum(OFFLINE_SUPPORTED_MODULES)).min(1).max(4),
+  moduleKeys: z.array(z.enum(OFFLINE_SUPPORTED_MODULES)).min(1).max(5),
 });
 
 export const offlineMutationSchema = z.object({

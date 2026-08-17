@@ -7,7 +7,7 @@ import { createPosAdapter } from "@/modules/pos/adapter";
 import type { PosSnapshot } from "@/modules/pos/pos-data";
 import { LocalStockOverlay } from "@/modules/pos/local-stock-overlay";
 import type { PosSaleLine, PosSessionClosePayload } from "@/modules/pos/types";
-import { Field, inputStyle, selectStyle, ErrorText, formatMoney } from "@/modules/pos/screens/shared";
+import { Field, inputStyle, selectStyle, ErrorText, formatMoney } from "@/components/form-fields";
 
 interface InventoryItemRecord { sku: string; name: string; unit: string; costPrice?: string }
 interface InventoryStockRecord { itemId: string; warehouseId: string; quantity: number }

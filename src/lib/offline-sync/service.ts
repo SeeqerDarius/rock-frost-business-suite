@@ -16,6 +16,7 @@ import { buildFleetSnapshot } from "@/lib/offline-sync/snapshot-builders/fleet";
 import { buildInstallmentSnapshot } from "@/lib/offline-sync/snapshot-builders/installment";
 import { buildInventorySnapshot } from "@/lib/offline-sync/snapshot-builders/inventory";
 import { buildPosSnapshot } from "@/lib/offline-sync/snapshot-builders/pos";
+import { buildSchoolSnapshot } from "@/lib/offline-sync/snapshot-builders/school";
 import type { OfflineSnapshotRow } from "@/lib/offline-sync/snapshot-builders/types";
 
 function addDays(date: Date, days: number) {
@@ -345,6 +346,7 @@ export async function buildOfflineSnapshot(context: OfflineDeviceContext) {
     builders.push(buildInventorySnapshot(context, context.authorizedModuleKeys));
   }
   if (context.authorizedModuleKeys.includes("pos")) builders.push(buildPosSnapshot(context));
+  if (context.authorizedModuleKeys.includes("school")) builders.push(buildSchoolSnapshot(context));
 
   const results = await Promise.all(builders);
   const rows = results.flatMap((result) => result.rows);

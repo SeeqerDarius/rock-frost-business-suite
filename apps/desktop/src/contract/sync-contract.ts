@@ -1,5 +1,5 @@
 /** Exact wire contract exposed by the Rock Frost offline sync backend. */
-export type OfflineModuleKey = "fleet" | "installment" | "inventory" | "pos";
+export type OfflineModuleKey = "fleet" | "installment" | "inventory" | "pos" | "school";
 
 export type OfflineEntityType =
   | "fleet.maintenance_request"
@@ -19,7 +19,13 @@ export type OfflineEntityType =
   // and pos.sale, matching the server-side snapshot builder's naming.
   | "pos.session"
   | "pos.sale_record"
-  | "pos.settings";
+  | "pos.settings"
+  // School foundational slice (milestone 6): campus, academic year, and
+  // term. All three are CREATE-only, matching the web app - there is no
+  // edit action for any of them today.
+  | "school.campus"
+  | "school.academic_year"
+  | "school.term";
 
 /** UPDATE is real: pos.register edits and both pos.settings_* actions carry the cached record's own version as baseVersion, and the server rejects a stale one as a conflict rather than silently overwriting. Every other action still queues CREATE with baseVersion 0. */
 export type MutationOperation = "CREATE" | "UPDATE";

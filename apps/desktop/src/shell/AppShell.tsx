@@ -5,6 +5,7 @@ import { useApp } from "@/state/AppProvider";
 import { ModuleLauncher } from "@/shell/ModuleLauncher";
 import { ModuleDetailView } from "@/shell/ModuleDetailView";
 import { PosModuleShell } from "@/modules/pos/screens/PosModuleShell";
+import { SchoolModuleShell } from "@/modules/school/screens/SchoolModuleShell";
 import { SyncStatusBar } from "@/shell/SyncStatusBar";
 import { ConflictResolutionPanel } from "@/conflict/ConflictResolutionPanel";
 import type { OfflineModuleKey } from "@/contract/sync-contract";
@@ -76,6 +77,8 @@ export function AppShell() {
 
         {selectedModule === "pos" ? (
           <PosModuleShell />
+        ) : selectedModule === "school" ? (
+          <SchoolModuleShell />
         ) : selectedModule ? (
           <ModuleDetailView moduleKey={selectedModule} />
         ) : null}

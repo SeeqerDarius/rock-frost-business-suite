@@ -1,7 +1,7 @@
 import { Card } from "@/components/Card";
 import type { PosSnapshot } from "@/modules/pos/pos-data";
 import { computePosSummary } from "@/modules/pos/pos-summary";
-import { formatMoney } from "@/modules/pos/screens/shared";
+import { formatMoney } from "@/components/form-fields";
 
 /**
  * Read-only, derived entirely from what this device has cached: there is no

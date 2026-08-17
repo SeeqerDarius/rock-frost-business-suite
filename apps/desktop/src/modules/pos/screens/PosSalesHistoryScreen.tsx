@@ -6,7 +6,7 @@ import { useApp } from "@/state/AppProvider";
 import { createPosAdapter } from "@/modules/pos/adapter";
 import type { PosSnapshot } from "@/modules/pos/pos-data";
 import type { PosSaleRefundPayload } from "@/modules/pos/types";
-import { formatMoney, formatRelativeTime, SyncBadge } from "@/modules/pos/screens/shared";
+import { formatMoney, formatRelativeTime, SyncBadge } from "@/components/form-fields";
 
 export function PosSalesHistoryScreen({ snapshot, onChanged }: { snapshot: PosSnapshot; onChanged: () => Promise<void> }) {
   const { db, device, recordActivity } = useApp();
