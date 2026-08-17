@@ -1,11 +1,26 @@
 import "server-only";
 
 import { z } from "zod";
+import { db } from "@/lib/db";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createSchoolCampus, createSchoolAcademicYear, createSchoolTerm } from "@/modules/school/service";
+import {
+  createSchoolCampus,
+  createSchoolAcademicYear,
+  createSchoolTerm,
+  createSchoolStudent,
+  transitionSchoolStudent,
+  createSchoolGuardian,
+  linkSchoolGuardian,
+  createSchoolClass,
+  createSchoolSubject,
+  enrollSchoolStudent,
+  recordSchoolAttendance,
+} from "@/modules/school/service";
+import { versionOf } from "@/lib/offline-sync/version";
 import { defineOfflineAdapter } from "@/lib/offline-sync/registry";
 
 const shortText = z.string().trim().min(1).max(200);
+const longText = z.string().trim().max(5000);
 const cuid = z.string().trim().min(1).max(50);
 const dateInput = z.coerce.date();
 
@@ -30,6 +45,67 @@ const termSchema = z.object({
   startDate: dateInput,
   endDate: dateInput,
   current: z.boolean().optional(),
+});
+
+const studentSchema = z.object({
+  campusId: cuid,
+  firstName: shortText,
+  lastName: shortText,
+  dateOfBirth: dateInput.nullable().optional(),
+  gender: shortText.nullable().optional(),
+  admissionDate: dateInput.nullable().optional(),
+  medicalNotes: longText.nullable().optional(),
+});
+
+const studentStatusTransitionSchema = z.object({
+  toStatus: z.enum(["APPLICANT", "ACTIVE", "SUSPENDED", "WITHDRAWN", "GRADUATED"]),
+  reason: longText.nullable().optional(),
+});
+
+const guardianSchema = z.object({
+  firstName: shortText,
+  lastName: shortText,
+  email: z.string().trim().email().nullable(),
+  phone: shortText,
+  address: longText.nullable().optional(),
+  occupation: shortText.nullable().optional(),
+});
+
+const guardianLinkSchema = z.object({
+  studentId: cuid,
+  guardianId: cuid,
+  relationship: shortText,
+  primary: z.boolean(),
+});
+
+const classSchema = z.object({
+  campusId: cuid,
+  code: shortText,
+  name: shortText,
+  gradeLevel: shortText.nullable().optional(),
+  capacity: z.number().int().positive().max(10000).nullable().optional(),
+});
+
+const subjectSchema = z.object({
+  code: shortText,
+  name: shortText,
+  description: longText.nullable().optional(),
+});
+
+const enrollmentSchema = z.object({
+  campusId: cuid,
+  academicYearId: cuid,
+  studentId: cuid,
+  classId: cuid,
+});
+
+const attendanceSchema = z.object({
+  termId: cuid,
+  classId: cuid,
+  studentId: cuid,
+  date: dateInput,
+  status: z.enum(["PRESENT", "ABSENT", "LATE", "EXCUSED"]),
+  reason: shortText.nullable().optional(),
 });
 
 /**
@@ -71,6 +147,102 @@ export const schoolOfflineAdapters = [
     apply: async (tenant, _entityId, payload) => {
       const record = await createSchoolTerm(tenant.organizationId, payload);
       return { id: record.id, name: record.name };
+    },
+  }),
+
+  // --- Milestone 7: students, guardians, classes, subjects, enrollment,
+  // attendance. school.student_status_transition is the second genuine
+  // UPDATE case (after pos.register): entityId is the student's own id,
+  // baseVersion is the cached SchoolStudent row's updatedAt. Every other
+  // action here is CREATE. Several (enrollment, attendance, guardian
+  // linking) reference another entity's real id (studentId/classId/
+  // termId/guardianId) - exactly like POS's session-open-before-selling
+  // constraint, those references only resolve once the referenced entity
+  // has itself been confirmed by a prior sync; a reference to a still-
+  // locally-pending entity fails safely as ENTITY_DELETED/not-found at
+  // sync time rather than corrupting anything.
+  defineOfflineAdapter({
+    entityType: "school.student",
+    operation: "CREATE",
+    payloadSchema: studentSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENTS_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await createSchoolStudent(tenant.organizationId, payload);
+      return { id: record.id, admissionNumber: record.admissionNumber };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.student_status_transition",
+    operation: "UPDATE",
+    payloadSchema: studentStatusTransitionSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENTS_MANAGE),
+    loadCurrentVersion: async (tenant, entityId) => {
+      const student = await db.schoolStudent.findFirst({ where: { id: entityId, organizationId: tenant.organizationId }, select: { updatedAt: true } });
+      return student ? versionOf(student.updatedAt) : null;
+    },
+    apply: async (tenant, entityId, payload) => {
+      const record = await transitionSchoolStudent(tenant.organizationId, entityId, payload.toStatus, payload.reason);
+      return { id: record.id, status: record.status };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.guardian",
+    operation: "CREATE",
+    payloadSchema: guardianSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENTS_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await createSchoolGuardian(tenant.organizationId, payload);
+      return { id: record.id, guardianNumber: record.guardianNumber };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.guardian_link",
+    operation: "CREATE",
+    payloadSchema: guardianLinkSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENTS_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await linkSchoolGuardian(tenant.organizationId, payload.studentId, payload.guardianId, payload.relationship, payload.primary);
+      return { studentId: record.studentId, guardianId: record.guardianId };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.class",
+    operation: "CREATE",
+    payloadSchema: classSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_ACADEMICS_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await createSchoolClass(tenant.organizationId, payload);
+      return { id: record.id, name: record.name };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.subject",
+    operation: "CREATE",
+    payloadSchema: subjectSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_ACADEMICS_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await createSchoolSubject(tenant.organizationId, payload);
+      return { id: record.id, name: record.name };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.enrollment",
+    operation: "CREATE",
+    payloadSchema: enrollmentSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await enrollSchoolStudent(tenant.organizationId, payload);
+      return { id: record.id, classId: record.classId };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.attendance",
+    operation: "CREATE",
+    payloadSchema: attendanceSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_ATTENDANCE_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await recordSchoolAttendance(tenant.organizationId, payload);
+      return { id: record.id, status: record.status };
     },
   }),
 ];

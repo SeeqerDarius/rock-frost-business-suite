@@ -24,6 +24,13 @@ const mockDb = {
   schoolCampus: { findMany: vi.fn() },
   schoolAcademicYear: { findMany: vi.fn() },
   schoolTerm: { findMany: vi.fn() },
+  schoolStudent: { findMany: vi.fn() },
+  schoolGuardian: { findMany: vi.fn() },
+  schoolStudentGuardian: { findMany: vi.fn() },
+  schoolClass: { findMany: vi.fn() },
+  schoolSubject: { findMany: vi.fn() },
+  schoolEnrollment: { findMany: vi.fn() },
+  schoolAttendance: { findMany: vi.fn() },
   offlineDevice: { update: vi.fn() },
 };
 
@@ -190,7 +197,21 @@ describe("pos snapshot builder", () => {
 });
 
 describe("school snapshot builder", () => {
+  function stubEmptySchool() {
+    mockDb.schoolCampus.findMany.mockResolvedValue([]);
+    mockDb.schoolAcademicYear.findMany.mockResolvedValue([]);
+    mockDb.schoolTerm.findMany.mockResolvedValue([]);
+    mockDb.schoolStudent.findMany.mockResolvedValue([]);
+    mockDb.schoolGuardian.findMany.mockResolvedValue([]);
+    mockDb.schoolStudentGuardian.findMany.mockResolvedValue([]);
+    mockDb.schoolClass.findMany.mockResolvedValue([]);
+    mockDb.schoolSubject.findMany.mockResolvedValue([]);
+    mockDb.schoolEnrollment.findMany.mockResolvedValue([]);
+    mockDb.schoolAttendance.findMany.mockResolvedValue([]);
+  }
+
   it("decomposes campuses, academic years, and terms into rows, versioned by updatedAt where it exists and 0 otherwise", async () => {
+    stubEmptySchool();
     mockDb.schoolCampus.findMany.mockResolvedValue([
       { id: "c1", code: "MAIN", name: "Main Campus", address: null, phone: null, email: null, active: true, updatedAt: new Date("2026-08-01T00:00:00.000Z") },
     ]);
@@ -210,12 +231,41 @@ describe("school snapshot builder", () => {
     ]);
   });
 
-  it("only pulls active campuses", async () => {
-    mockDb.schoolCampus.findMany.mockResolvedValue([]);
-    mockDb.schoolAcademicYear.findMany.mockResolvedValue([]);
-    mockDb.schoolTerm.findMany.mockResolvedValue([]);
+  it("only pulls active campuses, classes, and subjects, and only active enrollments", async () => {
+    stubEmptySchool();
     await buildSchoolSnapshot(fakeContext());
     expect(mockDb.schoolCampus.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: "org-1", active: true } }));
+    expect(mockDb.schoolClass.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: "org-1", active: true } }));
+    expect(mockDb.schoolSubject.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: "org-1", active: true } }));
+    expect(mockDb.schoolEnrollment.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: "org-1", status: "ACTIVE" } }));
+  });
+
+  it("decomposes students, guardians, guardian links, classes, subjects, enrollments, and attendance, each versioned by updatedAt where it exists and 0 otherwise", async () => {
+    stubEmptySchool();
+    mockDb.schoolStudent.findMany.mockResolvedValue([
+      { id: "s1", campusId: "c1", admissionNumber: "STU-00001", firstName: "Ama", lastName: "Owusu", dateOfBirth: null, gender: null, status: "ACTIVE", admissionDate: null, medicalNotes: null, updatedAt: new Date("2026-08-01T00:00:00.000Z") },
+    ]);
+    mockDb.schoolGuardian.findMany.mockResolvedValue([
+      { id: "g1", guardianNumber: "GRD-00001", firstName: "Kofi", lastName: "Owusu", email: null, phone: "0244000000", address: null, occupation: null, updatedAt: new Date("2026-08-02T00:00:00.000Z") },
+    ]);
+    mockDb.schoolStudentGuardian.findMany.mockResolvedValue([{ id: "sg1", studentId: "s1", guardianId: "g1", relationship: "Father", primary: true, authorizedPickup: true }]);
+    mockDb.schoolClass.findMany.mockResolvedValue([{ id: "cl1", campusId: "c1", code: "P1", name: "Primary 1", gradeLevel: "P1", capacity: 30 }]);
+    mockDb.schoolSubject.findMany.mockResolvedValue([{ id: "sub1", code: "MATH", name: "Mathematics", description: null }]);
+    mockDb.schoolEnrollment.findMany.mockResolvedValue([{ id: "e1", campusId: "c1", academicYearId: "y1", studentId: "s1", classId: "cl1", status: "ACTIVE", enrolledAt: new Date("2026-08-03T00:00:00.000Z"), endedAt: null }]);
+    mockDb.schoolAttendance.findMany.mockResolvedValue([
+      { id: "a1", termId: "t1", classId: "cl1", studentId: "s1", date: new Date("2026-08-15T00:00:00.000Z"), status: "PRESENT", reason: null, updatedAt: new Date("2026-08-15T00:00:00.000Z") },
+    ]);
+
+    const result = await buildSchoolSnapshot(fakeContext());
+    expect(result.truncated).toBe(false);
+
+    expect(result.rows.find((r) => r.entityType === "school.student")).toMatchObject({ entityId: "s1", version: Date.parse("2026-08-01T00:00:00.000Z"), payload: { admissionNumber: "STU-00001" } });
+    expect(result.rows.find((r) => r.entityType === "school.guardian")).toMatchObject({ entityId: "g1", version: Date.parse("2026-08-02T00:00:00.000Z") });
+    expect(result.rows.find((r) => r.entityType === "school.guardian_link")).toMatchObject({ entityId: "sg1", version: 0, payload: { studentId: "s1", guardianId: "g1", primary: true } });
+    expect(result.rows.find((r) => r.entityType === "school.class")).toMatchObject({ entityId: "cl1", version: 0, payload: { name: "Primary 1" } });
+    expect(result.rows.find((r) => r.entityType === "school.subject")).toMatchObject({ entityId: "sub1", version: 0, payload: { name: "Mathematics" } });
+    expect(result.rows.find((r) => r.entityType === "school.enrollment")).toMatchObject({ entityId: "e1", version: 0, payload: { studentId: "s1", classId: "cl1" } });
+    expect(result.rows.find((r) => r.entityType === "school.attendance")).toMatchObject({ entityId: "a1", version: Date.parse("2026-08-15T00:00:00.000Z"), payload: { status: "PRESENT" } });
   });
 });
 
@@ -256,6 +306,13 @@ describe("buildOfflineSnapshot composition (service.ts)", () => {
     mockDb.schoolCampus.findMany.mockResolvedValue([]);
     mockDb.schoolAcademicYear.findMany.mockResolvedValue([]);
     mockDb.schoolTerm.findMany.mockResolvedValue([]);
+    mockDb.schoolStudent.findMany.mockResolvedValue([]);
+    mockDb.schoolGuardian.findMany.mockResolvedValue([]);
+    mockDb.schoolStudentGuardian.findMany.mockResolvedValue([]);
+    mockDb.schoolClass.findMany.mockResolvedValue([]);
+    mockDb.schoolSubject.findMany.mockResolvedValue([]);
+    mockDb.schoolEnrollment.findMany.mockResolvedValue([]);
+    mockDb.schoolAttendance.findMany.mockResolvedValue([]);
 
     const context = fakeContext({ authorizedModuleKeys: ["school"] });
     await buildOfflineSnapshot(context);

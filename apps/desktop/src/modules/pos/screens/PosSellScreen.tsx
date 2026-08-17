@@ -270,7 +270,12 @@ function SessionPicker({
   const [busy, setBusy] = useState(false);
   const [justOpenedOffline, setJustOpenedOffline] = useState(false);
 
-  const eligibleRegisters = snapshot.registers.filter((r) => r.data.active !== false && !openSessions.some((s) => s.data.registerId === r.entityId));
+  // Excludes registers still pending their own offline create: opening a
+  // session against one before it has synced would reference a registerId
+  // the server has never heard of, since pos.register CREATE uses the
+  // client's own locally-generated id as a placeholder, not the server's
+  // eventual real one (see docs/OFFLINE_DESKTOP.md's Push section).
+  const eligibleRegisters = snapshot.registers.filter((r) => r.data.active !== false && !r.hasPendingLocalChange && !openSessions.some((s) => s.data.registerId === r.entityId));
 
   async function handleOpenSession() {
     if (!device || !registerId) return;

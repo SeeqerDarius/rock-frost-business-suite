@@ -2,18 +2,25 @@ import { useState } from "react";
 import { useApp } from "@/state/AppProvider";
 import { useSchoolSnapshot } from "@/modules/school/school-data";
 import { SchoolAcademicSetupScreen } from "@/modules/school/screens/SchoolAcademicSetupScreen";
+import { SchoolStudentsScreen } from "@/modules/school/screens/SchoolStudentsScreen";
+import { SchoolEnrollmentScreen } from "@/modules/school/screens/SchoolEnrollmentScreen";
+import { SchoolAttendanceScreen } from "@/modules/school/screens/SchoolAttendanceScreen";
 
-const TABS = [{ key: "setup", label: "Academic setup" }] as const;
+const TABS = [
+  { key: "setup", label: "Academic setup" },
+  { key: "students", label: "Students & guardians" },
+  { key: "enrollment", label: "Enrollment" },
+  { key: "attendance", label: "Attendance" },
+] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
 
 /**
  * School's own multi-screen mini-app, mirroring PosModuleShell's structure
- * so later School milestones (students, enrollment, attendance, fees,
- * exams, timetable, library, transport, payroll, settings) each add a tab
- * here rather than a new top-level component. Milestone 6 ships exactly
- * one tab - Academic setup - since campus/academic-year/term is the only
- * slice built so far.
+ * so later School milestones (fees, exams, timetable, library, transport,
+ * payroll, settings) each add a tab here rather than a new top-level
+ * component. Milestone 6 shipped Academic setup; milestone 7 adds
+ * Students & guardians, Enrollment, and Attendance.
  */
 export function SchoolModuleShell() {
   const { db } = useApp();
@@ -46,6 +53,9 @@ export function SchoolModuleShell() {
       </nav>
 
       {tab === "setup" ? <SchoolAcademicSetupScreen snapshot={snapshot} onChanged={reload} /> : null}
+      {tab === "students" ? <SchoolStudentsScreen snapshot={snapshot} onChanged={reload} /> : null}
+      {tab === "enrollment" ? <SchoolEnrollmentScreen snapshot={snapshot} onChanged={reload} /> : null}
+      {tab === "attendance" ? <SchoolAttendanceScreen snapshot={snapshot} onChanged={reload} /> : null}
     </div>
   );
 }

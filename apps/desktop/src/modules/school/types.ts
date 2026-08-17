@@ -50,8 +50,149 @@ export interface SchoolTermRecord extends Record<string, unknown> {
   closedAt: string | null;
 }
 
+export type SchoolStudentStatus = "APPLICANT" | "ACTIVE" | "SUSPENDED" | "WITHDRAWN" | "GRADUATED";
+
+export interface SchoolStudentPayload extends Record<string, unknown> {
+  campusId: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth?: string | null;
+  gender?: string | null;
+  admissionDate?: string | null;
+  medicalNotes?: string | null;
+}
+
+export interface SchoolStudentStatusTransitionPayload extends Record<string, unknown> {
+  toStatus: SchoolStudentStatus;
+  reason?: string | null;
+}
+
+export interface SchoolGuardianPayload extends Record<string, unknown> {
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string;
+  address?: string | null;
+  occupation?: string | null;
+}
+
+export interface SchoolGuardianLinkPayload extends Record<string, unknown> {
+  studentId: string;
+  guardianId: string;
+  relationship: string;
+  primary: boolean;
+}
+
+export interface SchoolClassPayload extends Record<string, unknown> {
+  campusId: string;
+  code: string;
+  name: string;
+  gradeLevel?: string | null;
+  capacity?: number | null;
+}
+
+export interface SchoolSubjectPayload extends Record<string, unknown> {
+  code: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface SchoolEnrollmentPayload extends Record<string, unknown> {
+  campusId: string;
+  academicYearId: string;
+  studentId: string;
+  classId: string;
+}
+
+export interface SchoolAttendancePayload extends Record<string, unknown> {
+  termId: string;
+  classId: string;
+  studentId: string;
+  date: string;
+  status: "PRESENT" | "ABSENT" | "LATE" | "EXCUSED";
+  reason?: string | null;
+}
+
+/** Shape of a pulled `school.student` row's payload. */
+export interface SchoolStudentRecord extends Record<string, unknown> {
+  campusId: string;
+  admissionNumber: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string | null;
+  gender: string | null;
+  status: SchoolStudentStatus;
+  admissionDate: string | null;
+  medicalNotes: string | null;
+}
+
+/** Shape of a pulled `school.guardian` row's payload. */
+export interface SchoolGuardianRecord extends Record<string, unknown> {
+  guardianNumber: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string;
+  address: string | null;
+  occupation: string | null;
+}
+
+/** Shape of a pulled `school.guardian_link` row's payload. */
+export interface SchoolGuardianLinkRecord extends Record<string, unknown> {
+  studentId: string;
+  guardianId: string;
+  relationship: string;
+  primary: boolean;
+  authorizedPickup: boolean;
+}
+
+/** Shape of a pulled `school.class` row's payload. */
+export interface SchoolClassRecord extends Record<string, unknown> {
+  campusId: string;
+  code: string;
+  name: string;
+  gradeLevel: string | null;
+  capacity: number | null;
+}
+
+/** Shape of a pulled `school.subject` row's payload. */
+export interface SchoolSubjectRecord extends Record<string, unknown> {
+  code: string;
+  name: string;
+  description: string | null;
+}
+
+/** Shape of a pulled `school.enrollment` row's payload. Only ACTIVE enrollments are pulled - see buildSchoolSnapshot server-side. */
+export interface SchoolEnrollmentRecord extends Record<string, unknown> {
+  campusId: string;
+  academicYearId: string;
+  studentId: string;
+  classId: string;
+  status: "ACTIVE" | "COMPLETED" | "WITHDRAWN";
+  enrolledAt: string;
+  endedAt: string | null;
+}
+
+/** Shape of a pulled `school.attendance` row's payload. */
+export interface SchoolAttendanceRecord extends Record<string, unknown> {
+  termId: string;
+  classId: string;
+  studentId: string;
+  date: string;
+  status: "PRESENT" | "ABSENT" | "LATE" | "EXCUSED";
+  reason: string | null;
+}
+
 export const SCHOOL_ENTITY_TYPES = {
   CAMPUS: "school.campus",
   ACADEMIC_YEAR: "school.academic_year",
   TERM: "school.term",
+  STUDENT: "school.student",
+  STUDENT_STATUS_TRANSITION: "school.student_status_transition",
+  GUARDIAN: "school.guardian",
+  GUARDIAN_LINK: "school.guardian_link",
+  CLASS: "school.class",
+  SUBJECT: "school.subject",
+  ENROLLMENT: "school.enrollment",
+  ATTENDANCE: "school.attendance",
 } as const;

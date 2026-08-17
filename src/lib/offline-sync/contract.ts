@@ -21,6 +21,16 @@ export const OFFLINE_ENTITY_TYPES = [
   "school.campus",
   "school.academic_year",
   "school.term",
+  // Milestone 7: students, guardians, classes, subjects, enrollment,
+  // attendance.
+  "school.student",
+  "school.student_status_transition",
+  "school.guardian",
+  "school.guardian_link",
+  "school.class",
+  "school.subject",
+  "school.enrollment",
+  "school.attendance",
 ] as const;
 
 export const activationSchema = z.object({

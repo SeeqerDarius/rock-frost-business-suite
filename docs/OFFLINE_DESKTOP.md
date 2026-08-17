@@ -51,6 +51,12 @@ The desktop never connects to Neon/PostgreSQL and never receives database creden
 | POS | Receipt footer / sale-number-prefix settings | `pos.settings.manage`; optimistic concurrency on the underlying settings row |
 | School | Campus | `school.campuses.manage` |
 | School | Academic year / term | `school.academics.manage`; the service layer's own date-ordering and academic-year-membership checks are rechecked server-side, same as online |
+| School | Student | `school.students.manage` |
+| School | Student status transition | `school.students.manage`; optimistic concurrency (the student's own `baseVersion`), and the same state-machine check `transitionSchoolStudent()` already uses online (e.g. a withdrawn student cannot move to active) |
+| School | Guardian / guardian link | `school.students.manage` |
+| School | Class / subject | `school.academics.manage` |
+| School | Enrollment | `school.enrollment.manage`; class capacity and campus/academic-year consistency are rechecked atomically |
+| School | Attendance | `school.attendance.manage`; active enrollment, future-date rejection, and the campus's attendance correction window are all rechecked server-side |
 
 The server generates authoritative record identifiers, receipts, and sale numbers. A desktop-generated identifier is only a local mapping key.
 
@@ -67,7 +73,7 @@ Fleet, Installment, and Inventory remain scoped to the operations above; everyth
 - Pharmacy dispensing and restricted-medicine activity.
 - Hospital clinical, medication, laboratory, imaging, admission, billing, and consent decisions.
 
-**School is being built out incrementally, module by module, toward the same full parity POS already has.** Milestone 6 ships only the foundational reference data - campus, academic year, term - all CREATE-only, matching the web app (there is no edit action for any of the three today). Students, guardians, classes, enrollment, attendance, fees, exams, timetable, library, transport, and payroll adjustments remain online-only until their own milestones land; each will follow the same approved no-exceptions policy POS did once built, re-validated server-side exactly like every other offline action.
+**School is being built out incrementally, module by module, toward the same full parity POS already has.** Milestone 6 shipped the foundational reference data (campus, academic year, term). Milestone 7 adds students, student status transitions, guardians, guardian links, classes, subjects, enrollment, and attendance. Fees, exams, timetable, library, transport, and payroll adjustments remain online-only until their own milestones land; each will follow the same approved no-exceptions policy POS did once built, re-validated server-side exactly like every other offline action.
 
 **POS is a deliberate exception, not a relaxation of the underlying safety mechanism.** Every POS action, including register edits, session lifecycle, refunds, and settings, is offline-capable, reflecting a considered decision that the target field-operations use case needs full POS parity offline. This does not mean the desktop is trusted: every action still goes through the same ledger-first write and full server-side re-validation as every other offline mutation (see Push above), and a conflicting or now-invalid action (a refund attempted twice, a stale register edit) is rejected and surfaced to the user as a conflict to resolve when back online, never silently applied or overwritten. The other modules' operations remain excluded above because stale information, double application, or silent conflict resolution in those specific areas could create financial, employment, inventory, or patient-safety harm that this project has not (yet) taken through the same expansion.
 
@@ -92,7 +98,16 @@ Fleet, Installment, and Inventory remain scoped to the operations above; everyth
 
 ## Desktop client: School
 
-`apps/desktop/src/modules/school/screens/SchoolModuleShell.tsx` is School's real offline mini-app, structured like `PosModuleShell.tsx` (a tab bar over a shared snapshot hook) so each later School milestone adds a tab instead of a new top-level component. Milestone 6 ships one tab, **Academic setup**: create and list campuses, academic years, and terms, all CREATE-only and unscoped by any per-user ownership at this layer (any device authorized for the school module sees every campus in the organization, matching the web app's own read access). `Field`/`inputStyle`/`ErrorText`/`SyncBadge`/`formatMoney`/`formatRelativeTime` moved from POS's screens folder to `apps/desktop/src/components/form-fields.tsx` once School needed the same primitives, so neither module's screens import from the other's folder.
+`apps/desktop/src/modules/school/screens/SchoolModuleShell.tsx` is School's real offline mini-app, structured like `PosModuleShell.tsx` (a tab bar over a shared snapshot hook) so each later School milestone adds a tab instead of a new top-level component. Four tabs ship so far:
+
+- **Academic setup** (milestone 6, extended in 7): campuses, academic years, terms, classes, and subjects.
+- **Students & guardians** (milestone 7): create students, change a student's status, create guardians, and link a guardian to a student.
+- **Enrollment** (milestone 7): enroll a student into a class for an academic year.
+- **Attendance** (milestone 7): record a student's attendance for a class/term/date.
+
+`Field`/`inputStyle`/`ErrorText`/`SyncBadge`/`formatMoney`/`formatRelativeTime` moved from POS's screens folder to `apps/desktop/src/components/form-fields.tsx` once School needed the same primitives, so neither module's screens import from the other's folder.
+
+**A referenced entity must already be synced before it can be referenced.** The same constraint documented above for POS sessions applies much more broadly in School: `school.student`, `school.guardian`, and `school.class` are all CREATE-only entity types where the server assigns the real id (the client's id is a local placeholder only - see the Push section). Enrollment, attendance, guardian-linking, and student-status-transition all reference another entity's real id, so each screen filters its pickers to already-synced rows only (`!hasPendingLocalChange`) and explains why a just-created student, guardian, or class is not yet selectable. This is a UX limitation, not a safety gap: referencing a still-pending entity's placeholder id would fail safely as a sync-time conflict either way, the filtering just avoids the redo. The same fix was applied retroactively to POS's register picker on the Sell screen (`PosSellScreen.tsx`'s `eligibleRegisters`), which had the same latent gap from milestone 5 - a register created offline could previously be selected to open a session against before it had synced.
 
 **The sale-number prefix has its own version, separate from the settings row's version.** The single pulled `pos.settings` row carries one `version` (the receipt footer's `baseVersion`, from `PosSettings.updatedAt`) and a separate `saleNumberPrefixVersion` payload field (the prefix's own `baseVersion`, from the `OrganizationModule` assignment row's `updatedAt` - see `pos.settings_sale_prefix`'s `loadCurrentVersion` in `pos.adapters.ts`). These two settings live on different server-side rows with independent update times; sending the row's own version as the prefix's `baseVersion` would fail nearly every offline prefix edit as a false `STALE_VERSION` conflict. `snapshot-builders/pos.ts` now fetches both.
 

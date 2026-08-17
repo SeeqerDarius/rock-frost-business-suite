@@ -25,7 +25,18 @@ export type OfflineEntityType =
   // edit action for any of them today.
   | "school.campus"
   | "school.academic_year"
-  | "school.term";
+  | "school.term"
+  // Milestone 7: students, guardians, classes, subjects, enrollment,
+  // attendance. school.student_status_transition is the second genuine
+  // UPDATE case (after pos.register).
+  | "school.student"
+  | "school.student_status_transition"
+  | "school.guardian"
+  | "school.guardian_link"
+  | "school.class"
+  | "school.subject"
+  | "school.enrollment"
+  | "school.attendance";
 
 /** UPDATE is real: pos.register edits and both pos.settings_* actions carry the cached record's own version as baseVersion, and the server rejects a stale one as a conflict rather than silently overwriting. Every other action still queues CREATE with baseVersion 0. */
 export type MutationOperation = "CREATE" | "UPDATE";

@@ -3,22 +3,36 @@ import type { TenantContext } from "@/lib/tenant";
 import type { OfflineMutationInput } from "@/lib/offline-sync/contract";
 
 /**
- * Regression tests for the milestone 6 School offline adapters
- * (src/lib/offline-sync/modules/school.adapters.ts): the foundational
- * campus/academic-year/term slice. Permission gating per action and that
- * each action calls the exact same @/modules/school/service function the
- * web UI calls - exercised through the real dispatcher
- * (applyOfflineMutation), matching the established POS adapter test
- * convention (test/offline-pos-adapters.test.ts).
+ * Regression tests for the School offline adapters
+ * (src/lib/offline-sync/modules/school.adapters.ts): milestone 6's
+ * campus/academic-year/term slice plus milestone 7's students, guardians,
+ * classes, subjects, enrollment, and attendance. Permission gating per
+ * action and that each action calls the exact same @/modules/school/
+ * service function the web UI calls - exercised through the real
+ * dispatcher (applyOfflineMutation), matching the established POS adapter
+ * test convention (test/offline-pos-adapters.test.ts).
  */
 
 const mockSchoolService = {
   createSchoolCampus: vi.fn(),
   createSchoolAcademicYear: vi.fn(),
   createSchoolTerm: vi.fn(),
+  createSchoolStudent: vi.fn(),
+  transitionSchoolStudent: vi.fn(),
+  createSchoolGuardian: vi.fn(),
+  linkSchoolGuardian: vi.fn(),
+  createSchoolClass: vi.fn(),
+  createSchoolSubject: vi.fn(),
+  enrollSchoolStudent: vi.fn(),
+  recordSchoolAttendance: vi.fn(),
+};
+
+const mockDb = {
+  schoolStudent: { findFirst: vi.fn() },
 };
 
 vi.mock("@/modules/school/service", () => mockSchoolService);
+vi.mock("@/lib/db", () => ({ db: mockDb }));
 // Only school.adapters.ts is under test; the other module adapter files
 // import real service functions too, but applyOfflineMutation only loads
 // what a given mutation's entityType actually resolves to, so no further
@@ -138,6 +152,173 @@ describe("school.term", () => {
   it("is denied without school.academics.manage", async () => {
     await expect(
       applyOfflineMutation(tenant([]), mutation({ entityType: "school.term", payload: { academicYearId: "y1", name: "Term 1", startDate: "2026-09-01", endDate: "2026-12-15" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.student", () => {
+  it("requires school.students.manage and calls createSchoolStudent", async () => {
+    mockSchoolService.createSchoolStudent.mockResolvedValue({ id: "s1", admissionNumber: "STU-00001" });
+    const result = await applyOfflineMutation(
+      tenant(["school.students.manage"]),
+      mutation({ entityType: "school.student", payload: { campusId: "c1", firstName: "Ama", lastName: "Owusu" } }),
+    );
+    expect(mockSchoolService.createSchoolStudent).toHaveBeenCalledWith("org-1", { campusId: "c1", firstName: "Ama", lastName: "Owusu" });
+    expect(result).toEqual({ id: "s1", admissionNumber: "STU-00001" });
+  });
+
+  it("is denied without school.students.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.student", payload: { campusId: "c1", firstName: "Ama", lastName: "Owusu" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.student_status_transition", () => {
+  it("UPDATE succeeds and calls transitionSchoolStudent when baseVersion matches the current server version", async () => {
+    const updatedAt = new Date("2026-08-17T00:00:00.000Z");
+    mockDb.schoolStudent.findFirst.mockResolvedValue({ updatedAt });
+    mockSchoolService.transitionSchoolStudent.mockResolvedValue({ id: "s1", status: "SUSPENDED" });
+    const result = await applyOfflineMutation(
+      tenant(["school.students.manage"]),
+      mutation({ entityType: "school.student_status_transition", operation: "UPDATE", entityId: "s1", baseVersion: updatedAt.getTime(), payload: { toStatus: "SUSPENDED", reason: "Fees overdue" } }),
+    );
+    expect(mockSchoolService.transitionSchoolStudent).toHaveBeenCalledWith("org-1", "s1", "SUSPENDED", "Fees overdue");
+    expect(result).toEqual({ id: "s1", status: "SUSPENDED" });
+  });
+
+  it("rejects a stale baseVersion as a conflict without calling transitionSchoolStudent", async () => {
+    mockDb.schoolStudent.findFirst.mockResolvedValue({ updatedAt: new Date("2026-08-17T00:00:00.000Z") });
+    await expect(
+      applyOfflineMutation(
+        tenant(["school.students.manage"]),
+        mutation({ entityType: "school.student_status_transition", operation: "UPDATE", entityId: "s1", baseVersion: 1, payload: { toStatus: "SUSPENDED" } }),
+      ),
+    ).rejects.toMatchObject({ conflictType: "STALE_VERSION" });
+    expect(mockSchoolService.transitionSchoolStudent).not.toHaveBeenCalled();
+  });
+
+  it("a student that does not yet exist server-side (still pending its own offline create) conflicts as ENTITY_DELETED rather than crashing", async () => {
+    mockDb.schoolStudent.findFirst.mockResolvedValue(null);
+    await expect(
+      applyOfflineMutation(
+        tenant(["school.students.manage"]),
+        mutation({ entityType: "school.student_status_transition", operation: "UPDATE", entityId: "local-pending-id", baseVersion: 0, payload: { toStatus: "ACTIVE" } }),
+      ),
+    ).rejects.toMatchObject({ conflictType: "ENTITY_DELETED" });
+  });
+
+  it("is denied without school.students.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.student_status_transition", operation: "UPDATE", entityId: "s1", payload: { toStatus: "ACTIVE" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.guardian / school.guardian_link", () => {
+  it("guardian create requires school.students.manage and calls createSchoolGuardian", async () => {
+    mockSchoolService.createSchoolGuardian.mockResolvedValue({ id: "g1", guardianNumber: "GRD-00001" });
+    const result = await applyOfflineMutation(
+      tenant(["school.students.manage"]),
+      mutation({ entityType: "school.guardian", payload: { firstName: "Kofi", lastName: "Owusu", email: null, phone: "0244000000" } }),
+    );
+    expect(mockSchoolService.createSchoolGuardian).toHaveBeenCalledWith("org-1", { firstName: "Kofi", lastName: "Owusu", email: null, phone: "0244000000" });
+    expect(result).toEqual({ id: "g1", guardianNumber: "GRD-00001" });
+  });
+
+  it("guardian_link calls linkSchoolGuardian with its positional arguments", async () => {
+    mockSchoolService.linkSchoolGuardian.mockResolvedValue({ studentId: "s1", guardianId: "g1" });
+    const result = await applyOfflineMutation(
+      tenant(["school.students.manage"]),
+      mutation({ entityType: "school.guardian_link", payload: { studentId: "s1", guardianId: "g1", relationship: "Father", primary: true } }),
+    );
+    expect(mockSchoolService.linkSchoolGuardian).toHaveBeenCalledWith("org-1", "s1", "g1", "Father", true);
+    expect(result).toEqual({ studentId: "s1", guardianId: "g1" });
+  });
+
+  it("both are denied without school.students.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.guardian", payload: { firstName: "Kofi", lastName: "Owusu", email: null, phone: "0244000000" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.guardian_link", payload: { studentId: "s1", guardianId: "g1", relationship: "Father", primary: true } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.class / school.subject", () => {
+  it("both require school.academics.manage and call the matching service function", async () => {
+    mockSchoolService.createSchoolClass.mockResolvedValue({ id: "cl1", name: "Primary 1" });
+    mockSchoolService.createSchoolSubject.mockResolvedValue({ id: "sub1", name: "Mathematics" });
+
+    await applyOfflineMutation(tenant(["school.academics.manage"]), mutation({ entityType: "school.class", payload: { campusId: "c1", code: "P1", name: "Primary 1" } }));
+    expect(mockSchoolService.createSchoolClass).toHaveBeenCalledWith("org-1", { campusId: "c1", code: "P1", name: "Primary 1" });
+
+    await applyOfflineMutation(tenant(["school.academics.manage"]), mutation({ entityType: "school.subject", payload: { code: "MATH", name: "Mathematics" } }));
+    expect(mockSchoolService.createSchoolSubject).toHaveBeenCalledWith("org-1", { code: "MATH", name: "Mathematics" });
+  });
+
+  it("both are denied without school.academics.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.class", payload: { campusId: "c1", code: "P1", name: "Primary 1" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.enrollment", () => {
+  it("requires school.enrollment.manage and calls enrollSchoolStudent", async () => {
+    mockSchoolService.enrollSchoolStudent.mockResolvedValue({ id: "e1", classId: "cl1" });
+    const result = await applyOfflineMutation(
+      tenant(["school.enrollment.manage"]),
+      mutation({ entityType: "school.enrollment", payload: { campusId: "c1", academicYearId: "y1", studentId: "s1", classId: "cl1" } }),
+    );
+    expect(mockSchoolService.enrollSchoolStudent).toHaveBeenCalledWith("org-1", { campusId: "c1", academicYearId: "y1", studentId: "s1", classId: "cl1" });
+    expect(result).toEqual({ id: "e1", classId: "cl1" });
+  });
+
+  it("a full class surfaces as a conflict rather than a crash", async () => {
+    class SchoolStateError extends Error {}
+    mockSchoolService.enrollSchoolStudent.mockRejectedValue(new SchoolStateError("Class capacity has been reached."));
+    await expect(
+      applyOfflineMutation(
+        tenant(["school.enrollment.manage"]),
+        mutation({ entityType: "school.enrollment", payload: { campusId: "c1", academicYearId: "y1", studentId: "s1", classId: "cl1" } }),
+      ),
+    ).rejects.toMatchObject({ conflictType: "SERVER_STATE_CHANGED" });
+  });
+
+  it("is denied without school.enrollment.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.enrollment", payload: { campusId: "c1", academicYearId: "y1", studentId: "s1", classId: "cl1" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.attendance", () => {
+  it("requires school.attendance.manage and calls recordSchoolAttendance", async () => {
+    mockSchoolService.recordSchoolAttendance.mockResolvedValue({ id: "a1", status: "PRESENT" });
+    const result = await applyOfflineMutation(
+      tenant(["school.attendance.manage"]),
+      mutation({ entityType: "school.attendance", payload: { termId: "t1", classId: "cl1", studentId: "s1", date: "2026-08-17", status: "PRESENT" } }),
+    );
+    expect(mockSchoolService.recordSchoolAttendance).toHaveBeenCalledWith("org-1", { termId: "t1", classId: "cl1", studentId: "s1", date: new Date("2026-08-17"), status: "PRESENT" });
+    expect(result).toEqual({ id: "a1", status: "PRESENT" });
+  });
+
+  it("the closed correction window surfaces as a conflict rather than a crash", async () => {
+    class SchoolStateError extends Error {}
+    mockSchoolService.recordSchoolAttendance.mockRejectedValue(new SchoolStateError("The attendance correction window has closed."));
+    await expect(
+      applyOfflineMutation(
+        tenant(["school.attendance.manage"]),
+        mutation({ entityType: "school.attendance", payload: { termId: "t1", classId: "cl1", studentId: "s1", date: "2026-01-01", status: "PRESENT" } }),
+      ),
+    ).rejects.toMatchObject({ conflictType: "SERVER_STATE_CHANGED" });
+  });
+
+  it("is denied without school.attendance.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.attendance", payload: { termId: "t1", classId: "cl1", studentId: "s1", date: "2026-08-17", status: "PRESENT" } })),
     ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
   });
 });
