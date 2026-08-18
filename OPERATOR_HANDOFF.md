@@ -10,6 +10,7 @@
 - Schema and environment changes: none.
 - Validation: `npx tsc --noEmit` passed with zero errors; `npm run lint` passed; `npm test` passed with 74 files and 492 tests (unchanged, presentational content only); `npm run build` compiled successfully (ran with a clean `.next` after a stray dev-cache artifact caused one false-positive type error, unrelated to source). Manually verified in a local dev preview: Fleet, Hospital, Pharmacy, and School (post-refactor) all render their previews with the intended sample data and disclosure line, no console errors.
 - Docs: `docs/DESIGN_SYSTEM.md`'s `ModuleShowcase` entry updated to describe the shared kit and note all 15 modules now have a showcase.
+- Deployed: commit `c1e0cc3` shipped as Vercel deployment `dpl_33KGNXPBZgg4tMr68YUDbPNa9a6K`, READY on all production aliases. Verified live: `/modules/hotel` and `/modules/accounting` both render their previews correctly with no console errors; runtime error log shows nothing new.
 
 ## 2026-08-18: School module advertised on the public site with illustrative previews
 
