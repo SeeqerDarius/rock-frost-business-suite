@@ -302,6 +302,8 @@ export async function processOfflineMutation(context: OfflineDeviceContext, inpu
           mutationId: ledger.id,
           conflictType: conflict.conflictType,
           allowedResolutions: ["KEEP_CLOUD"],
+          cloudVersion: conflict.cloudVersion,
+          cloudSnapshot: conflict.cloudSnapshot === null ? Prisma.JsonNull : (conflict.cloudSnapshot as Prisma.InputJsonValue),
         },
       });
       const updated = await tx.offlineMutation.update({

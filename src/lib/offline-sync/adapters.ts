@@ -33,9 +33,9 @@ export async function applyOfflineMutation(tenant: TenantContext, mutation: Offl
     if (!parsed.success) throw new OfflineMutationConflictError("The offline record is invalid or no longer supported.", "INVALID_PAYLOAD");
     if (handler.operation === "UPDATE") {
       if (!handler.loadCurrentVersion) throw new Error(`UPDATE handler for ${mutation.entityType} is missing loadCurrentVersion`);
-      const currentVersion = await handler.loadCurrentVersion(tenant, mutation.entityId);
-      if (currentVersion === null) throw new OfflineMutationConflictError("The record no longer exists.", "ENTITY_DELETED");
-      if (currentVersion !== mutation.baseVersion) throw new OfflineMutationConflictError("The cloud record changed before synchronization.", "STALE_VERSION");
+      const current = await handler.loadCurrentVersion(tenant, mutation.entityId);
+      if (current === null) throw new OfflineMutationConflictError("The record no longer exists.", "ENTITY_DELETED");
+      if (current.version !== mutation.baseVersion) throw new OfflineMutationConflictError("The cloud record changed before synchronization.", "STALE_VERSION", current.version, current.snapshot);
     }
     return await handler.apply(tenant, mutation.entityId, parsed.data);
   } catch (error) {

@@ -204,14 +204,15 @@ describe("school.student_status_transition", () => {
     expect(result).toEqual({ id: "s1", status: "SUSPENDED" });
   });
 
-  it("rejects a stale baseVersion as a conflict without calling transitionSchoolStudent", async () => {
-    mockDb.schoolStudent.findFirst.mockResolvedValue({ updatedAt: new Date("2026-08-17T00:00:00.000Z") });
+  it("rejects a stale baseVersion as a conflict without calling transitionSchoolStudent, and reports the current cloud status", async () => {
+    const updatedAt = new Date("2026-08-17T00:00:00.000Z");
+    mockDb.schoolStudent.findFirst.mockResolvedValue({ status: "ACTIVE", updatedAt });
     await expect(
       applyOfflineMutation(
         tenant(["school.students.manage"]),
         mutation({ entityType: "school.student_status_transition", operation: "UPDATE", entityId: "s1", baseVersion: 1, payload: { toStatus: "SUSPENDED" } }),
       ),
-    ).rejects.toMatchObject({ conflictType: "STALE_VERSION" });
+    ).rejects.toMatchObject({ conflictType: "STALE_VERSION", cloudVersion: updatedAt.getTime(), cloudSnapshot: { status: "ACTIVE" } });
     expect(mockSchoolService.transitionSchoolStudent).not.toHaveBeenCalled();
   });
 
@@ -684,14 +685,19 @@ describe("school.settings", () => {
     expect(result).toEqual({ campusId: "c1", receiptPrefix: "SCH" });
   });
 
-  it("rejects a stale baseVersion as a conflict without calling upsertSchoolSettings", async () => {
-    mockDb.schoolSettings.findFirst.mockResolvedValue({ updatedAt: new Date("2026-08-17T00:00:00.000Z") });
+  it("rejects a stale baseVersion as a conflict without calling upsertSchoolSettings, and reports the current cloud settings", async () => {
+    const updatedAt = new Date("2026-08-17T00:00:00.000Z");
+    mockDb.schoolSettings.findFirst.mockResolvedValue({ attendanceCloseDays: 14, receiptPrefix: "OLD", allowRanking: true, gradingScale: null, updatedAt });
     await expect(
       applyOfflineMutation(
         tenant(["school.settings.manage"]),
         mutation({ entityType: "school.settings", operation: "UPDATE", entityId: "c1", baseVersion: 1, payload: { attendanceCloseDays: 7, receiptPrefix: "SCH", allowRanking: false } }),
       ),
-    ).rejects.toMatchObject({ conflictType: "STALE_VERSION" });
+    ).rejects.toMatchObject({
+      conflictType: "STALE_VERSION",
+      cloudVersion: updatedAt.getTime(),
+      cloudSnapshot: { attendanceCloseDays: 14, receiptPrefix: "OLD", allowRanking: true, gradingScale: null },
+    });
     expect(mockSchoolService.upsertSchoolSettings).not.toHaveBeenCalled();
   });
 

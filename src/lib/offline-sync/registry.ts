@@ -16,8 +16,15 @@ export interface OfflineAdapterHandler<TPayload> {
   operation: "CREATE" | "UPDATE";
   payloadSchema: z.ZodType<TPayload>;
   checkPermission: (tenant: TenantContext) => boolean | Promise<boolean>;
-  /** Required when operation is "UPDATE": the target row's current version (see the timestamp-as-version scheme), or null if it no longer exists. */
-  loadCurrentVersion?: (tenant: TenantContext, entityId: string) => Promise<number | null>;
+  /**
+   * Required when operation is "UPDATE": the target row's current version
+   * (see the timestamp-as-version scheme) and a snapshot of the fields a
+   * conflict-resolution UI would need to show the user what changed, or
+   * null if the row no longer exists. `snapshot` is stored verbatim as
+   * OfflineConflict.cloudSnapshot on a STALE_VERSION/ENTITY_DELETED
+   * conflict (see adapters.ts) - keep it small and JSON-serializable.
+   */
+  loadCurrentVersion?: (tenant: TenantContext, entityId: string) => Promise<{ version: number; snapshot: Record<string, unknown> } | null>;
   /** Payload-dependent fine-grained checks plus the actual mutation, delegating to the same service-layer function the web UI calls. */
   apply: (tenant: TenantContext, entityId: string, payload: TPayload) => Promise<Record<string, unknown>>;
 }

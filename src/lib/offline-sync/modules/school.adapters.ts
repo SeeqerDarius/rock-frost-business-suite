@@ -326,8 +326,8 @@ export const schoolOfflineAdapters = [
     payloadSchema: studentStatusTransitionSchema,
     checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENTS_MANAGE),
     loadCurrentVersion: async (tenant, entityId) => {
-      const student = await db.schoolStudent.findFirst({ where: { id: entityId, organizationId: tenant.organizationId }, select: { updatedAt: true } });
-      return student ? versionOf(student.updatedAt) : null;
+      const student = await db.schoolStudent.findFirst({ where: { id: entityId, organizationId: tenant.organizationId }, select: { status: true, updatedAt: true } });
+      return student ? { version: versionOf(student.updatedAt), snapshot: { status: student.status } } : null;
     },
     apply: async (tenant, entityId, payload) => {
       const record = await transitionSchoolStudent(tenant.organizationId, entityId, payload.toStatus, payload.reason);
@@ -587,8 +587,15 @@ export const schoolOfflineAdapters = [
     payloadSchema: settingsSchema,
     checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_SETTINGS_MANAGE),
     loadCurrentVersion: async (tenant, entityId) => {
-      const settings = await db.schoolSettings.findFirst({ where: { campusId: entityId, organizationId: tenant.organizationId }, select: { updatedAt: true } });
-      return settings ? versionOf(settings.updatedAt) : 0;
+      const settings = await db.schoolSettings.findFirst({
+        where: { campusId: entityId, organizationId: tenant.organizationId },
+        select: { attendanceCloseDays: true, receiptPrefix: true, allowRanking: true, gradingScale: true, updatedAt: true },
+      });
+      if (!settings) return { version: 0, snapshot: { attendanceCloseDays: null, receiptPrefix: null, allowRanking: null, gradingScale: null } };
+      return {
+        version: versionOf(settings.updatedAt),
+        snapshot: { attendanceCloseDays: settings.attendanceCloseDays, receiptPrefix: settings.receiptPrefix, allowRanking: settings.allowRanking, gradingScale: settings.gradingScale },
+      };
     },
     apply: async (tenant, entityId, payload) => {
       const record = await upsertSchoolSettings(tenant.organizationId, {

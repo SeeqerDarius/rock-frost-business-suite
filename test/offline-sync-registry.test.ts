@@ -152,16 +152,16 @@ describe("offline adapter registry", () => {
         operation: "UPDATE",
         payloadSchema: z.object({}),
         checkPermission: () => true,
-        loadCurrentVersion: async (_tenant, entityId) => (entityId === "deleted" ? null : 100),
+        loadCurrentVersion: async (_tenant, entityId) => (entityId === "deleted" ? null : { version: 100, snapshot: { name: "current" } }),
         apply: async () => ({ updated: true }),
       }),
     ]);
     await expect(
       applyOfflineMutation(fakeTenant, baseMutation({ entityType: "registry_test.editable", operation: "UPDATE", entityId: "e1", baseVersion: 99 })),
-    ).rejects.toMatchObject({ conflictType: "STALE_VERSION" });
+    ).rejects.toMatchObject({ conflictType: "STALE_VERSION", cloudVersion: 100, cloudSnapshot: { name: "current" } });
     await expect(
       applyOfflineMutation(fakeTenant, baseMutation({ entityType: "registry_test.editable", operation: "UPDATE", entityId: "deleted", baseVersion: 100 })),
-    ).rejects.toMatchObject({ conflictType: "ENTITY_DELETED" });
+    ).rejects.toMatchObject({ conflictType: "ENTITY_DELETED", cloudVersion: null, cloudSnapshot: null });
     await expect(
       applyOfflineMutation(fakeTenant, baseMutation({ entityType: "registry_test.editable", operation: "UPDATE", entityId: "e1", baseVersion: 100 })),
     ).resolves.toEqual({ updated: true });

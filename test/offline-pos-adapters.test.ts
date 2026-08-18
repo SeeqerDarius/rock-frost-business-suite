@@ -21,6 +21,7 @@ const mockPosService = {
   refundSale: vi.fn(),
   updateSettings: vi.fn(),
   updateSaleNumberPrefix: vi.fn(),
+  getSaleNumberPrefix: vi.fn(async () => "SALE"),
 };
 
 const mockDb = {
@@ -78,14 +79,19 @@ describe("pos.register", () => {
     expect(mockPosService.createRegister).not.toHaveBeenCalled();
   });
 
-  it("UPDATE rejects a stale baseVersion as a conflict without calling updateRegister", async () => {
-    mockDb.posRegister.findFirst.mockResolvedValue({ updatedAt: new Date("2026-08-16T00:00:00.000Z") });
+  it("UPDATE rejects a stale baseVersion as a conflict without calling updateRegister, and reports the current cloud version/snapshot", async () => {
+    const updatedAt = new Date("2026-08-16T00:00:00.000Z");
+    mockDb.posRegister.findFirst.mockResolvedValue({ name: "Front Desk", warehouseId: "wh1", active: true, updatedAt });
     await expect(
       applyOfflineMutation(
         tenant(ALL_POS_PERMISSIONS),
         mutation({ entityType: "pos.register", operation: "UPDATE", entityId: "r1", baseVersion: 1, payload: { name: "Renamed" } }),
       ),
-    ).rejects.toMatchObject({ conflictType: "STALE_VERSION" });
+    ).rejects.toMatchObject({
+      conflictType: "STALE_VERSION",
+      cloudVersion: updatedAt.getTime(),
+      cloudSnapshot: { name: "Front Desk", warehouseId: "wh1", active: true },
+    });
     expect(mockPosService.updateRegister).not.toHaveBeenCalled();
   });
 
@@ -101,14 +107,14 @@ describe("pos.register", () => {
     expect(result).toEqual({ id: "r1", name: "Renamed" });
   });
 
-  it("UPDATE against a register that no longer exists conflicts as ENTITY_DELETED", async () => {
+  it("UPDATE against a register that no longer exists conflicts as ENTITY_DELETED, with no cloud version/snapshot to report", async () => {
     mockDb.posRegister.findFirst.mockResolvedValue(null);
     await expect(
       applyOfflineMutation(
         tenant(ALL_POS_PERMISSIONS),
         mutation({ entityType: "pos.register", operation: "UPDATE", entityId: "gone", baseVersion: 0, payload: { name: "X" } }),
       ),
-    ).rejects.toMatchObject({ conflictType: "ENTITY_DELETED" });
+    ).rejects.toMatchObject({ conflictType: "ENTITY_DELETED", cloudVersion: null, cloudSnapshot: null });
   });
 });
 

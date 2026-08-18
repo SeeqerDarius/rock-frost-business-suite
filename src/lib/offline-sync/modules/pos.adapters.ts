@@ -12,6 +12,7 @@ import {
   refundSale,
   updateSettings,
   updateSaleNumberPrefix,
+  getSaleNumberPrefix,
 } from "@/modules/pos/service";
 import { versionOf } from "@/lib/offline-sync/version";
 import { defineOfflineAdapter } from "@/lib/offline-sync/registry";
@@ -90,8 +91,8 @@ export const posOfflineAdapters = [
     payloadSchema: registerSchema,
     checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.POS_REGISTERS_MANAGE),
     loadCurrentVersion: async (tenant, entityId) => {
-      const register = await db.posRegister.findFirst({ where: { id: entityId, organizationId: tenant.organizationId }, select: { updatedAt: true } });
-      return register ? versionOf(register.updatedAt) : null;
+      const register = await db.posRegister.findFirst({ where: { id: entityId, organizationId: tenant.organizationId }, select: { name: true, warehouseId: true, active: true, updatedAt: true } });
+      return register ? { version: versionOf(register.updatedAt), snapshot: { name: register.name, warehouseId: register.warehouseId, active: register.active } } : null;
     },
     apply: async (tenant, entityId, payload) => {
       const record = await updateRegister(tenant.organizationId, entityId, payload);
@@ -147,11 +148,13 @@ export const posOfflineAdapters = [
     payloadSchema: receiptFooterSchema,
     checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.POS_SETTINGS_MANAGE),
     loadCurrentVersion: async (tenant) => {
-      const settings = await db.posSettings.findUnique({ where: { organizationId: tenant.organizationId }, select: { updatedAt: true } });
+      const settings = await db.posSettings.findUnique({ where: { organizationId: tenant.organizationId }, select: { receiptFooterText: true, updatedAt: true } });
       // Missing means "never configured", not "deleted" - PosSettings is
       // get-or-create on first read (see getSettings in service.ts), so
       // this is a legitimate baseline, not a conflict-worthy absence.
-      return settings ? versionOf(settings.updatedAt) : 0;
+      return settings
+        ? { version: versionOf(settings.updatedAt), snapshot: { receiptFooterText: settings.receiptFooterText } }
+        : { version: 0, snapshot: { receiptFooterText: null } };
     },
     apply: async (tenant, _entityId, payload) => {
       const record = await updateSettings(tenant.organizationId, payload.receiptFooterText);
@@ -172,7 +175,10 @@ export const posOfflineAdapters = [
         where: { organizationId: tenant.organizationId, module: { code: "pos" } },
         select: { updatedAt: true },
       });
-      return assignment ? versionOf(assignment.updatedAt) : 0;
+      const saleNumberPrefix = await getSaleNumberPrefix(tenant.organizationId);
+      return assignment
+        ? { version: versionOf(assignment.updatedAt), snapshot: { saleNumberPrefix } }
+        : { version: 0, snapshot: { saleNumberPrefix } };
     },
     apply: async (tenant, _entityId, payload) => {
       await updateSaleNumberPrefix(tenant.organizationId, payload.saleNumberPrefix, tenant.userId);

@@ -32,6 +32,7 @@ const MODULE_KEYS = [
   "analytics",
   "pos",
   "projects",
+  "school",
 ] as const;
 
 function tenant(overrides: Record<string, unknown> = {}) {
@@ -137,11 +138,16 @@ describe("module authorization source coverage", () => {
       return collectEntryFiles(moduleDirectory).map((filePath) => ({ moduleKey, filePath }));
     });
 
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(80);
-    // 47, up from 45: fleet/settings/actions.ts and projects/settings/actions.ts
-    // were added (both previously had no actions.ts — Fleet and Projects had
-    // no real settings to save yet).
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(50);
+    // 94, up from 80: School's 14 page.tsx files were never included in this
+    // sweep (School was missing from MODULE_KEYS entirely, a real coverage
+    // gap the offline expansion's milestone 11 hardening pass found and
+    // fixed - the pages themselves were already correctly guarded, this
+    // sweep just was not exercising them).
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(94);
+    // 51, up from 50: School's single actions.ts (src/app/app/school/actions.ts,
+    // one shared file for all School Server Actions) was included for the
+    // same reason.
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(51);
 
     for (const { moduleKey, filePath } of guardedFiles) {
       const source = readFileSync(filePath, "utf8");

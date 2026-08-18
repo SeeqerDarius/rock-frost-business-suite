@@ -35,7 +35,8 @@ export default async function DesktopDevicesPage() {
           <CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5" />Offline safety boundary</CardTitle></CardHeader>
           <CardContent className="space-y-3 text-sm leading-6 text-muted-foreground">
             <p>Offline access expires after 72 hours without a successful cloud connection. Every reconnect rechecks your account, role, subscription, module access, and device status.</p>
-            <p>Approvals, refunds, payroll finalization, HR termination, accounting posting, prescriptions, and clinical decisions remain online-only.</p>
+            <p>Fleet, Installment, and Inventory keep sensitive actions such as approvals, refunds, payroll finalization, HR termination, accounting posting, prescriptions, and clinical decisions online-only.</p>
+            <p>Point of Sale and School are full offline exceptions, including refunds, register and settings edits, and School&apos;s fee, exam, and payroll-adjustment actions. Every one of them is re-validated against your account and role the moment the device reconnects.</p>
           </CardContent>
         </Card>
       </div>
