@@ -1,7 +1,35 @@
+import { AccountingModuleShowcase } from "@/components/marketing/module-showcases/accounting";
+import { AnalyticsModuleShowcase } from "@/components/marketing/module-showcases/analytics";
+import { CrmModuleShowcase } from "@/components/marketing/module-showcases/crm";
+import { FleetModuleShowcase } from "@/components/marketing/module-showcases/fleet";
+import { HotelModuleShowcase } from "@/components/marketing/module-showcases/hotel";
+import { HospitalModuleShowcase } from "@/components/marketing/module-showcases/hospital";
+import { HrModuleShowcase } from "@/components/marketing/module-showcases/hr";
+import { InstallmentModuleShowcase } from "@/components/marketing/module-showcases/installment";
+import { InventoryModuleShowcase } from "@/components/marketing/module-showcases/inventory";
+import { PayrollModuleShowcase } from "@/components/marketing/module-showcases/payroll";
+import { PharmacyModuleShowcase } from "@/components/marketing/module-showcases/pharmacy";
+import { PosModuleShowcase } from "@/components/marketing/module-showcases/pos";
+import { ProcurementModuleShowcase } from "@/components/marketing/module-showcases/procurement";
+import { ProjectsModuleShowcase } from "@/components/marketing/module-showcases/projects";
 import { SchoolModuleShowcase } from "@/components/marketing/module-showcases/school";
 
 const MODULE_SHOWCASES: Partial<Record<string, React.ComponentType>> = {
+  fleet: FleetModuleShowcase,
+  installment: InstallmentModuleShowcase,
+  crm: CrmModuleShowcase,
+  inventory: InventoryModuleShowcase,
+  accounting: AccountingModuleShowcase,
+  hr: HrModuleShowcase,
+  payroll: PayrollModuleShowcase,
+  procurement: ProcurementModuleShowcase,
+  projects: ProjectsModuleShowcase,
+  analytics: AnalyticsModuleShowcase,
+  pos: PosModuleShowcase,
+  hotel: HotelModuleShowcase,
   school: SchoolModuleShowcase,
+  pharmacy: PharmacyModuleShowcase,
+  hospital: HospitalModuleShowcase,
 };
 
 /** Renders an illustrative in-app preview for modules that have one configured; otherwise renders nothing. */
