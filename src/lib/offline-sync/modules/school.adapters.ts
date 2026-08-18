@@ -23,6 +23,14 @@ import {
   recordSchoolExamResult,
   submitSchoolExamForModeration,
   publishSchoolExam,
+  createSchoolTimetableEntry,
+  createSchoolLibraryBook,
+  borrowSchoolLibraryBook,
+  returnSchoolLibraryBook,
+  createSchoolTransportRoute,
+  assignSchoolTransport,
+  createSchoolPayrollAdjustment,
+  upsertSchoolSettings,
 } from "@/modules/school/service";
 import { versionOf } from "@/lib/offline-sync/version";
 import { defineOfflineAdapter } from "@/lib/offline-sync/registry";
@@ -179,6 +187,74 @@ const examModerationSubmitSchema = z.object({
 
 const examPublishSchema = z.object({
   examId: cuid,
+});
+
+const timetableEntrySchema = z.object({
+  campusId: cuid,
+  termId: cuid,
+  classId: cuid,
+  subjectId: cuid,
+  teacherName: shortText,
+  room: shortText.nullable().optional(),
+  dayOfWeek: z.number().int().min(1).max(7),
+  startsAt: shortText,
+  endsAt: shortText,
+});
+
+const libraryBookSchema = z.object({
+  accessionCode: shortText,
+  isbn: shortText.nullable().optional(),
+  title: shortText,
+  author: shortText.nullable().optional(),
+  category: shortText.nullable().optional(),
+  totalCopies: z.number().int().min(1).max(10000),
+});
+
+const libraryBorrowSchema = z.object({
+  bookId: cuid,
+  studentId: cuid,
+  dueAt: dateInput,
+});
+
+const libraryReturnSchema = z.object({
+  loanId: cuid,
+});
+
+const transportRouteSchema = z.object({
+  campusId: cuid,
+  code: shortText,
+  name: shortText,
+  vehicle: shortText.nullable().optional(),
+  driverName: shortText.nullable().optional(),
+  stops: z.array(shortText).optional(),
+  fee: z.number().min(0),
+});
+
+const transportAssignmentSchema = z.object({
+  routeId: cuid,
+  studentId: cuid,
+  stopName: shortText.nullable().optional(),
+});
+
+const payrollAdjustmentSchema = z.object({
+  employeeId: shortText,
+  period: shortText,
+  type: shortText,
+  description: shortText,
+  amount: moneyAmountPositive,
+});
+
+const gradingScaleBandSchema = z.object({
+  grade: shortText,
+  min: z.number(),
+  max: z.number(),
+});
+
+const settingsSchema = z.object({
+  attendanceCloseDays: z.number().int().min(0).max(365),
+  receiptPrefix: shortText,
+  allowRanking: z.boolean(),
+  gradingScale: z.array(gradingScaleBandSchema).nullable().optional(),
 });
 
 /**
@@ -419,6 +495,110 @@ export const schoolOfflineAdapters = [
     apply: async (tenant, _entityId, payload) => {
       const [, exam] = await publishSchoolExam(tenant.organizationId, payload.examId);
       return { id: exam.id, status: exam.status };
+    },
+  }),
+
+  // --- Milestone 10: timetable, library, transport, payroll adjustments,
+  // and settings. school.library_loan_return and school.transport_
+  // assignment follow the established event/reference conventions above:
+  // a return has no updatedAt column to version against (event, like
+  // exam_moderation_submit); a transport assignment references two other
+  // entities' real ids and is already idempotent server-side via
+  // assignSchoolTransport's upsert on the (routeId, studentId) unique key
+  // (the same reasoning as guardian_link). school.settings is this
+  // milestone's one genuine UPDATE: entityId is the campus's own id (not a
+  // fixed sentinel, since settings are per-campus), and loadCurrentVersion
+  // returns 0 rather than null when a campus has no settings row yet -
+  // "never configured" is not "deleted", the same distinction pos.settings_
+  // receipt_footer/sale_prefix already make.
+  defineOfflineAdapter({
+    entityType: "school.timetable_entry",
+    operation: "CREATE",
+    payloadSchema: timetableEntrySchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_TIMETABLES_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await createSchoolTimetableEntry(tenant.organizationId, payload);
+      return { id: record.id, classId: record.classId };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.library_book",
+    operation: "CREATE",
+    payloadSchema: libraryBookSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_LIBRARY_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await createSchoolLibraryBook(tenant.organizationId, payload);
+      return { id: record.id, accessionCode: record.accessionCode };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.library_loan",
+    operation: "CREATE",
+    payloadSchema: libraryBorrowSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_LIBRARY_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await borrowSchoolLibraryBook(tenant.organizationId, payload.bookId, payload.studentId, payload.dueAt);
+      return { id: record.id, bookId: record.bookId };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.library_loan_return",
+    operation: "CREATE",
+    payloadSchema: libraryReturnSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_LIBRARY_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await returnSchoolLibraryBook(tenant.organizationId, payload.loanId);
+      return { id: record.id, status: record.status };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.transport_route",
+    operation: "CREATE",
+    payloadSchema: transportRouteSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await createSchoolTransportRoute(tenant.organizationId, payload);
+      return { id: record.id, name: record.name };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.transport_assignment",
+    operation: "CREATE",
+    payloadSchema: transportAssignmentSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await assignSchoolTransport(tenant.organizationId, payload.routeId, payload.studentId, payload.stopName);
+      return { routeId: record.routeId, studentId: record.studentId };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.payroll_adjustment",
+    operation: "CREATE",
+    payloadSchema: payrollAdjustmentSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_PAYROLL_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await createSchoolPayrollAdjustment(tenant.organizationId, payload);
+      return { id: record.id, amount: record.amount.toString() };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.settings",
+    operation: "UPDATE",
+    payloadSchema: settingsSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_SETTINGS_MANAGE),
+    loadCurrentVersion: async (tenant, entityId) => {
+      const settings = await db.schoolSettings.findFirst({ where: { campusId: entityId, organizationId: tenant.organizationId }, select: { updatedAt: true } });
+      return settings ? versionOf(settings.updatedAt) : 0;
+    },
+    apply: async (tenant, entityId, payload) => {
+      const record = await upsertSchoolSettings(tenant.organizationId, {
+        campusId: entityId,
+        attendanceCloseDays: payload.attendanceCloseDays,
+        receiptPrefix: payload.receiptPrefix,
+        allowRanking: payload.allowRanking,
+        gradingScale: payload.gradingScale ?? undefined,
+      });
+      return { campusId: record.campusId, receiptPrefix: record.receiptPrefix };
     },
   }),
 ];

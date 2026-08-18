@@ -38,6 +38,13 @@ export async function buildSchoolSnapshot(context: OfflineDeviceContext): Promis
     feeInvoices,
     feeStructures,
     exams,
+    timetableEntries,
+    libraryBooks,
+    libraryLoans,
+    transportRoutes,
+    transportAssignments,
+    payrollAdjustments,
+    settings,
   ] = await Promise.all([
     db.schoolCampus.findMany({
       where: { organizationId, active: true },
@@ -123,6 +130,46 @@ export async function buildSchoolSnapshot(context: OfflineDeviceContext): Promis
       orderBy: { examDate: "desc" },
       take: take + 1,
     }),
+    db.schoolTimetableEntry.findMany({
+      where: { organizationId },
+      select: { id: true, campusId: true, termId: true, classId: true, subjectId: true, teacherName: true, room: true, dayOfWeek: true, startsAt: true, endsAt: true, publishedAt: true },
+      orderBy: [{ dayOfWeek: "asc" }, { startsAt: "asc" }],
+      take: take + 1,
+    }),
+    db.schoolLibraryBook.findMany({
+      where: { organizationId, active: true },
+      select: { id: true, accessionCode: true, isbn: true, title: true, author: true, category: true, totalCopies: true, availableCopies: true, active: true },
+      orderBy: { title: "asc" },
+      take: take + 1,
+    }),
+    db.schoolLibraryLoan.findMany({
+      where: { organizationId },
+      select: { id: true, bookId: true, studentId: true, status: true, borrowedAt: true, dueAt: true, returnedAt: true, fineAmount: true },
+      orderBy: { borrowedAt: "desc" },
+      take: take + 1,
+    }),
+    db.schoolTransportRoute.findMany({
+      where: { organizationId, active: true },
+      select: { id: true, campusId: true, code: true, name: true, vehicle: true, driverName: true, stops: true, fee: true, active: true },
+      orderBy: { name: "asc" },
+      take: take + 1,
+    }),
+    db.schoolTransportAssignment.findMany({
+      where: { organizationId, active: true },
+      select: { id: true, routeId: true, studentId: true, stopName: true, active: true },
+      take: take + 1,
+    }),
+    db.schoolPayrollAdjustment.findMany({
+      where: { organizationId },
+      select: { id: true, employeeId: true, period: true, type: true, description: true, amount: true, processedAt: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: take + 1,
+    }),
+    db.schoolSettings.findMany({
+      where: { organizationId },
+      select: { campusId: true, gradingScale: true, attendanceCloseDays: true, receiptPrefix: true, allowRanking: true, updatedAt: true },
+      take: take + 1,
+    }),
   ]);
 
   const truncated =
@@ -138,7 +185,14 @@ export async function buildSchoolSnapshot(context: OfflineDeviceContext): Promis
     attendance.length > RECENT_ATTENDANCE_TAKE ||
     feeInvoices.length > take ||
     feeStructures.length > take ||
-    exams.length > take;
+    exams.length > take ||
+    timetableEntries.length > take ||
+    libraryBooks.length > take ||
+    libraryLoans.length > take ||
+    transportRoutes.length > take ||
+    transportAssignments.length > take ||
+    payrollAdjustments.length > take ||
+    settings.length > take;
   const rows: OfflineSnapshotRow[] = [];
 
   for (const { id, updatedAt, ...payload } of campuses.slice(0, take)) {
@@ -196,6 +250,37 @@ export async function buildSchoolSnapshot(context: OfflineDeviceContext): Promis
   for (const { id, ...payload } of exams.slice(0, take)) {
     // SchoolExam has no updatedAt column: version 0.
     rows.push({ entityType: "school.exam", entityId: id, version: 0, payload });
+  }
+  for (const { id, ...payload } of timetableEntries.slice(0, take)) {
+    // SchoolTimetableEntry has no updatedAt column: version 0.
+    rows.push({ entityType: "school.timetable_entry", entityId: id, version: 0, payload });
+  }
+  for (const { id, ...payload } of libraryBooks.slice(0, take)) {
+    // SchoolLibraryBook has no updatedAt column: version 0.
+    rows.push({ entityType: "school.library_book", entityId: id, version: 0, payload });
+  }
+  for (const { id, ...payload } of libraryLoans.slice(0, take)) {
+    // SchoolLibraryLoan has no updatedAt column: version 0.
+    rows.push({ entityType: "school.library_loan", entityId: id, version: 0, payload });
+  }
+  for (const { id, ...payload } of transportRoutes.slice(0, take)) {
+    // SchoolTransportRoute has no updatedAt column: version 0.
+    rows.push({ entityType: "school.transport_route", entityId: id, version: 0, payload });
+  }
+  for (const { id, ...payload } of transportAssignments.slice(0, take)) {
+    // SchoolTransportAssignment has no updatedAt column: version 0.
+    rows.push({ entityType: "school.transport_assignment", entityId: id, version: 0, payload });
+  }
+  for (const { id, ...payload } of payrollAdjustments.slice(0, take)) {
+    // SchoolPayrollAdjustment has no updatedAt column: version 0.
+    rows.push({ entityType: "school.payroll_adjustment", entityId: id, version: 0, payload });
+  }
+  // Keyed by campusId, not a synthetic settings-row id: the school.settings
+  // UPDATE adapter's entityId is the campus's own id (see school.adapters.
+  // ts), so the pulled row must be addressable the same way for baseVersion
+  // to line up.
+  for (const { campusId, updatedAt, ...payload } of settings.slice(0, take)) {
+    rows.push({ entityType: "school.settings", entityId: campusId, version: versionOf(updatedAt), payload });
   }
 
   return { rows, truncated };

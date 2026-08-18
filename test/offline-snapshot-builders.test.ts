@@ -34,6 +34,13 @@ const mockDb = {
   schoolFeeInvoice: { findMany: vi.fn() },
   schoolFeeStructure: { findMany: vi.fn() },
   schoolExam: { findMany: vi.fn() },
+  schoolTimetableEntry: { findMany: vi.fn() },
+  schoolLibraryBook: { findMany: vi.fn() },
+  schoolLibraryLoan: { findMany: vi.fn() },
+  schoolTransportRoute: { findMany: vi.fn() },
+  schoolTransportAssignment: { findMany: vi.fn() },
+  schoolPayrollAdjustment: { findMany: vi.fn() },
+  schoolSettings: { findMany: vi.fn() },
   offlineDevice: { update: vi.fn() },
 };
 
@@ -214,6 +221,13 @@ describe("school snapshot builder", () => {
     mockDb.schoolFeeInvoice.findMany.mockResolvedValue([]);
     mockDb.schoolFeeStructure.findMany.mockResolvedValue([]);
     mockDb.schoolExam.findMany.mockResolvedValue([]);
+    mockDb.schoolTimetableEntry.findMany.mockResolvedValue([]);
+    mockDb.schoolLibraryBook.findMany.mockResolvedValue([]);
+    mockDb.schoolLibraryLoan.findMany.mockResolvedValue([]);
+    mockDb.schoolTransportRoute.findMany.mockResolvedValue([]);
+    mockDb.schoolTransportAssignment.findMany.mockResolvedValue([]);
+    mockDb.schoolPayrollAdjustment.findMany.mockResolvedValue([]);
+    mockDb.schoolSettings.findMany.mockResolvedValue([]);
   }
 
   it("decomposes campuses, academic years, and terms into rows, versioned by updatedAt where it exists and 0 otherwise", async () => {
@@ -329,6 +343,44 @@ describe("school snapshot builder", () => {
       payload: { name: "Midterm", results: [{ id: "res1", studentId: "s1", marks: "72.00", grade: "B" }] },
     });
   });
+
+  it("decomposes timetable, library, transport, and payroll rows versioned 0, and keys school.settings by campusId versioned by updatedAt", async () => {
+    stubEmptySchool();
+    mockDb.schoolTimetableEntry.findMany.mockResolvedValue([
+      { id: "tt1", campusId: "c1", termId: "t1", classId: "cl1", subjectId: "sub1", teacherName: "Ms. Mensah", room: "R1", dayOfWeek: 1, startsAt: "08:00", endsAt: "09:00", publishedAt: null },
+    ]);
+    mockDb.schoolLibraryBook.findMany.mockResolvedValue([
+      { id: "b1", accessionCode: "ACC-1", isbn: null, title: "Algebra I", author: null, category: null, totalCopies: 3, availableCopies: 2, active: true },
+    ]);
+    mockDb.schoolLibraryLoan.findMany.mockResolvedValue([
+      { id: "ln1", bookId: "b1", studentId: "s1", status: "BORROWED", borrowedAt: new Date("2026-08-01T00:00:00.000Z"), dueAt: new Date("2026-08-15T00:00:00.000Z"), returnedAt: null, fineAmount: "0.00" },
+    ]);
+    mockDb.schoolTransportRoute.findMany.mockResolvedValue([
+      { id: "rt1", campusId: "c1", code: "R1", name: "Route 1", vehicle: null, driverName: null, stops: null, fee: "50.00", active: true },
+    ]);
+    mockDb.schoolTransportAssignment.findMany.mockResolvedValue([
+      { id: "ta1", routeId: "rt1", studentId: "s1", stopName: "Main St", active: true },
+    ]);
+    mockDb.schoolPayrollAdjustment.findMany.mockResolvedValue([
+      { id: "pa1", employeeId: "emp1", period: "2026-08", type: "BONUS", description: "Performance", amount: "100.00", processedAt: null, createdAt: new Date("2026-08-01T00:00:00.000Z") },
+    ]);
+    mockDb.schoolSettings.findMany.mockResolvedValue([
+      { campusId: "c1", gradingScale: [{ grade: "A", min: 80, max: 100 }], attendanceCloseDays: 7, receiptPrefix: "SCH", allowRanking: true, updatedAt: new Date("2026-08-01T00:00:00.000Z") },
+    ]);
+
+    const result = await buildSchoolSnapshot(fakeContext());
+    expect(result.truncated).toBe(false);
+
+    expect(result.rows.find((r) => r.entityType === "school.timetable_entry")).toMatchObject({ entityId: "tt1", version: 0, payload: { teacherName: "Ms. Mensah" } });
+    expect(result.rows.find((r) => r.entityType === "school.library_book")).toMatchObject({ entityId: "b1", version: 0, payload: { title: "Algebra I" } });
+    expect(result.rows.find((r) => r.entityType === "school.library_loan")).toMatchObject({ entityId: "ln1", version: 0, payload: { status: "BORROWED" } });
+    expect(result.rows.find((r) => r.entityType === "school.transport_route")).toMatchObject({ entityId: "rt1", version: 0, payload: { name: "Route 1" } });
+    expect(result.rows.find((r) => r.entityType === "school.transport_assignment")).toMatchObject({ entityId: "ta1", version: 0, payload: { stopName: "Main St" } });
+    expect(result.rows.find((r) => r.entityType === "school.payroll_adjustment")).toMatchObject({ entityId: "pa1", version: 0, payload: { type: "BONUS" } });
+
+    const settingsRow = result.rows.find((r) => r.entityType === "school.settings");
+    expect(settingsRow).toMatchObject({ entityId: "c1", version: Date.parse("2026-08-01T00:00:00.000Z"), payload: { receiptPrefix: "SCH", allowRanking: true } });
+  });
 });
 
 describe("buildOfflineSnapshot composition (service.ts)", () => {
@@ -378,6 +430,13 @@ describe("buildOfflineSnapshot composition (service.ts)", () => {
     mockDb.schoolFeeInvoice.findMany.mockResolvedValue([]);
     mockDb.schoolFeeStructure.findMany.mockResolvedValue([]);
     mockDb.schoolExam.findMany.mockResolvedValue([]);
+    mockDb.schoolTimetableEntry.findMany.mockResolvedValue([]);
+    mockDb.schoolLibraryBook.findMany.mockResolvedValue([]);
+    mockDb.schoolLibraryLoan.findMany.mockResolvedValue([]);
+    mockDb.schoolTransportRoute.findMany.mockResolvedValue([]);
+    mockDb.schoolTransportAssignment.findMany.mockResolvedValue([]);
+    mockDb.schoolPayrollAdjustment.findMany.mockResolvedValue([]);
+    mockDb.schoolSettings.findMany.mockResolvedValue([]);
 
     const context = fakeContext({ authorizedModuleKeys: ["school"] });
     await buildOfflineSnapshot(context);

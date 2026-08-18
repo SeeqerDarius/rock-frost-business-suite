@@ -15,6 +15,13 @@ import {
   type SchoolFeeInvoiceRecord,
   type SchoolFeeStructureRecord,
   type SchoolExamRecord,
+  type SchoolTimetableEntryRecord,
+  type SchoolLibraryBookRecord,
+  type SchoolLibraryLoanRecord,
+  type SchoolTransportRouteRecord,
+  type SchoolTransportAssignmentRecord,
+  type SchoolPayrollAdjustmentRecord,
+  type SchoolSettingsRecord,
 } from "@/modules/school/types";
 
 export interface SchoolCampusRow { entityId: string; hasPendingLocalChange: boolean; data: SchoolCampusRecord }
@@ -30,6 +37,14 @@ export interface SchoolAttendanceRow { entityId: string; hasPendingLocalChange: 
 export interface SchoolFeeInvoiceRow { entityId: string; hasPendingLocalChange: boolean; data: SchoolFeeInvoiceRecord }
 export interface SchoolFeeStructureRow { entityId: string; version: number; hasPendingLocalChange: boolean; data: SchoolFeeStructureRecord }
 export interface SchoolExamRow { entityId: string; hasPendingLocalChange: boolean; data: SchoolExamRecord }
+export interface SchoolTimetableEntryRow { entityId: string; hasPendingLocalChange: boolean; data: SchoolTimetableEntryRecord }
+export interface SchoolLibraryBookRow { entityId: string; hasPendingLocalChange: boolean; data: SchoolLibraryBookRecord }
+export interface SchoolLibraryLoanRow { entityId: string; hasPendingLocalChange: boolean; data: SchoolLibraryLoanRecord }
+export interface SchoolTransportRouteRow { entityId: string; hasPendingLocalChange: boolean; data: SchoolTransportRouteRecord }
+export interface SchoolTransportAssignmentRow { entityId: string; hasPendingLocalChange: boolean; data: SchoolTransportAssignmentRecord }
+export interface SchoolPayrollAdjustmentRow { entityId: string; hasPendingLocalChange: boolean; data: SchoolPayrollAdjustmentRecord }
+/** entityId is the campus's own id - see school.adapters.ts server-side and SchoolSettingsPayload's docstring. */
+export interface SchoolSettingsRow { entityId: string; version: number; hasPendingLocalChange: boolean; data: SchoolSettingsRecord }
 
 export interface SchoolSnapshot {
   campuses: SchoolCampusRow[];
@@ -45,12 +60,20 @@ export interface SchoolSnapshot {
   feeInvoices: SchoolFeeInvoiceRow[];
   feeStructures: SchoolFeeStructureRow[];
   exams: SchoolExamRow[];
+  timetableEntries: SchoolTimetableEntryRow[];
+  libraryBooks: SchoolLibraryBookRow[];
+  libraryLoans: SchoolLibraryLoanRow[];
+  transportRoutes: SchoolTransportRouteRow[];
+  transportAssignments: SchoolTransportAssignmentRow[];
+  payrollAdjustments: SchoolPayrollAdjustmentRow[];
+  settings: SchoolSettingsRow[];
 }
 
 const EMPTY_SNAPSHOT: SchoolSnapshot = {
   campuses: [], academicYears: [], terms: [], students: [], guardians: [],
   guardianLinks: [], classes: [], subjects: [], enrollments: [], attendance: [],
-  feeInvoices: [], feeStructures: [], exams: [],
+  feeInvoices: [], feeStructures: [], exams: [], timetableEntries: [], libraryBooks: [],
+  libraryLoans: [], transportRoutes: [], transportAssignments: [], payrollAdjustments: [], settings: [],
 };
 
 /** Reads every School entity type this device has cached. Mirrors pos-data.ts's usePosSnapshot; will grow with each later School milestone. */
@@ -58,7 +81,11 @@ export function useSchoolSnapshot(db: LocalDatabase) {
   const [snapshot, setSnapshot] = useState<SchoolSnapshot>(EMPTY_SNAPSHOT);
 
   const reload = useCallback(async () => {
-    const [campuses, academicYears, terms, students, guardians, guardianLinks, classes, subjects, enrollments, attendance, feeInvoices, feeStructures, exams] = await Promise.all([
+    const [
+      campuses, academicYears, terms, students, guardians, guardianLinks, classes, subjects, enrollments, attendance,
+      feeInvoices, feeStructures, exams, timetableEntries, libraryBooks, libraryLoans, transportRoutes, transportAssignments,
+      payrollAdjustments, settings,
+    ] = await Promise.all([
       db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.CAMPUS),
       db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.ACADEMIC_YEAR),
       db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.TERM),
@@ -72,6 +99,13 @@ export function useSchoolSnapshot(db: LocalDatabase) {
       db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.FEE_INVOICE_RECORD),
       db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.FEE_STRUCTURE),
       db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.EXAM),
+      db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.TIMETABLE_ENTRY),
+      db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.LIBRARY_BOOK),
+      db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.LIBRARY_LOAN),
+      db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.TRANSPORT_ROUTE),
+      db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.TRANSPORT_ASSIGNMENT),
+      db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.PAYROLL_ADJUSTMENT),
+      db.listCachedRecords("school", SCHOOL_ENTITY_TYPES.SETTINGS),
     ]);
 
     setSnapshot({
@@ -110,6 +144,23 @@ export function useSchoolSnapshot(db: LocalDatabase) {
       exams: exams
         .map((r) => ({ entityId: r.entityId, hasPendingLocalChange: r.hasPendingLocalChange, data: r.payload as SchoolExamRecord }))
         .sort((a, b) => (a.data.examDate ?? "") < (b.data.examDate ?? "") ? 1 : -1),
+      timetableEntries: timetableEntries
+        .map((r) => ({ entityId: r.entityId, hasPendingLocalChange: r.hasPendingLocalChange, data: r.payload as SchoolTimetableEntryRecord }))
+        .sort((a, b) => a.data.dayOfWeek - b.data.dayOfWeek || a.data.startsAt.localeCompare(b.data.startsAt)),
+      libraryBooks: libraryBooks
+        .map((r) => ({ entityId: r.entityId, hasPendingLocalChange: r.hasPendingLocalChange, data: r.payload as SchoolLibraryBookRecord }))
+        .sort((a, b) => a.data.title.localeCompare(b.data.title)),
+      libraryLoans: libraryLoans
+        .map((r) => ({ entityId: r.entityId, hasPendingLocalChange: r.hasPendingLocalChange, data: r.payload as SchoolLibraryLoanRecord }))
+        .sort((a, b) => (a.data.borrowedAt < b.data.borrowedAt ? 1 : -1)),
+      transportRoutes: transportRoutes
+        .map((r) => ({ entityId: r.entityId, hasPendingLocalChange: r.hasPendingLocalChange, data: r.payload as SchoolTransportRouteRecord }))
+        .sort((a, b) => a.data.name.localeCompare(b.data.name)),
+      transportAssignments: transportAssignments.map((r) => ({ entityId: r.entityId, hasPendingLocalChange: r.hasPendingLocalChange, data: r.payload as SchoolTransportAssignmentRecord })),
+      payrollAdjustments: payrollAdjustments
+        .map((r) => ({ entityId: r.entityId, hasPendingLocalChange: r.hasPendingLocalChange, data: r.payload as SchoolPayrollAdjustmentRecord }))
+        .sort((a, b) => (a.data.createdAt < b.data.createdAt ? 1 : -1)),
+      settings: settings.map((r) => ({ entityId: r.entityId, version: r.version, hasPendingLocalChange: r.hasPendingLocalChange, data: r.payload as SchoolSettingsRecord })),
     });
   }, [db]);
 

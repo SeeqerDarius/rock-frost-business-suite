@@ -36,13 +36,18 @@ const PROTECTED_ENTITY_TYPE_PREFIXES = [
   "pos.sale_refund",
   "pos.register",
   "pos.settings",
-  "school.fee_",
   "inventory.movement",
   "accounting.",
   "payroll.",
   "pharmacy.prescription",
   "hospital.",
   "clinical.",
+  // Blanket-covers every School entity type, not just fees: School's
+  // "offline-capable, no exceptions" scope (see the offline expansion plan)
+  // means every action there - including ones that would normally be
+  // narrower, like a timetable entry - still gets the same mandatory
+  // explicit-resolution treatment as payments and clinical data.
+  "school.",
 ] as const;
 
 export function isProtectedEntityType(entityType: string): boolean {

@@ -55,7 +55,20 @@ export type OfflineEntityType =
   | "school.exam"
   | "school.exam_result"
   | "school.exam_moderation_submit"
-  | "school.exam_publish";
+  | "school.exam_publish"
+  // Milestone 10: timetable, library, transport, payroll adjustments, and
+  // settings. school.library_loan_return and school.transport_assignment
+  // are events/references, not edits, for the same reasons as milestone 9's
+  // exam events. school.settings is this milestone's one genuine UPDATE,
+  // keyed by the campus's own id rather than a fixed sentinel.
+  | "school.timetable_entry"
+  | "school.library_book"
+  | "school.library_loan"
+  | "school.library_loan_return"
+  | "school.transport_route"
+  | "school.transport_assignment"
+  | "school.payroll_adjustment"
+  | "school.settings";
 
 /** UPDATE is real: pos.register edits and both pos.settings_* actions carry the cached record's own version as baseVersion, and the server rejects a stale one as a conflict rather than silently overwriting. Every other action still queues CREATE with baseVersion 0. */
 export type MutationOperation = "CREATE" | "UPDATE";

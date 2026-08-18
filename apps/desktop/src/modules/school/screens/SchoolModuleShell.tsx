@@ -7,6 +7,11 @@ import { SchoolEnrollmentScreen } from "@/modules/school/screens/SchoolEnrollmen
 import { SchoolAttendanceScreen } from "@/modules/school/screens/SchoolAttendanceScreen";
 import { SchoolFeesScreen } from "@/modules/school/screens/SchoolFeesScreen";
 import { SchoolExamsScreen } from "@/modules/school/screens/SchoolExamsScreen";
+import { SchoolTimetableScreen } from "@/modules/school/screens/SchoolTimetableScreen";
+import { SchoolLibraryScreen } from "@/modules/school/screens/SchoolLibraryScreen";
+import { SchoolTransportScreen } from "@/modules/school/screens/SchoolTransportScreen";
+import { SchoolPayrollScreen } from "@/modules/school/screens/SchoolPayrollScreen";
+import { SchoolSettingsScreen } from "@/modules/school/screens/SchoolSettingsScreen";
 
 const TABS = [
   { key: "setup", label: "Academic setup" },
@@ -15,6 +20,11 @@ const TABS = [
   { key: "attendance", label: "Attendance" },
   { key: "fees", label: "Fees" },
   { key: "exams", label: "Exams" },
+  { key: "timetable", label: "Timetable" },
+  { key: "library", label: "Library" },
+  { key: "transport", label: "Transport" },
+  { key: "payroll", label: "Payroll" },
+  { key: "settings", label: "Settings" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -25,7 +35,8 @@ type TabKey = (typeof TABS)[number]["key"];
  * settings) each add a tab here rather than a new top-level component.
  * Milestone 6 shipped Academic setup; milestone 7 added Students &
  * guardians, Enrollment, and Attendance; milestone 8 added Fees;
- * milestone 9 adds Exams.
+ * milestone 9 added Exams; milestone 10 adds Timetable, Library,
+ * Transport, Payroll, and Settings - the full 14-page School surface.
  */
 export function SchoolModuleShell() {
   const { db } = useApp();
@@ -63,6 +74,11 @@ export function SchoolModuleShell() {
       {tab === "attendance" ? <SchoolAttendanceScreen snapshot={snapshot} onChanged={reload} /> : null}
       {tab === "fees" ? <SchoolFeesScreen snapshot={snapshot} onChanged={reload} /> : null}
       {tab === "exams" ? <SchoolExamsScreen snapshot={snapshot} onChanged={reload} /> : null}
+      {tab === "timetable" ? <SchoolTimetableScreen snapshot={snapshot} onChanged={reload} /> : null}
+      {tab === "library" ? <SchoolLibraryScreen snapshot={snapshot} onChanged={reload} /> : null}
+      {tab === "transport" ? <SchoolTransportScreen snapshot={snapshot} onChanged={reload} /> : null}
+      {tab === "payroll" ? <SchoolPayrollScreen snapshot={snapshot} onChanged={reload} /> : null}
+      {tab === "settings" ? <SchoolSettingsScreen snapshot={snapshot} onChanged={reload} /> : null}
     </div>
   );
 }

@@ -308,6 +308,150 @@ export interface SchoolExamRecord extends Record<string, unknown> {
   results: SchoolExamResultRecord[];
 }
 
+export interface SchoolTimetableEntryPayload extends Record<string, unknown> {
+  campusId: string;
+  termId: string;
+  classId: string;
+  subjectId: string;
+  teacherName: string;
+  room?: string | null;
+  dayOfWeek: number;
+  startsAt: string;
+  endsAt: string;
+}
+
+/** Shape of a pulled `school.timetable_entry` row's payload. */
+export interface SchoolTimetableEntryRecord extends Record<string, unknown> {
+  campusId: string;
+  termId: string;
+  classId: string;
+  subjectId: string;
+  teacherName: string;
+  room: string | null;
+  dayOfWeek: number;
+  startsAt: string;
+  endsAt: string;
+  publishedAt: string | null;
+}
+
+export interface SchoolLibraryBookPayload extends Record<string, unknown> {
+  accessionCode: string;
+  isbn?: string | null;
+  title: string;
+  author?: string | null;
+  category?: string | null;
+  totalCopies: number;
+}
+
+/** Shape of a pulled `school.library_book` row's payload. */
+export interface SchoolLibraryBookRecord extends Record<string, unknown> {
+  accessionCode: string;
+  isbn: string | null;
+  title: string;
+  author: string | null;
+  category: string | null;
+  totalCopies: number;
+  availableCopies: number;
+  active: boolean;
+}
+
+export interface SchoolLibraryLoanPayload extends Record<string, unknown> {
+  bookId: string;
+  studentId: string;
+  dueAt: string;
+}
+
+export interface SchoolLibraryLoanReturnPayload extends Record<string, unknown> {
+  loanId: string;
+}
+
+/** Shape of a pulled `school.library_loan` row's payload. */
+export interface SchoolLibraryLoanRecord extends Record<string, unknown> {
+  bookId: string;
+  studentId: string;
+  status: "BORROWED" | "RETURNED" | "OVERDUE";
+  borrowedAt: string;
+  dueAt: string;
+  returnedAt: string | null;
+  fineAmount: string;
+}
+
+export interface SchoolTransportRoutePayload extends Record<string, unknown> {
+  campusId: string;
+  code: string;
+  name: string;
+  vehicle?: string | null;
+  driverName?: string | null;
+  stops?: string[];
+  fee: number;
+}
+
+/** Shape of a pulled `school.transport_route` row's payload. */
+export interface SchoolTransportRouteRecord extends Record<string, unknown> {
+  campusId: string;
+  code: string;
+  name: string;
+  vehicle: string | null;
+  driverName: string | null;
+  stops: string[] | null;
+  fee: string;
+  active: boolean;
+}
+
+export interface SchoolTransportAssignmentPayload extends Record<string, unknown> {
+  routeId: string;
+  studentId: string;
+  stopName?: string | null;
+}
+
+/** Shape of a pulled `school.transport_assignment` row's payload. */
+export interface SchoolTransportAssignmentRecord extends Record<string, unknown> {
+  routeId: string;
+  studentId: string;
+  stopName: string | null;
+  active: boolean;
+}
+
+export interface SchoolPayrollAdjustmentPayload extends Record<string, unknown> {
+  employeeId: string;
+  period: string;
+  type: string;
+  description: string;
+  amount: string;
+}
+
+/** Shape of a pulled `school.payroll_adjustment` row's payload. */
+export interface SchoolPayrollAdjustmentRecord extends Record<string, unknown> {
+  employeeId: string;
+  period: string;
+  type: string;
+  description: string;
+  amount: string;
+  processedAt: string | null;
+  createdAt: string;
+}
+
+export interface SchoolGradingScaleBand extends Record<string, unknown> {
+  grade: string;
+  min: number;
+  max: number;
+}
+
+export interface SchoolSettingsPayload extends Record<string, unknown> {
+  attendanceCloseDays: number;
+  receiptPrefix: string;
+  allowRanking: boolean;
+  gradingScale?: SchoolGradingScaleBand[] | null;
+}
+
+/** Shape of a pulled `school.settings` row's payload - entityId is the campus's own id, see school.adapters.ts server-side. */
+export interface SchoolSettingsRecord extends Record<string, unknown> {
+  gradingScale: SchoolGradingScaleBand[] | null;
+  attendanceCloseDays: number;
+  receiptPrefix: string;
+  allowRanking: boolean;
+}
+
 export const SCHOOL_ENTITY_TYPES = {
   CAMPUS: "school.campus",
   ACADEMIC_YEAR: "school.academic_year",
@@ -329,4 +473,12 @@ export const SCHOOL_ENTITY_TYPES = {
   EXAM_RESULT: "school.exam_result",
   EXAM_MODERATION_SUBMIT: "school.exam_moderation_submit",
   EXAM_PUBLISH: "school.exam_publish",
+  TIMETABLE_ENTRY: "school.timetable_entry",
+  LIBRARY_BOOK: "school.library_book",
+  LIBRARY_LOAN: "school.library_loan",
+  LIBRARY_LOAN_RETURN: "school.library_loan_return",
+  TRANSPORT_ROUTE: "school.transport_route",
+  TRANSPORT_ASSIGNMENT: "school.transport_assignment",
+  PAYROLL_ADJUSTMENT: "school.payroll_adjustment",
+  SETTINGS: "school.settings",
 } as const;

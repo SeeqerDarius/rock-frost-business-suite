@@ -14,6 +14,8 @@ describe("conflict policy", () => {
     "school.fee_invoice",
     "school.fee_payment",
     "school.fee_structure_issuance",
+    "school.timetable_entry",
+    "school.settings",
   ])("protects supported sensitive type %s", (entityType) => expect(isProtectedEntityType(entityType)).toBe(true));
   it("requires explicit resolution", () => expect(requiresExplicitResolution("fleet", "fleet.maintenance_request")).toBe(true));
   it("offers only the server-supported KEEP_CLOUD choice", () => expect(getPermittedResolutionChoices({ allowedResolutions: ["KEEP_CLOUD", "UNSUPPORTED"] })).toEqual(["KEEP_CLOUD"]));

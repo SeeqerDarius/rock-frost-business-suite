@@ -44,6 +44,19 @@ export const OFFLINE_ENTITY_TYPES = [
   "school.exam_result",
   "school.exam_moderation_submit",
   "school.exam_publish",
+  // Milestone 10: timetable, library, transport, payroll adjustments, and
+  // settings. school.library_loan_return and school.transport_assignment
+  // are events/references, not edits, for the same reasons documented in
+  // school.adapters.ts. school.settings is this milestone's one genuine
+  // UPDATE, keyed by the campus's own id rather than a fixed sentinel.
+  "school.timetable_entry",
+  "school.library_book",
+  "school.library_loan",
+  "school.library_loan_return",
+  "school.transport_route",
+  "school.transport_assignment",
+  "school.payroll_adjustment",
+  "school.settings",
 ] as const;
 
 export const activationSchema = z.object({

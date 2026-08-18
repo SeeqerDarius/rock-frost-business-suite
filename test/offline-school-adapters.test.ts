@@ -33,10 +33,19 @@ const mockSchoolService = {
   recordSchoolExamResult: vi.fn(),
   submitSchoolExamForModeration: vi.fn(),
   publishSchoolExam: vi.fn(),
+  createSchoolTimetableEntry: vi.fn(),
+  createSchoolLibraryBook: vi.fn(),
+  borrowSchoolLibraryBook: vi.fn(),
+  returnSchoolLibraryBook: vi.fn(),
+  createSchoolTransportRoute: vi.fn(),
+  assignSchoolTransport: vi.fn(),
+  createSchoolPayrollAdjustment: vi.fn(),
+  upsertSchoolSettings: vi.fn(),
 };
 
 const mockDb = {
   schoolStudent: { findFirst: vi.fn() },
+  schoolSettings: { findFirst: vi.fn() },
 };
 
 vi.mock("@/modules/school/service", () => mockSchoolService);
@@ -518,5 +527,177 @@ describe("school.exam_publish", () => {
     await expect(
       applyOfflineMutation(tenant(["school.exams.publish"]), mutation({ entityType: "school.exam_publish", payload: { examId: "ex1" } })),
     ).rejects.toMatchObject({ conflictType: "SERVER_STATE_CHANGED" });
+  });
+});
+
+describe("school.timetable_entry", () => {
+  it("requires school.timetables.manage and calls createSchoolTimetableEntry", async () => {
+    mockSchoolService.createSchoolTimetableEntry.mockResolvedValue({ id: "tt1", classId: "cl1" });
+    const result = await applyOfflineMutation(
+      tenant(["school.timetables.manage"]),
+      mutation({ entityType: "school.timetable_entry", payload: { campusId: "c1", termId: "t1", classId: "cl1", subjectId: "sub1", teacherName: "Ms. Mensah", dayOfWeek: 1, startsAt: "08:00", endsAt: "09:00" } }),
+    );
+    expect(mockSchoolService.createSchoolTimetableEntry).toHaveBeenCalledWith("org-1", { campusId: "c1", termId: "t1", classId: "cl1", subjectId: "sub1", teacherName: "Ms. Mensah", dayOfWeek: 1, startsAt: "08:00", endsAt: "09:00" });
+    expect(result).toEqual({ id: "tt1", classId: "cl1" });
+  });
+
+  it("a conflicting class/teacher/room period surfaces as a conflict rather than a crash", async () => {
+    class SchoolStateError extends Error {}
+    mockSchoolService.createSchoolTimetableEntry.mockRejectedValue(new SchoolStateError("Timetable conflicts with an existing class, teacher, or room period."));
+    await expect(
+      applyOfflineMutation(
+        tenant(["school.timetables.manage"]),
+        mutation({ entityType: "school.timetable_entry", payload: { campusId: "c1", termId: "t1", classId: "cl1", subjectId: "sub1", teacherName: "Ms. Mensah", dayOfWeek: 1, startsAt: "08:00", endsAt: "09:00" } }),
+      ),
+    ).rejects.toMatchObject({ conflictType: "SERVER_STATE_CHANGED" });
+  });
+
+  it("is denied without school.timetables.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.timetable_entry", payload: { campusId: "c1", termId: "t1", classId: "cl1", subjectId: "sub1", teacherName: "Ms. Mensah", dayOfWeek: 1, startsAt: "08:00", endsAt: "09:00" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.library_book / school.library_loan / school.library_loan_return", () => {
+  it("book create requires school.library.manage and calls createSchoolLibraryBook", async () => {
+    mockSchoolService.createSchoolLibraryBook.mockResolvedValue({ id: "b1", accessionCode: "ACC-1" });
+    const result = await applyOfflineMutation(
+      tenant(["school.library.manage"]),
+      mutation({ entityType: "school.library_book", payload: { accessionCode: "ACC-1", title: "Algebra I", totalCopies: 3 } }),
+    );
+    expect(mockSchoolService.createSchoolLibraryBook).toHaveBeenCalledWith("org-1", { accessionCode: "ACC-1", title: "Algebra I", totalCopies: 3 });
+    expect(result).toEqual({ id: "b1", accessionCode: "ACC-1" });
+  });
+
+  it("borrow calls borrowSchoolLibraryBook with its positional arguments", async () => {
+    mockSchoolService.borrowSchoolLibraryBook.mockResolvedValue({ id: "ln1", bookId: "b1" });
+    const result = await applyOfflineMutation(
+      tenant(["school.library.manage"]),
+      mutation({ entityType: "school.library_loan", payload: { bookId: "b1", studentId: "s1", dueAt: "2026-08-31" } }),
+    );
+    expect(mockSchoolService.borrowSchoolLibraryBook).toHaveBeenCalledWith("org-1", "b1", "s1", new Date("2026-08-31"));
+    expect(result).toEqual({ id: "ln1", bookId: "b1" });
+  });
+
+  it("no available copy surfaces as a conflict rather than a crash", async () => {
+    class SchoolStateError extends Error {}
+    mockSchoolService.borrowSchoolLibraryBook.mockRejectedValue(new SchoolStateError("No copy is available."));
+    await expect(
+      applyOfflineMutation(tenant(["school.library.manage"]), mutation({ entityType: "school.library_loan", payload: { bookId: "b1", studentId: "s1", dueAt: "2026-08-31" } })),
+    ).rejects.toMatchObject({ conflictType: "SERVER_STATE_CHANGED" });
+  });
+
+  it("return is a CREATE event that calls returnSchoolLibraryBook with the real loanId from the payload", async () => {
+    mockSchoolService.returnSchoolLibraryBook.mockResolvedValue({ id: "ln1", status: "RETURNED" });
+    const result = await applyOfflineMutation(
+      tenant(["school.library.manage"]),
+      mutation({ entityType: "school.library_loan_return", entityId: "correlation-1", payload: { loanId: "ln1" } }),
+    );
+    expect(mockSchoolService.returnSchoolLibraryBook).toHaveBeenCalledWith("org-1", "ln1");
+    expect(result).toEqual({ id: "ln1", status: "RETURNED" });
+  });
+
+  it("all three are denied without school.library.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.library_book", payload: { accessionCode: "ACC-1", title: "Algebra I", totalCopies: 3 } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.library_loan", payload: { bookId: "b1", studentId: "s1", dueAt: "2026-08-31" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.library_loan_return", payload: { loanId: "ln1" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.transport_route / school.transport_assignment", () => {
+  it("route create requires school.transport.manage and calls createSchoolTransportRoute", async () => {
+    mockSchoolService.createSchoolTransportRoute.mockResolvedValue({ id: "rt1", name: "Route 1" });
+    const result = await applyOfflineMutation(
+      tenant(["school.transport.manage"]),
+      mutation({ entityType: "school.transport_route", payload: { campusId: "c1", code: "R1", name: "Route 1", fee: 50 } }),
+    );
+    expect(mockSchoolService.createSchoolTransportRoute).toHaveBeenCalledWith("org-1", { campusId: "c1", code: "R1", name: "Route 1", fee: 50 });
+    expect(result).toEqual({ id: "rt1", name: "Route 1" });
+  });
+
+  it("assignment calls assignSchoolTransport with its positional arguments, idempotent server-side via its own upsert", async () => {
+    mockSchoolService.assignSchoolTransport.mockResolvedValue({ routeId: "rt1", studentId: "s1" });
+    const result = await applyOfflineMutation(
+      tenant(["school.transport.manage"]),
+      mutation({ entityType: "school.transport_assignment", payload: { routeId: "rt1", studentId: "s1", stopName: "Main St" } }),
+    );
+    expect(mockSchoolService.assignSchoolTransport).toHaveBeenCalledWith("org-1", "rt1", "s1", "Main St");
+    expect(result).toEqual({ routeId: "rt1", studentId: "s1" });
+  });
+
+  it("both are denied without school.transport.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.transport_route", payload: { campusId: "c1", code: "R1", name: "Route 1", fee: 50 } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.transport_assignment", payload: { routeId: "rt1", studentId: "s1" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.payroll_adjustment", () => {
+  it("requires school.payroll.manage and calls createSchoolPayrollAdjustment", async () => {
+    mockSchoolService.createSchoolPayrollAdjustment.mockResolvedValue({ id: "pa1", amount: "100.00" });
+    const result = await applyOfflineMutation(
+      tenant(["school.payroll.manage"]),
+      mutation({ entityType: "school.payroll_adjustment", payload: { employeeId: "emp1", period: "2026-08", type: "BONUS", description: "Performance", amount: "100.00" } }),
+    );
+    expect(mockSchoolService.createSchoolPayrollAdjustment).toHaveBeenCalledWith("org-1", { employeeId: "emp1", period: "2026-08", type: "BONUS", description: "Performance", amount: "100.00" });
+    expect(result).toEqual({ id: "pa1", amount: "100.00" });
+  });
+
+  it("is denied without school.payroll.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.payroll_adjustment", payload: { employeeId: "emp1", period: "2026-08", type: "BONUS", description: "Performance", amount: "100.00" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.settings", () => {
+  it("UPDATE succeeds and calls upsertSchoolSettings when baseVersion matches the current server version", async () => {
+    const updatedAt = new Date("2026-08-17T00:00:00.000Z");
+    mockDb.schoolSettings.findFirst.mockResolvedValue({ updatedAt });
+    mockSchoolService.upsertSchoolSettings.mockResolvedValue({ campusId: "c1", receiptPrefix: "SCH" });
+    const result = await applyOfflineMutation(
+      tenant(["school.settings.manage"]),
+      mutation({ entityType: "school.settings", operation: "UPDATE", entityId: "c1", baseVersion: updatedAt.getTime(), payload: { attendanceCloseDays: 7, receiptPrefix: "SCH", allowRanking: true } }),
+    );
+    expect(mockSchoolService.upsertSchoolSettings).toHaveBeenCalledWith("org-1", { campusId: "c1", attendanceCloseDays: 7, receiptPrefix: "SCH", allowRanking: true, gradingScale: undefined });
+    expect(result).toEqual({ campusId: "c1", receiptPrefix: "SCH" });
+  });
+
+  it("a campus with no settings row yet has version 0, not ENTITY_DELETED - never configured is not deleted", async () => {
+    mockDb.schoolSettings.findFirst.mockResolvedValue(null);
+    mockSchoolService.upsertSchoolSettings.mockResolvedValue({ campusId: "c1", receiptPrefix: "SCH" });
+    const result = await applyOfflineMutation(
+      tenant(["school.settings.manage"]),
+      mutation({ entityType: "school.settings", operation: "UPDATE", entityId: "c1", baseVersion: 0, payload: { attendanceCloseDays: 7, receiptPrefix: "SCH", allowRanking: false } }),
+    );
+    expect(mockSchoolService.upsertSchoolSettings).toHaveBeenCalled();
+    expect(result).toEqual({ campusId: "c1", receiptPrefix: "SCH" });
+  });
+
+  it("rejects a stale baseVersion as a conflict without calling upsertSchoolSettings", async () => {
+    mockDb.schoolSettings.findFirst.mockResolvedValue({ updatedAt: new Date("2026-08-17T00:00:00.000Z") });
+    await expect(
+      applyOfflineMutation(
+        tenant(["school.settings.manage"]),
+        mutation({ entityType: "school.settings", operation: "UPDATE", entityId: "c1", baseVersion: 1, payload: { attendanceCloseDays: 7, receiptPrefix: "SCH", allowRanking: false } }),
+      ),
+    ).rejects.toMatchObject({ conflictType: "STALE_VERSION" });
+    expect(mockSchoolService.upsertSchoolSettings).not.toHaveBeenCalled();
+  });
+
+  it("is denied without school.settings.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.settings", operation: "UPDATE", entityId: "c1", baseVersion: 0, payload: { attendanceCloseDays: 7, receiptPrefix: "SCH", allowRanking: false } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
   });
 });
