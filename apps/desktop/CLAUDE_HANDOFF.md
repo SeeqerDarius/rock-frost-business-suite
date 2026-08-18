@@ -1,5 +1,86 @@
 # Desktop client handoff
 
+## 2026-08-18 Sidebar navigation to match the web app's real shell (0.2.4 to 0.2.5)
+
+After installing and testing `0.2.4` (the shadcn/Tailwind component port), the
+operator's feedback was that the desktop still did not look like the web app:
+the web app uses a persistent left sidebar with grouped navigation and a real
+Overview dashboard (screenshotted from `/app/school`); the desktop still had
+the old top-of-page card grid (`ModuleLauncher`) to pick a module, then a
+horizontal `Tabs` bar inside each module shell to pick a screen. The component
+library was ported in `0.2.4`; the actual page layout/navigation architecture
+was not, and that gap was the real complaint.
+
+Read the web app's actual shell to copy it precisely rather than
+approximating: `src/components/layout/app-shell.tsx` (sticky collapsible
+sidebar, workspace header, section label, footer sign-out) and
+`src/components/navigation/sidebar-nav.tsx` (grouped nav items with an
+active-state left accent bar) render every `/app/*` page; each module's
+`layout.tsx` (e.g. `src/app/app/school/layout.tsx`) supplies that module's own
+`ModuleNavItem[]` (`src/modules/school/navigation.tsx`,
+`src/modules/pos/navigation.tsx`) with a `group` field
+(Overview/People/Academics/Finance/Services/Administration for School) that
+`SidebarNav` renders as section headers. The header's module switcher
+(`src/components/navigation/module-launcher.tsx`) is a dialog, not the card
+grid the desktop had. `src/app/app/school/page.tsx` (the Overview page in the
+screenshot) has no desktop equivalent at all - School's screen list started
+at "Academic setup," with no Overview tab.
+
+Built, adapted for a router-less Vite SPA (state, not `next/navigation`):
+- `src/shell/navigation.tsx` (new): `POS_NAVIGATION`/`SCHOOL_NAVIGATION`/`DEMO_NAVIGATION`
+  arrays with the same `group` groupings as the web app's nav configs.
+- `src/shell/AppSidebar.tsx` (new): the actual sidebar + header + content
+  shell, replacing `AppShell.tsx`'s old header-bar-plus-card-grid-plus-main
+  layout. Owns `selectedModule`/`activeKey` state (switching module resets to
+  that module's Overview); renders a local `SidebarNav` mirroring the web
+  app's grouped-list-with-accent-bar rendering.
+- `src/shell/ModuleLauncher.tsx` (rewritten): was a card grid rendered inline
+  in the old shell body; now a header dialog triggered by a `Grid3x3` icon
+  button, mirroring the web app's `module-launcher.tsx` exactly (same
+  enabled/not-enabled card treatment). Still exports `MODULES` for
+  `ModuleDetailView.tsx`'s existing import.
+- `src/modules/school/screens/SchoolOverviewScreen.tsx` (new): stat tiles
+  (active students, active classes, outstanding fees, overdue library loans)
+  plus "Attendance to date" and "Fee position" section cards, computed from
+  the already-cached `SchoolSnapshot` client-side (`computeFeeInvoiceOutstanding`
+  for the fee math, matching `SchoolFeesScreen.tsx`'s own usage) - matches
+  `src/app/app/school/page.tsx`'s layout and copy closely, scoped to what's
+  cached on-device rather than a live server query.
+- `PosModuleShell.tsx`/`SchoolModuleShell.tsx` (rewritten): dropped their own
+  `Tabs`/`TabsList` UI entirely; now a plain `screen: string` prop switch that
+  only owns the snapshot/reload hook wiring. The sidebar is the only
+  navigation surface now, matching the web app where `Tabs` never appeared in
+  this role.
+- `AppShell.tsx` (rewritten): shrank to the activity-tracking/first-sync
+  effects plus `<AppSidebar />`; the old inline header/card-grid/tabs JSX is
+  gone.
+
+Root cause of two false-start build attempts: this repository's `main`
+working tree (as opposed to the worktree the `0.2.3`/`0.2.4` work happened in)
+had never had `npm install` run in `apps/desktop/` since the merge that
+brought in `0.2.4`'s new dependencies (`@tailwindcss/vite`, `@base-ui/react`,
+etc.) and had a stale `dist/` from before the CSP fix. `npx tsc --noEmit`
+failed on a missing `@tailwindcss/vite` module and an unrelated
+duplicate-`@types/react` structural error until `npm install` was run here
+directly; `npm test` failed one CSP-content assertion until `npm run build`
+regenerated `dist/index.html` in this same tree. Neither was a real code
+defect; both were this working tree's own dependency/build-artifact staleness.
+
+Validation from `apps/desktop/`: `npx tsc --noEmit` passed with zero errors;
+`npm run lint` passed; `npm test` passed unmodified, 16 files and 99 tests (no
+test touches `AppShell`/`AppSidebar`/`ModuleLauncher` directly, so none needed
+updating); `npm run build` compiled 2,134 modules. A live browser preview of
+the Vite dev server was not attempted: the app's activation gate requires the
+real Tauri device-lock/credential-manager/encrypted-SQLite stack, which does
+not exist outside the packaged native app, so `AppShell` renders nothing
+(`if (!device) return null`) under a plain browser. `cargo check` and
+`npm run tauri:build` (native, `CARGO_TARGET_DIR=C:\rfdbuild`, reused from the
+`0.2.4` build so only the frontend and the `rock-frost-desktop` crate itself
+needed rebuilding) produced NSIS and MSI `0.2.5` installers.
+
+Not yet done: the operator has not yet seen the new sidebar rendered in the
+real app. Sent for manual install/testing, same as every previous version.
+
 ## 2026-08-18 Tailwind v4 + shadcn/ui UI port from the web app (0.2.3 to 0.2.4)
 
 The user asked, after testing the previous milestones' UI, whether the

@@ -24,7 +24,7 @@ blocked with `Failed to fetch`, which looks identical to a real network
 outage. `connect-src` now allows `https://app.rockfrostgroup.com` in both
 `index.html` and `src-tauri/tauri.conf.json`.
 
-POS now has a real six-tab offline terminal (`src/modules/pos/screens/PosModuleShell.tsx`: Overview, Sell, Registers, Sales history, Reports, Settings) instead of the generic one-button demo view Fleet, Installment, and Inventory still use. See "Offline scope" below and `docs/OFFLINE_DESKTOP.md`'s "Desktop client: POS" section for what it can and cannot do fully offline.
+POS now has a real offline terminal (`src/modules/pos/screens/PosModuleShell.tsx`: Overview, Sell, Registers, Sales history, Reports, Settings) instead of the generic one-button demo view Fleet, Installment, and Inventory still use. See "Offline scope" below and `docs/OFFLINE_DESKTOP.md`'s "Desktop client: POS" section for what it can and cannot do fully offline.
 
 Version `0.2.4` replaces the desktop's own hand-rolled `--rf-*` CSS-variable
 theme and custom `Button`/`Card`/inline-style UI with the same Tailwind v4 +
@@ -40,6 +40,19 @@ real shadcn components (`Select`, `Checkbox`, `Tabs`, `Card`, `Badge`, `Input`,
 across the app did not need to change; every other primitive (`Select`,
 `Checkbox`, `Tabs`, `Label`) was converted at each call site. This is a
 presentation-only change: no adapter, sync, or offline-mutation logic moved.
+
+Version `0.2.5` replaces the previous top-tab, card-grid module launcher with
+a persistent, collapsible left sidebar (`src/shell/AppSidebar.tsx`) that
+mirrors the web app's real navigation shell (`src/components/layout/app-shell.tsx`):
+a grouped nav list per module (`src/shell/navigation.tsx`, matching the web
+app's `schoolNavigation`/`posNavigation` groupings), a header module switcher
+dialog (`src/shell/ModuleLauncher.tsx`, mirroring the web app's header
+launcher), and a real School Overview dashboard screen
+(`src/modules/school/screens/SchoolOverviewScreen.tsx`, stat tiles plus
+attendance/fee section cards, matching the web app's `/app/school` page) that
+did not exist before. `PosModuleShell`/`SchoolModuleShell` dropped their own
+`Tabs` bar and now render whichever screen the sidebar selects. Presentation
+and navigation only: no adapter, sync, or offline-mutation logic changed.
 
 ## Activation
 
