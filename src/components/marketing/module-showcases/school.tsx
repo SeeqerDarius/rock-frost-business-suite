@@ -102,8 +102,7 @@ function ExamPreview() {
 export function SchoolModuleShowcase() {
   return (
     <section aria-labelledby="school-showcase-title">
-      <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">Inside the module</p>
-      <h2 id="school-showcase-title" className="mt-3 text-2xl font-semibold tracking-tight">
+      <h2 id="school-showcase-title" className="text-2xl font-semibold tracking-tight">
         What day-to-day admin actually looks like
       </h2>
       <div className="mt-8 grid gap-4 lg:grid-cols-[1.15fr_1fr]">
