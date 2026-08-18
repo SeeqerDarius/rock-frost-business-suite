@@ -1,5 +1,16 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-18: School module advertised on the public site with illustrative previews
+
+- Added an in-app product preview to the School module's public landing page (`/modules/school`), between the hero and the feature list, so the marketing site now shows what day-to-day admin looks like instead of only listing feature bullets.
+- The previews are hand-built with the real UI kit tokens inside a small browser-chrome frame, not screenshots of a real tenant. This was a deliberate choice, not an oversight: the only School data available to capture was a live customer's real trial workspace (a real student's name and date of birth, a real guardian's contact details), and publishing that on a public marketing page would expose one customer's data to the world. `CustomerShowcase` already has an established convention for this (`isDemo` entries, a "Sample" badge, and a disclosure line), so the new component follows the same pattern with clearly fictional names and a matching disclosure line under the previews.
+- Three previews ship for School: the Overview dashboard's stat tiles, student admission with the guardian-inline feature called out, and exam result entry with the auto-selected-class feature called out, both shipped in the School module batch on 2026-08-18.
+- The mechanism is reusable: `ModuleShowcase` looks up the current module key in a small registry and renders nothing for modules that don't have one configured yet, so other modules can get the same treatment later without touching the shared `[moduleKey]/page.tsx` template again.
+- Important files: `src/components/marketing/module-showcase.tsx` (new), `src/components/marketing/module-showcases/school.tsx` (new), `src/app/(public)/modules/[moduleKey]/page.tsx`.
+- Schema and environment changes: none.
+- Validation: `npx tsc --noEmit` passed with zero errors; `npm run lint` passed; `npm test` passed with 74 files and 492 tests (unchanged, no new test surface, this is presentational marketing content); `npm run build` compiled successfully, including `/modules/school`'s static path. Manually verified in a local dev preview: the previews render with the intended sample data and the disclosure line, and no new console errors.
+- Docs: `docs/DESIGN_SYSTEM.md`'s component-conventions section now documents `ModuleShowcase` and the fictional-data rule for future module showcases.
+
 ## 2026-08-18: Production login outage - Turnstile unconfigured, every sign-in rejected
 
 - The user reported "We couldn't verify this sign-in attempt. Refresh the page and try again." on `/login` with a credential they confirmed was correct. Confirmed via the browser tool that `https://app.rockfrostgroup.com/login` renders zero `.cf-turnstile` elements in the live DOM.

@@ -8,6 +8,7 @@ import { JsonLd } from "@/components/seo/json-ld";
 import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry";
 import { createPublicMetadata, MODULE_SEO, SITE_URL } from "@/lib/seo";
 import { PublicHero } from "@/components/marketing/public-hero";
+import { ModuleShowcase } from "@/components/marketing/module-showcase";
 
 type ModuleKey = keyof typeof MODULE_SEO;
 
@@ -75,6 +76,8 @@ export default async function ModuleLandingPage({
               Request this module
             </Button>
           </>} />
+
+      <ModuleShowcase moduleKey={moduleKey} />
 
       <section className="public-section-tint">
         <div className="mx-auto max-w-6xl px-6 py-20">
