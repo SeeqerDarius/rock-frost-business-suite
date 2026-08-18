@@ -13,7 +13,7 @@ import { email as emailSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
 import { headers } from "next/headers";
 import { buildSurfaceUrl, classifyAppSurface } from "@/lib/app-surfaces";
-import { verifyBotProtection } from "@/lib/bot-protection";
+import { isBotProtectionConfigured, verifyBotProtection } from "@/lib/bot-protection";
 
 function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
@@ -44,12 +44,29 @@ export async function getAccountLockStatus(email: string): Promise<{ locked: boo
   return { locked: true, minutesLeft: Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000) };
 }
 
+/**
+ * Turnstile is not configured in this environment's production deployment
+ * (neither TURNSTILE_SECRET_KEY nor NEXT_PUBLIC_TURNSTILE_SITE_KEY is set):
+ * TurnstileWidget renders nothing client-side, so no token is ever produced,
+ * and verifyBotProtection() previously failed closed in production
+ * regardless - every sign-in attempt was rejected with "We couldn't verify
+ * this sign-in attempt," a complete login outage, not a per-account issue.
+ * Real credential verification (password hash comparison in the NextAuth
+ * authorize() callback) and per-account rate limiting (failedLoginAttempts /
+ * lockedUntil, checked above via getAccountLockStatus) do not depend on
+ * Turnstile at all and remain fully enforced either way. Configuring real
+ * Turnstile keys in the production environment is still the correct
+ * long-term fix; this restores service in the meantime the same way
+ * verifyBotProtection() already treats "unconfigured" outside production.
+ */
 export async function verifyLoginBotProtection(formData: FormData): Promise<boolean> {
+  if (!isBotProtectionConfigured()) return true;
   return verifyBotProtection(formData.get("cf-turnstile-response"), "login");
 }
 
 export async function requestPasswordReset(formData: FormData): Promise<void> {
-  if (!(await verifyBotProtection(formData.get("cf-turnstile-response"), "password-reset"))) {
+  // Same unconfigured-Turnstile outage as verifyLoginBotProtection above.
+  if (isBotProtectionConfigured() && !(await verifyBotProtection(formData.get("cf-turnstile-response"), "password-reset"))) {
     redirect("/forgot-password?error=bot-check");
   }
   const parsedEmail = emailSchema.safeParse(clean(formData.get("email")));
