@@ -40,6 +40,51 @@ School actions preserve stable rejection codes for customer-readable feedback,
 bulk issuance reports issued/skipped counts, and student status claims reject
 concurrent stale transitions.
 
+## Customer-readiness tranche 2 — capacity, lifecycle controls, teacher scoping, and UX fixes
+
+Migration `20260818160000_add_school_class_teacher` adds `SchoolClassTeacher`,
+a class-to-user assignment table. This tranche also delivered, without a
+schema change:
+
+- **Class capacity is now editable after creation** (`updateSchoolClassCapacity`,
+  Classes & Enrollment's per-row Edit-capacity dialog). Refuses to set
+  capacity below the number of students already actively enrolled.
+- **Academic years can be archived or deleted.** Archiving
+  (`closeSchoolAcademicYear`) sets the existing `closedAt` column and clears
+  `current`; it's available to anyone with `school.academics.manage`. Hard
+  deletion (`deleteSchoolAcademicYear`) additionally requires the
+  organization-admin permission (`org.settings.manage`) and the acting
+  user's account password re-entered in the delete dialog, and only
+  succeeds when the year has zero terms, enrollments, fee invoices, fee
+  structures, or exams attached — real academic history must be archived,
+  not deleted.
+- **Teacher class scoping.** `SchoolClassTeacher` lets an admin (Classes &
+  Enrollment's Manage-teachers dialog) assign specific staff to specific
+  classes. A user with at least one assignment can only record attendance
+  or exam results for their assigned class(es); `recordSchoolAttendance`
+  and `recordSchoolExamResult` enforce this in the service layer itself
+  (both the web action and the desktop offline-sync adapter pass the
+  acting user through), and the attendance/exam pages filter the Class
+  picker to match. A user with zero assignments is unrestricted, matching
+  the existing seeded "Teacher" role's design (view + attendance + exams +
+  timetables, org-wide) unless an admin opts them into class scoping.
+- **Admitting a student can add their guardian in the same step**
+  (`admitSchoolStudent`): optional guardian fields on the admission dialog
+  create and link a guardian transactionally, instead of requiring the
+  separate "Add guardian" then "Link guardian" flow first. That separate
+  flow still exists for a guardian who already has other children on
+  record.
+- **Selecting a student on the exam-results form now defaults the Class
+  field** to their current active enrollment (`StudentClassFields`,
+  progressive client-side enhancement over the two native selects; the
+  server action still validates the submitted class independently).
+- **Fixed a dialog-overflow bug**: `DialogContent`
+  (`src/components/ui/dialog.tsx`) had no max-height or scroll, so a tall
+  dialog (e.g. admission with the new guardian section) could render fields
+  and the submit button below the visible viewport with no way to reach
+  them. Now `max-h-[calc(100vh-2rem)] overflow-y-auto`. This is the shared
+  Dialog every module uses, not School-specific.
+
 ## Remaining customer-readiness program
 
 ### Student administration

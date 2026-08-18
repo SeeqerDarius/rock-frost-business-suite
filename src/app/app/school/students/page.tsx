@@ -80,6 +80,23 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
         <Textarea id="student-medical-notes" name="medicalNotes" rows={3} maxLength={5000} />
         <p className="text-xs leading-relaxed text-muted-foreground">Optional. Allergies, conditions, or safeguarding notes staff must know.</p>
       </div>
+      <div className="space-y-3 rounded-lg border border-dashed p-3">
+        <div>
+          <p className="text-sm font-medium">Guardian (optional)</p>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Fill this in to add and link a guardian in the same step, instead of using &quot;Add guardian&quot; and &quot;Link guardian&quot; separately. Leave blank if the guardian already exists - link them afterwards instead.
+          </p>
+        </div>
+        <FieldGrid>
+          <TextField id="student-guardian-first-name" name="guardianFirstName" label="First name" maxLength={200} />
+          <TextField id="student-guardian-last-name" name="guardianLastName" label="Last name" maxLength={200} />
+        </FieldGrid>
+        <FieldGrid>
+          <TextField id="student-guardian-phone" name="guardianPhone" label="Phone" type="tel" maxLength={200} />
+          <TextField id="student-guardian-relationship" name="guardianRelationship" label="Relationship" placeholder="Mother, Father, Aunt…" maxLength={200} />
+        </FieldGrid>
+        <TextField id="student-guardian-email" name="guardianEmail" label="Email" type="email" hint="Optional." />
+      </div>
     </EntityDialog>
   );
 

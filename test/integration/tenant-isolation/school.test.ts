@@ -96,6 +96,6 @@ describe("School service — real tenant isolation and customer-readiness guards
     const oldDate = new Date(now);
     oldDate.setDate(oldDate.getDate() - 3);
     oldDate.setHours(0, 0, 0, 0);
-    await expect(school.recordSchoolAttendance(orgA.organizationId, { termId: term.id, classId: schoolClass.id, studentId: student.id, date: oldDate, status: "PRESENT" })).rejects.toThrow("correction window has closed");
+    await expect(school.recordSchoolAttendance(orgA.organizationId, orgA.userId, { termId: term.id, classId: schoolClass.id, studentId: student.id, date: oldDate, status: "PRESENT" })).rejects.toThrow("correction window has closed");
   });
 });

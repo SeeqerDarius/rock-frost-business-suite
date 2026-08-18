@@ -17,7 +17,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
  * docs/SCHOOL_UI_CUSTOMER_READINESS.md.
  */
 
-export type SchoolErrorCode = "forbidden" | "invalid" | "state" | "not-found";
+export type SchoolErrorCode = "forbidden" | "invalid" | "state" | "not-found" | "wrong-password";
 
 const STATE_REASONS: Record<string, string> = {
   "class-capacity": "That class has reached its configured capacity.",
@@ -35,6 +35,7 @@ const GENERIC: Record<SchoolErrorCode, { title: string; description: string }> =
   invalid: { title: "Nothing was saved", description: "Some values were missing or in the wrong format. Check the highlighted form and submit again." },
   state: { title: "That change isn't allowed right now", description: "The record's current status or a school rule blocked this change. Refresh to see the latest state." },
   "not-found": { title: "That record could not be found", description: "It may have been removed or belongs to another campus. Refresh the page and try again." },
+  "wrong-password": { title: "Password incorrect", description: "The password you entered doesn't match your account. Nothing was deleted." },
 };
 
 interface FormFeedbackProps {

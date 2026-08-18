@@ -263,6 +263,7 @@ model User {
   notifications                   Notification[]
   uploadedFiles                   FileAsset[]
   fleetDriverProfiles             FleetDriver[]
+  schoolClassTeacherAssignments   SchoolClassTeacher[]
   fleetOwnerProfiles              FleetOwner[]
   maintenanceRequests             FleetMaintenanceRequest[]
   fleetMaintenanceEvents          FleetMaintenanceEvent[]
@@ -462,6 +463,7 @@ model Organization {
   schoolStudents                  SchoolStudent[]
   schoolStudentGuardians          SchoolStudentGuardian[]
   schoolClasses                   SchoolClass[]
+  schoolClassTeachers             SchoolClassTeacher[]
   schoolSubjects                  SchoolSubject[]
   schoolEnrollments               SchoolEnrollment[]
   schoolAttendance                SchoolAttendance[]
@@ -3268,9 +3270,33 @@ model SchoolClass {
   results       SchoolExamResult[]
   timetable     SchoolTimetableEntry[]
   feeStructures SchoolFeeStructure[]
+  teachers      SchoolClassTeacher[]
 
   @@unique([campusId, code])
   @@index([organizationId, active])
+}
+
+/**
+ * Restricts a teacher-role user to only the class(es) they're assigned to
+ * here when they record attendance or exam results (see
+ * resolveTeacherClassScope in src/modules/school/service.ts). A user with
+ * no rows in this table is unrestricted - assignment is opt-in per class,
+ * not implied by holding the seeded "Teacher" role, so an admin can scope
+ * any member this way without a hardcoded role-name check.
+ */
+model SchoolClassTeacher {
+  id             String   @id @default(cuid())
+  organizationId String
+  classId        String
+  userId         String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  class        SchoolClass  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, userId])
+  @@index([organizationId, userId])
 }
 
 model SchoolSubject {

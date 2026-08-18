@@ -6,27 +6,41 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FormFeedback, ReadOnlyNotice } from "@/components/school/form-feedback";
 import { FieldGrid, SelectField, TextField } from "@/components/school/form-fields";
+import { StudentClassFields } from "@/components/school/student-class-fields";
 import { PrerequisiteNotice, SectionCard } from "@/components/school/section-card";
 import { StatusBadge } from "@/components/school/status-badge";
 import { formatDate } from "@/components/school/format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getSchoolAcademicSetup, listSchoolExams, listSchoolStudents } from "@/modules/school/service";
+import { getSchoolAcademicSetup, listSchoolExams, listSchoolStudents, resolveTeacherClassScope } from "@/modules/school/service";
 import { createExamAction, publishExamAction, recordExamResultAction, submitExamForModerationAction } from "../actions";
 
 export default async function SchoolExamsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_MANAGE);
   const canPublish = hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_PUBLISH);
-  const [[years, classes, subjects], students, exams] = await Promise.all([
+  const [[years, allClasses, subjects], students, exams, teacherClassScope] = await Promise.all([
     getSchoolAcademicSetup(tenant.organizationId),
     listSchoolStudents(tenant.organizationId),
     listSchoolExams(tenant.organizationId),
+    resolveTeacherClassScope(tenant.organizationId, tenant.userId),
   ]);
+
+  // A teacher assigned to specific classes (Classes & Enrollment > Assign
+  // teacher) only sees and can record results for those classes; anyone
+  // with no assignments (Academic Head, Admin, etc.) is unrestricted. The
+  // service layer re-enforces this independently, so this filter is a UX
+  // convenience, not the actual security boundary.
+  const classes = teacherClassScope ? allClasses.filter((schoolClass) => teacherClassScope.has(schoolClass.id)) : allClasses;
 
   const termOptions = years.flatMap((year) => year.terms.map((term) => ({ value: term.id, label: `${year.name} · ${term.name}${term.current ? " (current)" : ""}` })));
   const studentOptions = students.filter((student) => student.status === "ACTIVE").map((student) => ({ value: student.id, label: `${student.lastName}, ${student.firstName} (${student.admissionNumber})` }));
   const classOptions = classes.map((schoolClass) => ({ value: schoolClass.id, label: `${schoolClass.campus.name} · ${schoolClass.name}` }));
+  const studentClassMap = Object.fromEntries(
+    students
+      .map((student) => [student.id, student.enrollments.find((enrollment) => enrollment.status === "ACTIVE")?.classId] as const)
+      .filter((entry): entry is [string, string] => Boolean(entry[1])),
+  );
 
   const newExamDialog = (
     <EntityDialog
@@ -103,8 +117,16 @@ export default async function SchoolExamsPage({ searchParams }: { searchParams: 
                       {/* The service requires the subject to match the exam's own subject, so it is fixed here rather than chosen. */}
                       <input type="hidden" name="examId" value={exam.id} />
                       <input type="hidden" name="subjectId" value={exam.subjectId} />
-                      <SelectField id={`result-student-${exam.id}`} name="studentId" label="Student" required options={studentOptions} emptyHint="Only active students can be marked." />
-                      <SelectField id={`result-class-${exam.id}`} name="classId" label="Class" required options={classOptions} emptyHint="Create a class first." hint="The student must be actively enrolled in this class for the exam's academic year." />
+                      <StudentClassFields
+                        studentFieldId={`result-student-${exam.id}`}
+                        studentFieldName="studentId"
+                        studentOptions={studentOptions}
+                        classFieldId={`result-class-${exam.id}`}
+                        classFieldName="classId"
+                        classOptions={classOptions}
+                        classHint="The student must be actively enrolled in this class for the exam's academic year."
+                        studentClassMap={studentClassMap}
+                      />
                       <TextField id={`result-marks-${exam.id}`} name="marks" label="Marks" type="number" step="0.01" min="0" max={Number(exam.totalMarks)} required hint={`Between 0 and ${Number(exam.totalMarks)}.`} />
                       <FieldGrid>
                         <TextField id={`result-grade-${exam.id}`} name="grade" label="Grade" maxLength={200} hint="Optional." />

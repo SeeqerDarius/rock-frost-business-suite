@@ -319,7 +319,7 @@ describe("school.attendance", () => {
       tenant(["school.attendance.manage"]),
       mutation({ entityType: "school.attendance", payload: { termId: "t1", classId: "cl1", studentId: "s1", date: "2026-08-17", status: "PRESENT" } }),
     );
-    expect(mockSchoolService.recordSchoolAttendance).toHaveBeenCalledWith("org-1", { termId: "t1", classId: "cl1", studentId: "s1", date: new Date("2026-08-17"), status: "PRESENT" });
+    expect(mockSchoolService.recordSchoolAttendance).toHaveBeenCalledWith("org-1", "user-1", { termId: "t1", classId: "cl1", studentId: "s1", date: new Date("2026-08-17"), status: "PRESENT" });
     expect(result).toEqual({ id: "a1", status: "PRESENT" });
   });
 
@@ -457,7 +457,7 @@ describe("school.exam_result", () => {
       tenant(["school.exams.manage"]),
       mutation({ entityType: "school.exam_result", payload: { examId: "ex1", studentId: "s1", classId: "cl1", subjectId: "sub1", marks: 72 } }),
     );
-    expect(mockSchoolService.recordSchoolExamResult).toHaveBeenCalledWith("org-1", { examId: "ex1", studentId: "s1", classId: "cl1", subjectId: "sub1", marks: 72 });
+    expect(mockSchoolService.recordSchoolExamResult).toHaveBeenCalledWith("org-1", "user-1", { examId: "ex1", studentId: "s1", classId: "cl1", subjectId: "sub1", marks: 72 });
     expect(result).toEqual({ id: "res1", marks: "72", grade: "B" });
   });
 

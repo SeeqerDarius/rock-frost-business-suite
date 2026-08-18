@@ -42,6 +42,39 @@ export async function createSchoolAcademicYear(organizationId: string, data: { n
   });
 }
 
+/**
+ * Soft-closes an academic year (sets closedAt, clears `current`) without
+ * deleting anything underneath it - terms, enrollments, fees, and exams all
+ * stay intact and queryable. This is the normal end-of-year action; hard
+ * deletion (deleteSchoolAcademicYear) stays reserved for a genuine mistake.
+ */
+export async function closeSchoolAcademicYear(organizationId: string, yearId: string) {
+  const year = await db.schoolAcademicYear.findFirst({ where: { id: yearId, organizationId } });
+  if (!year) throw new SchoolNotFoundError("Academic year not found.");
+  if (year.closedAt) throw new SchoolStateError("This academic year is already archived.", "already-closed");
+  return db.schoolAcademicYear.update({ where: { id: yearId }, data: { closedAt: new Date(), current: false } });
+}
+
+/**
+ * Hard-deletes an academic year. Only permitted when it has zero terms,
+ * enrollments, fee invoices, fee structures, or exams attached - any real
+ * academic history must be archived (closeSchoolAcademicYear) instead of
+ * destroyed. The action layer additionally requires an admin permission
+ * and a re-entered password before calling this.
+ */
+export async function deleteSchoolAcademicYear(organizationId: string, yearId: string) {
+  const year = await db.schoolAcademicYear.findFirst({
+    where: { id: yearId, organizationId },
+    include: { _count: { select: { terms: true, enrollments: true, feeInvoices: true, feeStructures: true, exams: true } } },
+  });
+  if (!year) throw new SchoolNotFoundError("Academic year not found.");
+  const { terms, enrollments, feeInvoices, feeStructures, exams } = year._count;
+  if (terms + enrollments + feeInvoices + feeStructures + exams > 0) {
+    throw new SchoolStateError("This academic year has terms or records attached. Archive it instead of deleting.", "has-dependents");
+  }
+  await db.schoolAcademicYear.delete({ where: { id: yearId } });
+}
+
 export async function createSchoolTerm(organizationId: string, data: { academicYearId: string; name: string; startDate: Date; endDate: Date; current?: boolean }) {
   const year = await db.schoolAcademicYear.findFirst({ where: { id: data.academicYearId, organizationId } });
   if (!year) throw new SchoolNotFoundError("Academic year not found.");
@@ -61,6 +94,44 @@ export function createSchoolStudent(organizationId: string, data: { campusId: st
     const campus = await db.schoolCampus.findFirst({ where: { id: data.campusId, organizationId, active: true } });
     if (!campus) throw new SchoolNotFoundError("Campus not found.");
     return db.schoolStudent.create({ data: { organizationId, admissionNumber: await nextCode(organizationId, "STU", () => db.schoolStudent.count({ where: { organizationId } })), status: "ACTIVE", ...data } });
+  });
+}
+
+/**
+ * Admits a student and, when guardian details are supplied, creates and
+ * links that guardian in the same transaction - so admitting a student's
+ * first guardian no longer requires the separate "Add guardian" then "Link
+ * guardian" round trip. A student with an existing guardian (a sibling
+ * already on record) still uses createSchoolStudent + linkSchoolGuardian
+ * against the existing guardian, unchanged.
+ */
+export function admitSchoolStudent(
+  organizationId: string,
+  studentData: { campusId: string; firstName: string; lastName: string; dateOfBirth?: Date | null; gender?: string | null; admissionDate?: Date | null; medicalNotes?: string | null },
+  guardianData?: { firstName: string; lastName: string; phone: string; relationship: string; email?: string | null; occupation?: string | null; address?: string | null } | null,
+) {
+  return createWithUniqueRetry(async () => {
+    const campus = await db.schoolCampus.findFirst({ where: { id: studentData.campusId, organizationId, active: true } });
+    if (!campus) throw new SchoolNotFoundError("Campus not found.");
+    return db.$transaction(async (tx) => {
+      const student = await tx.schoolStudent.create({ data: { organizationId, admissionNumber: await nextCode(organizationId, "STU", () => tx.schoolStudent.count({ where: { organizationId } })), status: "ACTIVE", ...studentData } });
+      if (guardianData) {
+        const guardian = await tx.schoolGuardian.create({
+          data: {
+            organizationId,
+            guardianNumber: await nextCode(organizationId, "GRD", () => tx.schoolGuardian.count({ where: { organizationId } })),
+            firstName: guardianData.firstName,
+            lastName: guardianData.lastName,
+            phone: guardianData.phone,
+            email: guardianData.email ?? null,
+            occupation: guardianData.occupation ?? null,
+            address: guardianData.address ?? null,
+          },
+        });
+        await tx.schoolStudentGuardian.create({ data: { organizationId, studentId: student.id, guardianId: guardian.id, relationship: guardianData.relationship, primary: true } });
+      }
+      return student;
+    });
   });
 }
 
@@ -114,6 +185,52 @@ export function createSchoolClass(organizationId: string, data: { campusId: stri
   return db.schoolClass.create({ data: { organizationId, ...data } });
 }
 
+export async function updateSchoolClassCapacity(organizationId: string, classId: string, capacity: number | null) {
+  const schoolClass = await db.schoolClass.findFirst({ where: { id: classId, organizationId }, include: { _count: { select: { enrollments: { where: { status: "ACTIVE" } } } } } });
+  if (!schoolClass) throw new SchoolNotFoundError("Class not found.");
+  if (capacity !== null && capacity < schoolClass._count.enrollments) {
+    throw new SchoolStateError(`Capacity cannot be set below the ${schoolClass._count.enrollments} students currently enrolled.`, "capacity-below-enrolled");
+  }
+  return db.schoolClass.update({ where: { id: classId }, data: { capacity } });
+}
+
+/**
+ * Restricts a teacher-role user to only the class(es) they're explicitly
+ * assigned in SchoolClassTeacher when they record attendance or exam
+ * results (see recordSchoolAttendance/recordSchoolExamResult below).
+ * Returns null (no restriction) for anyone with zero assignments - e.g. an
+ * Academic Head, Bursar, or Admin who isn't tied to one class. Assignment
+ * is opt-in per class rather than implied by holding the seeded "Teacher"
+ * role, so an admin can scope any member this way without a hardcoded
+ * role-name check.
+ */
+export async function resolveTeacherClassScope(organizationId: string, userId: string): Promise<Set<string> | null> {
+  const assignments = await db.schoolClassTeacher.findMany({ where: { organizationId, userId }, select: { classId: true } });
+  return assignments.length > 0 ? new Set(assignments.map((assignment) => assignment.classId)) : null;
+}
+
+export async function assignSchoolClassTeacher(organizationId: string, classId: string, userId: string) {
+  const [class_, member] = await Promise.all([
+    db.schoolClass.findFirst({ where: { id: classId, organizationId } }),
+    db.organizationMember.findFirst({ where: { organizationId, userId, status: "ACTIVE" } }),
+  ]);
+  if (!class_ || !member) throw new SchoolNotFoundError("Class or organization member not found.");
+  return db.schoolClassTeacher.upsert({ where: { classId_userId: { classId, userId } }, update: {}, create: { organizationId, classId, userId } });
+}
+
+export async function removeSchoolClassTeacher(organizationId: string, classId: string, userId: string) {
+  await db.schoolClassTeacher.deleteMany({ where: { organizationId, classId, userId } });
+}
+
+export function listSchoolClassTeacherAssignments(organizationId: string) {
+  return db.schoolClassTeacher.findMany({ where: { organizationId }, include: { class: true, user: true }, orderBy: { createdAt: "asc" } });
+}
+
+/** Active org members eligible to be assigned as a class teacher - any active member, not filtered to a "Teacher"-named role, since scoping is by explicit assignment. */
+export function listOrganizationStaffForAssignment(organizationId: string) {
+  return db.organizationMember.findMany({ where: { organizationId, status: "ACTIVE" }, include: { user: true, role: true }, orderBy: { user: { name: "asc" } } });
+}
+
 export function createSchoolSubject(organizationId: string, data: { code: string; name: string; description?: string | null }) {
   return db.schoolSubject.create({ data: { organizationId, ...data } });
 }
@@ -141,7 +258,9 @@ export async function enrollSchoolStudent(organizationId: string, data: { campus
   return db.schoolEnrollment.create({ data: { organizationId, ...data } });
 }
 
-export async function recordSchoolAttendance(organizationId: string, data: { termId: string; classId: string; studentId: string; date: Date; status: SchoolAttendanceStatus; reason?: string | null }) {
+export async function recordSchoolAttendance(organizationId: string, actingUserId: string, data: { termId: string; classId: string; studentId: string; date: Date; status: SchoolAttendanceStatus; reason?: string | null }) {
+  const scope = await resolveTeacherClassScope(organizationId, actingUserId);
+  if (scope && !scope.has(data.classId)) throw new SchoolStateError("You can only record attendance for a class you're assigned to.", "class-not-assigned");
   const enrollment = await db.schoolEnrollment.findFirst({ where: { organizationId, studentId: data.studentId, classId: data.classId, status: "ACTIVE", student: { status: "ACTIVE" }, academicYear: { terms: { some: { id: data.termId } } } }, include: { campus: { include: { settings: true } } } });
   if (!enrollment) throw new SchoolNotFoundError("Active student enrollment not found.");
   const now = new Date();
@@ -287,7 +406,9 @@ function resolveGradeFromScale(gradingScale: Prisma.JsonValue | null | undefined
   return null;
 }
 
-export async function recordSchoolExamResult(organizationId: string, data: { examId: string; studentId: string; classId: string; subjectId: string; marks: Prisma.Decimal.Value; grade?: string | null; remark?: string | null }) {
+export async function recordSchoolExamResult(organizationId: string, actingUserId: string, data: { examId: string; studentId: string; classId: string; subjectId: string; marks: Prisma.Decimal.Value; grade?: string | null; remark?: string | null }) {
+  const scope = await resolveTeacherClassScope(organizationId, actingUserId);
+  if (scope && !scope.has(data.classId)) throw new SchoolStateError("You can only record results for a class you're assigned to.", "class-not-assigned");
   const exam = await db.schoolExam.findFirst({ where: { id: data.examId, organizationId, subjectId: data.subjectId, status: { in: ["DRAFT", "OPEN", "MODERATION"] } } });
   const enrollment = await db.schoolEnrollment.findFirst({
     where: { organizationId, studentId: data.studentId, classId: data.classId, status: "ACTIVE", academicYearId: exam?.academicYearId },

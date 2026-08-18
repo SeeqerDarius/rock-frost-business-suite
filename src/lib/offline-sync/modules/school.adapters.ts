@@ -390,7 +390,7 @@ export const schoolOfflineAdapters = [
     payloadSchema: attendanceSchema,
     checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_ATTENDANCE_MANAGE),
     apply: async (tenant, _entityId, payload) => {
-      const record = await recordSchoolAttendance(tenant.organizationId, payload);
+      const record = await recordSchoolAttendance(tenant.organizationId, tenant.userId, payload);
       return { id: record.id, status: record.status };
     },
   }),
@@ -473,7 +473,7 @@ export const schoolOfflineAdapters = [
     payloadSchema: examResultSchema,
     checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_MANAGE),
     apply: async (tenant, _entityId, payload) => {
-      const record = await recordSchoolExamResult(tenant.organizationId, payload);
+      const record = await recordSchoolExamResult(tenant.organizationId, tenant.userId, payload);
       return { id: record.id, marks: record.marks.toString(), grade: record.grade };
     },
   }),

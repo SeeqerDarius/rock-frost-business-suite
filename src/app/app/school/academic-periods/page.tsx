@@ -1,9 +1,10 @@
-import { CalendarRange, Plus } from "lucide-react";
+import { CalendarRange, Archive, Plus, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FormFeedback, ReadOnlyNotice } from "@/components/school/form-feedback";
 import { CheckboxField, FieldGrid, SelectField, TextField } from "@/components/school/form-fields";
@@ -12,11 +13,12 @@ import { formatDate } from "@/components/school/format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getSchoolAcademicSetup } from "@/modules/school/service";
-import { createAcademicYearAction, createTermAction } from "../actions";
+import { archiveAcademicYearAction, createAcademicYearAction, createTermAction, deleteAcademicYearAction } from "../actions";
 
 export default async function SchoolAcademicPeriodsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_ACADEMICS_MANAGE);
+  const canDeleteAcademicYears = hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE);
   const [years] = await getSchoolAcademicSetup(tenant.organizationId);
   const currentYear = years.find((year) => year.current);
 
@@ -101,7 +103,38 @@ export default async function SchoolAcademicPeriodsPage({ searchParams }: { sear
             key={year.id}
             title={year.name}
             description={`${formatDate(year.startDate)} – ${formatDate(year.endDate)}`}
-            actions={year.current ? <Badge>Current year</Badge> : <Badge variant="outline">Not current</Badge>}
+            actions={
+              <>
+                {year.closedAt ? <Badge variant="outline">Archived</Badge> : year.current ? <Badge>Current year</Badge> : <Badge variant="outline">Not current</Badge>}
+                {canManage && !year.closedAt ? (
+                  <form action={archiveAcademicYearAction}>
+                    <input type="hidden" name="academicYearId" value={year.id} />
+                    <Button type="submit" size="sm" variant="outline"><Archive />Archive</Button>
+                  </form>
+                ) : null}
+                {canDeleteAcademicYears ? (
+                  <Dialog>
+                    <DialogTrigger render={<Button size="sm" variant="outline" className="text-destructive" />}>
+                      <Trash2 />
+                      Delete
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-sm">
+                      <DialogHeader>
+                        <DialogTitle>Delete {year.name}?</DialogTitle>
+                        <DialogDescription>
+                          This permanently removes the academic year. It only succeeds if no terms, enrollments, fees, or exams are attached - archive it instead if it has real history. This cannot be undone.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <form action={deleteAcademicYearAction} className="space-y-4">
+                        <input type="hidden" name="academicYearId" value={year.id} />
+                        <TextField id={`delete-year-password-${year.id}`} name="confirmPassword" label="Your account password" type="password" required autoComplete="current-password" hint="Confirms it's really you before this irreversible delete runs." />
+                        <Button type="submit" variant="destructive" className="w-full">Permanently delete</Button>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
+                ) : null}
+              </>
+            }
           >
             {year.terms.length === 0 ? (
               <p className="text-sm text-muted-foreground">No terms yet. Attendance, fees, and exams need a term before they can be recorded.</p>

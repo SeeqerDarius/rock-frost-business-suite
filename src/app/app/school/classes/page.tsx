@@ -1,9 +1,10 @@
-import { BookOpen, GraduationCap, Plus, Shapes } from "lucide-react";
+import { BookOpen, GraduationCap, Plus, Settings2, Shapes, UserCog, X } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,21 +13,30 @@ import { FieldGrid, SelectField, TextField } from "@/components/school/form-fiel
 import { PrerequisiteNotice, SectionCard } from "@/components/school/section-card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getSchoolAcademicSetup, listSchoolCampuses, listSchoolStudents } from "@/modules/school/service";
-import { createClassAction, createSubjectAction, enrollStudentAction } from "../actions";
+import { getSchoolAcademicSetup, listOrganizationStaffForAssignment, listSchoolCampuses, listSchoolClassTeacherAssignments, listSchoolStudents } from "@/modules/school/service";
+import { assignClassTeacherAction, createClassAction, createSubjectAction, enrollStudentAction, removeClassTeacherAction, updateClassCapacityAction } from "../actions";
 
 export default async function SchoolClassesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
   const canManageAcademics = hasPermission(tenant, PERMISSIONS.SCHOOL_ACADEMICS_MANAGE);
   const canManageEnrollment = hasPermission(tenant, PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE);
-  const [[years, classes, subjects], campuses, students] = await Promise.all([
+  const [[years, classes, subjects], campuses, students, teacherAssignments, staff] = await Promise.all([
     getSchoolAcademicSetup(tenant.organizationId),
     listSchoolCampuses(tenant.organizationId),
     listSchoolStudents(tenant.organizationId),
+    listSchoolClassTeacherAssignments(tenant.organizationId),
+    listOrganizationStaffForAssignment(tenant.organizationId),
   ]);
 
   const campusOptions = campuses.map((campus) => ({ value: campus.id, label: campus.name }));
   const activeStudents = students.filter((student) => student.status === "ACTIVE");
+  const staffOptions = staff.map((member) => ({ value: member.userId, label: `${member.user.name ?? member.user.email}${member.role ? ` · ${member.role.name}` : ""}` }));
+  const teachersByClass = new Map<string, typeof teacherAssignments>();
+  for (const assignment of teacherAssignments) {
+    const list = teachersByClass.get(assignment.classId) ?? [];
+    list.push(assignment);
+    teachersByClass.set(assignment.classId, list);
+  }
 
   const newClassDialog = (
     <EntityDialog
@@ -147,12 +157,15 @@ export default async function SchoolClassesPage({ searchParams }: { searchParams
                 <TableHead className="hidden md:table-cell">Campus</TableHead>
                 <TableHead className="hidden lg:table-cell">Grade level</TableHead>
                 <TableHead>Enrolled</TableHead>
+                <TableHead className="hidden lg:table-cell">Teachers</TableHead>
+                {canManageAcademics ? <TableHead><span className="sr-only">Actions</span></TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
               {classes.map((schoolClass) => {
                 const enrolled = schoolClass.enrollments.length;
                 const isFull = schoolClass.capacity !== null && enrolled >= schoolClass.capacity;
+                const assignedTeachers = teachersByClass.get(schoolClass.id) ?? [];
                 return (
                   <TableRow key={schoolClass.id}>
                     <TableCell className="font-mono text-xs">{schoolClass.code}</TableCell>
@@ -167,6 +180,65 @@ export default async function SchoolClassesPage({ searchParams }: { searchParams
                       {isFull ? <Badge variant="destructive" className="ml-2">Full</Badge> : null}
                       {schoolClass.capacity === null ? <span className="ml-2 text-xs text-muted-foreground">No limit</span> : null}
                     </TableCell>
+                    <TableCell className="hidden text-muted-foreground lg:table-cell">
+                      {assignedTeachers.length > 0 ? assignedTeachers.map((assignment) => assignment.user.name ?? assignment.user.email).join(", ") : "Unassigned"}
+                    </TableCell>
+                    {canManageAcademics ? (
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Dialog>
+                            <DialogTrigger render={<Button size="icon" variant="ghost" aria-label={`Edit capacity for ${schoolClass.name}`} />}>
+                              <Settings2 />
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-sm">
+                              <DialogHeader>
+                                <DialogTitle>Edit capacity: {schoolClass.name}</DialogTitle>
+                                <DialogDescription>{enrolled} student{enrolled === 1 ? "" : "s"} currently enrolled. Capacity cannot be set below that.</DialogDescription>
+                              </DialogHeader>
+                              <form action={updateClassCapacityAction} className="space-y-4">
+                                <input type="hidden" name="classId" value={schoolClass.id} />
+                                <TextField id={`capacity-${schoolClass.id}`} name="capacity" label="Capacity" type="number" min="1" max="10000" defaultValue={schoolClass.capacity ?? undefined} hint="Leave blank for no limit." />
+                                <Button type="submit" className="w-full">Save capacity</Button>
+                              </form>
+                            </DialogContent>
+                          </Dialog>
+                          <Dialog>
+                            <DialogTrigger render={<Button size="icon" variant="ghost" aria-label={`Manage teachers for ${schoolClass.name}`} />}>
+                              <UserCog />
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-md">
+                              <DialogHeader>
+                                <DialogTitle>Teachers: {schoolClass.name}</DialogTitle>
+                                <DialogDescription>Assigning a teacher restricts them to recording attendance and exam results only for this class (and any others they&apos;re assigned to).</DialogDescription>
+                              </DialogHeader>
+                              <div className="space-y-3">
+                                {assignedTeachers.length === 0 ? (
+                                  <p className="text-sm text-muted-foreground">No teacher assigned yet. Unassigned staff with School permissions can still act on any class.</p>
+                                ) : (
+                                  <ul className="space-y-2">
+                                    {assignedTeachers.map((assignment) => (
+                                      <li key={assignment.id} className="flex items-center justify-between rounded-lg border p-2 text-sm">
+                                        <span>{assignment.user.name ?? assignment.user.email}</span>
+                                        <form action={removeClassTeacherAction}>
+                                          <input type="hidden" name="classId" value={schoolClass.id} />
+                                          <input type="hidden" name="userId" value={assignment.userId} />
+                                          <Button type="submit" size="icon-sm" variant="ghost" aria-label={`Remove ${assignment.user.name ?? assignment.user.email}`}><X /></Button>
+                                        </form>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                                <form action={assignClassTeacherAction} className="flex items-end gap-2">
+                                  <input type="hidden" name="classId" value={schoolClass.id} />
+                                  <SelectField id={`assign-teacher-${schoolClass.id}`} name="userId" label="Assign teacher" options={staffOptions} emptyHint="No active staff to assign." className="flex-1" />
+                                  <Button type="submit">Assign</Button>
+                                </form>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+                        </div>
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 );
               })}
