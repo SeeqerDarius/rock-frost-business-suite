@@ -29,6 +29,10 @@ const mockSchoolService = {
   recordSchoolFeePayment: vi.fn(),
   createSchoolFeeStructure: vi.fn(),
   issueSchoolFeeStructure: vi.fn(),
+  createSchoolExam: vi.fn(),
+  recordSchoolExamResult: vi.fn(),
+  submitSchoolExamForModeration: vi.fn(),
+  publishSchoolExam: vi.fn(),
 };
 
 const mockDb = {
@@ -415,5 +419,104 @@ describe("school.fee_structure_issuance", () => {
     await expect(
       applyOfflineMutation(tenant([]), mutation({ entityType: "school.fee_structure_issuance", payload: { feeStructureId: "fs1" } })),
     ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.exam", () => {
+  it("requires school.exams.manage and calls createSchoolExam", async () => {
+    mockSchoolService.createSchoolExam.mockResolvedValue({ id: "ex1", name: "Midterm" });
+    const result = await applyOfflineMutation(
+      tenant(["school.exams.manage"]),
+      mutation({ entityType: "school.exam", payload: { academicYearId: "y1", termId: "t1", subjectId: "sub1", name: "Midterm", totalMarks: "100.00", weight: "40.00" } }),
+    );
+    expect(mockSchoolService.createSchoolExam).toHaveBeenCalledWith("org-1", { academicYearId: "y1", termId: "t1", subjectId: "sub1", name: "Midterm", totalMarks: "100.00", weight: "40.00" });
+    expect(result).toEqual({ id: "ex1", name: "Midterm" });
+  });
+
+  it("is denied without school.exams.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.exam", payload: { academicYearId: "y1", termId: "t1", subjectId: "sub1", name: "Midterm", totalMarks: "100.00", weight: "40.00" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.exam_result", () => {
+  it("requires school.exams.manage and calls recordSchoolExamResult", async () => {
+    mockSchoolService.recordSchoolExamResult.mockResolvedValue({ id: "res1", marks: 72, grade: "B" });
+    const result = await applyOfflineMutation(
+      tenant(["school.exams.manage"]),
+      mutation({ entityType: "school.exam_result", payload: { examId: "ex1", studentId: "s1", classId: "cl1", subjectId: "sub1", marks: 72 } }),
+    );
+    expect(mockSchoolService.recordSchoolExamResult).toHaveBeenCalledWith("org-1", { examId: "ex1", studentId: "s1", classId: "cl1", subjectId: "sub1", marks: 72 });
+    expect(result).toEqual({ id: "res1", marks: "72", grade: "B" });
+  });
+
+  it("marks outside the exam total surface as a conflict rather than a crash", async () => {
+    class SchoolStateError extends Error {}
+    mockSchoolService.recordSchoolExamResult.mockRejectedValue(new SchoolStateError("Marks must be within the exam total."));
+    await expect(
+      applyOfflineMutation(
+        tenant(["school.exams.manage"]),
+        mutation({ entityType: "school.exam_result", payload: { examId: "ex1", studentId: "s1", classId: "cl1", subjectId: "sub1", marks: 9999 } }),
+      ),
+    ).rejects.toMatchObject({ conflictType: "SERVER_STATE_CHANGED" });
+  });
+
+  it("is denied without school.exams.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.exam_result", payload: { examId: "ex1", studentId: "s1", classId: "cl1", subjectId: "sub1", marks: 72 } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.exam_moderation_submit", () => {
+  it("requires school.exams.manage and calls submitSchoolExamForModeration", async () => {
+    mockSchoolService.submitSchoolExamForModeration.mockResolvedValue({ id: "ex1", status: "MODERATION" });
+    const result = await applyOfflineMutation(
+      tenant(["school.exams.manage"]),
+      mutation({ entityType: "school.exam_moderation_submit", payload: { examId: "ex1" } }),
+    );
+    expect(mockSchoolService.submitSchoolExamForModeration).toHaveBeenCalledWith("org-1", "ex1");
+    expect(result).toEqual({ id: "ex1", status: "MODERATION" });
+  });
+
+  it("an exam with no results surfaces as a conflict rather than a crash", async () => {
+    class SchoolStateError extends Error {}
+    mockSchoolService.submitSchoolExamForModeration.mockRejectedValue(new SchoolStateError("Only open exams with results can be submitted for moderation."));
+    await expect(
+      applyOfflineMutation(tenant(["school.exams.manage"]), mutation({ entityType: "school.exam_moderation_submit", payload: { examId: "ex1" } })),
+    ).rejects.toMatchObject({ conflictType: "SERVER_STATE_CHANGED" });
+  });
+
+  it("is denied without school.exams.manage", async () => {
+    await expect(
+      applyOfflineMutation(tenant([]), mutation({ entityType: "school.exam_moderation_submit", payload: { examId: "ex1" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+});
+
+describe("school.exam_publish", () => {
+  it("requires school.exams.publish (not school.exams.manage) and calls publishSchoolExam", async () => {
+    mockSchoolService.publishSchoolExam.mockResolvedValue([{ count: 5 }, { id: "ex1", status: "PUBLISHED" }]);
+    const result = await applyOfflineMutation(
+      tenant(["school.exams.publish"]),
+      mutation({ entityType: "school.exam_publish", payload: { examId: "ex1" } }),
+    );
+    expect(mockSchoolService.publishSchoolExam).toHaveBeenCalledWith("org-1", "ex1");
+    expect(result).toEqual({ id: "ex1", status: "PUBLISHED" });
+  });
+
+  it("is denied when only school.exams.manage is held, not school.exams.publish", async () => {
+    await expect(
+      applyOfflineMutation(tenant(["school.exams.manage"]), mutation({ entityType: "school.exam_publish", payload: { examId: "ex1" } })),
+    ).rejects.toBeInstanceOf(OfflineMutationDeniedError);
+  });
+
+  it("an exam not yet in moderation surfaces as a conflict rather than a crash", async () => {
+    class SchoolStateError extends Error {}
+    mockSchoolService.publishSchoolExam.mockRejectedValue(new SchoolStateError("Only moderated exams with results can be published."));
+    await expect(
+      applyOfflineMutation(tenant(["school.exams.publish"]), mutation({ entityType: "school.exam_publish", payload: { examId: "ex1" } })),
+    ).rejects.toMatchObject({ conflictType: "SERVER_STATE_CHANGED" });
   });
 });

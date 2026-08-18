@@ -33,6 +33,7 @@ const mockDb = {
   schoolAttendance: { findMany: vi.fn() },
   schoolFeeInvoice: { findMany: vi.fn() },
   schoolFeeStructure: { findMany: vi.fn() },
+  schoolExam: { findMany: vi.fn() },
   offlineDevice: { update: vi.fn() },
 };
 
@@ -212,6 +213,7 @@ describe("school snapshot builder", () => {
     mockDb.schoolAttendance.findMany.mockResolvedValue([]);
     mockDb.schoolFeeInvoice.findMany.mockResolvedValue([]);
     mockDb.schoolFeeStructure.findMany.mockResolvedValue([]);
+    mockDb.schoolExam.findMany.mockResolvedValue([]);
   }
 
   it("decomposes campuses, academic years, and terms into rows, versioned by updatedAt where it exists and 0 otherwise", async () => {
@@ -306,6 +308,27 @@ describe("school snapshot builder", () => {
     await buildSchoolSnapshot(fakeContext());
     expect(mockDb.schoolFeeStructure.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: "org-1", active: true } }));
   });
+
+  it("decomposes exams with results embedded directly in the row, versioned 0 since SchoolExam has no updatedAt", async () => {
+    stubEmptySchool();
+    mockDb.schoolExam.findMany.mockResolvedValue([
+      {
+        id: "ex1", academicYearId: "y1", termId: "t1", subjectId: "sub1", name: "Midterm",
+        totalMarks: "100.00", weight: "40.00", status: "OPEN", examDate: new Date("2026-08-15T00:00:00.000Z"), publishedAt: null,
+        results: [{ id: "res1", studentId: "s1", classId: "cl1", subjectId: "sub1", marks: "72.00", grade: "B", remark: null, moderatedAt: null, publishedAt: null }],
+      },
+    ]);
+
+    const result = await buildSchoolSnapshot(fakeContext());
+    expect(result.truncated).toBe(false);
+
+    const examRow = result.rows.find((r) => r.entityType === "school.exam");
+    expect(examRow).toMatchObject({
+      entityId: "ex1",
+      version: 0,
+      payload: { name: "Midterm", results: [{ id: "res1", studentId: "s1", marks: "72.00", grade: "B" }] },
+    });
+  });
 });
 
 describe("buildOfflineSnapshot composition (service.ts)", () => {
@@ -354,6 +377,7 @@ describe("buildOfflineSnapshot composition (service.ts)", () => {
     mockDb.schoolAttendance.findMany.mockResolvedValue([]);
     mockDb.schoolFeeInvoice.findMany.mockResolvedValue([]);
     mockDb.schoolFeeStructure.findMany.mockResolvedValue([]);
+    mockDb.schoolExam.findMany.mockResolvedValue([]);
 
     const context = fakeContext({ authorizedModuleKeys: ["school"] });
     await buildOfflineSnapshot(context);

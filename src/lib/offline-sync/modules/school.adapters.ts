@@ -19,6 +19,10 @@ import {
   recordSchoolFeePayment,
   createSchoolFeeStructure,
   issueSchoolFeeStructure,
+  createSchoolExam,
+  recordSchoolExamResult,
+  submitSchoolExamForModeration,
+  publishSchoolExam,
 } from "@/modules/school/service";
 import { versionOf } from "@/lib/offline-sync/version";
 import { defineOfflineAdapter } from "@/lib/offline-sync/registry";
@@ -147,6 +151,34 @@ const feeStructureSchema = z.object({
 
 const feeStructureIssuanceSchema = z.object({
   feeStructureId: cuid,
+});
+
+const examSchema = z.object({
+  academicYearId: cuid,
+  termId: cuid,
+  subjectId: cuid,
+  name: shortText,
+  totalMarks: moneyAmountPositive,
+  weight: moneyAmountPositive,
+  examDate: dateInput.nullable().optional(),
+});
+
+const examResultSchema = z.object({
+  examId: cuid,
+  studentId: cuid,
+  classId: cuid,
+  subjectId: cuid,
+  marks: z.number().min(0),
+  grade: shortText.nullable().optional(),
+  remark: shortText.nullable().optional(),
+});
+
+const examModerationSubmitSchema = z.object({
+  examId: cuid,
+});
+
+const examPublishSchema = z.object({
+  examId: cuid,
 });
 
 /**
@@ -336,6 +368,57 @@ export const schoolOfflineAdapters = [
     checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_FEES_MANAGE),
     apply: async (tenant, _entityId, payload) => {
       return issueSchoolFeeStructure(tenant.organizationId, payload.feeStructureId);
+    },
+  }),
+
+  // --- Milestone 9: exams. school.exam_moderation_submit and
+  // school.exam_publish are modeled as CREATE events (a client-generated
+  // correlation entityId, the real examId carried in the payload) rather
+  // than UPDATE against the exam's own id: SchoolExam has no updatedAt
+  // column, so there is no natural version to check baseVersion against -
+  // the same reasoning that made pos.session_open/close events rather
+  // than edits. Their safety comes entirely from submitSchoolExamForMod
+  // eration's/publishSchoolExam's own status-and-has-results guards,
+  // rechecked server-side regardless of what the client believed the
+  // exam's status was.
+  defineOfflineAdapter({
+    entityType: "school.exam",
+    operation: "CREATE",
+    payloadSchema: examSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await createSchoolExam(tenant.organizationId, payload);
+      return { id: record.id, name: record.name };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.exam_result",
+    operation: "CREATE",
+    payloadSchema: examResultSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await recordSchoolExamResult(tenant.organizationId, payload);
+      return { id: record.id, marks: record.marks.toString(), grade: record.grade };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.exam_moderation_submit",
+    operation: "CREATE",
+    payloadSchema: examModerationSubmitSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_MANAGE),
+    apply: async (tenant, _entityId, payload) => {
+      const record = await submitSchoolExamForModeration(tenant.organizationId, payload.examId);
+      return { id: record.id, status: record.status };
+    },
+  }),
+  defineOfflineAdapter({
+    entityType: "school.exam_publish",
+    operation: "CREATE",
+    payloadSchema: examPublishSchema,
+    checkPermission: (tenant) => hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_PUBLISH),
+    apply: async (tenant, _entityId, payload) => {
+      const [, exam] = await publishSchoolExam(tenant.organizationId, payload.examId);
+      return { id: exam.id, status: exam.status };
     },
   }),
 ];

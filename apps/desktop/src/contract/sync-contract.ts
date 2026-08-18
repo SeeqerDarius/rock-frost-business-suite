@@ -46,7 +46,16 @@ export type OfflineEntityType =
   | "school.fee_payment"
   | "school.fee_structure"
   | "school.fee_structure_issuance"
-  | "school.fee_invoice_record";
+  | "school.fee_invoice_record"
+  // Milestone 9: exams. school.exam_moderation_submit and
+  // school.exam_publish are events, not edits (SchoolExam has no
+  // updatedAt column). school.exam doubles as both the CREATE mutation
+  // and the pulled-reference type - there is no bulk, exam-independent
+  // way to create one, so unlike fees there is no dual-source split here.
+  | "school.exam"
+  | "school.exam_result"
+  | "school.exam_moderation_submit"
+  | "school.exam_publish";
 
 /** UPDATE is real: pos.register edits and both pos.settings_* actions carry the cached record's own version as baseVersion, and the server rejects a stale one as a conflict rather than silently overwriting. Every other action still queues CREATE with baseVersion 0. */
 export type MutationOperation = "CREATE" | "UPDATE";

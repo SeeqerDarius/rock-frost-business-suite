@@ -50,7 +50,7 @@ POS is offline-capable end to end: `pos.sale`, `pos.register` (`CREATE`/`UPDATE`
 
 Selling requires an already-synced open session (its real `sessionId` must be known to the device): open the day's session while online, then sell offline against it for the rest of the day. See `docs/OFFLINE_DESKTOP.md`'s "Desktop client: POS" section.
 
-School is being built out toward the same full parity, one milestone at a time. So far: `school.campus`, `school.academic_year`, `school.term`, `school.student`, `school.student_status_transition` (`UPDATE`), `school.guardian`, `school.guardian_link`, `school.class`, `school.subject`, `school.enrollment`, `school.attendance`, `school.fee_invoice`, `school.fee_payment`, `school.fee_structure`, `school.fee_structure_issuance`. A fee payment requires an already-synced invoice; see `docs/OFFLINE_DESKTOP.md`'s "Desktop client: School" section. Exams, timetable, library, transport, and payroll adjustments remain online-only until their own milestones land.
+School is being built out toward the same full parity, one milestone at a time. So far: `school.campus`, `school.academic_year`, `school.term`, `school.student`, `school.student_status_transition` (`UPDATE`), `school.guardian`, `school.guardian_link`, `school.class`, `school.subject`, `school.enrollment`, `school.attendance`, `school.fee_invoice`, `school.fee_payment`, `school.fee_structure`, `school.fee_structure_issuance`, `school.exam`, `school.exam_result`, `school.exam_moderation_submit`, `school.exam_publish`. A fee payment requires an already-synced invoice; see `docs/OFFLINE_DESKTOP.md`'s "Desktop client: School" section. Timetable, library, transport, and payroll adjustments remain online-only until their own milestones land.
 
 ## Sync contract
 

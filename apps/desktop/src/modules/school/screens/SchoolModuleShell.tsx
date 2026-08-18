@@ -6,6 +6,7 @@ import { SchoolStudentsScreen } from "@/modules/school/screens/SchoolStudentsScr
 import { SchoolEnrollmentScreen } from "@/modules/school/screens/SchoolEnrollmentScreen";
 import { SchoolAttendanceScreen } from "@/modules/school/screens/SchoolAttendanceScreen";
 import { SchoolFeesScreen } from "@/modules/school/screens/SchoolFeesScreen";
+import { SchoolExamsScreen } from "@/modules/school/screens/SchoolExamsScreen";
 
 const TABS = [
   { key: "setup", label: "Academic setup" },
@@ -13,16 +14,18 @@ const TABS = [
   { key: "enrollment", label: "Enrollment" },
   { key: "attendance", label: "Attendance" },
   { key: "fees", label: "Fees" },
+  { key: "exams", label: "Exams" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
 
 /**
  * School's own multi-screen mini-app, mirroring PosModuleShell's structure
- * so later School milestones (exams, timetable, library, transport,
- * payroll, settings) each add a tab here rather than a new top-level
- * component. Milestone 6 shipped Academic setup; milestone 7 added
- * Students & guardians, Enrollment, and Attendance; milestone 8 adds Fees.
+ * so later School milestones (timetable, library, transport, payroll,
+ * settings) each add a tab here rather than a new top-level component.
+ * Milestone 6 shipped Academic setup; milestone 7 added Students &
+ * guardians, Enrollment, and Attendance; milestone 8 added Fees;
+ * milestone 9 adds Exams.
  */
 export function SchoolModuleShell() {
   const { db } = useApp();
@@ -59,6 +62,7 @@ export function SchoolModuleShell() {
       {tab === "enrollment" ? <SchoolEnrollmentScreen snapshot={snapshot} onChanged={reload} /> : null}
       {tab === "attendance" ? <SchoolAttendanceScreen snapshot={snapshot} onChanged={reload} /> : null}
       {tab === "fees" ? <SchoolFeesScreen snapshot={snapshot} onChanged={reload} /> : null}
+      {tab === "exams" ? <SchoolExamsScreen snapshot={snapshot} onChanged={reload} /> : null}
     </div>
   );
 }

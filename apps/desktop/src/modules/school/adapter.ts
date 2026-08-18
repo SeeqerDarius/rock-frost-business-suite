@@ -17,6 +17,10 @@ import {
   type SchoolFeePaymentPayload,
   type SchoolFeeStructurePayload,
   type SchoolFeeStructureIssuancePayload,
+  type SchoolExamPayload,
+  type SchoolExamResultPayload,
+  type SchoolExamModerationSubmitPayload,
+  type SchoolExamPublishPayload,
 } from "@/modules/school/types";
 
 export interface SchoolAdapterContext { db: LocalDatabase; organizationId: string; actingUserName: string | null }
@@ -80,6 +84,19 @@ export function createSchoolAdapter(ctx: SchoolAdapterContext) {
     /** entityId is a client-generated correlation id, not tied to any single invoice: the eligible-student set is computed fresh at sync time, matching the bulk fan-out design (see school.adapters.ts server-side). */
     issueFeeStructure: (entityId: string, payload: SchoolFeeStructureIssuancePayload) =>
       recordOfflineMutation({ ...base, entityType: SCHOOL_ENTITY_TYPES.FEE_STRUCTURE_ISSUANCE, entityId, operation: "CREATE", baseVersion: 0, payload }),
+
+    createExam: (entityId: string, payload: SchoolExamPayload) =>
+      recordOfflineMutation({ ...base, entityType: SCHOOL_ENTITY_TYPES.EXAM, entityId, operation: "CREATE", baseVersion: 0, payload }),
+
+    recordExamResult: (entityId: string, payload: SchoolExamResultPayload) =>
+      recordOfflineMutation({ ...base, entityType: SCHOOL_ENTITY_TYPES.EXAM_RESULT, entityId, operation: "CREATE", baseVersion: 0, payload }),
+
+    /** entityId is a client-generated correlation id, not the exam's own id: SchoolExam has no updatedAt to check a baseVersion against, so this is an event, like pos.session_open/close. */
+    submitExamForModeration: (entityId: string, payload: SchoolExamModerationSubmitPayload) =>
+      recordOfflineMutation({ ...base, entityType: SCHOOL_ENTITY_TYPES.EXAM_MODERATION_SUBMIT, entityId, operation: "CREATE", baseVersion: 0, payload }),
+
+    publishExam: (entityId: string, payload: SchoolExamPublishPayload) =>
+      recordOfflineMutation({ ...base, entityType: SCHOOL_ENTITY_TYPES.EXAM_PUBLISH, entityId, operation: "CREATE", baseVersion: 0, payload }),
   };
 }
 

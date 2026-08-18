@@ -37,6 +37,7 @@ export async function buildSchoolSnapshot(context: OfflineDeviceContext): Promis
     attendance,
     feeInvoices,
     feeStructures,
+    exams,
   ] = await Promise.all([
     db.schoolCampus.findMany({
       where: { organizationId, active: true },
@@ -112,6 +113,16 @@ export async function buildSchoolSnapshot(context: OfflineDeviceContext): Promis
       orderBy: { createdAt: "desc" },
       take: take + 1,
     }),
+    db.schoolExam.findMany({
+      where: { organizationId },
+      select: {
+        id: true, academicYearId: true, termId: true, subjectId: true, name: true,
+        totalMarks: true, weight: true, status: true, examDate: true, publishedAt: true,
+        results: { select: { id: true, studentId: true, classId: true, subjectId: true, marks: true, grade: true, remark: true, moderatedAt: true, publishedAt: true } },
+      },
+      orderBy: { examDate: "desc" },
+      take: take + 1,
+    }),
   ]);
 
   const truncated =
@@ -126,7 +137,8 @@ export async function buildSchoolSnapshot(context: OfflineDeviceContext): Promis
     enrollments.length > take ||
     attendance.length > RECENT_ATTENDANCE_TAKE ||
     feeInvoices.length > take ||
-    feeStructures.length > take;
+    feeStructures.length > take ||
+    exams.length > take;
   const rows: OfflineSnapshotRow[] = [];
 
   for (const { id, updatedAt, ...payload } of campuses.slice(0, take)) {
@@ -176,6 +188,14 @@ export async function buildSchoolSnapshot(context: OfflineDeviceContext): Promis
   }
   for (const { id, updatedAt, ...payload } of feeStructures.slice(0, take)) {
     rows.push({ entityType: "school.fee_structure", entityId: id, version: versionOf(updatedAt), payload });
+  }
+  // Results are embedded directly in each exam row (mirrors fee_invoice_
+  // record's embedded payments), not a separate pulled entity type: there
+  // is no bulk, exam-independent way to create a result, so unlike fees
+  // there is no dual-source naming split to worry about here.
+  for (const { id, ...payload } of exams.slice(0, take)) {
+    // SchoolExam has no updatedAt column: version 0.
+    rows.push({ entityType: "school.exam", entityId: id, version: 0, payload });
   }
 
   return { rows, truncated };

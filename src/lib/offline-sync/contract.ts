@@ -37,6 +37,13 @@ export const OFFLINE_ENTITY_TYPES = [
   "school.fee_payment",
   "school.fee_structure",
   "school.fee_structure_issuance",
+  // Milestone 9: exams. school.exam_moderation_submit and
+  // school.exam_publish are events, not edits (SchoolExam has no
+  // updatedAt column to check baseVersion against).
+  "school.exam",
+  "school.exam_result",
+  "school.exam_moderation_submit",
+  "school.exam_publish",
 ] as const;
 
 export const activationSchema = z.object({

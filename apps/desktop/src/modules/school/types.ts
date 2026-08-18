@@ -254,6 +254,60 @@ export interface SchoolFeeStructureRecord extends Record<string, unknown> {
   active: boolean;
 }
 
+export interface SchoolExamPayload extends Record<string, unknown> {
+  academicYearId: string;
+  termId: string;
+  subjectId: string;
+  name: string;
+  totalMarks: string;
+  weight: string;
+  examDate?: string | null;
+}
+
+export interface SchoolExamResultPayload extends Record<string, unknown> {
+  examId: string;
+  studentId: string;
+  classId: string;
+  subjectId: string;
+  marks: number;
+  grade?: string | null;
+  remark?: string | null;
+}
+
+export interface SchoolExamModerationSubmitPayload extends Record<string, unknown> {
+  examId: string;
+}
+
+export interface SchoolExamPublishPayload extends Record<string, unknown> {
+  examId: string;
+}
+
+export interface SchoolExamResultRecord extends Record<string, unknown> {
+  id: string;
+  studentId: string;
+  classId: string;
+  subjectId: string;
+  marks: string;
+  grade: string | null;
+  remark: string | null;
+  moderatedAt: string | null;
+  publishedAt: string | null;
+}
+
+/** Shape of a pulled `school.exam` row's payload - embeds its results directly (mirrors `school.fee_invoice_record`'s embedded payments), since there is no bulk, exam-independent way to create a result. */
+export interface SchoolExamRecord extends Record<string, unknown> {
+  academicYearId: string;
+  termId: string;
+  subjectId: string;
+  name: string;
+  totalMarks: string;
+  weight: string;
+  status: "DRAFT" | "OPEN" | "MODERATION" | "PUBLISHED";
+  examDate: string | null;
+  publishedAt: string | null;
+  results: SchoolExamResultRecord[];
+}
+
 export const SCHOOL_ENTITY_TYPES = {
   CAMPUS: "school.campus",
   ACADEMIC_YEAR: "school.academic_year",
@@ -271,4 +325,8 @@ export const SCHOOL_ENTITY_TYPES = {
   FEE_STRUCTURE: "school.fee_structure",
   FEE_STRUCTURE_ISSUANCE: "school.fee_structure_issuance",
   FEE_INVOICE_RECORD: "school.fee_invoice_record",
+  EXAM: "school.exam",
+  EXAM_RESULT: "school.exam_result",
+  EXAM_MODERATION_SUBMIT: "school.exam_moderation_submit",
+  EXAM_PUBLISH: "school.exam_publish",
 } as const;
