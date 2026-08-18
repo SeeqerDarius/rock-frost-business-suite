@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useApp } from "@/state/AppProvider";
 import { usePosSnapshot } from "@/modules/pos/pos-data";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PosOverviewScreen } from "@/modules/pos/screens/PosOverviewScreen";
 import { PosRegistersScreen } from "@/modules/pos/screens/PosRegistersScreen";
 import { PosSellScreen } from "@/modules/pos/screens/PosSellScreen";
@@ -32,29 +33,16 @@ export function PosModuleShell() {
   const [tab, setTab] = useState<TabKey>("overview");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <nav aria-label="POS sections" style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", borderBottom: "1px solid var(--rf-border)", paddingBottom: "0.6rem" }}>
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            aria-current={tab === t.key ? "page" : undefined}
-            style={{
-              padding: "0.4rem 0.85rem",
-              borderRadius: "999px",
-              border: "1px solid var(--rf-border)",
-              background: tab === t.key ? "var(--rf-primary)" : "var(--rf-card)",
-              color: tab === t.key ? "var(--rf-primary-foreground)" : "var(--rf-card-foreground)",
-              fontSize: "0.8125rem",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
+    <div className="flex flex-col gap-4">
+      <Tabs value={tab} onValueChange={(value) => setTab(value as TabKey)}>
+        <TabsList aria-label="POS sections">
+          {TABS.map((t) => (
+            <TabsTrigger key={t.key} value={t.key}>
+              {t.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       {tab === "overview" ? <PosOverviewScreen snapshot={snapshot} /> : null}
       {tab === "sell" ? <PosSellScreen snapshot={snapshot} onChanged={reload} /> : null}

@@ -1,5 +1,6 @@
 import { Boxes, GraduationCap, PackageSearch, ShoppingCart, Truck } from "lucide-react";
 import { Card } from "@/components/Card";
+import { cn } from "@/lib/utils";
 import type { OfflineModuleKey } from "@/contract/sync-contract";
 
 interface ModuleMeta {
@@ -28,14 +29,14 @@ export function ModuleLauncher({ enabledModuleKeys, onSelect, selected }: Module
 
   if (available.length === 0) {
     return (
-      <p style={{ fontSize: "0.875rem", color: "var(--rf-muted-foreground)" }}>
+      <p className="text-sm text-muted-foreground">
         No offline modules are enabled for your organization on this account.
       </p>
     );
   }
 
   return (
-    <nav aria-label="Modules" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(15rem, 1fr))", gap: "0.85rem" }}>
+    <nav aria-label="Modules" className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(15rem,1fr))]">
       {available.map((module) => {
         const isSelected = module.key === selected;
         return (
@@ -44,34 +45,15 @@ export function ModuleLauncher({ enabledModuleKeys, onSelect, selected }: Module
             type="button"
             onClick={() => onSelect(module.key)}
             aria-current={isSelected ? "true" : undefined}
-            style={{ all: "unset", cursor: "pointer" }}
+            className="cursor-pointer text-left"
           >
-            <Card
-              style={{
-                borderColor: isSelected ? "var(--rf-primary)" : "var(--rf-border)",
-                boxShadow: isSelected ? "0 0 0 1px var(--rf-primary)" : "var(--rf-shadow-sm)",
-                display: "flex",
-                gap: "0.75rem",
-                alignItems: "flex-start",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: "2.25rem",
-                  height: "2.25rem",
-                  borderRadius: "var(--rf-radius-md)",
-                  background: "color-mix(in oklch, var(--rf-primary) 15%, transparent)",
-                  flexShrink: 0,
-                }}
-              >
-                <module.Icon size={18} color="var(--rf-primary)" aria-hidden="true" />
+            <Card className={cn("flex items-start gap-3", isSelected && "ring-2 ring-primary ring-offset-0")}>
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/15">
+                <module.Icon size={18} className="text-primary" aria-hidden="true" />
               </div>
               <div>
-                <p style={{ margin: 0, fontWeight: 700, fontSize: "0.9375rem" }}>{module.label}</p>
-                <p style={{ margin: "0.15rem 0 0", fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>{module.description}</p>
+                <p className="m-0 text-[0.9375rem] font-bold">{module.label}</p>
+                <p className="mt-0.5 mb-0 text-[0.8125rem] text-muted-foreground">{module.description}</p>
               </div>
             </Card>
           </button>

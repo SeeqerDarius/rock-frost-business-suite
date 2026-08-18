@@ -2,11 +2,14 @@ import { useId, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApp } from "@/state/AppProvider";
 import { createSchoolAdapter } from "@/modules/school/adapter";
 import type { SchoolSnapshot, SchoolStudentRow } from "@/modules/school/school-data";
 import type { SchoolStudentStatus } from "@/modules/school/types";
-import { Field, inputStyle, selectStyle, ErrorText, SyncBadge } from "@/components/form-fields";
+import { Field, ErrorText, SyncBadge } from "@/components/form-fields";
 
 const STUDENT_TRANSITIONS: Record<SchoolStudentStatus, SchoolStudentStatus[]> = {
   APPLICANT: ["ACTIVE", "WITHDRAWN"],
@@ -16,10 +19,12 @@ const STUDENT_TRANSITIONS: Record<SchoolStudentStatus, SchoolStudentStatus[]> = 
   GRADUATED: [],
 };
 
+const CHANGE_STATUS_PLACEHOLDER = "__change_status__";
+
 export function SchoolStudentsScreen({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onChanged: () => Promise<void> }) {
   return (
-    <section aria-labelledby="school-students-heading" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-      <h2 id="school-students-heading" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700 }}>
+    <section aria-labelledby="school-students-heading" className="flex flex-col gap-6">
+      <h2 id="school-students-heading" className="m-0 text-[1.05rem] font-bold">
         Students &amp; guardians
       </h2>
       <StudentSection snapshot={snapshot} onChanged={onChanged} />
@@ -84,39 +89,43 @@ function StudentSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onC
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-      <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Students</p>
+    <div className="flex flex-col gap-2.5">
+      <p className="m-0 text-sm font-semibold">Students</p>
       <Card>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-          <Field label="Campus" id={campusId}>
-            <select id={campusId} value={campus} onChange={(e) => setCampus(e.target.value)} style={{ ...selectStyle, width: "10rem" }}>
-              <option value="">Select a campus</option>
-              {snapshot.campuses.map((c) => (
-                <option key={c.entityId} value={c.entityId}>
-                  {c.data.name}
-                </option>
-              ))}
-            </select>
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+          <Field label="Campus" id={campusId} className="w-40">
+            <Select value={campus} onValueChange={(value) => setCampus(value ?? "")}>
+              <SelectTrigger id={campusId} className="w-full">
+                <SelectValue placeholder="Select a campus" />
+              </SelectTrigger>
+              <SelectContent>
+                {snapshot.campuses.map((c) => (
+                  <SelectItem key={c.entityId} value={c.entityId}>
+                    {c.data.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="First name" id={firstId}>
-            <input id={firstId} value={firstName} onChange={(e) => setFirstName(e.target.value)} style={{ ...inputStyle, width: "9rem" }} />
+          <Field label="First name" id={firstId} className="w-36">
+            <Input id={firstId} value={firstName} onChange={(e) => setFirstName(e.target.value)} />
           </Field>
-          <Field label="Last name" id={lastId}>
-            <input id={lastId} value={lastName} onChange={(e) => setLastName(e.target.value)} style={{ ...inputStyle, width: "9rem" }} />
+          <Field label="Last name" id={lastId} className="w-36">
+            <Input id={lastId} value={lastName} onChange={(e) => setLastName(e.target.value)} />
           </Field>
           <Button type="submit" variant="secondary" loading={saving} disabled={snapshot.campuses.length === 0}>
             <Plus size={14} aria-hidden="true" />
             Add student
           </Button>
         </form>
-        {snapshot.campuses.length === 0 ? <p style={{ margin: "0.6rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>Add a campus first.</p> : null}
-        {error ? <div style={{ marginTop: "0.6rem" }}><ErrorText>{error}</ErrorText></div> : null}
+        {snapshot.campuses.length === 0 ? <p className="mt-2.5 mb-0 text-xs text-muted-foreground">Add a campus first.</p> : null}
+        {error ? <div className="mt-2.5"><ErrorText>{error}</ErrorText></div> : null}
       </Card>
 
       {snapshot.students.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>No students cached on this device yet.</p>
+        <p className="m-0 text-[0.8125rem] text-muted-foreground">No students cached on this device yet.</p>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {snapshot.students.map((student) => {
             // A student still pending its own offline create has no real,
             // server-confirmed id yet - version stays 0 until the first
@@ -126,37 +135,42 @@ function StudentSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onC
             const nextStatuses = STUDENT_TRANSITIONS[student.data.status];
             return (
               <li key={student.entityId}>
-                <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>
+                <Card className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="m-0 text-sm font-semibold">
                       {student.data.firstName} {student.data.lastName}
                     </p>
-                    <p style={{ margin: "0.1rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>
+                    <p className="mt-0.5 mb-0 text-xs text-muted-foreground">
                       {student.data.admissionNumber} &middot; {student.data.status}
                     </p>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexShrink: 0 }}>
+                  <div className="flex shrink-0 items-center gap-2.5">
                     <SyncBadge pending={student.hasPendingLocalChange} />
                     {nextStatuses.length > 0 && !notYetSynced ? (
-                      <select
-                        aria-label={`Change status for ${student.data.firstName} ${student.data.lastName}`}
-                        disabled={transitioningId === student.entityId}
-                        value=""
-                        onChange={(e) => {
-                          const toStatus = e.target.value as SchoolStudentStatus;
-                          if (toStatus) void handleTransition(student, toStatus);
+                      <Select
+                        value={CHANGE_STATUS_PLACEHOLDER}
+                        onValueChange={(value) => {
+                          if (value && value !== CHANGE_STATUS_PLACEHOLDER) void handleTransition(student, value as SchoolStudentStatus);
                         }}
-                        style={{ ...selectStyle, width: "auto", padding: "0.4rem 0.6rem", fontSize: "0.8125rem" }}
                       >
-                        <option value="">Change status</option>
-                        {nextStatuses.map((status) => (
-                          <option key={status} value={status}>
-                            Move to {status.toLowerCase()}
-                          </option>
-                        ))}
-                      </select>
+                        <SelectTrigger
+                          size="sm"
+                          aria-label={`Change status for ${student.data.firstName} ${student.data.lastName}`}
+                          disabled={transitioningId === student.entityId}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={CHANGE_STATUS_PLACEHOLDER}>Change status</SelectItem>
+                          {nextStatuses.map((status) => (
+                            <SelectItem key={status} value={status}>
+                              Move to {status.toLowerCase()}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     ) : notYetSynced ? (
-                      <span style={{ fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>Sync to change status</span>
+                      <span className="text-xs text-muted-foreground">Sync to change status</span>
                     ) : null}
                   </div>
                 </Card>
@@ -209,38 +223,38 @@ function GuardianSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot; on
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-      <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Guardians</p>
+    <div className="flex flex-col gap-2.5">
+      <p className="m-0 text-sm font-semibold">Guardians</p>
       <Card>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-          <Field label="First name" id={firstId}>
-            <input id={firstId} value={firstName} onChange={(e) => setFirstName(e.target.value)} style={{ ...inputStyle, width: "9rem" }} />
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+          <Field label="First name" id={firstId} className="w-36">
+            <Input id={firstId} value={firstName} onChange={(e) => setFirstName(e.target.value)} />
           </Field>
-          <Field label="Last name" id={lastId}>
-            <input id={lastId} value={lastName} onChange={(e) => setLastName(e.target.value)} style={{ ...inputStyle, width: "9rem" }} />
+          <Field label="Last name" id={lastId} className="w-36">
+            <Input id={lastId} value={lastName} onChange={(e) => setLastName(e.target.value)} />
           </Field>
-          <Field label="Phone" id={phoneId}>
-            <input id={phoneId} value={phone} onChange={(e) => setPhone(e.target.value)} style={{ ...inputStyle, width: "9rem" }} />
+          <Field label="Phone" id={phoneId} className="w-36">
+            <Input id={phoneId} value={phone} onChange={(e) => setPhone(e.target.value)} />
           </Field>
           <Button type="submit" variant="secondary" loading={saving}>
             <Plus size={14} aria-hidden="true" />
             Add guardian
           </Button>
         </form>
-        {error ? <div style={{ marginTop: "0.6rem" }}><ErrorText>{error}</ErrorText></div> : null}
+        {error ? <div className="mt-2.5"><ErrorText>{error}</ErrorText></div> : null}
       </Card>
       {snapshot.guardians.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>No guardians cached on this device yet.</p>
+        <p className="m-0 text-[0.8125rem] text-muted-foreground">No guardians cached on this device yet.</p>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {snapshot.guardians.map((guardian) => (
             <li key={guardian.entityId}>
-              <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>
+              <Card className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="m-0 text-sm font-semibold">
                     {guardian.data.firstName} {guardian.data.lastName}
                   </p>
-                  <p style={{ margin: "0.1rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>{guardian.data.phone}</p>
+                  <p className="mt-0.5 mb-0 text-xs text-muted-foreground">{guardian.data.phone}</p>
                 </div>
                 <SyncBadge pending={guardian.hasPendingLocalChange} />
               </Card>
@@ -304,35 +318,43 @@ function GuardianLinkSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-      <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Guardian links</p>
+    <div className="flex flex-col gap-2.5">
+      <p className="m-0 text-sm font-semibold">Guardian links</p>
       <Card>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-          <Field label="Student" id={studentId}>
-            <select id={studentId} value={student} onChange={(e) => setStudent(e.target.value)} style={{ ...selectStyle, width: "10rem" }}>
-              <option value="">Select a student</option>
-              {eligibleStudents.map((s) => (
-                <option key={s.entityId} value={s.entityId}>
-                  {s.data.firstName} {s.data.lastName}
-                </option>
-              ))}
-            </select>
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+          <Field label="Student" id={studentId} className="w-40">
+            <Select value={student} onValueChange={(value) => setStudent(value ?? "")}>
+              <SelectTrigger id={studentId} className="w-full">
+                <SelectValue placeholder="Select a student" />
+              </SelectTrigger>
+              <SelectContent>
+                {eligibleStudents.map((s) => (
+                  <SelectItem key={s.entityId} value={s.entityId}>
+                    {s.data.firstName} {s.data.lastName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Guardian" id={guardianId}>
-            <select id={guardianId} value={guardian} onChange={(e) => setGuardian(e.target.value)} style={{ ...selectStyle, width: "10rem" }}>
-              <option value="">Select a guardian</option>
-              {eligibleGuardians.map((g) => (
-                <option key={g.entityId} value={g.entityId}>
-                  {g.data.firstName} {g.data.lastName}
-                </option>
-              ))}
-            </select>
+          <Field label="Guardian" id={guardianId} className="w-40">
+            <Select value={guardian} onValueChange={(value) => setGuardian(value ?? "")}>
+              <SelectTrigger id={guardianId} className="w-full">
+                <SelectValue placeholder="Select a guardian" />
+              </SelectTrigger>
+              <SelectContent>
+                {eligibleGuardians.map((g) => (
+                  <SelectItem key={g.entityId} value={g.entityId}>
+                    {g.data.firstName} {g.data.lastName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Relationship" id={relationshipId}>
-            <input id={relationshipId} value={relationship} onChange={(e) => setRelationship(e.target.value)} style={{ ...inputStyle, width: "8rem" }} placeholder="Mother" />
+          <Field label="Relationship" id={relationshipId} className="w-32">
+            <Input id={relationshipId} value={relationship} onChange={(e) => setRelationship(e.target.value)} placeholder="Mother" />
           </Field>
-          <label htmlFor={primaryId} style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8125rem", paddingBottom: "0.6rem" }}>
-            <input id={primaryId} type="checkbox" checked={primary} onChange={(e) => setPrimary(e.target.checked)} />
+          <label htmlFor={primaryId} className="flex items-center gap-1.5 pb-2.5 text-[0.8125rem]">
+            <Checkbox id={primaryId} checked={primary} onCheckedChange={(checked) => setPrimary(checked === true)} />
             Primary contact
           </label>
           <Button type="submit" variant="secondary" loading={saving} disabled={eligibleStudents.length === 0 || eligibleGuardians.length === 0}>
@@ -341,25 +363,25 @@ function GuardianLinkSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot
           </Button>
         </form>
         {eligibleStudents.length === 0 || eligibleGuardians.length === 0 ? (
-          <p style={{ margin: "0.6rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>
+          <p className="mt-2.5 mb-0 text-xs text-muted-foreground">
             Needs at least one already-synced student and guardian. A student or guardian just added offline needs to sync first.
           </p>
         ) : null}
-        {error ? <div style={{ marginTop: "0.6rem" }}><ErrorText>{error}</ErrorText></div> : null}
+        {error ? <div className="mt-2.5"><ErrorText>{error}</ErrorText></div> : null}
       </Card>
       {snapshot.guardianLinks.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>No guardian links cached on this device yet.</p>
+        <p className="m-0 text-[0.8125rem] text-muted-foreground">No guardian links cached on this device yet.</p>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {snapshot.guardianLinks.map((link) => (
             <li key={link.entityId}>
-              <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>
+              <Card className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="m-0 text-sm font-semibold">
                     {nameFor(link.data.studentId, snapshot.students)} &middot; {nameFor(link.data.guardianId, snapshot.guardians)}
                   </p>
-                  <p style={{ margin: "0.1rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>
-                    {link.data.relationship} {link.data.primary ? <span style={{ color: "var(--rf-primary)" }}>&middot; Primary</span> : null}
+                  <p className="mt-0.5 mb-0 text-xs text-muted-foreground">
+                    {link.data.relationship} {link.data.primary ? <span className="text-primary">&middot; Primary</span> : null}
                   </p>
                 </div>
                 <SyncBadge pending={link.hasPendingLocalChange} />

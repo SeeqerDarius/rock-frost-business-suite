@@ -2,15 +2,17 @@ import { useId, useState, type FormEvent } from "react";
 import { Plus, Undo2 } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApp } from "@/state/AppProvider";
 import { createSchoolAdapter } from "@/modules/school/adapter";
 import type { SchoolSnapshot } from "@/modules/school/school-data";
-import { Field, inputStyle, selectStyle, ErrorText, SyncBadge } from "@/components/form-fields";
+import { Field, ErrorText, SyncBadge } from "@/components/form-fields";
 
 export function SchoolLibraryScreen({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onChanged: () => Promise<void> }) {
   return (
-    <section aria-labelledby="school-library-heading" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-      <h2 id="school-library-heading" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700 }}>
+    <section aria-labelledby="school-library-heading" className="flex flex-col gap-6">
+      <h2 id="school-library-heading" className="m-0 text-[1.05rem] font-bold">
         Library
       </h2>
       <BookSection snapshot={snapshot} onChanged={onChanged} />
@@ -63,39 +65,39 @@ function BookSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onChan
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-      <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Books</p>
+    <div className="flex flex-col gap-2.5">
+      <p className="m-0 text-sm font-semibold">Books</p>
       <Card>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-          <Field label="Accession code" id={codeId}>
-            <input id={codeId} value={accessionCode} onChange={(e) => setAccessionCode(e.target.value)} style={{ ...inputStyle, width: "8rem" }} />
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+          <Field label="Accession code" id={codeId} className="w-32">
+            <Input id={codeId} value={accessionCode} onChange={(e) => setAccessionCode(e.target.value)} />
           </Field>
-          <Field label="Title" id={titleId}>
-            <input id={titleId} value={title} onChange={(e) => setTitle(e.target.value)} style={{ ...inputStyle, width: "10rem" }} />
+          <Field label="Title" id={titleId} className="w-40">
+            <Input id={titleId} value={title} onChange={(e) => setTitle(e.target.value)} />
           </Field>
-          <Field label="Author" id={authorId} hint="Optional">
-            <input id={authorId} value={author} onChange={(e) => setAuthor(e.target.value)} style={{ ...inputStyle, width: "9rem" }} />
+          <Field label="Author" id={authorId} hint="Optional" className="w-36">
+            <Input id={authorId} value={author} onChange={(e) => setAuthor(e.target.value)} />
           </Field>
-          <Field label="Copies" id={copiesId}>
-            <input id={copiesId} inputMode="numeric" value={totalCopies} onChange={(e) => setTotalCopies(e.target.value)} style={{ ...inputStyle, width: "4.5rem" }} />
+          <Field label="Copies" id={copiesId} className="w-20">
+            <Input id={copiesId} inputMode="numeric" value={totalCopies} onChange={(e) => setTotalCopies(e.target.value)} />
           </Field>
           <Button type="submit" variant="secondary" loading={saving}>
             <Plus size={14} aria-hidden="true" />
             Add book
           </Button>
         </form>
-        {error ? <div style={{ marginTop: "0.6rem" }}><ErrorText>{error}</ErrorText></div> : null}
+        {error ? <div className="mt-2.5"><ErrorText>{error}</ErrorText></div> : null}
       </Card>
       {snapshot.libraryBooks.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>No library books cached on this device yet.</p>
+        <p className="m-0 text-[0.8125rem] text-muted-foreground">No library books cached on this device yet.</p>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {snapshot.libraryBooks.map((book) => (
             <li key={book.entityId}>
-              <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>{book.data.title}</p>
-                  <p style={{ margin: "0.1rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>
+              <Card className="flex flex-wrap items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="m-0 text-sm font-semibold">{book.data.title}</p>
+                  <p className="mt-0.5 mb-0 text-xs text-muted-foreground">
                     {book.data.accessionCode} &middot; {book.data.availableCopies}/{book.data.totalCopies} available
                   </p>
                 </div>
@@ -170,28 +172,36 @@ function LoanSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onChan
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-      <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Loans</p>
+    <div className="flex flex-col gap-2.5">
+      <p className="m-0 text-sm font-semibold">Loans</p>
       <Card>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-          <Field label="Book" id={bookId}>
-            <select id={bookId} value={book} onChange={(e) => setBook(e.target.value)} style={{ ...selectStyle, width: "10rem" }}>
-              <option value="">Select a book</option>
-              {availableBooks.map((b) => (
-                <option key={b.entityId} value={b.entityId}>{b.data.title}</option>
-              ))}
-            </select>
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+          <Field label="Book" id={bookId} className="w-40">
+            <Select value={book} onValueChange={(value) => setBook(value ?? "")}>
+              <SelectTrigger id={bookId} className="w-full">
+                <SelectValue placeholder="Select a book" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableBooks.map((b) => (
+                  <SelectItem key={b.entityId} value={b.entityId}>{b.data.title}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Student" id={studentId}>
-            <select id={studentId} value={student} onChange={(e) => setStudent(e.target.value)} style={{ ...selectStyle, width: "9rem" }}>
-              <option value="">Select a student</option>
-              {activeStudents.map((s) => (
-                <option key={s.entityId} value={s.entityId}>{s.data.firstName} {s.data.lastName}</option>
-              ))}
-            </select>
+          <Field label="Student" id={studentId} className="w-36">
+            <Select value={student} onValueChange={(value) => setStudent(value ?? "")}>
+              <SelectTrigger id={studentId} className="w-full">
+                <SelectValue placeholder="Select a student" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeStudents.map((s) => (
+                  <SelectItem key={s.entityId} value={s.entityId}>{s.data.firstName} {s.data.lastName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Due" id={dueId}>
-            <input id={dueId} type="date" value={dueAt} onChange={(e) => setDueAt(e.target.value)} style={{ ...inputStyle, width: "9rem" }} />
+          <Field label="Due" id={dueId} className="w-36">
+            <Input id={dueId} type="date" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
           </Field>
           <Button type="submit" variant="secondary" loading={saving} disabled={availableBooks.length === 0 || activeStudents.length === 0}>
             <Plus size={14} aria-hidden="true" />
@@ -199,26 +209,26 @@ function LoanSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onChan
           </Button>
         </form>
         {availableBooks.length === 0 ? (
-          <p style={{ margin: "0.6rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>No already-synced book with an available copy yet.</p>
+          <p className="mt-2.5 mb-0 text-xs text-muted-foreground">No already-synced book with an available copy yet.</p>
         ) : null}
-        {error ? <div style={{ marginTop: "0.6rem" }}><ErrorText>{error}</ErrorText></div> : null}
+        {error ? <div className="mt-2.5"><ErrorText>{error}</ErrorText></div> : null}
       </Card>
       {snapshot.libraryLoans.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>No loans cached on this device yet.</p>
+        <p className="m-0 text-[0.8125rem] text-muted-foreground">No loans cached on this device yet.</p>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {snapshot.libraryLoans.map((loan) => (
             <li key={loan.entityId}>
-              <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>
+              <Card className="flex flex-wrap items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="m-0 text-sm font-semibold">
                     {titleForBook(loan.data.bookId)} &middot; {nameForStudent(loan.data.studentId)}
                   </p>
-                  <p style={{ margin: "0.1rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>
+                  <p className="mt-0.5 mb-0 text-xs text-muted-foreground">
                     {loan.data.status} &middot; due {loan.data.dueAt.slice(0, 10)}
                   </p>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexShrink: 0 }}>
+                <div className="flex shrink-0 items-center gap-2.5">
                   <SyncBadge pending={loan.hasPendingLocalChange} />
                   {(loan.data.status === "BORROWED" || loan.data.status === "OVERDUE") && !loan.hasPendingLocalChange ? (
                     <Button variant="secondary" onClick={() => void handleReturn(loan.entityId)} loading={returningId === loan.entityId}>

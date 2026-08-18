@@ -2,10 +2,11 @@ import { useId, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { Input } from "@/components/ui/input";
 import { useApp } from "@/state/AppProvider";
 import { createSchoolAdapter } from "@/modules/school/adapter";
 import type { SchoolSnapshot } from "@/modules/school/school-data";
-import { Field, inputStyle, ErrorText, SyncBadge, formatMoney } from "@/components/form-fields";
+import { Field, ErrorText, SyncBadge, formatMoney } from "@/components/form-fields";
 
 export function SchoolPayrollScreen({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onChanged: () => Promise<void> }) {
   const { db, device, recordActivity } = useApp();
@@ -54,48 +55,48 @@ export function SchoolPayrollScreen({ snapshot, onChanged }: { snapshot: SchoolS
   }
 
   return (
-    <section aria-labelledby="school-payroll-heading" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-      <h2 id="school-payroll-heading" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700 }}>
+    <section aria-labelledby="school-payroll-heading" className="flex flex-col gap-6">
+      <h2 id="school-payroll-heading" className="m-0 text-[1.05rem] font-bold">
         Payroll adjustments
       </h2>
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+      <div className="flex flex-col gap-2.5">
         <Card>
-          <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-            <Field label="Employee ID" id={employeeId}>
-              <input id={employeeId} value={employee} onChange={(e) => setEmployee(e.target.value)} style={{ ...inputStyle, width: "9rem" }} />
+          <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+            <Field label="Employee ID" id={employeeId} className="w-36">
+              <Input id={employeeId} value={employee} onChange={(e) => setEmployee(e.target.value)} />
             </Field>
-            <Field label="Period" id={periodId} hint="e.g. 2026-08">
-              <input id={periodId} value={period} onChange={(e) => setPeriod(e.target.value)} style={{ ...inputStyle, width: "7rem" }} />
+            <Field label="Period" id={periodId} hint="e.g. 2026-08" className="w-28">
+              <Input id={periodId} value={period} onChange={(e) => setPeriod(e.target.value)} />
             </Field>
-            <Field label="Type" id={typeId} hint="e.g. bonus">
-              <input id={typeId} value={type} onChange={(e) => setType(e.target.value)} style={{ ...inputStyle, width: "7rem" }} />
+            <Field label="Type" id={typeId} hint="e.g. bonus" className="w-28">
+              <Input id={typeId} value={type} onChange={(e) => setType(e.target.value)} />
             </Field>
-            <Field label="Description" id={descriptionId}>
-              <input id={descriptionId} value={description} onChange={(e) => setDescription(e.target.value)} style={{ ...inputStyle, width: "12rem" }} />
+            <Field label="Description" id={descriptionId} className="w-48">
+              <Input id={descriptionId} value={description} onChange={(e) => setDescription(e.target.value)} />
             </Field>
-            <Field label="Amount" id={amountId}>
-              <input id={amountId} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ ...inputStyle, width: "6rem" }} />
+            <Field label="Amount" id={amountId} className="w-24">
+              <Input id={amountId} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
             </Field>
             <Button type="submit" variant="secondary" loading={saving}>
               <Plus size={14} aria-hidden="true" />
               Add adjustment
             </Button>
           </form>
-          {error ? <div style={{ marginTop: "0.6rem" }}><ErrorText>{error}</ErrorText></div> : null}
+          {error ? <div className="mt-2.5"><ErrorText>{error}</ErrorText></div> : null}
         </Card>
 
         {snapshot.payrollAdjustments.length === 0 ? (
-          <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>No payroll adjustments cached on this device yet.</p>
+          <p className="m-0 text-[0.8125rem] text-muted-foreground">No payroll adjustments cached on this device yet.</p>
         ) : (
-          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <ul className="m-0 flex list-none flex-col gap-2 p-0">
             {snapshot.payrollAdjustments.map((adjustment) => (
               <li key={adjustment.entityId}>
-                <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>
+                <Card className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="m-0 text-sm font-semibold">
                       {adjustment.data.employeeId} &middot; {adjustment.data.type}
                     </p>
-                    <p style={{ margin: "0.1rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>
+                    <p className="mt-0.5 mb-0 text-xs text-muted-foreground">
                       {adjustment.data.period} &middot; {adjustment.data.description} &middot; {formatMoney(adjustment.data.amount)}
                     </p>
                   </div>

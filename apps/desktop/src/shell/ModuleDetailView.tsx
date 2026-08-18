@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Clock3, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { SyncBadge } from "@/components/form-fields";
 import { useApp } from "@/state/AppProvider";
 import { createFleetAdapter } from "@/modules/fleet/adapter";
 import { createInstallmentAdapter } from "@/modules/installment/adapter";
@@ -94,9 +95,9 @@ export function ModuleDetailView({ moduleKey }: { moduleKey: DemoModuleKey }) {
   }
 
   return (
-    <section aria-labelledby="module-detail-heading" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
-        <h2 id="module-detail-heading" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700 }}>
+    <section aria-labelledby="module-detail-heading" className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h2 id="module-detail-heading" className="m-0 text-[1.05rem] font-bold">
           {meta?.label ?? moduleKey}
         </h2>
         <Button onClick={() => void handleRecordDemoEntry()} loading={recording} variant="secondary">
@@ -107,43 +108,23 @@ export function ModuleDetailView({ moduleKey }: { moduleKey: DemoModuleKey }) {
 
       {records.length === 0 ? (
         <Card>
-          <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--rf-muted-foreground)" }}>
+          <p className="m-0 text-sm text-muted-foreground">
             No records cached for this module yet on this device. Sync to pull existing records, or use &quot;Record example
             entry&quot; to see how an offline entry appears before it syncs.
           </p>
         </Card>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
           {records.map((record) => (
             <li key={record.entityId}>
-              <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: "0.8125rem", fontFamily: "monospace", color: "var(--rf-muted-foreground)" }}>
+              <Card className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="m-0 font-mono text-[0.8125rem] text-muted-foreground">
                     {record.entityId.slice(0, 8)}
                   </p>
-                  <p style={{ margin: "0.15rem 0 0", fontSize: "0.8125rem" }}>Updated {formatRelativeTime(record.updatedAt)}</p>
+                  <p className="mt-0.5 mb-0 text-[0.8125rem]">Updated {formatRelativeTime(record.updatedAt)}</p>
                 </div>
-                {record.hasPendingLocalChange ? (
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "0.3rem",
-                      padding: "0.25rem 0.6rem",
-                      borderRadius: "999px",
-                      fontSize: "0.75rem",
-                      fontWeight: 700,
-                      color: "var(--rf-warning)",
-                      background: "color-mix(in oklch, var(--rf-warning) 18%, transparent)",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Clock3 size={12} aria-hidden="true" />
-                    Pending sync
-                  </span>
-                ) : (
-                  <span style={{ fontSize: "0.75rem", color: "var(--rf-muted-foreground)", flexShrink: 0 }}>Synced</span>
-                )}
+                <SyncBadge pending={record.hasPendingLocalChange} />
               </Card>
             </li>
           ))}

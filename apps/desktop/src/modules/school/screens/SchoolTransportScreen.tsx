@@ -2,15 +2,17 @@ import { useId, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApp } from "@/state/AppProvider";
 import { createSchoolAdapter } from "@/modules/school/adapter";
 import type { SchoolSnapshot } from "@/modules/school/school-data";
-import { Field, inputStyle, selectStyle, ErrorText, SyncBadge } from "@/components/form-fields";
+import { Field, ErrorText, SyncBadge } from "@/components/form-fields";
 
 export function SchoolTransportScreen({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onChanged: () => Promise<void> }) {
   return (
-    <section aria-labelledby="school-transport-heading" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-      <h2 id="school-transport-heading" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700 }}>
+    <section aria-labelledby="school-transport-heading" className="flex flex-col gap-6">
+      <h2 id="school-transport-heading" className="m-0 text-[1.05rem] font-bold">
         Transport
       </h2>
       <RouteSection snapshot={snapshot} onChanged={onChanged} />
@@ -70,50 +72,54 @@ function RouteSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onCha
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-      <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Routes</p>
+    <div className="flex flex-col gap-2.5">
+      <p className="m-0 text-sm font-semibold">Routes</p>
       <Card>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-          <Field label="Campus" id={campusId}>
-            <select id={campusId} value={campus} onChange={(e) => setCampus(e.target.value)} style={{ ...selectStyle, width: "9rem" }}>
-              <option value="">Select a campus</option>
-              {snapshot.campuses.map((c) => (
-                <option key={c.entityId} value={c.entityId}>{c.data.name}</option>
-              ))}
-            </select>
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+          <Field label="Campus" id={campusId} className="w-36">
+            <Select value={campus} onValueChange={(value) => setCampus(value ?? "")}>
+              <SelectTrigger id={campusId} className="w-full">
+                <SelectValue placeholder="Select a campus" />
+              </SelectTrigger>
+              <SelectContent>
+                {snapshot.campuses.map((c) => (
+                  <SelectItem key={c.entityId} value={c.entityId}>{c.data.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Code" id={codeId}>
-            <input id={codeId} value={code} onChange={(e) => setCode(e.target.value)} style={{ ...inputStyle, width: "6rem" }} />
+          <Field label="Code" id={codeId} className="w-24">
+            <Input id={codeId} value={code} onChange={(e) => setCode(e.target.value)} />
           </Field>
-          <Field label="Name" id={nameId}>
-            <input id={nameId} value={name} onChange={(e) => setName(e.target.value)} style={{ ...inputStyle, width: "9rem" }} />
+          <Field label="Name" id={nameId} className="w-36">
+            <Input id={nameId} value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
-          <Field label="Vehicle" id={vehicleId} hint="Optional">
-            <input id={vehicleId} value={vehicle} onChange={(e) => setVehicle(e.target.value)} style={{ ...inputStyle, width: "7rem" }} />
+          <Field label="Vehicle" id={vehicleId} hint="Optional" className="w-28">
+            <Input id={vehicleId} value={vehicle} onChange={(e) => setVehicle(e.target.value)} />
           </Field>
-          <Field label="Driver" id={driverId} hint="Optional">
-            <input id={driverId} value={driverName} onChange={(e) => setDriverName(e.target.value)} style={{ ...inputStyle, width: "8rem" }} />
+          <Field label="Driver" id={driverId} hint="Optional" className="w-32">
+            <Input id={driverId} value={driverName} onChange={(e) => setDriverName(e.target.value)} />
           </Field>
-          <Field label="Fee" id={feeId}>
-            <input id={feeId} inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} style={{ ...inputStyle, width: "5.5rem" }} />
+          <Field label="Fee" id={feeId} className="w-[5.5rem]">
+            <Input id={feeId} inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} />
           </Field>
           <Button type="submit" variant="secondary" loading={saving}>
             <Plus size={14} aria-hidden="true" />
             Add route
           </Button>
         </form>
-        {error ? <div style={{ marginTop: "0.6rem" }}><ErrorText>{error}</ErrorText></div> : null}
+        {error ? <div className="mt-2.5"><ErrorText>{error}</ErrorText></div> : null}
       </Card>
       {snapshot.transportRoutes.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>No transport routes cached on this device yet.</p>
+        <p className="m-0 text-[0.8125rem] text-muted-foreground">No transport routes cached on this device yet.</p>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {snapshot.transportRoutes.map((route) => (
             <li key={route.entityId}>
-              <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>{route.data.name}</p>
-                  <p style={{ margin: "0.1rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>
+              <Card className="flex flex-wrap items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="m-0 text-sm font-semibold">{route.data.name}</p>
+                  <p className="mt-0.5 mb-0 text-xs text-muted-foreground">
                     {route.data.code} &middot; {route.data.driverName ?? "No driver set"} &middot; {route.data.fee}
                   </p>
                 </div>
@@ -173,28 +179,36 @@ function AssignmentSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot; 
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-      <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Assignments</p>
+    <div className="flex flex-col gap-2.5">
+      <p className="m-0 text-sm font-semibold">Assignments</p>
       <Card>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-          <Field label="Route" id={routeId}>
-            <select id={routeId} value={route} onChange={(e) => setRoute(e.target.value)} style={{ ...selectStyle, width: "9rem" }}>
-              <option value="">Select a route</option>
-              {eligibleRoutes.map((r) => (
-                <option key={r.entityId} value={r.entityId}>{r.data.name}</option>
-              ))}
-            </select>
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+          <Field label="Route" id={routeId} className="w-36">
+            <Select value={route} onValueChange={(value) => setRoute(value ?? "")}>
+              <SelectTrigger id={routeId} className="w-full">
+                <SelectValue placeholder="Select a route" />
+              </SelectTrigger>
+              <SelectContent>
+                {eligibleRoutes.map((r) => (
+                  <SelectItem key={r.entityId} value={r.entityId}>{r.data.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Student" id={studentId}>
-            <select id={studentId} value={student} onChange={(e) => setStudent(e.target.value)} style={{ ...selectStyle, width: "9rem" }}>
-              <option value="">Select a student</option>
-              {eligibleStudents.map((s) => (
-                <option key={s.entityId} value={s.entityId}>{s.data.firstName} {s.data.lastName}</option>
-              ))}
-            </select>
+          <Field label="Student" id={studentId} className="w-36">
+            <Select value={student} onValueChange={(value) => setStudent(value ?? "")}>
+              <SelectTrigger id={studentId} className="w-full">
+                <SelectValue placeholder="Select a student" />
+              </SelectTrigger>
+              <SelectContent>
+                {eligibleStudents.map((s) => (
+                  <SelectItem key={s.entityId} value={s.entityId}>{s.data.firstName} {s.data.lastName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Stop" id={stopId} hint="Optional">
-            <input id={stopId} value={stopName} onChange={(e) => setStopName(e.target.value)} style={{ ...inputStyle, width: "8rem" }} />
+          <Field label="Stop" id={stopId} hint="Optional" className="w-32">
+            <Input id={stopId} value={stopName} onChange={(e) => setStopName(e.target.value)} />
           </Field>
           <Button type="submit" variant="secondary" loading={saving} disabled={eligibleRoutes.length === 0 || eligibleStudents.length === 0}>
             <Plus size={14} aria-hidden="true" />
@@ -202,23 +216,23 @@ function AssignmentSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot; 
           </Button>
         </form>
         {eligibleRoutes.length === 0 ? (
-          <p style={{ margin: "0.6rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>Needs an already-synced route. A route just added offline needs to sync first.</p>
+          <p className="mt-2.5 mb-0 text-xs text-muted-foreground">Needs an already-synced route. A route just added offline needs to sync first.</p>
         ) : null}
-        {error ? <div style={{ marginTop: "0.6rem" }}><ErrorText>{error}</ErrorText></div> : null}
+        {error ? <div className="mt-2.5"><ErrorText>{error}</ErrorText></div> : null}
       </Card>
       {snapshot.transportAssignments.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>No transport assignments cached on this device yet.</p>
+        <p className="m-0 text-[0.8125rem] text-muted-foreground">No transport assignments cached on this device yet.</p>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {snapshot.transportAssignments.map((assignment) => (
             <li key={assignment.entityId}>
-              <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>
+              <Card className="flex flex-wrap items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="m-0 text-sm font-semibold">
                     {nameForStudent(assignment.data.studentId)} &middot; {nameForRoute(assignment.data.routeId)}
                   </p>
                   {assignment.data.stopName ? (
-                    <p style={{ margin: "0.1rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>{assignment.data.stopName}</p>
+                    <p className="mt-0.5 mb-0 text-xs text-muted-foreground">{assignment.data.stopName}</p>
                   ) : null}
                 </div>
                 <SyncBadge pending={assignment.hasPendingLocalChange} />

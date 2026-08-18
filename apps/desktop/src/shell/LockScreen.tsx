@@ -2,6 +2,9 @@ import { useId, useState, type FormEvent } from "react";
 import { Ban, Clock, Lock as LockIcon } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { Input } from "@/components/ui/input";
+import { ErrorText } from "@/components/form-fields";
+import { cn } from "@/lib/utils";
 import { useApp } from "@/state/AppProvider";
 import type { DeviceLockState } from "@/security/device-lock";
 
@@ -50,47 +53,29 @@ export function LockScreen({ reason }: { reason: NonNullable<DeviceLockState["re
   const Icon = reason === "revoked" ? Ban : reason === "offline_session_expired" ? Clock : LockIcon;
 
   return (
-    <main
-      id="main-content"
-      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem", background: "var(--rf-muted)" }}
-    >
-      <Card style={{ width: "100%", maxWidth: "24rem", textAlign: "center" }}>
-        <div
-          style={{
-            width: "3rem",
-            height: "3rem",
-            borderRadius: "999px",
-            margin: "0 auto 1rem",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: reason === "revoked" ? "color-mix(in oklch, var(--rf-destructive) 15%, transparent)" : "color-mix(in oklch, var(--rf-primary) 15%, transparent)",
-          }}
-        >
-          <Icon size={22} color={reason === "revoked" ? "var(--rf-destructive)" : "var(--rf-primary)"} aria-hidden="true" />
+    <main id="main-content" className="flex min-h-screen items-center justify-center bg-muted p-8">
+      <Card className="w-full max-w-sm text-center">
+        <div className={cn("mx-auto mb-4 flex size-12 items-center justify-center rounded-full", reason === "revoked" ? "bg-destructive/15" : "bg-primary/15")}>
+          <Icon size={22} className={reason === "revoked" ? "text-destructive" : "text-primary"} aria-hidden="true" />
         </div>
-        <h1 style={{ margin: "0 0 0.4rem", fontSize: "1.05rem", fontWeight: 700 }}>{copy.title}</h1>
-        <p style={{ margin: "0 0 1.25rem", fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>{copy.description}</p>
+        <h1 className="mt-0 mb-1.5 text-[1.05rem] font-bold">{copy.title}</h1>
+        <p className="mt-0 mb-5 text-[0.8125rem] text-muted-foreground">{copy.description}</p>
 
         {canUnlockWithPasscode ? (
-          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem", textAlign: "left" }}>
-            <label htmlFor={passcodeId} style={{ fontSize: "0.8125rem", fontWeight: 600 }}>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3 text-left">
+            <label htmlFor={passcodeId} className="text-[0.8125rem] font-semibold">
               Unlock passcode
             </label>
-            <input
+            <Input
               id={passcodeId}
               type="password"
               inputMode="numeric"
               autoFocus
               value={passcode}
               onChange={(e) => setPasscode(e.target.value)}
-              style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "var(--rf-radius-md)", border: "1px solid var(--rf-border)", background: "var(--rf-background)", fontSize: "0.875rem", textAlign: "center", letterSpacing: "0.3em" }}
+              className="text-center tracking-[0.3em]"
             />
-            {error ? (
-              <p role="alert" style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-destructive)" }}>
-                {error}
-              </p>
-            ) : null}
+            {error ? <ErrorText>{error}</ErrorText> : null}
             <Button type="submit" loading={checking}>
               Unlock
             </Button>
@@ -102,7 +87,7 @@ export function LockScreen({ reason }: { reason: NonNullable<DeviceLockState["re
         )}
 
         {device ? (
-          <p style={{ marginTop: "1rem", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>Signed in as {device.userName}</p>
+          <p className="mt-4 text-xs text-muted-foreground">Signed in as {device.userName}</p>
         ) : null}
       </Card>
     </main>

@@ -1,5 +1,77 @@
 # Desktop client handoff
 
+## 2026-08-18 Tailwind v4 + shadcn/ui UI port from the web app (0.2.3 to 0.2.4)
+
+The user asked, after testing the previous milestones' UI, whether the
+desktop app could look exactly like the web app. It could not: the desktop
+client had its own hand-rolled `--rf-*` CSS-variable theme (`theme.css`) and
+custom `Button`/`Card` components with inline `style={{}}` objects on every
+screen, sharing no code or visual identity with the web app's real Tailwind
+v4 + shadcn/ui ("base-nova") stack. The user chose a full port over keeping
+the lightweight custom UI.
+
+Ported: `@tailwindcss/vite`, `src/styles/globals.css` (replaces `theme.css`,
+same OKLCH token names/values as the web app's `globals.css`), `src/lib/utils.ts`
+(`cn()`), and all 26 `src/components/ui/*.tsx` shadcn files copied from the
+web app (2 fixes needed: `sonner.tsx` had a `next-themes` dependency the
+desktop doesn't have, hardcoded to `theme="system"` instead; `scroll-area.tsx`
+had an unused import that only failed under the desktop's stricter
+`noUnusedLocals` tsconfig).
+
+`Button` and `Card` became thin wrappers around the real `ui/button.tsx`/
+`ui/card.tsx`, keeping their existing simplified call-site API
+(`variant="primary"|"secondary"|"ghost"|"destructive"`, `loading?`) so the
+roughly 120 existing call sites did not need to change, while still
+rendering 100% real shadcn CSS underneath. Every other primitive was
+converted at each call site across all 32 screen/shell files: native
+`<select>` to the compound `Select`/`SelectTrigger`/`SelectValue`/
+`SelectContent`/`SelectItem` API, native `<input>`/checkbox to `Input`/
+`Checkbox`, and every inline `style={{}}` layout object to Tailwind
+utility classes.
+
+Two non-obvious gotchas: Base UI's `Select` `onValueChange` signature is
+`(value: string | null, ...) => void`, unlike a native `<select>`'s
+always-string `e.target.value` - every conversion site needed a
+`value ?? ""` or sentinel-value guard. Base UI's `SelectItem` also does not
+support an empty-string `value`, so existing "no selection" / placeholder
+states (custom sale line, no-guardian, change-status) use string sentinels
+(`__custom__`, `__none__`, `__change_status__`) translated to `""` at the
+component boundary, unchanged in behavior from before the port.
+
+This is presentation-only: no adapter, sync-engine, mutation-queue, or
+offline-mutation logic changed. `git status` before starting showed no
+uncommitted or concurrent work in `apps/desktop/`; nothing outside
+`apps/desktop/` was touched.
+
+Validation from `apps/desktop/`: `npx tsc --noEmit` passed with zero errors
+across the full app; `npm run lint` passed; `npm test` passed unmodified,
+16 files and 99 tests (no DOM-structure-dependent test needed updating);
+`npm run build` compiled 2,130 modules. `cargo check` and
+`npm run tauri:build` (native, `CARGO_TARGET_DIR` pointed outside the
+worktree to avoid the Windows `MAX_PATH` issue from the previous entries)
+produced NSIS and MSI `0.2.4` installers in 15m40s, an incremental build
+since only the frontend changed. The built exe launched and stayed
+responsive in a local smoke test. NSIS installer: 3,564,760 bytes, SHA-256
+`79D88FDC277773BAD9E069CE016915CE76C4F2C6C8FBEAA496C79946090AE094`. MSI
+installer: 4,845,568 bytes, SHA-256
+`BEF5FB5C3FB3F8BC78CA6EEB5AAEFE0831FD3F74EFFBD77E8C5B494ABFA7FAEE`.
+
+Two build-toolchain retries were needed before this succeeded: invoking the
+known-working batch script via `cmd.exe /c "<path>"` from this session's Bash
+tool produced no output and exited immediately (the script never actually
+ran); invoking the same `.bat` directly instead worked, but then failed with
+`'tsc' is not recognized` because this session's inherited `PATH` had grown
+enormous (many Claude plugin bin directories accumulated over a long
+conversation) and combining that with `vcvarsall.bat`'s own additions likely
+exceeded a length limit somewhere in the chain, corrupting `npm`'s own
+`node_modules/.bin` prepend for the child `tsc` process. Fixed by resetting
+`PATH` to a short, explicit list (System32, Node, cargo, Strawberry Perl/NASM)
+before calling `vcvarsall.bat`, instead of layering onto the inherited one.
+
+Not yet done: manual install and UI walkthrough on a live Windows machine to
+confirm the ported UI actually renders as intended (screens, dark/light
+tokens, Select/Checkbox/Tabs behavior) - sent to the operator for that.
+
 ## 2026-08-16 CSP connect-src fix, found via live install testing (0.2.2 to 0.2.3)
 
 After installing and manually testing `0.2.2` on a real Windows machine, the

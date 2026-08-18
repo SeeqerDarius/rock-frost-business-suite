@@ -14,46 +14,46 @@ export function PosReportsScreen({ snapshot }: { snapshot: PosSnapshot }) {
   const methods = Object.entries(summary.byPaymentMethod).sort((a, b) => b[1].total - a[1].total);
 
   return (
-    <section aria-labelledby="pos-reports-heading" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <h2 id="pos-reports-heading" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700 }}>
+    <section aria-labelledby="pos-reports-heading" className="flex flex-col gap-4">
+      <h2 id="pos-reports-heading" className="m-0 text-[1.05rem] font-bold">
         Reports
       </h2>
 
-      <Card style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-        <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Today</p>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem" }}>
+      <Card className="flex flex-col gap-2">
+        <p className="m-0 text-sm font-semibold">Today</p>
+        <div className="flex justify-between text-sm">
           <span>Sales</span>
           <span>{summary.todaySalesCount}</span>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", fontWeight: 700 }}>
+        <div className="flex justify-between text-sm font-bold">
           <span>Total</span>
           <span>GHS {formatMoney(String(summary.todaySalesTotal))}</span>
         </div>
       </Card>
 
-      <Card style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-        <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>All time (cached on this device)</p>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem" }}>
+      <Card className="flex flex-col gap-2">
+        <p className="m-0 text-sm font-semibold">All time (cached on this device)</p>
+        <div className="flex justify-between text-sm">
           <span>Completed sales</span>
           <span>{summary.allTimeSalesCount}</span>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem" }}>
+        <div className="flex justify-between text-sm">
           <span>Refunded sales</span>
           <span>{summary.refundedCount}</span>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", fontWeight: 700 }}>
+        <div className="flex justify-between text-sm font-bold">
           <span>Total</span>
           <span>GHS {formatMoney(String(summary.allTimeSalesTotal))}</span>
         </div>
       </Card>
 
-      <Card style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-        <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>By payment method</p>
+      <Card className="flex flex-col gap-2">
+        <p className="m-0 text-sm font-semibold">By payment method</p>
         {methods.length === 0 ? (
-          <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>No completed sales cached yet.</p>
+          <p className="m-0 text-[0.8125rem] text-muted-foreground">No completed sales cached yet.</p>
         ) : (
           methods.map(([method, bucket]) => (
-            <div key={method} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem" }}>
+            <div key={method} className="flex justify-between text-sm">
               <span>{method}</span>
               <span>
                 {bucket.count} &middot; GHS {formatMoney(String(bucket.total))}

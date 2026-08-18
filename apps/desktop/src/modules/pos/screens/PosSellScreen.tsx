@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApp } from "@/state/AppProvider";
 import { createPosAdapter } from "@/modules/pos/adapter";
 import type { PosSnapshot } from "@/modules/pos/pos-data";
 import { LocalStockOverlay } from "@/modules/pos/local-stock-overlay";
 import type { PosSaleLine, PosSessionClosePayload } from "@/modules/pos/types";
-import { Field, inputStyle, selectStyle, ErrorText, formatMoney } from "@/components/form-fields";
+import { Field, ErrorText, formatMoney } from "@/components/form-fields";
 
 interface InventoryItemRecord { sku: string; name: string; unit: string; costPrice?: string }
 interface InventoryStockRecord { itemId: string; warehouseId: string; quantity: number }
@@ -18,6 +20,10 @@ const PAYMENT_METHODS: { value: "CASH" | "CARD" | "MOBILE_MONEY" | "OTHER"; labe
   { value: "MOBILE_MONEY", label: "Mobile money" },
   { value: "OTHER", label: "Other" },
 ];
+
+/** shadcn's Select does not accept an empty-string item value, so a "custom line"/"no selection" placeholder uses this sentinel and is translated to/from "" at the state boundary. */
+const CUSTOM_LINE = "__custom__";
+const NONE = "__none__";
 
 export function PosSellScreen({ snapshot, onChanged }: { snapshot: PosSnapshot; onChanged: () => Promise<void> }) {
   const { db, device, recordActivity } = useApp();
@@ -130,8 +136,8 @@ export function PosSellScreen({ snapshot, onChanged }: { snapshot: PosSnapshot; 
   }
 
   return (
-    <section aria-labelledby="pos-sell-heading" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <h2 id="pos-sell-heading" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700 }}>
+    <section aria-labelledby="pos-sell-heading" className="flex flex-col gap-4">
+      <h2 id="pos-sell-heading" className="m-0 text-[1.05rem] font-bold">
         Sell
       </h2>
 
@@ -146,38 +152,41 @@ export function PosSellScreen({ snapshot, onChanged }: { snapshot: PosSnapshot; 
 
       {selectedSessionId ? (
         <>
-          <Card style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Add item</p>
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1.6fr) 5rem 6rem auto", gap: "0.5rem", alignItems: "end" }}>
+          <Card className="flex flex-col gap-3">
+            <p className="m-0 text-sm font-semibold">Add item</p>
+            <div className="grid items-end gap-2 [grid-template-columns:minmax(0,1.4fr)_minmax(0,1.6fr)_5rem_6rem_auto]">
               <Field label="Catalog item" id="pos-sell-item">
-                <select
-                  id="pos-sell-item"
-                  value={lineItemId}
-                  onChange={(e) => {
-                    setLineItemId(e.target.value);
+                <Select
+                  value={lineItemId || CUSTOM_LINE}
+                  onValueChange={(value) => {
+                    setLineItemId(!value || value === CUSTOM_LINE ? "" : value);
                     setLineDescription("");
                   }}
-                  style={selectStyle}
                 >
-                  <option value="">Custom line</option>
-                  {items.map((item) => {
-                    const qty = stockFor(item.entityId);
-                    return (
-                      <option key={item.entityId} value={item.entityId}>
-                        {item.data.name} {qty !== null ? `(${qty} ${item.data.unit} in stock)` : ""}
-                      </option>
-                    );
-                  })}
-                </select>
+                  <SelectTrigger id="pos-sell-item" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={CUSTOM_LINE}>Custom line</SelectItem>
+                    {items.map((item) => {
+                      const qty = stockFor(item.entityId);
+                      return (
+                        <SelectItem key={item.entityId} value={item.entityId}>
+                          {item.data.name} {qty !== null ? `(${qty} ${item.data.unit} in stock)` : ""}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
               </Field>
               <Field label="Description" id="pos-sell-description" hint={lineItemId ? "Optional override" : undefined}>
-                <input id="pos-sell-description" value={lineDescription} onChange={(e) => setLineDescription(e.target.value)} style={inputStyle} placeholder={items.find((i) => i.entityId === lineItemId)?.data.name} />
+                <Input id="pos-sell-description" value={lineDescription} onChange={(e) => setLineDescription(e.target.value)} placeholder={items.find((i) => i.entityId === lineItemId)?.data.name} />
               </Field>
               <Field label="Qty" id="pos-sell-qty">
-                <input id="pos-sell-qty" inputMode="numeric" value={lineQuantity} onChange={(e) => setLineQuantity(e.target.value)} style={inputStyle} />
+                <Input id="pos-sell-qty" inputMode="numeric" value={lineQuantity} onChange={(e) => setLineQuantity(e.target.value)} />
               </Field>
               <Field label="Unit price" id="pos-sell-price">
-                <input id="pos-sell-price" inputMode="decimal" value={lineUnitPrice} onChange={(e) => setLineUnitPrice(e.target.value)} style={inputStyle} placeholder="0.00" />
+                <Input id="pos-sell-price" inputMode="decimal" value={lineUnitPrice} onChange={(e) => setLineUnitPrice(e.target.value)} placeholder="0.00" />
               </Field>
               <Button type="button" variant="secondary" onClick={handleAddLine}>
                 <Plus size={14} aria-hidden="true" />
@@ -187,18 +196,18 @@ export function PosSellScreen({ snapshot, onChanged }: { snapshot: PosSnapshot; 
             {lineError ? <ErrorText>{lineError}</ErrorText> : null}
           </Card>
 
-          <Card style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-            <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Cart</p>
+          <Card className="flex flex-col gap-2.5">
+            <p className="m-0 text-sm font-semibold">Cart</p>
             {lines.length === 0 ? (
-              <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>No items added yet.</p>
+              <p className="m-0 text-[0.8125rem] text-muted-foreground">No items added yet.</p>
             ) : (
-              <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+              <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
                 {lines.map((line, index) => (
-                  <li key={index} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", fontSize: "0.8125rem" }}>
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <li key={index} className="flex items-center justify-between gap-3 text-[0.8125rem]">
+                    <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
                       {line.quantity} x {line.description}
                     </span>
-                    <span style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexShrink: 0 }}>
+                    <span className="flex shrink-0 items-center gap-2.5">
                       <span>GHS {formatMoney(String(Number(line.unitPrice) * line.quantity))}</span>
                       <Button type="button" variant="ghost" onClick={() => removeLine(index)} aria-label="Remove line">
                         <Trash2 size={14} aria-hidden="true" />
@@ -208,29 +217,34 @@ export function PosSellScreen({ snapshot, onChanged }: { snapshot: PosSnapshot; 
                 ))}
               </ul>
             )}
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: "0.9375rem", paddingTop: "0.4rem", borderTop: "1px solid var(--rf-border)" }}>
+            <div className="flex justify-between border-t pt-1.5 text-[0.9375rem] font-bold">
               <span>Total</span>
               <span>GHS {formatMoney(String(total))}</span>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem" }}>
+            <div className="grid grid-cols-2 gap-2.5">
               <Field label="Customer name" id="pos-sell-customer" hint="Optional">
-                <input id="pos-sell-customer" value={customerName} onChange={(e) => setCustomerName(e.target.value)} style={inputStyle} />
+                <Input id="pos-sell-customer" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
               </Field>
               <Field label="Payment method" id="pos-sell-payment">
-                <select id="pos-sell-payment" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as typeof paymentMethod)} style={selectStyle}>
-                  {PAYMENT_METHODS.map((m) => (
-                    <option key={m.value} value={m.value}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
+                <Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as typeof paymentMethod)}>
+                  <SelectTrigger id="pos-sell-payment" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_METHODS.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Field>
             </div>
 
             {saleError ? <ErrorText>{saleError}</ErrorText> : null}
             {lastSaleAt ? (
-              <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-primary)", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+              <p className="m-0 flex items-center gap-1.5 text-[0.8125rem] text-primary">
                 <CheckCircle2 size={14} aria-hidden="true" />
                 Sale queued. It is in the pending sync count and does not need to be re-entered.
               </p>
@@ -320,38 +334,43 @@ function SessionPicker({
   const selectedIsClosing = pendingCloseSessionIds.has(selectedSessionId);
 
   return (
-    <Card style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-      <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Register session</p>
+    <Card className="flex flex-col gap-2.5">
+      <p className="m-0 text-sm font-semibold">Register session</p>
       {openSessions.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>
+        <p className="m-0 text-[0.8125rem] text-muted-foreground">
           No open session is cached on this device. Open one while online so its session id syncs, then you can sell against it
           for the rest of the day even without a connection.
         </p>
       ) : (
         <Field label="Selling against" id="pos-sell-session">
-          <select id="pos-sell-session" value={selectedSessionId} onChange={(e) => onSelect(e.target.value)} style={selectStyle}>
-            {openSessions.map((session) => (
-              <option key={session.entityId} value={session.entityId}>
-                {session.data.register.name} &middot; opened {new Date(session.data.openedAt).toLocaleString()}
-              </option>
-            ))}
-          </select>
+          <Select value={selectedSessionId} onValueChange={(value) => onSelect(value ?? "")}>
+            <SelectTrigger id="pos-sell-session" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {openSessions.map((session) => (
+                <SelectItem key={session.entityId} value={session.entityId}>
+                  {session.data.register.name} &middot; opened {new Date(session.data.openedAt).toLocaleString()}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Field>
       )}
       {selectedIsClosing ? (
-        <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-warning)" }}>
+        <p className="m-0 text-[0.8125rem] text-amber-700 dark:text-amber-400">
           A close for this session is already queued. It will stop appearing here once the close syncs.
         </p>
       ) : null}
       {justOpenedOffline ? (
-        <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-warning)" }}>
+        <p className="m-0 text-[0.8125rem] text-amber-700 dark:text-amber-400">
           Session open queued. It needs to sync before sales can be recorded against it.
         </p>
       ) : null}
 
       {error ? <ErrorText>{error}</ErrorText> : null}
 
-      <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+      <div className="flex flex-wrap gap-2.5">
         {!showOpenForm ? (
           <Button type="button" variant="secondary" onClick={() => setShowOpenForm(true)} disabled={eligibleRegisters.length === 0}>
             <Plus size={14} aria-hidden="true" />
@@ -366,19 +385,24 @@ function SessionPicker({
       </div>
 
       {showOpenForm ? (
-        <div style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
+        <div className="flex flex-wrap items-end gap-2.5">
           <Field label="Register" id="pos-open-register">
-            <select id="pos-open-register" value={registerId} onChange={(e) => setRegisterId(e.target.value)} style={selectStyle}>
-              <option value="">Select a register</option>
-              {eligibleRegisters.map((r) => (
-                <option key={r.entityId} value={r.entityId}>
-                  {r.data.name}
-                </option>
-              ))}
-            </select>
+            <Select value={registerId || NONE} onValueChange={(value) => setRegisterId(!value || value === NONE ? "" : value)}>
+              <SelectTrigger id="pos-open-register" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Select a register</SelectItem>
+                {eligibleRegisters.map((r) => (
+                  <SelectItem key={r.entityId} value={r.entityId}>
+                    {r.data.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="Opening float" id="pos-open-float">
-            <input id="pos-open-float" inputMode="decimal" value={openingFloat} onChange={(e) => setOpeningFloat(e.target.value)} style={inputStyle} />
+            <Input id="pos-open-float" inputMode="decimal" value={openingFloat} onChange={(e) => setOpeningFloat(e.target.value)} />
           </Field>
           <Button type="button" onClick={() => void handleOpenSession()} loading={busy} disabled={!registerId}>
             Open
@@ -390,9 +414,9 @@ function SessionPicker({
       ) : null}
 
       {showCloseForm ? (
-        <div style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
+        <div className="flex flex-wrap items-end gap-2.5">
           <Field label="Closing cash counted" id="pos-close-cash">
-            <input id="pos-close-cash" inputMode="decimal" value={closingCash} onChange={(e) => setClosingCash(e.target.value)} style={inputStyle} placeholder="0.00" />
+            <Input id="pos-close-cash" inputMode="decimal" value={closingCash} onChange={(e) => setClosingCash(e.target.value)} placeholder="0.00" />
           </Field>
           <Button type="button" onClick={() => void handleCloseSession()} loading={busy}>
             Confirm close

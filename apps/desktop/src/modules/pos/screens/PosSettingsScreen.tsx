@@ -1,10 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useApp } from "@/state/AppProvider";
 import { createPosAdapter } from "@/modules/pos/adapter";
 import type { PosSnapshot } from "@/modules/pos/pos-data";
-import { Field, inputStyle, ErrorText, SyncBadge } from "@/components/form-fields";
+import { Field, ErrorText, SyncBadge } from "@/components/form-fields";
 
 export function PosSettingsScreen({ snapshot, onChanged }: { snapshot: PosSnapshot; onChanged: () => Promise<void> }) {
   const { db, device, recordActivity } = useApp();
@@ -25,11 +27,11 @@ export function PosSettingsScreen({ snapshot, onChanged }: { snapshot: PosSnapsh
   if (settings && !settings.data.canManageSettings) {
     return (
       <section aria-labelledby="pos-settings-heading">
-        <h2 id="pos-settings-heading" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700, marginBottom: "0.75rem" }}>
+        <h2 id="pos-settings-heading" className="m-0 mb-3 text-[1.05rem] font-bold">
           Settings
         </h2>
         <Card>
-          <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--rf-muted-foreground)" }}>
+          <p className="m-0 text-sm text-muted-foreground">
             You do not have permission to change POS settings on this device.
           </p>
         </Card>
@@ -77,39 +79,39 @@ export function PosSettingsScreen({ snapshot, onChanged }: { snapshot: PosSnapsh
   }
 
   return (
-    <section aria-labelledby="pos-settings-heading" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
-        <h2 id="pos-settings-heading" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700 }}>
+    <section aria-labelledby="pos-settings-heading" className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-4">
+        <h2 id="pos-settings-heading" className="m-0 text-[1.05rem] font-bold">
           Settings
         </h2>
         {settings ? <SyncBadge pending={settings.hasPendingLocalChange} /> : null}
       </div>
 
       <Card>
-        <form onSubmit={(e) => void handleSaveFooter(e)} noValidate style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <form onSubmit={(e) => void handleSaveFooter(e)} noValidate className="flex flex-col gap-3">
           <Field label="Receipt footer text" id="pos-settings-footer" hint="Printed at the bottom of every receipt. Leave blank for no footer.">
-            <textarea
+            <Textarea
               id="pos-settings-footer"
               value={receiptFooterText}
               onChange={(e) => setReceiptFooterText(e.target.value)}
               rows={3}
-              style={{ ...inputStyle, resize: "vertical" }}
+              className="resize-y"
             />
           </Field>
           {footerError ? <ErrorText>{footerError}</ErrorText> : null}
-          <Button type="submit" loading={savingFooter} style={{ alignSelf: "flex-start" }}>
+          <Button type="submit" loading={savingFooter} className="self-start">
             Save footer
           </Button>
         </form>
       </Card>
 
       <Card>
-        <form onSubmit={(e) => void handleSavePrefix(e)} noValidate style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <form onSubmit={(e) => void handleSavePrefix(e)} noValidate className="flex flex-col gap-3">
           <Field label="Sale number prefix" id="pos-settings-prefix" hint="2 to 8 letters or digits, used at the start of every generated sale number.">
-            <input id="pos-settings-prefix" value={saleNumberPrefix} onChange={(e) => setSaleNumberPrefix(e.target.value)} style={inputStyle} />
+            <Input id="pos-settings-prefix" value={saleNumberPrefix} onChange={(e) => setSaleNumberPrefix(e.target.value)} />
           </Field>
           {prefixError ? <ErrorText>{prefixError}</ErrorText> : null}
-          <Button type="submit" loading={savingPrefix} style={{ alignSelf: "flex-start" }}>
+          <Button type="submit" loading={savingPrefix} className="self-start">
             Save prefix
           </Button>
         </form>

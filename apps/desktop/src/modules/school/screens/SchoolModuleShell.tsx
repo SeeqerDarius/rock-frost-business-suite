@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useApp } from "@/state/AppProvider";
 import { useSchoolSnapshot } from "@/modules/school/school-data";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SchoolAcademicSetupScreen } from "@/modules/school/screens/SchoolAcademicSetupScreen";
 import { SchoolStudentsScreen } from "@/modules/school/screens/SchoolStudentsScreen";
 import { SchoolEnrollmentScreen } from "@/modules/school/screens/SchoolEnrollmentScreen";
@@ -44,29 +45,16 @@ export function SchoolModuleShell() {
   const [tab, setTab] = useState<TabKey>("setup");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <nav aria-label="School sections" style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", borderBottom: "1px solid var(--rf-border)", paddingBottom: "0.6rem" }}>
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            aria-current={tab === t.key ? "page" : undefined}
-            style={{
-              padding: "0.4rem 0.85rem",
-              borderRadius: "999px",
-              border: "1px solid var(--rf-border)",
-              background: tab === t.key ? "var(--rf-primary)" : "var(--rf-card)",
-              color: tab === t.key ? "var(--rf-primary-foreground)" : "var(--rf-card-foreground)",
-              fontSize: "0.8125rem",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
+    <div className="flex flex-col gap-4">
+      <Tabs value={tab} onValueChange={(value) => setTab(value as TabKey)}>
+        <TabsList aria-label="School sections" className="h-auto flex-wrap">
+          {TABS.map((t) => (
+            <TabsTrigger key={t.key} value={t.key}>
+              {t.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       {tab === "setup" ? <SchoolAcademicSetupScreen snapshot={snapshot} onChanged={reload} /> : null}
       {tab === "students" ? <SchoolStudentsScreen snapshot={snapshot} onChanged={reload} /> : null}

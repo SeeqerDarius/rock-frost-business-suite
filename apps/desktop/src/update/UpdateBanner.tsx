@@ -42,26 +42,11 @@ export function UpdateBanner() {
   return (
     <section
       aria-live="polite"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        flexWrap: "wrap",
-        gap: "0.75rem",
-        padding: "0.875rem 1rem",
-        position: "fixed",
-        zIndex: 80,
-        top: "1rem",
-        right: "1rem",
-        width: "min(30rem, calc(100vw - 2rem))",
-        border: "1px solid var(--rf-border)",
-        borderRadius: "var(--rf-radius-lg)",
-        background: "var(--rf-card)",
-        boxShadow: "var(--rf-shadow-md)",
-      }}
+      className="fixed top-4 right-4 z-[80] flex w-[min(30rem,calc(100vw-2rem))] flex-wrap items-center gap-3 rounded-lg border bg-card p-3.5 shadow-md"
     >
-      <div style={{ flex: "1 1 20rem" }}>
-        <strong style={{ display: "block", fontSize: "0.875rem" }}>Application update</strong>
-        <span style={{ fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>{message}</span>
+      <div className="flex-[1_1_20rem]">
+        <strong className="block text-sm">Application update</strong>
+        <span className="text-[0.8125rem] text-muted-foreground">{message}</span>
       </div>
       {state.status === "available" ? (
         <Button onClick={() => void service.install(state.update)}>

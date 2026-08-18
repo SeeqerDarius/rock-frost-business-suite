@@ -1,38 +1,31 @@
-import type { ReactNode, CSSProperties } from "react";
+import type { ReactNode } from "react";
 import { Clock3 } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 /**
  * Shared form/list primitives used by every module's real (non-demo)
  * screens - originally written for POS (screens/PosModuleShell.tsx and
  * friends), promoted here once School's screens needed the same pieces,
- * so no module's screens import from another module's folder.
+ * so no module's screens import from another module's folder. `Field` now
+ * wraps the real ported shadcn `Label`; call sites compose it with the
+ * real shadcn `Input`/`Select`/`Checkbox` directly rather than through a
+ * shared inline-style object, matching how the web app itself builds forms.
  */
-export const inputStyle: CSSProperties = {
-  width: "100%",
-  padding: "0.6rem 0.75rem",
-  borderRadius: "var(--rf-radius-md)",
-  border: "1px solid var(--rf-border)",
-  background: "var(--rf-background)",
-  fontSize: "0.875rem",
-};
-
-export const selectStyle: CSSProperties = { ...inputStyle };
-
-export function Field({ label, id, hint, children }: { label: string; id: string; hint?: string; children: ReactNode }) {
+export function Field({ label, id, hint, children, className }: { label: string; id: string; hint?: string; children: ReactNode; className?: string }) {
   return (
-    <div>
-      <label htmlFor={id} style={{ display: "block", fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.3rem" }}>
-        {label}
-      </label>
+    <div className={cn("flex flex-col gap-1.5", className)}>
+      <Label htmlFor={id}>{label}</Label>
       {children}
-      {hint ? <p style={{ margin: "0.3rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>{hint}</p> : null}
+      {hint ? <p className="m-0 text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
 
 export function ErrorText({ children }: { children: ReactNode }) {
   return (
-    <p role="alert" style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-destructive)" }}>
+    <p role="alert" className="m-0 text-[0.8125rem] text-destructive">
       {children}
     </p>
   );
@@ -40,25 +33,12 @@ export function ErrorText({ children }: { children: ReactNode }) {
 
 /** The same "Pending sync" / "Synced" indicator ModuleDetailView.tsx uses, factored out here since every real module screen's list rows need it. */
 export function SyncBadge({ pending }: { pending: boolean }) {
-  if (!pending) return <span style={{ fontSize: "0.75rem", color: "var(--rf-muted-foreground)", flexShrink: 0 }}>Synced</span>;
+  if (!pending) return <span className="shrink-0 text-xs text-muted-foreground">Synced</span>;
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "0.3rem",
-        padding: "0.25rem 0.6rem",
-        borderRadius: "999px",
-        fontSize: "0.75rem",
-        fontWeight: 700,
-        color: "var(--rf-warning)",
-        background: "color-mix(in oklch, var(--rf-warning) 18%, transparent)",
-        flexShrink: 0,
-      }}
-    >
+    <Badge variant="outline" className="shrink-0 gap-1 border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400">
       <Clock3 size={12} aria-hidden="true" />
       Pending sync
-    </span>
+    </Badge>
   );
 }
 

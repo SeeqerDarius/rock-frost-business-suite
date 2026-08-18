@@ -1,20 +1,20 @@
 import type { HTMLAttributes } from "react";
+import { Card as ShadcnCard, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
-export function Card({ children, style, ...rest }: HTMLAttributes<HTMLDivElement>) {
+/**
+ * A single padded box, delegating to the real ported shadcn `ui/card.tsx`
+ * (`Card` + `CardContent` together, since shadcn's own `Card` alone has no
+ * horizontal padding - it is meant to be composed with `CardContent`) so
+ * this app's cards render with the same classes as the web app's. Keeps
+ * the existing simple `<Card>{children}</Card>` call pattern used across
+ * every module screen, rather than requiring each of the ~60 call sites to
+ * adopt the compound Header/Content/Footer structure.
+ */
+export function Card({ children, className, ...rest }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <div
-      style={{
-        background: "var(--rf-card)",
-        color: "var(--rf-card-foreground)",
-        border: "1px solid var(--rf-border)",
-        borderRadius: "var(--rf-radius-lg)",
-        boxShadow: "var(--rf-shadow-sm)",
-        padding: "1.25rem",
-        ...style,
-      }}
-      {...rest}
-    >
-      {children}
-    </div>
+    <ShadcnCard className={cn("shadow-sm", className)} {...rest}>
+      <CardContent>{children}</CardContent>
+    </ShadcnCard>
   );
 }

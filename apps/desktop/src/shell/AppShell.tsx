@@ -36,25 +36,15 @@ export function AppShell() {
   if (!device) return null;
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+    <div className="flex min-h-screen flex-col">
       <a href="#main-content" className="rf-skip-link">
         Skip to main content
       </a>
 
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "1rem",
-          padding: "0.85rem 1.25rem",
-          borderBottom: "1px solid var(--rf-border)",
-          background: "var(--rf-card)",
-        }}
-      >
+      <header className="flex items-center justify-between gap-4 border-b bg-card px-5 py-3.5">
         <div>
-          <p style={{ margin: 0, fontWeight: 800, fontSize: "0.9375rem" }}>Rock Frost Business Suite</p>
-          <p style={{ margin: 0, fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>
+          <p className="m-0 text-[0.9375rem] font-extrabold">Rock Frost Business Suite</p>
+          <p className="m-0 text-xs text-muted-foreground">
             {device.userName} &middot; {device.deviceName}
           </p>
         </div>
@@ -64,7 +54,7 @@ export function AppShell() {
         </Button>
       </header>
 
-      <main id="main-content" tabIndex={-1} style={{ flex: 1, padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem", maxWidth: "72rem", width: "100%", margin: "0 auto" }}>
+      <main id="main-content" tabIndex={-1} className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-6">
         <SyncStatusBar />
         <ConflictResolutionPanel />
 

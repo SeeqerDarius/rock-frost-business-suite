@@ -2,10 +2,12 @@ import { useId, useMemo, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApp } from "@/state/AppProvider";
 import { createSchoolAdapter } from "@/modules/school/adapter";
 import type { SchoolSnapshot } from "@/modules/school/school-data";
-import { Field, inputStyle, selectStyle, ErrorText, SyncBadge, formatRelativeTime } from "@/components/form-fields";
+import { Field, ErrorText, SyncBadge, formatRelativeTime } from "@/components/form-fields";
 
 const STATUS_OPTIONS: { value: "PRESENT" | "ABSENT" | "LATE" | "EXCUSED"; label: string }[] = [
   { value: "PRESENT", label: "Present" },
@@ -20,6 +22,7 @@ export function SchoolAttendanceScreen({ snapshot, onChanged }: { snapshot: Scho
   const classId = useId();
   const studentId = useId();
   const dateId = useId();
+  const statusId = useId();
   const [term, setTerm] = useState("");
   const [schoolClass, setSchoolClass] = useState("");
   const [student, setStudent] = useState("");
@@ -71,61 +74,76 @@ export function SchoolAttendanceScreen({ snapshot, onChanged }: { snapshot: Scho
   };
 
   return (
-    <section aria-labelledby="school-attendance-heading" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <h2 id="school-attendance-heading" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700 }}>
+    <section aria-labelledby="school-attendance-heading" className="flex flex-col gap-4">
+      <h2 id="school-attendance-heading" className="m-0 text-[1.05rem] font-bold">
         Attendance
       </h2>
       <Card>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-          <Field label="Term" id={termId}>
-            <select id={termId} value={term} onChange={(e) => setTerm(e.target.value)} style={{ ...selectStyle, width: "9rem" }}>
-              <option value="">Select a term</option>
-              {snapshot.terms.map((t) => (
-                <option key={t.entityId} value={t.entityId}>
-                  {t.data.name}
-                </option>
-              ))}
-            </select>
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+          <Field label="Term" id={termId} className="w-36">
+            <Select value={term} onValueChange={(value) => setTerm(value ?? "")}>
+              <SelectTrigger id={termId} className="w-full">
+                <SelectValue placeholder="Select a term" />
+              </SelectTrigger>
+              <SelectContent>
+                {snapshot.terms.map((t) => (
+                  <SelectItem key={t.entityId} value={t.entityId}>
+                    {t.data.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Class" id={classId}>
-            <select
-              id={classId}
+          <Field label="Class" id={classId} className="w-36">
+            <Select
               value={schoolClass}
-              onChange={(e) => {
-                setSchoolClass(e.target.value);
+              onValueChange={(value) => {
+                setSchoolClass(value ?? "");
                 setStudent("");
               }}
-              style={{ ...selectStyle, width: "9rem" }}
             >
-              <option value="">Select a class</option>
-              {snapshot.classes.map((c) => (
-                <option key={c.entityId} value={c.entityId}>
-                  {c.data.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id={classId} className="w-full">
+                <SelectValue placeholder="Select a class" />
+              </SelectTrigger>
+              <SelectContent>
+                {snapshot.classes.map((c) => (
+                  <SelectItem key={c.entityId} value={c.entityId}>
+                    {c.data.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Student" id={studentId}>
-            <select id={studentId} value={student} onChange={(e) => setStudent(e.target.value)} style={{ ...selectStyle, width: "9rem" }} disabled={!schoolClass}>
-              <option value="">Select a student</option>
-              {eligibleStudents.map((s) => (
-                <option key={s.entityId} value={s.entityId}>
-                  {s.data.firstName} {s.data.lastName}
-                </option>
-              ))}
-            </select>
+          <Field label="Student" id={studentId} className="w-36">
+            <Select value={student} onValueChange={(value) => setStudent(value ?? "")}>
+              <SelectTrigger id={studentId} className="w-full" disabled={!schoolClass}>
+                <SelectValue placeholder="Select a student" />
+              </SelectTrigger>
+              <SelectContent>
+                {eligibleStudents.map((s) => (
+                  <SelectItem key={s.entityId} value={s.entityId}>
+                    {s.data.firstName} {s.data.lastName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="Date" id={dateId}>
-            <input id={dateId} type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
+            <Input id={dateId} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </Field>
-          <Field label="Status" id="school-attendance-status">
-            <select id="school-attendance-status" value={status} onChange={(e) => setStatus(e.target.value as typeof status)} style={{ ...selectStyle, width: "8rem" }}>
-              {STATUS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+          <Field label="Status" id={statusId} className="w-32">
+            <Select value={status} onValueChange={(value) => setStatus(value as typeof status)}>
+              <SelectTrigger id={statusId} className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Button type="submit" variant="secondary" loading={saving} disabled={!schoolClass || eligibleStudents.length === 0}>
             <Plus size={14} aria-hidden="true" />
@@ -133,27 +151,27 @@ export function SchoolAttendanceScreen({ snapshot, onChanged }: { snapshot: Scho
           </Button>
         </form>
         {schoolClass && eligibleStudents.length === 0 ? (
-          <p style={{ margin: "0.6rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>
+          <p className="mt-2.5 mb-0 text-xs text-muted-foreground">
             No already-synced, actively enrolled student for this class yet.
           </p>
         ) : null}
-        {error ? <div style={{ marginTop: "0.6rem" }}><ErrorText>{error}</ErrorText></div> : null}
+        {error ? <div className="mt-2.5"><ErrorText>{error}</ErrorText></div> : null}
       </Card>
 
       {snapshot.attendance.length === 0 ? (
         <Card>
-          <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--rf-muted-foreground)" }}>No attendance records cached on this device yet.</p>
+          <p className="m-0 text-sm text-muted-foreground">No attendance records cached on this device yet.</p>
         </Card>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {snapshot.attendance.slice(0, 100).map((record) => (
             <li key={record.entityId}>
-              <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>
+              <Card className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="m-0 text-sm font-semibold">
                     {nameFor(record.data.studentId)} &middot; {record.data.status}
                   </p>
-                  <p style={{ margin: "0.1rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>
+                  <p className="mt-0.5 mb-0 text-xs text-muted-foreground">
                     {new Date(record.data.date).toLocaleDateString()} &middot; recorded {formatRelativeTime(record.data.date)}
                   </p>
                 </div>

@@ -2,10 +2,11 @@ import { useId, useState, type FormEvent } from "react";
 import { Plus, Pencil } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { Input } from "@/components/ui/input";
 import { useApp } from "@/state/AppProvider";
 import { createPosAdapter } from "@/modules/pos/adapter";
 import type { PosSnapshot, PosRegisterRow } from "@/modules/pos/pos-data";
-import { Field, inputStyle, ErrorText, SyncBadge } from "@/components/form-fields";
+import { Field, ErrorText, SyncBadge } from "@/components/form-fields";
 
 export function PosRegistersScreen({ snapshot, onChanged }: { snapshot: PosSnapshot; onChanged: () => Promise<void> }) {
   const { db, device, recordActivity } = useApp();
@@ -14,9 +15,9 @@ export function PosRegistersScreen({ snapshot, onChanged }: { snapshot: PosSnaps
   if (!device) return null;
 
   return (
-    <section aria-labelledby="pos-registers-heading" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
-        <h2 id="pos-registers-heading" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700 }}>
+    <section aria-labelledby="pos-registers-heading" className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h2 id="pos-registers-heading" className="m-0 text-[1.05rem] font-bold">
           Registers
         </h2>
         <Button variant="secondary" onClick={() => { recordActivity(); setEditing("new"); }}>
@@ -46,22 +47,22 @@ export function PosRegistersScreen({ snapshot, onChanged }: { snapshot: PosSnaps
 
       {snapshot.registers.length === 0 ? (
         <Card>
-          <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--rf-muted-foreground)" }}>
+          <p className="m-0 text-sm text-muted-foreground">
             No registers cached on this device yet. Create one, or sync once online to pull existing registers.
           </p>
         </Card>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
           {snapshot.registers.map((register) => (
             <li key={register.entityId}>
-              <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: "0.9375rem", fontWeight: 600 }}>{register.data.name}</p>
-                  <p style={{ margin: "0.15rem 0 0", fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>
+              <Card className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="m-0 text-[0.9375rem] font-semibold">{register.data.name}</p>
+                  <p className="mt-0.5 mb-0 text-[0.8125rem] text-muted-foreground">
                     {register.data.active ? "Active" : "Inactive"}
                   </p>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexShrink: 0 }}>
+                <div className="flex shrink-0 items-center gap-3">
                   <SyncBadge pending={register.hasPendingLocalChange} />
                   <Button variant="ghost" onClick={() => { recordActivity(); setEditing(register); }} aria-label={`Edit ${register.data.name}`}>
                     <Pencil size={14} aria-hidden="true" />
@@ -111,15 +112,15 @@ function RegisterForm({
 
   return (
     <Card>
-      <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-col gap-3">
         <Field label="Register name" id={nameId}>
-          <input id={nameId} value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
+          <Input id={nameId} value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Field label="Warehouse ID" id={warehouseId} hint="Optional. Leave blank if this register is not tied to a specific warehouse.">
-          <input id={warehouseId} value={warehouse} onChange={(e) => setWarehouse(e.target.value)} style={inputStyle} />
+          <Input id={warehouseId} value={warehouse} onChange={(e) => setWarehouse(e.target.value)} />
         </Field>
         {error ? <ErrorText>{error}</ErrorText> : null}
-        <div style={{ display: "flex", gap: "0.6rem" }}>
+        <div className="flex gap-2.5">
           <Button type="submit" loading={saving}>
             {initial ? "Save changes" : "Create register"}
           </Button>

@@ -1,6 +1,7 @@
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/Button";
 import { StatusPill } from "@/components/StatusPill";
+import { cn } from "@/lib/utils";
 import { deriveShellStatus } from "@/shell/status-mapping";
 import { useApp } from "@/state/AppProvider";
 
@@ -24,31 +25,16 @@ export function SyncStatusBar() {
   const syncing = syncStatus?.state === "syncing";
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        alignItems: "center",
-        gap: "0.75rem",
-        padding: "0.75rem 1rem",
-        borderRadius: "var(--rf-radius-lg)",
-        border: "1px solid var(--rf-border)",
-        background: "var(--rf-card)",
-      }}
-    >
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card px-4 py-3">
       <StatusPill status={shellStatus} />
 
-      <span style={{ fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>
+      <span className="text-[0.8125rem] text-muted-foreground">
         {formatLastSync(syncStatus?.lastSuccessfulSyncAt ?? null)}
       </span>
 
       <span
         aria-live="polite"
-        style={{
-          fontSize: "0.8125rem",
-          fontWeight: 600,
-          color: pending > 0 ? "var(--rf-warning)" : "var(--rf-muted-foreground)",
-        }}
+        className={cn("text-[0.8125rem] font-semibold", pending > 0 ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground")}
       >
         {pending > 0 ? `${pending} change${pending === 1 ? "" : "s"} pending sync` : "All changes synced"}
       </span>
@@ -58,7 +44,7 @@ export function SyncStatusBar() {
         onClick={() => void syncNow()}
         loading={syncing}
         disabled={shellStatus === "revoked" || shellStatus === "session_expired"}
-        style={{ marginLeft: "auto", padding: "0.45rem 0.9rem" }}
+        className="ml-auto"
       >
         <RefreshCw size={14} aria-hidden="true" />
         {syncing ? "Syncing" : "Sync now"}

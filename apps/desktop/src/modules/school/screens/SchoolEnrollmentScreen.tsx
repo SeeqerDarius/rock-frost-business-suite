@@ -2,10 +2,11 @@ import { useId, useMemo, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApp } from "@/state/AppProvider";
 import { createSchoolAdapter } from "@/modules/school/adapter";
 import type { SchoolSnapshot } from "@/modules/school/school-data";
-import { Field, selectStyle, ErrorText, SyncBadge } from "@/components/form-fields";
+import { Field, ErrorText, SyncBadge } from "@/components/form-fields";
 
 export function SchoolEnrollmentScreen({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onChanged: () => Promise<void> }) {
   const { db, device, recordActivity } = useApp();
@@ -66,60 +67,74 @@ export function SchoolEnrollmentScreen({ snapshot, onChanged }: { snapshot: Scho
   };
 
   return (
-    <section aria-labelledby="school-enrollment-heading" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <h2 id="school-enrollment-heading" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700 }}>
+    <section aria-labelledby="school-enrollment-heading" className="flex flex-col gap-4">
+      <h2 id="school-enrollment-heading" className="m-0 text-[1.05rem] font-bold">
         Enrollment
       </h2>
       <Card>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-          <Field label="Campus" id={campusId}>
-            <select
-              id={campusId}
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+          <Field label="Campus" id={campusId} className="w-40">
+            <Select
               value={campus}
-              onChange={(e) => {
-                setCampus(e.target.value);
+              onValueChange={(value) => {
+                setCampus(value ?? "");
                 setStudent("");
                 setSchoolClass("");
               }}
-              style={{ ...selectStyle, width: "10rem" }}
             >
-              <option value="">Select a campus</option>
-              {snapshot.campuses.map((c) => (
-                <option key={c.entityId} value={c.entityId}>
-                  {c.data.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id={campusId} className="w-full">
+                <SelectValue placeholder="Select a campus" />
+              </SelectTrigger>
+              <SelectContent>
+                {snapshot.campuses.map((c) => (
+                  <SelectItem key={c.entityId} value={c.entityId}>
+                    {c.data.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Academic year" id={yearId}>
-            <select id={yearId} value={academicYear} onChange={(e) => setAcademicYear(e.target.value)} style={{ ...selectStyle, width: "10rem" }}>
-              <option value="">Select a year</option>
-              {snapshot.academicYears.map((y) => (
-                <option key={y.entityId} value={y.entityId}>
-                  {y.data.name}
-                </option>
-              ))}
-            </select>
+          <Field label="Academic year" id={yearId} className="w-40">
+            <Select value={academicYear} onValueChange={(value) => setAcademicYear(value ?? "")}>
+              <SelectTrigger id={yearId} className="w-full">
+                <SelectValue placeholder="Select a year" />
+              </SelectTrigger>
+              <SelectContent>
+                {snapshot.academicYears.map((y) => (
+                  <SelectItem key={y.entityId} value={y.entityId}>
+                    {y.data.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Student" id={studentId}>
-            <select id={studentId} value={student} onChange={(e) => setStudent(e.target.value)} style={{ ...selectStyle, width: "10rem" }} disabled={!campus}>
-              <option value="">Select a student</option>
-              {eligibleStudents.map((s) => (
-                <option key={s.entityId} value={s.entityId}>
-                  {s.data.firstName} {s.data.lastName}
-                </option>
-              ))}
-            </select>
+          <Field label="Student" id={studentId} className="w-40">
+            <Select value={student} onValueChange={(value) => setStudent(value ?? "")}>
+              <SelectTrigger id={studentId} className="w-full" disabled={!campus}>
+                <SelectValue placeholder="Select a student" />
+              </SelectTrigger>
+              <SelectContent>
+                {eligibleStudents.map((s) => (
+                  <SelectItem key={s.entityId} value={s.entityId}>
+                    {s.data.firstName} {s.data.lastName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Class" id={classId}>
-            <select id={classId} value={schoolClass} onChange={(e) => setSchoolClass(e.target.value)} style={{ ...selectStyle, width: "10rem" }} disabled={!campus}>
-              <option value="">Select a class</option>
-              {eligibleClasses.map((c) => (
-                <option key={c.entityId} value={c.entityId}>
-                  {c.data.name}
-                </option>
-              ))}
-            </select>
+          <Field label="Class" id={classId} className="w-40">
+            <Select value={schoolClass} onValueChange={(value) => setSchoolClass(value ?? "")}>
+              <SelectTrigger id={classId} className="w-full" disabled={!campus}>
+                <SelectValue placeholder="Select a class" />
+              </SelectTrigger>
+              <SelectContent>
+                {eligibleClasses.map((c) => (
+                  <SelectItem key={c.entityId} value={c.entityId}>
+                    {c.data.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Button type="submit" variant="secondary" loading={saving} disabled={!campus || eligibleStudents.length === 0 || eligibleClasses.length === 0}>
             <Plus size={14} aria-hidden="true" />
@@ -127,23 +142,23 @@ export function SchoolEnrollmentScreen({ snapshot, onChanged }: { snapshot: Scho
           </Button>
         </form>
         {campus && (eligibleStudents.length === 0 || eligibleClasses.length === 0) ? (
-          <p style={{ margin: "0.6rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>
+          <p className="mt-2.5 mb-0 text-xs text-muted-foreground">
             This campus needs at least one already-synced student and class. One just added offline needs to sync first.
           </p>
         ) : null}
-        {error ? <div style={{ marginTop: "0.6rem" }}><ErrorText>{error}</ErrorText></div> : null}
+        {error ? <div className="mt-2.5"><ErrorText>{error}</ErrorText></div> : null}
       </Card>
 
       {snapshot.enrollments.length === 0 ? (
         <Card>
-          <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--rf-muted-foreground)" }}>No active enrollments cached on this device yet.</p>
+          <p className="m-0 text-sm text-muted-foreground">No active enrollments cached on this device yet.</p>
         </Card>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {snapshot.enrollments.map((enrollment) => (
             <li key={enrollment.entityId}>
-              <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
-                <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>
+              <Card className="flex items-center justify-between gap-4">
+                <p className="m-0 text-sm font-semibold">
                   {nameFor(enrollment.data.studentId, snapshot.students)} &middot; {nameFor(enrollment.data.classId, snapshot.classes)}
                 </p>
                 <SyncBadge pending={enrollment.hasPendingLocalChange} />

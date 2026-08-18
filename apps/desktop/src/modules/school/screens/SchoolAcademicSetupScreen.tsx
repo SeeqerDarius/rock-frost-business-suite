@@ -2,10 +2,13 @@ import { useId, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApp } from "@/state/AppProvider";
 import { createSchoolAdapter } from "@/modules/school/adapter";
 import type { SchoolSnapshot } from "@/modules/school/school-data";
-import { Field, inputStyle, ErrorText, SyncBadge } from "@/components/form-fields";
+import { Field, ErrorText, SyncBadge } from "@/components/form-fields";
 
 /**
  * Milestone 6: campuses, academic years, and terms - the reference data
@@ -16,8 +19,8 @@ import { Field, inputStyle, ErrorText, SyncBadge } from "@/components/form-field
  */
 export function SchoolAcademicSetupScreen({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onChanged: () => Promise<void> }) {
   return (
-    <section aria-labelledby="school-setup-heading" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-      <h2 id="school-setup-heading" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700 }}>
+    <section aria-labelledby="school-setup-heading" className="flex flex-col gap-6">
+      <h2 id="school-setup-heading" className="m-0 text-[1.05rem] font-bold">
         Academic setup
       </h2>
       <CampusSection snapshot={snapshot} onChanged={onChanged} />
@@ -64,33 +67,33 @@ function CampusSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onCh
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-      <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Campuses</p>
+    <div className="flex flex-col gap-2.5">
+      <p className="m-0 text-sm font-semibold">Campuses</p>
       <Card>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-          <Field label="Code" id={codeId}>
-            <input id={codeId} value={code} onChange={(e) => setCode(e.target.value)} style={{ ...inputStyle, width: "8rem" }} />
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+          <Field label="Code" id={codeId} className="w-32">
+            <Input id={codeId} value={code} onChange={(e) => setCode(e.target.value)} />
           </Field>
           <Field label="Name" id={nameId}>
-            <input id={nameId} value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
+            <Input id={nameId} value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
           <Button type="submit" variant="secondary" loading={saving}>
             <Plus size={14} aria-hidden="true" />
             Add campus
           </Button>
         </form>
-        {error ? <div style={{ marginTop: "0.6rem" }}><ErrorText>{error}</ErrorText></div> : null}
+        {error ? <div className="mt-2.5"><ErrorText>{error}</ErrorText></div> : null}
       </Card>
       {snapshot.campuses.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>No campuses cached on this device yet.</p>
+        <p className="m-0 text-[0.8125rem] text-muted-foreground">No campuses cached on this device yet.</p>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {snapshot.campuses.map((campus) => (
             <li key={campus.entityId}>
-              <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>{campus.data.name}</p>
-                  <p style={{ margin: "0.1rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>{campus.data.code}</p>
+              <Card className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="m-0 text-sm font-semibold">{campus.data.name}</p>
+                  <p className="mt-0.5 mb-0 text-xs text-muted-foreground">{campus.data.code}</p>
                 </div>
                 <SyncBadge pending={campus.hasPendingLocalChange} />
               </Card>
@@ -145,21 +148,21 @@ function AcademicYearSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-      <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Academic years</p>
+    <div className="flex flex-col gap-2.5">
+      <p className="m-0 text-sm font-semibold">Academic years</p>
       <Card>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-          <Field label="Name" id={nameId} hint="e.g. 2026/2027">
-            <input id={nameId} value={name} onChange={(e) => setName(e.target.value)} style={{ ...inputStyle, width: "10rem" }} />
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+          <Field label="Name" id={nameId} hint="e.g. 2026/2027" className="w-40">
+            <Input id={nameId} value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
           <Field label="Start date" id={startId}>
-            <input id={startId} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={inputStyle} />
+            <Input id={startId} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </Field>
           <Field label="End date" id={endId}>
-            <input id={endId} type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={inputStyle} />
+            <Input id={endId} type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </Field>
-          <label htmlFor={currentId} style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8125rem", paddingBottom: "0.6rem" }}>
-            <input id={currentId} type="checkbox" checked={current} onChange={(e) => setCurrent(e.target.checked)} />
+          <label htmlFor={currentId} className="flex items-center gap-1.5 pb-2.5 text-[0.8125rem]">
+            <Checkbox id={currentId} checked={current} onCheckedChange={(checked) => setCurrent(checked === true)} />
             Current
           </label>
           <Button type="submit" variant="secondary" loading={saving}>
@@ -167,20 +170,20 @@ function AcademicYearSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot
             Add year
           </Button>
         </form>
-        {error ? <div style={{ marginTop: "0.6rem" }}><ErrorText>{error}</ErrorText></div> : null}
+        {error ? <div className="mt-2.5"><ErrorText>{error}</ErrorText></div> : null}
       </Card>
       {snapshot.academicYears.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>No academic years cached on this device yet.</p>
+        <p className="m-0 text-[0.8125rem] text-muted-foreground">No academic years cached on this device yet.</p>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {snapshot.academicYears.map((year) => (
             <li key={year.entityId}>
-              <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>
-                    {year.data.name} {year.data.current ? <span style={{ color: "var(--rf-primary)" }}>&middot; Current</span> : null}
+              <Card className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="m-0 text-sm font-semibold">
+                    {year.data.name} {year.data.current ? <span className="text-primary">&middot; Current</span> : null}
                   </p>
-                  <p style={{ margin: "0.1rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>
+                  <p className="mt-0.5 mb-0 text-xs text-muted-foreground">
                     {new Date(year.data.startDate).toLocaleDateString()} to {new Date(year.data.endDate).toLocaleDateString()}
                   </p>
                 </div>
@@ -240,31 +243,35 @@ function TermSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onChan
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-      <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Terms</p>
+    <div className="flex flex-col gap-2.5">
+      <p className="m-0 text-sm font-semibold">Terms</p>
       <Card>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-          <Field label="Academic year" id={yearId}>
-            <select id={yearId} value={academicYearId} onChange={(e) => setAcademicYearId(e.target.value)} style={{ ...inputStyle, width: "10rem" }}>
-              <option value="">Select a year</option>
-              {snapshot.academicYears.map((year) => (
-                <option key={year.entityId} value={year.entityId}>
-                  {year.data.name}
-                </option>
-              ))}
-            </select>
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+          <Field label="Academic year" id={yearId} className="w-40">
+            <Select value={academicYearId} onValueChange={(value) => setAcademicYearId(value ?? "")}>
+              <SelectTrigger id={yearId} className="w-full">
+                <SelectValue placeholder="Select a year" />
+              </SelectTrigger>
+              <SelectContent>
+                {snapshot.academicYears.map((year) => (
+                  <SelectItem key={year.entityId} value={year.entityId}>
+                    {year.data.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Name" id={nameId} hint="e.g. Term 1">
-            <input id={nameId} value={name} onChange={(e) => setName(e.target.value)} style={{ ...inputStyle, width: "8rem" }} />
+          <Field label="Name" id={nameId} hint="e.g. Term 1" className="w-32">
+            <Input id={nameId} value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
           <Field label="Start date" id={startId}>
-            <input id={startId} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={inputStyle} />
+            <Input id={startId} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </Field>
           <Field label="End date" id={endId}>
-            <input id={endId} type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={inputStyle} />
+            <Input id={endId} type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </Field>
-          <label htmlFor={currentId} style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8125rem", paddingBottom: "0.6rem" }}>
-            <input id={currentId} type="checkbox" checked={current} onChange={(e) => setCurrent(e.target.checked)} />
+          <label htmlFor={currentId} className="flex items-center gap-1.5 pb-2.5 text-[0.8125rem]">
+            <Checkbox id={currentId} checked={current} onCheckedChange={(checked) => setCurrent(checked === true)} />
             Current
           </label>
           <Button type="submit" variant="secondary" loading={saving} disabled={snapshot.academicYears.length === 0}>
@@ -273,22 +280,22 @@ function TermSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onChan
           </Button>
         </form>
         {snapshot.academicYears.length === 0 ? (
-          <p style={{ margin: "0.6rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>Add an academic year first.</p>
+          <p className="mt-2.5 mb-0 text-xs text-muted-foreground">Add an academic year first.</p>
         ) : null}
-        {error ? <div style={{ marginTop: "0.6rem" }}><ErrorText>{error}</ErrorText></div> : null}
+        {error ? <div className="mt-2.5"><ErrorText>{error}</ErrorText></div> : null}
       </Card>
       {snapshot.terms.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>No terms cached on this device yet.</p>
+        <p className="m-0 text-[0.8125rem] text-muted-foreground">No terms cached on this device yet.</p>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {snapshot.terms.map((term) => (
             <li key={term.entityId}>
-              <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>
-                    {term.data.name} {term.data.current ? <span style={{ color: "var(--rf-primary)" }}>&middot; Current</span> : null}
+              <Card className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="m-0 text-sm font-semibold">
+                    {term.data.name} {term.data.current ? <span className="text-primary">&middot; Current</span> : null}
                   </p>
-                  <p style={{ margin: "0.1rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>
+                  <p className="mt-0.5 mb-0 text-xs text-muted-foreground">
                     {new Date(term.data.startDate).toLocaleDateString()} to {new Date(term.data.endDate).toLocaleDateString()}
                   </p>
                 </div>
@@ -348,50 +355,54 @@ function ClassSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onCha
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-      <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Classes</p>
+    <div className="flex flex-col gap-2.5">
+      <p className="m-0 text-sm font-semibold">Classes</p>
       <Card>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-          <Field label="Campus" id={campusId}>
-            <select id={campusId} value={campus} onChange={(e) => setCampus(e.target.value)} style={{ ...inputStyle, width: "10rem" }}>
-              <option value="">Select a campus</option>
-              {snapshot.campuses.map((c) => (
-                <option key={c.entityId} value={c.entityId}>
-                  {c.data.name}
-                </option>
-              ))}
-            </select>
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+          <Field label="Campus" id={campusId} className="w-40">
+            <Select value={campus} onValueChange={(value) => setCampus(value ?? "")}>
+              <SelectTrigger id={campusId} className="w-full">
+                <SelectValue placeholder="Select a campus" />
+              </SelectTrigger>
+              <SelectContent>
+                {snapshot.campuses.map((c) => (
+                  <SelectItem key={c.entityId} value={c.entityId}>
+                    {c.data.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Code" id={codeId}>
-            <input id={codeId} value={code} onChange={(e) => setCode(e.target.value)} style={{ ...inputStyle, width: "6rem" }} />
+          <Field label="Code" id={codeId} className="w-24">
+            <Input id={codeId} value={code} onChange={(e) => setCode(e.target.value)} />
           </Field>
-          <Field label="Name" id={nameId}>
-            <input id={nameId} value={name} onChange={(e) => setName(e.target.value)} style={{ ...inputStyle, width: "8rem" }} />
+          <Field label="Name" id={nameId} className="w-32">
+            <Input id={nameId} value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
-          <Field label="Grade level" id={gradeId} hint="Optional">
-            <input id={gradeId} value={gradeLevel} onChange={(e) => setGradeLevel(e.target.value)} style={{ ...inputStyle, width: "6rem" }} />
+          <Field label="Grade level" id={gradeId} hint="Optional" className="w-24">
+            <Input id={gradeId} value={gradeLevel} onChange={(e) => setGradeLevel(e.target.value)} />
           </Field>
-          <Field label="Capacity" id={capacityId} hint="Optional">
-            <input id={capacityId} inputMode="numeric" value={capacity} onChange={(e) => setCapacity(e.target.value)} style={{ ...inputStyle, width: "5rem" }} />
+          <Field label="Capacity" id={capacityId} hint="Optional" className="w-20">
+            <Input id={capacityId} inputMode="numeric" value={capacity} onChange={(e) => setCapacity(e.target.value)} />
           </Field>
           <Button type="submit" variant="secondary" loading={saving} disabled={snapshot.campuses.length === 0}>
             <Plus size={14} aria-hidden="true" />
             Add class
           </Button>
         </form>
-        {snapshot.campuses.length === 0 ? <p style={{ margin: "0.6rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>Add a campus first.</p> : null}
-        {error ? <div style={{ marginTop: "0.6rem" }}><ErrorText>{error}</ErrorText></div> : null}
+        {snapshot.campuses.length === 0 ? <p className="mt-2.5 mb-0 text-xs text-muted-foreground">Add a campus first.</p> : null}
+        {error ? <div className="mt-2.5"><ErrorText>{error}</ErrorText></div> : null}
       </Card>
       {snapshot.classes.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>No classes cached on this device yet.</p>
+        <p className="m-0 text-[0.8125rem] text-muted-foreground">No classes cached on this device yet.</p>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {snapshot.classes.map((cls) => (
             <li key={cls.entityId}>
-              <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>{cls.data.name}</p>
-                  <p style={{ margin: "0.1rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>
+              <Card className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="m-0 text-sm font-semibold">{cls.data.name}</p>
+                  <p className="mt-0.5 mb-0 text-xs text-muted-foreground">
                     {cls.data.code} {cls.data.capacity ? `· up to ${cls.data.capacity}` : ""}
                   </p>
                 </div>
@@ -440,33 +451,33 @@ function SubjectSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onC
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-      <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Subjects</p>
+    <div className="flex flex-col gap-2.5">
+      <p className="m-0 text-sm font-semibold">Subjects</p>
       <Card>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-          <Field label="Code" id={codeId}>
-            <input id={codeId} value={code} onChange={(e) => setCode(e.target.value)} style={{ ...inputStyle, width: "8rem" }} />
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+          <Field label="Code" id={codeId} className="w-32">
+            <Input id={codeId} value={code} onChange={(e) => setCode(e.target.value)} />
           </Field>
           <Field label="Name" id={nameId}>
-            <input id={nameId} value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
+            <Input id={nameId} value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
           <Button type="submit" variant="secondary" loading={saving}>
             <Plus size={14} aria-hidden="true" />
             Add subject
           </Button>
         </form>
-        {error ? <div style={{ marginTop: "0.6rem" }}><ErrorText>{error}</ErrorText></div> : null}
+        {error ? <div className="mt-2.5"><ErrorText>{error}</ErrorText></div> : null}
       </Card>
       {snapshot.subjects.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>No subjects cached on this device yet.</p>
+        <p className="m-0 text-[0.8125rem] text-muted-foreground">No subjects cached on this device yet.</p>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {snapshot.subjects.map((subject) => (
             <li key={subject.entityId}>
-              <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>{subject.data.name}</p>
-                  <p style={{ margin: "0.1rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>{subject.data.code}</p>
+              <Card className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="m-0 text-sm font-semibold">{subject.data.name}</p>
+                  <p className="mt-0.5 mb-0 text-xs text-muted-foreground">{subject.data.code}</p>
                 </div>
                 <SyncBadge pending={subject.hasPendingLocalChange} />
               </Card>

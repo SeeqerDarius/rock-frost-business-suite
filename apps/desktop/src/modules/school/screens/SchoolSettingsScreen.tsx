@@ -2,11 +2,14 @@ import { useEffect, useId, useState, type FormEvent } from "react";
 import { Plus, Trash2, Save } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApp } from "@/state/AppProvider";
 import { createSchoolAdapter } from "@/modules/school/adapter";
 import type { SchoolSnapshot } from "@/modules/school/school-data";
 import type { SchoolGradingScaleBand } from "@/modules/school/types";
-import { Field, inputStyle, selectStyle, ErrorText } from "@/components/form-fields";
+import { Field, ErrorText } from "@/components/form-fields";
 
 /** Settings is School's own per-campus UPDATE screen, mirroring PosSettingsScreen's baseVersion pattern - see SchoolStudentsScreen's status-transition control for the other established UPDATE example. */
 export function SchoolSettingsScreen({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onChanged: () => Promise<void> }) {
@@ -92,62 +95,66 @@ export function SchoolSettingsScreen({ snapshot, onChanged }: { snapshot: School
   }
 
   return (
-    <section aria-labelledby="school-settings-heading" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-      <h2 id="school-settings-heading" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700 }}>
+    <section aria-labelledby="school-settings-heading" className="flex flex-col gap-6">
+      <h2 id="school-settings-heading" className="m-0 text-[1.05rem] font-bold">
         Settings
       </h2>
       <Card>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <div style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-            <Field label="Campus" id={campusFieldId}>
-              <select id={campusFieldId} value={campus} onChange={(e) => setCampus(e.target.value)} style={{ ...selectStyle, width: "10rem" }}>
-                <option value="">Select a campus</option>
-                {snapshot.campuses.map((c) => (
-                  <option key={c.entityId} value={c.entityId}>{c.data.name}</option>
-                ))}
-              </select>
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-end gap-2.5">
+            <Field label="Campus" id={campusFieldId} className="w-40">
+              <Select value={campus} onValueChange={(value) => setCampus(value ?? "")}>
+                <SelectTrigger id={campusFieldId} className="w-full">
+                  <SelectValue placeholder="Select a campus" />
+                </SelectTrigger>
+                <SelectContent>
+                  {snapshot.campuses.map((c) => (
+                    <SelectItem key={c.entityId} value={c.entityId}>{c.data.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
-            <Field label="Attendance close window (days)" id={closeDaysId}>
-              <input id={closeDaysId} inputMode="numeric" value={attendanceCloseDays} onChange={(e) => setAttendanceCloseDays(e.target.value)} style={{ ...inputStyle, width: "6rem" }} disabled={!campus} />
+            <Field label="Attendance close window (days)" id={closeDaysId} className="w-24">
+              <Input id={closeDaysId} inputMode="numeric" value={attendanceCloseDays} onChange={(e) => setAttendanceCloseDays(e.target.value)} disabled={!campus} />
             </Field>
-            <Field label="Receipt prefix" id={prefixId}>
-              <input id={prefixId} value={receiptPrefix} onChange={(e) => setReceiptPrefix(e.target.value)} style={{ ...inputStyle, width: "6rem" }} disabled={!campus} />
+            <Field label="Receipt prefix" id={prefixId} className="w-24">
+              <Input id={prefixId} value={receiptPrefix} onChange={(e) => setReceiptPrefix(e.target.value)} disabled={!campus} />
             </Field>
-            <label htmlFor={rankingId} style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8125rem", paddingBottom: "0.6rem" }}>
-              <input id={rankingId} type="checkbox" checked={allowRanking} onChange={(e) => setAllowRanking(e.target.checked)} disabled={!campus} />
+            <label htmlFor={rankingId} className="flex items-center gap-1.5 pb-2.5 text-[0.8125rem]">
+              <Checkbox id={rankingId} checked={allowRanking} onCheckedChange={(checked) => setAllowRanking(checked === true)} disabled={!campus} />
               Allow ranking
             </label>
           </div>
 
           <div>
-            <p style={{ margin: "0 0 0.5rem", fontSize: "0.8125rem", fontWeight: 600 }}>Grading scale</p>
+            <p className="mt-0 mb-2 text-[0.8125rem] font-semibold">Grading scale</p>
             {bands.length === 0 ? (
-              <p style={{ margin: "0 0 0.5rem", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>No grading bands yet. Marks recorded in Exams will keep any grade entered by hand.</p>
+              <p className="mt-0 mb-2 text-xs text-muted-foreground">No grading bands yet. Marks recorded in Exams will keep any grade entered by hand.</p>
             ) : null}
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+            <div className="flex flex-col gap-1.5">
               {bands.map((band, index) => (
-                <div key={index} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                  <input
+                <div key={index} className="flex items-center gap-2">
+                  <Input
                     aria-label="Grade"
                     value={band.grade}
                     onChange={(e) => updateBand(index, { grade: e.target.value })}
-                    style={{ ...inputStyle, width: "4.5rem" }}
+                    className="w-[4.5rem]"
                     placeholder="A"
                   />
-                  <input
+                  <Input
                     aria-label="Minimum percent"
                     inputMode="decimal"
                     value={band.min}
                     onChange={(e) => updateBand(index, { min: Number(e.target.value) })}
-                    style={{ ...inputStyle, width: "5rem" }}
+                    className="w-20"
                     placeholder="Min"
                   />
-                  <input
+                  <Input
                     aria-label="Maximum percent"
                     inputMode="decimal"
                     value={band.max}
                     onChange={(e) => updateBand(index, { max: Number(e.target.value) })}
-                    style={{ ...inputStyle, width: "5rem" }}
+                    className="w-20"
                     placeholder="Max"
                   />
                   <Button type="button" variant="ghost" onClick={() => removeBand(index)} aria-label="Remove grading band">
@@ -156,7 +163,7 @@ export function SchoolSettingsScreen({ snapshot, onChanged }: { snapshot: School
                 </div>
               ))}
             </div>
-            <Button type="button" variant="secondary" onClick={addBand} disabled={!campus} style={{ marginTop: "0.5rem" }}>
+            <Button type="button" variant="secondary" onClick={addBand} disabled={!campus} className="mt-2">
               <Plus size={14} aria-hidden="true" />
               Add band
             </Button>

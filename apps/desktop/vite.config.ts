@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 
 // Tauri expects a fixed dev-server port and relative asset paths so the
 // bundled webview can load the build output without a running dev server.
@@ -12,7 +13,7 @@ export default defineConfig({
   // URLs must stay relative or the webview opens successfully but renders a
   // blank page because `/assets/*` resolves outside the bundled frontend.
   base: "./",
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       "@": "/src",

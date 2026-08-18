@@ -1,56 +1,47 @@
-import { forwardRef } from "react";
-import type { ButtonHTMLAttributes } from "react";
+import { forwardRef, type ComponentProps } from "react";
 import { Loader2 } from "lucide-react";
+import { Button as ShadcnButton } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "destructive";
 
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+type ShadcnButtonProps = ComponentProps<typeof ShadcnButton>;
+
+const VARIANT_MAP: Record<ButtonVariant, NonNullable<ShadcnButtonProps["variant"]>> = {
+  primary: "default",
+  secondary: "outline",
+  ghost: "ghost",
+  destructive: "destructive",
+};
+
+export interface ButtonProps extends Omit<ShadcnButtonProps, "variant"> {
   variant?: ButtonVariant;
   loading?: boolean;
 }
 
-const VARIANT_STYLE: Record<ButtonVariant, React.CSSProperties> = {
-  primary: { background: "var(--rf-primary)", color: "var(--rf-primary-foreground)", border: "1px solid transparent" },
-  secondary: { background: "var(--rf-card)", color: "var(--rf-card-foreground)", border: "1px solid var(--rf-border)" },
-  ghost: { background: "transparent", color: "var(--rf-foreground)", border: "1px solid transparent" },
-  destructive: { background: "var(--rf-destructive)", color: "var(--rf-destructive-foreground)", border: "1px solid transparent" },
-};
-
 /**
- * The one button primitive the whole shell uses. `loading` disables the
- * button and announces "Loading" via aria-live so a screen-reader user
- * gets the same feedback a sighted user gets from the spinner, per the
- * accessible-loading-states requirement.
+ * The one button primitive the whole shell uses, delegating to the real
+ * ported shadcn `ui/button.tsx` (same component, same Tailwind classes, as
+ * the web app) so this app's buttons render identically. Keeps this app's
+ * own simplified variant vocabulary and `loading` convenience prop so the
+ * ~60 existing call sites across every module screen did not need touching.
  */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = "primary", loading = false, disabled, children, style, ...rest },
+  { variant = "primary", loading = false, disabled, children, className, ...rest },
   ref,
 ) {
   return (
-    <button
+    <ShadcnButton
       ref={ref}
+      variant={VARIANT_MAP[variant]}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: "0.5rem",
-        padding: "0.625rem 1.125rem",
-        borderRadius: "var(--rf-radius-md)",
-        fontSize: "0.875rem",
-        fontWeight: 600,
-        cursor: disabled || loading ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.55 : 1,
-        transition: "opacity 120ms ease, transform 120ms ease",
-        ...VARIANT_STYLE[variant],
-        ...style,
-      }}
+      className={cn(loading && "opacity-70", className)}
       {...rest}
     >
       {loading ? <Loader2 className="rf-spin" size={16} aria-hidden="true" /> : null}
       <span>{children}</span>
       {loading ? <span className="rf-sr-only">Loading</span> : null}
-    </button>
+    </ShadcnButton>
   );
 });

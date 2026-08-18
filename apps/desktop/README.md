@@ -26,6 +26,21 @@ outage. `connect-src` now allows `https://app.rockfrostgroup.com` in both
 
 POS now has a real six-tab offline terminal (`src/modules/pos/screens/PosModuleShell.tsx`: Overview, Sell, Registers, Sales history, Reports, Settings) instead of the generic one-button demo view Fleet, Installment, and Inventory still use. See "Offline scope" below and `docs/OFFLINE_DESKTOP.md`'s "Desktop client: POS" section for what it can and cannot do fully offline.
 
+Version `0.2.4` replaces the desktop's own hand-rolled `--rf-*` CSS-variable
+theme and custom `Button`/`Card`/inline-style UI with the same Tailwind v4 +
+shadcn/ui ("base-nova") stack the web app uses (`@tailwindcss/vite`,
+`src/styles/globals.css` with the same OKLCH tokens as the web app's
+`globals.css`, and `src/components/ui/*.tsx` copied from the web app). Every
+POS and School screen, plus the shell (activation, lock screen, module
+launcher, sync status bar) and conflict/update panels, now render with the
+real shadcn components (`Select`, `Checkbox`, `Tabs`, `Card`, `Badge`, `Input`,
+`Label`) instead of native `<select>`/`<input>` elements with inline styles.
+`Button` and `Card` are kept as thin wrappers around the real
+`ui/button.tsx`/`ui/card.tsx` components so the ~120 existing call sites
+across the app did not need to change; every other primitive (`Select`,
+`Checkbox`, `Tabs`, `Label`) was converted at each call site. This is a
+presentation-only change: no adapter, sync, or offline-mutation logic moved.
+
 ## Activation
 
 1. Sign in to the Rock Frost web application.

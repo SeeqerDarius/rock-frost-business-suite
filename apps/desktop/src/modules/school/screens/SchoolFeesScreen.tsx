@@ -2,11 +2,13 @@ import { useId, useState, type FormEvent } from "react";
 import { Plus, Send } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApp } from "@/state/AppProvider";
 import { createSchoolAdapter } from "@/modules/school/adapter";
 import type { SchoolSnapshot } from "@/modules/school/school-data";
 import { computeFeeInvoiceOutstanding } from "@/modules/school/fee-utils";
-import { Field, inputStyle, selectStyle, ErrorText, SyncBadge, formatMoney } from "@/components/form-fields";
+import { Field, ErrorText, SyncBadge, formatMoney } from "@/components/form-fields";
 
 const PAYMENT_METHODS: { value: "CASH" | "CARD" | "MOBILE_MONEY" | "BANK_TRANSFER" | "ONLINE" | "OTHER"; label: string }[] = [
   { value: "CASH", label: "Cash" },
@@ -19,8 +21,8 @@ const PAYMENT_METHODS: { value: "CASH" | "CARD" | "MOBILE_MONEY" | "BANK_TRANSFE
 
 export function SchoolFeesScreen({ snapshot, onChanged }: { snapshot: SchoolSnapshot; onChanged: () => Promise<void> }) {
   return (
-    <section aria-labelledby="school-fees-heading" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-      <h2 id="school-fees-heading" style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700 }}>
+    <section aria-labelledby="school-fees-heading" className="flex flex-col gap-6">
+      <h2 id="school-fees-heading" className="m-0 text-[1.05rem] font-bold">
         Fees
       </h2>
       <FeeStructureSection snapshot={snapshot} onChanged={onChanged} />
@@ -87,57 +89,65 @@ function FeeStructureSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-      <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Fee structures</p>
+    <div className="flex flex-col gap-2.5">
+      <p className="m-0 text-sm font-semibold">Fee structures</p>
       <Card>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-          <Field label="Campus" id={campusId}>
-            <select id={campusId} value={campus} onChange={(e) => setCampus(e.target.value)} style={{ ...selectStyle, width: "9rem" }}>
-              <option value="">Select a campus</option>
-              {snapshot.campuses.map((c) => (
-                <option key={c.entityId} value={c.entityId}>
-                  {c.data.name}
-                </option>
-              ))}
-            </select>
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+          <Field label="Campus" id={campusId} className="w-36">
+            <Select value={campus} onValueChange={(value) => setCampus(value ?? "")}>
+              <SelectTrigger id={campusId} className="w-full">
+                <SelectValue placeholder="Select a campus" />
+              </SelectTrigger>
+              <SelectContent>
+                {snapshot.campuses.map((c) => (
+                  <SelectItem key={c.entityId} value={c.entityId}>
+                    {c.data.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Academic year" id={yearId}>
-            <select id={yearId} value={academicYear} onChange={(e) => setAcademicYear(e.target.value)} style={{ ...selectStyle, width: "9rem" }}>
-              <option value="">Select a year</option>
-              {snapshot.academicYears.map((y) => (
-                <option key={y.entityId} value={y.entityId}>
-                  {y.data.name}
-                </option>
-              ))}
-            </select>
+          <Field label="Academic year" id={yearId} className="w-36">
+            <Select value={academicYear} onValueChange={(value) => setAcademicYear(value ?? "")}>
+              <SelectTrigger id={yearId} className="w-full">
+                <SelectValue placeholder="Select a year" />
+              </SelectTrigger>
+              <SelectContent>
+                {snapshot.academicYears.map((y) => (
+                  <SelectItem key={y.entityId} value={y.entityId}>
+                    {y.data.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Name" id={nameId} hint="e.g. Term 1 tuition">
-            <input id={nameId} value={name} onChange={(e) => setName(e.target.value)} style={{ ...inputStyle, width: "10rem" }} />
+          <Field label="Name" id={nameId} hint="e.g. Term 1 tuition" className="w-40">
+            <Input id={nameId} value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
-          <Field label="Amount" id={amountId}>
-            <input id={amountId} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ ...inputStyle, width: "7rem" }} placeholder="500.00" />
+          <Field label="Amount" id={amountId} className="w-28">
+            <Input id={amountId} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="500.00" />
           </Field>
           <Button type="submit" variant="secondary" loading={saving}>
             <Plus size={14} aria-hidden="true" />
             Add structure
           </Button>
         </form>
-        {error ? <div style={{ marginTop: "0.6rem" }}><ErrorText>{error}</ErrorText></div> : null}
+        {error ? <div className="mt-2.5"><ErrorText>{error}</ErrorText></div> : null}
       </Card>
       {snapshot.feeStructures.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "0.8125rem", color: "var(--rf-muted-foreground)" }}>No fee structures cached on this device yet.</p>
+        <p className="m-0 text-[0.8125rem] text-muted-foreground">No fee structures cached on this device yet.</p>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {snapshot.feeStructures.map((structure) => (
             <li key={structure.entityId}>
-              <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>{structure.data.name}</p>
-                  <p style={{ margin: "0.1rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>GHS {formatMoney(structure.data.amount)}</p>
+              <Card className="flex flex-wrap items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="m-0 text-sm font-semibold">{structure.data.name}</p>
+                  <p className="mt-0.5 mb-0 text-xs text-muted-foreground">GHS {formatMoney(structure.data.amount)}</p>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexShrink: 0 }}>
+                <div className="flex shrink-0 items-center gap-2.5">
                   {justIssuedId === structure.entityId ? (
-                    <span style={{ fontSize: "0.75rem", color: "var(--rf-primary)" }}>Issuance queued</span>
+                    <span className="text-xs text-primary">Issuance queued</span>
                   ) : null}
                   <SyncBadge pending={structure.hasPendingLocalChange} />
                   <Button
@@ -204,56 +214,64 @@ function FeeInvoiceSection({ snapshot, onChanged }: { snapshot: SchoolSnapshot; 
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-      <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>Ad-hoc invoices</p>
+    <div className="flex flex-col gap-2.5">
+      <p className="m-0 text-sm font-semibold">Ad-hoc invoices</p>
       <Card>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-          <Field label="Academic year" id={yearId}>
-            <select id={yearId} value={academicYear} onChange={(e) => setAcademicYear(e.target.value)} style={{ ...selectStyle, width: "9rem" }}>
-              <option value="">Select a year</option>
-              {snapshot.academicYears.map((y) => (
-                <option key={y.entityId} value={y.entityId}>
-                  {y.data.name}
-                </option>
-              ))}
-            </select>
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+          <Field label="Academic year" id={yearId} className="w-36">
+            <Select value={academicYear} onValueChange={(value) => setAcademicYear(value ?? "")}>
+              <SelectTrigger id={yearId} className="w-full">
+                <SelectValue placeholder="Select a year" />
+              </SelectTrigger>
+              <SelectContent>
+                {snapshot.academicYears.map((y) => (
+                  <SelectItem key={y.entityId} value={y.entityId}>
+                    {y.data.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Student" id={studentId}>
-            <select id={studentId} value={student} onChange={(e) => setStudent(e.target.value)} style={{ ...selectStyle, width: "10rem" }}>
-              <option value="">Select a student</option>
-              {eligibleStudents.map((s) => (
-                <option key={s.entityId} value={s.entityId}>
-                  {s.data.firstName} {s.data.lastName}
-                </option>
-              ))}
-            </select>
+          <Field label="Student" id={studentId} className="w-40">
+            <Select value={student} onValueChange={(value) => setStudent(value ?? "")}>
+              <SelectTrigger id={studentId} className="w-full">
+                <SelectValue placeholder="Select a student" />
+              </SelectTrigger>
+              <SelectContent>
+                {eligibleStudents.map((s) => (
+                  <SelectItem key={s.entityId} value={s.entityId}>
+                    {s.data.firstName} {s.data.lastName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label="Description" id={descriptionId}>
-            <input id={descriptionId} value={description} onChange={(e) => setDescription(e.target.value)} style={{ ...inputStyle, width: "10rem" }} placeholder="Field trip fee" />
+          <Field label="Description" id={descriptionId} className="w-40">
+            <Input id={descriptionId} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Field trip fee" />
           </Field>
-          <Field label="Amount" id={amountId}>
-            <input id={amountId} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ ...inputStyle, width: "7rem" }} placeholder="50.00" />
+          <Field label="Amount" id={amountId} className="w-28">
+            <Input id={amountId} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="50.00" />
           </Field>
           <Button type="submit" variant="secondary" loading={saving} disabled={eligibleStudents.length === 0}>
             <Plus size={14} aria-hidden="true" />
             Create invoice
           </Button>
         </form>
-        {eligibleStudents.length === 0 ? <p style={{ margin: "0.6rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>Needs at least one already-synced student.</p> : null}
+        {eligibleStudents.length === 0 ? <p className="mt-2.5 mb-0 text-xs text-muted-foreground">Needs at least one already-synced student.</p> : null}
         {justCreated ? (
-          <p style={{ margin: "0.6rem 0 0", fontSize: "0.75rem", color: "var(--rf-primary)" }}>
+          <p className="mt-2.5 mb-0 text-xs text-primary">
             Invoice queued. It will appear in the list below, and become payable, once it syncs.
           </p>
         ) : null}
-        {error ? <div style={{ marginTop: "0.6rem" }}><ErrorText>{error}</ErrorText></div> : null}
+        {error ? <div className="mt-2.5"><ErrorText>{error}</ErrorText></div> : null}
       </Card>
 
       {snapshot.feeInvoices.length === 0 ? (
         <Card>
-          <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--rf-muted-foreground)" }}>No invoices cached on this device yet.</p>
+          <p className="m-0 text-sm text-muted-foreground">No invoices cached on this device yet.</p>
         </Card>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {snapshot.feeInvoices.map((invoice) => (
             <InvoiceRow key={invoice.entityId} entityId={invoice.entityId} data={invoice.data} hasPendingLocalChange={invoice.hasPendingLocalChange} onChanged={onChanged} />
           ))}
@@ -312,17 +330,17 @@ function InvoiceRow({
 
   return (
     <li>
-      <Card style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
-          <div style={{ minWidth: 0 }}>
-            <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600 }}>
+      <Card className="flex flex-col gap-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="m-0 text-sm font-semibold">
               {data.invoiceNumber} &middot; {data.description}
             </p>
-            <p style={{ margin: "0.1rem 0 0", fontSize: "0.75rem", color: "var(--rf-muted-foreground)" }}>
+            <p className="mt-0.5 mb-0 text-xs text-muted-foreground">
               {data.status} &middot; GHS {formatMoney(String(outstanding))} outstanding of GHS {formatMoney(data.amount)}
             </p>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexShrink: 0 }}>
+          <div className="flex shrink-0 items-center gap-2.5">
             <SyncBadge pending={hasPendingLocalChange} />
             {canPay ? (
               <Button variant="secondary" onClick={() => setShowPaymentForm((v) => !v)}>
@@ -332,25 +350,29 @@ function InvoiceRow({
           </div>
         </div>
         {showPaymentForm ? (
-          <form onSubmit={(e) => void handleSubmit(e)} noValidate style={{ display: "flex", gap: "0.6rem", alignItems: "end", flexWrap: "wrap" }}>
-            <Field label="Amount" id={`fee-payment-amount-${entityId}`}>
-              <input
+          <form onSubmit={(e) => void handleSubmit(e)} noValidate className="flex flex-wrap items-end gap-2.5">
+            <Field label="Amount" id={`fee-payment-amount-${entityId}`} className="w-28">
+              <Input
                 id={`fee-payment-amount-${entityId}`}
                 inputMode="decimal"
                 value={paymentAmount}
                 onChange={(e) => setPaymentAmount(e.target.value)}
-                style={{ ...inputStyle, width: "7rem" }}
                 placeholder={formatMoney(String(outstanding))}
               />
             </Field>
-            <Field label="Method" id={`fee-payment-method-${entityId}`}>
-              <select id={`fee-payment-method-${entityId}`} value={method} onChange={(e) => setMethod(e.target.value as typeof method)} style={{ ...selectStyle, width: "9rem" }}>
-                {PAYMENT_METHODS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
+            <Field label="Method" id={`fee-payment-method-${entityId}`} className="w-36">
+              <Select value={method} onValueChange={(value) => setMethod(value as typeof method)}>
+                <SelectTrigger id={`fee-payment-method-${entityId}`} className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
             <Button type="submit" loading={saving}>
               Record
