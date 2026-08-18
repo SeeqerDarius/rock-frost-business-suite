@@ -1,5 +1,52 @@
 # Desktop client handoff
 
+## 2026-08-18 Field alignment fix and periodic auto-sync (0.2.5 to 0.2.6)
+
+The operator screenshotted the Exams & Grading screen after installing
+`0.2.5` and circled two visibly misaligned field groups on the Exams form
+(Subject/Name) and the Record-a-result form (Student/Grade), asking to fix
+these plus "the sync issue" (a pending-sync badge that stayed up despite the
+device showing Online and a recent successful sync).
+
+Root cause of the misalignment: `Field` (`src/components/form-fields.tsx`)
+only rendered its `hint` paragraph when `hint` was provided, and every form
+row uses `className="flex flex-wrap items-end gap-2.5"`. `items-end` aligns
+each flex item's bottom edge to the row's cross-axis end line. A `Field` with
+a hint (Name: "e.g. Midterm"; Grade: "Optional, auto-derived if blank") is
+taller than a sibling `Field` without one, so the shorter field's whole box
+gets pushed down to match the taller one's bottom - visibly dropping its
+input relative to its neighbors. Fixed by always rendering the hint
+paragraph, invisible (`className="invisible"`) when there's no hint text, so
+every `Field` instance has the same box height and `items-end` has nothing
+to misalign. This is the one shared primitive every real module screen's
+forms already use, so the fix applies everywhere at once, not just Exams.
+
+Root cause of the sync issue: there is no periodic sync anywhere in this
+app. `AppShell.tsx` calls `syncNow()` exactly once, on shell mount; the only
+other trigger is the manual "Sync now" button. A change queued after that
+one mount-time sync just sits as "N changes pending sync" indefinitely -
+correctly reflecting real, unsynced state, but with no way to clear itself
+short of the user remembering to click the button. This was not a data-loss
+or correctness bug (the mutation queue and its optimistic cache entry were
+both genuinely correct), but it does not behave like an "offline-first,
+syncs when it can" app should. Added a 60-second periodic auto-sync in
+`AppShell.tsx`, gated on the device being unlocked (`!lockState.locked`) and
+`navigator.onLine`, alongside the existing mount-time sync and manual button.
+
+Validation from `apps/desktop/`: `npx tsc --noEmit` passed with zero errors;
+`npm run lint` passed; `npm test` passed unmodified, 16 files and 99 tests;
+`npm run build` compiled 2,134 modules. `cargo check` and
+`npm run tauri:build` (native, `CARGO_TARGET_DIR=C:\rfdbuild`) produced NSIS
+and MSI `0.2.6` installers in 4m03s. The built exe launched and stayed
+responsive in a local smoke test. NSIS: 3,566,460 bytes, SHA-256
+`91FED9FD5EF996527C9BE6A3C69F2A9415EDD0D3D8C305D0F57E1E3CE0944AC4`. MSI:
+4,849,664 bytes, SHA-256
+`6B60FC9CB27F57DB494413273423E871CF11FA81AFCB7DDDFB123DAE67C159A1`.
+
+Not yet done: the operator has not confirmed the field alignment now looks
+correct or that pending changes clear within a minute of being online.
+Sent for manual install/testing, same as every previous version.
+
 ## 2026-08-18 Sidebar navigation to match the web app's real shell (0.2.4 to 0.2.5)
 
 After installing and testing `0.2.4` (the shadcn/Tailwind component port), the

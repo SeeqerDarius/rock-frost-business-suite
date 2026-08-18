@@ -13,12 +13,21 @@ import { cn } from "@/lib/utils";
  * real shadcn `Input`/`Select`/`Checkbox` directly rather than through a
  * shared inline-style object, matching how the web app itself builds forms.
  */
+/**
+ * Every field row uses `items-end` so labels/inputs line up along their
+ * bottom edge. The hint line always renders (invisible when absent, never
+ * removed) so every Field in a row has the same box height regardless of
+ * which fields happen to carry a hint - otherwise `items-end` pins the
+ * bottoms together and a field with no hint gets pushed down relative to
+ * one that has it, visibly misaligning inputs (e.g. Name next to Subject
+ * on the Exams screen, or Grade next to Student on the results form).
+ */
 export function Field({ label, id, hint, children, className }: { label: string; id: string; hint?: string; children: ReactNode; className?: string }) {
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
       <Label htmlFor={id}>{label}</Label>
       {children}
-      {hint ? <p className="m-0 text-xs text-muted-foreground">{hint}</p> : null}
+      <p className={cn("m-0 text-xs text-muted-foreground", !hint && "invisible")}>{hint || " "}</p>
     </div>
   );
 }

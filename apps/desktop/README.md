@@ -54,6 +54,20 @@ did not exist before. `PosModuleShell`/`SchoolModuleShell` dropped their own
 `Tabs` bar and now render whichever screen the sidebar selects. Presentation
 and navigation only: no adapter, sync, or offline-mutation logic changed.
 
+Version `0.2.6` fixes two defects the operator found on `0.2.5`. First, form
+fields whose `Field` wrapper had a `hint` line (e.g. Exams' Name field, or
+Exam Results' Grade field) rendered visibly out of line with their sibling
+fields in the same row: every field row uses `items-end`, and a field with a
+hint is taller than one without, so the shorter fields got pushed down to
+match the taller one's bottom edge. `Field` (`src/components/form-fields.tsx`)
+now always renders the hint line, invisible when absent, so every field in a
+row has equal height regardless of which ones carry a hint. Second, data sync
+only ran once at shell mount and on the manual "Sync now" button. A change
+made after that first sync just sat as "pending sync" until someone
+remembered to click the button, with no periodic resync at all.
+`AppShell.tsx` now also auto-syncs every 60 seconds while the device is
+unlocked and online.
+
 ## Activation
 
 1. Sign in to the Rock Frost web application.

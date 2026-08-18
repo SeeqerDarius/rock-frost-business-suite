@@ -1,5 +1,18 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-18: Desktop field alignment fix and periodic auto-sync (0.2.5 to 0.2.6)
+
+- The user screenshotted the Exams & Grading screen on `0.2.5` and circled two visibly misaligned field groups (Subject/Name on the Exams form, Student/Grade on the Record-a-result form), plus a "sync issue": the pending-sync badge stayed up despite the device showing Online and a recent successful sync.
+- Root cause of the misalignment: `Field` (`apps/desktop/src/components/form-fields.tsx`) only rendered its `hint` paragraph when provided, and every form row uses `items-end`, which aligns each field's bottom edge to the row's cross-axis end. A field with a hint is taller than one without, so shorter fields got pushed down to match, visibly dropping their input relative to neighbors. Fixed by always rendering the hint line, invisible when absent, so every `Field` has equal height. This is the one shared primitive every module's forms use, so it fixes every screen, not just Exams.
+- Root cause of the sync issue: there was no periodic sync anywhere in the app, only a one-time sync on shell mount plus the manual "Sync now" button. A change made after that first sync just sat pending indefinitely with no way to clear itself except a manual click. Not a data-loss bug (the queued mutation and its optimistic cache entry were both correct), but not what an "offline-first, syncs when it can" app should do. Added a 60-second periodic auto-sync in `AppShell.tsx`, gated on the device being unlocked and online.
+- This is a presentation/UX change only: no adapter, mutation queue, or conflict logic changed.
+- Important files: `apps/desktop/src/components/form-fields.tsx`, `apps/desktop/src/shell/AppShell.tsx`, desktop version manifests, `apps/desktop/README.md`, `apps/desktop/CLAUDE_HANDOFF.md`.
+- Schema and environment changes: none.
+- Validation from `apps/desktop/`: `npx tsc --noEmit` passed with zero errors; `npm run lint` passed; `npm test` passed unmodified with 16 files and 99 tests; `npm run build` compiled 2,134 modules.
+- `cargo check` and `npm run tauri:build` (native, `CARGO_TARGET_DIR=C:\rfdbuild`) produced NSIS and MSI `0.2.6` installers in 4m03s. The built `rock-frost-desktop.exe` launched and stayed responsive in a local smoke test. The NSIS installer is 3,566,460 bytes with SHA-256 `91FED9FD5EF996527C9BE6A3C69F2A9415EDD0D3D8C305D0F57E1E3CE0944AC4`; the MSI installer is 4,849,664 bytes with SHA-256 `6B60FC9CB27F57DB494413273423E871CF11FA81AFCB7DDDFB123DAE67C159A1`. `tauri build`'s overall exit code was 1 only because `TAURI_SIGNING_PRIVATE_KEY` is not set, same as every previous release.
+- Remaining risk: the operator has not confirmed the field alignment now looks correct or that pending changes clear within a minute of being online. Sent for manual install/testing.
+- Release: pending commit and push to `main`.
+
 ## 2026-08-18: Desktop sidebar navigation to match the web app's real shell (0.2.4 to 0.2.5)
 
 - After testing `0.2.4` (the shadcn/Tailwind component port below), the user's feedback was that the desktop still didn't look like the web app: the web app uses a persistent left sidebar with grouped navigation and a real Overview dashboard, while the desktop still used a top card grid to pick a module and a horizontal tab bar inside each module to pick a screen. `0.2.4` ported the component library; this change ports the actual page layout and navigation architecture.
