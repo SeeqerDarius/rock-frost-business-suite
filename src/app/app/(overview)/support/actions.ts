@@ -1,10 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { longText } from "@/lib/validation";
 import * as support from "@/lib/support/service";
+import { triggerAiReplyIfEligible } from "@/lib/ai/support-assistant";
 import type { SupportChatMessage } from "@/components/support/support-chat";
 
 const { toChatMessage } = support;
@@ -23,6 +25,12 @@ export async function sendTenantSupportMessage(content: string): Promise<{ messa
   const senderName = await currentSenderName();
   const { message, conversation } = await support.sendTenantMessage(tenant.organizationId, tenant.userId, senderName, parsed.data);
   revalidatePath("/app/support");
+
+  // Scheduled after the response is sent, so the tenant's own message stays
+  // exactly as fast to send as before - the AI's reply (if any) lands a
+  // moment later and is picked up by the next poll, same as a human reply.
+  after(() => triggerAiReplyIfEligible(tenant));
+
   return { message: toChatMessage(message), otherPartyReadAt: support.otherPartyReadAt(conversation, "TENANT") };
 }
 

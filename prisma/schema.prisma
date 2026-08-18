@@ -4919,6 +4919,7 @@ enum SupportConversationStatus {
 enum SupportSenderRole {
   TENANT
   PLATFORM
+  AI
 }
 
 /**

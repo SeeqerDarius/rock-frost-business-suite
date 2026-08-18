@@ -110,7 +110,7 @@ describe("Support messaging service — tenant isolation", () => {
     expect(mockDb.supportMessage.count).not.toHaveBeenCalled();
   });
 
-  it("getTenantUnreadCount only counts PLATFORM messages newer than tenantLastReadAt, scoped to the conversation", async () => {
+  it("getTenantUnreadCount counts PLATFORM and AI messages newer than tenantLastReadAt, scoped to the conversation", async () => {
     const lastRead = new Date("2026-01-01");
     mockDb.supportConversation.findUnique.mockResolvedValue({ id: "conv-1", organizationId: ORG, tenantLastReadAt: lastRead });
     mockDb.supportMessage.count.mockResolvedValue(3);
@@ -120,7 +120,7 @@ describe("Support messaging service — tenant isolation", () => {
     const call = mockDb.supportMessage.count.mock.calls[0][0];
     expect(call.where.organizationId).toBe(ORG);
     expect(call.where.conversationId).toBe("conv-1");
-    expect(call.where.senderRole).toBe("PLATFORM");
+    expect(call.where.senderRole).toEqual({ in: ["PLATFORM", "AI"] });
     expect(call.where.createdAt).toEqual({ gt: lastRead });
   });
 
@@ -146,6 +146,45 @@ describe("Support messaging service — tenant isolation", () => {
     mockDb.organizationMember.findMany.mockResolvedValue([]);
     await expect(support.isTenantOnline(ORG)).resolves.toBe(false);
     expect(mockDb.userPresence.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("sendAiMessage creates an AI-role message with no sender account and bumps neither read cursor", async () => {
+    mockDb.supportConversation.upsert.mockResolvedValue({ id: "conv-1", organizationId: ORG });
+    mockDb.supportMessage.create.mockResolvedValue({ id: "msg-1", createdAt: new Date("2026-01-01") });
+    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValue({ id: "conv-1", organizationId: ORG, tenantLastReadAt: null, platformLastReadAt: null });
+
+    await support.sendAiMessage(ORG, "You have 482 active students.");
+
+    const createCall = mockDb.supportMessage.create.mock.calls[0][0];
+    expect(createCall.data.senderRole).toBe("AI");
+    expect(createCall.data.senderId).toBeNull();
+    expect(createCall.data.senderName).toBe("Rock Frost AI Assistant");
+
+    // An AI reply isn't a read acknowledgment from either side of the conversation.
+    expect(mockDb.supportConversation.update).not.toHaveBeenCalled();
+  });
+
+  it("getPlatformUnreadCount still only counts TENANT messages — an AI reply doesn't need operator attention", async () => {
+    mockDb.supportConversation.findMany.mockResolvedValue([{ id: "conv-1", platformLastReadAt: null }]);
+    mockDb.supportMessage.count.mockResolvedValue(0);
+
+    await support.getPlatformUnreadCount();
+
+    const call = mockDb.supportMessage.count.mock.calls[0][0];
+    expect(call.where.senderRole).toBe("TENANT");
+  });
+
+  it("isAiReplyRateLimited caps AI replies per organization within a rolling hour", async () => {
+    mockDb.supportMessage.count.mockResolvedValue(40);
+    await expect(support.isAiReplyRateLimited(ORG)).resolves.toBe(true);
+
+    mockDb.supportMessage.count.mockResolvedValue(39);
+    await expect(support.isAiReplyRateLimited(ORG)).resolves.toBe(false);
+
+    const call = mockDb.supportMessage.count.mock.calls[0][0];
+    expect(call.where.organizationId).toBe(ORG);
+    expect(call.where.senderRole).toBe("AI");
+    expect(call.where.createdAt.gte).toBeInstanceOf(Date);
   });
 });
 
@@ -189,6 +228,8 @@ describe("Support messaging — access-guard source coverage", () => {
       "src/components/support/support-chat.tsx",
       "src/components/support/floating-support-widget.tsx",
       "src/components/support/floating-support-link.tsx",
+      "src/lib/ai/client.ts",
+      "src/lib/ai/support-assistant.ts",
     ]) {
       const source = read(file);
       expect(source, file).not.toMatch(/sendEmail|resend|@\/lib\/email/i);

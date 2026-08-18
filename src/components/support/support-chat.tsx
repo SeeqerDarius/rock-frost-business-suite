@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarBadge } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import type { SupportMessageTemplate } from "@/lib/support/templates";
@@ -15,7 +16,7 @@ export interface SupportChatMessage {
   id: string;
   content: string;
   createdAt: string;
-  senderRole: "TENANT" | "PLATFORM";
+  senderRole: "TENANT" | "PLATFORM" | "AI";
   senderName: string;
 }
 
@@ -239,6 +240,12 @@ export function SupportChat({
         </div>
       </div>
 
+      {messages.some((message) => message.senderRole === "AI") ? (
+        <p className="border-b bg-muted/40 px-4 py-1.5 text-center text-[11px] text-muted-foreground">
+          Some replies here are automated. The Rock Frost team can always help too.
+        </p>
+      ) : null}
+
       <ScrollArea className="flex-1">
         <div ref={scrollRef} className="flex h-full flex-col gap-3 overflow-y-auto p-4">
           <div aria-live="polite" className="sr-only">
@@ -251,23 +258,36 @@ export function SupportChat({
           ) : (
             messages.map((message) => {
               const isOwn = message.senderRole === viewerRole;
+              const isAi = message.senderRole === "AI";
               const isRead = isOwn && otherPartyReadAt !== null && message.createdAt <= otherPartyReadAt;
               return (
                 <div key={message.id} className={cn("flex items-end gap-2", isOwn ? "flex-row-reverse" : "flex-row")}>
                   <Avatar size="sm" className="mb-4 shrink-0">
-                    <AvatarFallback>{initialsFor(message.senderName)}</AvatarFallback>
+                    <AvatarFallback className={isAi ? "bg-accent text-accent-foreground" : undefined}>
+                      {isAi ? <Sparkles className="size-3.5" aria-hidden="true" /> : initialsFor(message.senderName)}
+                    </AvatarFallback>
                   </Avatar>
                   <div className={cn("flex max-w-[75%] flex-col gap-1", isOwn ? "items-end" : "items-start")}>
                     <div
                       className={cn(
                         "rounded-2xl px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words",
-                        isOwn ? "rounded-br-sm bg-primary text-primary-foreground" : "rounded-bl-sm bg-muted text-foreground",
+                        isOwn ? "rounded-br-sm bg-primary text-primary-foreground"
+                          : isAi ? "rounded-bl-sm bg-accent text-accent-foreground"
+                          : "rounded-bl-sm bg-muted text-foreground",
                       )}
                     >
                       {message.content}
                     </div>
                     <p className="flex items-center gap-1 px-1 text-[11px] text-muted-foreground">
-                      <span>{isOwn ? "You" : message.senderName} · {formatTimestamp(message.createdAt)}</span>
+                      <span className="inline-flex items-center gap-1">
+                        {isOwn ? "You" : message.senderName}
+                        {isAi ? (
+                          <Badge variant="outline" className="h-4 rounded-full px-1.5 text-[9px] leading-none font-medium">
+                            AI
+                          </Badge>
+                        ) : null}
+                        <span>· {formatTimestamp(message.createdAt)}</span>
+                      </span>
                       {isOwn ? (
                         isRead ? (
                           <span className="flex items-center gap-0.5 text-primary" title="Read">

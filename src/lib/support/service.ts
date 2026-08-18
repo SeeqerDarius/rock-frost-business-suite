@@ -9,7 +9,7 @@ export interface SerializedSupportMessage {
   id: string;
   content: string;
   createdAt: string;
-  senderRole: "TENANT" | "PLATFORM";
+  senderRole: "TENANT" | "PLATFORM" | "AI";
   senderName: string;
 }
 
@@ -19,7 +19,7 @@ export function toChatMessage(message: { id: string; content: string; createdAt:
     id: message.id,
     content: message.content,
     createdAt: message.createdAt.toISOString(),
-    senderRole: message.senderRole as "TENANT" | "PLATFORM",
+    senderRole: message.senderRole as "TENANT" | "PLATFORM" | "AI",
     senderName: message.senderName,
   };
 }
@@ -47,7 +47,7 @@ export async function listSupportMessages(organizationId: string, sinceCreatedAt
   return { conversation, messages };
 }
 
-async function sendMessage(organizationId: string, data: { senderId: string | null; senderName: string; senderRole: "TENANT" | "PLATFORM"; content: string }) {
+async function sendMessage(organizationId: string, data: { senderId: string | null; senderName: string; senderRole: "TENANT" | "PLATFORM" | "AI"; content: string }) {
   const content = data.content.trim();
   if (!content) throw new Error("Message cannot be empty.");
   return db.$transaction(async (tx) => {
@@ -59,11 +59,15 @@ async function sendMessage(organizationId: string, data: { senderId: string | nu
     const message = await tx.supportMessage.create({
       data: { organizationId, conversationId: conversation.id, senderId: data.senderId, senderName: data.senderName, senderRole: data.senderRole, content },
     });
-    // Sending implicitly marks your own side as caught up.
-    await tx.supportConversation.update({
-      where: { id: conversation.id },
-      data: data.senderRole === "TENANT" ? { tenantLastReadAt: message.createdAt } : { platformLastReadAt: message.createdAt },
-    });
+    // Sending implicitly marks your own side as caught up. An AI-authored
+    // message isn't a read acknowledgment from either the tenant or the
+    // platform team, so it bumps neither cursor.
+    const readCursorUpdate = data.senderRole === "TENANT" ? { tenantLastReadAt: message.createdAt }
+      : data.senderRole === "PLATFORM" ? { platformLastReadAt: message.createdAt }
+      : null;
+    if (readCursorUpdate) {
+      await tx.supportConversation.update({ where: { id: conversation.id }, data: readCursorUpdate });
+    }
     await tx.$executeRaw`
       UPDATE "SupportConversation"
       SET "lastMessageAt" = GREATEST("lastMessageAt", ${message.createdAt})
@@ -80,6 +84,11 @@ export function sendTenantMessage(organizationId: string, senderId: string, send
 
 export function sendPlatformMessage(organizationId: string, senderId: string, senderName: string, content: string) {
   return sendMessage(organizationId, { senderId, senderName, senderRole: "PLATFORM", content });
+}
+
+/** The AI assistant has no user account — senderId is always null, senderName is a fixed display label. */
+export function sendAiMessage(organizationId: string, content: string) {
+  return sendMessage(organizationId, { senderId: null, senderName: "Rock Frost AI Assistant", senderRole: "AI", content });
 }
 
 /**
@@ -115,10 +124,24 @@ export async function getTenantUnreadCount(organizationId: string) {
     where: {
       organizationId,
       conversationId: conversation.id,
-      senderRole: "PLATFORM",
+      // AI-authored messages count toward the tenant's unread badge the same
+      // way a platform reply does — the tenant should still notice a new
+      // answer arrived. The platform side's own unread count (below) stays
+      // TENANT-only: an AI reply doesn't need an operator's attention.
+      senderRole: { in: ["PLATFORM", "AI"] },
       createdAt: conversation.tenantLastReadAt ? { gt: conversation.tenantLastReadAt } : undefined,
     },
   });
+}
+
+/** Cap on AI-generated replies per organization per rolling hour — a cheap guard against runaway API spend. */
+const AI_REPLY_HOURLY_CAP = 40;
+
+export async function isAiReplyRateLimited(organizationId: string): Promise<boolean> {
+  const count = await db.supportMessage.count({
+    where: { organizationId, senderRole: "AI", createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) } },
+  });
+  return count >= AI_REPLY_HOURLY_CAP;
 }
 
 export async function isPlatformOnline() {
