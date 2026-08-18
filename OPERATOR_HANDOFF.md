@@ -11,7 +11,7 @@
 - Validation from `apps/desktop/`: `npx tsc --noEmit` passed with zero errors; `npm run lint` passed; `npm test` passed unmodified with 16 files and 99 tests; `npm run build` compiled 2,134 modules.
 - `cargo check` and `npm run tauri:build` (native, `CARGO_TARGET_DIR=C:\rfdbuild`) produced NSIS and MSI `0.2.6` installers in 4m03s. The built `rock-frost-desktop.exe` launched and stayed responsive in a local smoke test. The NSIS installer is 3,566,460 bytes with SHA-256 `91FED9FD5EF996527C9BE6A3C69F2A9415EDD0D3D8C305D0F57E1E3CE0944AC4`; the MSI installer is 4,849,664 bytes with SHA-256 `6B60FC9CB27F57DB494413273423E871CF11FA81AFCB7DDDFB123DAE67C159A1`. `tauri build`'s overall exit code was 1 only because `TAURI_SIGNING_PRIVATE_KEY` is not set, same as every previous release.
 - Remaining risk: the operator has not confirmed the field alignment now looks correct or that pending changes clear within a minute of being online. Sent for manual install/testing.
-- Release: pending commit and push to `main`.
+- Release: commit `4d4e6e0` on `main`, pushed to `origin/main`. CI (`security`, `validate`, `integration`) passed clean. Vercel production deployment `dpl_4PX1YrV7AK7vHM2mdcm9RgZsMtMP` reached Ready and owns the `app`, `www`, `admin`, apex, and Vercel production aliases. Post-deploy verification: `/api/health` returned HTTP 200 with the database reachable; the protected `/app/account/desktop` route returned the expected HTTP 307 redirect; an unauthenticated desktop sync pull returned HTTP 401; the runtime error log showed only the same pre-existing, unrelated `/app` organization-membership error, with nothing new.
 
 ## 2026-08-18: Desktop sidebar navigation to match the web app's real shell (0.2.4 to 0.2.5)
 
