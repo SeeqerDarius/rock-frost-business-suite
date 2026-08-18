@@ -10,6 +10,7 @@
 - Schema and environment changes: none.
 - Validation: `npx tsc --noEmit` passed with zero errors; `npm run lint` passed; `npm test` passed with 74 files and 492 tests (unchanged, no new test surface, this is presentational marketing content); `npm run build` compiled successfully, including `/modules/school`'s static path. Manually verified in a local dev preview: the previews render with the intended sample data and the disclosure line, and no new console errors.
 - Docs: `docs/DESIGN_SYSTEM.md`'s component-conventions section now documents `ModuleShowcase` and the fictional-data rule for future module showcases.
+- Follow-up (same day, commit `da31fe8`): the initial version had a blue uppercase "Inside the module" eyebrow label above the showcase heading, borrowed from `CustomerShowcase`'s own eyebrow convention. The user flagged it by screenshot as inconsistent with the rest of this page, its other sections (`What you can manage`, and the homepage's `Modules` section) go straight from a plain `h2` with no eyebrow at all. Removed the eyebrow line so the showcase matches its neighbors. Deployed as `dpl_2F9uZJ38ai3sjsPXr7owVxruGrx8`, verified live and no new runtime errors. When adding a showcase for another module, match the plain-`h2` pattern, not the eyebrow one.
 
 ## 2026-08-18: Production login outage - Turnstile unconfigured, every sign-in rejected
 
