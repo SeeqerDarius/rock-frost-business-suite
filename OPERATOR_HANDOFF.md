@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-19: Fix AI support assistant model_not_found (Groq deprecated llama-3.3-70b-versatile)
+
+- The user added `GROQ_API_KEY` to production themselves shortly after the provider-swap deploy below. Every AI reply attempt then failed with `404 model_not_found: The model 'llama-3.3-70b-versatile' does not exist or you do not have access to it` (confirmed via Vercel's runtime error log, first occurrence 2026-08-19T12:19:45Z). Root cause: Groq retired that model on 2026-08-16 — three days after this feature was originally built against it — as part of Groq's own free-tier model rotation, unrelated to anything in this codebase.
+- Since `triggerAiReplyIfEligible` never surfaces AI failures to the tenant (by design, so an AI outage never blocks the human-only fallback), this failure was silent to the user: the tenant's message sent fine, no error appeared in the chat, the AI simply never replied. Only Vercel's runtime error log exposed it.
+- Fix: `SUPPORT_ASSISTANT_MODEL` in `src/lib/ai/client.ts` changed from `llama-3.3-70b-versatile` to `openai/gpt-oss-120b`, Groq's current recommended production tool-calling model (confirmed live against https://console.groq.com/docs/models and https://console.groq.com/docs/deprecations, not assumed). Added a code comment and a `docs/AI_ASSISTANT.md` note flagging that Groq's free-tier model IDs are not stable long-term and pointing at the deprecations page as the first thing to check if AI replies silently stop again.
+- Important files: `src/lib/ai/client.ts`, `docs/AI_ASSISTANT.md`.
+- Validation: `npx tsc --noEmit` and `npm run lint` passed; this is a single constant-value change with no behavior-shape difference, so the existing mocked test suite (unaffected by the specific model string) continues to cover the surrounding logic.
+
 ## 2026-08-19: Deploy and production verification for the Groq provider swap
 
 `e2b587a` fast-forwarded into `main` and shipped as Vercel deployment `dpl_EnGdKLMSLGNGDYJATxtj7CmRjSqQ`, READY on all production aliases. `/api/health` returns `{"ok":true,"database":"reachable"}` and the runtime error log shows nothing new in the 15 minutes after deploy. `GROQ_API_KEY` is still unset in production, so the assistant remains inert by design (same behavior as before this swap) until the user adds it.

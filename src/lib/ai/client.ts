@@ -11,5 +11,10 @@ export function getGroqClient(): Groq | null {
   return client;
 }
 
-/** The model powering the support assistant. Llama 3.3 70B is Groq's general-purpose tool-calling model. */
-export const SUPPORT_ASSISTANT_MODEL = "llama-3.3-70b-versatile";
+/**
+ * The model powering the support assistant. Groq deprecates and rotates free-tier
+ * models periodically (llama-3.3-70b-versatile was retired 2026-08-16) - check
+ * https://console.groq.com/docs/models for the current production model list
+ * before changing this.
+ */
+export const SUPPORT_ASSISTANT_MODEL = "openai/gpt-oss-120b";
