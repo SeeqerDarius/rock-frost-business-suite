@@ -119,7 +119,7 @@ export function FloatingSupportWidget({
           aria-label="Support chat"
           className={cn(
             "fixed z-50 origin-bottom-right",
-            "inset-4 sm:inset-auto sm:bottom-24 sm:right-6 sm:w-96",
+            "inset-4 sm:inset-auto sm:bottom-24 sm:right-6 sm:h-[32rem] sm:w-96",
             open
               ? "animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 duration-200"
               : "pointer-events-none animate-out fade-out-0 zoom-out-95 slide-out-to-bottom-2 duration-150",

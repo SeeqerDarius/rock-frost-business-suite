@@ -1,5 +1,12 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-19: Fix floating support widget panel not height-capped on desktop
+
+- The user reported the floating support chat panel "goes all the way up and doesn't fit the screen properly." Traced to `src/components/support/floating-support-widget.tsx`'s `fixed`-positioned wrapper: at `sm:` breakpoint it sets `sm:inset-auto sm:bottom-24 sm:right-6` but never gives the wrapper itself an explicit height, leaving the visible box's size entirely dependent on its child (`SupportChat`) correctly resolving its own internal `h-full` vs `h-[32rem]` class conflict via `twMerge`. Fix: added `sm:h-[32rem]` directly on the wrapper so the actual bounding box is unambiguously capped regardless of how the child's classes resolve internally.
+- Also confirmed via server logs, separately from the sizing issue: the user's open browser tab had been running a stale page load through multiple deploys — every send/poll/heartbeat from that tab was failing server-side with `Failed to find Server Action ... This request might be from an older or newer deployment`, which is why AI replies and message sends both appeared to silently "do nothing." No code fix needed for this half — told the user to hard-reload the page.
+- Important files: `src/components/support/floating-support-widget.tsx`.
+- Validation: `npx tsc --noEmit` and `npm run lint` passed. No automated visual/layout test exists for this component; verification is the user confirming the panel now stays within the viewport after reload.
+
 ## 2026-08-19: Fix AI support assistant model_not_found (Groq deprecated llama-3.3-70b-versatile)
 
 - The user added `GROQ_API_KEY` to production themselves shortly after the provider-swap deploy below. Every AI reply attempt then failed with `404 model_not_found: The model 'llama-3.3-70b-versatile' does not exist or you do not have access to it` (confirmed via Vercel's runtime error log, first occurrence 2026-08-19T12:19:45Z). Root cause: Groq retired that model on 2026-08-16 — three days after this feature was originally built against it — as part of Groq's own free-tier model rotation, unrelated to anything in this codebase.
