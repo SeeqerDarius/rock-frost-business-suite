@@ -1,6 +1,6 @@
 # Hospital Management module
 
-**Status:** implemented on branch `agent/claude-hospital-production`, not yet merged to `main`, not deployed. This
+**Status:** implemented, merged to `main`, and live in production since 2026-08-12 (merge commit `c5f626b`, public landing page published the same day in `0c8d626`). This
 document is the product and architecture contract for the vertical, written to the same standard as
 `docs/HOTEL_AND_SCHOOL_MODULES.md` and following the isolation rules in `docs/MODULE_BOUNDARIES.md`: every owned
 record carries `organizationId`, every lookup and mutation is tenant-scoped, and the one deliberate cross-module
@@ -21,12 +21,13 @@ automatically delete records at expiry.
 
 ## Delivery order relative to Pharmacy
 
-Per `docs/PHARMACY_AND_HOSPITAL_ROADMAP.md`, Pharmacy is delivered and released to production first; Hospital's
-production *activation* (merge, deploy) follows only after Pharmacy clears its own release gates. This branch
-satisfies that ordering by construction: Hospital was developed on its own isolated branch/worktree, is not merged,
-and is not deployed. Development happened concurrently with Pharmacy (two agents, two branches) because nothing
-about writing and validating Hospital's own code depends on Pharmacy being live — only the two verticals'
-*simultaneous production activation* is what the roadmap guards against, and this branch does not do that.
+Per `docs/PHARMACY_AND_HOSPITAL_ROADMAP.md`, Pharmacy was delivered and released to production first; Hospital's
+production *activation* (merge, deploy) followed only after Pharmacy cleared its own release gates. This was
+satisfied by construction: Hospital was developed on its own isolated branch/worktree, merged and deployed only
+after Pharmacy was already live. Development happened concurrently with Pharmacy (two agents, two branches) because
+nothing about writing and validating Hospital's own code depended on Pharmacy being live — only the two verticals'
+*simultaneous production activation* was what the roadmap guarded against, and this sequencing avoided that. Both
+verticals are merged to `main` and live in production as of 2026-08-12.
 
 ## Scope delivered
 

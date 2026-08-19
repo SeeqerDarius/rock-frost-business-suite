@@ -73,8 +73,8 @@ restaurant/stock workflows must call POS/Inventory services, and School
 workforce/payroll workflows must call HR/Payroll services; neither vertical may
 query another module's Prisma tables directly.
 
-Hospital Management (branch `agent/claude-hospital-production`, not yet merged)
-follows the same contract — see `HOSPITAL_MODULE.md`. Its one deliberate
+Hospital Management (merged to `main`, live in production) follows the same
+contract — see `HOSPITAL_MODULE.md`. Its one deliberate
 cross-module boundary is medication orders reaching Pharmacy through a
 versioned, Hospital-owned contract (`HospitalMedicationOrder`); it does not
 and must never read or write a Pharmacy table directly.
