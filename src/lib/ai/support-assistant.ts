@@ -1,9 +1,9 @@
 import "server-only";
 
-import type Anthropic from "@anthropic-ai/sdk";
+import type Groq from "groq-sdk";
 import type { TenantContext } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getAnthropicClient, SUPPORT_ASSISTANT_MODEL } from "@/lib/ai/client";
+import { getGroqClient, SUPPORT_ASSISTANT_MODEL } from "@/lib/ai/client";
 import * as support from "@/lib/support/service";
 import { getSchoolSummary } from "@/modules/school/service";
 import { getFleetSummary } from "@/modules/fleet/service";
@@ -37,40 +37,58 @@ interface ToolResult {
   error?: string;
 }
 
-const TOOLS: Anthropic.Tool[] = [
+const TOOLS: Groq.Chat.ChatCompletionTool[] = [
   {
-    name: "get_school_overview",
-    description: "Get this organization's live School module numbers: active students, active classes, attendance breakdown, fee collections and outstanding balances, overdue library loans, and active transport routes. Only useful if the organization actually runs a school.",
-    input_schema: { type: "object", properties: {}, additionalProperties: false },
+    type: "function",
+    function: {
+      name: "get_school_overview",
+      description: "Get this organization's live School module numbers: active students, active classes, attendance breakdown, fee collections and outstanding balances, overdue library loans, and active transport routes. Only useful if the organization actually runs a school.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
   },
   {
-    name: "get_fleet_overview",
-    description: "Get this organization's live Fleet module numbers: vehicle count and status breakdown, active drivers, pending maintenance requests, active work-and-pay contracts, and this month's fleet payments.",
-    input_schema: { type: "object", properties: {}, additionalProperties: false },
+    type: "function",
+    function: {
+      name: "get_fleet_overview",
+      description: "Get this organization's live Fleet module numbers: vehicle count and status breakdown, active drivers, pending maintenance requests, active work-and-pay contracts, and this month's fleet payments.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
   },
   {
-    name: "get_crm_overview",
-    description: "Get this organization's live CRM numbers: pipeline value, win rate, deals won this month, contacts, leads, open leads, and activity logged this month.",
-    input_schema: { type: "object", properties: {}, additionalProperties: false },
+    type: "function",
+    function: {
+      name: "get_crm_overview",
+      description: "Get this organization's live CRM numbers: pipeline value, win rate, deals won this month, contacts, leads, open leads, and activity logged this month.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
   },
   {
-    name: "get_inventory_overview",
-    description: "Get this organization's live Inventory (and Procurement, if enabled) numbers: item and warehouse counts, stock value, low-stock items, and, when Procurement is enabled, vendor and purchase-order activity.",
-    input_schema: { type: "object", properties: {}, additionalProperties: false },
+    type: "function",
+    function: {
+      name: "get_inventory_overview",
+      description: "Get this organization's live Inventory (and Procurement, if enabled) numbers: item and warehouse counts, stock value, low-stock items, and, when Procurement is enabled, vendor and purchase-order activity.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
   },
   {
-    name: "get_accounting_overview",
-    description: "Get this organization's live Accounting numbers: cash balance, accounts receivable, revenue, expenses, net income, and outstanding or overdue invoices.",
-    input_schema: { type: "object", properties: {}, additionalProperties: false },
+    type: "function",
+    function: {
+      name: "get_accounting_overview",
+      description: "Get this organization's live Accounting numbers: cash balance, accounts receivable, revenue, expenses, net income, and outstanding or overdue invoices.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
   },
   {
-    name: "get_pos_overview",
-    description: "Get this organization's live Point of Sale numbers: registers, open sessions, today's sales, all-time sales, and refunds.",
-    input_schema: { type: "object", properties: {}, additionalProperties: false },
+    type: "function",
+    function: {
+      name: "get_pos_overview",
+      description: "Get this organization's live Point of Sale numbers: registers, open sessions, today's sales, all-time sales, and refunds.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
   },
 ];
 
-/** Exported for testing the permission-gating dispatch directly, without needing a mocked Anthropic client. */
+/** Exported for testing the permission-gating dispatch directly, without needing a mocked Groq client. */
 export async function callSupportAssistantTool(name: string, tenant: TenantContext): Promise<ToolResult> {
   switch (name) {
     case "get_school_overview":
@@ -123,41 +141,41 @@ export async function getAssistantReply(
   tenant: TenantContext,
   transcript: AssistantTranscriptMessage[],
 ): Promise<{ ok: true; content: string } | { ok: false; error: string }> {
-  const client = getAnthropicClient();
+  const client = getGroqClient();
   if (!client) return { ok: false, error: "AI assistant is not configured." };
   if (transcript.length === 0) return { ok: false, error: "Nothing to respond to." };
 
   try {
-    const messages: Anthropic.MessageParam[] = [{ role: "user", content: transcriptToUserTurn(transcript) }];
+    const messages: Groq.Chat.ChatCompletionMessageParam[] = [
+      { role: "system", content: buildSystemPrompt(tenant) },
+      { role: "user", content: transcriptToUserTurn(transcript) },
+    ];
 
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-      const response = await client.messages.create({
+      const response = await client.chat.completions.create({
         model: SUPPORT_ASSISTANT_MODEL,
-        max_tokens: 1024,
-        system: buildSystemPrompt(tenant),
+        max_completion_tokens: 1024,
         tools: TOOLS,
         messages,
       });
 
-      if (response.stop_reason !== "tool_use") {
-        const textBlock = response.content.find((block) => block.type === "text");
-        const content = textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
+      const message = response.choices[0]?.message;
+      if (!message) return { ok: false, error: "AI assistant returned an empty response." };
+
+      if (!message.tool_calls || message.tool_calls.length === 0) {
+        const content = message.content?.trim();
         return content ? { ok: true, content } : { ok: false, error: "AI assistant returned an empty response." };
       }
 
-      messages.push({ role: "assistant", content: response.content });
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
-      for (const block of response.content) {
-        if (block.type !== "tool_use") continue;
-        const result = await callSupportAssistantTool(block.name, tenant);
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: block.id,
+      messages.push({ role: "assistant", content: message.content, tool_calls: message.tool_calls });
+      for (const toolCall of message.tool_calls) {
+        const result = await callSupportAssistantTool(toolCall.function.name, tenant);
+        messages.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
           content: JSON.stringify(result.ok ? result.data : { error: result.error }),
-          is_error: !result.ok,
         });
       }
-      messages.push({ role: "user", content: toolResults });
     }
 
     return { ok: false, error: "AI assistant could not complete a response." };
@@ -175,7 +193,7 @@ export async function getAssistantReply(
  */
 export async function triggerAiReplyIfEligible(tenant: TenantContext): Promise<void> {
   if (!hasPermission(tenant, PERMISSIONS.AI_ASSISTANT_USE)) return;
-  if (!getAnthropicClient()) return;
+  if (!getGroqClient()) return;
   if (await support.isPlatformOnline()) return;
   if (await support.isAiReplyRateLimited(tenant.organizationId)) return;
 

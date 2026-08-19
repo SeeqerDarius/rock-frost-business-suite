@@ -67,7 +67,7 @@ A third participant, `SupportSenderRole.AI`, can reply inside this same conversa
 **When it fires.** After a tenant sends a message (`sendTenantSupportMessage` in `src/app/app/(overview)/support/actions.ts`), an AI reply is scheduled via `next/server`'s `after()` — so the tenant's own send stays exactly as fast as before, and the reply (if any) lands a few seconds later via the same 4-second poll every other message uses. It only actually generates a reply when **all** of these hold, checked in `triggerAiReplyIfEligible()` (`src/lib/ai/support-assistant.ts`):
 
 - The sender holds `ai.assistant.use` (granted to every seeded role by default, same tier as `dashboard.view`).
-- `ANTHROPIC_API_KEY` is configured. Unset is the default out of the box — the assistant then never replies, and the conversation behaves exactly as it did before this feature existed.
+- `GROQ_API_KEY` is configured. Unset is the default out of the box — the assistant then never replies, and the conversation behaves exactly as it did before this feature existed.
 - **No platform operator is currently online** (`support.isPlatformOnline()`) — the same presence check the tenant's own "Online"/"Offline" indicator already uses. This is the deliberate "hand off to a human" behavior: when a human is present, the human answers; when none is, the AI does, and a human can still jump into the same thread at any time afterward.
 - The organization is under its hourly AI-reply cap (`isAiReplyRateLimited()`, 40/hour) — a cheap guard against runaway API spend, not a customer-facing limit anyone is expected to hit in normal use.
 

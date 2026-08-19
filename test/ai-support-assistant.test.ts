@@ -16,9 +16,9 @@ vi.mock("@/modules/accounting/service", () => ({ getAccountingSummary: mockAccou
 vi.mock("@/modules/pos/service", () => ({ getPosSummary: mockPosSummary }));
 
 const mockCreate = vi.fn();
-vi.mock("@anthropic-ai/sdk", () => ({
-  default: class MockAnthropic {
-    messages = { create: mockCreate };
+vi.mock("groq-sdk", () => ({
+  default: class MockGroq {
+    chat = { completions: { create: mockCreate } };
   },
 }));
 
@@ -50,7 +50,7 @@ function makeTenant(overrides: Partial<TenantContext> = {}): TenantContext {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  process.env.ANTHROPIC_API_KEY = "test-key";
+  process.env.GROQ_API_KEY = "test-key";
 });
 
 describe("Support assistant — tool dispatcher permission gating", () => {
@@ -103,9 +103,9 @@ describe("Support assistant — tool dispatcher permission gating", () => {
 });
 
 describe("Support assistant — getAssistantReply", () => {
-  it("degrades gracefully with no thrown error when ANTHROPIC_API_KEY is unset", async () => {
+  it("degrades gracefully with no thrown error when GROQ_API_KEY is unset", async () => {
     vi.resetModules();
-    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.GROQ_API_KEY;
     const { getAssistantReply } = await import("@/lib/ai/support-assistant");
 
     const result = await getAssistantReply(makeTenant(), [{ speaker: "tenant", content: "How many students do we have?" }]);
@@ -116,16 +116,20 @@ describe("Support assistant — getAssistantReply", () => {
 
   it("runs the tool-use loop: executes an authorized tool, feeds the result back, and returns the model's final text", async () => {
     vi.resetModules();
-    process.env.ANTHROPIC_API_KEY = "test-key";
+    process.env.GROQ_API_KEY = "test-key";
     mockSchoolSummary.mockResolvedValue({ activeStudents: 482 });
     mockCreate
       .mockResolvedValueOnce({
-        stop_reason: "tool_use",
-        content: [{ type: "tool_use", id: "tool-1", name: "get_school_overview", input: {} }],
+        choices: [{
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [{ id: "tool-1", type: "function", function: { name: "get_school_overview", arguments: "{}" } }],
+          },
+        }],
       })
       .mockResolvedValueOnce({
-        stop_reason: "end_turn",
-        content: [{ type: "text", text: "You have 482 active students." }],
+        choices: [{ message: { role: "assistant", content: "You have 482 active students.", tool_calls: undefined } }],
       });
 
     const { getAssistantReply } = await import("@/lib/ai/support-assistant");
@@ -140,22 +144,26 @@ describe("Support assistant — getAssistantReply", () => {
     // The tool result fed back to the model must reflect a real, successful call.
     const secondCallArgs = mockCreate.mock.calls[1][0];
     const toolResultMessage = secondCallArgs.messages.at(-1);
-    expect(toolResultMessage.role).toBe("user");
-    expect(toolResultMessage.content[0].is_error).toBe(false);
-    expect(JSON.parse(toolResultMessage.content[0].content)).toEqual({ activeStudents: 482 });
+    expect(toolResultMessage.role).toBe("tool");
+    expect(toolResultMessage.tool_call_id).toBe("tool-1");
+    expect(JSON.parse(toolResultMessage.content)).toEqual({ activeStudents: 482 });
   });
 
-  it("feeds an authorization error back to the model as an error tool_result, never the raw data, when the tenant lacks the permission", async () => {
+  it("feeds an authorization error back to the model as a JSON error payload, never the raw data, when the tenant lacks the permission", async () => {
     vi.resetModules();
-    process.env.ANTHROPIC_API_KEY = "test-key";
+    process.env.GROQ_API_KEY = "test-key";
     mockCreate
       .mockResolvedValueOnce({
-        stop_reason: "tool_use",
-        content: [{ type: "tool_use", id: "tool-1", name: "get_accounting_overview", input: {} }],
+        choices: [{
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [{ id: "tool-1", type: "function", function: { name: "get_accounting_overview", arguments: "{}" } }],
+          },
+        }],
       })
       .mockResolvedValueOnce({
-        stop_reason: "end_turn",
-        content: [{ type: "text", text: "I don't have access to show you that." }],
+        choices: [{ message: { role: "assistant", content: "I don't have access to show you that.", tool_calls: undefined } }],
       });
 
     const { getAssistantReply } = await import("@/lib/ai/support-assistant");
@@ -167,8 +175,8 @@ describe("Support assistant — getAssistantReply", () => {
     expect(mockAccountingSummary).not.toHaveBeenCalled();
     const secondCallArgs = mockCreate.mock.calls[1][0];
     const toolResultMessage = secondCallArgs.messages.at(-1);
-    expect(toolResultMessage.content[0].is_error).toBe(true);
-    expect(JSON.parse(toolResultMessage.content[0].content).error).toBeTruthy();
+    expect(toolResultMessage.role).toBe("tool");
+    expect(JSON.parse(toolResultMessage.content).error).toBeTruthy();
   });
 });
 
@@ -197,13 +205,15 @@ describe("Support assistant — triggerAiReplyIfEligible", () => {
 
   it("sends the assistant's reply through support.sendAiMessage when every condition is met", async () => {
     vi.resetModules();
-    process.env.ANTHROPIC_API_KEY = "test-key";
+    process.env.GROQ_API_KEY = "test-key";
     mockSupportService.isPlatformOnline.mockResolvedValue(false);
     mockSupportService.isAiReplyRateLimited.mockResolvedValue(false);
     mockSupportService.listSupportMessages.mockResolvedValue({
       messages: [{ senderRole: "TENANT", content: "How many students do we have?" }],
     });
-    mockCreate.mockResolvedValueOnce({ stop_reason: "end_turn", content: [{ type: "text", text: "I can check that for you." }] });
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { role: "assistant", content: "I can check that for you.", tool_calls: undefined } }],
+    });
 
     const { triggerAiReplyIfEligible } = await import("@/lib/ai/support-assistant");
     await triggerAiReplyIfEligible(makeTenant({ permissions: ["ai.assistant.use"] }));
@@ -213,7 +223,7 @@ describe("Support assistant — triggerAiReplyIfEligible", () => {
 
   it("does not call sendAiMessage when the assistant fails to produce a reply", async () => {
     vi.resetModules();
-    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.GROQ_API_KEY;
     mockSupportService.isPlatformOnline.mockResolvedValue(false);
     mockSupportService.isAiReplyRateLimited.mockResolvedValue(false);
     mockSupportService.listSupportMessages.mockResolvedValue({
