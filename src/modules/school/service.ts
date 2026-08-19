@@ -274,6 +274,107 @@ export async function recordSchoolAttendance(organizationId: string, actingUserI
   return db.schoolAttendance.upsert({ where: { studentId_date: { studentId: data.studentId, date: data.date } }, update: { status: data.status, reason: data.reason }, create: { organizationId, ...data } });
 }
 
+export interface SchoolAttendanceRosterEntry {
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  admissionNumber: string;
+  /** Null when nothing has been recorded yet for this student on this date - the caller defaults this to PRESENT for display. */
+  status: SchoolAttendanceStatus | null;
+  reason: string | null;
+}
+
+/** The active roster for a class on a given date, merged with any attendance already recorded - powers the bulk "take attendance" screen. */
+export async function getSchoolAttendanceRoster(
+  organizationId: string,
+  actingUserId: string,
+  data: { termId: string; classId: string; date: Date },
+): Promise<{ entries: SchoolAttendanceRosterEntry[]; closeDays: number }> {
+  const scope = await resolveTeacherClassScope(organizationId, actingUserId);
+  if (scope && !scope.has(data.classId)) throw new SchoolStateError("You can only view attendance for a class you're assigned to.", "class-not-assigned");
+
+  const [term, class_] = await Promise.all([
+    db.schoolTerm.findFirst({ where: { id: data.termId, organizationId }, select: { academicYearId: true } }),
+    db.schoolClass.findFirst({ where: { id: data.classId, organizationId }, include: { campus: { include: { settings: true } } } }),
+  ]);
+  if (!term || !class_) throw new SchoolNotFoundError("Term or class not found.");
+
+  const [enrollments, existing] = await Promise.all([
+    db.schoolEnrollment.findMany({
+      where: { organizationId, classId: data.classId, academicYearId: term.academicYearId, status: "ACTIVE", student: { status: "ACTIVE" } },
+      include: { student: true },
+      orderBy: [{ student: { lastName: "asc" } }, { student: { firstName: "asc" } }],
+    }),
+    db.schoolAttendance.findMany({ where: { organizationId, classId: data.classId, date: data.date } }),
+  ]);
+
+  const existingByStudent = new Map(existing.map((record) => [record.studentId, record]));
+  const entries: SchoolAttendanceRosterEntry[] = enrollments.map(({ student }) => {
+    const record = existingByStudent.get(student.id);
+    return {
+      studentId: student.id,
+      firstName: student.firstName,
+      lastName: student.lastName,
+      admissionNumber: student.admissionNumber,
+      status: record?.status ?? null,
+      reason: record?.reason ?? null,
+    };
+  });
+
+  return { entries, closeDays: class_.campus.settings?.attendanceCloseDays ?? 7 };
+}
+
+/**
+ * Records attendance for many students in one class on one date in a single
+ * pass, so a teacher doesn't have to repeat term/class/date selection per
+ * student. Re-derives the active roster server-side rather than trusting a
+ * client-supplied student list, and silently drops any submitted student who
+ * is no longer actively enrolled (e.g. withdrawn between page load and
+ * submit) instead of failing the whole batch.
+ */
+export async function recordSchoolAttendanceBulk(
+  organizationId: string,
+  actingUserId: string,
+  data: { termId: string; classId: string; date: Date; entries: Array<{ studentId: string; status: SchoolAttendanceStatus; reason?: string | null }> },
+): Promise<{ saved: number; skipped: number }> {
+  const scope = await resolveTeacherClassScope(organizationId, actingUserId);
+  if (scope && !scope.has(data.classId)) throw new SchoolStateError("You can only record attendance for a class you're assigned to.", "class-not-assigned");
+
+  const [term, class_] = await Promise.all([
+    db.schoolTerm.findFirst({ where: { id: data.termId, organizationId }, select: { academicYearId: true } }),
+    db.schoolClass.findFirst({ where: { id: data.classId, organizationId }, include: { campus: { include: { settings: true } } } }),
+  ]);
+  if (!term || !class_) throw new SchoolNotFoundError("Term or class not found.");
+
+  const now = new Date();
+  if (data.date > now) throw new SchoolStateError("Attendance cannot be recorded for a future date.", "future-attendance");
+  const closeDays = class_.campus.settings?.attendanceCloseDays ?? 7;
+  const oldestAllowed = new Date(now);
+  oldestAllowed.setHours(0, 0, 0, 0);
+  oldestAllowed.setDate(oldestAllowed.getDate() - closeDays);
+  if (data.date < oldestAllowed) throw new SchoolStateError("The attendance correction window has closed.", "attendance-closed");
+
+  const enrollments = await db.schoolEnrollment.findMany({
+    where: { organizationId, classId: data.classId, academicYearId: term.academicYearId, status: "ACTIVE", student: { status: "ACTIVE" } },
+    select: { studentId: true },
+  });
+  const activeStudentIds = new Set(enrollments.map((enrollment) => enrollment.studentId));
+  const valid = data.entries.filter((entry) => activeStudentIds.has(entry.studentId));
+  if (valid.length === 0) return { saved: 0, skipped: data.entries.length };
+
+  await db.$transaction(
+    valid.map((entry) =>
+      db.schoolAttendance.upsert({
+        where: { studentId_date: { studentId: entry.studentId, date: data.date } },
+        update: { status: entry.status, reason: entry.reason ?? null },
+        create: { organizationId, termId: data.termId, classId: data.classId, studentId: entry.studentId, date: data.date, status: entry.status, reason: entry.reason ?? null },
+      }),
+    ),
+  );
+
+  return { saved: valid.length, skipped: data.entries.length - valid.length };
+}
+
 export function listSchoolFeeInvoices(organizationId: string) {
   return db.schoolFeeInvoice.findMany({ where: { organizationId }, include: { student: true, payments: true, academicYear: true, term: true }, orderBy: { createdAt: "desc" } });
 }

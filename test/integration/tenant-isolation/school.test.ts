@@ -98,4 +98,63 @@ describe("School service — real tenant isolation and customer-readiness guards
     oldDate.setHours(0, 0, 0, 0);
     await expect(school.recordSchoolAttendance(orgA.organizationId, orgA.userId, { termId: term.id, classId: schoolClass.id, studentId: student.id, date: oldDate, status: "PRESENT" })).rejects.toThrow("correction window has closed");
   });
+
+  it("records attendance for a whole roster in one call, defaults unrecorded students to null, and skips a student who isn't actively enrolled", async () => {
+    const now = new Date();
+    const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: `Roster ${now.getFullYear()}`, startDate: new Date(now.getFullYear(), 0, 1), endDate: new Date(now.getFullYear(), 11, 31) });
+    const term = await school.createSchoolTerm(orgA.organizationId, { academicYearId: year.id, name: "Current", startDate: new Date(now.getFullYear(), 0, 1), endDate: new Date(now.getFullYear(), 11, 31) });
+    const schoolClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: "ROSTER", name: "Roster Class" });
+    const [studentOne, studentTwo] = await Promise.all([
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Roster", lastName: "One" }),
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Roster", lastName: "Two" }),
+    ]);
+    await Promise.all([
+      school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: year.id, studentId: studentOne.id, classId: schoolClass.id }),
+      school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: year.id, studentId: studentTwo.id, classId: schoolClass.id }),
+    ]);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const before = await school.getSchoolAttendanceRoster(orgA.organizationId, orgA.userId, { termId: term.id, classId: schoolClass.id, date: today });
+    expect(before.entries).toHaveLength(2);
+    expect(before.entries.every((entry) => entry.status === null)).toBe(true);
+
+    // studentB belongs to a different organization entirely and isn't enrolled in this class -
+    // the bulk write must silently drop it rather than fail the whole batch or leak across tenants.
+    const result = await school.recordSchoolAttendanceBulk(orgA.organizationId, orgA.userId, {
+      termId: term.id,
+      classId: schoolClass.id,
+      date: today,
+      entries: [
+        { studentId: studentOne.id, status: "PRESENT" },
+        { studentId: studentTwo.id, status: "ABSENT", reason: "Sick" },
+        { studentId: studentB.id, status: "PRESENT" },
+      ],
+    });
+    expect(result).toEqual({ saved: 2, skipped: 1 });
+
+    const after = await school.getSchoolAttendanceRoster(orgA.organizationId, orgA.userId, { termId: term.id, classId: schoolClass.id, date: today });
+    const byId = new Map(after.entries.map((entry) => [entry.studentId, entry]));
+    expect(byId.get(studentOne.id)?.status).toBe("PRESENT");
+    expect(byId.get(studentTwo.id)?.status).toBe("ABSENT");
+    expect(byId.get(studentTwo.id)?.reason).toBe("Sick");
+    expect(await testDb.schoolAttendance.findFirst({ where: { studentId: studentB.id, date: today } })).toBeNull();
+  });
+
+  it("enforces the attendance correction window once for the whole bulk batch", async () => {
+    const now = new Date();
+    const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: `RosterWindow ${now.getFullYear()}`, startDate: new Date(now.getFullYear(), 0, 1), endDate: new Date(now.getFullYear(), 11, 31) });
+    const term = await school.createSchoolTerm(orgA.organizationId, { academicYearId: year.id, name: "Current", startDate: new Date(now.getFullYear(), 0, 1), endDate: new Date(now.getFullYear(), 11, 31) });
+    const schoolClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: "ROSTERWIN", name: "Roster Window Class" });
+    const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "RosterWindow", lastName: "Student" });
+    await school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: year.id, studentId: student.id, classId: schoolClass.id });
+    await school.upsertSchoolSettings(orgA.organizationId, { campusId: campusA.id, attendanceCloseDays: 1, receiptPrefix: "SCH", allowRanking: false });
+    const oldDate = new Date(now);
+    oldDate.setDate(oldDate.getDate() - 3);
+    oldDate.setHours(0, 0, 0, 0);
+
+    await expect(
+      school.recordSchoolAttendanceBulk(orgA.organizationId, orgA.userId, { termId: term.id, classId: schoolClass.id, date: oldDate, entries: [{ studentId: student.id, status: "PRESENT" }] }),
+    ).rejects.toThrow("correction window has closed");
+  });
 });

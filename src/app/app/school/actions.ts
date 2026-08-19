@@ -6,7 +6,7 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import { cuid, shortText, longText, dateInput, moneyAmountPositive, parseWithSchema } from "@/lib/validation";
-import { createSchoolCampus, createSchoolAcademicYear, closeSchoolAcademicYear, deleteSchoolAcademicYear, createSchoolTerm, admitSchoolStudent, createSchoolGuardian, linkSchoolGuardian, createSchoolClass, updateSchoolClassCapacity, assignSchoolClassTeacher, removeSchoolClassTeacher, createSchoolSubject, enrollSchoolStudent, recordSchoolAttendance, createSchoolFeeInvoice, recordSchoolFeePayment, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, upsertSchoolSettings, transitionSchoolStudent, createSchoolFeeStructure, issueSchoolFeeStructure, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
+import { createSchoolCampus, createSchoolAcademicYear, closeSchoolAcademicYear, deleteSchoolAcademicYear, createSchoolTerm, admitSchoolStudent, createSchoolGuardian, linkSchoolGuardian, createSchoolClass, updateSchoolClassCapacity, assignSchoolClassTeacher, removeSchoolClassTeacher, createSchoolSubject, enrollSchoolStudent, recordSchoolAttendanceBulk, createSchoolFeeInvoice, recordSchoolFeePayment, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, upsertSchoolSettings, transitionSchoolStudent, createSchoolFeeStructure, issueSchoolFeeStructure, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
 
 const clean=(value:FormDataEntryValue|null)=>{const text=String(value??"").trim();return text||null};
 async function auth(permission:string,path:string){const tenant=await requireModuleAccess("school");if(!hasPermission(tenant,permission))redirect(`${path}?error=forbidden`);return tenant;}
@@ -86,7 +86,45 @@ export async function assignClassTeacherAction(f:FormData){const path="/app/scho
 export async function removeClassTeacherAction(f:FormData){const path="/app/school/classes",t=await auth(PERMISSIONS.SCHOOL_ACADEMICS_MANAGE,path);const p=z.object({classId:cuid,userId:cuid}).safeParse({classId:clean(f.get("classId")),userId:clean(f.get("userId"))});if(!p.success)redirect(`${path}?error=invalid`);await removeSchoolClassTeacher(t.organizationId,p.data.classId,p.data.userId);revalidatePath(path);redirect(`${path}?saved=1`)}
 export async function createSubjectAction(f:FormData){const path="/app/school/classes",t=await auth(PERMISSIONS.SCHOOL_ACADEMICS_MANAGE,path);const p=z.object({code:shortText,name:shortText,description:longText.nullable()}).safeParse({code:clean(f.get("code")),name:clean(f.get("name")),description:clean(f.get("description"))});if(!p.success)redirect(`${path}?error=invalid`);await createSchoolSubject(t.organizationId,p.data);revalidatePath(path);redirect(`${path}?saved=1`)}
 export async function enrollStudentAction(f:FormData){const path="/app/school/classes",t=await auth(PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE,path);const p=z.object({campusId:cuid,academicYearId:cuid,studentId:cuid,classId:cuid}).safeParse(Object.fromEntries(["campusId","academicYearId","studentId","classId"].map(k=>[k,clean(f.get(k))])));if(!p.success)redirect(`${path}?error=invalid`);try{await enrollSchoolStudent(t.organizationId,p.data)}catch(e){fail(path,e)}revalidatePath(path);redirect(`${path}?saved=1`)}
-export async function recordAttendanceAction(f:FormData){const path="/app/school/attendance",t=await auth(PERMISSIONS.SCHOOL_ATTENDANCE_MANAGE,path);const p=parseWithSchema(z.object({termId:cuid,classId:cuid,studentId:cuid,date:dateInput,status:z.enum(["PRESENT","ABSENT","LATE","EXCUSED"]),reason:shortText.nullable()}),{termId:clean(f.get("termId"))??"",classId:clean(f.get("classId"))??"",studentId:clean(f.get("studentId"))??"",date:clean(f.get("date")),status:clean(f.get("status")),reason:clean(f.get("reason"))});if(!p.success)redirect(`${path}?error=invalid`);try{await recordSchoolAttendance(t.organizationId,t.userId,p.data)}catch(e){fail(path,e)}revalidatePath(path);redirect(`${path}?saved=1`)}
+/**
+ * Records attendance for every student in a class on one date from a single
+ * roster form submission, instead of one dialog round trip per student. The
+ * roster's active student ids aren't known ahead of time, so entries are
+ * pulled directly off the submitted FormData keys (status_<studentId> /
+ * reason_<studentId>) rather than a fixed zod shape - recordSchoolAttendanceBulk
+ * re-derives the authoritative active roster server-side and drops anything
+ * that doesn't match, so a tampered or stale studentId can't write a record
+ * for a student who isn't actually enrolled in this class.
+ */
+export async function recordAttendanceBulkAction(f: FormData) {
+  const path = "/app/school/attendance";
+  const t = await auth(PERMISSIONS.SCHOOL_ATTENDANCE_MANAGE, path);
+  const head = parseWithSchema(
+    z.object({ termId: cuid, classId: cuid, date: dateInput }),
+    { termId: clean(f.get("termId")) ?? "", classId: clean(f.get("classId")) ?? "", date: clean(f.get("date")) },
+  );
+  if (!head.success) redirect(`${path}?error=invalid`);
+
+  const statusSchema = z.enum(["PRESENT", "ABSENT", "LATE", "EXCUSED"]);
+  const entries: Array<{ studentId: string; status: z.infer<typeof statusSchema>; reason: string | null }> = [];
+  for (const [key, value] of f.entries()) {
+    const match = /^status_(.+)$/.exec(key);
+    if (!match) continue;
+    const status = statusSchema.safeParse(value);
+    if (!status.success) continue;
+    const studentId = match[1];
+    entries.push({ studentId, status: status.data, reason: clean(f.get(`reason_${studentId}`)) });
+  }
+  if (entries.length === 0) redirect(`${path}?error=invalid`);
+
+  try {
+    const result = await recordSchoolAttendanceBulk(t.organizationId, t.userId, { ...head.data, entries });
+    revalidatePath(path);
+    redirect(`${path}?saved=1&count=${result.saved}${result.skipped > 0 ? `&skipped=${result.skipped}` : ""}`);
+  } catch (e) {
+    fail(path, e);
+  }
+}
 export async function createFeeInvoiceAction(f:FormData){const path="/app/school/fees",t=await auth(PERMISSIONS.SCHOOL_FEES_MANAGE,path);const p=parseWithSchema(z.object({academicYearId:cuid,termId:cuid.nullable(),studentId:cuid,description:shortText,amount:moneyAmountPositive,discount:z.coerce.number().min(0),dueDate:dateInput.nullable()}),{academicYearId:clean(f.get("academicYearId"))??"",termId:clean(f.get("termId")),studentId:clean(f.get("studentId"))??"",description:clean(f.get("description"))??"",amount:clean(f.get("amount")),discount:clean(f.get("discount"))??"0",dueDate:clean(f.get("dueDate"))});if(!p.success)redirect(`${path}?error=invalid`);try{await createSchoolFeeInvoice(t.organizationId,p.data)}catch(e){fail(path,e)}revalidatePath(path);redirect(`${path}?saved=1`)}
 export async function recordFeePaymentAction(f:FormData){const path="/app/school/fees",t=await auth(PERMISSIONS.SCHOOL_FEES_MANAGE,path);const p=parseWithSchema(z.object({invoiceId:cuid,amount:moneyAmountPositive,method:z.enum(["CASH","CARD","MOBILE_MONEY","BANK_TRANSFER","ONLINE","OTHER"]),reference:shortText.nullable()}),{invoiceId:clean(f.get("invoiceId"))??"",amount:clean(f.get("amount")),method:clean(f.get("method")),reference:clean(f.get("reference"))});if(!p.success)redirect(`${path}?error=invalid`);const{invoiceId,...data}=p.data;try{await recordSchoolFeePayment(t.organizationId,invoiceId,data)}catch(e){fail(path,e)}revalidatePath(path);redirect(`${path}?saved=1`)}
 export async function createTimetableAction(f:FormData){const path="/app/school/timetables",t=await auth(PERMISSIONS.SCHOOL_TIMETABLES_MANAGE,path);const p=z.object({campusId:cuid,termId:cuid,classId:cuid,subjectId:cuid,teacherName:shortText,room:shortText.nullable(),dayOfWeek:z.coerce.number().int().min(1).max(7),startsAt:shortText,endsAt:shortText}).safeParse(Object.fromEntries(["campusId","termId","classId","subjectId","teacherName","room","dayOfWeek","startsAt","endsAt"].map(k=>[k,clean(f.get(k))])));if(!p.success)redirect(`${path}?error=invalid`);try{await createSchoolTimetableEntry(t.organizationId,p.data)}catch(e){fail(path,e)}revalidatePath(path);redirect(`${path}?saved=1`)}
