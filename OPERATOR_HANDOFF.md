@@ -1,5 +1,9 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-19: Deploy and production verification for bulk attendance recording
+
+`769a0cd` fast-forwarded into `main` and shipped as Vercel deployment `dpl_D98xHqGcsUScVWspy7WjX9YQFyt9`, READY on all production aliases. `/api/health` returns `{"ok":true,"database":"reachable"}` and the runtime error log shows nothing new in the 5 minutes after deploy. The real-Postgres integration tests for this change (roster defaults, bulk save, cross-org skip, correction-window enforcement) passed in CI on the feature branch before merge.
+
 ## 2026-08-19: School attendance — bulk roster recording replaces one-student-at-a-time
 
 - The user flagged that recording a class's daily attendance meant opening a dialog and submitting it separately for every single student — 40 students meant 40 round trips through the same term/class/date. Replaced with a roster workflow, per the user's explicit choices: pick term + class + date once, see every actively enrolled student in a table, mark each one's status inline (defaulting to Present — the teacher only touches the exceptions), and save the whole class in one submit. The old single-student dialog is removed entirely, not kept alongside the new flow.
