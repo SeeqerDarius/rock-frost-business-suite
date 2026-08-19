@@ -1,5 +1,9 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-19: Deploy and production verification for the Legal/privacy contact route
+
+`d77fb68` fast-forwarded into `main` and shipped as Vercel deployment `dpl_FhSJVofKKfjcVV91gPVoKH477TTU`, READY on all production aliases. The additive `EnquiryIntent.LEGAL` enum migration applied cleanly against the real production database. Verified live in the browser: `/contact?intent=legal` correctly pre-selects "Legal or privacy inquiry" in the Request dropdown (checked `document.getElementById('intent').value === "LEGAL"` directly), and no new runtime errors appeared in the 5 minutes after deploy.
+
 ## 2026-08-19: Add a Legal/privacy contact route and enquiry intent
 
 - Both `/terms` and `/privacy` tell visitors to reach Rock Frost "through our contact page" for legal or data-protection questions, but the contact form's request-type dropdown had no matching option (Demo, Module, Custom module, General, Support only) — a legal inquiry would have been mis-filed as "General." Added `LEGAL` as a new value on the `EnquiryIntent` Postgres enum (additive migration `20260819220000_add_legal_enquiry_intent`), a matching `"Legal or privacy inquiry"` option on the contact form, and a `legal` reason label used in the internal notification email and the platform's Requests inbox label map.
