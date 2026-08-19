@@ -1,5 +1,9 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-19: Deploy and production verification for Terms of Service and Privacy Policy pages
+
+`fcaf1a1` fast-forwarded into `main` and shipped as Vercel deployment `dpl_27BMkRJC1fRc2aND5ceGvMdG4PXR`, READY on all production aliases. Verified live in the browser: `/terms` and `/privacy` both render their full content correctly at `rockfrostgroup.com`, footer links resolve, page titles are correct. No new runtime errors in the 5 minutes after deploy.
+
 ## 2026-08-19: Publish Terms of Service and Privacy Policy pages
 
 - Ahead of the user's marketing launch, added public `/terms` and `/privacy` pages. Content is grounded in the actual implementation, not generic boilerplate: the controller/processor split matches `docs/COMPLIANCE_AND_ASSURANCE.md`'s framing (Rock Frost is controller for the marketing site and account-holder data, processor for Customer Data an organization enters into its enabled modules); the subprocessor list matches the real stack (Vercel, Neon on AWS, Resend, Groq for the optional AI assistant, Paystack/Flutterwave for online payment when an organization enables it); the trial/billing description matches the actual 14-day trial and manual/online payment mechanics confirmed during the pre-launch readiness audit earlier this session; jurisdiction and data-subject-rights language reference the Ghana Data Protection Act, 2012 (Act 843), matching the company page's existing framing. Security claims are deliberately limited to what's actually implemented (tenant isolation, RBAC, bcrypt, encrypted TOTP, audit logging, TLS) and explicitly do not claim SOC 2, ISO/IEC 27001, or independent penetration-testing, per the same claims discipline `docs/COMPLIANCE_AND_ASSURANCE.md` already enforces.
