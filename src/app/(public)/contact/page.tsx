@@ -32,7 +32,7 @@ export default async function ContactPage({
   searchParams: Promise<{ sent?: string; error?: string; intent?: string; module?: string }>;
 }) {
   const { sent, error, intent, module: moduleCode } = await searchParams;
-  const initialIntent = intent === "module" ? "MODULE" : intent === "demo" ? "DEMO" : "GENERAL";
+  const initialIntent = intent === "module" ? "MODULE" : intent === "demo" ? "DEMO" : intent === "legal" ? "LEGAL" : "GENERAL";
   const selectedModule = catalogueModuleRegistry.find((item) => item.key === moduleCode);
   const turnstileConfigured = isBotProtectionConfigured();
   const contactProof = turnstileConfigured
@@ -101,6 +101,7 @@ export default async function ContactPage({
                   <option value="CUSTOM_MODULE">Request a custom module</option>
                   <option value="GENERAL">General inquiry</option>
                   <option value="SUPPORT">Existing customer support</option>
+                  <option value="LEGAL">Legal or privacy inquiry</option>
                 </select>
               </div>
               <div className="space-y-2">

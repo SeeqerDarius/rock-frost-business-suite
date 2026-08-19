@@ -14,6 +14,7 @@ const REASON_LABELS: Record<string, string> = {
   "custom-module": "Request a custom module",
   general: "General inquiry",
   support: "Existing customer support",
+  legal: "Legal or privacy inquiry",
   other: "Something else",
 };
 
@@ -25,7 +26,7 @@ const contactFormSchema = z.object({
   email: emailSchema,
   phone: z.string().trim().max(40).optional().default(""),
   preferredContact: z.enum(["EMAIL", "PHONE", "WHATSAPP"]),
-  intent: z.enum(["DEMO", "MODULE", "GENERAL", "SUPPORT", "CUSTOM_MODULE"]),
+  intent: z.enum(["DEMO", "MODULE", "GENERAL", "SUPPORT", "CUSTOM_MODULE", "LEGAL"]),
   moduleCode: z.string().trim().max(50).optional().default(""),
   expectedUsers: z.coerce.number().int().positive().max(100000).optional(),
   country: z.string().trim().max(100).optional().default(""),
@@ -84,6 +85,7 @@ export async function submitContactForm(formData: FormData): Promise<void> {
     : intent === "MODULE" ? "module"
     : intent === "CUSTOM_MODULE" ? "custom-module"
     : intent === "SUPPORT" ? "support"
+    : intent === "LEGAL" ? "legal"
     : "general";
 
   // Basic rate limit: reject a second submission from the same email within
@@ -132,7 +134,7 @@ export async function submitContactForm(formData: FormData): Promise<void> {
         organizationId: operator.organizationId,
         userId: operator.userId,
         type: "PUBLIC_MODULE_ENQUIRY",
-        title: `${intent === "DEMO" ? "Demo" : "Module"} request: ${module_?.name ?? company}`,
+        title: `${intent === "DEMO" ? "Demo" : intent === "LEGAL" ? "Legal or privacy" : "Module"} request: ${module_?.name ?? company}`,
         message: `${name} from ${company} prefers ${preferredContact.toLowerCase()} contact.`,
         status: "QUEUED" as const,
         metadata: { contactSubmissionId: submission.id, moduleCode: moduleCode || null, intent },

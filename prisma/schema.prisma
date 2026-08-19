@@ -103,6 +103,7 @@ enum EnquiryIntent {
   GENERAL
   SUPPORT
   CUSTOM_MODULE
+  LEGAL
 }
 
 enum SubscriptionMode {

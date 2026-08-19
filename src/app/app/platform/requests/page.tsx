@@ -39,6 +39,7 @@ const ENQUIRY_INTENT_LABELS: Record<EnquiryIntent, string> = {
   GENERAL: "General inquiry",
   SUPPORT: "Customer support",
   CUSTOM_MODULE: "Custom module",
+  LEGAL: "Legal or privacy inquiry",
 };
 
 function isView(value: string | undefined): value is View {

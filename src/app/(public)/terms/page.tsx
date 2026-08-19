@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createPublicMetadata } from "@/lib/seo";
 
 export const metadata = createPublicMetadata({
@@ -118,7 +119,8 @@ export default function TermsOfServicePage() {
       <section className="mt-12 border-t pt-8">
         <h2 className="text-xl font-semibold tracking-tight">Contact</h2>
         <p className="mt-3 leading-7 text-muted-foreground">
-          Questions about these Terms, or requests for a separate written agreement covering your organization&apos;s specific needs, can be sent through our contact page.
+          Questions about these Terms, or requests for a separate written agreement covering your organization&apos;s specific needs, can be sent through our{" "}
+          <Link href="/contact?intent=legal" className="font-medium text-foreground underline underline-offset-4">contact page</Link>.
         </p>
       </section>
     </div>
