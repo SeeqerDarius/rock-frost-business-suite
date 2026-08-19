@@ -13,6 +13,8 @@ export function PublicFooter() {
           <Link href="/industries" className="hover:text-foreground">Industries</Link>
           <Link href="/company" className="hover:text-foreground">Company</Link>
           <Link href="/contact" className="hover:text-foreground">Contact</Link>
+          <Link href="/terms" className="hover:text-foreground">Terms of Service</Link>
+          <Link href="/privacy" className="hover:text-foreground">Privacy Policy</Link>
           <Link href="/cookie-policy" className="hover:text-foreground">Cookie policy</Link>
           <CookieSettingsButton />
         </nav>

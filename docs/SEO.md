@@ -14,11 +14,14 @@ The indexable surface is deliberately limited to:
 - `/`
 - `/solutions`
 - `/modules`
-- `/modules/{module-key}` for all thirteen available modules, including dedicated
-  Hotel and School metadata, features, canonical URLs, and acquisition links
+- `/modules/{module-key}` for all fifteen available modules, including dedicated
+  Hotel, School, Pharmacy, and Hospital metadata, features, canonical URLs, and
+  acquisition links
 - `/industries`
 - `/company`
 - `/contact`
+- `/terms`
+- `/privacy`
 - `/cookie-policy`
 
 `/app/*`, `/api/*`, and all authentication/token routes are disallowed in
