@@ -1,5 +1,9 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-19: Deploy and production verification for the Groq provider swap
+
+`e2b587a` fast-forwarded into `main` and shipped as Vercel deployment `dpl_EnGdKLMSLGNGDYJATxtj7CmRjSqQ`, READY on all production aliases. `/api/health` returns `{"ok":true,"database":"reachable"}` and the runtime error log shows nothing new in the 15 minutes after deploy. `GROQ_API_KEY` is still unset in production, so the assistant remains inert by design (same behavior as before this swap) until the user adds it.
+
 ## 2026-08-19: AI support assistant switched from Anthropic to Groq (free tier)
 
 - The user did not want to pay for the AI Support Assistant's model provider. Anthropic's and OpenAI's real APIs are both paid, usage-billed, with no free tier - only free, permanent-tier options are third-party inference providers. Compared Groq vs Google Gemini's free tiers with the user and they chose Groq: 14,400 requests/day (vs Gemini's 250-1,000/day, comfortably clears the existing 40-replies/hour cap), no credit card, no "may use your data to improve models" clause on the free tier (Gemini's free tier has one, which matters here since tool calls carry real business data), and an OpenAI-compatible tool-calling API.
