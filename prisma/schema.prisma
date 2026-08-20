@@ -265,6 +265,7 @@ model User {
   uploadedFiles                   FileAsset[]
   fleetDriverProfiles             FleetDriver[]
   schoolClassTeacherAssignments   SchoolClassTeacher[]
+  hostelWardenAssignments         HostelWarden[]
   fleetOwnerProfiles              FleetOwner[]
   maintenanceRequests             FleetMaintenanceRequest[]
   fleetMaintenanceEvents          FleetMaintenanceEvent[]
@@ -485,6 +486,14 @@ model Organization {
   schoolLibraryLoans              SchoolLibraryLoan[]
   schoolPayrollAdjustments        SchoolPayrollAdjustment[]
   schoolSettings                  SchoolSettings[]
+  hostelBuildings                 HostelBuilding[]
+  hostelRooms                     HostelRoom[]
+  hostelBeds                      HostelBed[]
+  hostelAllocations               HostelAllocation[]
+  hostelWardens                   HostelWarden[]
+  hostelFeeStructures             HostelFeeStructure[]
+  hostelFeeInvoices               HostelFeeInvoice[]
+  hostelFeePayments               HostelFeePayment[]
   pharmacyMedicines               PharmacyMedicine[]
   pharmacySuppliers               PharmacySupplier[]
   pharmacyBatches                 PharmacyBatch[]
@@ -3194,15 +3203,16 @@ model SchoolCampus {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization  Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch        Branch?                @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  classes       SchoolClass[]
-  students      SchoolStudent[]
-  enrollments   SchoolEnrollment[]
-  timetable     SchoolTimetableEntry[]
-  routes        SchoolTransportRoute[]
-  settings      SchoolSettings?
-  feeStructures SchoolFeeStructure[]
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch          Branch?                @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  classes         SchoolClass[]
+  students        SchoolStudent[]
+  enrollments     SchoolEnrollment[]
+  timetable       SchoolTimetableEntry[]
+  routes          SchoolTransportRoute[]
+  settings        SchoolSettings?
+  feeStructures   SchoolFeeStructure[]
+  hostelBuildings HostelBuilding[]
 
   @@unique([organizationId, code])
   @@index([organizationId, active])
@@ -3219,12 +3229,15 @@ model SchoolAcademicYear {
   closedAt       DateTime?
   createdAt      DateTime  @default(now())
 
-  organization  Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  terms         SchoolTerm[]
-  enrollments   SchoolEnrollment[]
-  feeInvoices   SchoolFeeInvoice[]
-  feeStructures SchoolFeeStructure[]
-  exams         SchoolExam[]
+  organization      Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  terms             SchoolTerm[]
+  enrollments       SchoolEnrollment[]
+  feeInvoices       SchoolFeeInvoice[]
+  feeStructures     SchoolFeeStructure[]
+  exams             SchoolExam[]
+  hostelAllocations HostelAllocation[]
+  hostelFeeInvoices HostelFeeInvoice[]
+  hostelFeeStructures HostelFeeStructure[]
 
   @@unique([organizationId, name])
   @@index([organizationId, current])
@@ -3240,13 +3253,15 @@ model SchoolTerm {
   current        Boolean   @default(false)
   closedAt       DateTime?
 
-  organization  Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  academicYear  SchoolAcademicYear     @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  attendance    SchoolAttendance[]
-  feeInvoices   SchoolFeeInvoice[]
-  feeStructures SchoolFeeStructure[]
-  exams         SchoolExam[]
-  timetable     SchoolTimetableEntry[]
+  organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  academicYear        SchoolAcademicYear     @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  attendance          SchoolAttendance[]
+  feeInvoices         SchoolFeeInvoice[]
+  feeStructures       SchoolFeeStructure[]
+  exams               SchoolExam[]
+  timetable           SchoolTimetableEntry[]
+  hostelFeeInvoices   HostelFeeInvoice[]
+  hostelFeeStructures HostelFeeStructure[]
 
   @@unique([academicYearId, name])
   @@index([organizationId, current])
@@ -3289,17 +3304,20 @@ model SchoolStudent {
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
-  organization    Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  campus          SchoolCampus                  @relation(fields: [campusId], references: [id], onDelete: Restrict)
-  guardians       SchoolStudentGuardian[]
-  enrollments     SchoolEnrollment[]
-  attendance      SchoolAttendance[]
-  feeInvoices     SchoolFeeInvoice[]
-  feePayments     SchoolFeePayment[]
-  examResults     SchoolExamResult[]
-  transport       SchoolTransportAssignment[]
-  libraryLoans    SchoolLibraryLoan[]
-  lifecycleEvents SchoolStudentLifecycleEvent[]
+  organization        Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campus              SchoolCampus                  @relation(fields: [campusId], references: [id], onDelete: Restrict)
+  guardians           SchoolStudentGuardian[]
+  enrollments         SchoolEnrollment[]
+  attendance          SchoolAttendance[]
+  feeInvoices         SchoolFeeInvoice[]
+  feePayments         SchoolFeePayment[]
+  examResults         SchoolExamResult[]
+  transport           SchoolTransportAssignment[]
+  libraryLoans        SchoolLibraryLoan[]
+  lifecycleEvents     SchoolStudentLifecycleEvent[]
+  hostelAllocations   HostelAllocation[]
+  hostelFeeInvoices   HostelFeeInvoice[]
+  hostelFeePayments   HostelFeePayment[]
 
   @@unique([organizationId, admissionNumber])
   @@index([organizationId, status])
@@ -3705,6 +3723,207 @@ model SchoolSettings {
   campus       SchoolCampus @relation(fields: [campusId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+}
+
+// --- Hostel Management ---
+// A separately subscribable module for schools that also run a boarding
+// hostel. Occupants are existing SchoolStudent records (a hostel houses
+// students who are already enrolled, not a second identity for them) and
+// terms/academic years are School's own - Hostel deliberately owns no
+// academic-calendar concept of its own. See docs/HOSTEL_MODULE.md.
+
+enum HostelBedStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+}
+
+enum HostelAllocationStatus {
+  ACTIVE
+  ENDED
+}
+
+enum HostelInvoiceStatus {
+  DRAFT
+  ISSUED
+  PART_PAID
+  PAID
+  VOID
+}
+
+model HostelBuilding {
+  id             String   @id @default(cuid())
+  organizationId String
+  campusId       String?
+  code           String
+  name           String
+  genderPolicy   String?
+  address        String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization  Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campus        SchoolCampus?        @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  rooms         HostelRoom[]
+  wardens       HostelWarden[]
+  feeStructures HostelFeeStructure[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, active])
+  @@index([campusId])
+}
+
+model HostelRoom {
+  id             String   @id @default(cuid())
+  organizationId String
+  buildingId     String
+  roomNumber     String
+  floor          String?
+  capacity       Int
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  building     HostelBuilding @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  beds         HostelBed[]
+
+  @@unique([buildingId, roomNumber])
+  @@index([organizationId])
+}
+
+model HostelBed {
+  id             String          @id @default(cuid())
+  organizationId String
+  roomId         String
+  label          String
+  status         HostelBedStatus @default(AVAILABLE)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  room         HostelRoom         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  allocations  HostelAllocation[]
+
+  @@unique([roomId, label])
+  @@index([organizationId, status])
+}
+
+model HostelAllocation {
+  id             String                  @id @default(cuid())
+  organizationId String
+  studentId      String
+  bedId          String
+  academicYearId String
+  checkInDate    DateTime
+  checkOutDate   DateTime?
+  status         HostelAllocationStatus  @default(ACTIVE)
+  notes          String?                 @db.Text
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      SchoolStudent      @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  bed          HostelBed          @relation(fields: [bedId], references: [id], onDelete: Restrict)
+  academicYear SchoolAcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  invoices     HostelFeeInvoice[]
+
+  @@index([organizationId, status])
+  @@index([bedId, status])
+  @@index([studentId])
+}
+
+model HostelWarden {
+  id             String   @id @default(cuid())
+  organizationId String
+  buildingId     String
+  userId         String
+  title          String?
+  createdAt      DateTime @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  building     HostelBuilding @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([buildingId, userId])
+  @@index([organizationId])
+}
+
+model HostelFeeStructure {
+  id             String    @id @default(cuid())
+  organizationId String
+  buildingId     String?
+  academicYearId String
+  termId         String?
+  name           String
+  description    String?   @db.Text
+  amount         Decimal   @db.Decimal(12, 2)
+  dueDate        DateTime?
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  building     HostelBuilding?    @relation(fields: [buildingId], references: [id], onDelete: SetNull)
+  academicYear SchoolAcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  term         SchoolTerm?        @relation(fields: [termId], references: [id], onDelete: SetNull)
+  invoices     HostelFeeInvoice[]
+
+  @@index([organizationId, active])
+}
+
+model HostelFeeInvoice {
+  id             String              @id @default(cuid())
+  organizationId String
+  academicYearId String
+  termId         String?
+  studentId      String
+  allocationId   String?
+  feeStructureId String?
+  invoiceNumber  String
+  description    String
+  amount         Decimal             @db.Decimal(12, 2)
+  discount       Decimal             @default(0) @db.Decimal(12, 2)
+  status         HostelInvoiceStatus @default(DRAFT)
+  dueDate        DateTime?
+  issuedAt       DateTime?
+  voidedAt       DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  academicYear SchoolAcademicYear  @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  term         SchoolTerm?         @relation(fields: [termId], references: [id], onDelete: SetNull)
+  student      SchoolStudent       @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  allocation   HostelAllocation?   @relation(fields: [allocationId], references: [id], onDelete: SetNull)
+  feeStructure HostelFeeStructure? @relation(fields: [feeStructureId], references: [id], onDelete: SetNull)
+  payments     HostelFeePayment[]
+
+  @@unique([organizationId, invoiceNumber])
+  @@index([organizationId, status])
+  @@index([studentId])
+}
+
+model HostelFeePayment {
+  id             String             @id @default(cuid())
+  organizationId String
+  invoiceId      String
+  studentId      String
+  receiptNumber  String
+  amount         Decimal            @db.Decimal(12, 2)
+  method         HotelPaymentMethod
+  reference      String?
+  receivedAt     DateTime           @default(now())
+  refundedAt     DateTime?
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      HostelFeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  student      SchoolStudent    @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, receiptNumber])
+  @@index([organizationId, receivedAt])
+  @@index([invoiceId])
 }
 
 enum PharmacyMedicineClass {

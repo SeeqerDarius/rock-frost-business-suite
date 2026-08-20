@@ -20,6 +20,7 @@ export const MODULE_PRICES: readonly ModulePrice[] = [
   { moduleKey: "installment", monthlyGhs: 599, annualGhs: 5990, includedSeats: 10, additionalSeatGhs: 30 },
   { moduleKey: "hotel", monthlyGhs: 799, annualGhs: 7990, includedSeats: 15, additionalSeatGhs: 40 },
   { moduleKey: "school", monthlyGhs: 599, annualGhs: 5990, includedSeats: 20, additionalSeatGhs: 30 },
+  { moduleKey: "hostel", monthlyGhs: 449, annualGhs: 4490, includedSeats: 8, additionalSeatGhs: 25 },
   { moduleKey: "pharmacy", monthlyGhs: 699, annualGhs: 6990, includedSeats: 10, additionalSeatGhs: 40 },
   { moduleKey: "hospital", monthlyGhs: 1499, annualGhs: 14990, includedSeats: 20, additionalSeatGhs: 50 },
 ] as const;
@@ -32,6 +33,7 @@ export const PRICING_BUNDLES = [
   { name: "Operations Suite", monthlyGhs: 1199, modules: ["Human Resources & Payroll", "Inventory & Procurement", "Projects"] },
   { name: "Business Complete", monthlyGhs: 1899, modules: ["CRM", "Inventory & Procurement", "Accounting", "Human Resources & Payroll", "Projects", "Analytics"] },
   { name: "School Complete", monthlyGhs: 1599, modules: ["School", "Accounting", "Human Resources & Payroll", "Inventory & Procurement"] },
+  { name: "School & Hostel Complete", monthlyGhs: 1699, modules: ["School", "Hostel", "Accounting", "Human Resources & Payroll"] },
   { name: "Pharmacy Complete", monthlyGhs: 1799, modules: ["Pharmacy", "Inventory & Procurement", "POS", "Accounting"] },
   { name: "Hospital Complete", monthlyGhs: 3199, modules: ["Hospital", "Pharmacy", "Inventory & Procurement", "Accounting", "Human Resources & Payroll"] },
 ] as const;

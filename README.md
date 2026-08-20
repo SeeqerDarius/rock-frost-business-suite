@@ -2,11 +2,11 @@
 
 Security and compliance claims are tracked in [docs/COMPLIANCE_AND_ASSURANCE.md](docs/COMPLIANCE_AND_ASSURANCE.md). The register separates implemented product controls from provider-dependent controls and external certifications or regulatory determinations.
 
-A modular multi-tenant business platform. Organizations activate thirteen customer-facing products: Fleet, Installment Sales, CRM, Inventory & Procurement, Accounting, Human Resources & Payroll, Analytics, Point of Sale, Project Management, Hotel Management, School Management, Pharmacy Management, and Hospital Management. Each product runs in one unified workspace without mixing unrelated business data.
+A modular multi-tenant business platform. Organizations activate fourteen customer-facing products: Fleet, Installment Sales, CRM, Inventory & Procurement, Accounting, Human Resources & Payroll, Analytics, Point of Sale, Project Management, Hotel Management, School Management, Hostel Management, Pharmacy Management, and Hospital Management. Each product runs in one unified workspace without mixing unrelated business data.
 
 > This is a clean rebuild started 2026-07-19. The previous implementation is archived on branch `archive/pre-redesign-rfbs` and under `docs/archive/previous-implementation/`. See `docs/DECISIONS.md` for why.
 
-**Current status**: thirteen customer-facing products are implemented across fifteen internal permission and route domains. Payroll remains an internal domain within Human Resources & Payroll, and Procurement remains an internal domain within Inventory & Procurement, preserving existing data and URLs while presenting one subscription for each combined product. The authenticated workspace uses a responsive, user-collapsible navigation shell with vertical-suite workflows and operational overview pages. Release and deployment evidence is recorded in `OPERATOR_HANDOFF.md`. The production platform is live at [rockfrostgroup.com](https://www.rockfrostgroup.com).
+**Current status**: fourteen customer-facing products are implemented across sixteen internal permission and route domains. Payroll remains an internal domain within Human Resources & Payroll, and Procurement remains an internal domain within Inventory & Procurement, preserving existing data and URLs while presenting one subscription for each combined product. The authenticated workspace uses a responsive, user-collapsible navigation shell with vertical-suite workflows and operational overview pages. Release and deployment evidence is recorded in `OPERATOR_HANDOFF.md`. The production platform is live at [rockfrostgroup.com](https://www.rockfrostgroup.com).
 
 Security controls include server-enforced tenant and role boundaries, bcrypt password hashing, encrypted TOTP secrets, login lockout, signed host-only sessions, upload signature validation, global browser security headers, and CI dependency and Git-history secret scanning. Optional Cloudflare Turnstile protection for login, password reset, and contact submissions is enabled by configuring both documented Turnstile environment variables. When Turnstile is not configured, the public contact form uses a signed, expiring form proof, a honeypot, and a database-backed resubmission cooldown; authentication forms continue to fail closed.
 
@@ -16,6 +16,7 @@ The public marketing site has a generated sitemap and robots policy, unique cano
 
 - **Hotel Management:** rooms, guests, reservations, stay lifecycle, folios and payments, housekeeping, reporting, restaurant, channels, and enforced property settings for currency/timezone, stay policy, charges, numbering, settlement, and room-readiness workflow.
 - **School Management:** student/guardian administration with optional profile photos, academic periods, classes, enrollment, attendance, fees and reporting, followed by examinations, grading, timetables, transport, library, campus services and education-specific payroll integration.
+- **Hostel Management:** a separately subscribed companion to School Management for schools with boarding facilities. Buildings, rooms and beds (bed labels generated automatically from room capacity), student allocations, warden assignments per building, and hostel fee structures, invoices, and payments — see `docs/HOSTEL_MODULE.md`.
 - **Inventory & Procurement:** tenant-isolated item/category/warehouse catalogues, optional item images, stock levels, controlled movements, supplier management, purchasing approvals, orders, receiving, low-stock alerts, reporting, and POS integration.
 - **Human Resources & Payroll:** employee records, onboarding, leave, performance reviews, controlled maker-checker termination and reinstatement, offboarding, access and final-pay coordination, compensation, payroll runs, payslips, settings, and reporting in one product and subscription.
 - **Fleet Management:** administrator-linked driver logins, assigned-vehicle self-service, ownership-checked maintenance reporting, and manager-verified weekly and work-and-pay submissions.
@@ -40,7 +41,7 @@ The controlled offline desktop foundation supports tenant-scoped device activati
 
 Platform administrators and organization users can enable authenticator-based two-factor authentication from Account Security. Module subscriptions support enforced per-module user seats (including pending invitations and multi-module roles), with used and remaining capacity visible to tenant administrators. Organization administrators can safely change roles and deactivate/reactivate members, with immediate seat release and capacity checks on restored access — assigning a Driver-permission role also puts that member straight onto the Fleet module's driver roster, no separate manual step. They also have tenant-isolated, active-module Excel data-backup exports, lossless JSON system backups, and password/2FA-protected merge restores; see `docs/BILLING_AND_SUBSCRIPTIONS.md` and `docs/BACKUP_AND_RECOVERY.md`. Separately, every module's own Reports page offers PDF and Excel downloads of its live figures.
 
-Public pricing is available at `/pricing`. A centralized GHS catalogue covers all thirteen customer-facing products, annual savings, included and additional seats, industry bundles, and enterprise pricing. Platform operators receive catalogue-based amount and seat defaults while retaining the ability to record negotiated agreements.
+Public pricing is available at `/pricing`. A centralized GHS catalogue covers all fourteen customer-facing products, annual savings, included and additional seats, industry bundles, and enterprise pricing. Platform operators receive catalogue-based amount and seat defaults while retaining the ability to record negotiated agreements.
 
 The public `/company` page positions Rock Frost Technologies as a broader technology partner covering bespoke software, digital commerce, websites, integrations, cloud modernization, and advisory work alongside the Business Suite. It presents selected work and carefully scoped Ghana Data Protection Act language without representing product controls as legal certification.
 
@@ -99,9 +100,9 @@ Start with `OPERATOR_HANDOFF.md` at the repo root for the current state and next
 - `docs/ARCHITECTURE.md` — folder structure, route groups, module isolation mechanics
 - `docs/MODULE_BOUNDARIES.md` — the non-negotiable isolation rules between modules
 - `docs/DESIGN_SYSTEM.md` — UI foundation, tokens, component conventions
-- `docs/DEVELOPMENT_ROADMAP.md` — phased build history (all sixteen phases complete)
+- `docs/DEVELOPMENT_ROADMAP.md` — phased build history (all nineteen phases complete)
 - `docs/DATABASE_STRATEGY.md` — Prisma/Neon setup and migration workflow
-- `docs/AUTHENTICATION_AND_AUTHORIZATION.md` — real, enforced auth/RBAC (104 permission keys across 13 modules)
+- `docs/AUTHENTICATION_AND_AUTHORIZATION.md` — real, enforced auth/RBAC (144 permission keys across sixteen modules)
 - `docs/BACKUP_AND_RECOVERY.md` — tenant-isolated module exports, protected merge restore, and infrastructure recovery boundaries
 - `docs/EMAIL_DELIVERY.md` — transactional templates, sender-domain authentication, and deliverability operations
 - `docs/TESTING_STRATEGY.md` — how work is validated, current automated test coverage
