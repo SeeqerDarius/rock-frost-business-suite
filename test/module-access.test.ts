@@ -138,16 +138,21 @@ describe("module authorization source coverage", () => {
       return collectEntryFiles(moduleDirectory).map((filePath) => ({ moduleKey, filePath }));
     });
 
-    // 94, up from 80: School's 14 page.tsx files were never included in this
-    // sweep (School was missing from MODULE_KEYS entirely, a real coverage
-    // gap the offline expansion's milestone 11 hardening pass found and
-    // fixed - the pages themselves were already correctly guarded, this
-    // sweep just was not exercising them).
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(94);
-    // 51, up from 50: School's single actions.ts (src/app/app/school/actions.ts,
-    // one shared file for all School Server Actions) was included for the
-    // same reason.
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(51);
+    // 95, up from 94: src/app/app/accounting/petty-cash/page.tsx is a new
+    // guarded page (requireModuleAccess("accounting")) added for the petty
+    // cash workflow. Before that, 94 was up from 80 because School's 14
+    // page.tsx files were never included in this sweep (School was missing
+    // from MODULE_KEYS entirely, a real coverage gap the offline
+    // expansion's milestone 11 hardening pass found and fixed - the pages
+    // themselves were already correctly guarded, this sweep just was not
+    // exercising them).
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(95);
+    // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
+    // guarded actions file for the petty cash workflow. Before that, 51 was
+    // up from 50 because School's single actions.ts (src/app/app/school/
+    // actions.ts, one shared file for all School Server Actions) was
+    // included for the same reason as the page.tsx count above.
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(52);
 
     for (const { moduleKey, filePath } of guardedFiles) {
       const source = readFileSync(filePath, "utf8");

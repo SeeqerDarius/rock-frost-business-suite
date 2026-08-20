@@ -244,6 +244,42 @@ export function getSchoolAcademicSetup(organizationId: string) {
 }
 
 export function listSchoolGuardians(organizationId: string) { return db.schoolGuardian.findMany({ where: { organizationId }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] }); }
+
+/**
+ * Passport/profile photo storage mirrors InventoryItem.imageData - a
+ * base64 data URL in a nullable Text column, read back through a dedicated
+ * authenticated streaming route rather than as part of the normal list
+ * queries (which don't select photoData at all, keeping the common-path
+ * payload small).
+ */
+/** Cheap id-only lookup for rendering a table's photo column without pulling every row's base64 image data into the list query. */
+export async function listSchoolStudentPhotoIds(organizationId: string) {
+  const rows = await db.schoolStudent.findMany({ where: { organizationId, photoData: { not: null } }, select: { id: true } });
+  return new Set(rows.map((row) => row.id));
+}
+
+export async function getSchoolStudentPhoto(organizationId: string, id: string) {
+  return db.schoolStudent.findFirst({ where: { id, organizationId }, select: { photoData: true, updatedAt: true } });
+}
+
+export async function updateSchoolStudentPhoto(organizationId: string, id: string, photoData: string | null) {
+  const result = await db.schoolStudent.updateMany({ where: { id, organizationId }, data: { photoData } });
+  if (result.count === 0) throw new SchoolNotFoundError("Student not found.");
+}
+
+export async function listSchoolGuardianPhotoIds(organizationId: string) {
+  const rows = await db.schoolGuardian.findMany({ where: { organizationId, photoData: { not: null } }, select: { id: true } });
+  return new Set(rows.map((row) => row.id));
+}
+
+export async function getSchoolGuardianPhoto(organizationId: string, id: string) {
+  return db.schoolGuardian.findFirst({ where: { id, organizationId }, select: { photoData: true, updatedAt: true } });
+}
+
+export async function updateSchoolGuardianPhoto(organizationId: string, id: string, photoData: string | null) {
+  const result = await db.schoolGuardian.updateMany({ where: { id, organizationId }, data: { photoData } });
+  if (result.count === 0) throw new SchoolNotFoundError("Guardian not found.");
+}
 export function listSchoolAttendance(organizationId: string) { return db.schoolAttendance.findMany({ where: { organizationId }, include: { student: true, class: true, term: true }, orderBy: { date: "desc" }, take: 250 }); }
 export function listSchoolTimetable(organizationId: string) { return db.schoolTimetableEntry.findMany({ where: { organizationId }, include: { campus: true, term: true, class: true, subject: true }, orderBy: [{ dayOfWeek: "asc" }, { startsAt: "asc" }] }); }
 

@@ -540,6 +540,236 @@ export async function payExpense(organizationId: string, id: string, paymentDate
   });
 }
 
+// --- Petty cash ---
+
+export class PettyCashStateError extends Error {}
+
+async function generatePettyCashAccountCode(organizationId: string) {
+  // 13xx is an unused block in DEFAULT_ACCOUNTS (1000/1100/2000/4000/5000),
+  // so a running count-based suffix here can never collide with a default
+  // account code. createPettyCashFund still goes through
+  // createWithUniqueRetry for the case two funds are created concurrently
+  // and both read the same count.
+  const count = await db.accountingPettyCashFund.count({ where: { organizationId } });
+  return `13${String(count + 1).padStart(2, "0")}`;
+}
+
+interface PettyCashFundInput {
+  name: string;
+  custodianName: string;
+  floatAmount: string;
+}
+
+/**
+ * Sets up an imprest petty cash fund: a dedicated ASSET/CASH account backs
+ * the fund so its balance is always derived from the same journal-line
+ * ledger as every other account, then posts the initial float as a
+ * transfer out of the main Cash account (Debit new fund account, Credit
+ * 1000) rather than creating money from nothing.
+ */
+export async function createPettyCashFund(organizationId: string, data: PettyCashFundInput, createdById?: string | null) {
+  const floatAmount = new Prisma.Decimal(data.floatAmount);
+  if (!floatAmount.isFinite() || floatAmount.lessThanOrEqualTo(0)) {
+    throw new InvalidPaymentError("Float amount must be a positive number.");
+  }
+  const cashSource = await getDefaultAccount(organizationId, "1000");
+
+  return createWithUniqueRetry(async () => {
+    const code = await generatePettyCashAccountCode(organizationId);
+    return db.$transaction(async (tx) => {
+      const account = await tx.accountingAccount.create({
+        data: { organizationId, code, name: `Petty Cash (${data.name})`, type: "ASSET", liquidityType: "CASH" },
+      });
+      const fund = await tx.accountingPettyCashFund.create({
+        data: { organizationId, accountId: account.id, name: data.name, custodianName: data.custodianName, floatAmount, createdById },
+      });
+      const entry = await postJournalEntry(tx, organizationId, {
+        entryDate: new Date(),
+        description: `Petty cash float issued to ${data.custodianName} (${data.name})`,
+        sourceType: "PETTY_CASH_FUNDING",
+        sourceId: fund.id,
+        createdById,
+        lines: [
+          { accountId: account.id, debit: floatAmount.toFixed(2) },
+          { accountId: cashSource.id, credit: floatAmount.toFixed(2) },
+        ],
+      });
+      await tx.accountingPettyCashTransaction.create({
+        data: { organizationId, fundId: fund.id, type: "FUNDING", amount: floatAmount, description: "Initial float", journalEntryId: entry.id, createdById },
+      });
+      return fund;
+    });
+  });
+}
+
+export async function listPettyCashFunds(organizationId: string) {
+  const funds = await db.accountingPettyCashFund.findMany({
+    where: { organizationId },
+    include: {
+      account: { include: { journalLines: true } },
+      transactions: { orderBy: { createdAt: "desc" }, take: 20, include: { expenseCategory: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  return funds.map((fund) => ({ ...fund, balance: computeBalance(fund.account.type, fund.account.journalLines) }));
+}
+
+export async function getPettyCashFund(organizationId: string, id: string) {
+  const fund = await db.accountingPettyCashFund.findFirst({
+    where: { id, organizationId },
+    include: {
+      account: { include: { journalLines: true } },
+      transactions: { orderBy: { createdAt: "desc" }, take: 100, include: { expenseCategory: true } },
+    },
+  });
+  if (!fund) throw new NotFoundError("Petty cash fund not found.");
+  return { ...fund, balance: computeBalance(fund.account.type, fund.account.journalLines) };
+}
+
+/**
+ * Row-locks the fund before re-reading its ledger balance inside the
+ * transaction, the same SELECT ... FOR UPDATE pattern recordInvoicePayment
+ * uses for its overpayment race - two concurrent expenses against a fund
+ * with only enough float for one can no longer both pass the balance check
+ * against a stale snapshot.
+ */
+export async function recordPettyCashExpense(
+  organizationId: string,
+  fundId: string,
+  data: { amount: string; description: string; expenseCategoryId?: string | null; expenseDate?: Date },
+  createdById?: string | null,
+) {
+  const amount = new Prisma.Decimal(data.amount);
+  if (!amount.isFinite() || amount.lessThanOrEqualTo(0)) {
+    throw new InvalidPaymentError("Expense amount must be a positive number.");
+  }
+
+  const fund = await db.accountingPettyCashFund.findFirst({ where: { id: fundId, organizationId } });
+  if (!fund) throw new NotFoundError("Petty cash fund not found.");
+
+  const [category, defaultExpense] = await Promise.all([
+    data.expenseCategoryId ? db.accountingExpenseCategory.findFirst({ where: { id: data.expenseCategoryId, organizationId } }) : Promise.resolve(null),
+    getDefaultAccount(organizationId, "5000"),
+  ]);
+  const expenseAccountId = category?.expenseAccountId ?? defaultExpense.id;
+
+  return db.$transaction(async (tx) => {
+    const [locked] = await tx.$queryRaw<{ id: string; status: string }[]>`
+      SELECT id, status FROM "AccountingPettyCashFund" WHERE id = ${fundId} AND "organizationId" = ${organizationId} FOR UPDATE
+    `;
+    if (!locked) throw new NotFoundError("Petty cash fund not found.");
+    if (locked.status !== "ACTIVE") throw new PettyCashStateError("This petty cash fund is closed.");
+
+    const lines = await tx.accountingJournalLine.findMany({ where: { accountId: fund.accountId } });
+    const balance = new Prisma.Decimal(computeBalance("ASSET", lines));
+    if (amount.greaterThan(balance)) {
+      throw new InvalidPaymentError(`Expense of ${amount.toFixed(2)} exceeds the fund's available balance of ${balance.toFixed(2)}.`);
+    }
+
+    const entry = await postJournalEntry(tx, organizationId, {
+      entryDate: data.expenseDate ?? new Date(),
+      description: `Petty cash expense: ${data.description}`,
+      sourceType: "PETTY_CASH_EXPENSE",
+      sourceId: fund.id,
+      createdById,
+      lines: [
+        { accountId: expenseAccountId, debit: amount.toFixed(2) },
+        { accountId: fund.accountId, credit: amount.toFixed(2) },
+      ],
+    });
+
+    return tx.accountingPettyCashTransaction.create({
+      data: { organizationId, fundId: fund.id, type: "EXPENSE", amount, description: data.description, expenseCategoryId: category?.id ?? null, journalEntryId: entry.id, createdById },
+    });
+  });
+}
+
+/**
+ * Tops the fund back up to its float amount by default (the standard
+ * imprest replenishment), or a caller-supplied amount for a partial
+ * top-up. Sourced from the main Cash account, same direction as the
+ * initial funding entry.
+ */
+export async function replenishPettyCashFund(
+  organizationId: string,
+  fundId: string,
+  data: { amount?: string; description?: string | null },
+  createdById?: string | null,
+) {
+  const fund = await db.accountingPettyCashFund.findFirst({ where: { id: fundId, organizationId } });
+  if (!fund) throw new NotFoundError("Petty cash fund not found.");
+  const cashSource = await getDefaultAccount(organizationId, "1000");
+
+  return db.$transaction(async (tx) => {
+    const [locked] = await tx.$queryRaw<{ id: string; status: string }[]>`
+      SELECT id, status FROM "AccountingPettyCashFund" WHERE id = ${fundId} AND "organizationId" = ${organizationId} FOR UPDATE
+    `;
+    if (!locked) throw new NotFoundError("Petty cash fund not found.");
+    if (locked.status !== "ACTIVE") throw new PettyCashStateError("This petty cash fund is closed.");
+
+    const lines = await tx.accountingJournalLine.findMany({ where: { accountId: fund.accountId } });
+    const balance = new Prisma.Decimal(computeBalance("ASSET", lines));
+    const shortfall = new Prisma.Decimal(fund.floatAmount).minus(balance);
+    const amount = data.amount ? new Prisma.Decimal(data.amount) : shortfall;
+    if (!amount.isFinite() || amount.lessThanOrEqualTo(0)) {
+      throw new InvalidPaymentError("There is no shortfall to replenish, or the replenishment amount must be a positive number.");
+    }
+
+    const entry = await postJournalEntry(tx, organizationId, {
+      entryDate: new Date(),
+      description: `Petty cash replenishment for ${fund.name}`,
+      sourceType: "PETTY_CASH_REPLENISHMENT",
+      sourceId: fund.id,
+      createdById,
+      lines: [
+        { accountId: fund.accountId, debit: amount.toFixed(2) },
+        { accountId: cashSource.id, credit: amount.toFixed(2) },
+      ],
+    });
+
+    return tx.accountingPettyCashTransaction.create({
+      data: { organizationId, fundId: fund.id, type: "REPLENISHMENT", amount, description: data.description ?? "Float replenishment", journalEntryId: entry.id, createdById },
+    });
+  });
+}
+
+/**
+ * Closes the fund (claimed atomically, same guarded-updateMany pattern as
+ * markInvoiceSent) and, if any float remains, posts a reversing entry
+ * returning it to the main Cash account so the fund's account doesn't sit
+ * on an orphaned balance after closure.
+ */
+export async function closePettyCashFund(organizationId: string, fundId: string, createdById?: string | null) {
+  const fund = await db.accountingPettyCashFund.findFirst({ where: { id: fundId, organizationId } });
+  if (!fund) throw new NotFoundError("Petty cash fund not found.");
+  const cashDestination = await getDefaultAccount(organizationId, "1000");
+
+  return db.$transaction(async (tx) => {
+    const claimed = await tx.accountingPettyCashFund.updateMany({
+      where: { id: fundId, organizationId, status: "ACTIVE" },
+      data: { status: "CLOSED", closedAt: new Date() },
+    });
+    if (claimed.count === 0) throw new PettyCashStateError("This petty cash fund is already closed.");
+
+    const lines = await tx.accountingJournalLine.findMany({ where: { accountId: fund.accountId } });
+    const balance = new Prisma.Decimal(computeBalance("ASSET", lines));
+    if (balance.greaterThan(0)) {
+      await postJournalEntry(tx, organizationId, {
+        entryDate: new Date(),
+        description: `Petty cash fund closed, remaining float returned (${fund.name})`,
+        sourceType: "PETTY_CASH_CLOSE",
+        sourceId: fund.id,
+        createdById,
+        lines: [
+          { accountId: cashDestination.id, debit: balance.toFixed(2) },
+          { accountId: fund.accountId, credit: balance.toFixed(2) },
+        ],
+      });
+    }
+    return tx.accountingPettyCashFund.findUniqueOrThrow({ where: { id: fundId } });
+  });
+}
+
 // --- Reports ---
 
 export async function getAccountingSummary(organizationId: string) {
@@ -554,9 +784,10 @@ export async function getAccountingSummary(organizationId: string) {
   const totalRevenue = revenueAccounts.reduce((sum, a) => sum + a.balance, 0);
   const totalExpenses = expenseAccounts.reduce((sum, a) => sum + a.balance, 0);
 
-  const [invoices, expenses] = await Promise.all([
+  const [invoices, expenses, activePettyCashFunds] = await Promise.all([
     db.accountingInvoice.findMany({ where: { organizationId } }),
     db.accountingExpense.findMany({ where: { organizationId } }),
+    listPettyCashFunds(organizationId).then((funds) => funds.filter((f) => f.status === "ACTIVE")),
   ]);
 
   const outstandingInvoices = invoices.filter((i) => i.status === "SENT" || i.status === "OVERDUE");
@@ -576,6 +807,50 @@ export async function getAccountingSummary(organizationId: string) {
     pendingExpenseTotal: pendingExpenses.reduce((sum, e) => sum + Number(e.amount), 0),
     invoiceCount: invoices.length,
     expenseCount: expenses.length,
+    pettyCashFundCount: activePettyCashFunds.length,
+    pettyCashBalance: activePettyCashFunds.reduce((sum, f) => sum + f.balance, 0),
+  };
+}
+
+/**
+ * Assets = Liabilities + Equity is the fundamental accounting identity.
+ * Revenue and Expense accounts have no balance-sheet home of their own, so
+ * the current period's net income (not yet closed into a named equity
+ * account by a period-end close, which this system doesn't require) is
+ * folded into totalEquity as "Retained earnings (current period)" the same
+ * way a real close-out journal entry would - otherwise the statement would
+ * only balance immediately after a manual close.
+ */
+export async function getStatementOfFinancialPosition(organizationId: string) {
+  const accounts = await listAccounts(organizationId);
+
+  const assets = accounts.filter((a) => a.type === "ASSET");
+  const liabilities = accounts.filter((a) => a.type === "LIABILITY");
+  const equityAccounts = accounts.filter((a) => a.type === "EQUITY");
+  const revenueAccounts = accounts.filter((a) => a.type === "REVENUE");
+  const expenseAccounts = accounts.filter((a) => a.type === "EXPENSE");
+
+  const line = (a: (typeof accounts)[number]) => ({ id: a.id, code: a.code, name: a.name, balance: a.balance });
+
+  const totalAssets = assets.reduce((sum, a) => sum + a.balance, 0);
+  const totalLiabilities = liabilities.reduce((sum, a) => sum + a.balance, 0);
+  const statedEquity = equityAccounts.reduce((sum, a) => sum + a.balance, 0);
+  const netIncome = revenueAccounts.reduce((sum, a) => sum + a.balance, 0) - expenseAccounts.reduce((sum, a) => sum + a.balance, 0);
+  const totalEquity = statedEquity + netIncome;
+  const difference = totalAssets - (totalLiabilities + totalEquity);
+
+  return {
+    asOf: new Date(),
+    assets: assets.map(line),
+    liabilities: liabilities.map(line),
+    equity: equityAccounts.map(line),
+    totalAssets,
+    totalLiabilities,
+    statedEquity,
+    netIncome,
+    totalEquity,
+    isBalanced: Math.abs(difference) < 0.01,
+    difference,
   };
 }
 

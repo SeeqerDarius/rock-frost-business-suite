@@ -1,9 +1,11 @@
-import { Link2, Plus, UserPlus, Users } from "lucide-react";
+import Image from "next/image";
+import { ImageIcon, Link2, Plus, UserPlus, Users } from "lucide-react";
 import type { SchoolStudentStatus } from "@prisma/client";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,8 +17,18 @@ import { StatusBadge } from "@/components/school/status-badge";
 import { formatDate, humanizeStatus } from "@/components/school/format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listSchoolCampuses, listSchoolGuardians, listSchoolStudents } from "@/modules/school/service";
-import { createGuardianAction, createStudentAction, linkGuardianAction, transitionStudentAction } from "../actions";
+import { listSchoolCampuses, listSchoolGuardians, listSchoolStudents, listSchoolStudentPhotoIds, listSchoolGuardianPhotoIds } from "@/modules/school/service";
+import { createGuardianAction, createStudentAction, linkGuardianAction, transitionStudentAction, updateStudentPhotoAction, updateGuardianPhotoAction } from "../actions";
+
+function PhotoThumb({ hasPhoto, src, alt }: { hasPhoto: boolean; src: string; alt: string }) {
+  return hasPhoto ? (
+    <Image src={src} alt={alt} width={40} height={40} unoptimized className="size-10 rounded-full border object-cover" />
+  ) : (
+    <div className="flex size-10 items-center justify-center rounded-full border bg-muted text-muted-foreground">
+      <ImageIcon className="size-4" aria-hidden="true" />
+    </div>
+  );
+}
 
 const PATH = "/app/school/students";
 
@@ -38,10 +50,12 @@ const STATUS_FILTERS: SchoolStudentStatus[] = ["APPLICANT", "ACTIVE", "SUSPENDED
 export default async function SchoolStudentsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; status?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENTS_MANAGE);
-  const [students, guardians, campuses] = await Promise.all([
+  const [students, guardians, campuses, studentPhotoIds, guardianPhotoIds] = await Promise.all([
     listSchoolStudents(tenant.organizationId),
     listSchoolGuardians(tenant.organizationId),
     listSchoolCampuses(tenant.organizationId),
+    listSchoolStudentPhotoIds(tenant.organizationId),
+    listSchoolGuardianPhotoIds(tenant.organizationId),
   ]);
 
   // The service returns the full student list for the organization, so the
@@ -190,6 +204,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead><span className="sr-only">Photo</span></TableHead>
                     <TableHead>Admission no.</TableHead>
                     <TableHead>Student</TableHead>
                     <TableHead className="hidden md:table-cell">Campus</TableHead>
@@ -204,8 +219,34 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
                     const primaryGuardian = student.guardians.find((link) => link.primary) ?? student.guardians[0];
                     const activeEnrollment = student.enrollments.find((enrollment) => enrollment.status === "ACTIVE");
                     const transitions = ALLOWED_TRANSITIONS[student.status];
+                    const hasPhoto = studentPhotoIds.has(student.id);
                     return (
                       <TableRow key={student.id}>
+                        <TableCell>
+                          {canManage ? (
+                            <EntityDialog
+                              trigger={<button type="button" className="cursor-pointer"><PhotoThumb hasPhoto={hasPhoto} src={`/api/school/students/${student.id}/photo`} alt={`${student.firstName} ${student.lastName}`} /></button>}
+                              title={`${hasPhoto ? "Replace" : "Add"} photo for ${student.firstName} ${student.lastName}`}
+                              action={updateStudentPhotoAction}
+                              submitLabel="Save photo"
+                            >
+                              <input type="hidden" name="studentId" value={student.id} />
+                              {hasPhoto ? (
+                                <div className="flex items-center gap-3 rounded-md border p-2">
+                                  <Image src={`/api/school/students/${student.id}/photo`} alt="" width={56} height={56} unoptimized className="size-14 rounded-md object-cover" />
+                                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="removePhoto" />Remove current photo</label>
+                                </div>
+                              ) : null}
+                              <div className="space-y-1.5">
+                                <Label htmlFor={`student-photo-${student.id}`}>Photo</Label>
+                                <Input id={`student-photo-${student.id}`} name="photo" type="file" accept="image/jpeg,image/png,image/webp" />
+                                <p className="text-xs text-muted-foreground">Optional JPG, PNG, or WebP, up to 1 MB.</p>
+                              </div>
+                            </EntityDialog>
+                          ) : (
+                            <PhotoThumb hasPhoto={hasPhoto} src={`/api/school/students/${student.id}/photo`} alt={`${student.firstName} ${student.lastName}`} />
+                          )}
+                        </TableCell>
                         <TableCell className="font-mono text-xs">{student.admissionNumber}</TableCell>
                         <TableCell>
                           <span className="font-medium">{student.firstName} {student.lastName}</span>
@@ -269,6 +310,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead><span className="sr-only">Photo</span></TableHead>
                 <TableHead>Guardian no.</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Phone</TableHead>
@@ -277,15 +319,43 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
               </TableRow>
             </TableHeader>
             <TableBody>
-              {guardians.map((guardian) => (
-                <TableRow key={guardian.id}>
-                  <TableCell className="font-mono text-xs">{guardian.guardianNumber}</TableCell>
-                  <TableCell className="font-medium">{guardian.firstName} {guardian.lastName}</TableCell>
-                  <TableCell className="text-muted-foreground">{guardian.phone}</TableCell>
-                  <TableCell className="hidden text-muted-foreground md:table-cell">{guardian.email ?? "—"}</TableCell>
-                  <TableCell className="hidden text-muted-foreground lg:table-cell">{guardian.occupation ?? "—"}</TableCell>
-                </TableRow>
-              ))}
+              {guardians.map((guardian) => {
+                const hasPhoto = guardianPhotoIds.has(guardian.id);
+                return (
+                  <TableRow key={guardian.id}>
+                    <TableCell>
+                      {canManage ? (
+                        <EntityDialog
+                          trigger={<button type="button" className="cursor-pointer"><PhotoThumb hasPhoto={hasPhoto} src={`/api/school/guardians/${guardian.id}/photo`} alt={`${guardian.firstName} ${guardian.lastName}`} /></button>}
+                          title={`${hasPhoto ? "Replace" : "Add"} photo for ${guardian.firstName} ${guardian.lastName}`}
+                          action={updateGuardianPhotoAction}
+                          submitLabel="Save photo"
+                        >
+                          <input type="hidden" name="guardianId" value={guardian.id} />
+                          {hasPhoto ? (
+                            <div className="flex items-center gap-3 rounded-md border p-2">
+                              <Image src={`/api/school/guardians/${guardian.id}/photo`} alt="" width={56} height={56} unoptimized className="size-14 rounded-md object-cover" />
+                              <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="removePhoto" />Remove current photo</label>
+                            </div>
+                          ) : null}
+                          <div className="space-y-1.5">
+                            <Label htmlFor={`guardian-photo-${guardian.id}`}>Photo</Label>
+                            <Input id={`guardian-photo-${guardian.id}`} name="photo" type="file" accept="image/jpeg,image/png,image/webp" />
+                            <p className="text-xs text-muted-foreground">Optional JPG, PNG, or WebP, up to 1 MB.</p>
+                          </div>
+                        </EntityDialog>
+                      ) : (
+                        <PhotoThumb hasPhoto={hasPhoto} src={`/api/school/guardians/${guardian.id}/photo`} alt={`${guardian.firstName} ${guardian.lastName}`} />
+                      )}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{guardian.guardianNumber}</TableCell>
+                    <TableCell className="font-medium">{guardian.firstName} {guardian.lastName}</TableCell>
+                    <TableCell className="text-muted-foreground">{guardian.phone}</TableCell>
+                    <TableCell className="hidden text-muted-foreground md:table-cell">{guardian.email ?? "—"}</TableCell>
+                    <TableCell className="hidden text-muted-foreground lg:table-cell">{guardian.occupation ?? "—"}</TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}
