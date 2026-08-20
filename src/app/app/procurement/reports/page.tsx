@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getProcurementSummary } from "@/modules/procurement/service";
+import { ReportExportLinks } from "@/components/reports/report-export-links";
 
 export default async function ProcurementReportsPage() {
   const tenant = await requireModuleAccess("procurement");
@@ -31,7 +32,7 @@ export default async function ProcurementReportsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Reports" description="Purchase request and order activity summaries." />
+      <PageHeader title="Reports" description="Purchase request and order activity summaries." actions={<ReportExportLinks moduleKey="procurement" />} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {stats.map((stat) => (
           <Card key={stat.label}>

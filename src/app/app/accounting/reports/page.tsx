@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getAccountingSummary, getStatementOfFinancialPosition } from "@/modules/accounting/service";
+import { ReportExportLinks } from "@/components/reports/report-export-links";
 
 export default async function AccountingReportsPage() {
   const tenant = await requireModuleAccess("accounting");
@@ -37,7 +38,7 @@ export default async function AccountingReportsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Reports" description="Profit & loss, cash position, and receivables/payables summary." />
+      <PageHeader title="Reports" description="Profit & loss, cash position, and receivables/payables summary." actions={<ReportExportLinks moduleKey="accounting" />} />
 
       <Card>
         <CardHeader>

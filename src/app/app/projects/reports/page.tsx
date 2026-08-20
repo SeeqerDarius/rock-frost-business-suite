@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getProjectsSummary } from "@/modules/projects/service";
+import { ReportExportLinks } from "@/components/reports/report-export-links";
 
 const PROJECT_STATUS_LABELS: Record<string, string> = {
   PLANNING: "Planning",
@@ -39,7 +40,7 @@ export default async function ProjectsReportsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Reports" description="Project status, task load, and team workload summaries." />
+      <PageHeader title="Reports" description="Project status, task load, and team workload summaries." actions={<ReportExportLinks moduleKey="projects" />} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (

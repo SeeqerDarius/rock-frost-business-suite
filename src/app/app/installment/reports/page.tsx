@@ -6,6 +6,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getInstallmentSummary, getStaffPerformanceReport } from "@/modules/installment/service";
+import { ReportExportLinks } from "@/components/reports/report-export-links";
 
 export default async function InstallmentReportsPage() {
   const tenant = await requireModuleAccess("installment");
@@ -34,7 +35,7 @@ export default async function InstallmentReportsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Reports" description="Financial and staff performance summaries." />
+      <PageHeader title="Reports" description="Financial and staff performance summaries." actions={<ReportExportLinks moduleKey="installment" />} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (

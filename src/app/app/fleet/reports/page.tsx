@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getFleetManagementReport } from "@/modules/fleet/service";
+import { ReportExportLinks } from "@/components/reports/report-export-links";
 
 const VEHICLE_STATUS_LABELS: Record<string, string> = {
   AVAILABLE: "Available",
@@ -46,7 +47,7 @@ export default async function FleetReportsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Reports" description="Fleet performance and financial summaries." />
+      <PageHeader title="Reports" description="Fleet performance and financial summaries." actions={<ReportExportLinks moduleKey="fleet" />} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (

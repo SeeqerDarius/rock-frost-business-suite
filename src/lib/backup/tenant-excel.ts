@@ -2,6 +2,7 @@ import "server-only";
 
 import ExcelJS from "exceljs";
 import type { BackupModule } from "@/lib/backup/scopes";
+import { safeExcelText as safeText, safeExcelValue as excelValue } from "@/lib/excel-safety";
 
 type TenantExcelInput = {
   tenantCode: string;
@@ -12,19 +13,6 @@ type TenantExcelInput = {
 };
 
 const EXCEL_MAX_ROWS = 1_048_575;
-
-function safeText(value: string) {
-  return /^[=+\-@]/.test(value) ? `'${value}` : value;
-}
-
-function excelValue(value: unknown): ExcelJS.CellValue {
-  if (value == null) return "";
-  if (value instanceof Date) return value;
-  if (typeof value === "boolean" || typeof value === "number") return value;
-  if (typeof value === "bigint") return value.toString();
-  if (typeof value === "string") return safeText(value);
-  return safeText(JSON.stringify(value));
-}
 
 function sheetName(modelName: string, used: Set<string>) {
   const base = modelName.replace(/[\\/*?:[\]]/g, " ").slice(0, 31) || "Data";

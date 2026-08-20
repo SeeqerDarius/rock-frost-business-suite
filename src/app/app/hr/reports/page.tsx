@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getHrSummary } from "@/modules/hr/service";
+import { ReportExportLinks } from "@/components/reports/report-export-links";
 
 export default async function HrReportsPage() {
   const tenant = await requireModuleAccess("hr");
@@ -29,7 +30,7 @@ export default async function HrReportsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Reports" description="Headcount, leave, and review summaries." />
+      <PageHeader title="Reports" description="Headcount, leave, and review summaries." actions={<ReportExportLinks moduleKey="hr" />} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
