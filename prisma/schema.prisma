@@ -4898,6 +4898,353 @@ model HospitalImagingOrder {
   @@index([patientId])
 }
 
+// --- Inventory, Procurement, POS tranche models (branch-scoped) ---
+
+enum InventoryTrackingMode {
+  NONE
+  LOT
+  BATCH
+}
+
+enum StockCountStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  POSTED
+}
+
+enum StockAdjustmentType {
+  SALE
+  RETURN
+  COUNT_ADJUSTMENT
+  RECEIPT
+  MANUAL
+}
+
+enum StockStatusCategory {
+  AVAILABLE
+  QUARANTINED
+  DAMAGED
+}
+
+model InventoryWarehouse {
+  id             String   @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stocks       InventoryStock[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+}
+
+model InventoryItem {
+  id             String                @id @default(cuid())
+  organizationId String
+  sku            String
+  name           String
+  unit           String                @default("unit")
+  barcode        String?
+  trackingMode   InventoryTrackingMode @default(NONE)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lots         InventoryLot[]
+  stocks       InventoryStock[]
+  posLines     PosSaleLine[]
+
+  @@unique([organizationId, sku])
+  @@unique([organizationId, barcode])
+  @@index([organizationId])
+}
+
+model InventoryLot {
+  id             String   @id @default(cuid())
+  organizationId String
+  itemId         String
+  lotNumber      String
+  quantity       Int
+  initialQty     Int
+  expiryDate     DateTime?
+  createdAt      DateTime @default(now())
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  item         InventoryItem    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  adjustments  StockAdjustment[]
+
+  @@unique([organizationId, itemId, lotNumber])
+  @@index([organizationId, expiryDate])
+}
+
+model InventoryStock {
+  id             String             @id @default(cuid())
+  organizationId String
+  warehouseId    String
+  itemId         String
+  lotId          String?
+  available      Int                @default(0)
+  quarantined    Int                @default(0)
+  damaged        Int                @default(0)
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  warehouse    InventoryWarehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  item         InventoryItem      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  lot          InventoryLot?      @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  adjustments  StockAdjustment[]
+
+  @@index([organizationId, warehouseId, itemId])
+}
+
+model StockCount {
+  id             String           @id @default(cuid())
+  organizationId String
+  warehouseId    String
+  createdById    String
+  status         StockCountStatus @default(DRAFT)
+  countedAt      DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  warehouse    InventoryWarehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  createdBy    User @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  lines        StockCountLine[]
+
+  @@index([organizationId, status])
+}
+
+model StockCountLine {
+  id          String  @id @default(cuid())
+  countId     String
+  itemId      String
+  lotId       String?
+  expectedQty Int
+  countedQty  Int
+
+  count StockCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+  item  InventoryItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  lot   InventoryLot? @relation(fields: [lotId], references: [id], onDelete: SetNull)
+
+  @@index([itemId])
+}
+
+model StockAdjustment {
+  id             String             @id @default(cuid())
+  organizationId String
+  itemId         String
+  lotId          String?
+  warehouseId    String
+  type           StockAdjustmentType
+  change         Int
+  reason         String?
+  createdById    String
+  createdAt      DateTime           @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  item         InventoryItem      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  lot          InventoryLot?      @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  warehouse    InventoryWarehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  createdBy    User               @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, itemId])
+}
+
+// Procurement: requisitions, orders, receipts, returns, and invoices
+enum ProcurementOrderStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+model ProcurementRequisition {
+  id             String   @id @default(cuid())
+  organizationId String
+  requestedById  String
+  reference      String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedBy  User         @relation(fields: [requestedById], references: [id], onDelete: Restrict)
+  lines        ProcurementRequisitionLine[]
+
+  @@index([organizationId])
+}
+
+model ProcurementRequisitionLine {
+  id           String @id @default(cuid())
+  requisitionId String
+  itemId       String
+  quantity     Int
+
+  requisition ProcurementRequisition @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+  item        InventoryItem           @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@index([itemId])
+}
+
+model ProcurementOrder {
+  id             String                  @id @default(cuid())
+  organizationId String
+  supplierId     String
+  orderNumber    String
+  status         ProcurementOrderStatus @default(DRAFT)
+  createdById    String?
+  createdAt      DateTime                @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier     Organization? @relation("SupplierOrg", fields: [supplierId], references: [id], onDelete: SetNull)
+  createdBy    User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  lines        ProcurementOrderLine[]
+
+  @@unique([organizationId, orderNumber])
+  @@index([organizationId, status])
+}
+
+model ProcurementOrderLine {
+  id        String @id @default(cuid())
+  orderId   String
+  itemId    String
+  quantity  Int
+  unitPrice Decimal @db.Decimal(12,2)
+
+  order ProcurementOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  item  InventoryItem     @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  receipts GoodsReceiptLine[]
+
+  @@index([orderId, itemId])
+}
+
+model GoodsReceipt {
+  id             String   @id @default(cuid())
+  organizationId String
+  receiptNumber  String
+  supplierId     String?
+  createdAt      DateTime @default(now())
+  createdById    String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  lines        GoodsReceiptLine[]
+
+  @@unique([organizationId, receiptNumber])
+}
+
+model GoodsReceiptLine {
+  id           String @id @default(cuid())
+  receiptId    String
+  orderLineId  String?
+  itemId       String
+  quantity     Int
+  lotId        String?
+
+  receipt GoodsReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  orderLine ProcurementOrderLine? @relation(fields: [orderLineId], references: [id], onDelete: SetNull)
+  item  InventoryItem   @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  lot   InventoryLot?   @relation(fields: [lotId], references: [id], onDelete: SetNull)
+
+  @@index([itemId])
+}
+
+model SupplierReturn {
+  id             String   @id @default(cuid())
+  organizationId String
+  supplierId     String
+  createdAt      DateTime @default(now())
+  createdById    String?
+  lines          SupplierReturnLine[]
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model SupplierReturnLine {
+  id           String @id @default(cuid())
+  returnId     String
+  itemId       String
+  quantity     Int
+
+  return SupplierReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  item   InventoryItem   @relation(fields: [itemId], references: [id], onDelete: Restrict)
+}
+
+model SupplierInvoice {
+  id             String   @id @default(cuid())
+  organizationId String
+  invoiceNumber  String
+  supplierId     String
+  createdAt      DateTime @default(now())
+  createdById    String?
+  lines          SupplierInvoiceLine[]
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, invoiceNumber])
+}
+
+model SupplierInvoiceLine {
+  id         String @id @default(cuid())
+  invoiceId  String
+  orderLineId String?
+  itemId     String
+  quantity   Int
+  unitPrice  Decimal @db.Decimal(12,2)
+
+  invoice SupplierInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  item    InventoryItem    @relation(fields: [itemId], references: [id], onDelete: Restrict)
+}
+
+// POS: dynamic cart and suspend/resume
+model PosCart {
+  id             String   @id @default(cuid())
+  organizationId String
+  registerId     String?
+  createdById    String?
+  suspendedAt    DateTime?
+  createdAt      DateTime @default(now())
+  lines          PosCartLine[]
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model PosCartLine {
+  id       String @id @default(cuid())
+  cartId   String
+  itemId   String?
+  qty      Int
+  unitPrice Decimal @db.Decimal(12,2)
+  description String?
+
+  cart PosCart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  item InventoryItem? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+}
+
+// Accounting posting queue expectation for Codex integration (idempotent interface)
+enum PostingQueueStatus { PENDING SENT FAILED }
+
+model PostingQueue {
+  id             String   @id @default(cuid())
+  organizationId String
+  externalId     String?  // optional idempotency key from caller
+  payload        Json
+  status         PostingQueueStatus @default(PENDING)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+// End tranche models
+
+
 /**
  * Same immutable-with-supersession pattern as HospitalLabResult.
  */
