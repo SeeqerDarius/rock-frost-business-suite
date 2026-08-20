@@ -1,5 +1,9 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-20: Deploy and production verification for the Hostel Management module
+
+PR #4 merged as `daf669b`, shipped as Vercel deployment `dpl_3iJJsFHSnyhrgwEAGUocKkX6smw9`, READY on all production aliases (`app.rockfrostgroup.com`, `rockfrostgroup.com`, `admin.rockfrostgroup.com`). The additive Hostel migration (`20260820220000_add_hostel_module`) applied cleanly against the real production database. `/api/health` returns `{"ok":true,"database":"reachable"}` and the Vercel runtime-error aggregation shows nothing new in the 10 minutes after deploy. (Note: an initial health check right after merge hit the still-live previous deployment, since Vercel keeps serving the old one until the new build finishes — re-verified directly against this deployment's own URL once its `readyState` reported `READY`, not just the shared alias.)
+
 ## 2026-08-20: New module — Hostel Management (16th module)
 
 - The user asked for "a 100% full hostel management system," scoped down to a solid foundation plus fee billing after two explicit choices: build the foundation (buildings/rooms/beds, allocations, wardens) with fee billing included in this pass rather than deferred, and use the suggested pricing. Explicitly out of scope for this pass, to check in on next (same staged-build discipline used for every other vertical module): curfew/attendance, visitor logs, incident/disciplinary records, maintenance requests.
