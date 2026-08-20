@@ -1,5 +1,9 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-20: Deploy and production verification for petty cash / balance sheet / School photos
+
+`5e804c2` (merge of PR #1) fast-forwarded into `main` and shipped as Vercel deployment `dpl_EwEk2PJo8FtA94NhYWxQgy58X7WB`, READY on all production aliases (`app.rockfrostgroup.com`, `rockfrostgroup.com`, `admin.rockfrostgroup.com`). The additive petty-cash/photoData migration applied cleanly against the real production database. `/api/health` returns `{"ok":true,"database":"reachable"}` and the Vercel runtime-error aggregation shows nothing new in the 15 minutes after deploy. Also fixed `.github/workflows/ci.yml`'s `security` job, which was 403'ing on every PR (missing `pull-requests: read` for gitleaks' PR-commits API call) — unrelated to this feature but blocking its own CI gate, fixed with the user's explicit sign-off before merging.
+
 ## 2026-08-20: Accounting petty cash + Statement of Financial Position, School student/guardian photos
 
 - The user asked to "complete the accounting module" with a petty cash workflow and a Statement of Financial Position, plus photo upload for School students and their guardians. All three build on established patterns rather than new primitives: petty cash and the balance sheet both build on the existing double-entry ledger (`postJournalEntry`/`computeBalance` in `src/modules/accounting/service.ts`); photo upload reuses the exact data-URL storage + authenticated-streaming-route pattern already proven by `InventoryItem.imageData`.
