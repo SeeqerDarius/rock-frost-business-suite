@@ -4,6 +4,8 @@ import { randomBytes, createHash } from "node:crypto";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 import { isPlatformUser } from "@/lib/auth/platform-identity";
+import { PERMISSIONS } from "@/lib/auth/permissions";
+import { ensureFleetDriverForUser } from "@/modules/fleet/service";
 
 const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const RESEND_COOLDOWN_MS = 60 * 1000; // 1 resend per minute per invitation
@@ -108,7 +110,15 @@ async function resolveInvitationForAccept(token: string) {
   const tokenHash = hashToken(token);
   const invitation = await db.invitation.findUnique({
     where: { tokenHash },
-    include: { membership: { include: { user: true, organization: true } } },
+    include: {
+      membership: {
+        include: {
+          user: true,
+          organization: true,
+          role: { include: { rolePermissions: { include: { permission: true } } } },
+        },
+      },
+    },
   });
 
   if (!invitation) throw new InvitationAcceptError("invalid");
@@ -151,6 +161,13 @@ export async function acceptInvitationNewUser(token: string, passwordHash: strin
       data: { status: "ACTIVE", joinedAt: new Date() },
     });
     await tx.invitation.update({ where: { id: invitation.id }, data: { status: "ACCEPTED", acceptedAt: new Date() } });
+    // See ensureFleetDriverForUser's comment: a role granting the driver
+    // self-service permission should put the person on the Fleet roster
+    // the moment they're actually active, not leave that to a manager
+    // remembering a second manual step.
+    if (invitation.membership.role?.rolePermissions.some((rp) => rp.permission.key === PERMISSIONS.FLEET_DRIVER_SELF_SERVICE)) {
+      await ensureFleetDriverForUser(tx, invitation.organizationId, invitation.membership.userId);
+    }
     await logAuditEvent(
       {
         organizationId: invitation.organizationId,
@@ -194,6 +211,9 @@ export async function acceptInvitationExistingUser(token: string, sessionUserId:
       data: { status: "ACTIVE", joinedAt: new Date() },
     });
     await tx.invitation.update({ where: { id: invitation.id }, data: { status: "ACCEPTED", acceptedAt: new Date() } });
+    if (invitation.membership.role?.rolePermissions.some((rp) => rp.permission.key === PERMISSIONS.FLEET_DRIVER_SELF_SERVICE)) {
+      await ensureFleetDriverForUser(tx, invitation.organizationId, sessionUserId);
+    }
     await logAuditEvent(
       {
         organizationId: invitation.organizationId,

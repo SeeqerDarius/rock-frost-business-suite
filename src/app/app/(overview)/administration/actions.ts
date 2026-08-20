@@ -16,6 +16,7 @@ import { buildTenantAppUrl } from "@/lib/app-url";
 import { isPlatformUser } from "@/lib/auth/platform-identity";
 import { isRoleAssignableToOrganization, resolveAssignableModuleKeys, roleDisplayName } from "@/lib/administration-roles";
 import { assertRoleHasAvailableSeats, SeatLimitExceededError } from "@/platform/subscriptions/seats";
+import { ensureFleetDriverForUser } from "@/modules/fleet/service";
 
 function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
@@ -169,6 +170,15 @@ export async function changeMemberRole(formData: FormData): Promise<void> {
         await assertRoleHasAvailableSeats(tx, tenant.organizationId, role.id, member.id);
       }
       await tx.organizationMember.update({ where: { id: member.id }, data: { roleId: role.id } });
+      // The member is already logged-in/active, so this is the same moment
+      // a manager would otherwise have to remember to go create a matching
+      // FleetDriver row by hand — see ensureFleetDriverForUser's own
+      // comment for the full reasoning. An INVITED member's driver record
+      // is created when they accept the invitation instead, in
+      // acceptInvitationNewUser/acceptInvitationExistingUser.
+      if (member.status === "ACTIVE" && role.rolePermissions.some((rp) => rp.permission.key === PERMISSIONS.FLEET_DRIVER_SELF_SERVICE)) {
+        await ensureFleetDriverForUser(tx, tenant.organizationId, member.userId);
+      }
       await logAuditEvent({
         organizationId: tenant.organizationId,
         userId: tenant.userId,
