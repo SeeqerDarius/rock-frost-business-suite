@@ -6,7 +6,8 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import { cuid, shortText, longText, dateInput, moneyAmountPositive, parseWithSchema } from "@/lib/validation";
-import { createSchoolCampus, createSchoolAcademicYear, closeSchoolAcademicYear, deleteSchoolAcademicYear, createSchoolTerm, admitSchoolStudent, createSchoolGuardian, linkSchoolGuardian, createSchoolClass, updateSchoolClassCapacity, assignSchoolClassTeacher, removeSchoolClassTeacher, createSchoolSubject, enrollSchoolStudent, recordSchoolAttendanceBulk, createSchoolFeeInvoice, recordSchoolFeePayment, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, upsertSchoolSettings, transitionSchoolStudent, createSchoolFeeStructure, issueSchoolFeeStructure, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
+import { createSchoolCampus, createSchoolAcademicYear, closeSchoolAcademicYear, deleteSchoolAcademicYear, createSchoolTerm, admitSchoolStudent, createSchoolGuardian, linkSchoolGuardian, createSchoolClass, updateSchoolClassCapacity, assignSchoolClassTeacher, removeSchoolClassTeacher, createSchoolSubject, enrollSchoolStudent, recordSchoolAttendanceBulk, createSchoolFeeInvoice, recordSchoolFeePayment, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, upsertSchoolSettings, transitionSchoolStudent, createSchoolFeeStructure, issueSchoolFeeStructure, updateSchoolStudentPhoto, updateSchoolGuardianPhoto, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
+import { schoolPhotoImageData } from "@/lib/school-photo-image";
 
 const clean=(value:FormDataEntryValue|null)=>{const text=String(value??"").trim();return text||null};
 async function auth(permission:string,path:string){const tenant=await requireModuleAccess("school");if(!hasPermission(tenant,permission))redirect(`${path}?error=forbidden`);return tenant;}
@@ -157,6 +158,55 @@ export async function transitionStudentAction(f: FormData) {
   catch (error) { fail(path, error); }
   revalidatePath(path);
   revalidatePath("/app/school/classes");
+  redirect(`${path}?saved=1`);
+}
+
+/**
+ * A student or guardian photo is uploaded through its own small dialog
+ * rather than folded into the admission/guardian creation forms - it
+ * covers both "add a photo when creating" and "replace it later" with one
+ * action, and keeps the (already dense) admission form from growing a
+ * file input for a field most admissions won't fill in on day one.
+ */
+export async function updateStudentPhotoAction(f: FormData) {
+  const path = "/app/school/students";
+  const t = await auth(PERMISSIONS.SCHOOL_STUDENTS_MANAGE, path);
+  const studentId = clean(f.get("studentId"));
+  if (!studentId) redirect(`${path}?error=invalid`);
+  const removePhoto = f.get("removePhoto") === "on";
+  const photoFile = f.get("photo");
+  let photoData: string | null | undefined;
+  try {
+    photoData = photoFile instanceof File ? (await schoolPhotoImageData(photoFile)) ?? undefined : undefined;
+  } catch {
+    redirect(`${path}?error=invalid`);
+  }
+  if (removePhoto && !photoData) photoData = null;
+  if (photoData === undefined) redirect(`${path}?error=invalid`);
+  try { await updateSchoolStudentPhoto(t.organizationId, studentId, photoData); }
+  catch (e) { fail(path, e); }
+  revalidatePath(path);
+  redirect(`${path}?saved=1`);
+}
+
+export async function updateGuardianPhotoAction(f: FormData) {
+  const path = "/app/school/students";
+  const t = await auth(PERMISSIONS.SCHOOL_STUDENTS_MANAGE, path);
+  const guardianId = clean(f.get("guardianId"));
+  if (!guardianId) redirect(`${path}?error=invalid`);
+  const removePhoto = f.get("removePhoto") === "on";
+  const photoFile = f.get("photo");
+  let photoData: string | null | undefined;
+  try {
+    photoData = photoFile instanceof File ? (await schoolPhotoImageData(photoFile)) ?? undefined : undefined;
+  } catch {
+    redirect(`${path}?error=invalid`);
+  }
+  if (removePhoto && !photoData) photoData = null;
+  if (photoData === undefined) redirect(`${path}?error=invalid`);
+  try { await updateSchoolGuardianPhoto(t.organizationId, guardianId, photoData); }
+  catch (e) { fail(path, e); }
+  revalidatePath(path);
   redirect(`${path}?saved=1`);
 }
 

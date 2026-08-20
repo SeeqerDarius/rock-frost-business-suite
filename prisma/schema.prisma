@@ -277,6 +277,8 @@ model User {
   accountingInvoicesCreated       AccountingInvoice[]
   accountingExpensesCreated       AccountingExpense[]
   accountingJournalEntriesCreated AccountingJournalEntry[]
+  accountingPettyCashFundsCreated AccountingPettyCashFund[]
+  accountingPettyCashTxnsCreated  AccountingPettyCashTransaction[]
   hrEmployeeProfiles              HrEmployee[]
   hrLeaveRequestsApproved         HrLeaveRequest[]
   hrPerformanceReviewsConducted   HrPerformanceReview[]
@@ -421,6 +423,8 @@ model Organization {
   accountingExpenses              AccountingExpense[]
   accountingJournalEntries        AccountingJournalEntry[]
   accountingReconciliations       AccountingReconciliation[]
+  accountingPettyCashFunds        AccountingPettyCashFund[]
+  accountingPettyCashTransactions AccountingPettyCashTransaction[]
   hrEmployees                     HrEmployee[]
   hrTerminationRequests           HrTerminationRequest[]
   hrEmployeeStatusHistory         HrEmployeeStatusHistory[]
@@ -1885,6 +1889,7 @@ model AccountingAccount {
   journalLines    AccountingJournalLine[]
   expenseCategory AccountingExpenseCategory[]
   reconciliations AccountingReconciliation[]
+  pettyCashFund   AccountingPettyCashFund?
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -1897,9 +1902,10 @@ model AccountingExpenseCategory {
   expenseAccountId String?
   createdAt        DateTime @default(now())
 
-  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  expenseAccount AccountingAccount?  @relation(fields: [expenseAccountId], references: [id], onDelete: SetNull)
-  expenses       AccountingExpense[]
+  organization         Organization                     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expenseAccount       AccountingAccount?               @relation(fields: [expenseAccountId], references: [id], onDelete: SetNull)
+  expenses             AccountingExpense[]
+  pettyCashTransactions AccountingPettyCashTransaction[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -1970,9 +1976,10 @@ model AccountingJournalEntry {
   createdById    String?
   createdAt      DateTime @default(now())
 
-  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User?                   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  organization Organization                      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?                             @relation(fields: [createdById], references: [id], onDelete: SetNull)
   lines        AccountingJournalLine[]
+  pettyCashTransactions AccountingPettyCashTransaction[]
 
   @@index([organizationId, entryDate])
 }
@@ -2022,6 +2029,67 @@ model AccountingReconciliation {
 
   @@unique([organizationId, accountId, periodStart, periodEnd])
   @@index([organizationId, status])
+}
+
+enum AccountingPettyCashFundStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum AccountingPettyCashTransactionType {
+  FUNDING
+  EXPENSE
+  REPLENISHMENT
+}
+
+/**
+ * Imprest-system petty cash: a dedicated AccountingAccount (liquidityType
+ * CASH) backs the fund, so its balance is always derived from the same
+ * journal-line ledger as every other account rather than tracked
+ * separately. floatAmount is the fund's target level; replenishment tops
+ * the account balance back up to it.
+ */
+model AccountingPettyCashFund {
+  id             String                         @id @default(cuid())
+  organizationId String
+  accountId      String                         @unique
+  name           String
+  custodianName  String
+  floatAmount    Decimal                        @db.Decimal(12, 2)
+  status         AccountingPettyCashFundStatus  @default(ACTIVE)
+  createdById    String?
+  createdAt      DateTime                       @default(now())
+  closedAt       DateTime?
+
+  organization Organization                     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  account      AccountingAccount                @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  createdBy    User?                            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  transactions AccountingPettyCashTransaction[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+}
+
+model AccountingPettyCashTransaction {
+  id                String                              @id @default(cuid())
+  organizationId    String
+  fundId            String
+  type              AccountingPettyCashTransactionType
+  amount            Decimal                             @db.Decimal(12, 2)
+  description       String
+  expenseCategoryId String?
+  journalEntryId    String?
+  createdById       String?
+  createdAt         DateTime                            @default(now())
+
+  organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fund            AccountingPettyCashFund    @relation(fields: [fundId], references: [id], onDelete: Cascade)
+  expenseCategory AccountingExpenseCategory? @relation(fields: [expenseCategoryId], references: [id], onDelete: SetNull)
+  journalEntry    AccountingJournalEntry?    @relation(fields: [journalEntryId], references: [id], onDelete: SetNull)
+  createdBy       User?                      @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, fundId])
+  @@index([fundId, createdAt])
 }
 
 enum FleetDriverSubmissionStatus {
@@ -3194,6 +3262,7 @@ model SchoolGuardian {
   phone          String
   address        String?
   occupation     String?
+  photoData      String?  @db.Text
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -3216,6 +3285,7 @@ model SchoolStudent {
   status          SchoolStudentStatus @default(APPLICANT)
   admissionDate   DateTime?
   medicalNotes    String?             @db.Text
+  photoData       String?             @db.Text
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
