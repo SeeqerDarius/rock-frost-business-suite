@@ -7,6 +7,7 @@ import { formatMoney } from "@/components/school/format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getSchoolSummary } from "@/modules/school/service";
+import { ReportExportLinks } from "@/components/reports/report-export-links";
 
 function Metric({ label, value, hint }: { label: string; value: string | number; hint: string }) {
   return (
@@ -44,6 +45,7 @@ export default async function SchoolReportsPage() {
       <PageHeader
         title="School Reports"
         description="Live indicators across enrollment, attendance, fee collection, library, and transport. Figures cover the whole organization to date."
+        actions={<ReportExportLinks moduleKey="school" />}
       />
 
       <SectionCard title="Enrollment" description="Current student and class position.">

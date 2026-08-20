@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getHospitalSummary, listHospitalAppointments, listHospitalLabOrders, listHospitalAdmissions } from "@/modules/hospital/service";
+import { ReportExportLinks } from "@/components/reports/report-export-links";
 
 export default async function HospitalReportsPage() {
   const tenant = await requireModuleAccess("hospital");
@@ -31,7 +32,7 @@ export default async function HospitalReportsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Hospital Reports" description="Operational summaries across patients, encounters, beds, laboratory, and billing." />
+      <PageHeader title="Hospital Reports" description="Operational summaries across patients, encounters, beds, laboratory, and billing." actions={<ReportExportLinks moduleKey="hospital" />} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Card>
           <CardHeader><CardTitle>Patient census</CardTitle><CardDescription>Active patients and current bed occupancy.</CardDescription></CardHeader>

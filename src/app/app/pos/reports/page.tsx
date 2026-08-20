@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getPosSummary } from "@/modules/pos/service";
+import { ReportExportLinks } from "@/components/reports/report-export-links";
 
 export default async function PosReportsPage() {
   const tenant = await requireModuleAccess("pos");
@@ -32,7 +33,7 @@ export default async function PosReportsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Reports" description="Sales activity summaries." />
+      <PageHeader title="Reports" description="Sales activity summaries." actions={<ReportExportLinks moduleKey="pos" />} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {stats.map((stat) => (
           <Card key={stat.label}>

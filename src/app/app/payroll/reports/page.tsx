@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getPayrollSummary } from "@/modules/payroll/service";
+import { ReportExportLinks } from "@/components/reports/report-export-links";
 
 export default async function PayrollReportsPage() {
   const tenant = await requireModuleAccess("payroll");
@@ -31,7 +32,7 @@ export default async function PayrollReportsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Reports" description="Payroll cost and coverage summaries." />
+      <PageHeader title="Reports" description="Payroll cost and coverage summaries." actions={<ReportExportLinks moduleKey="payroll" />} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {stats.map((stat) => (
           <Card key={stat.label}>

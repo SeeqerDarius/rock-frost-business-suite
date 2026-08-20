@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getInventorySummary } from "@/modules/inventory/service";
+import { ReportExportLinks } from "@/components/reports/report-export-links";
 
 export default async function InventoryReportsPage() {
   const tenant = await requireModuleAccess("inventory");
@@ -30,7 +31,7 @@ export default async function InventoryReportsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Reports" description="Stock valuation, low-stock alerts, and movement activity." />
+      <PageHeader title="Reports" description="Stock valuation, low-stock alerts, and movement activity." actions={<ReportExportLinks moduleKey="inventory" />} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (

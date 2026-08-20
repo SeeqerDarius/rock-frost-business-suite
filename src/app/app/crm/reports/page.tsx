@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getCrmSummary } from "@/modules/crm/service";
+import { ReportExportLinks } from "@/components/reports/report-export-links";
 
 const STAGE_LABELS: Record<string, string> = {
   NEW: "New",
@@ -36,7 +37,7 @@ export default async function CrmReportsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Reports" description="Pipeline value, conversion, and activity summaries." />
+      <PageHeader title="Reports" description="Pipeline value, conversion, and activity summaries." actions={<ReportExportLinks moduleKey="crm" />} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
