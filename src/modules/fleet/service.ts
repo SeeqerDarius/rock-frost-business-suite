@@ -15,6 +15,7 @@ import {
   getOrganizationModuleConfiguration,
   updateOrganizationModuleConfigurationValues,
 } from "@/platform/module-requests/configuration";
+import { PERMISSIONS } from "@/lib/auth/permissions";
 
 const DEFAULT_RENEWAL_REMINDER_DAYS = 30;
 
@@ -103,7 +104,54 @@ export async function listAssignableFleetUsers(organizationId: string) {
 
 // --- Drivers ---
 
-export function listFleetDrivers(organizationId: string) {
+type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+/**
+ * Called from Administration's role-assignment and invitation-acceptance
+ * flows whenever a member ends up holding a role with the
+ * fleet.driver.self_service permission — closes the gap where assigning
+ * the Driver role only granted login access, without ever putting the
+ * person on the actual Fleet roster (FleetDriver), so /app/fleet/drivers
+ * stayed empty and their own self-service pages (which resolve "me" via
+ * FleetDriver.userId) had nothing to show. Idempotent: a user who already
+ * has a FleetDriver row in this organization (e.g. a manager created one
+ * manually first) is left untouched rather than duplicated, relying on
+ * the same @@unique([organizationId, userId]) constraint the manual
+ * "Driver login" link on the Drivers page already depends on.
+ */
+export async function ensureFleetDriverForUser(tx: TxClient, organizationId: string, userId: string) {
+  const existing = await tx.fleetDriver.findUnique({ where: { organizationId_userId: { organizationId, userId } } });
+  if (existing) return existing;
+  const user = await tx.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+  if (!user) return null;
+  return tx.fleetDriver.create({ data: { organizationId, userId, name: user.name || user.email, email: user.email } });
+}
+
+/**
+ * Self-heals members who were assigned a Driver-permission role before
+ * ensureFleetDriverForUser existed (or through some other historical path)
+ * and so never got a FleetDriver row — the same lazy backfill-on-read
+ * pattern ensureDefaultAccounts() already uses for Accounting. Runs before
+ * every driver-roster read rather than as a one-off migration, so it also
+ * covers the (extremely narrow) case of a role's permissions being edited
+ * to add driver self-service after members already hold it.
+ */
+async function backfillMissingFleetDrivers(organizationId: string) {
+  const missing = await db.organizationMember.findMany({
+    where: {
+      organizationId,
+      status: "ACTIVE",
+      role: { rolePermissions: { some: { permission: { key: PERMISSIONS.FLEET_DRIVER_SELF_SERVICE } } } },
+      user: { fleetDriverProfiles: { none: { organizationId } } },
+    },
+    select: { userId: true },
+  });
+  if (missing.length === 0) return;
+  await db.$transaction((tx) => Promise.all(missing.map((member) => ensureFleetDriverForUser(tx, organizationId, member.userId))));
+}
+
+export async function listFleetDrivers(organizationId: string) {
+  await backfillMissingFleetDrivers(organizationId);
   return db.fleetDriver.findMany({ where: { organizationId }, include: { user: true }, orderBy: { name: "asc" } });
 }
 
