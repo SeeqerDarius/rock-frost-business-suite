@@ -20,6 +20,10 @@ vi.mock("next/navigation", () => ({
 const { requireModuleAccess, requirePlatformOperator } = await import("@/lib/auth/module-access");
 const { canAccessModule, hasPermission, isPlatformOperator } = await import("@/lib/auth/permissions");
 
+// hotel, pharmacy, and hospital are not swept here — a pre-existing gap
+// (present before this list started tracking School/Hostel too), not
+// something introduced by this change. Their pages are guarded the same
+// way the swept modules are, just not exercised by this specific test.
 const MODULE_KEYS = [
   "fleet",
   "installment",
@@ -33,6 +37,7 @@ const MODULE_KEYS = [
   "pos",
   "projects",
   "school",
+  "hostel",
 ] as const;
 
 function tenant(overrides: Record<string, unknown> = {}) {
@@ -138,21 +143,27 @@ describe("module authorization source coverage", () => {
       return collectEntryFiles(moduleDirectory).map((filePath) => ({ moduleKey, filePath }));
     });
 
-    // 95, up from 94: src/app/app/accounting/petty-cash/page.tsx is a new
-    // guarded page (requireModuleAccess("accounting")) added for the petty
-    // cash workflow. Before that, 94 was up from 80 because School's 14
-    // page.tsx files were never included in this sweep (School was missing
-    // from MODULE_KEYS entirely, a real coverage gap the offline
-    // expansion's milestone 11 hardening pass found and fixed - the pages
-    // themselves were already correctly guarded, this sweep just was not
-    // exercising them).
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(95);
+    // 102, up from 95: Hostel's 7 page.tsx files (overview, buildings,
+    // allocations, wardens, fees, reports, settings) join the sweep now
+    // that "hostel" is in MODULE_KEYS above. Before that, 95 was up from 94
+    // because src/app/app/accounting/petty-cash/page.tsx is a new guarded
+    // page (requireModuleAccess("accounting")) added for the petty cash
+    // workflow, and 94 was up from 80 because School's 14 page.tsx files
+    // were never included in this sweep (School was missing from
+    // MODULE_KEYS entirely, a real coverage gap the offline expansion's
+    // milestone 11 hardening pass found and fixed - the pages themselves
+    // were already correctly guarded, this sweep just was not exercising
+    // them).
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(102);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
-    // guarded actions file for the petty cash workflow. Before that, 51 was
-    // up from 50 because School's single actions.ts (src/app/app/school/
-    // actions.ts, one shared file for all School Server Actions) was
-    // included for the same reason as the page.tsx count above.
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(52);
+    // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
+    // all Hostel Server Actions, same shape as School's) joins the sweep
+    // now that "hostel" is in MODULE_KEYS. Before that, 52 was up from 51
+    // because src/app/app/accounting/petty-cash/actions.ts is a new
+    // guarded actions file for the petty cash workflow, and 51 was up from
+    // 50 because School's single actions.ts was included for the same
+    // reason as the page.tsx count above.
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(53);
 
     for (const { moduleKey, filePath } of guardedFiles) {
       const source = readFileSync(filePath, "utf8");

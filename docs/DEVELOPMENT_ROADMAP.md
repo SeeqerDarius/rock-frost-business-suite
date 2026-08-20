@@ -204,6 +204,18 @@ Campus, student/guardian, academic period, class/enrollment, attendance, fee/pay
 
 **Status: complete.**
 
+## Phase 19 — Hostel Management ✅
+
+New, separately subscribable module (16th) for schools that also run a boarding hostel — a companion to School Management rather than part of it, since not every school has residential facilities. Occupants are existing `SchoolStudent` records: Hostel deliberately owns no student identity, campus, or academic-calendar model of its own, borrowing `SchoolCampus`/`SchoolAcademicYear`/`SchoolTerm` instead. New models: `HostelBuilding` → `HostelRoom` → `HostelBed` (bed labels A/B/C... generated automatically from a room's capacity at creation), `HostelAllocation` (a student's bed assignment for an academic year), `HostelWarden` (a staff member's building assignment), and `HostelFeeStructure`/`HostelFeeInvoice`/`HostelFeePayment` (fee billing, mirroring School's own fee models field-for-field).
+
+Two atomic guards carry the same concurrency discipline as the rest of the codebase: `createHostelAllocation` claims a bed with a guarded `AVAILABLE -> OCCUPIED` `updateMany` (same pattern as `markInvoiceSent`) so two concurrent allocation attempts for the same bed can't both succeed, and separately blocks a student who already holds an active allocation elsewhere; `endHostelAllocation` claims the reverse `ACTIVE -> ENDED` transition the same way before freeing the bed. Fee billing (`issueHostelFeeStructure`, `recordHostelFeePayment`) is a direct mirror of School's `issueSchoolFeeStructure`/`recordSchoolFeePayment` — an advisory-locked bulk-issue loop and a `Decimal`-balance-checked payment guard.
+
+Seven pages (Overview, Buildings & Rooms, Allocations, Wardens, Fees & Payments, Reports, Settings) plus an overview dashboard widget. Settings is a deliberate honest placeholder, same reasoning as Fleet's original Settings page: there's no hostel-wide configuration yet, so the page says so rather than fabricating options with nothing behind them. Seven permission keys (`hostel.view`, `.buildings.manage`, `.allocations.manage`, `.wardens.manage`, `.fees.manage`, `.reports.view`, `.settings.manage`) plus two new roles ("Hostel Manager" full access, "Warden" scoped to allocations/reports).
+
+**Pricing**: added to the module catalogue at GHS 449/month (GHS 4,490/year, 8 included seats, GHS 25/additional seat) — priced below School (599) as a satellite add-on module, above CRM/Projects since it carries real allocation/capacity/billing logic. A new "School & Hostel Complete" bundle (School + Hostel + Accounting + HR, GHS 1,699/month against a 1,946 à-la-carte total) sits alongside the existing "School Complete" bundle rather than replacing it, since Hostel is only relevant to schools with a boarding facility.
+
+**Status: complete.**
+
 ## PDF/Excel report exports (2026-08-20)
 
 Every module's Reports page (14 modules: Accounting, School, HR, Payroll, Inventory, POS, Fleet, Hotel, Pharmacy, Hospital, CRM, Installment, Procurement, Projects) gained "PDF" and "Excel" download buttons rendering exactly the same stats the page already shows as cards, as a downloadable document rather than a screen-only view. Not a bespoke exporter per module — one shared path:

@@ -131,6 +131,12 @@ export const MODULE_SEO = {
     keywords: ["school management software Ghana", "student information system Africa", "school fees attendance examination software"],
     features: ["Student, guardian, and enrollment records", "Attendance, fees, and payments", "Examinations, grading, and timetables", "Transport, library, and payroll inputs"],
   },
+  hostel: {
+    shortName: "Hostel Management Software",
+    description: "Manage boarding hostel buildings, rooms and beds, student allocations, wardens, and hostel fee billing for schools with residential facilities.",
+    keywords: ["hostel management software Ghana", "school boarding house system Africa", "student bed allocation and hostel fees software"],
+    features: ["Buildings, rooms, and bed capacity", "Student bed allocations tied to School records", "Warden assignments per building", "Hostel fee structures, invoices, and payments"],
+  },
   pharmacy: {
     shortName: "Pharmacy Management Software",
     description: "Manage medicines, batch and expiry stock, prescriptions, dispensing, restricted-medicine records, patients, suppliers, and pharmacy reports.",

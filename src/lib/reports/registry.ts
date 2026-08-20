@@ -3,6 +3,7 @@ import "server-only";
 import { PERMISSIONS } from "@/lib/auth/permissions";
 import { getAccountingSummary } from "@/modules/accounting/service";
 import { getSchoolSummary } from "@/modules/school/service";
+import { getHostelSummary } from "@/modules/hostel/service";
 import { getHrSummary } from "@/modules/hr/service";
 import { getPayrollSummary } from "@/modules/payroll/service";
 import { getInventorySummary } from "@/modules/inventory/service";
@@ -36,6 +37,7 @@ export interface ReportRegistryEntry {
 export const REPORT_REGISTRY: Record<string, ReportRegistryEntry> = {
   accounting: { moduleKey: "accounting", title: "Accounting report", permission: PERMISSIONS.ACCOUNTING_REPORTS_VIEW, getSummary: getAccountingSummary },
   school: { moduleKey: "school", title: "School report", permission: PERMISSIONS.SCHOOL_REPORTS_VIEW, getSummary: getSchoolSummary },
+  hostel: { moduleKey: "hostel", title: "Hostel report", permission: PERMISSIONS.HOSTEL_REPORTS_VIEW, getSummary: getHostelSummary },
   hr: { moduleKey: "hr", title: "HR report", permission: PERMISSIONS.HR_REPORTS_VIEW, getSummary: getHrSummary },
   payroll: { moduleKey: "payroll", title: "Payroll report", permission: PERMISSIONS.PAYROLL_REPORTS_VIEW, getSummary: getPayrollSummary },
   inventory: { moduleKey: "inventory", title: "Inventory report", permission: PERMISSIONS.INVENTORY_REPORTS_VIEW, getSummary: getInventorySummary },

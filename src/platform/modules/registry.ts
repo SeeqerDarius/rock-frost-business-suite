@@ -14,6 +14,7 @@ import {
   GraduationCap,
   Pill,
   Hospital,
+  BedDouble,
 } from "lucide-react";
 import type { ModuleDefinition } from "@/types/module";
 import { fleetNavigation } from "@/modules/fleet/navigation";
@@ -29,6 +30,7 @@ import { posNavigation } from "@/modules/pos/navigation";
 import { projectsNavigation } from "@/modules/projects/navigation";
 import { hotelNavigation } from "@/modules/hotel/navigation";
 import { schoolNavigation } from "@/modules/school/navigation";
+import { hostelNavigation } from "@/modules/hostel/navigation";
 import { pharmacyNavigation } from "@/modules/pharmacy/navigation";
 import { hospitalNavigation } from "@/modules/hospital/navigation";
 
@@ -177,6 +179,16 @@ const moduleDefinitions = [
     navigation: schoolNavigation,
     status: "available",
     permissionPrefix: "school.",
+  },
+  {
+    key: "hostel",
+    name: "Hostel Management",
+    description: "Boarding hostel buildings, rooms and beds, student allocations, wardens, and hostel fee billing: a companion to School Management for schools with residential facilities.",
+    icon: BedDouble,
+    routePrefix: "/app/hostel",
+    navigation: hostelNavigation,
+    status: "available",
+    permissionPrefix: "hostel.",
   },
   {
     key: "pharmacy",

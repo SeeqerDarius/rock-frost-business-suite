@@ -11,6 +11,7 @@ import { PosDashboardWidget } from "@/modules/pos/dashboard-widget";
 import { ProjectsDashboardWidget } from "@/modules/projects/dashboard-widget";
 import { HotelDashboardWidget } from "@/modules/hotel/dashboard-widget";
 import { SchoolDashboardWidget } from "@/modules/school/dashboard-widget";
+import { HostelDashboardWidget } from "@/modules/hostel/dashboard-widget";
 import { PharmacyDashboardWidget } from "@/modules/pharmacy/dashboard-widget";
 import { HospitalDashboardWidget } from "@/modules/hospital/dashboard-widget";
 
@@ -38,6 +39,7 @@ export const dashboardWidgets: Record<string, ComponentType> = {
   projects: ProjectsDashboardWidget,
   hotel: HotelDashboardWidget,
   school: SchoolDashboardWidget,
+  hostel: HostelDashboardWidget,
   pharmacy: PharmacyDashboardWidget,
   hospital: HospitalDashboardWidget,
 };
