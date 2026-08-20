@@ -57,12 +57,19 @@ describe("Fleet driver role sync (real Postgres)", () => {
   });
 
   it("does not create a FleetDriver for an active member holding a role without driver self-service", async () => {
-    const ownerRole = await testDb.role.findFirst({ where: { organizationId: null, name: "Organization Owner" } });
+    // "Organization Owner" is deliberately not used here — it holds
+    // ALL_PERMISSIONS (see prisma/seed-data.ts), which legitimately
+    // includes fleet.driver.self_service, so an Owner *should* get a
+    // FleetDriver row too. "Mechanic" is Fleet-related but has no driver
+    // self-service permission, making it the real negative case.
+    const mechanicRole = await testDb.role.findFirst({ where: { organizationId: null, name: "Mechanic" } });
+    expect(mechanicRole).not.toBeNull();
+
     const memberUser = await testDb.user.create({
       data: { name: "Non Driver", email: `nondriver-${org.organizationId}@example.invalid`, status: "ACTIVE" },
     });
     await testDb.organizationMember.create({
-      data: { organizationId: org.organizationId, userId: memberUser.id, roleId: ownerRole!.id, status: "ACTIVE", joinedAt: new Date() },
+      data: { organizationId: org.organizationId, userId: memberUser.id, roleId: mechanicRole!.id, status: "ACTIVE", joinedAt: new Date() },
     });
 
     const drivers = await fleet.listFleetDrivers(org.organizationId);
