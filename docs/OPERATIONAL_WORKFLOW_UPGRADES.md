@@ -2,9 +2,13 @@
 
 ## Fleet driver self-service
 
-An organization administrator first invites the person from Administration with the Driver role, then links the active user to the Fleet driver profile. The Driver role receives `fleet.driver.self_service`, not fleet-management permissions.
+An organization administrator invites the person from Administration with the Driver role. Role assignment or invitation acceptance creates the linked Fleet driver profile automatically and idempotently. The Driver role receives `fleet.driver.self_service`, not organization-wide fleet-management permissions or `fleet.view`.
 
-The Driver Workspace shows only vehicles assigned to the linked driver. A driver can report maintenance through the existing ownership-checked workflow and submit weekly or work-and-pay collections. A collection remains pending and does not become a financial fleet payment until a user with `fleet.payments.manage` approves it. Approval creates a verified `FleetPayment` in the same database transaction. Rejection preserves the original submission.
+The Driver Workspace and the main dashboard show only vehicles assigned to the linked driver, their own maintenance tasks, active contracts, sales targets, and collection submissions. A driver can report maintenance with an optional private photo and submit the configured daily sales, weekly sales, or Work & Pay collection for the assigned vehicle. Each submission stores its expected amount and period and cannot be duplicated while pending or approved.
+
+A collection remains pending and does not become a financial fleet payment until a user with `fleet.payments.manage` approves it. Approval creates a verified `FleetPayment` in the same database transaction. Work & Pay approval also updates the contract amount paid, outstanding balance, completion percentage, and status under the same contract lock. Rejection preserves the original submission and does not move money.
+
+The Vehicle Owner role receives `fleet.investor.view` without `fleet.view`. It is linked automatically to one owner profile and sees only that portfolio and its maintenance approvals. The separate Investor role retains the broader approved investor-reporting behavior.
 
 ## Accounting cash and bank controls
 

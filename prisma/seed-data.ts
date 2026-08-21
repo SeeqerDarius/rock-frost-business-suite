@@ -183,6 +183,7 @@ export const SYSTEM_ROLES: { name: string; description: string }[] = [
   { name: "Organization Owner", description: "Tenant owner with organization administration privileges." },
   { name: "Fleet Manager", description: "Operational fleet role for vehicles, drivers, maintenance, payments, and reports." },
   { name: "Driver", description: "Fleet driver role for assigned vehicle access and operational updates." },
+  { name: "Vehicle Owner", description: "Fleet vehicle owner role limited to the linked portfolio, maintenance approvals, and owner reporting." },
   { name: "Mechanic", description: "Maintenance service role for assigned repair workflows." },
   { name: "Investor", description: "Read-only stakeholder role for approved portfolio and performance visibility." },
   { name: "Hire Purchase Manager", description: "Operational Installment role for customers, accounts, payments, products, staff, and reports." },
@@ -243,7 +244,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     PERMISSIONS.FLEET_PAYMENTS_MANAGE,
     PERMISSIONS.FLEET_REPORTS_VIEW,
   ]),
-  Driver: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.FLEET_VIEW, PERMISSIONS.FLEET_DRIVER_SELF_SERVICE, PERMISSIONS.AI_ASSISTANT_USE],
+  Driver: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.FLEET_DRIVER_SELF_SERVICE, PERMISSIONS.AI_ASSISTANT_USE],
+  "Vehicle Owner": [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.FLEET_INVESTOR_VIEW, PERMISSIONS.AI_ASSISTANT_USE],
   Mechanic: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.FLEET_VIEW, PERMISSIONS.FLEET_MAINTENANCE_MANAGE, PERMISSIONS.AI_ASSISTANT_USE],
   Investor: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.FLEET_INVESTOR_VIEW, PERMISSIONS.FLEET_REPORTS_VIEW, PERMISSIONS.AI_ASSISTANT_USE],
   "Hire Purchase Manager": moduleRolePermissions([
@@ -479,6 +481,15 @@ export async function seedPlatform(db: PrismaClient, options: { log?: boolean } 
     if (log) console.log(`Seeded ${keys.length} permission grants for role "${role.name}".`);
   }
   await db.rolePermission.createMany({ data: grants, skipDuplicates: true });
+
+  // Driver self-service is intentionally assignment-scoped. Remove the old
+  // organization-wide Fleet view grant from installations seeded before the
+  // dedicated workspace was completed.
+  const driverRole = roles.find((role) => role.name === "Driver");
+  const fleetViewPermission = permissionByKey.get(PERMISSIONS.FLEET_VIEW);
+  if (driverRole && fleetViewPermission) {
+    await db.rolePermission.deleteMany({ where: { roleId: driverRole.id, permissionId: fleetViewPermission.id } });
+  }
 
   // Preserve least-privilege access for tenant-defined roles created before
   // the Hospital lab/imaging permissions were split into enter and verify.

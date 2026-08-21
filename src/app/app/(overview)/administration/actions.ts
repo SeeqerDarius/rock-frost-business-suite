@@ -16,7 +16,7 @@ import { buildTenantAppUrl } from "@/lib/app-url";
 import { isPlatformUser } from "@/lib/auth/platform-identity";
 import { isRoleAssignableToOrganization, resolveAssignableModuleKeys, roleDisplayName } from "@/lib/administration-roles";
 import { assertRoleHasAvailableSeats, SeatLimitExceededError } from "@/platform/subscriptions/seats";
-import { ensureFleetDriverForUser } from "@/modules/fleet/service";
+import { ensureFleetDriverForUser, ensureFleetOwnerForUser } from "@/modules/fleet/service";
 
 function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
@@ -178,6 +178,9 @@ export async function changeMemberRole(formData: FormData): Promise<void> {
       // acceptInvitationNewUser/acceptInvitationExistingUser.
       if (member.status === "ACTIVE" && role.rolePermissions.some((rp) => rp.permission.key === PERMISSIONS.FLEET_DRIVER_SELF_SERVICE)) {
         await ensureFleetDriverForUser(tx, tenant.organizationId, member.userId);
+      }
+      if (member.status === "ACTIVE" && role.name === "Vehicle Owner") {
+        await ensureFleetOwnerForUser(tx, tenant.organizationId, member.userId);
       }
       await logAuditEvent({
         organizationId: tenant.organizationId,

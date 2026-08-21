@@ -20,6 +20,7 @@ import {
   canUserReportFleetVehicle,
 } from "@/modules/fleet/service";
 import { logAuditEvent } from "@/lib/audit";
+import { fleetMaintenancePhotoData } from "@/lib/fleet-maintenance-photo";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -30,7 +31,9 @@ export async function createMaintenanceRequest(formData: FormData): Promise<void
   const tenant = await requireModuleAccess("fleet");
   if (
     !hasPermission(tenant, PERMISSIONS.FLEET_MAINTENANCE_MANAGE) &&
-    !hasPermission(tenant, PERMISSIONS.FLEET_VIEW)
+    !hasPermission(tenant, PERMISSIONS.FLEET_VIEW) &&
+    !hasPermission(tenant, PERMISSIONS.FLEET_DRIVER_SELF_SERVICE) &&
+    !hasPermission(tenant, PERMISSIONS.FLEET_INVESTOR_VIEW)
   ) {
     redirect("/app/fleet/maintenance?error=forbidden");
   }
@@ -49,15 +52,32 @@ export async function createMaintenanceRequest(formData: FormData): Promise<void
   ) {
     redirect("/app/fleet/maintenance?error=not-found");
   }
+  const photoFile = formData.get("photo");
   try {
-    await createFleetMaintenanceRequest(tenant.organizationId, {
+    const photo = photoFile instanceof File ? await fleetMaintenancePhotoData(photoFile) : null;
+    const request = await createFleetMaintenanceRequest(tenant.organizationId, {
       vehicleId,
       faultDescription,
       requestedById: session.user.id,
-      ownerApprovalRequired: formData.get("ownerApprovalRequired") === "on",
+      ownerApprovalRequired:
+        hasPermission(tenant, PERMISSIONS.FLEET_MAINTENANCE_MANAGE) &&
+        formData.get("ownerApprovalRequired") === "on",
+      photo,
+    });
+    await logAuditEvent({
+      organizationId: tenant.organizationId,
+      userId: session.user.id,
+      module: "fleet",
+      action: "fleet.maintenance.submitted",
+      entityName: "FleetMaintenanceRequest",
+      entityId: request.id,
+      metadata: { vehicleId, hasPhoto: Boolean(photo) },
     });
   } catch (error) {
     if (error instanceof NotFoundError) redirect("/app/fleet/maintenance?error=not-found");
+    if (error instanceof Error && error.message === "invalid-maintenance-photo") {
+      redirect("/app/fleet/maintenance?error=invalid-photo");
+    }
     throw error;
   }
 

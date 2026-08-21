@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockDb = {
   fleetDriver: { findUnique: vi.fn(), findMany: vi.fn(), create: vi.fn() },
+  fleetOwner: { findUnique: vi.fn(), create: vi.fn() },
   user: { findUnique: vi.fn() },
   organizationMember: { findMany: vi.fn() },
   $transaction: vi.fn(),
@@ -64,6 +65,26 @@ describe("ensureFleetDriverForUser", () => {
 
     expect(mockDb.user.findUnique).not.toHaveBeenCalled();
     expect(mockDb.fleetDriver.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("ensureFleetOwnerForUser", () => {
+  it("creates the owner portal profile once when the Vehicle Owner role is assigned", async () => {
+    mockDb.fleetOwner.findUnique.mockResolvedValue(null);
+    mockDb.user.findUnique.mockResolvedValue({ name: "Akosua Owner", email: "owner@example.com" });
+    mockDb.fleetOwner.create.mockResolvedValue({ id: "owner-1" });
+
+    await fleet.ensureFleetOwnerForUser(tx, ORG, "user-owner");
+
+    expect(mockDb.fleetOwner.create).toHaveBeenCalledWith({
+      data: { organizationId: ORG, userId: "user-owner", name: "Akosua Owner", email: "owner@example.com" },
+    });
+  });
+
+  it("does not duplicate an existing linked owner profile", async () => {
+    mockDb.fleetOwner.findUnique.mockResolvedValue({ id: "owner-existing" });
+    await fleet.ensureFleetOwnerForUser(tx, ORG, "user-owner");
+    expect(mockDb.fleetOwner.create).not.toHaveBeenCalled();
   });
 });
 
