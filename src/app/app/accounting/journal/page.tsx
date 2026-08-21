@@ -9,7 +9,7 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listJournalEntries, listAccounts } from "@/modules/accounting/service";
-import { createJournalEntry } from "./actions";
+import { createJournalEntry, reverseJournalEntryAction } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to post journal entries.",
@@ -17,6 +17,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   "same-account": "The debit and credit accounts must be different.",
   "not-balanced": "Debits and credits must be equal.",
   "not-found": "One or more of those accounts could not be found.",
+  "forbidden-reversal": "You do not have permission to reverse journal entries.",
+  "invalid-reversal": "That journal entry cannot be reversed.",
+  "period-closed": "The reversal date is in a closed accounting period.",
 };
 
 export default async function AccountingJournalPage({
@@ -27,6 +30,7 @@ export default async function AccountingJournalPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("accounting");
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_ACCOUNTS_MANAGE);
+  const canReverse = hasPermission(tenant, PERMISSIONS.ACCOUNTING_JOURNALS_REVERSE);
   const [entries, accounts] = await Promise.all([
     listJournalEntries(tenant.organizationId),
     listAccounts(tenant.organizationId),
@@ -109,8 +113,8 @@ export default async function AccountingJournalPage({
         <div className="space-y-3">
           {entries.map((entry) => (
             <div key={entry.id} className="rounded-lg border p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">{entry.description}</p>
+              <div className="flex items-center justify-between gap-3">
+                <div><p className="text-sm font-medium">{entry.description}</p><p className="text-xs text-muted-foreground">{entry.postingNumber} · {entry.status}</p></div>
                 <p className="text-xs text-muted-foreground">{entry.entryDate.toLocaleDateString()}</p>
               </div>
               <div className="mt-2 space-y-1">
@@ -123,6 +127,11 @@ export default async function AccountingJournalPage({
                   </div>
                 ))}
               </div>
+              {canReverse && entry.status === "POSTED" && !entry.reversalOfId ? <div className="mt-3 flex justify-end"><EntityDialog trigger={<Button size="sm" variant="outline">Reverse entry</Button>} title="Reverse journal entry" description="The original entry remains in the ledger. A new entry posts the opposite debit and credit lines." action={reverseJournalEntryAction}>
+                <input type="hidden" name="id" value={entry.id} />
+                <div className="space-y-2"><Label htmlFor={`entryDate-${entry.id}`}>Reversal date</Label><Input id={`entryDate-${entry.id}`} name="entryDate" type="date" defaultValue={today} required /></div>
+                <div className="space-y-2"><Label htmlFor={`reason-${entry.id}`}>Reason</Label><Input id={`reason-${entry.id}`} name="reason" required /></div>
+              </EntityDialog></div> : null}
             </div>
           ))}
         </div>

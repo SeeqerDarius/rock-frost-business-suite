@@ -50,6 +50,8 @@ export const PERMISSIONS = {
   ACCOUNTING_SETTINGS_MANAGE: "accounting.settings.manage",
   ACCOUNTING_CASHBOOK_MANAGE: "accounting.cashbook.manage",
   ACCOUNTING_RECONCILIATIONS_MANAGE: "accounting.reconciliations.manage",
+  ACCOUNTING_PERIODS_MANAGE: "accounting.periods.manage",
+  ACCOUNTING_JOURNALS_REVERSE: "accounting.journals.reverse",
   HR_VIEW: "hr.view",
   HR_EMPLOYEES_MANAGE: "hr.employees.manage",
   HR_EMPLOYEES_VIEW: "hr.employees.view",

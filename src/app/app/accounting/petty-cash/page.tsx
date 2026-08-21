@@ -20,6 +20,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-state": "That action isn't valid for this fund's current status.",
   "invalid-amount": "That amount isn't valid, or exceeds what's available.",
   "not-found": "That petty cash fund could not be found.",
+  "period-closed": "The transaction date is in a closed accounting period.",
 };
 
 export default async function PettyCashPage({

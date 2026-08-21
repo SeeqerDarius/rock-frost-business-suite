@@ -19,6 +19,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "missing-fields": "All required fields must be filled in.",
   "invalid-state": "That action isn't valid for this expense's current status.",
   "not-found": "That expense could not be found.",
+  "period-closed": "The payment date is in a closed accounting period.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {

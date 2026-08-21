@@ -14,6 +14,7 @@ import {
   NotFoundError,
   InvalidPaymentError,
   PettyCashStateError,
+  AccountingPeriodLockedError,
 } from "@/modules/accounting/service";
 import { moneyAmountPositive, shortText, longText, cuid, dateInput, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
@@ -32,6 +33,7 @@ async function auth() {
 }
 
 function fail(error: unknown): never {
+  if (error instanceof AccountingPeriodLockedError) redirect(`${PATH}?error=period-closed`);
   if (error instanceof PettyCashStateError) redirect(`${PATH}?error=invalid-state`);
   if (error instanceof InvalidPaymentError) redirect(`${PATH}?error=invalid-amount`);
   if (error instanceof NotFoundError) redirect(`${PATH}?error=not-found`);

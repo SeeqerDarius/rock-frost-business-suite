@@ -63,6 +63,8 @@ export const PERMISSIONS = {
   ACCOUNTING_SETTINGS_MANAGE: "accounting.settings.manage",
   ACCOUNTING_CASHBOOK_MANAGE: "accounting.cashbook.manage",
   ACCOUNTING_RECONCILIATIONS_MANAGE: "accounting.reconciliations.manage",
+  ACCOUNTING_PERIODS_MANAGE: "accounting.periods.manage",
+  ACCOUNTING_JOURNALS_REVERSE: "accounting.journals.reverse",
   HR_VIEW: "hr.view",
   HR_EMPLOYEES_MANAGE: "hr.employees.manage",
   HR_EMPLOYEES_VIEW: "hr.employees.view",
@@ -277,6 +279,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     PERMISSIONS.ACCOUNTING_SETTINGS_MANAGE,
     PERMISSIONS.ACCOUNTING_CASHBOOK_MANAGE,
     PERMISSIONS.ACCOUNTING_RECONCILIATIONS_MANAGE,
+    PERMISSIONS.ACCOUNTING_PERIODS_MANAGE,
+    PERMISSIONS.ACCOUNTING_JOURNALS_REVERSE,
   ]),
   "HR Manager": moduleRolePermissions([
     PERMISSIONS.HR_VIEW,

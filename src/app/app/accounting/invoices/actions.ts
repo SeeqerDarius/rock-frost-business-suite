@@ -14,6 +14,7 @@ import {
   InvoiceStateError,
   InvalidPaymentError,
   NotFoundError,
+  AccountingPeriodLockedError,
 } from "@/modules/accounting/service";
 import { moneyAmount, shortText, longText, email, cuid, dateInput, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
@@ -87,6 +88,7 @@ export async function sendInvoice(formData: FormData): Promise<void> {
   try {
     invoice = await markInvoiceSent(tenant.organizationId, id);
   } catch (error) {
+    if (error instanceof AccountingPeriodLockedError) redirect("/app/accounting/invoices?error=period-closed");
     if (error instanceof InvoiceStateError) {
       redirect("/app/accounting/invoices?error=invalid-state");
     }
@@ -132,6 +134,7 @@ export async function payInvoice(formData: FormData): Promise<void> {
   try {
     invoice = await recordInvoicePayment(tenant.organizationId, id, amount, paymentDate);
   } catch (error) {
+    if (error instanceof AccountingPeriodLockedError) redirect("/app/accounting/invoices?error=period-closed");
     if (error instanceof InvalidPaymentError) {
       await logAuditEvent({
         organizationId: tenant.organizationId,
@@ -183,6 +186,7 @@ export async function voidExistingInvoice(formData: FormData): Promise<void> {
   try {
     invoice = await voidInvoice(tenant.organizationId, id);
   } catch (error) {
+    if (error instanceof AccountingPeriodLockedError) redirect("/app/accounting/invoices?error=period-closed");
     if (error instanceof InvoiceStateError) {
       redirect("/app/accounting/invoices?error=has-payment");
     }
