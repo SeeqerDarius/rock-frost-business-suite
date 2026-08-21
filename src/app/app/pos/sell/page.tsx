@@ -97,42 +97,6 @@ export default async function PosSellPage({
               <Input id="customerName" name="customerName" />
             </div>
 
-            <div className="hidden">{[1, 2, 3].map((i) => (
-              <div key={i} className="space-y-2 rounded-lg border p-3">
-                <p className="text-xs font-medium text-muted-foreground">Line {i}</p>
-                <div className="space-y-2">
-                  <Label htmlFor={`itemId${i}`}>Inventory item (optional)</Label>
-                  <Select name={`itemId${i}`} defaultValue="" items={{ "": "None", ...itemItems }}>
-                    <SelectTrigger id={`itemId${i}`} className="w-full">
-                      <SelectValue placeholder="None" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">None</SelectItem>
-                      {Object.entries(itemItems).map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`description${i}`}>Description</Label>
-                  <Input id={`description${i}`} name={`description${i}`} />
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor={`quantity${i}`}>Quantity</Label>
-                    <Input id={`quantity${i}`} name={`quantity${i}`} type="number" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor={`unitPrice${i}`}>Unit price</Label>
-                    <Input id={`unitPrice${i}`} name={`unitPrice${i}`} type="number" step="0.01" />
-                  </div>
-                </div>
-              </div>
-            ))}</div>
-
             <SaleCart items={items.map((item) => ({ id: item.id, name: item.name, sku: item.sku, barcode: item.barcode, price: Number(item.costPrice).toFixed(2) }))} />
           </form>
         </CardContent>
