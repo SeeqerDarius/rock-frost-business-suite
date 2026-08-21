@@ -79,6 +79,7 @@ export function listItems(organizationId: string) {
 
 interface ItemInput {
   sku: string;
+  barcode?: string | null;
   name: string;
   imageData?: string | null;
   categoryId?: string | null;
@@ -89,6 +90,7 @@ interface ItemInput {
 }
 
 export class ItemSkuTakenError extends Error {}
+export class ItemBarcodeTakenError extends Error {}
 
 async function requireCategory(organizationId: string, categoryId: string) {
   const category = await db.inventoryCategory.findFirst({ where: { id: categoryId, organizationId } });
@@ -101,6 +103,8 @@ export async function createItem(organizationId: string, data: ItemInput) {
     return await db.inventoryItem.create({ data: { organizationId, ...data } });
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "P2002") {
+      const target = (error as { meta?: { target?: string[] } }).meta?.target;
+      if (target?.includes("barcode")) throw new ItemBarcodeTakenError("Barcode is already in use.");
       throw new ItemSkuTakenError(`SKU "${data.sku}" is already in use.`);
     }
     throw error;
@@ -113,6 +117,8 @@ export async function updateItem(organizationId: string, id: string, data: ItemI
     return await db.inventoryItem.update({ where: { id, organizationId }, data });
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "P2002") {
+      const target = (error as { meta?: { target?: string[] } }).meta?.target;
+      if (target?.includes("barcode")) throw new ItemBarcodeTakenError("Barcode is already in use.");
       throw new ItemSkuTakenError(`SKU "${data.sku}" is already in use.`);
     }
     throw error;
@@ -121,6 +127,13 @@ export async function updateItem(organizationId: string, id: string, data: ItemI
 
 export function getItemImage(organizationId: string, id: string) {
   return db.inventoryItem.findFirst({ where: { id, organizationId }, select: { imageData: true, updatedAt: true } });
+}
+
+export function findItemByBarcode(organizationId: string, barcode: string) {
+  return db.inventoryItem.findFirst({
+    where: { organizationId, barcode, active: true },
+    include: { category: true, stock: { include: { warehouse: true } } },
+  });
 }
 
 // --- Stock ---
@@ -272,6 +285,140 @@ export function listMovements(organizationId: string) {
     include: { item: true, warehouse: true, toWarehouse: true, createdBy: true },
     orderBy: { occurredAt: "desc" },
     take: 200,
+  });
+}
+
+// --- Stock counts ---
+
+export class InventoryCountStateError extends Error {}
+export class InventoryCountApprovalError extends Error {}
+
+export function listInventoryCounts(organizationId: string) {
+  return db.inventoryCount.findMany({
+    where: { organizationId },
+    include: { warehouse: true, lines: { include: { item: true }, orderBy: { item: { name: "asc" } } } },
+    orderBy: [{ countDate: "desc" }, { createdAt: "desc" }],
+    take: 100,
+  });
+}
+
+export async function createInventoryCount(
+  organizationId: string,
+  input: { warehouseId: string; countDate: Date; notes?: string | null; createdById?: string | null },
+) {
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${organizationId}:inventory-count-number`}))`;
+    const warehouse = await tx.inventoryWarehouse.findFirst({ where: { id: input.warehouseId, organizationId, active: true } });
+    if (!warehouse) throw new NotFoundError("Warehouse not found.");
+    const items = await tx.inventoryItem.findMany({
+      where: { organizationId, active: true },
+      include: { stock: { where: { warehouseId: input.warehouseId } } },
+      orderBy: { name: "asc" },
+    });
+    if (items.length === 0) throw new InventoryCountStateError("Add an active inventory item before starting a stock count.");
+    const sequence = await tx.inventoryCount.count({ where: { organizationId } });
+    return tx.inventoryCount.create({
+      data: {
+        organizationId,
+        warehouseId: input.warehouseId,
+        countDate: input.countDate,
+        notes: input.notes,
+        createdById: input.createdById,
+        countNumber: `CNT-${String(sequence + 1).padStart(6, "0")}`,
+        lines: {
+          create: items.map((item) => ({ itemId: item.id, expectedQuantity: item.stock[0]?.quantity ?? 0 })),
+        },
+      },
+      include: { lines: true },
+    });
+  });
+}
+
+export async function updateInventoryCountLine(
+  organizationId: string,
+  countId: string,
+  lineId: string,
+  countedQuantity: number,
+  notes?: string | null,
+) {
+  if (!Number.isInteger(countedQuantity) || countedQuantity < 0) throw new Error("Counted quantity must be a non-negative whole number.");
+  const line = await db.inventoryCountLine.findFirst({
+    where: { id: lineId, countId, count: { organizationId, status: "DRAFT" } },
+  });
+  if (!line) throw new InventoryCountStateError("Draft count line not found.");
+  return db.inventoryCountLine.update({
+    where: { id: line.id },
+    data: { countedQuantity, variance: countedQuantity - line.expectedQuantity, notes },
+  });
+}
+
+export async function submitInventoryCount(organizationId: string, countId: string) {
+  const count = await db.inventoryCount.findFirst({ where: { id: countId, organizationId, status: "DRAFT" }, include: { lines: true } });
+  if (!count || count.lines.length === 0 || count.lines.some((line) => line.countedQuantity === null)) {
+    throw new InventoryCountStateError("Every line must be counted before submission.");
+  }
+  const claimed = await db.inventoryCount.updateMany({ where: { id: count.id, organizationId, status: "DRAFT" }, data: { status: "SUBMITTED", submittedAt: new Date() } });
+  if (claimed.count === 0) throw new InventoryCountStateError("This stock count is no longer a draft.");
+  return db.inventoryCount.findFirstOrThrow({ where: { id: count.id, organizationId } });
+}
+
+export async function reviewInventoryCount(
+  organizationId: string,
+  countId: string,
+  input: { decision: "APPROVE" | "REJECT"; actorId: string; reason?: string | null },
+) {
+  const count = await db.inventoryCount.findFirst({ where: { id: countId, organizationId, status: "SUBMITTED" } });
+  if (!count) throw new InventoryCountStateError("Submitted stock count not found.");
+  if (count.createdById === input.actorId) throw new InventoryCountApprovalError("The count creator cannot approve or reject the same count.");
+  if (input.decision === "REJECT" && !input.reason?.trim()) throw new InventoryCountApprovalError("A rejection reason is required.");
+  const claimed = await db.inventoryCount.updateMany({
+    where: { id: count.id, organizationId, status: "SUBMITTED" },
+    data: input.decision === "APPROVE"
+      ? { status: "APPROVED", approvedById: input.actorId, approvedAt: new Date() }
+      : { status: "REJECTED", rejectedById: input.actorId, rejectedAt: new Date(), rejectionReason: input.reason },
+  });
+  if (claimed.count === 0) throw new InventoryCountStateError("This stock count was already reviewed.");
+  return db.inventoryCount.findFirstOrThrow({ where: { id: count.id, organizationId } });
+}
+
+export async function postInventoryCount(organizationId: string, countId: string, actorId: string) {
+  return db.$transaction(async (tx) => {
+    const count = await tx.inventoryCount.findFirst({
+      where: { id: countId, organizationId, status: "APPROVED" },
+      include: { lines: true },
+    });
+    if (!count) throw new InventoryCountStateError("Approved stock count not found.");
+    const claimed = await tx.inventoryCount.updateMany({
+      where: { id: count.id, organizationId, status: "APPROVED" },
+      data: { status: "POSTED", postedById: actorId, postedAt: new Date() },
+    });
+    if (claimed.count === 0) throw new InventoryCountStateError("This stock count was already posted.");
+
+    for (const line of count.lines) {
+      if (line.countedQuantity === null) throw new InventoryCountStateError("A count line has no counted quantity.");
+      await tx.inventoryStock.createMany({ data: [{ itemId: line.itemId, warehouseId: count.warehouseId, quantity: 0 }], skipDuplicates: true });
+      const rows = await tx.$queryRaw<{ id: string; quantity: number }[]>`
+        SELECT "id", "quantity" FROM "InventoryStock"
+        WHERE "itemId" = ${line.itemId} AND "warehouseId" = ${count.warehouseId}
+        FOR UPDATE
+      `;
+      const current = rows[0];
+      if (!current) throw new InventoryCountStateError("Inventory stock row could not be locked.");
+      const adjustment = line.countedQuantity - current.quantity;
+      if (adjustment !== 0) {
+        await recordMovementInTx(tx, organizationId, {
+          itemId: line.itemId,
+          warehouseId: count.warehouseId,
+          type: "ADJUSTMENT",
+          quantity: adjustment,
+          reference: count.countNumber,
+          notes: `Posted physical count ${count.countNumber}`,
+          createdById: actorId,
+          occurredAt: count.countDate,
+        });
+      }
+    }
+    return tx.inventoryCount.findFirstOrThrow({ where: { id: count.id, organizationId }, include: { lines: true } });
   });
 }
 

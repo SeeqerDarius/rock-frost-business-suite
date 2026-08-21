@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createItem, updateItem, ItemSkuTakenError, NotFoundError } from "@/modules/inventory/service";
+import { createItem, updateItem, ItemBarcodeTakenError, ItemSkuTakenError, NotFoundError } from "@/modules/inventory/service";
 import { shortText, moneyAmount, cuid, parseWithSchema } from "@/lib/validation";
 import { inventoryItemImageData } from "@/lib/inventory-item-image";
 
@@ -19,6 +19,7 @@ const nonNegativeInt = z.coerce.number().int().min(0);
 
 const itemSchema = z.object({
   sku: shortText,
+  barcode: shortText.nullable().optional(),
   name: shortText,
   categoryId: cuid.nullable(),
   unit: shortText,
@@ -36,6 +37,7 @@ export async function upsertItem(formData: FormData): Promise<void> {
   const imageFile = formData.get("image");
   const parsed = parseWithSchema(itemSchema, {
     sku: clean(formData.get("sku")) ?? "",
+    barcode: clean(formData.get("barcode")),
     name: clean(formData.get("name")) ?? "",
     categoryId: clean(formData.get("categoryId")),
     unit: clean(formData.get("unit")) ?? "unit",
@@ -56,6 +58,7 @@ export async function upsertItem(formData: FormData): Promise<void> {
 
   const data = {
     sku: parsed.data.sku,
+    barcode: parsed.data.barcode ?? null,
     name: parsed.data.name,
     categoryId: parsed.data.categoryId,
     unit: parsed.data.unit,
@@ -75,6 +78,7 @@ export async function upsertItem(formData: FormData): Promise<void> {
     if (error instanceof ItemSkuTakenError) {
       redirect("/app/inventory/items?error=sku-taken");
     }
+    if (error instanceof ItemBarcodeTakenError) redirect("/app/inventory/items?error=barcode-taken");
     if (error instanceof NotFoundError) {
       redirect("/app/inventory/items?error=not-found");
     }

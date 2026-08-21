@@ -19,12 +19,13 @@ const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage items.",
   "missing-fields": "SKU, name, and cost price are required.",
   "sku-taken": "That SKU is already in use by another item.",
+  "barcode-taken": "That barcode is already assigned to another item.",
   "not-found": "That category could not be found.",
   "invalid-image": "Choose a valid JPG, PNG, or WebP image no larger than 1 MB.",
 };
 
 interface ItemFieldsProps {
-  item?: { id: string; sku: string; name: string; imageData: string | null; categoryId: string | null; unit: string; costPrice: string; reorderPoint: number; active: boolean };
+  item?: { id: string; sku: string; barcode: string | null; name: string; imageData: string | null; categoryId: string | null; unit: string; costPrice: string; reorderPoint: number; active: boolean };
   categoryItems: Record<string, string>;
   /** Only applied for a brand-new item — set on Inventory Settings ("Default reorder point for new items"). */
   defaultReorderPoint?: number;
@@ -44,6 +45,7 @@ function ItemFields({ item, categoryItems, defaultReorderPoint = 0 }: ItemFields
           <Input id={`name${idSuffix}`} name="name" defaultValue={item?.name} required />
         </div>
       </div>
+      <div className="space-y-2"><Label htmlFor={`barcode${idSuffix}`}>Barcode</Label><Input id={`barcode${idSuffix}`} name="barcode" defaultValue={item?.barcode ?? ""} placeholder="Optional manufacturer or internal barcode" /></div>
       <div className="space-y-2">
         <Label htmlFor={`image${idSuffix}`}>{item?.imageData ? "Replace item image" : "Item image"}</Label>
         {item?.imageData ? <div className="flex items-center gap-3 rounded-md border p-2"><Image src={`/api/inventory/items/${item.id}/image`} alt={`${item.name} item`} width={56} height={56} unoptimized className="size-14 rounded-md object-cover" /><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="removeImage" />Remove current image</label></div> : null}
