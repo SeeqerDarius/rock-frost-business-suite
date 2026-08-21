@@ -151,4 +151,23 @@ describe("POS concurrency (real Postgres)", () => {
     });
     expect(receiptCount).toBe(2); // seed RECEIPT + refund RECEIPT
   });
+
+  it("two concurrent partial returns cannot return more than the sold quantity", async () => {
+    const { warehouse, item, session } = await setupRegisterAndSession(20);
+    const sale = await pos.createSale(org.organizationId, {
+      sessionId: session.id,
+      paymentMethod: "CASH",
+      lines: [{ itemId: item.id, description: "Partial return item", quantity: 5, unitPrice: "10.00" }],
+    });
+    const line = await testDb.posSaleLine.findFirstOrThrow({ where: { saleId: sale.id } });
+    const attempts = await Promise.allSettled([
+      pos.returnSaleLines(org.organizationId, sale.id, { lines: [{ saleLineId: line.id, quantity: 4 }], reason: "First return", refundMethod: "CASH" }),
+      pos.returnSaleLines(org.organizationId, sale.id, { lines: [{ saleLineId: line.id, quantity: 4 }], reason: "Second return", refundMethod: "CASH" }),
+    ]);
+    expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(1);
+    expect(attempts.filter((attempt) => attempt.status === "rejected")).toHaveLength(1);
+    const returned = await testDb.posReturnLine.aggregate({ where: { saleLineId: line.id }, _sum: { quantity: true } });
+    expect(returned._sum.quantity).toBe(4);
+    expect(await stockQuantity(item.id, warehouse.id)).toBe(19);
+  });
 });

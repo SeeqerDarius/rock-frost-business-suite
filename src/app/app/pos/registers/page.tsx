@@ -20,6 +20,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   "session-open": "This register already has an open session.",
   "session-closed": "This session is already closed.",
   "not-found": "That register or warehouse could not be found.",
+  "variance-reason": "Explain any difference between expected cash and counted cash.",
+  "variance-approval": "You need cash variance approval permission to close with a difference.",
 };
 
 interface RegisterFieldsProps {
@@ -126,6 +128,10 @@ export default async function PosRegistersPage({
                           <div className="space-y-2">
                             <Label htmlFor={`closingCash-${register.id}`}>Closing cash count</Label>
                             <Input id={`closingCash-${register.id}`} name="closingCash" type="number" step="0.01" required />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`varianceReason-${register.id}`}>Variance reason (required if cash differs)</Label>
+                            <Input id={`varianceReason-${register.id}`} name="varianceReason" />
                           </div>
                         </EntityDialog>
                       ) : null}

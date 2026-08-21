@@ -11,6 +11,7 @@ import {
   openSession,
   closeSession,
   SessionStateError,
+  VarianceApprovalRequiredError,
   NotFoundError,
 } from "@/modules/pos/service";
 import { shortText, moneyAmountNonNegative, cuid, parseWithSchema } from "@/lib/validation";
@@ -108,9 +109,11 @@ export async function closeRegisterSession(formData: FormData): Promise<void> {
 
   const authSession = await getServerAuthSession();
   try {
-    await closeSession(tenant.organizationId, sessionId, { closingCash: parsed.data, closedById: authSession?.user?.id ?? null });
+    await closeSession(tenant.organizationId, sessionId, { closingCash: parsed.data, varianceReason: clean(formData.get("varianceReason")), allowVariance: hasPermission(tenant, PERMISSIONS.POS_VARIANCES_APPROVE), closedById: authSession?.user?.id ?? null });
   } catch (error) {
     if (error instanceof SessionStateError) redirect("/app/pos/registers?error=session-closed");
+    if (error instanceof VarianceApprovalRequiredError) redirect("/app/pos/registers?error=variance-approval");
+    if (error instanceof Error && error.name === "InvalidSaleInputError") redirect("/app/pos/registers?error=variance-reason");
     throw error;
   }
 

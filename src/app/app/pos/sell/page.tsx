@@ -2,7 +2,6 @@ import { ShoppingBag } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -11,6 +10,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listRegisters } from "@/modules/pos/service";
 import { listItems } from "@/modules/inventory/service";
 import { completeSale } from "./actions";
+import { SaleCart } from "./sale-cart";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to record sales.",
@@ -21,8 +21,6 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-line": "Every line needs a positive whole-number quantity and a valid unit price.",
   "not-found": "That session or register could not be found.",
 };
-
-const PAYMENT_METHODS: Record<string, string> = { CASH: "Cash", CARD: "Card", MOBILE_MONEY: "Mobile Money", OTHER: "Other" };
 
 export default async function PosSellPage({
   searchParams,
@@ -36,7 +34,6 @@ export default async function PosSellPage({
   const openSessionItems: Record<string, string> = Object.fromEntries(
     registers.filter((r) => r.sessions[0]).map((r) => [r.sessions[0].id, r.name]),
   );
-  const itemItems: Record<string, string> = Object.fromEntries(items.map((i) => [i.id, `${i.name} (${i.sku})`]));
 
   if (!canSell) {
     return (
@@ -74,7 +71,7 @@ export default async function PosSellPage({
       <Card>
         <CardHeader>
           <CardTitle>New sale</CardTitle>
-          <CardDescription>Up to three line items per sale.</CardDescription>
+          <CardDescription>Add up to 100 lines, scan barcodes, split payment, or suspend the sale.</CardDescription>
         </CardHeader>
         <CardContent>
           <form action={completeSale} className="space-y-4">
@@ -94,28 +91,13 @@ export default async function PosSellPage({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="paymentMethod">Payment method</Label>
-                <Select name="paymentMethod" defaultValue="CASH" items={PAYMENT_METHODS}>
-                  <SelectTrigger id="paymentMethod" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(PAYMENT_METHODS).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="customerName">Customer name (optional)</Label>
               <Input id="customerName" name="customerName" />
             </div>
 
-            {[1, 2, 3].map((i) => (
+            <div className="hidden">{[1, 2, 3].map((i) => (
               <div key={i} className="space-y-2 rounded-lg border p-3">
                 <p className="text-xs font-medium text-muted-foreground">Line {i}</p>
                 <div className="space-y-2">
@@ -149,11 +131,9 @@ export default async function PosSellPage({
                   </div>
                 </div>
               </div>
-            ))}
+            ))}</div>
 
-            <Button type="submit" className="w-full">
-              Complete sale
-            </Button>
+            <SaleCart items={items.map((item) => ({ id: item.id, name: item.name, sku: item.sku, barcode: item.barcode, price: Number(item.costPrice).toFixed(2) }))} />
           </form>
         </CardContent>
       </Card>

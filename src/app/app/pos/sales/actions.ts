@@ -6,62 +6,43 @@ import { z } from "zod";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { refundSale, SaleStateError, NotFoundError } from "@/modules/pos/service";
-import { cuid, parseWithSchema } from "@/lib/validation";
+import { returnSaleLines, resumeSuspendedSale, SaleStateError, InvalidSaleInputError, NotFoundError } from "@/modules/pos/service";
+import { cuid, moneyAmountNonNegative, parseWithSchema, positiveInt, shortText } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
 
-function clean(value: FormDataEntryValue | null): string {
-  return String(value ?? "").trim();
-}
+const methods = ["CASH", "CARD", "MOBILE_MONEY", "OTHER"] as const;
+const clean = (value: FormDataEntryValue | null) => String(value ?? "").trim();
+const returnSchema = z.object({ saleId: cuid, reason: shortText, refundMethod: z.enum(methods), lines: z.array(z.object({ saleLineId: cuid, quantity: positiveInt })).min(1).max(100) });
+const resumeSchema = z.object({ saleId: cuid, method: z.enum(methods), amount: moneyAmountNonNegative });
 
-const idSchema = z.object({ id: cuid });
-
-export async function refundExistingSale(formData: FormData): Promise<void> {
+export async function returnSale(formData: FormData): Promise<void> {
   const tenant = await requireModuleAccess("pos");
-  if (!hasPermission(tenant, PERMISSIONS.POS_SALES_MANAGE)) {
-    redirect("/app/pos/sales?error=forbidden");
-  }
-
-  const parsedId = parseWithSchema(idSchema, { id: clean(formData.get("id")) });
-  if (!parsedId.success) return;
-  const { id } = parsedId.data;
-
-  const session = await getServerAuthSession();
+  if (!hasPermission(tenant, PERMISSIONS.POS_RETURNS_MANAGE)) redirect("/app/pos/sales?error=forbidden");
+  let rawLines: unknown;
+  try { rawLines = JSON.parse(clean(formData.get("lines"))); } catch { redirect("/app/pos/sales?error=invalid-return"); }
+  const parsed = parseWithSchema(returnSchema, { saleId: clean(formData.get("saleId")), reason: clean(formData.get("reason")), refundMethod: clean(formData.get("refundMethod")), lines: rawLines });
+  if (!parsed.success) redirect("/app/pos/sales?error=invalid-return");
+  const auth = await getServerAuthSession();
   try {
-    const sale = await refundSale(tenant.organizationId, id, session?.user?.id ?? null);
-
-    // refundSale()'s own transaction has already committed by the time we get
-    // here, so this is a same-request follow-up log rather than a tx-scoped
-    // one — still accurate, since we only reach it after the refund succeeded.
-    await logAuditEvent({
-      organizationId: tenant.organizationId,
-      userId: session?.user?.id ?? null,
-      module: "pos",
-      action: "pos.refund",
-      entityName: "PosSale",
-      entityId: sale.id,
-      metadata: { saleNumber: sale.saleNumber },
-    });
+    const result = await returnSaleLines(tenant.organizationId, parsed.data.saleId, { ...parsed.data, processedById: auth?.user?.id ?? null });
+    await logAuditEvent({ organizationId: tenant.organizationId, userId: auth?.user?.id ?? null, module: "pos", action: "pos.return", entityName: "PosReturn", entityId: result.id, metadata: { returnNumber: result.returnNumber, refundAmount: Number(result.refundAmount) } });
   } catch (error) {
-    if (error instanceof SaleStateError) {
-      await logAuditEvent({
-        organizationId: tenant.organizationId,
-        userId: session?.user?.id ?? null,
-        module: "pos",
-        action: "pos.refund",
-        entityName: "PosSale",
-        entityId: id,
-        status: "FAILURE",
-        metadata: { reason: error.constructor.name },
-      });
-      redirect("/app/pos/sales?error=invalid-state");
-    }
+    if (error instanceof InvalidSaleInputError || error instanceof SaleStateError) redirect("/app/pos/sales?error=invalid-return");
     if (error instanceof NotFoundError) redirect("/app/pos/sales?error=not-found");
     throw error;
   }
+  revalidatePath("/app/pos/sales"); revalidatePath("/app/inventory/stock");
+  redirect("/app/pos/sales?saved=1");
+}
 
-  revalidatePath("/app/pos/sales");
-  revalidatePath("/app/inventory/stock");
-  revalidatePath("/app/inventory/items");
+export async function resumeSale(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("pos");
+  if (!hasPermission(tenant, PERMISSIONS.POS_SALES_MANAGE)) redirect("/app/pos/sales?error=forbidden");
+  const parsed = parseWithSchema(resumeSchema, { saleId: clean(formData.get("saleId")), method: clean(formData.get("method")), amount: clean(formData.get("amount")) });
+  if (!parsed.success) redirect("/app/pos/sales?error=invalid-payment");
+  const auth = await getServerAuthSession();
+  try { await resumeSuspendedSale(tenant.organizationId, parsed.data.saleId, [{ method: parsed.data.method, amount: parsed.data.amount }], auth?.user?.id ?? null); }
+  catch (error) { if (error instanceof InvalidSaleInputError || error instanceof SaleStateError) redirect("/app/pos/sales?error=invalid-payment"); throw error; }
+  revalidatePath("/app/pos/sales"); revalidatePath("/app/inventory/stock");
   redirect("/app/pos/sales?saved=1");
 }

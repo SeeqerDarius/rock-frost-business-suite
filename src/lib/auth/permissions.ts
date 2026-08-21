@@ -93,6 +93,8 @@ export const PERMISSIONS = {
   POS_REGISTERS_MANAGE: "pos.registers.manage",
   POS_SESSIONS_MANAGE: "pos.sessions.manage",
   POS_SALES_MANAGE: "pos.sales.manage",
+  POS_RETURNS_MANAGE: "pos.returns.manage",
+  POS_VARIANCES_APPROVE: "pos.variances.approve",
   POS_REPORTS_VIEW: "pos.reports.view",
   POS_SETTINGS_MANAGE: "pos.settings.manage",
   PROJECTS_VIEW: "projects.view",
