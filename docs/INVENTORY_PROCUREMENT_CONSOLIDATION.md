@@ -51,6 +51,14 @@ The Stock Counts page snapshots the expected quantity for every active item in o
 
 Posting never overwrites an absolute stock balance. It locks the current stock row, calculates the difference between the approved physical quantity and the current live ledger balance, then records an immutable `ADJUSTMENT` movement. The approved-to-posted state is claimed atomically, preventing a retry or double-click from posting the same count twice. If stock changed after the original snapshot, the adjustment is calculated against the locked live quantity rather than the stale expected quantity.
 
+## Procurement operational controls
+
+Purchase requests now accept up to 50 independently validated lines. Existing single-line requests are migrated into the new line table and retain their legacy summary fields for compatibility. Every linked Inventory item is validated inside the active organization. Request entry and approval use separate permissions, and a requester cannot approve or reject their own request.
+
+Receiving a purchase-order line creates a numbered, immutable goods receipt inside the same transaction that updates the order and posts the Inventory movement. This prevents an order from showing received stock without corresponding receipt evidence. Goods receipts are available at `/app/procurement/receipts` and are scoped by `procurement.receipts.manage`.
+
+Supplier invoices are available at `/app/procurement/invoices`. Each invoice is tied to one vendor and purchase order, checks quantities against goods received, includes previously invoiced quantities, and compares unit cost with the purchase order. Quantity overbilling is rejected. A unit-cost mismatch creates an explicit exception rather than silently matching. Matched invoices require maker-checker approval, and the creator cannot approve their own invoice. Unresolved exceptions cannot be approved.
+
 ## Known gaps
 
 - The module launcher, module registry entries, subscription/entitlement handling, and any customer-facing "Inventory & Procurement" bundling at the catalogue/pricing level are centrally owned (`src/platform/modules/registry.ts`, subscription/billing/module-request code) and out of scope for this change — see the central follow-up recorded in `OPERATOR_HANDOFF.md`'s entry for this work.

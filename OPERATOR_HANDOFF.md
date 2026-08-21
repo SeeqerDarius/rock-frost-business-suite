@@ -1,5 +1,15 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-21: Procurement multi-line requests, goods receipts, and invoice matching release candidate
+
+- Built this tranche on the validated Inventory release candidate. Purchase requests now accept 1 to 50 validated lines while preserving and backfilling legacy single-line request data. Request entry and approval have separate permissions, and maker-checker blocks a requester from reviewing their own request.
+- Every successful purchase-order receipt now creates a numbered immutable `GRN-` record inside the same transaction as the guarded received-quantity increment, Inventory movement, and order-status recomputation. Added `/app/procurement/receipts` and `procurement.receipts.manage`.
+- Added `/app/procurement/invoices` with supplier invoices tied to vendor, order, and lines. Matching rejects quantities beyond received and previously invoiced quantities, flags purchase-order unit-cost differences as exceptions, and requires separate approval. The invoice creator cannot approve their own invoice and unresolved exceptions cannot be approved.
+- Added `procurement.requests.approve`, `procurement.receipts.manage`, `procurement.invoices.manage`, and `procurement.invoices.approve`; the platform now seeds 150 permission keys. Added migration `20260821020000_procurement_receipts_invoices`, including a legacy request-line backfill.
+- Important files: `prisma/schema.prisma`, `prisma/migrations/20260821020000_procurement_receipts_invoices/migration.sql`, `src/modules/procurement/service.ts`, `src/app/app/procurement/requests/`, `src/app/app/procurement/receipts/`, `src/app/app/procurement/invoices/`, `src/app/app/procurement/orders/`, `src/modules/inventory-procurement/navigation.tsx`, and `test/procurement-invoice-matching.test.ts`.
+- Validation: Prisma format, validate, and generate passed. TypeScript and ESLint passed. Full mocked suite passed with 84 files and 563 tests; the final maker-checker addition then passed its focused 2-file, 14-test regression set. The Next.js production build compiled 208 routes, including Goods Receipts and Supplier Invoices. A real PostgreSQL cross-tenant supplier-invoice test is included but cannot run locally because `TEST_DATABASE_URL` is unset.
+- Release status: local release candidate only at this entry. This second additive migration must pass the disposable PostgreSQL integration gate before merge or production deployment.
+
 ## 2026-08-21: Inventory barcode and controlled physical-count release candidate
 
 - Added optional organization-scoped item barcodes and a tenant-scoped barcode resolver. A barcode is unique within one organization but may be reused by a different tenant. Item create and update actions return a bounded duplicate-barcode error without exposing database details.

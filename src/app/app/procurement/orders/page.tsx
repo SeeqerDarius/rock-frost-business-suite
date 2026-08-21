@@ -41,6 +41,7 @@ export default async function ProcurementOrdersPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("procurement");
   const canManage = hasPermission(tenant, PERMISSIONS.PROCUREMENT_ORDERS_MANAGE);
+  const canReceive = hasPermission(tenant, PERMISSIONS.PROCUREMENT_RECEIPTS_MANAGE);
   const [orders, vendors, requests, items, warehouses, settings] = await Promise.all([
     listOrders(tenant.organizationId),
     listVendors(tenant.organizationId),
@@ -179,7 +180,7 @@ export default async function ProcurementOrdersPage({
               <div className="mt-2 space-y-2">
                 {order.lines.map((line) => {
                   const remaining = line.quantity - line.receivedQuantity;
-                  const canReceive = canManage && remaining > 0 && (order.status === "SENT" || order.status === "PARTIALLY_RECEIVED");
+                  const canReceiveLine = canReceive && remaining > 0 && (order.status === "SENT" || order.status === "PARTIALLY_RECEIVED");
                   return (
                     <div key={line.id} className="flex items-center justify-between gap-4 rounded-md bg-muted/40 p-2 text-sm">
                       <div>
@@ -188,7 +189,7 @@ export default async function ProcurementOrdersPage({
                           {line.receivedQuantity} / {line.quantity} received · {Number(line.unitCost).toFixed(2)} each
                         </p>
                       </div>
-                      {canReceive ? (
+                      {canReceiveLine ? (
                         <EntityDialog
                           trigger={<Button size="sm" variant="ghost">Receive</Button>}
                           title={`Receive: ${line.description}`}

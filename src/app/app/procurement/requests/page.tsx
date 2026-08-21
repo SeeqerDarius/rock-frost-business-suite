@@ -5,20 +5,20 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listRequests } from "@/modules/procurement/service";
 import { listItems } from "@/modules/inventory/service";
 import { createNewRequest, approveExistingRequest, rejectExistingRequest } from "./actions";
+import { RequestLinesField } from "./request-lines-field";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage requests.",
   "missing-fields": "Description and quantity are required.",
   "invalid-state": "That action isn't valid for this request's current status.",
+  "maker-checker": "The request creator cannot approve or reject the same request.",
   "not-found": "That item or request could not be found.",
 };
 
@@ -37,8 +37,9 @@ export default async function ProcurementRequestsPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("procurement");
   const canManage = hasPermission(tenant, PERMISSIONS.PROCUREMENT_REQUESTS_MANAGE);
+  const canApprove = hasPermission(tenant, PERMISSIONS.PROCUREMENT_REQUESTS_APPROVE);
   const [requests, items] = await Promise.all([listRequests(tenant.organizationId), listItems(tenant.organizationId)]);
-  const itemItems: Record<string, string> = Object.fromEntries(items.map((i) => [i.id, `${i.name} (${i.sku})`]));
+  const itemOptions = items.map((item) => ({ id: item.id, label: `${item.name} (${item.sku})` }));
 
   return (
     <div className="space-y-6">
@@ -46,36 +47,7 @@ export default async function ProcurementRequestsPage({
         <PageHeader title="Requests" description="Purchase requests awaiting approval." />
         {canManage ? (
           <EntityDialog trigger={<Button size="sm"><Plus />New request</Button>} title="New purchase request" action={createNewRequest}>
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Input id="description" name="description" required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="itemId">Inventory item (optional)</Label>
-              <Select name="itemId" defaultValue="" items={{ "": "None", ...itemItems }}>
-                <SelectTrigger id="itemId" className="w-full">
-                  <SelectValue placeholder="None" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">None</SelectItem>
-                  {Object.entries(itemItems).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="quantity">Quantity</Label>
-                <Input id="quantity" name="quantity" type="number" required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="estimatedCost">Estimated cost</Label>
-                <Input id="estimatedCost" name="estimatedCost" type="number" step="0.01" />
-              </div>
-            </div>
+            <RequestLinesField items={itemOptions} />
             <div className="space-y-2">
               <Label htmlFor="notes">Notes</Label>
               <Textarea id="notes" name="notes" rows={3} />
@@ -106,20 +78,20 @@ export default async function ProcurementRequestsPage({
               <TableHead>Quantity</TableHead>
               <TableHead>Est. cost</TableHead>
               <TableHead>Status</TableHead>
-              {canManage ? <TableHead /> : null}
+              {canApprove ? <TableHead /> : null}
             </TableRow>
           </TableHeader>
           <TableBody>
             {requests.map((request) => (
               <TableRow key={request.id}>
                 <TableCell className="font-mono text-xs">{request.requestNumber}</TableCell>
-                <TableCell className="font-medium">{request.description}</TableCell>
-                <TableCell className="text-muted-foreground">{request.quantity}</TableCell>
-                <TableCell className="text-muted-foreground">{request.estimatedCost ? Number(request.estimatedCost).toFixed(2) : "-"}</TableCell>
+                <TableCell className="font-medium">{request.lines.length > 1 ? `${request.lines.length} requested items` : request.description}</TableCell>
+                <TableCell className="text-muted-foreground">{request.lines.reduce((sum, line) => sum + line.quantity, 0)}</TableCell>
+                <TableCell className="text-muted-foreground">{request.lines.some((line) => line.estimatedCost) ? request.lines.reduce((sum, line) => sum + Number(line.estimatedCost ?? 0), 0).toFixed(2) : "-"}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[request.status]}>{request.status}</Badge>
                 </TableCell>
-                {canManage ? (
+                {canApprove ? (
                   <TableCell className="text-right">
                     {request.status === "PENDING" ? (
                       <div className="flex justify-end gap-1">

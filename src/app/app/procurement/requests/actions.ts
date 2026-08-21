@@ -6,7 +6,7 @@ import { z } from "zod";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { createRequest, approveRequest, rejectRequest, RequestStateError, NotFoundError } from "@/modules/procurement/service";
+import { createRequest, approveRequest, rejectRequest, RequestApprovalError, RequestStateError, NotFoundError } from "@/modules/procurement/service";
 import { shortText, positiveInt, moneyAmountNonNegative, longText, cuid, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null): string {
@@ -21,10 +21,7 @@ function optional<T extends z.ZodTypeAny>(schema: T) {
 const idSchema = z.object({ id: cuid });
 
 const createRequestSchema = z.object({
-  description: shortText,
-  quantity: positiveInt,
-  itemId: optional(cuid),
-  estimatedCost: optional(moneyAmountNonNegative),
+  lines: z.array(z.object({ description: shortText, quantity: positiveInt, itemId: cuid.nullable(), estimatedCost: moneyAmountNonNegative.nullable() })).min(1).max(50),
   notes: optional(longText),
 });
 
@@ -34,25 +31,22 @@ export async function createNewRequest(formData: FormData): Promise<void> {
     redirect("/app/procurement/requests?error=forbidden");
   }
 
-  const parsed = parseWithSchema(createRequestSchema, {
-    description: clean(formData.get("description")),
-    quantity: clean(formData.get("quantity")),
-    itemId: clean(formData.get("itemId")),
-    estimatedCost: clean(formData.get("estimatedCost")),
-    notes: clean(formData.get("notes")),
-  });
+  let rawLines: unknown;
+  try { rawLines = JSON.parse(clean(formData.get("linesJson"))); } catch { redirect("/app/procurement/requests?error=missing-fields"); }
+  const parsed = parseWithSchema(createRequestSchema, { lines: rawLines, notes: clean(formData.get("notes")) });
   if (!parsed.success) {
     redirect("/app/procurement/requests?error=missing-fields");
   }
-  const { description, quantity, itemId, estimatedCost, notes } = parsed.data;
+  const { lines, notes } = parsed.data;
 
   const session = await getServerAuthSession();
   try {
     await createRequest(tenant.organizationId, {
-      itemId,
-      description,
-      quantity,
-      estimatedCost,
+      itemId: lines[0].itemId,
+      description: lines[0].description,
+      quantity: lines[0].quantity,
+      estimatedCost: lines[0].estimatedCost,
+      lines,
       notes,
       requestedById: session?.user?.id ?? null,
     });
@@ -67,7 +61,7 @@ export async function createNewRequest(formData: FormData): Promise<void> {
 
 export async function approveExistingRequest(formData: FormData): Promise<void> {
   const tenant = await requireModuleAccess("procurement");
-  if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_REQUESTS_MANAGE)) {
+  if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_REQUESTS_APPROVE)) {
     redirect("/app/procurement/requests?error=forbidden");
   }
   const parsedId = parseWithSchema(idSchema, { id: clean(formData.get("id")) });
@@ -79,6 +73,7 @@ export async function approveExistingRequest(formData: FormData): Promise<void> 
     await approveRequest(tenant.organizationId, id, session?.user?.id ?? null);
   } catch (error) {
     if (error instanceof RequestStateError) redirect("/app/procurement/requests?error=invalid-state");
+    if (error instanceof RequestApprovalError) redirect("/app/procurement/requests?error=maker-checker");
     if (error instanceof NotFoundError) redirect("/app/procurement/requests?error=not-found");
     throw error;
   }
@@ -89,7 +84,7 @@ export async function approveExistingRequest(formData: FormData): Promise<void> 
 
 export async function rejectExistingRequest(formData: FormData): Promise<void> {
   const tenant = await requireModuleAccess("procurement");
-  if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_REQUESTS_MANAGE)) {
+  if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_REQUESTS_APPROVE)) {
     redirect("/app/procurement/requests?error=forbidden");
   }
   const parsedId = parseWithSchema(idSchema, { id: clean(formData.get("id")) });
@@ -101,6 +96,7 @@ export async function rejectExistingRequest(formData: FormData): Promise<void> {
     await rejectRequest(tenant.organizationId, id, session?.user?.id ?? null);
   } catch (error) {
     if (error instanceof RequestStateError) redirect("/app/procurement/requests?error=invalid-state");
+    if (error instanceof RequestApprovalError) redirect("/app/procurement/requests?error=maker-checker");
     if (error instanceof NotFoundError) redirect("/app/procurement/requests?error=not-found");
     throw error;
   }
