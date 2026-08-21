@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import { recordMovement, getStockGrid, InsufficientStockError, NotFoundError } from "@/modules/inventory/service";
-import type { PosPaymentMethod } from "@prisma/client";
+import { Prisma, type PosPaymentMethod, type PosSaleStatus } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import {
   getOrganizationModuleConfiguration,
@@ -74,6 +74,7 @@ export async function updateRegister(organizationId: string, id: string, data: R
 // --- Sessions ---
 
 export class SessionStateError extends Error {}
+export class VarianceApprovalRequiredError extends Error {}
 
 export async function openSession(
   organizationId: string,
@@ -90,14 +91,41 @@ export async function openSession(
 export async function closeSession(
   organizationId: string,
   sessionId: string,
-  data: { closingCash: string; closedById?: string | null },
+  data: { closingCash: string; varianceReason?: string | null; allowVariance?: boolean; closedById?: string | null },
 ) {
   const session = await db.posSession.findFirst({ where: { id: sessionId, organizationId } });
   if (!session) throw new Error("Session not found.");
   if (session.status !== "OPEN") throw new SessionStateError("Only open sessions can be closed.");
-  return db.posSession.update({
-    where: { id: sessionId },
-    data: { status: "CLOSED", closingCash: data.closingCash, closedById: data.closedById, closedAt: new Date() },
+  const [cashPayments, cashRefunds] = await Promise.all([
+    db.posPayment.aggregate({ where: { organizationId, sale: { sessionId }, method: "CASH" }, _sum: { amount: true } }),
+    db.posReturn.aggregate({ where: { organizationId, sale: { sessionId }, status: "COMPLETED", refundMethod: "CASH" }, _sum: { refundAmount: true } }),
+  ]);
+  const expectedCash = new Prisma.Decimal(session.openingFloat)
+    .plus(cashPayments._sum.amount ?? 0)
+    .minus(cashRefunds._sum.refundAmount ?? 0);
+  const closingCash = new Prisma.Decimal(data.closingCash);
+  const cashVariance = closingCash.minus(expectedCash);
+  return db.$transaction(async (tx) => {
+    const claimed = await tx.posSession.updateMany({
+      where: { id: sessionId, organizationId, status: "OPEN" },
+      data: {
+        status: "CLOSED",
+        closingCash,
+        expectedCash,
+        cashVariance,
+        varianceReason: cashVariance.isZero() ? null : data.varianceReason?.trim() || null,
+        closedById: data.closedById,
+        closedAt: new Date(),
+      },
+    });
+    if (claimed.count !== 1) throw new SessionStateError("This session was already closed.");
+    if (!cashVariance.isZero() && !data.varianceReason?.trim()) {
+      throw new InvalidSaleInputError("A reason is required when counted cash differs from expected cash.");
+    }
+    if (!cashVariance.isZero() && !data.allowVariance) {
+      throw new VarianceApprovalRequiredError("Closing a session with a cash variance requires approval permission.");
+    }
+    return tx.posSession.findUniqueOrThrow({ where: { id: sessionId } });
   });
 }
 
@@ -122,7 +150,13 @@ async function generateSaleNumber(organizationId: string) {
 export function listSales(organizationId: string) {
   return db.posSale.findMany({
     where: { organizationId },
-    include: { register: true, soldBy: true, lines: { include: { item: true } } },
+    include: {
+      register: true,
+      soldBy: true,
+      payments: true,
+      returns: { include: { lines: true } },
+      lines: { include: { item: true, returnLines: { where: { return: { status: "COMPLETED" } } } } },
+    },
     orderBy: { createdAt: "desc" },
     take: 200,
   });
@@ -135,18 +169,27 @@ interface SaleLineInput {
   unitPrice: string;
 }
 
+interface PaymentInput {
+  method: PosPaymentMethod;
+  amount: string;
+  reference?: string | null;
+}
+
 interface SaleInput {
   sessionId: string;
   customerName?: string | null;
   paymentMethod: PosPaymentMethod;
   soldById?: string | null;
   lines: SaleLineInput[];
+  payments?: PaymentInput[];
+  status?: Extract<PosSaleStatus, "COMPLETED" | "SUSPENDED">;
 }
 
 export class SaleStateError extends Error {}
 export class InvalidSaleInputError extends Error {}
 
 function validateLines(lines: SaleLineInput[]) {
+  if (lines.length === 0 || lines.length > 100) throw new InvalidSaleInputError("A sale must contain between 1 and 100 lines.");
   for (const line of lines) {
     if (!Number.isInteger(line.quantity) || line.quantity <= 0) {
       throw new InvalidSaleInputError(`"${line.description}" must have a positive whole-number quantity.`);
@@ -193,8 +236,37 @@ export async function createSale(organizationId: string, data: SaleInput) {
     }
   }
 
-  const lineTotals = data.lines.map((l) => ({ ...l, lineTotal: (Number(l.unitPrice) * l.quantity).toFixed(2) }));
-  const subtotal = lineTotals.reduce((sum, l) => sum + Number(l.lineTotal), 0);
+  const itemIds = [...new Set(data.lines.flatMap((line) => (line.itemId ? [line.itemId] : [])))];
+  const items = itemIds.length
+    ? await db.inventoryItem.findMany({ where: { organizationId, id: { in: itemIds }, active: true } })
+    : [];
+  if (items.length !== itemIds.length) throw new NotFoundError("One or more inventory items were not found.");
+  const itemMap = new Map(items.map((item) => [item.id, item]));
+  const lineTotals = data.lines.map((line) => {
+    const item = line.itemId ? itemMap.get(line.itemId) : null;
+    const unitPrice = new Prisma.Decimal(line.unitPrice);
+    return {
+      itemId: line.itemId,
+      description: item?.name ?? line.description,
+      skuSnapshot: item?.sku ?? null,
+      barcodeSnapshot: item?.barcode ?? null,
+      quantity: line.quantity,
+      unitPrice,
+      lineTotal: unitPrice.mul(line.quantity),
+    };
+  });
+  const subtotal = lineTotals.reduce((sum, line) => sum.plus(line.lineTotal), new Prisma.Decimal(0));
+  const saleStatus = data.status ?? "COMPLETED";
+  const payments = saleStatus === "COMPLETED" ? data.payments ?? [{ method: data.paymentMethod, amount: subtotal.toFixed(2) }] : [];
+  if (payments.length > 10) throw new InvalidSaleInputError("A sale supports up to 10 payment parts.");
+  const paymentTotal = payments.reduce((sum, payment) => {
+    const amount = new Prisma.Decimal(payment.amount);
+    if (!amount.isPositive()) throw new InvalidSaleInputError("Every payment amount must be greater than zero.");
+    return sum.plus(amount);
+  }, new Prisma.Decimal(0));
+  if (saleStatus === "COMPLETED" && !paymentTotal.equals(subtotal)) {
+    throw new InvalidSaleInputError("Split payments must add up exactly to the sale total.");
+  }
 
   // The whole transaction attempt is retried (not just the create call),
   // regenerating saleNumber fresh each time — a collision can only be
@@ -211,13 +283,15 @@ export async function createSale(organizationId: string, data: SaleInput) {
           customerName: data.customerName,
           paymentMethod: data.paymentMethod,
           soldById: data.soldById,
-          subtotal: subtotal.toFixed(2),
-          total: subtotal.toFixed(2),
+          subtotal,
+          total: subtotal,
+          status: saleStatus,
           lines: { create: lineTotals },
+          payments: { create: payments.map((payment) => ({ organizationId, ...payment })) },
         },
       });
 
-      if (register.warehouseId) {
+      if (saleStatus === "COMPLETED" && register.warehouseId) {
         for (const line of data.lines) {
           if (!line.itemId) continue;
           await recordMovement(
@@ -239,6 +313,74 @@ export async function createSale(organizationId: string, data: SaleInput) {
       return sale;
     });
   });
+}
+
+export async function resumeSuspendedSale(
+  organizationId: string,
+  saleId: string,
+  payments: PaymentInput[],
+  completedById?: string | null,
+) {
+  const sale = await db.posSale.findFirst({ where: { id: saleId, organizationId }, include: { lines: true, register: true } });
+  if (!sale) throw new NotFoundError("Sale not found.");
+  const total = new Prisma.Decimal(sale.total);
+  const paymentTotal = payments.reduce((sum, payment) => sum.plus(new Prisma.Decimal(payment.amount)), new Prisma.Decimal(0));
+  if (payments.length === 0 || payments.length > 10 || !paymentTotal.equals(total)) {
+    throw new InvalidSaleInputError("Payments must add up exactly to the suspended sale total.");
+  }
+  return db.$transaction(async (tx) => {
+    const claimed = await tx.posSale.updateMany({
+      where: { id: saleId, organizationId, status: "SUSPENDED", session: { status: "OPEN" } },
+      data: { status: "COMPLETED", soldById: completedById ?? sale.soldById },
+    });
+    if (claimed.count !== 1) throw new SaleStateError("Only a suspended sale on an open session can be resumed.");
+    await tx.posPayment.createMany({ data: payments.map((payment) => ({ organizationId, saleId, ...payment })) });
+    if (sale.register.warehouseId) {
+      for (const line of sale.lines) {
+        if (!line.itemId) continue;
+        await recordMovement(organizationId, { itemId: line.itemId, warehouseId: sale.register.warehouseId, type: "ISSUE", quantity: line.quantity, reference: sale.saleNumber, notes: `Resumed POS sale ${sale.saleNumber}`, createdById: completedById }, tx);
+      }
+    }
+    return tx.posSale.findUniqueOrThrow({ where: { id: saleId } });
+  });
+}
+
+interface ReturnLineInput { saleLineId: string; quantity: number }
+
+export async function returnSaleLines(
+  organizationId: string,
+  saleId: string,
+  data: { lines: ReturnLineInput[]; reason: string; refundMethod: PosPaymentMethod; processedById?: string | null },
+) {
+  if (!data.reason.trim()) throw new InvalidSaleInputError("A return reason is required.");
+  if (data.lines.length === 0 || data.lines.length > 100) throw new InvalidSaleInputError("Select at least one return line.");
+  return createWithUniqueRetry(async () => db.$transaction(async (tx) => {
+    const sale = await tx.posSale.findFirst({ where: { id: saleId, organizationId }, include: { lines: true, register: true } });
+    if (!sale) throw new NotFoundError("Sale not found.");
+    if (!['COMPLETED', 'PARTIALLY_REFUNDED'].includes(sale.status)) throw new SaleStateError("This sale cannot accept a return.");
+    await tx.$queryRaw`SELECT "id" FROM "PosSaleLine" WHERE "saleId" = ${saleId} FOR UPDATE`;
+    const prior = await tx.posReturnLine.groupBy({ by: ["saleLineId"], where: { return: { saleId, status: "COMPLETED" } }, _sum: { quantity: true } });
+    const returned = new Map(prior.map((row) => [row.saleLineId, row._sum.quantity ?? 0]));
+    const saleLines = new Map(sale.lines.map((line) => [line.id, line]));
+    const returnLines = data.lines.map((input) => {
+      const line = saleLines.get(input.saleLineId);
+      if (!line || !Number.isInteger(input.quantity) || input.quantity <= 0 || input.quantity + (returned.get(input.saleLineId) ?? 0) > line.quantity) {
+        throw new InvalidSaleInputError("A return quantity exceeds the remaining sold quantity.");
+      }
+      const unitAmount = new Prisma.Decimal(line.lineTotal).div(line.quantity);
+      return { saleLineId: line.id, quantity: input.quantity, unitAmount, lineAmount: unitAmount.mul(input.quantity), itemId: line.itemId };
+    });
+    const refundAmount = returnLines.reduce((sum, line) => sum.plus(line.lineAmount), new Prisma.Decimal(0));
+    const count = await tx.posReturn.count({ where: { organizationId } });
+    const returnNumber = `RETURN-${String(count + 1).padStart(5, "0")}`;
+    const posReturn = await tx.posReturn.create({ data: { organizationId, saleId, returnNumber, reason: data.reason.trim(), refundMethod: data.refundMethod, refundAmount, processedById: data.processedById, lines: { create: returnLines.map((line) => ({ saleLineId: line.saleLineId, quantity: line.quantity, unitAmount: line.unitAmount, lineAmount: line.lineAmount })) } } });
+    if (sale.register.warehouseId) {
+      for (const line of returnLines) if (line.itemId) await recordMovement(organizationId, { itemId: line.itemId, warehouseId: sale.register.warehouseId, type: "RECEIPT", quantity: line.quantity, reference: returnNumber, notes: `POS return for ${sale.saleNumber}`, createdById: data.processedById }, tx);
+    }
+    const totalReturned = await tx.posReturnLine.aggregate({ where: { return: { saleId, status: "COMPLETED" } }, _sum: { lineAmount: true } });
+    await tx.posSale.update({ where: { id: saleId }, data: { status: new Prisma.Decimal(totalReturned._sum.lineAmount ?? 0).gte(sale.total) ? "REFUNDED" : "PARTIALLY_REFUNDED" } });
+    return posReturn;
+  }));
 }
 
 /**
