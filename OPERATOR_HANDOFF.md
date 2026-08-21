@@ -6,6 +6,8 @@ The Windows desktop and offline product has been retired at the user's direction
 
 The locally installed Windows application was uninstalled successfully with exit code 0. Its application directory and the desktop-only updater signing key directory were removed. Validation after the code removal: Next.js route type generation passed, TypeScript passed, ESLint passed, the full remaining mocked suite passed 80 files and 475 tests, the editorial punctuation test passed, and the production build compiled successfully with all 208 static pages generated. The first build attempt was blocked only by the restricted sandbox preventing Google Fonts access; the same build passed when run with normal network access.
 
+Release commit `6c382dd` was pushed to `main` and deployed as Vercel production deployment `dpl_A3MADgYcRbRdD5UJKf4xtUQkChqr`, which reached `READY` on all production aliases. Post-deploy verification returned HTTP 200 with `database: reachable`; the retired activation, synchronization pull, and desktop update endpoints each returned HTTP 404; and the deployment error-log query returned no errors.
+
 ## 2026-08-21: Production operations upgrade release
 
 This entry supersedes the branch-only status notes below for Accounting, Inventory, Procurement, Hospital, Pharmacy, and Point of Sale. The combined implementation commit `ef002e6` was pushed to `main` and deployed to Vercel production as `dpl_FsMGJ8n7nrQeuUiMEmTKsSuGD2SF`. The deployment reached `READY` on the production aliases.
