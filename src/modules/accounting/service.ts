@@ -219,6 +219,7 @@ async function postJournalEntry(
     lines: { accountId: string; debit?: string | number; credit?: string | number }[];
   },
 ) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${organizationId}:accounting-periods`}))`;
   await assertEntryDateIsOpen(tx, organizationId, input.entryDate);
 
   if (input.sourceType && input.sourceId && input.postingPurpose) {
@@ -318,21 +319,27 @@ export async function createAccountingPeriod(
 }
 
 export async function closeAccountingPeriod(organizationId: string, periodId: string, actorId: string | null) {
-  const result = await db.accountingPeriod.updateMany({
-    where: { id: periodId, organizationId, status: "OPEN" },
-    data: { status: "CLOSED", closedById: actorId, closedAt: new Date(), reopenedById: null, reopenedAt: null },
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${organizationId}:accounting-periods`}))`;
+    const result = await tx.accountingPeriod.updateMany({
+      where: { id: periodId, organizationId, status: "OPEN" },
+      data: { status: "CLOSED", closedById: actorId, closedAt: new Date(), reopenedById: null, reopenedAt: null },
+    });
+    if (result.count === 0) throw new NotFoundError("Open accounting period not found.");
+    return tx.accountingPeriod.findFirstOrThrow({ where: { id: periodId, organizationId } });
   });
-  if (result.count === 0) throw new NotFoundError("Open accounting period not found.");
-  return db.accountingPeriod.findFirstOrThrow({ where: { id: periodId, organizationId } });
 }
 
 export async function reopenAccountingPeriod(organizationId: string, periodId: string, actorId: string | null) {
-  const result = await db.accountingPeriod.updateMany({
-    where: { id: periodId, organizationId, status: "CLOSED" },
-    data: { status: "OPEN", reopenedById: actorId, reopenedAt: new Date() },
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${organizationId}:accounting-periods`}))`;
+    const result = await tx.accountingPeriod.updateMany({
+      where: { id: periodId, organizationId, status: "CLOSED" },
+      data: { status: "OPEN", reopenedById: actorId, reopenedAt: new Date() },
+    });
+    if (result.count === 0) throw new NotFoundError("Closed accounting period not found.");
+    return tx.accountingPeriod.findFirstOrThrow({ where: { id: periodId, organizationId } });
   });
-  if (result.count === 0) throw new NotFoundError("Closed accounting period not found.");
-  return db.accountingPeriod.findFirstOrThrow({ where: { id: periodId, organizationId } });
 }
 
 export async function reverseJournalEntry(

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockDb = {
+  $executeRaw: vi.fn(),
+  $transaction: vi.fn(),
   procurementRequest: { findFirst: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn() },
   procurementOrder: { findFirst: vi.fn() },
   procurementSupplierInvoice: { create: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn(), findFirstOrThrow: vi.fn() },
@@ -15,6 +17,8 @@ const order = { id: "order-1", vendorId: "vendor-1", lines: [{ id: "line-1", des
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockDb.$transaction.mockImplementation(async (callback) => callback(mockDb));
+  mockDb.$executeRaw.mockResolvedValue(0);
   mockDb.procurementOrder.findFirst.mockResolvedValue(order);
   mockDb.procurementSupplierInvoiceLine.findMany.mockResolvedValue([]);
   mockDb.procurementSupplierInvoice.create.mockImplementation(async ({ data }) => ({ id: "invoice-1", ...data }));

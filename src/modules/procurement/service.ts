@@ -386,40 +386,47 @@ export async function createSupplierInvoice(
   input: { vendorId: string; orderId: string; invoiceNumber: string; invoiceDate: Date; createdById?: string | null; lines: Array<{ orderLineId: string; quantity: number; unitCost: string }> },
 ) {
   if (!input.invoiceNumber.trim() || input.lines.length === 0 || input.lines.length > 100) throw new InvoiceMatchError("Invoice number and lines are required.");
-  const order = await db.procurementOrder.findFirst({ where: { id: input.orderId, organizationId, vendorId: input.vendorId }, include: { lines: true } });
-  if (!order) throw new NotFoundError("Purchase order not found for this vendor.");
-  const orderLines = new Map(order.lines.map((line) => [line.id, line]));
-  const previouslyInvoiced = await db.procurementSupplierInvoiceLine.findMany({
-    where: { orderLineId: { in: input.lines.map((line) => line.orderLineId) }, invoice: { organizationId, status: { not: "REJECTED" } } },
-    select: { orderLineId: true, quantity: true },
-  });
-  const invoicedByLine = new Map<string, number>();
-  for (const line of previouslyInvoiced) invoicedByLine.set(line.orderLineId, (invoicedByLine.get(line.orderLineId) ?? 0) + line.quantity);
-  let total = new Prisma.Decimal(0);
-  let exceptionNote: string | null = null;
+  const aggregated = new Map<string, { orderLineId: string; quantity: number; unitCost: string }>();
   for (const line of input.lines) {
-    const ordered = orderLines.get(line.orderLineId);
-    if (!ordered || !Number.isInteger(line.quantity) || line.quantity <= 0) throw new InvoiceMatchError("An invoice line is invalid.");
-    const cost = new Prisma.Decimal(line.unitCost);
-    if (cost.isNegative()) throw new InvoiceMatchError("Unit cost cannot be negative.");
-    total = total.plus(cost.mul(line.quantity));
-    if (line.quantity + (invoicedByLine.get(line.orderLineId) ?? 0) > ordered.receivedQuantity) throw new InvoiceMatchError("Invoice quantity exceeds the remaining received quantity.");
-    if (!cost.equals(ordered.unitCost)) exceptionNote = "Invoice unit cost does not match the purchase order.";
+    const existing = aggregated.get(line.orderLineId);
+    if (existing && !new Prisma.Decimal(existing.unitCost).equals(line.unitCost)) {
+      throw new InvoiceMatchError("Duplicate invoice lines must use the same unit cost.");
+    }
+    aggregated.set(line.orderLineId, { ...line, quantity: (existing?.quantity ?? 0) + line.quantity });
   }
-  return db.procurementSupplierInvoice.create({
-    data: {
-      organizationId,
-      vendorId: input.vendorId,
-      orderId: input.orderId,
-      invoiceNumber: input.invoiceNumber.trim(),
-      invoiceDate: input.invoiceDate,
-      createdById: input.createdById,
-      totalAmount: total,
-      status: exceptionNote ? "EXCEPTION" : "MATCHED",
-      exceptionNote,
-      lines: { create: input.lines.map((line) => ({ ...line, description: orderLines.get(line.orderLineId)!.description })) },
-    },
-    include: { lines: true },
+  const lines = [...aggregated.values()];
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${organizationId}:procurement-invoice:${input.orderId}`}))`;
+    const order = await tx.procurementOrder.findFirst({ where: { id: input.orderId, organizationId, vendorId: input.vendorId }, include: { lines: true } });
+    if (!order) throw new NotFoundError("Purchase order not found for this vendor.");
+    const orderLines = new Map(order.lines.map((line) => [line.id, line]));
+    const previouslyInvoiced = await tx.procurementSupplierInvoiceLine.findMany({
+      where: { orderLineId: { in: lines.map((line) => line.orderLineId) }, invoice: { organizationId, status: { not: "REJECTED" } } },
+      select: { orderLineId: true, quantity: true },
+    });
+    const invoicedByLine = new Map<string, number>();
+    for (const line of previouslyInvoiced) invoicedByLine.set(line.orderLineId, (invoicedByLine.get(line.orderLineId) ?? 0) + line.quantity);
+    let total = new Prisma.Decimal(0);
+    let exceptionNote: string | null = null;
+    for (const line of lines) {
+      const ordered = orderLines.get(line.orderLineId);
+      if (!ordered || !Number.isInteger(line.quantity) || line.quantity <= 0) throw new InvoiceMatchError("An invoice line is invalid.");
+      const cost = new Prisma.Decimal(line.unitCost);
+      if (cost.isNegative()) throw new InvoiceMatchError("Unit cost cannot be negative.");
+      total = total.plus(cost.mul(line.quantity));
+      if (line.quantity + (invoicedByLine.get(line.orderLineId) ?? 0) > ordered.receivedQuantity) throw new InvoiceMatchError("Invoice quantity exceeds the remaining received quantity.");
+      if (!cost.equals(ordered.unitCost)) exceptionNote = "Invoice unit cost does not match the purchase order.";
+    }
+    return tx.procurementSupplierInvoice.create({
+      data: {
+        organizationId, vendorId: input.vendorId, orderId: input.orderId,
+        invoiceNumber: input.invoiceNumber.trim(), invoiceDate: input.invoiceDate,
+        createdById: input.createdById, totalAmount: total,
+        status: exceptionNote ? "EXCEPTION" : "MATCHED", exceptionNote,
+        lines: { create: lines.map((line) => ({ ...line, description: orderLines.get(line.orderLineId)!.description })) },
+      },
+      include: { lines: true },
+    });
   });
 }
 

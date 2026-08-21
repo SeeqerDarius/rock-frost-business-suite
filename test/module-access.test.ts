@@ -155,7 +155,7 @@ describe("module authorization source coverage", () => {
     // were already correctly guarded, this sweep just was not exercising
     // them).
     // 105: Procurement adds guarded Goods Receipts and Supplier Invoices pages.
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(105);
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(106);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
     // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
     // all Hostel Server Actions, same shape as School's) joins the sweep
@@ -165,7 +165,7 @@ describe("module authorization source coverage", () => {
     // 50 because School's single actions.ts was included for the same
     // reason as the page.tsx count above.
     // 55: Supplier Invoice Server Actions add a separately guarded action file.
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(55);
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(56);
 
     for (const { moduleKey, filePath } of guardedFiles) {
       const source = readFileSync(filePath, "utf8");

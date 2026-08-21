@@ -21,9 +21,11 @@ describe("Hospital lab/imaging permission split", () => {
       expect(file).toContain('HOSPITAL_LAB_VERIFY: "hospital.lab.verify"');
       expect(file).toContain('HOSPITAL_IMAGING_ENTER: "hospital.imaging.enter"');
       expect(file).toContain('HOSPITAL_IMAGING_VERIFY: "hospital.imaging.verify"');
-      expect(file).not.toContain("hospital.lab.manage");
-      expect(file).not.toContain("hospital.imaging.manage");
     }
+    expect(permissions).not.toContain("hospital.lab.manage");
+    expect(permissions).not.toContain("hospital.imaging.manage");
+    expect(seed).toContain('["hospital.lab.manage", PERMISSIONS.HOSPITAL_LAB_ENTER]');
+    expect(seed).toContain('["hospital.imaging.manage", PERMISSIONS.HOSPITAL_IMAGING_ENTER]');
   });
 
   it("grants Laboratory Scientist and Radiology Staff both enter and verify, so today's single-role workflow keeps working", () => {

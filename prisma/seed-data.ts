@@ -476,6 +476,29 @@ export async function seedPlatform(db: PrismaClient, options: { log?: boolean } 
   }
   await db.rolePermission.createMany({ data: grants, skipDuplicates: true });
 
+  // Preserve least-privilege access for tenant-defined roles created before
+  // the Hospital lab/imaging permissions were split into enter and verify.
+  // Legacy manage grants become enter grants only. Verification remains an
+  // explicit higher-privilege grant and is never inferred automatically.
+  const legacyHospitalPermissionMap = [
+    ["hospital.lab.manage", PERMISSIONS.HOSPITAL_LAB_ENTER],
+    ["hospital.imaging.manage", PERMISSIONS.HOSPITAL_IMAGING_ENTER],
+  ] as const;
+  for (const [legacyKey, replacementKey] of legacyHospitalPermissionMap) {
+    const legacy = permissions.find((permission) => permission.key === legacyKey);
+    const replacement = permissionByKey.get(replacementKey);
+    if (!legacy || !replacement) continue;
+    const legacyGrants = await db.rolePermission.findMany({
+      where: { permissionId: legacy.id },
+      select: { roleId: true },
+    });
+    await db.rolePermission.createMany({
+      data: legacyGrants.map(({ roleId }) => ({ roleId, permissionId: replacement.id })),
+      skipDuplicates: true,
+    });
+    if (log && legacyGrants.length > 0) console.log(`Migrated ${legacyGrants.length} ${legacyKey} grants to ${replacementKey}.`);
+  }
+
   await Promise.all(MODULES.map((mod) => db.module.upsert({
     where: { code: mod.code },
     update: { name: mod.name, status: "ACTIVE" },

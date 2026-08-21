@@ -32,10 +32,14 @@ export async function createMedicine(organizationId: string, data: {
   unit: string; medicineClass: PharmacyMedicineClass; registrationNumber?: string | null; barcode?: string | null;
   sellingPrice: string; reorderPoint: number; requiresPrescription: boolean;
 }) {
-  if (data.barcode && (await db.pharmacyMedicine.findFirst({ where: { organizationId, barcode: data.barcode, active: true } }))) {
-    throw new PharmacyStockError("Another active medicine already uses this barcode.");
+  try {
+    return await db.pharmacyMedicine.create({ data: { organizationId, ...data } });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new PharmacyStockError("A medicine with this SKU or barcode already exists.");
+    }
+    throw error;
   }
-  return db.pharmacyMedicine.create({ data: { organizationId, ...data } });
 }
 
 export function listSuppliers(organizationId: string) {
@@ -60,11 +64,18 @@ export async function receiveBatch(organizationId: string, actorId: string, data
     data.supplierId ? db.pharmacySupplier.findFirst({ where: { id: data.supplierId, organizationId, active: true } }) : null,
   ]);
   if (!medicine || (data.supplierId && !supplier)) throw new PharmacyNotFoundError("Medicine or supplier not found.");
-  return db.$transaction(async (tx) => {
-    const batch = await tx.pharmacyBatch.create({ data: { organizationId, ...data, initialQuantity: data.quantity } });
-    await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "batch.received", entityName: "PharmacyBatch", entityId: batch.id, metadata: { medicineId: medicine.id, batchNumber: batch.batchNumber, quantity: batch.quantity } }, tx);
-    return batch;
-  });
+  try {
+    return await db.$transaction(async (tx) => {
+      const batch = await tx.pharmacyBatch.create({ data: { organizationId, ...data, initialQuantity: data.quantity } });
+      await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "batch.received", entityName: "PharmacyBatch", entityId: batch.id, metadata: { medicineId: medicine.id, batchNumber: batch.batchNumber, quantity: batch.quantity } }, tx);
+      return batch;
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new PharmacyStockError("A batch with this batch number or barcode already exists.");
+    }
+    throw error;
+  }
 }
 
 export async function updateBatchStatus(organizationId: string, actorId: string, batchId: string, status: PharmacyBatchStatus, reason: string) {

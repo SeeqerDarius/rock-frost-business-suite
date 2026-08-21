@@ -1,5 +1,9 @@
 # Hospital Management module
 
+## Permission migration compatibility
+
+Laboratory and imaging entry and verification use separate permissions. During the production bootstrap seed, custom roles holding the retired `hospital.lab.manage` or `hospital.imaging.manage` grant receive the matching entry permission. Verification is deliberately not inferred, preserving least privilege and maker-checker separation.
+
 **Status:** implemented, merged to `main`, and live in production since 2026-08-12 (merge commit `c5f626b`, public landing page published the same day in `0c8d626`). This
 document is the product and architecture contract for the vertical, written to the same standard as
 `docs/HOTEL_AND_SCHOOL_MODULES.md` and following the isolation rules in `docs/MODULE_BOUNDARIES.md`: every owned

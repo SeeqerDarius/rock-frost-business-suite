@@ -4207,8 +4207,8 @@ model PharmacyMedicine {
   dispensingLines   PharmacyDispensingLine[]
 
   @@unique([organizationId, sku])
+  @@unique([organizationId, barcode])
   @@index([organizationId, active])
-  @@index([organizationId, barcode])
 }
 
 model PharmacySupplier {
@@ -4256,9 +4256,9 @@ model PharmacyBatch {
   stockMovements  PharmacyStockMovement[]
 
   @@unique([organizationId, medicineId, batchNumber])
+  @@unique([organizationId, barcode])
   @@index([organizationId, status, expiryDate])
   @@index([medicineId, expiryDate])
-  @@index([organizationId, barcode])
 }
 
 model PharmacyPatient {

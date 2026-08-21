@@ -1,5 +1,9 @@
 # Pharmacy and Hospital vertical roadmap
 
+## Pharmacy barcode integrity
+
+Medicine and batch barcodes are optional but unique within an organization when supplied. Database constraints, not application-only prechecks, enforce this rule so simultaneous creates cannot produce ambiguous scanner results. The production migration fails with a clear message if historical duplicates exist and requires those records to be resolved before retrying deployment.
+
 ## Delivery order
 
 Pharmacy is delivered and released first. Hospital starts only after Pharmacy passes schema migration, tenant-isolation, concurrency, backup/restore, RBAC, workflow, production-build, and live deployment gates. This prevents two clinically sensitive modules from being simultaneously half-built.

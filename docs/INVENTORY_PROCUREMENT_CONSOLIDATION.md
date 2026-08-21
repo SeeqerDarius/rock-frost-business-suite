@@ -1,5 +1,9 @@
 # Inventory & Procurement Consolidation
 
+## Supplier invoice concurrency guarantee
+
+Supplier invoice creation aggregates repeated purchase-order lines before validation and rejects conflicting unit costs. Creation is serialized per organization and purchase order with a PostgreSQL transaction advisory lock. The service re-reads prior non-rejected invoice quantities inside that locked transaction, so simultaneous invoices cannot together exceed received quantities. Rejected invoices do not consume the received quantity allowance.
+
 **Status: implemented.** A customer-facing consolidation of the Inventory and Procurement modules into one coherent product experience, "Inventory & Procurement." This is a UX and navigation consolidation, not a data or entitlement merge: the two route trees, database tables, Prisma models, permission prefixes, and service functions are unchanged and unrenamed. See `docs/MODULE_BOUNDARIES.md` for the underlying module-boundary contract this respects.
 
 ## What changed
