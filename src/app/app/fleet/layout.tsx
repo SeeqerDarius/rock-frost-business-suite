@@ -3,7 +3,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { fleetNavigation } from "@/modules/fleet/navigation";
 import { requireCurrentTenant } from "@/lib/tenant";
-import { canAccessModule, hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { canAccessModule, hasPermission, isFleetDriverRole, PERMISSIONS } from "@/lib/auth/permissions";
 
 export default async function FleetLayout({ children }: { children: React.ReactNode }) {
   const tenant = await requireCurrentTenant();
@@ -42,6 +42,7 @@ export default async function FleetLayout({ children }: { children: React.ReactN
       navigation={navigation}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
+      showModuleLauncher={!isFleetDriverRole(tenant)}
     >
       {children}
     </AppShell>

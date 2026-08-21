@@ -202,3 +202,18 @@ export function canAccessModule(tenant: TenantContext, moduleKey: string): boole
 export function isPlatformOperator(tenant: TenantContext): boolean {
   return tenant.role === "Super Admin" && tenant.roleIsSystem && tenant.roleOrganizationId === null;
 }
+
+/**
+ * The seeded Fleet Driver is an assignment-scoped self-service role. Keep its
+ * workspace focused on its own vehicle, remittances, and maintenance tasks.
+ * Custom roles are not classified by name alone, so administrators can still
+ * deliberately combine Fleet and other module permissions when needed.
+ */
+export function isFleetDriverRole(tenant: TenantContext): boolean {
+  return (
+    tenant.role === "Driver" &&
+    tenant.roleIsSystem &&
+    hasPermission(tenant, PERMISSIONS.FLEET_DRIVER_SELF_SERVICE) &&
+    !hasPermission(tenant, PERMISSIONS.FLEET_VIEW)
+  );
+}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Blocks } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -8,10 +9,11 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry";
 import { productGroupKeys } from "@/platform/modules/product-groups";
 import { requireCurrentTenant } from "@/lib/tenant";
-import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { hasPermission, isFleetDriverRole, PERMISSIONS } from "@/lib/auth/permissions";
 
 export default async function ModulesPage() {
   const tenant = await requireCurrentTenant();
+  if (isFleetDriverRole(tenant)) redirect("/app/dashboard");
   const canRequestModules = hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE);
   const enabledModules = catalogueModuleRegistry.flatMap((mod) => {
     const accessibleKey = productGroupKeys(mod.key).find((key) => tenant.accessibleModuleKeys.includes(key));

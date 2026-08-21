@@ -23,6 +23,34 @@ describe("Fleet driver remittance controls", () => {
     expect(overview).toContain('redirect("/app/fleet/driver-portal")');
   });
 
+  it("submits manager review decisions explicitly and reports the result", () => {
+    const controls = read("src/app/app/fleet/payments/submission-review-controls.tsx");
+    const actions = read("src/app/app/fleet/payments/actions.ts");
+    const page = read("src/app/app/fleet/payments/page.tsx");
+    expect(controls).toContain('type="submit"');
+    expect(controls).toContain('name="decision" value="approve"');
+    expect(controls).toContain('name="decision" value="reject"');
+    expect(controls).toContain('"Approving..."');
+    expect(actions).toContain('z.enum(["approve", "reject"])');
+    expect(actions).toContain('?reviewed=${approved ? "approved" : "rejected"}');
+    expect(page).toContain("Driver payment approved and added to the verified Fleet payment ledger.");
+  });
+
+  it("keeps the exact Fleet Driver role out of organization-wide module navigation", () => {
+    const permissions = read("src/lib/auth/permissions.ts");
+    const navigation = read("src/platform/modules/workspace-navigation.tsx");
+    const overviewLayout = read("src/app/app/(overview)/layout.tsx");
+    const fleetLayout = read("src/app/app/fleet/layout.tsx");
+    const modulesPage = read("src/app/app/(overview)/modules/page.tsx");
+    const reportsPage = read("src/app/app/(overview)/reports/page.tsx");
+    expect(permissions).toContain("export function isFleetDriverRole");
+    expect(navigation).toContain("if (!isFleetDriverRole(tenant))");
+    expect(overviewLayout).toContain("showModuleLauncher={!isFleetDriverRole(tenant)}");
+    expect(fleetLayout).toContain("showModuleLauncher={!isFleetDriverRole(tenant)}");
+    expect(modulesPage).toContain('if (isFleetDriverRole(tenant)) redirect("/app/dashboard")');
+    expect(reportsPage).toContain('if (isFleetDriverRole(tenant)) redirect("/app/dashboard")');
+  });
+
   it("classifies vehicle remittances and Work & Pay submissions as verified fleet payments", () => {
     const service = read("src/modules/fleet/service.ts");
     expect(service).toContain('submission.submissionType === "WORK_AND_PAY" ? "WORK_AND_PAY" : "WEEKLY_SALES"');

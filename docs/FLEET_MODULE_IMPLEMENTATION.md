@@ -55,6 +55,7 @@ Every step writes an immutable `FleetMaintenanceEvent` containing actor, event t
 - Approved Work & Pay submissions become verified `WORK_AND_PAY` entries and atomically update amount paid, outstanding balance, completion percentage, and contract completion status.
 - A Fleet Manager can also record a payment received directly by the office, including payment date, method, and reference. This path writes a verified ledger entry because the authorized manager is confirming receipt at entry time.
 - Management reporting includes weekly remittances, verified payments, pending payments, documents due and repairs awaiting verification.
+- Manager approval and rejection are explicit submit actions. While a review is being processed, the chosen control is disabled and shows progress. A successful approval creates the verified Fleet payment and marks the driver submission approved in the same database transaction. The tenant audit event is attempted inside that transaction and commits with it when written. The page then confirms the outcome. Repeated or failed reviews return a visible error instead of appearing to do nothing.
 - Investor reporting shows each owner's vehicles, active agreements, contract value, remittances, outstanding balance, maintenance cost and net cash position.
 
 ## Access control
@@ -63,6 +64,7 @@ Every step writes an immutable `FleetMaintenanceEvent` containing actor, event t
 - Server Components and Server Actions independently verify permissions.
 - The Driver system role does not hold `fleet.view`. It uses `fleet.driver.self_service`, so it cannot open organization-wide vehicles, drivers, owners, payments, reports, settings, or summary dashboards.
 - The Driver Workspace and the main workspace dashboard show only the current driver's assigned vehicles, open maintenance work, active contracts, targets, and submissions.
+- The exact system Driver role sees only Overview and Notifications in the workspace sidebar. The organization module catalogue, cross-module Reports page, and header module launcher are hidden, and direct requests to the two organization-wide pages return the driver to the assignment-scoped dashboard. Custom roles are not restricted by name alone.
 - Maintenance lists and vehicle selectors are filtered on the server to assigned driver vehicles or linked owner vehicles for self-service users. Hiding a menu item is never the privacy boundary.
 - The Vehicle Owner system role is available only when Fleet is active. Assigning or accepting that role creates one linked `FleetOwner` profile idempotently.
 - Investors require `fleet.investor.view`.

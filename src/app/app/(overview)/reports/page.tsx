@@ -1,13 +1,15 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { BarChart3 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Button } from "@/components/ui/button";
 import { requireCurrentTenant } from "@/lib/tenant";
-import { canAccessModule } from "@/lib/auth/permissions";
+import { canAccessModule, isFleetDriverRole } from "@/lib/auth/permissions";
 
 export default async function WorkspaceReportsPage() {
   const tenant = await requireCurrentTenant();
+  if (isFleetDriverRole(tenant)) redirect("/app/dashboard");
   const hasAnalytics = canAccessModule(tenant, "analytics");
 
   return (

@@ -11,13 +11,16 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listFleetPayments, listFleetDriverPaymentSubmissions } from "@/modules/fleet/service";
-import { createPayment, verifyPayment, reviewDriverSubmission } from "./actions";
+import { createPayment, verifyPayment } from "./actions";
+import { SubmissionReviewControls } from "./submission-review-controls";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage payments.",
   "missing-fields": "Reference, amount, and type are required.",
   duplicate: "A payment with that reference already exists.",
   "invalid-input": "Please check that the reference, amount, and type are valid.",
+  "already-reviewed": "This driver payment has already been reviewed. Refresh the page to see its current status.",
+  "review-failed": "The driver payment could not be reviewed. Please try again or contact support if the problem continues.",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -54,9 +57,9 @@ const STATUS_BADGE: Record<string, "default" | "outline" | "destructive"> = {
 export default async function FleetPaymentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string }>;
+  searchParams: Promise<{ saved?: string; reviewed?: string; error?: string }>;
 }) {
-  const { saved, error } = await searchParams;
+  const { saved, reviewed, error } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_PAYMENTS_MANAGE);
   const [payments, driverSubmissions] = await Promise.all([listFleetPayments(tenant.organizationId), listFleetDriverPaymentSubmissions(tenant.organizationId)]);
@@ -118,6 +121,13 @@ export default async function FleetPaymentsPage({
       {saved ? (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
           Saved.
+        </div>
+      ) : null}
+      {reviewed === "approved" || reviewed === "rejected" ? (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
+          {reviewed === "approved"
+            ? "Driver payment approved and added to the verified Fleet payment ledger."
+            : "Driver payment rejected."}
         </div>
       ) : null}
       {error && ERROR_MESSAGES[error] ? (
@@ -196,10 +206,7 @@ export default async function FleetPaymentsPage({
                   <div className="flex items-center gap-2">
                     <Badge variant={item.status === "APPROVED" ? "default" : item.status === "REJECTED" ? "destructive" : "outline"}>{item.status}</Badge>
                     {item.status === "PENDING" ? (
-                      <>
-                        <form action={reviewDriverSubmission}><input type="hidden" name="id" value={item.id} /><Button size="sm" name="decision" value="approve">Approve</Button></form>
-                        <form action={reviewDriverSubmission}><input type="hidden" name="id" value={item.id} /><Button size="sm" name="decision" value="reject" variant="destructive">Reject</Button></form>
-                      </>
+                      <SubmissionReviewControls submissionId={item.id} />
                     ) : null}
                   </div>
                 </div>
