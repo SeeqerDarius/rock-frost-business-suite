@@ -63,8 +63,7 @@ schema change:
   classes. A user with at least one assignment can only record attendance
   or exam results for their assigned class(es); `recordSchoolAttendance`
   and `recordSchoolExamResult` enforce this in the service layer itself
-  (both the web action and the desktop offline-sync adapter pass the
-  acting user through), and the attendance/exam pages filter the Class
+  (the web action passes the acting user through), and the attendance/exam pages filter the Class
   picker to match. A user with zero assignments is unrestricted, matching
   the existing seeded "Teacher" role's design (view + attendance + exams +
   timetables, org-wide) unless an admin opts them into class scoping.

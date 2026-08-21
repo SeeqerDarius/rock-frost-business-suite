@@ -10,8 +10,6 @@ One Next.js deployment serves three host-separated surfaces:
 
 `src/proxy.ts` performs origin routing before rendering. `src/lib/app-surfaces.ts` is the shared host/origin policy used by Proxy, NextAuth, login, server layouts, email links, and payment callbacks. Authentication cookies remain host-only; never configure them for `.rockfrostgroup.com`, because doing so would make owner and tenant logins overwrite each other again.
 
-Offline desktop clients never connect to PostgreSQL. `src/lib/offline-sync/` provides the cloud boundary: short-lived activation codes bridge an authenticated web account to a hashed device credential, every reconnect revalidates tenant and subscription state, and a durable mutation ledger prevents completed client operations from being replayed. See `docs/OFFLINE_DESKTOP.md` for supported operations and safety exclusions.
-
 ## Folder structure
 
 ```

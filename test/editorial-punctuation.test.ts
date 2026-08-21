@@ -17,8 +17,6 @@ describe("editorial punctuation", () => {
     const roots = [
       path.join(process.cwd(), "src", "app", "(public)"),
       path.join(process.cwd(), "src", "components", "marketing"),
-      path.join(process.cwd(), "apps", "desktop", "src"),
-      path.join(process.cwd(), "apps", "desktop", "src-tauri", "src"),
     ];
     const files = (await Promise.all(roots.map(sourceFiles))).flat();
     const violations = [];

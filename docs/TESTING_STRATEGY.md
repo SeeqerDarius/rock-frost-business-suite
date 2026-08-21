@@ -37,8 +37,6 @@ npm run test:all          # npm run test && npm run test:integration
 
 `test/integration/concurrency/*.test.ts` (added in Pass 4, if present — check `docs/HARDENING_PLAN.md`'s Pass 4 section for current coverage) exercises genuine concurrent requests (`Promise.all` against real overlapping transactions) for the state-transition races the mocked suite can only simulate by asserting a mock returned `count: 0`.
 
-`test/integration/offline-sync.test.ts` proves the desktop synchronization boundary against real PostgreSQL. It covers immediate device revocation, subscription expiry between capture and synchronization, exactly-once replay for duplicate client mutation IDs, and rejection of cross-tenant organization identifiers. Unit contract tests additionally verify the supported mutation allowlist and ensure device credentials, activation codes, and payload limits remain fail-closed.
-
 ## Required GitHub Actions configuration
 
 `.github/workflows/ci.yml` has two jobs:
