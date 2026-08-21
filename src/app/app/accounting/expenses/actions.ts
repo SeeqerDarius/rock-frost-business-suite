@@ -13,6 +13,7 @@ import {
   payExpense,
   ExpenseStateError,
   NotFoundError,
+  AccountingPeriodLockedError,
 } from "@/modules/accounting/service";
 import { moneyAmount, shortText, longText, cuid, dateInput, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
@@ -132,6 +133,7 @@ export async function payExistingExpense(formData: FormData): Promise<void> {
   try {
     expense = await payExpense(tenant.organizationId, id, paymentDate);
   } catch (error) {
+    if (error instanceof AccountingPeriodLockedError) redirect("/app/accounting/expenses?error=period-closed");
     if (error instanceof ExpenseStateError) {
       await logAuditEvent({
         organizationId: tenant.organizationId,

@@ -102,7 +102,7 @@ Start with `OPERATOR_HANDOFF.md` at the repo root for the current state and next
 - `docs/DESIGN_SYSTEM.md` — UI foundation, tokens, component conventions
 - `docs/DEVELOPMENT_ROADMAP.md` — phased build history (all nineteen phases complete)
 - `docs/DATABASE_STRATEGY.md` — Prisma/Neon setup and migration workflow
-- `docs/AUTHENTICATION_AND_AUTHORIZATION.md` — real, enforced auth/RBAC (144 permission keys across sixteen modules)
+- `docs/AUTHENTICATION_AND_AUTHORIZATION.md` - real, enforced auth/RBAC (146 permission keys across sixteen modules)
 - `docs/BACKUP_AND_RECOVERY.md` — tenant-isolated module exports, protected merge restore, and infrastructure recovery boundaries
 - `docs/EMAIL_DELIVERY.md` — transactional templates, sender-domain authentication, and deliverability operations
 - `docs/TESTING_STRATEGY.md` — how work is validated, current automated test coverage

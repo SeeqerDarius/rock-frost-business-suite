@@ -13,11 +13,13 @@ const mockDb = {
   accountingAccount: { findMany: vi.fn(), createMany: vi.fn(), count: vi.fn() },
   accountingPettyCashFund: { findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn(), count: vi.fn() },
   accountingPettyCashTransaction: { create: vi.fn() },
-  accountingJournalEntry: { create: vi.fn() },
+  accountingJournalEntry: { create: vi.fn(), count: vi.fn(), findFirst: vi.fn() },
+  accountingPeriod: { findFirst: vi.fn() },
   accountingJournalLine: { findMany: vi.fn() },
   accountingExpenseCategory: { findFirst: vi.fn() },
   $transaction: vi.fn(),
   $queryRaw: vi.fn(),
+  $executeRaw: vi.fn(),
 };
 
 vi.mock("@/lib/db", () => ({ db: mockDb }));
@@ -33,6 +35,8 @@ const ORG = "org-1";
 beforeEach(() => {
   vi.clearAllMocks();
   txPassthrough();
+  mockDb.accountingPeriod.findFirst.mockResolvedValue(null);
+  mockDb.accountingJournalEntry.count.mockResolvedValue(0);
   // The default Cash (1000) and General Expenses (5000) accounts "already
   // exist" so ensureDefaultAccounts/getDefaultAccount resolve them without
   // needing to model the full DEFAULT_ACCOUNTS seeding round trip.

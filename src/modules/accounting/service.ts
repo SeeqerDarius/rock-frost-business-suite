@@ -178,6 +178,22 @@ type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
 export class JournalNotBalancedError extends Error {}
 export class NotFoundError extends Error {}
+export class AccountingPeriodLockedError extends Error {}
+export class JournalReversalError extends Error {}
+
+async function assertEntryDateIsOpen(tx: TxClient, organizationId: string, entryDate: Date) {
+  const locked = await tx.accountingPeriod.findFirst({
+    where: { organizationId, status: "CLOSED", startDate: { lte: entryDate }, endDate: { gte: entryDate } },
+    select: { id: true },
+  });
+  if (locked) throw new AccountingPeriodLockedError("The accounting period is closed.");
+}
+
+async function nextPostingNumber(tx: TxClient, organizationId: string) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${organizationId}:accounting-posting-number`}))`;
+  const count = await tx.accountingJournalEntry.count({ where: { organizationId } });
+  return `JRN-${String(count + 1).padStart(8, "0")}`;
+}
 
 /**
  * The single choke point every journal-posting call site (invoice send,
@@ -198,10 +214,21 @@ async function postJournalEntry(
     reference?: string | null;
     sourceType?: string | null;
     sourceId?: string | null;
+    postingPurpose?: string | null;
     createdById?: string | null;
     lines: { accountId: string; debit?: string | number; credit?: string | number }[];
   },
 ) {
+  await assertEntryDateIsOpen(tx, organizationId, input.entryDate);
+
+  if (input.sourceType && input.sourceId && input.postingPurpose) {
+    const existing = await tx.accountingJournalEntry.findFirst({
+      where: { organizationId, sourceType: input.sourceType, sourceId: input.sourceId, postingPurpose: input.postingPurpose },
+      include: { lines: true },
+    });
+    if (existing) return existing;
+  }
+
   // Decimal equality, not a JS Number epsilon fudge-factor — this is the
   // core double-entry invariant for the whole ledger, so exact arithmetic
   // matters more here than almost anywhere else in the codebase.
@@ -225,11 +252,124 @@ async function postJournalEntry(
       reference: input.reference,
       sourceType: input.sourceType,
       sourceId: input.sourceId,
+      postingPurpose: input.postingPurpose,
+      postingNumber: await nextPostingNumber(tx, organizationId),
       createdById: input.createdById,
       lines: {
         create: input.lines.map((l) => ({ accountId: l.accountId, debit: l.debit ?? 0, credit: l.credit ?? 0 })),
       },
     },
+  });
+}
+
+export async function postSourceJournalEntry(
+  organizationId: string,
+  input: {
+    sourceType: string;
+    sourceId: string;
+    postingPurpose: string;
+    entryDate: Date;
+    description: string;
+    reference?: string | null;
+    createdById?: string | null;
+    lines: { accountId: string; debit?: string; credit?: string }[];
+  },
+) {
+  if (!input.sourceType.trim() || !input.sourceId.trim() || !input.postingPurpose.trim()) {
+    throw new Error("Source type, source id, and posting purpose are required.");
+  }
+  try {
+    return await db.$transaction((tx) => postJournalEntry(tx, organizationId, input));
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      const existing = await db.accountingJournalEntry.findFirst({
+        where: {
+          organizationId,
+          sourceType: input.sourceType,
+          sourceId: input.sourceId,
+          postingPurpose: input.postingPurpose,
+        },
+        include: { lines: true },
+      });
+      if (existing) return existing;
+    }
+    throw error;
+  }
+}
+
+export function listAccountingPeriods(organizationId: string) {
+  return db.accountingPeriod.findMany({ where: { organizationId }, orderBy: { startDate: "desc" } });
+}
+
+export async function createAccountingPeriod(
+  organizationId: string,
+  data: { name: string; startDate: Date; endDate: Date },
+) {
+  if (data.endDate < data.startDate) throw new Error("Period end date must not be before its start date.");
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${organizationId}:accounting-periods`}))`;
+    const overlap = await tx.accountingPeriod.findFirst({
+      where: { organizationId, startDate: { lte: data.endDate }, endDate: { gte: data.startDate } },
+      select: { id: true },
+    });
+    if (overlap) throw new Error("Accounting periods cannot overlap.");
+    return tx.accountingPeriod.create({ data: { organizationId, ...data } });
+  });
+}
+
+export async function closeAccountingPeriod(organizationId: string, periodId: string, actorId: string | null) {
+  const result = await db.accountingPeriod.updateMany({
+    where: { id: periodId, organizationId, status: "OPEN" },
+    data: { status: "CLOSED", closedById: actorId, closedAt: new Date(), reopenedById: null, reopenedAt: null },
+  });
+  if (result.count === 0) throw new NotFoundError("Open accounting period not found.");
+  return db.accountingPeriod.findFirstOrThrow({ where: { id: periodId, organizationId } });
+}
+
+export async function reopenAccountingPeriod(organizationId: string, periodId: string, actorId: string | null) {
+  const result = await db.accountingPeriod.updateMany({
+    where: { id: periodId, organizationId, status: "CLOSED" },
+    data: { status: "OPEN", reopenedById: actorId, reopenedAt: new Date() },
+  });
+  if (result.count === 0) throw new NotFoundError("Closed accounting period not found.");
+  return db.accountingPeriod.findFirstOrThrow({ where: { id: periodId, organizationId } });
+}
+
+export async function reverseJournalEntry(
+  organizationId: string,
+  journalEntryId: string,
+  data: { entryDate: Date; reason: string; actorId?: string | null },
+) {
+  return db.$transaction(async (tx) => {
+    const original = await tx.accountingJournalEntry.findFirst({
+      where: { id: journalEntryId, organizationId },
+      include: { lines: true, reversal: { select: { id: true } } },
+    });
+    if (!original) throw new NotFoundError("Journal entry not found.");
+    if (original.status !== "POSTED" || original.reversalOfId || original.reversal) {
+      throw new JournalReversalError("This journal entry cannot be reversed.");
+    }
+    const reversal = await postJournalEntry(tx, organizationId, {
+      entryDate: data.entryDate,
+      description: `Reversal of ${original.postingNumber}: ${data.reason}`,
+      reference: original.reference,
+      sourceType: "JOURNAL_REVERSAL",
+      sourceId: original.id,
+      postingPurpose: "FULL_REVERSAL",
+      createdById: data.actorId,
+      lines: original.lines.map((line) => ({
+        accountId: line.accountId,
+        debit: line.credit.toFixed(2),
+        credit: line.debit.toFixed(2),
+      })),
+    });
+    const claimed = await tx.accountingJournalEntry.updateMany({
+      where: { id: original.id, organizationId, status: "POSTED" },
+      data: { status: "REVERSED" },
+    });
+    if (claimed.count === 0) throw new JournalReversalError("This journal entry was already reversed.");
+    await tx.accountingJournalEntry.update({ where: { id: reversal.id }, data: { reversalOfId: original.id } });
+    return reversal;
   });
 }
 

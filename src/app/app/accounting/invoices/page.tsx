@@ -20,6 +20,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "has-payment": "Cannot void an invoice that has already received payment.",
   "invalid-payment": "That payment amount is invalid or exceeds the remaining balance.",
   "not-found": "That invoice could not be found.",
+  "period-closed": "The transaction date is in a closed accounting period.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {

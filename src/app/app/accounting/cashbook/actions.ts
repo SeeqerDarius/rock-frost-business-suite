@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { postOpeningBalance, completeReconciliation, NotFoundError, InvalidPaymentError, InvoiceStateError } from "@/modules/accounting/service";
+import { postOpeningBalance, completeReconciliation, NotFoundError, InvalidPaymentError, InvoiceStateError, AccountingPeriodLockedError } from "@/modules/accounting/service";
 import { logAuditEvent } from "@/lib/audit";
 
 const clean = (value: FormDataEntryValue | null) => String(value ?? "").trim() || null;
@@ -25,6 +25,7 @@ export async function createOpeningBalance(formData: FormData): Promise<void> {
     const entry = await postOpeningBalance(tenant.organizationId, accountId, amount, new Date(`${asOfDate}T00:00:00.000Z`), userId);
     await logAuditEvent({ organizationId: tenant.organizationId, userId, module: "accounting", action: "opening_balance.posted", entityName: "AccountingJournalEntry", entityId: entry.id, metadata: { accountId, amount } });
   } catch (error) {
+    if (error instanceof AccountingPeriodLockedError) redirect("/app/accounting/cashbook?error=period-closed");
     if (error instanceof NotFoundError) redirect("/app/accounting/cashbook?error=not-found");
     if (error instanceof InvalidPaymentError || error instanceof InvoiceStateError) redirect("/app/accounting/cashbook?error=invalid-opening-balance");
     throw error;

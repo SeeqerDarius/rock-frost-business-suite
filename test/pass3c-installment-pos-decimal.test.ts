@@ -22,7 +22,8 @@ const mockDb = {
   inventoryWarehouse: { findFirst: vi.fn() },
 
   accountingAccount: { count: vi.fn(), findMany: vi.fn() },
-  accountingJournalEntry: { create: vi.fn() },
+  accountingJournalEntry: { create: vi.fn(), count: vi.fn(), findFirst: vi.fn() },
+  accountingPeriod: { findFirst: vi.fn() },
   accountingInvoice: { findFirst: vi.fn(), update: vi.fn() },
 
   payrollCompensation: { findMany: vi.fn() },
@@ -32,6 +33,7 @@ const mockDb = {
 
   $transaction: vi.fn(),
   $queryRaw: vi.fn(),
+  $executeRaw: vi.fn(),
 };
 
 vi.mock("@/lib/db", () => ({ db: mockDb }));
@@ -51,6 +53,8 @@ const ORGANIZATION_SCOPE = { kind: "organization" } as const;
 beforeEach(() => {
   vi.clearAllMocks();
   txPassthrough();
+  mockDb.accountingPeriod.findFirst.mockResolvedValue(null);
+  mockDb.accountingJournalEntry.count.mockResolvedValue(0);
 });
 
 describe("Installment — recordStaffSalaryPayment / adjustStaffInventory / updateInstallmentSettings validation", () => {
