@@ -1,7 +1,6 @@
 import { Users, Plus } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { EntityDialog } from "@/components/forms/entity-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listHospitalPatients, listHospitalClinicalAlerts, listHospitalConsents } from "@/modules/hospital/service";
-import { createPatientAction, createClinicalAlertAction, resolveClinicalAlertAction, createConsentAction, revokeConsentAction } from "../actions";
+import { createClinicalAlertAction, resolveClinicalAlertAction, createConsentAction, revokeConsentAction } from "../actions";
+import { PatientRegistrationDialog } from "./patient-registration-dialog";
 
 export default async function HospitalPatientsPage() {
   const tenant = await requireModuleAccess("hospital");
@@ -24,39 +24,11 @@ export default async function HospitalPatientsPage() {
   const consentsByPatient = new Map<string, typeof consents>();
   for (const consent of consents) consentsByPatient.set(consent.patientId, [...(consentsByPatient.get(consent.patientId) ?? []), consent]);
 
-  const field = (name: string, label: string, type = "text", required = true) => <div><Label htmlFor={name}>{label}</Label><Input id={name} name={name} type={type} required={required} /></div>;
-
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <PageHeader title="Patients" description="Registration, demographics, contacts, allergies, alerts, and consent." />
-        {canManage ? (
-          <EntityDialog trigger={<Button size="sm"><Plus />New patient</Button>} title="Register patient" description="Duplicate names/dates of birth are flagged for review at the front desk, never blocked automatically." action={createPatientAction}>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {field("firstName", "First name")}
-              {field("lastName", "Last name")}
-              {field("dateOfBirth", "Date of birth", "date")}
-              <div><Label htmlFor="sex">Sex</Label><select id="sex" name="sex" required className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"><option value="">Select…</option><option value="MALE">Male</option><option value="FEMALE">Female</option><option value="OTHER">Other</option></select></div>
-              {field("phone", "Phone", "text", false)}
-              {field("email", "Email", "email", false)}
-              {field("bloodGroup", "Blood group", "text", false)}
-              {field("nationalIdNumber", "National ID number", "text", false)}
-            </div>
-            <div><Label htmlFor="address">Address</Label><Input id="address" name="address" /></div>
-            <div><Label htmlFor="allergies">Allergies</Label><Input id="allergies" name="allergies" placeholder="e.g. Penicillin, peanuts" /></div>
-            <div className="grid gap-4 sm:grid-cols-3">
-              {field("nextOfKinName", "Next of kin name", "text", false)}
-              {field("nextOfKinPhone", "Next of kin phone", "text", false)}
-              {field("nextOfKinRelationship", "Relationship", "text", false)}
-            </div>
-            <div className="grid gap-4 sm:grid-cols-3">
-              {field("emergencyContactName", "Emergency contact", "text", false)}
-              {field("emergencyContactPhone", "Emergency phone", "text", false)}
-              {field("emergencyContactRelation", "Relationship", "text", false)}
-            </div>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="consentOnFile" className="size-4" />Signed general consent already on file</label>
-          </EntityDialog>
-        ) : null}
+        {canManage ? <PatientRegistrationDialog trigger={<Button size="sm"><Plus />New patient</Button>} /> : null}
       </div>
 
       {patients.length === 0 ? (

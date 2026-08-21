@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Prisma, PharmacyBatchStatus, PharmacyMedicineClass } from "@prisma/client";
+import { Prisma, PharmacyBatchStatus, PharmacyMedicineClass, PharmacyStockMovementType } from "@prisma/client";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 
@@ -8,9 +8,23 @@ type Tx = Prisma.TransactionClient;
 export class PharmacyNotFoundError extends Error {}
 export class PharmacyStockError extends Error {}
 export class PharmacyPrescriptionRequiredError extends Error {}
+/** Same-actor maker-checker violation, or an action attempted against the wrong workflow state. */
+export class PharmacyWorkflowError extends Error {}
+
+type PendingDispenseLine = { medicineId: string; quantity: number; prescriptionLineId?: string | null };
 
 export function listMedicines(organizationId: string) {
   return db.pharmacyMedicine.findMany({ where: { organizationId }, include: { batches: true }, orderBy: { name: "asc" } });
+}
+
+/** Tenant-scoped barcode lookup — never accepts an organizationId from anywhere but the authenticated caller. */
+export function findMedicineByBarcode(organizationId: string, barcode: string) {
+  return db.pharmacyMedicine.findFirst({ where: { organizationId, barcode, active: true } });
+}
+
+/** Tenant-scoped batch barcode lookup (e.g. a GS1 lot/batch code scanned at receiving or dispensing). */
+export function findBatchByBarcode(organizationId: string, barcode: string) {
+  return db.pharmacyBatch.findFirst({ where: { organizationId, barcode }, include: { medicine: true, supplier: true } });
 }
 
 export async function createMedicine(organizationId: string, data: {
@@ -18,6 +32,9 @@ export async function createMedicine(organizationId: string, data: {
   unit: string; medicineClass: PharmacyMedicineClass; registrationNumber?: string | null; barcode?: string | null;
   sellingPrice: string; reorderPoint: number; requiresPrescription: boolean;
 }) {
+  if (data.barcode && (await db.pharmacyMedicine.findFirst({ where: { organizationId, barcode: data.barcode, active: true } }))) {
+    throw new PharmacyStockError("Another active medicine already uses this barcode.");
+  }
   return db.pharmacyMedicine.create({ data: { organizationId, ...data } });
 }
 
@@ -35,7 +52,7 @@ export function listBatches(organizationId: string) {
 
 export async function receiveBatch(organizationId: string, actorId: string, data: {
   medicineId: string; supplierId?: string | null; batchNumber: string; quantity: number; costPrice: string;
-  manufactureDate?: Date | null; expiryDate: Date; invoiceReference?: string | null;
+  manufactureDate?: Date | null; expiryDate: Date; invoiceReference?: string | null; barcode?: string | null;
 }) {
   if (!Number.isInteger(data.quantity) || data.quantity <= 0 || data.expiryDate <= new Date()) throw new PharmacyStockError("Batch quantity and expiry are invalid.");
   const [medicine, supplier] = await Promise.all([
@@ -60,6 +77,109 @@ export async function updateBatchStatus(organizationId: string, actorId: string,
     await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "batch.status_changed", entityName: "PharmacyBatch", entityId: batch.id, metadata: { medicine: batch.medicine.name, batchNumber: batch.batchNumber, from: batch.status, to: status, reason } }, tx);
     return updated;
   });
+}
+
+// ---------------------------------------------------------------------
+// Append-only stock reconciliation — every function here writes exactly
+// one PharmacyStockMovement row alongside its batch.quantity change (or,
+// for patient returns, no quantity change at all — see the model's own
+// doc comment). Nothing here is ever updated after the fact; a correction
+// is a new movement row, mirroring PharmacyRestrictedRegister's pattern.
+// ---------------------------------------------------------------------
+
+async function loadBatchForMovement(tx: Tx, organizationId: string, batchId: string) {
+  const batch = await tx.pharmacyBatch.findFirst({ where: { id: batchId, organizationId } });
+  if (!batch) throw new PharmacyNotFoundError("Batch not found.");
+  return batch;
+}
+
+async function allowsNegative(tx: Tx, organizationId: string) {
+  const settings = await tx.pharmacySettings.findUnique({ where: { organizationId } });
+  return settings?.allowNegativeStock ?? false;
+}
+
+/** Reconciles counted physical stock against the system quantity — the delta may be positive or negative. */
+export async function recordStockCount(organizationId: string, actorId: string, data: { batchId: string; countedQuantity: number; reason: string }) {
+  if (!Number.isInteger(data.countedQuantity) || data.countedQuantity < 0) throw new PharmacyStockError("Counted quantity must be zero or a positive whole number.");
+  if (!data.reason.trim()) throw new PharmacyStockError("A reason is required for a stock count.");
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pharmacy-dispense:${organizationId}`}))`;
+    const batch = await loadBatchForMovement(tx, organizationId, data.batchId);
+    const quantityDelta = data.countedQuantity - batch.quantity;
+    const updated = await tx.pharmacyBatch.update({ where: { id: batch.id }, data: { quantity: data.countedQuantity } });
+    const movement = await tx.pharmacyStockMovement.create({ data: { organizationId, batchId: batch.id, type: PharmacyStockMovementType.COUNT_ADJUSTMENT, quantityDelta, quantityBefore: batch.quantity, quantityAfter: data.countedQuantity, reason: data.reason, recordedById: actorId } });
+    await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "stock.counted", entityName: "PharmacyStockMovement", entityId: movement.id, metadata: { batchId: batch.id, quantityDelta } }, tx);
+    return updated;
+  });
+}
+
+/** A general +/- correction (e.g. damaged units found, a data-entry fix) — blocked from taking quantity negative unless the org explicitly allows it. */
+export async function recordStockAdjustment(organizationId: string, actorId: string, data: { batchId: string; quantityDelta: number; reason: string }) {
+  if (!Number.isInteger(data.quantityDelta) || data.quantityDelta === 0) throw new PharmacyStockError("Adjustment quantity must be a non-zero whole number.");
+  if (!data.reason.trim()) throw new PharmacyStockError("A reason is required for a stock adjustment.");
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pharmacy-dispense:${organizationId}`}))`;
+    const batch = await loadBatchForMovement(tx, organizationId, data.batchId);
+    const quantityAfter = batch.quantity + data.quantityDelta;
+    if (quantityAfter < 0 && !(await allowsNegative(tx, organizationId))) throw new PharmacyStockError("This adjustment would take the batch below zero.");
+    const updated = await tx.pharmacyBatch.update({ where: { id: batch.id }, data: { quantity: quantityAfter } });
+    const movement = await tx.pharmacyStockMovement.create({ data: { organizationId, batchId: batch.id, type: PharmacyStockMovementType.ADJUSTMENT, quantityDelta: data.quantityDelta, quantityBefore: batch.quantity, quantityAfter, reason: data.reason, recordedById: actorId } });
+    await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "stock.adjusted", entityName: "PharmacyStockMovement", entityId: movement.id, metadata: { batchId: batch.id, quantityDelta: data.quantityDelta } }, tx);
+    return updated;
+  });
+}
+
+/** Destroys/discards stock (expired, damaged, recalled) — always a decrease, blocked below zero unless the org allows negative stock. */
+export async function recordWriteOff(organizationId: string, actorId: string, data: { batchId: string; quantity: number; reason: string }) {
+  if (!Number.isInteger(data.quantity) || data.quantity <= 0) throw new PharmacyStockError("Write-off quantity must be a positive whole number.");
+  if (!data.reason.trim()) throw new PharmacyStockError("A reason is required for a write-off.");
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pharmacy-dispense:${organizationId}`}))`;
+    const batch = await loadBatchForMovement(tx, organizationId, data.batchId);
+    const quantityAfter = batch.quantity - data.quantity;
+    if (quantityAfter < 0 && !(await allowsNegative(tx, organizationId))) throw new PharmacyStockError("Cannot write off more than the batch currently holds.");
+    const updated = await tx.pharmacyBatch.update({ where: { id: batch.id }, data: { quantity: quantityAfter } });
+    const movement = await tx.pharmacyStockMovement.create({ data: { organizationId, batchId: batch.id, type: PharmacyStockMovementType.WRITE_OFF, quantityDelta: -data.quantity, quantityBefore: batch.quantity, quantityAfter, reason: data.reason, recordedById: actorId } });
+    await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "stock.written_off", entityName: "PharmacyStockMovement", entityId: movement.id, metadata: { batchId: batch.id, quantity: data.quantity } }, tx);
+    return updated;
+  });
+}
+
+/** Stock physically leaving for a supplier (recall pickup, over-order return) — always a decrease. */
+export async function recordSupplierReturn(organizationId: string, actorId: string, data: { batchId: string; quantity: number; reason: string; reference?: string | null }) {
+  if (!Number.isInteger(data.quantity) || data.quantity <= 0) throw new PharmacyStockError("Return quantity must be a positive whole number.");
+  if (!data.reason.trim()) throw new PharmacyStockError("A reason is required for a supplier return.");
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pharmacy-dispense:${organizationId}`}))`;
+    const batch = await loadBatchForMovement(tx, organizationId, data.batchId);
+    const quantityAfter = batch.quantity - data.quantity;
+    if (quantityAfter < 0 && !(await allowsNegative(tx, organizationId))) throw new PharmacyStockError("Cannot return more than the batch currently holds.");
+    const updated = await tx.pharmacyBatch.update({ where: { id: batch.id }, data: { quantity: quantityAfter } });
+    const movement = await tx.pharmacyStockMovement.create({ data: { organizationId, batchId: batch.id, type: PharmacyStockMovementType.SUPPLIER_RETURN, quantityDelta: -data.quantity, quantityBefore: batch.quantity, quantityAfter, reason: data.reason, reference: data.reference, recordedById: actorId } });
+    await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "stock.supplier_returned", entityName: "PharmacyStockMovement", entityId: movement.id, metadata: { batchId: batch.id, quantity: data.quantity } }, tx);
+    return updated;
+  });
+}
+
+/**
+ * Records a patient bringing medication back — record-only, quantityDelta
+ * is always 0. Returned medication is never silently restocked as
+ * dispensable; a pharmacist who inspects and approves it for resale uses
+ * recordStockAdjustment separately, with a reason referencing this row's id.
+ */
+export async function recordPatientReturn(organizationId: string, actorId: string, data: { batchId: string; quantity: number; reason: string }) {
+  if (!Number.isInteger(data.quantity) || data.quantity <= 0) throw new PharmacyStockError("Returned quantity must be a positive whole number.");
+  if (!data.reason.trim()) throw new PharmacyStockError("A reason is required for a patient return.");
+  return db.$transaction(async (tx) => {
+    const batch = await loadBatchForMovement(tx, organizationId, data.batchId);
+    const movement = await tx.pharmacyStockMovement.create({ data: { organizationId, batchId: batch.id, type: PharmacyStockMovementType.PATIENT_RETURN, quantityDelta: 0, quantityBefore: batch.quantity, quantityAfter: batch.quantity, reason: `${data.reason} (returned quantity: ${data.quantity}, not restocked, inspect before adjusting)`, recordedById: actorId } });
+    await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "stock.patient_returned", entityName: "PharmacyStockMovement", entityId: movement.id, metadata: { batchId: batch.id, quantity: data.quantity } }, tx);
+    return movement;
+  });
+}
+
+export function listStockMovements(organizationId: string, batchId?: string) {
+  return db.pharmacyStockMovement.findMany({ where: { organizationId, batchId }, include: { batch: { include: { medicine: true } } }, orderBy: { recordedAt: "desc" }, take: 500 });
 }
 
 export function listPatients(organizationId: string) {
@@ -101,7 +221,7 @@ export function getPharmacySettings(organizationId: string) {
   return db.pharmacySettings.upsert({ where: { organizationId }, update: {}, create: { organizationId } });
 }
 
-export function updatePharmacySettings(organizationId: string, data: { licenceNumber?: string | null; superintendentPharmacist?: string | null; superintendentRegistration?: string | null; receiptPrefix: string; prescriptionValidityDays: number; expiryAlertDays: number; requirePatientForControlled: boolean }) {
+export function updatePharmacySettings(organizationId: string, data: { licenceNumber?: string | null; superintendentPharmacist?: string | null; superintendentRegistration?: string | null; receiptPrefix: string; prescriptionValidityDays: number; expiryAlertDays: number; requirePatientForControlled: boolean; controlledDispenseMakerCheckerEnabled: boolean; allowNegativeStock: boolean }) {
   return db.pharmacySettings.upsert({ where: { organizationId }, update: data, create: { organizationId, ...data } });
 }
 
@@ -129,6 +249,35 @@ async function dispenseLine(tx: Tx, organizationId: string, medicineId: string, 
   return allocations;
 }
 
+/**
+ * Finalizes the FEFO allocation + stock decrement + restricted-register
+ * side effects for a dispensing whose lines are already known. Shared by
+ * the immediate-completion path in dispense() and by
+ * approveControlledDispense()'s deferred completion.
+ */
+async function completeDispensingLines(tx: Tx, organizationId: string, actorId: string, dispensingId: string, lines: PendingDispenseLine[], medicines: { id: string; name: string; sellingPrice: Prisma.Decimal; medicineClass: PharmacyMedicineClass }[], prescription: { id: string; patient: { fullName: string; address: string | null }; prescriber: { fullName: string; registrationNumber: string } } | null) {
+  const lineResults: { medicineId: string; batchId: string; quantity: number; unitPrice: Prisma.Decimal; prescriptionLineId?: string | null }[] = [];
+  for (const line of lines) {
+    const medicine = medicines.find((item) => item.id === line.medicineId)!;
+    const allocations = await dispenseLine(tx, organizationId, line.medicineId, line.quantity);
+    for (const allocation of allocations) lineResults.push({ medicineId: medicine.id, ...allocation, unitPrice: medicine.sellingPrice, prescriptionLineId: line.prescriptionLineId });
+    if (line.prescriptionLineId) await tx.pharmacyPrescriptionLine.update({ where: { id: line.prescriptionLineId }, data: { quantityDispensed: { increment: line.quantity } } });
+  }
+  for (const line of lineResults) {
+    await tx.pharmacyDispensingLine.create({ data: { organizationId, dispensingId, ...line, lineTotal: line.unitPrice.mul(line.quantity) } });
+    const medicine = medicines.find((item) => item.id === line.medicineId)!;
+    if (medicine.medicineClass === "CONTROLLED") {
+      const batch = await tx.pharmacyBatch.findUniqueOrThrow({ where: { id: line.batchId } });
+      await tx.pharmacyRestrictedRegister.create({ data: { organizationId, dispensingId, medicineName: medicine.name, batchNumber: batch.batchNumber, quantity: line.quantity, patientName: prescription?.patient.fullName ?? "Recorded walk-in patient", patientAddress: prescription?.patient.address, prescriberName: prescription?.prescriber.fullName, prescriberRegistration: prescription?.prescriber.registrationNumber, recordedById: actorId } });
+    }
+  }
+  if (prescription) {
+    const refreshed = await tx.pharmacyPrescriptionLine.findMany({ where: { prescriptionId: prescription.id } });
+    const complete = refreshed.every((line) => line.quantityDispensed >= line.quantityPrescribed);
+    await tx.pharmacyPrescription.update({ where: { id: prescription.id }, data: { status: complete ? "DISPENSED" : "PARTIALLY_DISPENSED" } });
+  }
+}
+
 export async function dispense(organizationId: string, actorId: string, data: {
   dispensingNumber: string; patientId?: string | null; prescriptionId?: string | null; discount: string;
   paymentMethod?: string | null; paymentReference?: string | null; lines: { medicineId: string; quantity: number; prescriptionLineId?: string | null }[];
@@ -144,36 +293,75 @@ export async function dispense(organizationId: string, actorId: string, data: {
     if (needsPrescription && !prescription) throw new PharmacyPrescriptionRequiredError("An active prescription is required.");
     if (data.patientId && prescription && prescription.patientId !== data.patientId) throw new PharmacyNotFoundError("Prescription patient mismatch.");
 
-    const lineResults: { medicineId: string; batchId: string; quantity: number; unitPrice: Prisma.Decimal; prescriptionLineId?: string | null }[] = [];
+    const resolvedLines: PendingDispenseLine[] = [];
     for (const line of data.lines) {
-      const medicine = medicines.find((item) => item.id === line.medicineId)!;
       const prescriptionLine = line.prescriptionLineId ? prescription?.lines.find((item) => item.id === line.prescriptionLineId && item.medicineId === line.medicineId) : null;
       if (needsPrescription && !prescriptionLine) throw new PharmacyPrescriptionRequiredError("Dispensing must match a prescription line.");
       if (prescriptionLine && prescriptionLine.quantityDispensed + line.quantity > prescriptionLine.quantityPrescribed) throw new PharmacyStockError("Dispensing exceeds prescribed quantity.");
-      const allocations = await dispenseLine(tx, organizationId, line.medicineId, line.quantity);
-      for (const allocation of allocations) lineResults.push({ medicineId: medicine.id, ...allocation, unitPrice: medicine.sellingPrice, prescriptionLineId: prescriptionLine?.id });
-      if (prescriptionLine) await tx.pharmacyPrescriptionLine.update({ where: { id: prescriptionLine.id }, data: { quantityDispensed: { increment: line.quantity } } });
+      resolvedLines.push({ medicineId: line.medicineId, quantity: line.quantity, prescriptionLineId: prescriptionLine?.id ?? null });
     }
-    const subtotal = lineResults.reduce((sum, line) => sum.add(line.unitPrice.mul(line.quantity)), new Prisma.Decimal(0));
+
+    const subtotal = resolvedLines.reduce((sum, line) => sum.add(medicines.find((m) => m.id === line.medicineId)!.sellingPrice.mul(line.quantity)), new Prisma.Decimal(0));
     const discount = new Prisma.Decimal(data.discount || 0);
     if (discount.isNegative() || discount.gt(subtotal)) throw new PharmacyStockError("Discount is invalid.");
+
+    const hasControlled = medicines.some((medicine) => medicine.medicineClass === "CONTROLLED");
+    const settings = await tx.pharmacySettings.findUnique({ where: { organizationId } });
+    const makerCheckerEnabled = hasControlled && (settings?.controlledDispenseMakerCheckerEnabled ?? true);
+
+    if (makerCheckerEnabled) {
+      const dispensing = await tx.pharmacyDispensing.create({ data: { organizationId, dispensingNumber: data.dispensingNumber, patientId: data.patientId, prescriptionId: data.prescriptionId, subtotal, discount, total: subtotal.sub(discount), paymentMethod: data.paymentMethod, paymentReference: data.paymentReference, dispensedById: actorId, status: "PENDING_APPROVAL", makerCheckerEnabled: true, pendingLines: resolvedLines as unknown as Prisma.InputJsonValue } });
+      await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "dispensing.requested", entityName: "PharmacyDispensing", entityId: dispensing.id, metadata: { dispensingNumber: dispensing.dispensingNumber, total: dispensing.total.toString(), reason: "controlled-drug maker-checker approval required" } }, tx);
+      return dispensing;
+    }
+
     const dispensing = await tx.pharmacyDispensing.create({ data: { organizationId, dispensingNumber: data.dispensingNumber, patientId: data.patientId, prescriptionId: data.prescriptionId, subtotal, discount, total: subtotal.sub(discount), paymentMethod: data.paymentMethod, paymentReference: data.paymentReference, dispensedById: actorId } });
-    for (const line of lineResults) {
-      await tx.pharmacyDispensingLine.create({ data: { organizationId, dispensingId: dispensing.id, ...line, lineTotal: line.unitPrice.mul(line.quantity) } });
-      const medicine = medicines.find((item) => item.id === line.medicineId)!;
-      if (medicine.medicineClass === "CONTROLLED") {
-        const batch = await tx.pharmacyBatch.findUniqueOrThrow({ where: { id: line.batchId } });
-        await tx.pharmacyRestrictedRegister.create({ data: { organizationId, dispensingId: dispensing.id, medicineName: medicine.name, batchNumber: batch.batchNumber, quantity: line.quantity, patientName: prescription?.patient.fullName ?? "Recorded walk-in patient", patientAddress: prescription?.patient.address, prescriberName: prescription?.prescriber.fullName, prescriberRegistration: prescription?.prescriber.registrationNumber, recordedById: actorId } });
-      }
-    }
-    if (prescription) {
-      const refreshed = await tx.pharmacyPrescriptionLine.findMany({ where: { prescriptionId: prescription.id } });
-      const complete = refreshed.every((line) => line.quantityDispensed >= line.quantityPrescribed);
-      await tx.pharmacyPrescription.update({ where: { id: prescription.id }, data: { status: complete ? "DISPENSED" : "PARTIALLY_DISPENSED" } });
-    }
+    await completeDispensingLines(tx, organizationId, actorId, dispensing.id, resolvedLines, medicines, prescription);
     await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "dispensing.completed", entityName: "PharmacyDispensing", entityId: dispensing.id, metadata: { dispensingNumber: dispensing.dispensingNumber, total: dispensing.total.toString() } }, tx);
     return dispensing;
   }, { timeout: 15_000 });
+}
+
+/**
+ * Approves a controlled-drug dispense that's PENDING_APPROVAL. Batch
+ * allocation, stock decrement, and the PharmacyRestrictedRegister entry all
+ * happen here for the first time — nothing moved when dispense() created
+ * the pending request, so a rejected or abandoned request never touched
+ * stock. The same-actor guard mirrors HrTerminationRequest.reviewTermination.
+ */
+export async function approveControlledDispense(organizationId: string, actorId: string, dispensingId: string) {
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pharmacy-dispense:${organizationId}`}))`;
+    const dispensing = await tx.pharmacyDispensing.findFirst({ where: { id: dispensingId, organizationId, status: "PENDING_APPROVAL" }, include: { prescription: { include: { patient: true, prescriber: true } } } });
+    if (!dispensing) throw new PharmacyNotFoundError("Pending controlled dispense not found.");
+    if (dispensing.makerCheckerEnabled && dispensing.dispensedById === actorId) throw new PharmacyWorkflowError("The person who requested this dispense cannot also approve it.");
+
+    const pendingLines = (dispensing.pendingLines as unknown as PendingDispenseLine[] | null) ?? [];
+    const medicineIds = [...new Set(pendingLines.map((line) => line.medicineId))];
+    const medicines = await tx.pharmacyMedicine.findMany({ where: { organizationId, id: { in: medicineIds } } });
+    if (medicines.length !== medicineIds.length) throw new PharmacyNotFoundError("Medicine not found.");
+
+    await completeDispensingLines(tx, organizationId, actorId, dispensing.id, pendingLines, medicines, dispensing.prescription);
+    const approved = await tx.pharmacyDispensing.update({ where: { id: dispensing.id }, data: { status: "COMPLETED", approvedById: actorId, approvedAt: new Date() } });
+    await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "dispensing.approved", entityName: "PharmacyDispensing", entityId: dispensing.id, metadata: { dispensingNumber: dispensing.dispensingNumber } }, tx);
+    return approved;
+  }, { timeout: 15_000 });
+}
+
+export async function rejectControlledDispense(organizationId: string, actorId: string, dispensingId: string, reason: string) {
+  if (!reason.trim()) throw new PharmacyStockError("A rejection reason is required.");
+  return db.$transaction(async (tx) => {
+    const dispensing = await tx.pharmacyDispensing.findFirst({ where: { id: dispensingId, organizationId, status: "PENDING_APPROVAL" } });
+    if (!dispensing) throw new PharmacyNotFoundError("Pending controlled dispense not found.");
+    if (dispensing.makerCheckerEnabled && dispensing.dispensedById === actorId) throw new PharmacyWorkflowError("The person who requested this dispense cannot also reject it.");
+    const rejected = await tx.pharmacyDispensing.update({ where: { id: dispensing.id }, data: { status: "REJECTED", rejectedById: actorId, rejectedAt: new Date(), rejectionReason: reason } });
+    await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "dispensing.rejected", entityName: "PharmacyDispensing", entityId: dispensing.id, metadata: { dispensingNumber: dispensing.dispensingNumber, reason } }, tx);
+    return rejected;
+  });
+}
+
+export function listPendingControlledDispenses(organizationId: string) {
+  return db.pharmacyDispensing.findMany({ where: { organizationId, status: "PENDING_APPROVAL" }, include: { patient: true }, orderBy: { dispensedAt: "asc" } });
 }
 
 export async function reverseDispensing(organizationId: string, actorId: string, dispensingId: string, reason: string) {

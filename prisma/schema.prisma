@@ -509,6 +509,7 @@ model Organization {
   pharmacyPrescribers             PharmacyPrescriber[]
   pharmacyPrescriptions           PharmacyPrescription[]
   pharmacyDispensings             PharmacyDispensing[]
+  pharmacyStockMovements          PharmacyStockMovement[]
   pharmacySettings                PharmacySettings?
   moduleRequests                  ModuleRequest[]
   contactSubmissions              ContactSubmission[]
@@ -4167,8 +4168,18 @@ enum PharmacyPrescriptionStatus {
 }
 
 enum PharmacyDispensingStatus {
+  PENDING_APPROVAL
   COMPLETED
+  REJECTED
   REVERSED
+}
+
+enum PharmacyStockMovementType {
+  COUNT_ADJUSTMENT
+  ADJUSTMENT
+  WRITE_OFF
+  SUPPLIER_RETURN
+  PATIENT_RETURN
 }
 
 model PharmacyMedicine {
@@ -4226,6 +4237,7 @@ model PharmacyBatch {
   medicineId       String
   supplierId       String?
   batchNumber      String
+  barcode          String?
   quantity         Int
   initialQuantity  Int
   costPrice        Decimal             @default(0) @db.Decimal(12, 2)
@@ -4241,10 +4253,12 @@ model PharmacyBatch {
   medicine        PharmacyMedicine         @relation(fields: [medicineId], references: [id], onDelete: Restrict)
   supplier        PharmacySupplier?        @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   dispensingLines PharmacyDispensingLine[]
+  stockMovements  PharmacyStockMovement[]
 
   @@unique([organizationId, medicineId, batchNumber])
   @@index([organizationId, status, expiryDate])
   @@index([medicineId, expiryDate])
+  @@index([organizationId, barcode])
 }
 
 model PharmacyPatient {
@@ -4333,22 +4347,40 @@ model PharmacyPrescriptionLine {
 }
 
 model PharmacyDispensing {
-  id               String                   @id @default(cuid())
-  organizationId   String
-  dispensingNumber String
-  patientId        String?
-  prescriptionId   String?
-  status           PharmacyDispensingStatus @default(COMPLETED)
-  subtotal         Decimal                  @db.Decimal(12, 2)
-  discount         Decimal                  @default(0) @db.Decimal(12, 2)
-  total            Decimal                  @db.Decimal(12, 2)
-  paymentMethod    String?
-  paymentReference String?
-  dispensedById    String
-  dispensedAt      DateTime                 @default(now())
-  reversedAt       DateTime?
-  reversalReason   String?
-  createdAt        DateTime                 @default(now())
+  id                  String                   @id @default(cuid())
+  organizationId      String
+  dispensingNumber    String
+  patientId           String?
+  prescriptionId      String?
+  status              PharmacyDispensingStatus @default(COMPLETED)
+  subtotal            Decimal                  @db.Decimal(12, 2)
+  discount            Decimal                  @default(0) @db.Decimal(12, 2)
+  total               Decimal                  @db.Decimal(12, 2)
+  paymentMethod       String?
+  paymentReference    String?
+  dispensedById       String
+  dispensedAt         DateTime                 @default(now())
+  reversedAt          DateTime?
+  reversalReason      String?
+  /**
+   * Controlled-drug maker-checker: snapshotted at request time from
+   * PharmacySettings.controlledDispenseMakerCheckerEnabled, the same
+   * pattern as HrTerminationRequest.makerCheckerEnabled. When true and the
+   * request contains a CONTROLLED medicine, status starts PENDING_APPROVAL
+   * and pendingLines holds the requested {medicineId, quantity,
+   * prescriptionLineId} entries — batch allocation and the real
+   * PharmacyDispensingLine/PharmacyRestrictedRegister rows are only created
+   * once approveControlledDispense() runs, so no stock moves until a
+   * different person confirms it.
+   */
+  makerCheckerEnabled Boolean                  @default(false)
+  pendingLines        Json?
+  approvedById        String?
+  approvedAt          DateTime?
+  rejectedById        String?
+  rejectedAt          DateTime?
+  rejectionReason     String?
+  createdAt           DateTime                 @default(now())
 
   organization      Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   patient           PharmacyPatient?             @relation(fields: [patientId], references: [id], onDelete: Restrict)
@@ -4403,20 +4435,55 @@ model PharmacyRestrictedRegister {
 }
 
 model PharmacySettings {
-  id                          String   @id @default(cuid())
-  organizationId              String   @unique
-  licenceNumber               String?
-  superintendentPharmacist    String?
-  superintendentRegistration  String?
-  receiptPrefix               String   @default("PHA")
-  prescriptionValidityDays    Int      @default(30)
-  expiryAlertDays             Int      @default(90)
-  allowNegativeStock          Boolean  @default(false)
-  requirePatientForControlled Boolean  @default(true)
-  createdAt                   DateTime @default(now())
-  updatedAt                   DateTime @updatedAt
+  id                                    String   @id @default(cuid())
+  organizationId                        String   @unique
+  licenceNumber                         String?
+  superintendentPharmacist              String?
+  superintendentRegistration            String?
+  receiptPrefix                         String   @default("PHA")
+  prescriptionValidityDays              Int      @default(30)
+  expiryAlertDays                       Int      @default(90)
+  allowNegativeStock                    Boolean  @default(false)
+  requirePatientForControlled           Boolean  @default(true)
+  /**
+   * Snapshotted onto each PharmacyDispensing at request time — see PharmacyDispensing.makerCheckerEnabled.
+   */
+  controlledDispenseMakerCheckerEnabled Boolean  @default(true)
+  createdAt                             DateTime @default(now())
+  updatedAt                             DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+/**
+ * Append-only stock-movement ledger for the reconciliation workflows that
+ * sit alongside receiveBatch/dispense/reverseDispensing: physical counts,
+ * manual adjustments, write-offs, supplier returns, and patient returns.
+ * Every row is immutable once created — a correction is a new row, never
+ * an update, mirroring PharmacyRestrictedRegister's reversal-by-new-row
+ * pattern. PATIENT_RETURN rows are record-only (quantityDelta is always 0)
+ * — a returned medication is never silently restocked as dispensable; a
+ * pharmacist who inspects and approves it uses a separate ADJUSTMENT entry
+ * that references this row's id in its reason text.
+ */
+model PharmacyStockMovement {
+  id             String                    @id @default(cuid())
+  organizationId String
+  batchId        String
+  type           PharmacyStockMovementType
+  quantityDelta  Int
+  quantityBefore Int
+  quantityAfter  Int
+  reason         String                    @db.Text
+  reference      String?
+  recordedById   String
+  recordedAt     DateTime                  @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  batch        PharmacyBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, recordedAt])
+  @@index([batchId])
 }
 
 // =====================================================================
@@ -5058,6 +5125,9 @@ model HospitalLabResult {
   verifiedById       String?
   verifiedAt         DateTime?
   correctionReason   String?
+  rejectedById       String?
+  rejectedAt         DateTime?
+  rejectionReason    String?
 
   organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   labOrderItem     HospitalLabOrderItem @relation(fields: [labOrderItemId], references: [id], onDelete: Cascade)
@@ -5130,6 +5200,9 @@ model HospitalImagingFinding {
   verifiedById        String?
   verifiedAt          DateTime?
   correctionReason    String?
+  rejectedById        String?
+  rejectedAt          DateTime?
+  rejectionReason     String?
 
   organization      Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   imagingOrder      HospitalImagingOrder    @relation(fields: [imagingOrderId], references: [id], onDelete: Cascade)
@@ -5385,22 +5458,26 @@ model HospitalAttachment {
 }
 
 model HospitalSettings {
-  id                         String   @id @default(cuid())
-  organizationId             String
-  facilityId                 String   @unique
-  mrnPrefix                  String   @default("MRN")
-  encounterPrefix            String   @default("ENC")
-  appointmentPrefix          String   @default("APT")
-  admissionPrefix            String   @default("ADM")
-  invoicePrefix              String   @default("INV")
-  receiptPrefix              String   @default("RCT")
-  resultVerificationRequired Boolean  @default(true)
-  bedTransferRequiresReason  Boolean  @default(true)
-  retentionYears             Int      @default(7)
-  currency                   String   @default("USD")
-  timezone                   String   @default("UTC")
-  createdAt                  DateTime @default(now())
-  updatedAt                  DateTime @updatedAt
+  id                             String   @id @default(cuid())
+  organizationId                 String
+  facilityId                     String   @unique
+  mrnPrefix                      String   @default("MRN")
+  encounterPrefix                String   @default("ENC")
+  appointmentPrefix              String   @default("APT")
+  admissionPrefix                String   @default("ADM")
+  invoicePrefix                  String   @default("INV")
+  receiptPrefix                  String   @default("RCT")
+  resultVerificationRequired     Boolean  @default(true)
+  /**
+   * When true, verifyHospitalLabResult/verifyHospitalImagingFinding reject a verifier who is also the enterer.
+   */
+  labImagingMakerCheckerEnforced Boolean  @default(true)
+  bedTransferRequiresReason      Boolean  @default(true)
+  retentionYears                 Int      @default(7)
+  currency                       String   @default("USD")
+  timezone                       String   @default("UTC")
+  createdAt                      DateTime @default(now())
+  updatedAt                      DateTime @updatedAt
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   facility     HospitalFacility @relation(fields: [facilityId], references: [id], onDelete: Cascade)

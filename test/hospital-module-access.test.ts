@@ -87,8 +87,8 @@ describe("hospital module-aware authorization", () => {
     await expect(requireModuleAccess("hospital")).rejects.toThrow("module-unavailable");
   });
 
-  it("grants module entry on a narrow permission like hospital.lab.manage without hospital.view", () => {
-    const currentTenant = tenant({ permissions: ["hospital.lab.manage"] });
+  it("grants module entry on a narrow permission like hospital.lab.enter without hospital.view", () => {
+    const currentTenant = tenant({ permissions: ["hospital.lab.enter"] });
     expect(canAccessModule(currentTenant, "hospital")).toBe(true);
   });
 });

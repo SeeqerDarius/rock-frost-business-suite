@@ -9,11 +9,13 @@ import { Label } from "@/components/ui/label";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listHospitalLabOrders, listHospitalLabTests, listHospitalEncounters, listHospitalPatients } from "@/modules/hospital/service";
-import { createLabTestAction, createLabOrderAction, collectSpecimenAction, enterLabResultAction, verifyLabResultAction, correctLabResultAction } from "../actions";
+import { createLabTestAction, createLabOrderAction, collectSpecimenAction, enterLabResultAction, verifyLabResultAction, rejectLabResultAction, correctLabResultAction } from "../actions";
 
 export default async function HospitalLaboratoryPage() {
   const tenant = await requireModuleAccess("hospital");
-  const canManage = hasPermission(tenant, PERMISSIONS.HOSPITAL_LAB_MANAGE);
+  const canEnter = hasPermission(tenant, PERMISSIONS.HOSPITAL_LAB_ENTER);
+  const canVerify = hasPermission(tenant, PERMISSIONS.HOSPITAL_LAB_VERIFY);
+  const canManage = canEnter || canVerify;
   const [orders, tests, encounters, patients] = await Promise.all([
     listHospitalLabOrders(tenant.organizationId),
     listHospitalLabTests(tenant.organizationId),
@@ -26,7 +28,7 @@ export default async function HospitalLaboratoryPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <PageHeader title="Laboratory" description="Test catalogue, orders, specimens, results, and verification." />
-        {canManage ? (
+        {canEnter ? (
           <div className="flex gap-2">
             <EntityDialog trigger={<Button size="sm" variant="outline">Add test</Button>} title="Add lab test" action={createLabTestAction}>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -62,12 +64,12 @@ export default async function HospitalLaboratoryPage() {
                         <Badge variant="outline">{item.status.replaceAll("_", " ")}</Badge>
                       </div>
                       {currentResult ? (
-                        <p className="mt-1 text-sm text-muted-foreground">{currentResult.value} {currentResult.unit ?? ""} ({currentResult.abnormalFlag}){currentResult.verifiedAt ? " · verified" : ""}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">{currentResult.value} {currentResult.unit ?? ""} ({currentResult.abnormalFlag}){currentResult.verifiedAt ? " · verified" : currentResult.rejectedAt ? ` · rejected: ${currentResult.rejectionReason}` : ""}</p>
                       ) : null}
                       {canManage ? (
                         <div className="mt-2 flex flex-wrap gap-2">
-                          {item.status === "ORDERED" ? <form action={collectSpecimenAction}><input type="hidden" name="itemId" value={item.id} /><Button size="sm" variant="outline" type="submit">Mark specimen collected</Button></form> : null}
-                          {["SPECIMEN_COLLECTED", "IN_PROGRESS"].includes(item.status) ? (
+                          {canEnter && item.status === "ORDERED" ? <form action={collectSpecimenAction}><input type="hidden" name="itemId" value={item.id} /><Button size="sm" variant="outline" type="submit">Mark specimen collected</Button></form> : null}
+                          {canEnter && ["SPECIMEN_COLLECTED", "IN_PROGRESS"].includes(item.status) ? (
                             <form action={enterLabResultAction} className="flex flex-wrap items-end gap-2">
                               <input type="hidden" name="itemId" value={item.id} />
                               <Input name="value" placeholder="Value" required className="h-8 w-24 text-xs" />
@@ -76,10 +78,17 @@ export default async function HospitalLaboratoryPage() {
                               <Button size="sm" type="submit">Enter result</Button>
                             </form>
                           ) : null}
-                          {item.status === "RESULTED" && currentResult && !currentResult.verifiedAt ? (
-                            <form action={verifyLabResultAction}><input type="hidden" name="resultId" value={currentResult.id} /><Button size="sm" type="submit">Verify result</Button></form>
+                          {canVerify && item.status === "RESULTED" && currentResult && !currentResult.verifiedAt ? (
+                            <>
+                              <form action={verifyLabResultAction}><input type="hidden" name="resultId" value={currentResult.id} /><Button size="sm" type="submit">Verify result</Button></form>
+                              <form action={rejectLabResultAction} className="flex items-end gap-2">
+                                <input type="hidden" name="resultId" value={currentResult.id} />
+                                <Input name="reason" placeholder="Rejection reason" required className="h-8 w-32 text-xs" />
+                                <Button size="sm" variant="outline" type="submit">Reject</Button>
+                              </form>
+                            </>
                           ) : null}
-                          {currentResult?.verifiedAt ? (
+                          {canEnter && currentResult?.verifiedAt ? (
                             <form action={correctLabResultAction} className="flex flex-wrap items-end gap-2">
                               <input type="hidden" name="priorResultId" value={currentResult.id} />
                               <Input name="value" placeholder="Corrected value" required className="h-8 w-24 text-xs" />
