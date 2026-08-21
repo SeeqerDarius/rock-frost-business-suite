@@ -22,7 +22,9 @@ export default async function FleetInvestorPage() {
   const session = await getServerAuthSession();
   const owners = await listFleetOwners(tenant.organizationId);
   const linkedOwner = owners.find((owner) => owner.userId === session?.user?.id);
-  const rows = await getFleetInvestorSummary(tenant.organizationId, linkedOwner ? session?.user?.id : undefined);
+  const rows = tenant.role === "Vehicle Owner" && !linkedOwner
+    ? []
+    : await getFleetInvestorSummary(tenant.organizationId, linkedOwner ? session?.user?.id : undefined);
   const totals = rows.reduce(
     (sum, row) => ({
       vehicles: sum.vehicles + row.vehicleCount,

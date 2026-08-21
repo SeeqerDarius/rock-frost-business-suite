@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listAssignableFleetUsers, listFleetOwners } from "@/modules/fleet/service";
+import { listAssignableFleetUsers, listFleetOwnersWithPortfolio } from "@/modules/fleet/service";
 import { upsertFleetOwner } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -27,7 +27,7 @@ export default async function FleetOwnersPage({
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_OWNERS_MANAGE);
   const [owners, users] = await Promise.all([
-    listFleetOwners(tenant.organizationId),
+    listFleetOwnersWithPortfolio(tenant.organizationId),
     listAssignableFleetUsers(tenant.organizationId),
   ]);
   const userItems = Object.fromEntries(users.map((user) => [user.id, `${user.name ?? user.email} (${user.email})`]));
@@ -35,7 +35,7 @@ export default async function FleetOwnersPage({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <PageHeader title="Owners" description="Vehicle owners and their contact details." />
+        <PageHeader title="Owners" description="Vehicle owners, linked portal access, assigned vehicles, and verified revenue." />
         {canManage ? (
           <EntityDialog
             trigger={
@@ -97,6 +97,8 @@ export default async function FleetOwnersPage({
               <TableHead>Business</TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>Email</TableHead>
+              <TableHead>Vehicles</TableHead>
+              <TableHead>Verified revenue</TableHead>
               {canManage ? <TableHead /> : null}
             </TableRow>
           </TableHeader>
@@ -107,6 +109,15 @@ export default async function FleetOwnersPage({
                 <TableCell className="text-muted-foreground">{owner.businessName ?? "-"}</TableCell>
                 <TableCell className="text-muted-foreground">{owner.phone ?? "-"}</TableCell>
                 <TableCell className="text-muted-foreground">{owner.email ?? "-"}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  <details>
+                    <summary className="cursor-pointer">{owner.vehicleCount}</summary>
+                    <div className="mt-2 min-w-44 space-y-1 rounded-md border bg-popover p-3 text-xs shadow-sm">
+                      {owner.vehicles.length === 0 ? "No vehicles assigned" : owner.vehicles.map((vehicle) => <p key={vehicle.id}>{vehicle.plateNumber}. {vehicle.assetTag}</p>)}
+                    </div>
+                  </details>
+                </TableCell>
+                <TableCell className="text-muted-foreground">{tenant.organization.currency ?? "GHS"} {owner.revenue.toFixed(2)}</TableCell>
                 {canManage ? (
                   <TableCell className="text-right">
                     <EntityDialog

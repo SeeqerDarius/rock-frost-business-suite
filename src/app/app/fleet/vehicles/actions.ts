@@ -4,8 +4,9 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createFleetVehicle, updateFleetVehicle, NotFoundError } from "@/modules/fleet/service";
-import type { FleetVehicleStatus } from "@prisma/client";
+import { createFleetVehicle, updateFleetVehicle, NotFoundError, FleetSalesTargetError } from "@/modules/fleet/service";
+import type { FleetSalesTargetPeriod, FleetVehicleStatus } from "@prisma/client";
+import { logAuditEvent } from "@/lib/audit";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -42,16 +43,29 @@ export async function upsertFleetVehicle(formData: FormData): Promise<void> {
     status: (clean(formData.get("status")) as FleetVehicleStatus) ?? "AVAILABLE",
     mileage: cleanInt(formData.get("mileage")),
     location: clean(formData.get("location")),
+    salesTargetPeriod:
+      clean(formData.get("salesTargetPeriod")) === "NONE"
+        ? null
+        : (clean(formData.get("salesTargetPeriod")) as FleetSalesTargetPeriod | null),
+    salesTargetAmount: clean(formData.get("salesTargetAmount")),
   };
 
   try {
-    if (id) {
-      await updateFleetVehicle(tenant.organizationId, id, data);
-    } else {
-      await createFleetVehicle(tenant.organizationId, data);
-    }
+    const vehicle = id
+      ? await updateFleetVehicle(tenant.organizationId, id, data, tenant.userId)
+      : await createFleetVehicle(tenant.organizationId, data, tenant.userId);
+    await logAuditEvent({
+      organizationId: tenant.organizationId,
+      userId: tenant.userId,
+      module: "fleet",
+      action: id ? "fleet.vehicle.updated" : "fleet.vehicle.created",
+      entityName: "FleetVehicle",
+      entityId: vehicle.id,
+      metadata: { assignedDriverId: data.assignedDriverId, salesTargetPeriod: data.salesTargetPeriod },
+    });
   } catch (error) {
     if (error instanceof NotFoundError) redirect("/app/fleet/vehicles?error=not-found");
+    if (error instanceof FleetSalesTargetError) redirect("/app/fleet/vehicles?error=invalid-target");
     redirect("/app/fleet/vehicles?error=duplicate");
   }
 

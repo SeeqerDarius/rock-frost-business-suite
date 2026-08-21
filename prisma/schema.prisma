@@ -190,6 +190,17 @@ enum FleetPaymentStatus {
   CANCELLED
 }
 
+enum FleetSalesTargetPeriod {
+  DAILY
+  WEEKLY
+}
+
+enum FleetDriverSubmissionType {
+  DAILY_SALES
+  WEEKLY_SALES
+  WORK_AND_PAY
+}
+
 enum FleetContractStatus {
   DRAFT
   ACTIVE
@@ -396,6 +407,7 @@ model Organization {
   fleetDrivers                    FleetDriver[]
   fleetDriverPaymentSubmissions   FleetDriverPaymentSubmission[]
   fleetVehicles                   FleetVehicle[]
+  fleetVehicleOwnershipHistory    FleetVehicleOwnershipHistory[]
   fleetVehicleDocuments           FleetVehicleDocument[]
   maintenanceRequests             FleetMaintenanceRequest[]
   fleetMaintenanceEvents          FleetMaintenanceEvent[]
@@ -1168,39 +1180,62 @@ model FleetDriver {
 }
 
 model FleetVehicle {
-  id               String              @id @default(cuid())
-  organizationId   String
-  branchId         String?
-  assetTag         String
-  plateNumber      String
-  type             String?
-  make             String?
-  model            String?
-  year             Int?
-  ownerId          String?
-  assignedDriverId String?
-  status           FleetVehicleStatus  @default(AVAILABLE)
-  documentStatus   FleetDocumentStatus @default(MISSING)
-  mileage          Int?
-  location         String?
-  nextServiceDueAt DateTime?
-  serviceNotes     String?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  id                String                  @id @default(cuid())
+  organizationId    String
+  branchId          String?
+  assetTag          String
+  plateNumber       String
+  type              String?
+  make              String?
+  model             String?
+  year              Int?
+  ownerId           String?
+  assignedDriverId  String?
+  status            FleetVehicleStatus      @default(AVAILABLE)
+  documentStatus    FleetDocumentStatus     @default(MISSING)
+  mileage           Int?
+  location          String?
+  nextServiceDueAt  DateTime?
+  serviceNotes      String?
+  salesTargetPeriod FleetSalesTargetPeriod?
+  salesTargetAmount Decimal?                @db.Decimal(12, 2)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
 
-  organization        Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch              Branch?                   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  organization        Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch              Branch?                        @relation(fields: [branchId], references: [id], onDelete: SetNull)
   documents           FleetVehicleDocument[]
-  owner               FleetOwner?               @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  assignedDriver      FleetDriver?              @relation(fields: [assignedDriverId], references: [id], onDelete: SetNull)
+  owner               FleetOwner?                    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  assignedDriver      FleetDriver?                   @relation(fields: [assignedDriverId], references: [id], onDelete: SetNull)
   maintenanceRequests FleetMaintenanceRequest[]
   workAndPayContracts FleetWorkAndPayContract[]
+  paymentSubmissions  FleetDriverPaymentSubmission[]
+  ownershipHistory    FleetVehicleOwnershipHistory[]
 
   @@unique([organizationId, assetTag])
   @@unique([organizationId, plateNumber])
   @@index([branchId])
   @@index([ownerId])
   @@index([assignedDriverId])
+}
+
+model FleetVehicleOwnershipHistory {
+  id                String   @id @default(cuid())
+  organizationId    String
+  vehicleId         String
+  previousOwnerId   String?
+  previousOwnerName String?
+  newOwnerId        String?
+  newOwnerName      String?
+  changedById       String?
+  changedAt         DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vehicle      FleetVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, changedAt])
+  @@index([vehicleId, changedAt])
+  @@index([newOwnerId])
 }
 
 model FleetVehicleDocument {
@@ -1328,9 +1363,10 @@ model FleetWorkAndPayContract {
   createdAt              DateTime            @default(now())
   updatedAt              DateTime            @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  vehicle      FleetVehicle @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  organization       Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch             Branch?                        @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  vehicle            FleetVehicle                   @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  paymentSubmissions FleetDriverPaymentSubmission[]
 
   @@index([organizationId, contractStatus])
   @@index([branchId])
@@ -2223,6 +2259,10 @@ model FleetDriverPaymentSubmission {
   driverId        String
   vehicleId       String?
   contractId      String?
+  submissionType  FleetDriverSubmissionType   @default(WEEKLY_SALES)
+  periodStart     DateTime
+  periodEnd       DateTime
+  expectedAmount  Decimal?                    @db.Decimal(12, 2)
   amount          Decimal                     @db.Decimal(12, 2)
   paymentDate     DateTime
   paymentMethod   String
@@ -2236,11 +2276,14 @@ model FleetDriverPaymentSubmission {
   createdAt       DateTime                    @default(now())
   updatedAt       DateTime                    @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  driver       FleetDriver  @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  driver       FleetDriver              @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicle      FleetVehicle?            @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  contract     FleetWorkAndPayContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status, createdAt])
   @@index([driverId, paymentDate])
+  @@index([organizationId, vehicleId, submissionType, periodStart])
 }
 
 enum HrTerminationStatus {

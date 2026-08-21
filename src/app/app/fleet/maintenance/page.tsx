@@ -1,4 +1,5 @@
 import { Wrench, Plus } from "lucide-react";
+import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -11,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listFleetMaintenanceRequests, listFleetVehicles } from "@/modules/fleet/service";
+import { listFleetActorVehicles, listFleetMaintenanceRequests, listFleetVehicles } from "@/modules/fleet/service";
 import { getServerAuthSession } from "@/lib/auth/session";
 import {
   createMaintenanceRequest, reviewMaintenanceRequest, ownerMaintenanceDecision,
@@ -25,6 +26,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-transition": "That workflow step is not valid for the request's current state.",
   "approval-required": "Complete all required approvals before assigning a mechanic.",
   "invalid-cost": "Repair cost must be zero or greater.",
+  "invalid-photo": "Use a JPEG, PNG, or WebP photo no larger than 1 MB.",
 };
 
 const PROGRESS_LABELS: Record<string, string> = {
@@ -55,13 +57,22 @@ export default async function FleetMaintenancePage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_MAINTENANCE_MANAGE);
-  const canSubmit = canManage || hasPermission(tenant, PERMISSIONS.FLEET_VIEW);
+  const canViewAll = canManage || hasPermission(tenant, PERMISSIONS.FLEET_VIEW);
+  const canDriverSubmit = hasPermission(tenant, PERMISSIONS.FLEET_DRIVER_SELF_SERVICE);
   const canApproveAsOwner = hasPermission(tenant, PERMISSIONS.FLEET_INVESTOR_VIEW);
+  const canSubmit = canViewAll || canDriverSubmit || canApproveAsOwner;
   const session = await getServerAuthSession();
-  const [requests, vehicles] = await Promise.all([
-    listFleetMaintenanceRequests(tenant.organizationId),
-    listFleetVehicles(tenant.organizationId),
-  ]);
+  if (!session?.user?.id) redirect("/login");
+  const vehicles = canViewAll
+    ? await listFleetVehicles(tenant.organizationId)
+    : await listFleetActorVehicles(tenant.organizationId, session.user.id, {
+        driver: canDriverSubmit,
+        owner: canApproveAsOwner,
+      });
+  const requests = await listFleetMaintenanceRequests(
+    tenant.organizationId,
+    canViewAll ? undefined : vehicles.map((vehicle) => vehicle.id),
+  );
 
   const vehicleItems: Record<string, string> = Object.fromEntries(
     vehicles.map((v) => [v.id, `${v.assetTag} - ${v.plateNumber}`])
@@ -97,13 +108,20 @@ export default async function FleetMaintenancePage({
                 </SelectContent>
               </Select>
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="ownerApprovalRequired" />
-              Vehicle-owner approval is required
-            </label>
+            {canManage ? (
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="ownerApprovalRequired" />
+                Vehicle-owner approval is required
+              </label>
+            ) : null}
             <div className="space-y-2">
               <Label htmlFor="faultDescription">What&apos;s wrong?</Label>
               <Textarea id="faultDescription" name="faultDescription" rows={4} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="photo">Photo (optional)</Label>
+              <Input id="photo" name="photo" type="file" accept="image/jpeg,image/png,image/webp" />
+              <p className="text-xs text-muted-foreground">JPEG, PNG, or WebP. Maximum 1 MB.</p>
             </div>
           </EntityDialog>
         ) : null}
@@ -152,6 +170,11 @@ export default async function FleetMaintenancePage({
                 <TableCell className="text-muted-foreground">{request.mechanicAssigned ?? "-"}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex flex-wrap justify-end gap-1">
+                  {request.photoAssetId ? (
+                    <Button size="sm" variant="ghost" nativeButton={false} render={<a href={`/api/fleet/maintenance/${request.id}/photo`} target="_blank" rel="noreferrer" />}>
+                      View photo
+                    </Button>
+                  ) : null}
                   {canManage && ["REPORTED", "REVIEWING"].includes(request.progressStatus) && request.approvalStatus === "PENDING" ? (
                     <EntityDialog
                       trigger={

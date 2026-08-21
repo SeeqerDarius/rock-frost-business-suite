@@ -18,6 +18,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "missing-fields": "Asset tag and plate number are required.",
   duplicate: "A vehicle with that asset tag or plate number already exists.",
   "not-found": "That owner or driver could not be found.",
+  "invalid-target": "Choose Daily or Weekly and enter a target amount greater than zero, or select No sales target.",
 };
 
 const STATUS_OPTIONS: Record<string, string> = {
@@ -36,6 +37,12 @@ const STATUS_BADGE_VARIANT: Record<string, "default" | "outline" | "destructive"
   RETIRED: "destructive",
 };
 
+const SALES_TARGET_OPTIONS: Record<string, string> = {
+  NONE: "No sales target",
+  DAILY: "Daily sales",
+  WEEKLY: "Weekly sales",
+};
+
 interface VehicleFieldsProps {
   vehicle?: {
     assetTag: string;
@@ -49,6 +56,8 @@ interface VehicleFieldsProps {
     status: string;
     mileage: number | null;
     location: string | null;
+    salesTargetPeriod: string | null;
+    salesTargetAmount: string | null;
   };
   owners: { id: string; name: string }[];
   drivers: { id: string; name: string }[];
@@ -84,6 +93,28 @@ function VehicleFields({ vehicle, owners, drivers }: VehicleFieldsProps) {
           <Label htmlFor={`year${idSuffix}`}>Year</Label>
           <Input id={`year${idSuffix}`} name="year" type="number" defaultValue={vehicle?.year ?? ""} />
         </div>
+      </div>
+      <div className="grid gap-4 rounded-lg border p-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor={`salesTargetPeriod${idSuffix}`}>Driver sales schedule</Label>
+          <Select name="salesTargetPeriod" defaultValue={vehicle?.salesTargetPeriod ?? "NONE"} items={SALES_TARGET_OPTIONS}>
+            <SelectTrigger id={`salesTargetPeriod${idSuffix}`} className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(SALES_TARGET_OPTIONS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>{label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`salesTargetAmount${idSuffix}`}>Required sales amount</Label>
+          <Input id={`salesTargetAmount${idSuffix}`} name="salesTargetAmount" type="number" min="0.01" step="0.01" defaultValue={vehicle?.salesTargetAmount ?? ""} />
+        </div>
+        <p className="text-xs text-muted-foreground sm:col-span-2">
+          Use this for normal daily or weekly sales vehicles. Work & Pay amounts remain controlled by their contract.
+        </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
@@ -202,6 +233,7 @@ export default async function FleetVehiclesPage({
               <TableHead>Make/model</TableHead>
               <TableHead>Owner</TableHead>
               <TableHead>Driver</TableHead>
+              <TableHead>Sales target</TableHead>
               <TableHead>Status</TableHead>
               {canManage ? <TableHead /> : null}
             </TableRow>
@@ -214,8 +246,25 @@ export default async function FleetVehiclesPage({
                 <TableCell className="text-muted-foreground">
                   {[vehicle.make, vehicle.model].filter(Boolean).join(" ") || "-"}
                 </TableCell>
-                <TableCell className="text-muted-foreground">{vehicle.owner?.name ?? "-"}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  <p>{vehicle.owner?.name ?? "-"}</p>
+                  {vehicle.ownershipHistory.length > 0 ? (
+                    <details className="mt-1 text-xs">
+                      <summary className="cursor-pointer">Ownership history</summary>
+                      <div className="mt-2 min-w-56 space-y-2 rounded-md border bg-popover p-3 shadow-sm">
+                        {vehicle.ownershipHistory.map((event) => (
+                          <p key={event.id}>{event.changedAt.toLocaleDateString()}: {event.previousOwnerName ?? "No owner"} to {event.newOwnerName ?? "No owner"}</p>
+                        ))}
+                      </div>
+                    </details>
+                  ) : null}
+                </TableCell>
                 <TableCell className="text-muted-foreground">{vehicle.assignedDriver?.name ?? "-"}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {vehicle.salesTargetPeriod && vehicle.salesTargetAmount
+                    ? `${tenant.organization.currency ?? "GHS"} ${Number(vehicle.salesTargetAmount).toFixed(2)} / ${vehicle.salesTargetPeriod === "DAILY" ? "day" : "week"}`
+                    : "Work & Pay or none"}
+                </TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE_VARIANT[vehicle.status]}>{STATUS_OPTIONS[vehicle.status]}</Badge>
                 </TableCell>
@@ -233,7 +282,12 @@ export default async function FleetVehiclesPage({
                     >
                       <input type="hidden" name="id" value={vehicle.id} />
                       <VehicleFields
-                        vehicle={{ ...vehicle, ownerId: vehicle.ownerId, assignedDriverId: vehicle.assignedDriverId }}
+                        vehicle={{
+                          ...vehicle,
+                          ownerId: vehicle.ownerId,
+                          assignedDriverId: vehicle.assignedDriverId,
+                          salesTargetAmount: vehicle.salesTargetAmount?.toString() ?? null,
+                        }}
                         owners={owners}
                         drivers={drivers}
                       />

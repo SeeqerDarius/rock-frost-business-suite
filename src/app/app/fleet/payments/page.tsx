@@ -29,6 +29,12 @@ const TYPE_LABELS: Record<string, string> = {
   OTHER: "Other",
 };
 
+const SUBMISSION_LABELS: Record<string, string> = {
+  DAILY_SALES: "Daily sales",
+  WEEKLY_SALES: "Weekly sales",
+  WORK_AND_PAY: "Work & Pay",
+};
+
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive"> = {
   PENDING: "outline",
   VERIFIED: "default",
@@ -162,7 +168,37 @@ export default async function FleetPaymentsPage({
           </TableBody>
         </Table>
       )}
-      {canManage ? <section className="rounded-xl border p-5"><h2 className="font-semibold">Driver-submitted collections</h2><p className="text-sm text-muted-foreground">Review before a submission becomes a verified fleet payment.</p><div className="mt-3 space-y-2">{driverSubmissions.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm"><span>{item.driver.name} · {item.paymentDate.toLocaleDateString()} · {item.amount.toFixed(2)} · {item.paymentMethod}</span><div className="flex items-center gap-2"><Badge variant={item.status === "APPROVED" ? "default" : item.status === "REJECTED" ? "destructive" : "outline"}>{item.status}</Badge>{item.status === "PENDING" ? <><form action={reviewDriverSubmission}><input type="hidden" name="id" value={item.id} /><Button size="sm" name="decision" value="approve">Approve</Button></form><form action={reviewDriverSubmission}><input type="hidden" name="id" value={item.id} /><Button size="sm" name="decision" value="reject" variant="destructive">Reject</Button></form></> : null}</div></div>)}</div></section> : null}
+      {canManage ? (
+        <section className="rounded-xl border p-5">
+          <h2 className="font-semibold">Driver-submitted collections</h2>
+          <p className="text-sm text-muted-foreground">Review the assigned vehicle, period, target, variance, and payment details before verification.</p>
+          <div className="mt-3 space-y-2">
+            {driverSubmissions.map((item) => {
+              const variance = item.expectedAmount ? Number(item.amount) - Number(item.expectedAmount) : null;
+              return (
+                <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm">
+                  <div>
+                    <p className="font-medium">{item.driver.name}. {item.vehicle?.plateNumber ?? "No vehicle"}. {SUBMISSION_LABELS[item.submissionType]}</p>
+                    <p className="text-muted-foreground">
+                      {item.periodStart.toLocaleDateString()} to {item.periodEnd.toLocaleDateString()}. {tenant.organization.currency ?? "GHS"} {Number(item.amount).toFixed(2)}.
+                      {variance === null ? "" : ` Target ${Number(item.expectedAmount).toFixed(2)}, variance ${variance >= 0 ? "+" : ""}${variance.toFixed(2)}.`} {item.paymentMethod}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={item.status === "APPROVED" ? "default" : item.status === "REJECTED" ? "destructive" : "outline"}>{item.status}</Badge>
+                    {item.status === "PENDING" ? (
+                      <>
+                        <form action={reviewDriverSubmission}><input type="hidden" name="id" value={item.id} /><Button size="sm" name="decision" value="approve">Approve</Button></form>
+                        <form action={reviewDriverSubmission}><input type="hidden" name="id" value={item.id} /><Button size="sm" name="decision" value="reject" variant="destructive">Reject</Button></form>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

@@ -37,12 +37,16 @@ export default async function FleetReportsPage() {
   const stats = [
     { label: "Total vehicles", value: summary.vehicleCount },
     { label: "Active drivers", value: summary.activeDriverCount },
+    { label: "Vehicle owners", value: summary.ownerCount },
+    { label: "Vehicles under maintenance", value: summary.maintenanceVehicleCount },
     { label: "Pending maintenance", value: summary.pendingMaintenanceCount },
     { label: "Active work & pay contracts", value: summary.activeContractCount },
     { label: "Weekly collections", value: report.weeklyCollections.toFixed(2) },
     { label: "Pending payments", value: report.pendingPaymentCount },
     { label: "Documents due", value: report.expiringDocumentCount },
     { label: "Repairs awaiting verification", value: report.unverifiedRepairCount },
+    { label: "Outstanding Work & Pay", value: `${tenant.organization.currency ?? "GHS"} ${summary.outstandingBalance.toFixed(2)}` },
+    { label: "Monthly verified revenue", value: `${tenant.organization.currency ?? "GHS"} ${summary.monthlyRevenue.toFixed(2)}` },
   ];
 
   return (

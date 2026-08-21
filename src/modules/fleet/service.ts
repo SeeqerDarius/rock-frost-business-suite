@@ -3,11 +3,13 @@ import "server-only";
 import { db } from "@/lib/db";
 import type {
   FleetContractStatus,
+  FleetDriverSubmissionType,
   FleetDriverStatus,
   FleetMaintenanceApprovalStatus,
   FleetMaintenanceProgressStatus,
   FleetPaymentStatus,
   FleetPaymentType,
+  FleetSalesTargetPeriod,
   FleetVehicleStatus,
 } from "@prisma/client";
 import { Prisma } from "@prisma/client";
@@ -52,6 +54,8 @@ export async function updateFleetSettings(
 
 export class NotFoundError extends Error {}
 
+type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
 async function requireVehicle(organizationId: string, vehicleId: string) {
   const vehicle = await db.fleetVehicle.findFirst({ where: { id: vehicleId, organizationId } });
   if (!vehicle) throw new NotFoundError("Vehicle not found.");
@@ -74,8 +78,54 @@ export async function canUserReportFleetVehicle(organizationId: string, vehicleI
 
 // --- Owners ---
 
-export function listFleetOwners(organizationId: string) {
+export async function ensureFleetOwnerForUser(tx: TxClient, organizationId: string, userId: string) {
+  const existing = await tx.fleetOwner.findUnique({ where: { organizationId_userId: { organizationId, userId } } });
+  if (existing) return existing;
+  const user = await tx.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+  if (!user) return null;
+  return tx.fleetOwner.create({ data: { organizationId, userId, name: user.name || user.email, email: user.email } });
+}
+
+async function backfillMissingFleetOwners(organizationId: string) {
+  const missing = await db.organizationMember.findMany({
+    where: {
+      organizationId,
+      status: "ACTIVE",
+      role: { name: "Vehicle Owner" },
+      user: { fleetOwnerProfiles: { none: { organizationId } } },
+    },
+    select: { userId: true },
+  });
+  if (missing.length === 0) return;
+  await db.$transaction((tx) => Promise.all(missing.map((member) => ensureFleetOwnerForUser(tx, organizationId, member.userId))));
+}
+
+export async function listFleetOwners(organizationId: string) {
+  await backfillMissingFleetOwners(organizationId);
   return db.fleetOwner.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+}
+
+export async function listFleetOwnersWithPortfolio(organizationId: string) {
+  await backfillMissingFleetOwners(organizationId);
+  const [owners, payments] = await Promise.all([
+    db.fleetOwner.findMany({
+      where: { organizationId },
+      include: { vehicles: { include: { workAndPayContracts: true } } },
+      orderBy: { name: "asc" },
+    }),
+    db.fleetPayment.findMany({ where: { organizationId, status: "VERIFIED" }, select: { amount: true, relatedEntity: true, relatedEntityId: true } }),
+  ]);
+  return owners.map((owner) => {
+    const vehicleIds = new Set(owner.vehicles.map((vehicle) => vehicle.id));
+    const contractIds = new Set(owner.vehicles.flatMap((vehicle) => vehicle.workAndPayContracts.map((contract) => contract.id)));
+    const revenue = payments.reduce((total, payment) => {
+      const belongsToOwner =
+        (payment.relatedEntity === "FleetVehicle" && payment.relatedEntityId && vehicleIds.has(payment.relatedEntityId)) ||
+        (payment.relatedEntity === "FleetWorkAndPayContract" && payment.relatedEntityId && contractIds.has(payment.relatedEntityId));
+      return belongsToOwner ? total + Number(payment.amount) : total;
+    }, 0);
+    return { ...owner, vehicleCount: owner.vehicles.length, revenue };
+  });
 }
 
 export function createFleetOwner(
@@ -103,8 +153,6 @@ export async function listAssignableFleetUsers(organizationId: string) {
 }
 
 // --- Drivers ---
-
-type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
 /**
  * Called from Administration's role-assignment and invitation-acceptance
@@ -200,55 +248,169 @@ export async function getFleetDriverWorkspace(organizationId: string, userId: st
           workAndPayContracts: { where: { contractStatus: "ACTIVE" }, orderBy: { createdAt: "desc" } },
         },
       },
-      paymentSubmissions: { orderBy: { createdAt: "desc" }, take: 20 },
+      paymentSubmissions: { include: { vehicle: true, contract: true }, orderBy: { createdAt: "desc" }, take: 20 },
     },
   });
+}
+
+export class FleetDuplicateSubmissionError extends Error {}
+export class FleetSalesTargetError extends Error {}
+
+function startOfUtcDay(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+}
+
+function salesPeriod(type: FleetDriverSubmissionType, selectedStart: Date) {
+  const periodStart = startOfUtcDay(selectedStart);
+  const periodEnd = new Date(periodStart);
+  if (type !== "DAILY_SALES") periodEnd.setUTCDate(periodEnd.getUTCDate() + 6);
+  return { periodStart, periodEnd };
 }
 
 export async function submitFleetDriverPayment(
   organizationId: string,
   userId: string,
-  data: { vehicleId?: string | null; contractId?: string | null; amount: string; paymentDate: Date; paymentMethod: string; reference?: string | null; notes?: string | null },
+  data: {
+    vehicleId: string;
+    contractId?: string | null;
+    submissionType: FleetDriverSubmissionType;
+    periodStart: Date;
+    amount: string;
+    paymentDate: Date;
+    paymentMethod: string;
+    reference?: string | null;
+    notes?: string | null;
+  },
 ) {
   const driver = await db.fleetDriver.findFirst({ where: { organizationId, userId, status: "ACTIVE" } });
   if (!driver) throw new NotFoundError("Driver profile not found.");
-  const amount = new Prisma.Decimal(data.amount);
+  let amount: Prisma.Decimal;
+  try {
+    amount = new Prisma.Decimal(data.amount);
+  } catch {
+    throw new InvalidPaymentAmountError("Payment amount must be a number.");
+  }
   if (!amount.isPositive()) throw new InvalidPaymentAmountError("Payment amount must be positive.");
-  if (data.vehicleId) {
-    const assigned = await db.fleetVehicle.findFirst({ where: { id: data.vehicleId, organizationId, assignedDriverId: driver.id } });
-    if (!assigned) throw new NotFoundError("Assigned vehicle not found.");
-  }
-  if (data.contractId) {
-    const contract = await db.fleetWorkAndPayContract.findFirst({ where: { id: data.contractId, organizationId, vehicle: { assignedDriverId: driver.id } } });
+  const vehicle = await db.fleetVehicle.findFirst({ where: { id: data.vehicleId, organizationId, assignedDriverId: driver.id } });
+  if (!vehicle) throw new NotFoundError("Assigned vehicle not found.");
+
+  let expectedAmount: Prisma.Decimal | null = null;
+  if (data.submissionType === "WORK_AND_PAY") {
+    if (!data.contractId) throw new FleetSalesTargetError("Select an active Work & Pay contract.");
+    const contract = await db.fleetWorkAndPayContract.findFirst({
+      where: { id: data.contractId, organizationId, vehicleId: vehicle.id, contractStatus: { in: ["ACTIVE", "PAUSED"] } },
+    });
     if (!contract) throw new NotFoundError("Assigned contract not found.");
+    expectedAmount = contract.weeklyPaymentAmount;
+  } else {
+    if (data.contractId) throw new FleetSalesTargetError("A normal sales submission cannot use a Work & Pay contract.");
+    const requiredPeriod: FleetSalesTargetPeriod = data.submissionType === "DAILY_SALES" ? "DAILY" : "WEEKLY";
+    if (vehicle.salesTargetPeriod !== requiredPeriod || !vehicle.salesTargetAmount) {
+      throw new FleetSalesTargetError(`This vehicle is not configured for ${requiredPeriod.toLowerCase()} sales.`);
+    }
+    expectedAmount = vehicle.salesTargetAmount;
   }
-  return db.fleetDriverPaymentSubmission.create({
-    data: { organizationId, driverId: driver.id, ...data, amount },
+
+  const { periodStart, periodEnd } = salesPeriod(data.submissionType, data.periodStart);
+  const existing = await db.fleetDriverPaymentSubmission.findFirst({
+    where: {
+      organizationId,
+      driverId: driver.id,
+      vehicleId: vehicle.id,
+      submissionType: data.submissionType,
+      periodStart,
+      periodEnd,
+      status: { in: ["PENDING", "APPROVED"] },
+    },
+    select: { id: true },
   });
+  if (existing) throw new FleetDuplicateSubmissionError("A collection for this vehicle and sales period already exists.");
+
+  try {
+    return await db.fleetDriverPaymentSubmission.create({
+      data: {
+        organizationId,
+        driverId: driver.id,
+        vehicleId: vehicle.id,
+        contractId: data.submissionType === "WORK_AND_PAY" ? data.contractId : null,
+        submissionType: data.submissionType,
+        periodStart,
+        periodEnd,
+        expectedAmount,
+        amount,
+        paymentDate: data.paymentDate,
+        paymentMethod: data.paymentMethod,
+        reference: data.reference,
+        notes: data.notes,
+      },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new FleetDuplicateSubmissionError("A collection for this vehicle and sales period already exists.");
+    }
+    throw error;
+  }
 }
 
 export function listFleetDriverPaymentSubmissions(organizationId: string) {
-  return db.fleetDriverPaymentSubmission.findMany({ where: { organizationId }, include: { driver: true }, orderBy: { createdAt: "desc" } });
+  return db.fleetDriverPaymentSubmission.findMany({
+    where: { organizationId },
+    include: { driver: true, vehicle: true, contract: true },
+    orderBy: { createdAt: "desc" },
+  });
 }
 
 export async function reviewFleetDriverPaymentSubmission(organizationId: string, id: string, reviewerId: string, approved: boolean, rejectionReason?: string | null) {
   return db.$transaction(async (tx) => {
-    const submission = await tx.fleetDriverPaymentSubmission.findFirst({ where: { id, organizationId, status: "PENDING" } });
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fleet-driver-submission:${organizationId}:${id}`}))`;
+    const submission = await tx.fleetDriverPaymentSubmission.findFirst({
+      where: { id, organizationId, status: "PENDING" },
+      include: { vehicle: true, contract: true },
+    });
     if (!submission) throw new NotFoundError("Pending submission not found.");
     let fleetPaymentId: string | null = null;
     if (approved) {
+      if (submission.submissionType === "WORK_AND_PAY") {
+        if (!submission.contractId || !submission.contract) throw new NotFoundError("Work & Pay contract not found.");
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fleet-contract:${organizationId}:${submission.contractId}`}))`;
+        const contract = await tx.fleetWorkAndPayContract.findFirst({
+          where: { id: submission.contractId, organizationId, contractStatus: { in: ["ACTIVE", "PAUSED"] } },
+        });
+        if (!contract) throw new NotFoundError("Work & Pay contract not found.");
+        const newAmountPaid = new Prisma.Decimal(contract.amountPaid).plus(submission.amount);
+        const rawBalance = new Prisma.Decimal(contract.contractAmount).minus(newAmountPaid);
+        const outstandingBalance = Prisma.Decimal.max(rawBalance, 0);
+        const completionPercentage = Prisma.Decimal.min(newAmountPaid.div(contract.contractAmount).mul(100), 100);
+        await tx.fleetWorkAndPayContract.update({
+          where: { id: contract.id, organizationId },
+          data: {
+            amountPaid: newAmountPaid,
+            outstandingBalance,
+            completionPercentage,
+            contractStatus: rawBalance.lte(0) ? "COMPLETED" : contract.contractStatus,
+          },
+        });
+      }
       const payment = await tx.fleetPayment.create({
         data: {
           organizationId,
           reference: submission.reference || `DRV-${submission.id.slice(-8).toUpperCase()}`,
           date: submission.paymentDate,
-          type: "WORK_AND_PAY",
+          type: submission.submissionType === "WORK_AND_PAY" ? "WORK_AND_PAY" : "WEEKLY_SALES",
           amount: submission.amount,
           status: "VERIFIED",
-          relatedEntity: submission.contractId ? "FleetWorkAndPayContract" : "FleetDriver",
-          relatedEntityId: submission.contractId || submission.driverId,
+          relatedEntity: submission.contractId ? "FleetWorkAndPayContract" : "FleetVehicle",
+          relatedEntityId: submission.contractId || submission.vehicleId,
           verified: true,
-          metadata: { driverSubmissionId: submission.id, paymentMethod: submission.paymentMethod },
+          metadata: {
+            driverSubmissionId: submission.id,
+            driverId: submission.driverId,
+            paymentMethod: submission.paymentMethod,
+            submissionType: submission.submissionType,
+            periodStart: submission.periodStart.toISOString(),
+            periodEnd: submission.periodEnd.toISOString(),
+            targetAmount: submission.expectedAmount?.toString() ?? null,
+          },
         },
       });
       fleetPaymentId = payment.id;
@@ -265,67 +427,126 @@ export async function reviewFleetDriverPaymentSubmission(organizationId: string,
 export function listFleetVehicles(organizationId: string) {
   return db.fleetVehicle.findMany({
     where: { organizationId },
-    include: { owner: true, assignedDriver: true },
+    include: { owner: true, assignedDriver: true, ownershipHistory: { orderBy: { changedAt: "desc" } } },
     orderBy: { createdAt: "desc" },
   });
 }
 
 export function getFleetVehicle(organizationId: string, id: string) {
-  return db.fleetVehicle.findFirst({ where: { id, organizationId }, include: { owner: true, assignedDriver: true } });
+  return db.fleetVehicle.findFirst({
+    where: { id, organizationId },
+    include: { owner: true, assignedDriver: true, ownershipHistory: { orderBy: { changedAt: "desc" } } },
+  });
+}
+
+export function listFleetActorVehicles(
+  organizationId: string,
+  userId: string,
+  access: { driver: boolean; owner: boolean },
+) {
+  const clauses: Prisma.FleetVehicleWhereInput[] = [];
+  if (access.driver) clauses.push({ assignedDriver: { userId } });
+  if (access.owner) clauses.push({ owner: { userId } });
+  if (clauses.length === 0) return Promise.resolve([]);
+  return db.fleetVehicle.findMany({
+    where: { organizationId, OR: clauses },
+    include: { owner: true, assignedDriver: true, ownershipHistory: { orderBy: { changedAt: "desc" } } },
+    orderBy: { createdAt: "desc" },
+  });
 }
 
 async function validateVehicleRefs(organizationId: string, data: { ownerId?: string | null; assignedDriverId?: string | null }) {
+  let owner: { id: string; name: string } | null = null;
+  let driver: { id: string; name: string } | null = null;
   if (data.ownerId) {
-    const owner = await db.fleetOwner.findFirst({ where: { id: data.ownerId, organizationId } });
+    owner = await db.fleetOwner.findFirst({ where: { id: data.ownerId, organizationId }, select: { id: true, name: true } });
     if (!owner) throw new NotFoundError("Owner not found.");
   }
   if (data.assignedDriverId) {
-    const driver = await db.fleetDriver.findFirst({ where: { id: data.assignedDriverId, organizationId } });
+    driver = await db.fleetDriver.findFirst({ where: { id: data.assignedDriverId, organizationId }, select: { id: true, name: true } });
     if (!driver) throw new NotFoundError("Driver not found.");
   }
+  return { owner, driver };
+}
+
+type FleetVehicleInput = {
+  assetTag: string;
+  plateNumber: string;
+  type?: string | null;
+  make?: string | null;
+  model?: string | null;
+  year?: number | null;
+  ownerId?: string | null;
+  assignedDriverId?: string | null;
+  status?: FleetVehicleStatus;
+  mileage?: number | null;
+  location?: string | null;
+  branchId?: string | null;
+  salesTargetPeriod?: FleetSalesTargetPeriod | null;
+  salesTargetAmount?: string | null;
+};
+
+function vehicleSalesTarget(data: FleetVehicleInput) {
+  if (!data.salesTargetPeriod && !data.salesTargetAmount) return { salesTargetPeriod: null, salesTargetAmount: null };
+  if (!data.salesTargetPeriod || !data.salesTargetAmount) throw new FleetSalesTargetError("Select a sales period and enter its target amount.");
+  let amount: Prisma.Decimal;
+  try {
+    amount = new Prisma.Decimal(data.salesTargetAmount);
+  } catch {
+    throw new FleetSalesTargetError("Sales target must be a number.");
+  }
+  if (!amount.isPositive()) throw new FleetSalesTargetError("Sales target must be greater than zero.");
+  return { salesTargetPeriod: data.salesTargetPeriod, salesTargetAmount: amount };
 }
 
 export async function createFleetVehicle(
   organizationId: string,
-  data: {
-    assetTag: string;
-    plateNumber: string;
-    type?: string | null;
-    make?: string | null;
-    model?: string | null;
-    year?: number | null;
-    ownerId?: string | null;
-    assignedDriverId?: string | null;
-    status?: FleetVehicleStatus;
-    mileage?: number | null;
-    location?: string | null;
-    branchId?: string | null;
-  }
+  data: FleetVehicleInput,
+  actorId?: string | null,
 ) {
-  await validateVehicleRefs(organizationId, data);
-  return db.fleetVehicle.create({ data: { organizationId, ...data } });
+  const { owner } = await validateVehicleRefs(organizationId, data);
+  const salesTarget = vehicleSalesTarget(data);
+  return db.$transaction(async (tx) => {
+    const vehicle = await tx.fleetVehicle.create({ data: { organizationId, ...data, ...salesTarget } });
+    if (owner) {
+      await tx.fleetVehicleOwnershipHistory.create({
+        data: { organizationId, vehicleId: vehicle.id, newOwnerId: owner.id, newOwnerName: owner.name, changedById: actorId },
+      });
+    }
+    return vehicle;
+  });
 }
 
 export async function updateFleetVehicle(
   organizationId: string,
   id: string,
-  data: {
-    assetTag: string;
-    plateNumber: string;
-    type?: string | null;
-    make?: string | null;
-    model?: string | null;
-    year?: number | null;
-    ownerId?: string | null;
-    assignedDriverId?: string | null;
-    status?: FleetVehicleStatus;
-    mileage?: number | null;
-    location?: string | null;
-    branchId?: string | null;
-  }
+  data: FleetVehicleInput,
+  actorId?: string | null,
 ) {
-  await validateVehicleRefs(organizationId, data);
-  return db.fleetVehicle.update({ where: { id, organizationId }, data });
+  const { owner } = await validateVehicleRefs(organizationId, data);
+  const salesTarget = vehicleSalesTarget(data);
+  return db.$transaction(async (tx) => {
+    const existing = await tx.fleetVehicle.findFirst({
+      where: { id, organizationId },
+      include: { owner: { select: { id: true, name: true } } },
+    });
+    if (!existing) throw new NotFoundError("Vehicle not found.");
+    const vehicle = await tx.fleetVehicle.update({ where: { id, organizationId }, data: { ...data, ...salesTarget } });
+    if ((existing.ownerId ?? null) !== (data.ownerId ?? null)) {
+      await tx.fleetVehicleOwnershipHistory.create({
+        data: {
+          organizationId,
+          vehicleId: id,
+          previousOwnerId: existing.ownerId,
+          previousOwnerName: existing.owner?.name,
+          newOwnerId: owner?.id,
+          newOwnerName: owner?.name,
+          changedById: actorId,
+        },
+      });
+    }
+    return vehicle;
+  });
 }
 
 // --- Vehicle documents (insurance & roadworthy) ---
@@ -419,9 +640,9 @@ export async function refreshFleetDocumentStatuses(organizationId: string) {
 
 // --- Maintenance requests ---
 
-export function listFleetMaintenanceRequests(organizationId: string) {
+export function listFleetMaintenanceRequests(organizationId: string, vehicleIds?: string[]) {
   return db.fleetMaintenanceRequest.findMany({
-    where: { organizationId },
+    where: { organizationId, ...(vehicleIds ? { vehicleId: { in: vehicleIds } } : {}) },
     include: {
       vehicle: { include: { owner: true, assignedDriver: true } },
       requestedBy: true,
@@ -439,11 +660,29 @@ export async function createFleetMaintenanceRequest(
     requestedById?: string | null;
     branchId?: string | null;
     ownerApprovalRequired?: boolean;
+    photo?: { fileName: string; mimeType: string; size: number; dataUrl: string } | null;
   }
 ) {
   await requireVehicle(organizationId, data.vehicleId);
   return db.$transaction(async (tx) => {
-    const request = await tx.fleetMaintenanceRequest.create({ data: { organizationId, ...data } });
+    const { photo, ...requestData } = data;
+    const request = await tx.fleetMaintenanceRequest.create({ data: { organizationId, ...requestData } });
+    if (photo) {
+      const asset = await tx.fileAsset.create({
+        data: {
+          organizationId,
+          branchId: data.branchId,
+          uploadedById: data.requestedById,
+          fileName: photo.fileName,
+          mimeType: photo.mimeType,
+          size: photo.size,
+          storagePath: `database://fleet-maintenance/${request.id}`,
+          url: photo.dataUrl,
+          metadata: { purpose: "fleet-maintenance-photo", requestId: request.id },
+        },
+      });
+      await tx.fleetMaintenanceRequest.update({ where: { id: request.id }, data: { photoAssetId: asset.id } });
+    }
     await tx.fleetMaintenanceEvent.create({
       data: {
         organizationId,
@@ -455,6 +694,22 @@ export async function createFleetMaintenanceRequest(
       },
     });
     return request;
+  });
+}
+
+export function getFleetMaintenancePhoto(
+  organizationId: string,
+  requestId: string,
+  userId: string,
+  canViewAll: boolean,
+) {
+  return db.fleetMaintenanceRequest.findFirst({
+    where: {
+      id: requestId,
+      organizationId,
+      ...(canViewAll ? {} : { vehicle: { OR: [{ assignedDriver: { userId } }, { owner: { userId } }] } }),
+    },
+    select: { photoAsset: { select: { url: true, updatedAt: true } } },
   });
 }
 
@@ -801,16 +1056,55 @@ export function updateFleetWorkAndPayContractStatus(organizationId: string, id: 
 // --- Aggregates (Reports, dashboard widget) ---
 
 export async function getFleetSummary(organizationId: string) {
-  const [vehicleCount, vehiclesByStatus, activeDriverCount, pendingMaintenanceCount, activeContractCount, paymentsThisMonth] =
-    await Promise.all([
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const weekStart = new Date(now);
+  weekStart.setUTCDate(weekStart.getUTCDate() - 7);
+  const { documentRenewalReminderDays } = await getFleetSettings(organizationId);
+  const expiryThreshold = new Date(now);
+  expiryThreshold.setUTCDate(expiryThreshold.getUTCDate() + documentRenewalReminderDays);
+  const [
+    vehicleCount,
+    vehiclesByStatus,
+    activeDriverCount,
+    ownerCount,
+    pendingMaintenanceCount,
+    maintenanceVehicles,
+    activeContractCount,
+    pendingDriverSubmissionCount,
+    expiringDocumentCount,
+    weeklyRevenue,
+    monthlyRevenue,
+    outstandingBalances,
+    recentPayments,
+  ] = await Promise.all([
       db.fleetVehicle.count({ where: { organizationId } }),
       db.fleetVehicle.groupBy({ by: ["status"], where: { organizationId }, _count: true }),
       db.fleetDriver.count({ where: { organizationId, status: "ACTIVE" } }),
-      db.fleetMaintenanceRequest.count({ where: { organizationId, progressStatus: { in: ["REPORTED", "REVIEWING", "IN_PROGRESS"] } } }),
+      db.fleetOwner.count({ where: { organizationId } }),
+      db.fleetMaintenanceRequest.count({ where: { organizationId, progressStatus: { notIn: ["COMPLETED", "CANCELLED"] } } }),
+      db.fleetMaintenanceRequest.groupBy({ by: ["vehicleId"], where: { organizationId, progressStatus: { notIn: ["COMPLETED", "CANCELLED"] } } }),
       db.fleetWorkAndPayContract.count({ where: { organizationId, contractStatus: "ACTIVE" } }),
+      db.fleetDriverPaymentSubmission.count({ where: { organizationId, status: "PENDING" } }),
+      db.fleetVehicleDocument.count({
+        where: { organizationId, OR: [{ insuranceExpiresAt: { lte: expiryThreshold } }, { roadworthyExpiresAt: { lte: expiryThreshold } }] },
+      }),
       db.fleetPayment.aggregate({
-        where: { organizationId, date: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } },
+        where: { organizationId, status: "VERIFIED", date: { gte: weekStart } },
         _sum: { amount: true },
+      }),
+      db.fleetPayment.aggregate({
+        where: { organizationId, status: "VERIFIED", date: { gte: monthStart } },
+        _sum: { amount: true },
+      }),
+      db.fleetWorkAndPayContract.aggregate({
+        where: { organizationId, contractStatus: { in: ["ACTIVE", "PAUSED"] } },
+        _sum: { outstandingBalance: true },
+      }),
+      db.fleetPayment.findMany({
+        where: { organizationId },
+        orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+        take: 5,
       }),
     ]);
 
@@ -818,34 +1112,68 @@ export async function getFleetSummary(organizationId: string) {
     vehicleCount,
     vehiclesByStatus,
     activeDriverCount,
+    ownerCount,
     pendingMaintenanceCount,
+    maintenanceVehicleCount: maintenanceVehicles.length,
     activeContractCount,
-    paymentsThisMonthTotal: Number(paymentsThisMonth._sum.amount ?? 0),
+    pendingDriverSubmissionCount,
+    expiringDocumentCount,
+    weeklyRevenue: Number(weeklyRevenue._sum.amount ?? 0),
+    monthlyRevenue: Number(monthlyRevenue._sum.amount ?? 0),
+    paymentsThisMonthTotal: Number(monthlyRevenue._sum.amount ?? 0),
+    outstandingBalance: Number(outstandingBalances._sum.outstandingBalance ?? 0),
+    recentPayments,
+  };
+}
+
+export async function getFleetDriverDashboardSummary(organizationId: string, userId: string) {
+  const driver = await getFleetDriverWorkspace(organizationId, userId);
+  if (!driver) return { assignedVehicleCount: 0, openMaintenanceCount: 0, pendingSubmissionCount: 0 };
+  return {
+    assignedVehicleCount: driver.assignedVehicles.length,
+    openMaintenanceCount: driver.assignedVehicles.reduce(
+      (total, vehicle) => total + vehicle.maintenanceRequests.filter((request) => !["COMPLETED", "CANCELLED"].includes(request.progressStatus)).length,
+      0,
+    ),
+    pendingSubmissionCount: driver.paymentSubmissions.filter((submission) => submission.status === "PENDING").length,
   };
 }
 
 export async function getFleetInvestorSummary(organizationId: string, userId?: string | null) {
   const ownerFilter = userId ? { userId } : {};
-  const owners = await db.fleetOwner.findMany({
-    where: { organizationId, ...ownerFilter },
-    include: {
-      vehicles: {
-        include: {
-          maintenanceRequests: true,
-          workAndPayContracts: true,
+  const [owners, payments] = await Promise.all([
+    db.fleetOwner.findMany({
+      where: { organizationId, ...ownerFilter },
+      include: {
+        vehicles: {
+          include: {
+            maintenanceRequests: true,
+            workAndPayContracts: true,
+          },
         },
       },
-    },
-    orderBy: { name: "asc" },
-  });
+      orderBy: { name: "asc" },
+    }),
+    db.fleetPayment.findMany({
+      where: { organizationId, status: "VERIFIED" },
+      select: { amount: true, relatedEntity: true, relatedEntityId: true },
+    }),
+  ]);
 
   return owners.map((owner) => {
     const vehicles = owner.vehicles;
     const vehicleIds = vehicles.map((vehicle) => vehicle.id);
     const contracts = vehicles.flatMap((vehicle) => vehicle.workAndPayContracts);
+    const contractIds = new Set(contracts.map((contract) => contract.id));
+    const vehicleIdSet = new Set(vehicleIds);
     const maintenance = vehicles.flatMap((vehicle) => vehicle.maintenanceRequests);
     const contractValue = contracts.reduce((sum, contract) => sum + Number(contract.contractAmount), 0);
-    const amountCollected = contracts.reduce((sum, contract) => sum + Number(contract.amountPaid), 0);
+    const amountCollected = payments.reduce((sum, payment) => {
+      const belongsToPortfolio =
+        (payment.relatedEntity === "FleetVehicle" && payment.relatedEntityId && vehicleIdSet.has(payment.relatedEntityId)) ||
+        (payment.relatedEntity === "FleetWorkAndPayContract" && payment.relatedEntityId && contractIds.has(payment.relatedEntityId));
+      return belongsToPortfolio ? sum + Number(payment.amount) : sum;
+    }, 0);
     const outstanding = contracts.reduce((sum, contract) => sum + Number(contract.outstandingBalance), 0);
     const maintenanceCost = maintenance.reduce((sum, request) => sum + Number(request.repairCost ?? 0), 0);
     return {
