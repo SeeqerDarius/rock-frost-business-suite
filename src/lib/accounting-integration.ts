@@ -87,17 +87,45 @@ export async function isModuleActiveForOrg(
   return subscriptions.some((s) => s.status === "ACTIVE" && s.startsAt !== null && s.endsAt !== null && s.startsAt <= now && s.endsAt > now);
 }
 
-async function getOrCreateModuleRevenueAccount(organizationId: string, sourceModule: ModuleRevenueSource) {
+type DbOrTx = Pick<typeof db, "accountingAccount" | "organizationModule" | "subscription">;
+
+async function getOrCreateModuleRevenueAccount(client: DbOrTx, organizationId: string, sourceModule: ModuleRevenueSource) {
   const spec = MODULE_REVENUE_ACCOUNTS[sourceModule];
-  const existing = await db.accountingAccount.findFirst({ where: { organizationId, code: spec.code } });
+  const existing = await client.accountingAccount.findFirst({ where: { organizationId, code: spec.code } });
   if (existing) return existing;
   try {
-    return await db.accountingAccount.create({ data: { organizationId, code: spec.code, name: spec.name, type: "REVENUE", isSystem: true } });
+    return await client.accountingAccount.create({ data: { organizationId, code: spec.code, name: spec.name, type: "REVENUE", isSystem: true } });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return db.accountingAccount.findFirstOrThrow({ where: { organizationId, code: spec.code } });
+      return client.accountingAccount.findFirstOrThrow({ where: { organizationId, code: spec.code } });
     }
     throw error;
+  }
+}
+
+/**
+ * Provisions the chart-of-accounts side of the integration eagerly, the
+ * moment a module is activated, rather than waiting for that module's
+ * first real transaction: for every revenue-generating module currently
+ * active for this organization, ensures its Revenue account already
+ * exists in Accounting — provided Accounting itself is active too (no
+ * chart of accounts to create one in otherwise). Call this from every
+ * module-activation call site (see src/platform/subscriptions/service.ts's
+ * finalizeActivation, src/platform/module-requests/service.ts's
+ * updateModuleRequest, and src/app/app/platform/actions.ts's module
+ * toggle) inside the same transaction as the activation write, and
+ * unconditionally — it's cheap and idempotent regardless of which module
+ * was just activated, which also means activating Accounting itself
+ * backfills every already-active revenue module's account in one call,
+ * not just modules activated after Accounting was.
+ */
+export async function ensureRevenueAccountsForOrg(client: DbOrTx, organizationId: string): Promise<void> {
+  if (!(await isModuleActiveForOrg(client, organizationId, "accounting"))) return;
+  const modules = Object.keys(MODULE_REVENUE_ACCOUNTS) as ModuleRevenueSource[];
+  for (const sourceModule of modules) {
+    if (await isModuleActiveForOrg(client, organizationId, sourceModule)) {
+      await getOrCreateModuleRevenueAccount(client, organizationId, sourceModule);
+    }
   }
 }
 
@@ -154,7 +182,7 @@ async function postModuleRevenueEntry(organizationId: string, input: PostModuleR
     }
     const [defaultAccounts, revenueAccount] = await Promise.all([
       ensureDefaultAccounts(organizationId),
-      getOrCreateModuleRevenueAccount(organizationId, input.sourceModule),
+      getOrCreateModuleRevenueAccount(db, organizationId, input.sourceModule),
     ]);
     const cashAccount = defaultAccounts.find((account) => account.code === "1000");
     if (!cashAccount) throw new Error("Default Cash account (1000) missing after ensureDefaultAccounts().");

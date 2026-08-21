@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const tx = {
-  subscription: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findFirst: vi.fn() },
+  subscription: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(() => []) },
   organization: { update: vi.fn() },
-  organizationModule: { upsert: vi.fn(), updateMany: vi.fn() },
+  // organizationModule.findFirst defaults to null (no assignment found), so
+  // ensureRevenueAccountsForOrg's own isModuleActiveForOrg("accounting")
+  // check short-circuits to false and it no-ops without needing
+  // accountingAccount mocked at all — these tests aren't about the
+  // accounting integration, just that finalizeActivation still calls it
+  // safely.
+  organizationModule: { upsert: vi.fn(), updateMany: vi.fn(), findFirst: vi.fn(() => null) },
   moduleRequest: { update: vi.fn() },
   organizationMember: { findMany: vi.fn() },
   notification: { createMany: vi.fn() },

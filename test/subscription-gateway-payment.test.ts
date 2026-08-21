@@ -2,9 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
 
 const tx = {
-  subscription: { findFirst: vi.fn(), update: vi.fn() },
+  subscription: { findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn(() => []) },
   organization: { update: vi.fn() },
-  organizationModule: { upsert: vi.fn(), updateMany: vi.fn() },
+  // organizationModule.findFirst defaults to null so ensureRevenueAccountsForOrg's
+  // own isModuleActiveForOrg("accounting") check no-ops immediately — these
+  // tests aren't about the accounting integration, just that
+  // finalizeActivation still calls it safely.
+  organizationModule: { upsert: vi.fn(), updateMany: vi.fn(), findFirst: vi.fn(() => null) },
   moduleRequest: { update: vi.fn() },
   organizationMember: { findMany: vi.fn() },
   notification: { createMany: vi.fn() },

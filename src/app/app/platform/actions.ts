@@ -10,6 +10,7 @@ import { cuid, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
 import { productGroupKeys } from "@/platform/modules/product-groups";
 import { syncActiveOrganizationMembersToHr } from "@/modules/hr/service";
+import { ensureRevenueAccountsForOrg } from "@/lib/accounting-integration";
 
 const toggleSchema = z.object({
   organizationId: cuid,
@@ -56,6 +57,9 @@ export async function toggleOrganizationModule(formData: FormData): Promise<void
     }
     if (enabled && groupedModules.some((groupedModule) => groupedModule.code === "hr")) {
       await syncActiveOrganizationMembersToHr(tx, organizationId, session?.user?.id);
+    }
+    if (enabled) {
+      await ensureRevenueAccountsForOrg(tx, organizationId);
     }
 
     await logAuditEvent(

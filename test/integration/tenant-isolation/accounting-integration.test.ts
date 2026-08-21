@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { testDb } from "../setup/db";
 import { cleanupTestOrg, createTestOrg, type TestOrg } from "../setup/fixtures";
 import { createFleetPayment, updateFleetPaymentStatus } from "@/modules/fleet/service";
-import { postModuleRevenue, reverseModuleRevenue } from "@/lib/accounting-integration";
+import { postModuleRevenue, reverseModuleRevenue, ensureRevenueAccountsForOrg } from "@/lib/accounting-integration";
 
 /**
  * Real-Postgres coverage for the cross-module revenue posting built on top
@@ -135,6 +135,61 @@ describe("Cross-module accounting posting (real Postgres)", () => {
       expect(entryB.organizationId).toBe(orgB.organizationId);
     } finally {
       await cleanupTestOrg(orgB);
+    }
+  });
+});
+
+describe("Eager chart-of-accounts provisioning on module activation (real Postgres)", () => {
+  it("creates every active revenue module's account with no prior transaction, before any money has ever been posted", async () => {
+    const freshOrg = await createTestOrg("accounting-eager-provisioning");
+    try {
+      await ensureRevenueAccountsForOrg(testDb, freshOrg.organizationId);
+
+      const fleetAccount = await testDb.accountingAccount.findFirst({ where: { organizationId: freshOrg.organizationId, code: "4100" } });
+      const pharmacyAccount = await testDb.accountingAccount.findFirst({ where: { organizationId: freshOrg.organizationId, code: "4200" } });
+      expect(fleetAccount?.name).toBe("Fleet Revenue");
+      expect(fleetAccount?.type).toBe("REVENUE");
+      expect(pharmacyAccount?.name).toBe("Pharmacy Revenue");
+
+      // No transaction was ever posted — the account exists, at a zero balance.
+      const zeroBalanceLines = await testDb.accountingJournalLine.count({ where: { accountId: fleetAccount!.id } });
+      expect(zeroBalanceLines).toBe(0);
+    } finally {
+      await cleanupTestOrg(freshOrg);
+    }
+  });
+
+  it("only creates accounts for modules the organization actually has active, and none at all when Accounting itself is inactive", async () => {
+    const partialOrg = await createTestOrg("accounting-eager-provisioning-partial");
+    try {
+      await testDb.organizationModule.updateMany({ where: { organizationId: partialOrg.organizationId, module: { code: "pharmacy" } }, data: { enabled: false } });
+      await ensureRevenueAccountsForOrg(testDb, partialOrg.organizationId);
+
+      const fleetAccount = await testDb.accountingAccount.findFirst({ where: { organizationId: partialOrg.organizationId, code: "4100" } });
+      const pharmacyAccount = await testDb.accountingAccount.findFirst({ where: { organizationId: partialOrg.organizationId, code: "4200" } });
+      expect(fleetAccount).not.toBeNull();
+      expect(pharmacyAccount).toBeNull();
+
+      await testDb.organizationModule.updateMany({ where: { organizationId: partialOrg.organizationId, module: { code: "accounting" } }, data: { enabled: false } });
+      await testDb.accountingAccount.deleteMany({ where: { organizationId: partialOrg.organizationId, code: "4100" } });
+      await ensureRevenueAccountsForOrg(testDb, partialOrg.organizationId);
+      const noAccountingAccount = await testDb.accountingAccount.findFirst({ where: { organizationId: partialOrg.organizationId, code: "4100" } });
+      expect(noAccountingAccount).toBeNull();
+    } finally {
+      await cleanupTestOrg(partialOrg);
+    }
+  });
+
+  it("is idempotent — calling it twice never creates a duplicate account", async () => {
+    const idempotentOrg = await createTestOrg("accounting-eager-provisioning-idempotent");
+    try {
+      await ensureRevenueAccountsForOrg(testDb, idempotentOrg.organizationId);
+      await ensureRevenueAccountsForOrg(testDb, idempotentOrg.organizationId);
+
+      const count = await testDb.accountingAccount.count({ where: { organizationId: idempotentOrg.organizationId, code: "4100" } });
+      expect(count).toBe(1);
+    } finally {
+      await cleanupTestOrg(idempotentOrg);
     }
   });
 });

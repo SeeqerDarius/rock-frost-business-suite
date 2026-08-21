@@ -3,6 +3,7 @@ import "server-only";
 import type { ModuleRequestPriority, ModuleRequestStatus, ModuleRequestType } from "@prisma/client";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
+import { ensureRevenueAccountsForOrg } from "@/lib/accounting-integration";
 
 export interface CreateModuleRequestInput {
   organizationId: string;
@@ -125,6 +126,7 @@ export async function updateModuleRequest(input: UpdateModuleRequestInput) {
           enabledAt: new Date(),
         },
       });
+      await ensureRevenueAccountsForOrg(tx, current.organizationId);
     }
 
     const completedAt = input.status === "COMPLETED" ? new Date() : null;

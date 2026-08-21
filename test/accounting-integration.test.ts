@@ -122,6 +122,56 @@ describe("postModuleRevenue", () => {
   });
 });
 
+describe("ensureRevenueAccountsForOrg", () => {
+  /** Wires organizationModule.findFirst/subscription.findMany to answer per-module-code, matching isModuleActiveForOrg's real query shape. */
+  function stubActiveModules(activeCodes: string[]) {
+    mockDb.organizationModule.findFirst.mockImplementation(({ where }: { where: { module: { code: string } } }) =>
+      Promise.resolve(activeCodes.includes(where.module.code) ? { id: `assignment-${where.module.code}` } : null),
+    );
+    mockDb.subscription.findMany.mockResolvedValue([]);
+  }
+
+  it("does nothing — queries no revenue module at all — when Accounting itself is not active", async () => {
+    stubActiveModules([]);
+    await integration.ensureRevenueAccountsForOrg(mockDb as never, "org-1");
+    expect(mockDb.accountingAccount.findFirst).not.toHaveBeenCalled();
+    expect(mockDb.accountingAccount.create).not.toHaveBeenCalled();
+  });
+
+  it("creates an account only for each revenue module that is actually active, skipping inactive ones", async () => {
+    stubActiveModules(["accounting", "fleet", "hospital"]);
+    mockDb.accountingAccount.findFirst.mockResolvedValue(null);
+    mockDb.accountingAccount.create.mockImplementation(({ data }) => Promise.resolve({ id: `acct-${data.code}`, ...data }));
+
+    await integration.ensureRevenueAccountsForOrg(mockDb as never, "org-1");
+
+    expect(mockDb.accountingAccount.create).toHaveBeenCalledTimes(2);
+    expect(mockDb.accountingAccount.create).toHaveBeenCalledWith({ data: { organizationId: "org-1", code: "4100", name: "Fleet Revenue", type: "REVENUE", isSystem: true } });
+    expect(mockDb.accountingAccount.create).toHaveBeenCalledWith({ data: { organizationId: "org-1", code: "4300", name: "Hospital Revenue", type: "REVENUE", isSystem: true } });
+  });
+
+  it("is idempotent — never recreates a revenue account that already exists", async () => {
+    stubActiveModules(["accounting", "fleet"]);
+    mockDb.accountingAccount.findFirst.mockResolvedValue({ id: "acct-existing", code: "4100", name: "Fleet Revenue" });
+
+    await integration.ensureRevenueAccountsForOrg(mockDb as never, "org-1");
+
+    expect(mockDb.accountingAccount.create).not.toHaveBeenCalled();
+  });
+
+  it("activating Accounting itself backfills every already-active revenue module's account in one call", async () => {
+    stubActiveModules(["accounting", "pos", "school"]);
+    mockDb.accountingAccount.findFirst.mockResolvedValue(null);
+    mockDb.accountingAccount.create.mockImplementation(({ data }) => Promise.resolve({ id: `acct-${data.code}`, ...data }));
+
+    await integration.ensureRevenueAccountsForOrg(mockDb as never, "org-1");
+
+    expect(mockDb.accountingAccount.create).toHaveBeenCalledTimes(2);
+    expect(mockDb.accountingAccount.create).toHaveBeenCalledWith({ data: expect.objectContaining({ code: "4400", name: "POS Revenue" }) });
+    expect(mockDb.accountingAccount.create).toHaveBeenCalledWith({ data: expect.objectContaining({ code: "4800", name: "School Revenue" }) });
+  });
+});
+
 describe("reverseModuleRevenue", () => {
   it("no-ops (not an error) when nothing was ever posted for this source — the expected case when Accounting wasn't enabled at posting time", async () => {
     mockDb.accountingJournalEntry.findFirst.mockResolvedValue(null);

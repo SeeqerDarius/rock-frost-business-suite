@@ -5,6 +5,7 @@ import { Prisma, type Subscription } from "@prisma/client";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 import { initializeTransaction, type GatewayProvider } from "@/lib/payments";
+import { ensureRevenueAccountsForOrg } from "@/lib/accounting-integration";
 
 const AWAITING_ACTIVATION_STATUSES = ["DRAFT", "PENDING_PAYMENT", "PAST_DUE"] as const;
 
@@ -44,6 +45,11 @@ async function finalizeActivation(
     update: { enabled: true, enabledAt: startsAt },
     create: { organizationId: current.organizationId, moduleId: current.moduleId, enabled: true, enabledAt: startsAt },
   });
+  // Eagerly provisions any newly-active revenue-generating module's Accounting
+  // ledger account (or, if Accounting itself is what just activated, backfills
+  // every already-active revenue module's account in one call) — see
+  // src/lib/accounting-integration.ts.
+  await ensureRevenueAccountsForOrg(tx, current.organizationId);
   await tx.organization.update({
     where: { id: current.organizationId },
     data: { status: "ACTIVE" },
