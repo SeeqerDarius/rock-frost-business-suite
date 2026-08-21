@@ -1,5 +1,15 @@
 # Architecture & Tooling Decisions
 
+## 2026-08-21: Active internal memberships create missing HR employee identities
+
+**Decision:** When Human Resources & Payroll is enabled, an active internal organization member must have one linked `HrEmployee`. Creation occurs at invitation acceptance, active role assignment, member reactivation, HR module activation, and a compatibility backfill on the HR employee register. `Vehicle Owner` and `Investor` remain external stakeholder identities and are excluded.
+
+**Why:** Organization membership establishes authenticated access and role permissions, while HR owns employment records. Leaving these disconnected forces administrators to create the same person twice and causes Payroll and HR workflows to miss valid staff. Linking the identity at the shared Administration boundary removes that operational gap.
+
+**How the boundary is preserved:** The synchronization calls HR's public service, checks the HR entitlement inside the transaction, scopes every query by organization, uses a PostgreSQL advisory lock, and creates only a missing record. It never overwrites HR-managed employment data. The created status history and tenant audit event state that the source was an organization membership. Other module pages do not query or display HR records.
+
+---
+
 ## 2026-08-14 — Inventory & Procurement consolidated as one customer-facing product; linked receiving now requires a warehouse
 
 **Decision:** Inventory and Procurement are presented to tenants as one product, "Inventory & Procurement" — a shared sidebar navigation and a combined overview at `/app/inventory` (see `docs/INVENTORY_PROCUREMENT_CONSOLIDATION.md`). This is presentation only: the two modules keep their own route trees, permission prefixes, database tables, and service functions, unrenamed. Separately, `receiveOrderLine()` (`src/modules/procurement/service.ts`) now throws `WarehouseRequiredError` if a purchase order line linked to a real `InventoryItem` is received without a warehouse, rather than silently marking the line received while never touching Inventory. A non-stock line (no linked item) is unaffected and still requires no warehouse.

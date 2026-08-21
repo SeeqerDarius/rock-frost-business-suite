@@ -1344,24 +1344,27 @@ model FleetPayment {
 }
 
 model FleetWorkAndPayContract {
-  id                     String              @id @default(cuid())
-  organizationId         String
-  branchId               String?
-  contractName           String
-  vehicleId              String
-  clientName             String
-  contractAmount         Decimal             @db.Decimal(12, 2)
-  depositAmount          Decimal             @default(0) @db.Decimal(12, 2)
-  weeklyPaymentAmount    Decimal             @db.Decimal(12, 2)
-  amountPaid             Decimal             @default(0) @db.Decimal(12, 2)
-  outstandingBalance     Decimal             @default(0) @db.Decimal(12, 2)
-  remainingDurationWeeks Int?
-  completionPercentage   Decimal             @default(0) @db.Decimal(5, 2)
-  contractStatus         FleetContractStatus @default(DRAFT)
-  startsAt               DateTime?
-  endsAt                 DateTime?
-  createdAt              DateTime            @default(now())
-  updatedAt              DateTime            @updatedAt
+  id                      String                 @id @default(cuid())
+  organizationId          String
+  branchId                String?
+  contractName            String
+  vehicleId               String
+  clientName              String
+  contractAmount          Decimal                @db.Decimal(12, 2)
+  depositAmount           Decimal                @default(0) @db.Decimal(12, 2)
+  weeklyPaymentAmount     Decimal                @db.Decimal(12, 2)
+  paymentSchedule         FleetSalesTargetPeriod @default(WEEKLY)
+  scheduledPaymentAmount  Decimal                @db.Decimal(12, 2)
+  amountPaid              Decimal                @default(0) @db.Decimal(12, 2)
+  outstandingBalance      Decimal                @default(0) @db.Decimal(12, 2)
+  remainingDurationWeeks  Int?
+  remainingPaymentPeriods Int?
+  completionPercentage    Decimal                @default(0) @db.Decimal(5, 2)
+  contractStatus          FleetContractStatus    @default(DRAFT)
+  startsAt                DateTime?
+  endsAt                  DateTime?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
 
   organization       Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch             Branch?                        @relation(fields: [branchId], references: [id], onDelete: SetNull)

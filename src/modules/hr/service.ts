@@ -3,12 +3,14 @@ import "server-only";
 import { db } from "@/lib/db";
 import type { HrEmployeeStatus } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
+import { logAuditEvent } from "@/lib/audit";
 import {
   getOrganizationModuleConfiguration,
   updateOrganizationModuleConfigurationValues,
 } from "@/platform/module-requests/configuration";
 
 export class NotFoundError extends Error {}
+type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
 async function requireEmployee(organizationId: string, employeeId: string) {
   const employee = await db.hrEmployee.findFirst({ where: { id: employeeId, organizationId } });
@@ -17,6 +19,107 @@ async function requireEmployee(organizationId: string, employeeId: string) {
 
 const DEFAULT_EMPLOYEE_NUMBER_PREFIX = "EMP";
 const PREFIX_PATTERN = /^[A-Z0-9]{2,8}$/;
+const EXTERNAL_STAKEHOLDER_ROLES = new Set(["Vehicle Owner", "Investor"]);
+
+export function isHrEmployeeRole(roleName: string | null | undefined) {
+  return Boolean(roleName && roleName !== "Super Admin" && !EXTERNAL_STAKEHOLDER_ROLES.has(roleName));
+}
+
+async function enabledHrPrefix(tx: TxClient, organizationId: string) {
+  const assignment = await tx.organizationModule.findFirst({
+    where: { organizationId, enabled: true, module: { code: "hr" } },
+    select: { configuration: true },
+  });
+  if (!assignment) return null;
+  const configuration = assignment.configuration && typeof assignment.configuration === "object" && !Array.isArray(assignment.configuration)
+    ? assignment.configuration as Record<string, unknown>
+    : {};
+  const workflow = configuration.workflow && typeof configuration.workflow === "object" && !Array.isArray(configuration.workflow)
+    ? configuration.workflow as Record<string, unknown>
+    : {};
+  const configured = typeof workflow.employeeNumberPrefix === "string" ? workflow.employeeNumberPrefix : null;
+  return configured && PREFIX_PATTERN.test(configured) ? configured : DEFAULT_EMPLOYEE_NUMBER_PREFIX;
+}
+
+export async function ensureHrEmployeeForUser(
+  tx: TxClient,
+  organizationId: string,
+  userId: string,
+  roleName: string | null | undefined,
+  options: { branchId?: string | null; joinedAt?: Date | null; actorId?: string | null; membershipId?: string | null } = {},
+) {
+  if (!isHrEmployeeRole(roleName)) return null;
+  const employeeRole = roleName as string;
+  const prefix = await enabledHrPrefix(tx, organizationId);
+  if (!prefix) return null;
+
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`hr-member-sync:${organizationId}`}))`;
+  const existing = await tx.hrEmployee.findFirst({ where: { organizationId, userId }, orderBy: { createdAt: "asc" } });
+  if (existing) return existing;
+
+  const user = await tx.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+  if (!user) return null;
+  const existingNumbers = await tx.hrEmployee.findMany({
+    where: { organizationId, employeeNumber: { startsWith: `${prefix}-` } },
+    select: { employeeNumber: true },
+  });
+  const usedNumbers = new Set(existingNumbers.map(({ employeeNumber }) => employeeNumber));
+  let sequence = existingNumbers.length + 1;
+  while (usedNumbers.has(`${prefix}-${String(sequence).padStart(4, "0")}`)) sequence += 1;
+  const employee = await tx.hrEmployee.create({
+    data: {
+      organizationId,
+      branchId: options.branchId ?? null,
+      userId,
+      employeeNumber: `${prefix}-${String(sequence).padStart(4, "0")}`,
+      fullName: user.name || user.email,
+      email: user.email,
+      jobTitle: employeeRole,
+      hireDate: options.joinedAt ?? new Date(),
+      status: "ACTIVE",
+    },
+  });
+  await tx.hrEmployeeStatusHistory.create({
+    data: {
+      organizationId,
+      employeeId: employee.id,
+      previousStatus: "ONBOARDING",
+      newStatus: "ACTIVE",
+      effectiveDate: options.joinedAt ?? new Date(),
+      reason: "Created automatically from an active organization membership.",
+      initiatedById: options.actorId ?? null,
+      approvedById: options.actorId ?? null,
+      metadata: { source: "organization-membership", roleName: employeeRole, membershipId: options.membershipId ?? null },
+    },
+  });
+  await logAuditEvent({
+    organizationId,
+    userId: options.actorId ?? null,
+    membershipId: options.membershipId ?? null,
+    module: "hr",
+    action: "employee.provisioned_from_membership",
+    entityName: "HrEmployee",
+    entityId: employee.id,
+    metadata: { linkedUserId: userId, roleName: employeeRole },
+  }, tx);
+  return employee;
+}
+
+export async function syncActiveOrganizationMembersToHr(tx: TxClient, organizationId: string, actorId?: string | null) {
+  const members = await tx.organizationMember.findMany({
+    where: { organizationId, status: "ACTIVE" },
+    include: { role: true },
+    orderBy: { createdAt: "asc" },
+  });
+  for (const member of members) {
+    await ensureHrEmployeeForUser(tx, organizationId, member.userId, member.role?.name, {
+      branchId: member.branchId,
+      joinedAt: member.joinedAt,
+      actorId,
+      membershipId: member.id,
+    });
+  }
+}
 
 /** HR has no dedicated settings table; the employee numbering prefix lives
  * in the generic `OrganizationModule.configuration` store. */
@@ -40,7 +143,8 @@ export async function updateHrSettings(organizationId: string, data: { employeeN
 
 // --- Employees ---
 
-export function listEmployees(organizationId: string) {
+export async function listEmployees(organizationId: string) {
+  await db.$transaction((tx) => syncActiveOrganizationMembersToHr(tx, organizationId));
   return db.hrEmployee.findMany({
     where: { organizationId },
     include: { manager: true, user: true },

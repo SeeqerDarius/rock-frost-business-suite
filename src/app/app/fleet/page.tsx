@@ -24,14 +24,14 @@ export default async function FleetOverviewPage() {
     { label: "Vehicle owners", value: summary.ownerCount, description: "Owner portfolios", icon: <Users className="size-4" />, href: "/app/fleet/owners" },
     { label: "Under maintenance", value: summary.maintenanceVehicleCount, description: "Vehicles with open repairs", icon: <Wrench className="size-4" />, href: "/app/fleet/maintenance" },
     { label: "Pending requests", value: summary.pendingMaintenanceCount, description: "Maintenance requests awaiting completion", icon: <Wrench className="size-4" />, href: "/app/fleet/maintenance" },
-    { label: "Pending collections", value: summary.pendingDriverSubmissionCount, description: "Driver collections awaiting verification", icon: <Receipt className="size-4" />, href: "/app/fleet/payments" },
+    { label: "Pending remittances", value: summary.pendingDriverSubmissionCount, description: "Driver-recorded payments awaiting verification", icon: <Receipt className="size-4" />, href: "/app/fleet/payments" },
     { label: "Expiring documents", value: summary.expiringDocumentCount, description: "Insurance or roadworthy attention", icon: <ShieldAlert className="size-4" />, href: "/app/fleet/insurance-roadworthy" },
     { label: "Active Work & Pay", value: summary.activeContractCount, description: "Contracts currently in effect", icon: <Handshake className="size-4" />, href: "/app/fleet/work-and-pay" },
   ];
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Fleet Overview" description="Vehicles, drivers, owners, maintenance, collections, and obligations at a glance." />
+      <PageHeader title="Fleet Overview" description="Vehicles, drivers, owners, maintenance, remittances, and obligations at a glance." />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => <OverviewMetricCard key={stat.label} {...stat} />)}
       </div>
@@ -43,7 +43,7 @@ export default async function FleetOverviewPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2"><WalletCards className="size-5 text-muted-foreground" /><CardTitle>Recent payments</CardTitle></div>
-          <CardDescription>Latest fleet payment activity across sales, contracts, payouts, and maintenance.</CardDescription>
+          <CardDescription>Latest fleet payment activity across driver remittances, contracts, payouts, and maintenance.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {summary.recentPayments.length === 0 ? <p className="text-sm text-muted-foreground">No fleet payments recorded yet.</p> : summary.recentPayments.map((payment) => (

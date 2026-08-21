@@ -8,7 +8,7 @@ The responsive Next.js web application is the system of record. Its server-actio
 
 ## Delivered capabilities
 
-- Fleet overview dashboard with vehicles, drivers, owners, maintenance, document expiry, pending collections, weekly and monthly verified revenue, outstanding Work & Pay balances, and recent payments
+- Fleet overview dashboard with vehicles, drivers, owners, maintenance, document expiry, pending remittances, weekly and monthly verified revenue, outstanding Work & Pay balances, and recent payments
 - Vehicle-owner management with optional portal-login linkage, vehicle totals, verified revenue, and append-only ownership history
 - Vehicle and asset registry
 - Driver registry and vehicle assignment
@@ -17,12 +17,12 @@ The responsive Next.js web application is the system of record. Its server-actio
 - In-app renewal reminders for insurance and roadworthy documents approaching
   expiry, with duplicate-notification protection
 - Maintenance request workflow with optional signature-validated fault photos
-- Work & Pay agreements
-- Weekly sales, Work & Pay, owner, driver and maintenance payments
+- Work & Pay agreements with daily or weekly payment schedules
+- Daily and weekly vehicle remittances, Work & Pay instalments, owner payouts, driver payments, and maintenance payments
 - Management reports
 - Investor dashboard
 - A dedicated Vehicle Owner role limited to the linked owner portfolio and owner approvals
-- A driver-only workspace limited to assigned vehicles, assigned contracts, maintenance tasks, and the driver's own collections
+- A driver-only workspace limited to assigned vehicles, assigned contracts, maintenance tasks, and the driver's own payment records
 - Permission-controlled navigation and server-side authorization
 - In-app maintenance completion notifications
 - Audit events and shared platform audit logging
@@ -46,14 +46,16 @@ Every step writes an immutable `FleetMaintenanceEvent` containing actor, event t
 
 - New Work & Pay agreements calculate amount paid, outstanding balance and completion percentage from the contract value and deposit.
 - Deposits are written to the central Fleet payment ledger.
-- Every later Work & Pay payment atomically updates the contract and writes a verified ledger transaction.
-- A vehicle can be configured with no normal sales target, a daily target, or a weekly target. Work & Pay remains controlled by its contract rather than the vehicle target.
-- Driver submissions preserve the assigned vehicle, collection type, sales period, expected amount, actual amount, and variance.
-- A pending or approved collection cannot be submitted twice for the same driver, vehicle, type, and period.
+- A vehicle can be configured with no required remittance, a daily remittance amount, or a weekly remittance amount. Work & Pay remains controlled by its own daily or weekly contract schedule.
+- The driver first pays the company outside the application by cash, mobile money, bank transfer, card, cheque, or another supported method. The driver then records the completed payment for manager verification. The application does not claim that initiating the form itself transfers money.
+- Non-cash payment records require a transaction reference. Cash may use an optional receipt reference. The server validates the supported method and evidence rule rather than relying on the form alone.
+- Driver records preserve the assigned vehicle, obligation type, payment period, required amount, actual amount, method, reference, and variance.
+- A pending or approved remittance cannot be recorded twice for the same driver, vehicle, type, and period.
 - Approved daily and weekly driver submissions become verified `WEEKLY_SALES` ledger entries related to the assigned vehicle. The type name is retained for backward compatibility while submission metadata preserves whether the period was daily or weekly.
 - Approved Work & Pay submissions become verified `WORK_AND_PAY` entries and atomically update amount paid, outstanding balance, completion percentage, and contract completion status.
-- Management reporting includes weekly collections, verified collections, pending payments, documents due and repairs awaiting verification.
-- Investor reporting shows each owner's vehicles, active agreements, contract value, collections, outstanding balance, maintenance cost and net cash position.
+- A Fleet Manager can also record a payment received directly by the office, including payment date, method, and reference. This path writes a verified ledger entry because the authorized manager is confirming receipt at entry time.
+- Management reporting includes weekly remittances, verified payments, pending payments, documents due and repairs awaiting verification.
+- Investor reporting shows each owner's vehicles, active agreements, contract value, remittances, outstanding balance, maintenance cost and net cash position.
 
 ## Access control
 
@@ -67,6 +69,12 @@ Every step writes an immutable `FleetMaintenanceEvent` containing actor, event t
 - Owner maintenance approval additionally requires the current user to be linked to the owner of the affected vehicle.
 - Maintenance management actions require `fleet.maintenance.manage`.
 - Unauthorized vehicle maintenance submissions fail closed.
+
+## HR integration
+
+When Human Resources & Payroll is enabled, an active internal organization member is also represented by one linked `HrEmployee` record. The integration runs when an invitation is accepted, an active member's role changes, a suspended member is reactivated, HR is enabled for an existing organization, or the HR employee register performs its compatibility backfill.
+
+The synchronization is tenant-scoped, transaction-safe, idempotent, and protected by a PostgreSQL advisory lock. It creates only a missing employee and never overwrites job, department, manager, payroll, or other details already maintained by HR. `Vehicle Owner` and `Investor` are external stakeholder roles and are deliberately excluded. Automatic creation writes employee status history and a tenant audit event.
 
 ## Maintenance photos
 

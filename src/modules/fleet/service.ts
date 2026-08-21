@@ -18,6 +18,7 @@ import {
   updateOrganizationModuleConfigurationValues,
 } from "@/platform/module-requests/configuration";
 import { PERMISSIONS } from "@/lib/auth/permissions";
+import { logAuditEvent } from "@/lib/audit";
 
 const DEFAULT_RENEWAL_REMINDER_DAYS = 30;
 
@@ -255,6 +256,19 @@ export async function getFleetDriverWorkspace(organizationId: string, userId: st
 
 export class FleetDuplicateSubmissionError extends Error {}
 export class FleetSalesTargetError extends Error {}
+export class FleetPaymentEvidenceError extends Error {}
+
+export const FLEET_REMITTANCE_METHODS = ["CASH", "MOBILE_MONEY", "BANK_TRANSFER", "CARD", "CHEQUE", "OTHER"] as const;
+export type FleetRemittanceMethod = (typeof FLEET_REMITTANCE_METHODS)[number];
+
+function requirePaymentEvidence(paymentMethod: string, reference?: string | null) {
+  if (!(FLEET_REMITTANCE_METHODS as readonly string[]).includes(paymentMethod)) {
+    throw new FleetPaymentEvidenceError("Choose a supported payment method.");
+  }
+  if (paymentMethod !== "CASH" && !reference?.trim()) {
+    throw new FleetPaymentEvidenceError("Enter the transaction reference for this payment method.");
+  }
+}
 
 function startOfUtcDay(value: Date) {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
@@ -291,27 +305,34 @@ export async function submitFleetDriverPayment(
     throw new InvalidPaymentAmountError("Payment amount must be a number.");
   }
   if (!amount.isPositive()) throw new InvalidPaymentAmountError("Payment amount must be positive.");
+  if (Number.isNaN(data.paymentDate.getTime()) || Number.isNaN(data.periodStart.getTime())) {
+    throw new InvalidPaymentAmountError("Payment and obligation dates must be valid.");
+  }
+  requirePaymentEvidence(data.paymentMethod, data.reference);
   const vehicle = await db.fleetVehicle.findFirst({ where: { id: data.vehicleId, organizationId, assignedDriverId: driver.id } });
   if (!vehicle) throw new NotFoundError("Assigned vehicle not found.");
 
   let expectedAmount: Prisma.Decimal | null = null;
+  let paymentSchedule: FleetSalesTargetPeriod | null = null;
   if (data.submissionType === "WORK_AND_PAY") {
     if (!data.contractId) throw new FleetSalesTargetError("Select an active Work & Pay contract.");
     const contract = await db.fleetWorkAndPayContract.findFirst({
       where: { id: data.contractId, organizationId, vehicleId: vehicle.id, contractStatus: { in: ["ACTIVE", "PAUSED"] } },
     });
     if (!contract) throw new NotFoundError("Assigned contract not found.");
-    expectedAmount = contract.weeklyPaymentAmount;
+    paymentSchedule = contract.paymentSchedule;
+    expectedAmount = contract.scheduledPaymentAmount ?? contract.weeklyPaymentAmount;
   } else {
-    if (data.contractId) throw new FleetSalesTargetError("A normal sales submission cannot use a Work & Pay contract.");
+    if (data.contractId) throw new FleetSalesTargetError("A vehicle remittance cannot use a Work & Pay contract.");
     const requiredPeriod: FleetSalesTargetPeriod = data.submissionType === "DAILY_SALES" ? "DAILY" : "WEEKLY";
     if (vehicle.salesTargetPeriod !== requiredPeriod || !vehicle.salesTargetAmount) {
-      throw new FleetSalesTargetError(`This vehicle is not configured for ${requiredPeriod.toLowerCase()} sales.`);
+      throw new FleetSalesTargetError(`This vehicle is not configured for ${requiredPeriod.toLowerCase()} remittances.`);
     }
     expectedAmount = vehicle.salesTargetAmount;
   }
 
-  const { periodStart, periodEnd } = salesPeriod(data.submissionType, data.periodStart);
+  const periodType: FleetDriverSubmissionType = paymentSchedule === "DAILY" ? "DAILY_SALES" : data.submissionType;
+  const { periodStart, periodEnd } = salesPeriod(periodType, data.periodStart);
   const existing = await db.fleetDriverPaymentSubmission.findFirst({
     where: {
       organizationId,
@@ -324,7 +345,7 @@ export async function submitFleetDriverPayment(
     },
     select: { id: true },
   });
-  if (existing) throw new FleetDuplicateSubmissionError("A collection for this vehicle and sales period already exists.");
+  if (existing) throw new FleetDuplicateSubmissionError("A remittance for this vehicle and payment period already exists.");
 
   try {
     return await db.fleetDriverPaymentSubmission.create({
@@ -346,7 +367,7 @@ export async function submitFleetDriverPayment(
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      throw new FleetDuplicateSubmissionError("A collection for this vehicle and sales period already exists.");
+      throw new FleetDuplicateSubmissionError("A remittance for this vehicle and payment period already exists.");
     }
     throw error;
   }
@@ -488,7 +509,7 @@ type FleetVehicleInput = {
 
 function vehicleSalesTarget(data: FleetVehicleInput) {
   if (!data.salesTargetPeriod && !data.salesTargetAmount) return { salesTargetPeriod: null, salesTargetAmount: null };
-  if (!data.salesTargetPeriod || !data.salesTargetAmount) throw new FleetSalesTargetError("Select a sales period and enter its target amount.");
+  if (!data.salesTargetPeriod || !data.salesTargetAmount) throw new FleetSalesTargetError("Select a remittance schedule and enter its required amount.");
   let amount: Prisma.Decimal;
   try {
     amount = new Prisma.Decimal(data.salesTargetAmount);
@@ -947,16 +968,28 @@ export async function createFleetWorkAndPayContract(
     clientName: string;
     contractAmount: string;
     depositAmount: string;
-    weeklyPaymentAmount: string;
-    remainingDurationWeeks?: number | null;
+    paymentSchedule: FleetSalesTargetPeriod;
+    scheduledPaymentAmount: string;
+    remainingPaymentPeriods?: number | null;
     startsAt?: Date | null;
     branchId?: string | null;
   }
 ) {
   await requireVehicle(organizationId, data.vehicleId);
-  const contractAmount = new Prisma.Decimal(data.contractAmount);
-  const depositAmount = new Prisma.Decimal(data.depositAmount);
-  if (!contractAmount.isPositive() || depositAmount.isNegative() || depositAmount.greaterThan(contractAmount)) {
+  if (!(["DAILY", "WEEKLY"] as const).includes(data.paymentSchedule)) {
+    throw new InvalidPaymentAmountError("Choose a daily or weekly payment schedule.");
+  }
+  let contractAmount: Prisma.Decimal;
+  let depositAmount: Prisma.Decimal;
+  let scheduledPaymentAmount: Prisma.Decimal;
+  try {
+    contractAmount = new Prisma.Decimal(data.contractAmount);
+    depositAmount = new Prisma.Decimal(data.depositAmount);
+    scheduledPaymentAmount = new Prisma.Decimal(data.scheduledPaymentAmount);
+  } catch {
+    throw new InvalidPaymentAmountError("Contract, deposit, and instalment amounts must be valid numbers.");
+  }
+  if (!contractAmount.isPositive() || depositAmount.isNegative() || depositAmount.greaterThan(contractAmount) || !scheduledPaymentAmount.isPositive() || (data.remainingPaymentPeriods != null && data.remainingPaymentPeriods <= 0)) {
     throw new InvalidPaymentAmountError("Contract and deposit amounts are invalid.");
   }
   return db.$transaction(async (tx) => {
@@ -966,6 +999,9 @@ export async function createFleetWorkAndPayContract(
       data: {
         organizationId,
         ...data,
+        weeklyPaymentAmount: scheduledPaymentAmount,
+        scheduledPaymentAmount,
+        remainingDurationWeeks: data.paymentSchedule === "WEEKLY" ? data.remainingPaymentPeriods : null,
         amountPaid: depositAmount.toFixed(2),
         outstandingBalance: outstandingBalance.toFixed(2),
         completionPercentage: completionPercentage.toFixed(2),
@@ -1002,10 +1038,21 @@ export class InvalidPaymentAmountError extends Error {}
  * concurrent payments on the same contract could otherwise lose one
  * payment's contribution to the running total.
  */
-export async function recordFleetWorkAndPayPayment(organizationId: string, id: string, amount: number) {
+export async function recordFleetWorkAndPayPayment(organizationId: string, id: string, data: {
+  amount: number;
+  paymentDate: Date;
+  paymentMethod: FleetRemittanceMethod;
+  reference?: string | null;
+  actorId?: string | null;
+}) {
+  const { amount } = data;
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new InvalidPaymentAmountError("Payment amount must be a positive number.");
   }
+  if (Number.isNaN(data.paymentDate.getTime())) {
+    throw new InvalidPaymentAmountError("Payment date must be valid.");
+  }
+  requirePaymentEvidence(data.paymentMethod, data.reference);
 
   return db.$transaction(async (tx) => {
     const contract = await tx.fleetWorkAndPayContract.findFirst({ where: { id, organizationId } });
@@ -1031,20 +1078,29 @@ export async function recordFleetWorkAndPayPayment(organizationId: string, id: s
         contractStatus,
       },
     });
-    await tx.fleetPayment.create({
+    const ledgerPayment = await tx.fleetPayment.create({
       data: {
         organizationId,
-        reference: `WAP-${Date.now().toString(36).toUpperCase()}-${id.slice(-5).toUpperCase()}`,
-        date: new Date(),
+        reference: data.reference || `WAP-CASH-${Date.now().toString(36).toUpperCase()}-${id.slice(-5).toUpperCase()}`,
+        date: data.paymentDate,
         type: "WORK_AND_PAY",
         amount: amount.toFixed(2),
         status: "VERIFIED",
         verified: true,
         relatedEntity: "FleetWorkAndPayContract",
         relatedEntityId: id,
-        metadata: { contractName: contract.contractName, clientName: contract.clientName },
+        metadata: { contractName: contract.contractName, clientName: contract.clientName, paymentMethod: data.paymentMethod, source: "office-recorded" },
       },
     });
+    await logAuditEvent({
+      organizationId,
+      userId: data.actorId ?? null,
+      module: "fleet",
+      action: "work_and_pay.office_payment_recorded",
+      entityName: "FleetPayment",
+      entityId: ledgerPayment.id,
+      metadata: { contractId: id, amount: amount.toFixed(2), paymentMethod: data.paymentMethod, resultingOutstandingBalance: finalContract.outstandingBalance.toString() },
+    }, tx);
     return finalContract;
   });
 }

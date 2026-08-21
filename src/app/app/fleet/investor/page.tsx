@@ -38,7 +38,7 @@ export default async function FleetInvestorPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Investor Dashboard" description="Vehicle portfolio, collections, obligations, maintenance costs and net cash position." />
+      <PageHeader title="Investor Dashboard" description="Vehicle portfolio, remittances, obligations, maintenance costs and net cash position." />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {[
           ["Vehicles", totals.vehicles.toString()],

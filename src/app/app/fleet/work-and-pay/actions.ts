@@ -10,8 +10,10 @@ import {
   updateFleetWorkAndPayContractStatus,
   NotFoundError,
   InvalidPaymentAmountError,
+  FleetPaymentEvidenceError,
 } from "@/modules/fleet/service";
-import type { FleetContractStatus } from "@prisma/client";
+import type { FleetContractStatus, FleetSalesTargetPeriod } from "@prisma/client";
+import { getServerAuthSession } from "@/lib/auth/session";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -33,9 +35,10 @@ export async function createWorkAndPayContract(formData: FormData): Promise<void
   const vehicleId = clean(formData.get("vehicleId"));
   const clientName = clean(formData.get("clientName"));
   const contractAmount = clean(formData.get("contractAmount"));
-  const weeklyPaymentAmount = clean(formData.get("weeklyPaymentAmount"));
+  const paymentSchedule = clean(formData.get("paymentSchedule")) as FleetSalesTargetPeriod | null;
+  const scheduledPaymentAmount = clean(formData.get("scheduledPaymentAmount"));
 
-  if (!contractName || !vehicleId || !clientName || !contractAmount || !weeklyPaymentAmount) {
+  if (!contractName || !vehicleId || !clientName || !contractAmount || !scheduledPaymentAmount || !paymentSchedule || !["DAILY", "WEEKLY"].includes(paymentSchedule)) {
     redirect("/app/fleet/work-and-pay?error=missing-fields");
   }
 
@@ -48,12 +51,14 @@ export async function createWorkAndPayContract(formData: FormData): Promise<void
       clientName,
       contractAmount,
       depositAmount: clean(formData.get("depositAmount")) ?? "0",
-      weeklyPaymentAmount,
-      remainingDurationWeeks: cleanInt(formData.get("remainingDurationWeeks")),
+      paymentSchedule,
+      scheduledPaymentAmount,
+      remainingPaymentPeriods: cleanInt(formData.get("remainingPaymentPeriods")),
       startsAt: startsAtRaw ? new Date(startsAtRaw) : null,
     });
   } catch (error) {
     if (error instanceof NotFoundError) redirect("/app/fleet/work-and-pay?error=not-found");
+    if (error instanceof InvalidPaymentAmountError) redirect("/app/fleet/work-and-pay?error=invalid-amount");
     throw error;
   }
 
@@ -70,16 +75,26 @@ export async function recordContractPayment(formData: FormData): Promise<void> {
   const id = clean(formData.get("id"));
   const amountRaw = clean(formData.get("amount"));
   const amount = amountRaw ? Number.parseFloat(amountRaw) : NaN;
+  const paymentDate = clean(formData.get("paymentDate"));
+  const paymentMethod = clean(formData.get("paymentMethod"));
 
-  if (!id || Number.isNaN(amount) || amount <= 0) {
+  if (!id || Number.isNaN(amount) || amount <= 0 || !paymentDate || !paymentMethod) {
     redirect("/app/fleet/work-and-pay?error=invalid-amount");
   }
 
   try {
-    await recordFleetWorkAndPayPayment(tenant.organizationId, id, amount);
+    const session = await getServerAuthSession();
+    await recordFleetWorkAndPayPayment(tenant.organizationId, id, {
+      amount,
+      paymentDate: new Date(`${paymentDate}T00:00:00.000Z`),
+      paymentMethod: paymentMethod as "CASH" | "MOBILE_MONEY" | "BANK_TRANSFER" | "CARD" | "CHEQUE" | "OTHER",
+      reference: clean(formData.get("reference")),
+      actorId: session?.user?.id,
+    });
   } catch (error) {
     if (error instanceof NotFoundError) redirect("/app/fleet/work-and-pay?error=not-found");
     if (error instanceof InvalidPaymentAmountError) redirect("/app/fleet/work-and-pay?error=invalid-amount");
+    if (error instanceof FleetPaymentEvidenceError) redirect("/app/fleet/work-and-pay?error=invalid-evidence");
     throw error;
   }
   revalidatePath("/app/fleet/work-and-pay");
