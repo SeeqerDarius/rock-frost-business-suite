@@ -4,6 +4,9 @@ import { cleanupTestOrg, createTestOrg, type TestOrg } from "../setup/fixtures";
 import {
   approveControlledDispense,
   createMedicine,
+  createPatient,
+  createPrescriber,
+  createPrescription,
   dispense,
   findBatchByBarcode,
   findMedicineByBarcode,
@@ -33,18 +36,54 @@ import {
 
 let orgA: TestOrg;
 let orgB: TestOrg;
+let approverAId: string;
+let approverBId: string;
 
 beforeAll(async () => {
   [orgA, orgB] = await Promise.all([createTestOrg("pharmacy-clinical-a"), createTestOrg("pharmacy-clinical-b")]);
+  const approvers = await Promise.all([
+    testDb.user.create({ data: { name: "Pharmacy Approver A", email: `pharmacy-approver-a-${Date.now()}-${Math.random().toString(36).slice(2)}@example.invalid`, passwordHash: "integration-test-not-for-login", status: "ACTIVE" } }),
+    testDb.user.create({ data: { name: "Pharmacy Approver B", email: `pharmacy-approver-b-${Date.now()}-${Math.random().toString(36).slice(2)}@example.invalid`, passwordHash: "integration-test-not-for-login", status: "ACTIVE" } }),
+  ]);
+  [approverAId, approverBId] = approvers.map((user) => user.id);
 });
 
 afterAll(async () => {
   await cleanupTestOrg(orgA);
   await cleanupTestOrg(orgB);
+  await testDb.user.deleteMany({ where: { id: { in: [approverAId, approverBId] } } });
 });
 
 async function newControlledMedicine(org: TestOrg, suffix: string) {
   return createMedicine(org.organizationId, { sku: `CTRL-${suffix}`, name: `Controlled ${suffix}`, unit: "tablet", medicineClass: "CONTROLLED", sellingPrice: "5.00", reorderPoint: 0, requiresPrescription: true });
+}
+
+async function newControlledDispenseFixture(org: TestOrg, suffix: string, quantityPrescribed = 10) {
+  const medicine = await newControlledMedicine(org, suffix);
+  const [patient, prescriber] = await Promise.all([
+    createPatient(org.organizationId, { patientNumber: `PAT-${suffix}`, fullName: `Patient ${suffix}` }),
+    createPrescriber(org.organizationId, { fullName: `Dr. ${suffix}`, registrationNumber: `REG-${suffix}` }),
+  ]);
+  const prescription = await createPrescription(org.organizationId, {
+    prescriptionNumber: `RX-${suffix}`,
+    patientId: patient.id,
+    prescriberId: prescriber.id,
+    prescribedAt: new Date(),
+    expiresAt: new Date(Date.now() + 86_400_000),
+    lines: [{ medicineId: medicine.id, quantityPrescribed, dosage: "1 tablet", frequency: "once daily" }],
+  });
+  const prescriptionLine = await testDb.pharmacyPrescriptionLine.findFirstOrThrow({ where: { prescriptionId: prescription.id, medicineId: medicine.id } });
+  return { medicine, patient, prescription, prescriptionLine };
+}
+
+function controlledDispenseData(fixture: Awaited<ReturnType<typeof newControlledDispenseFixture>>, suffix: string, quantity: number) {
+  return {
+    dispensingNumber: `DSP-${suffix}`,
+    patientId: fixture.patient.id,
+    prescriptionId: fixture.prescription.id,
+    discount: "0",
+    lines: [{ medicineId: fixture.medicine.id, quantity, prescriptionLineId: fixture.prescriptionLine.id }],
+  };
 }
 
 describe("Pharmacy barcode lookup tenant isolation", () => {
@@ -69,10 +108,11 @@ describe("Pharmacy barcode lookup tenant isolation", () => {
 describe("Pharmacy controlled-drug maker-checker (real Postgres)", () => {
   it("holds a controlled dispense as pending approval and moves no stock until approved", async () => {
     const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const medicine = await newControlledMedicine(orgA, suffix);
+    const fixture = await newControlledDispenseFixture(orgA, suffix);
+    const { medicine } = fixture;
     await receiveBatch(orgA.organizationId, orgA.userId, { medicineId: medicine.id, batchNumber: `LOT-${suffix}`, quantity: 10, costPrice: "1.00", expiryDate: new Date(Date.now() + 86_400_000) });
 
-    const pending = await dispense(orgA.organizationId, orgA.userId, { dispensingNumber: `DSP-${suffix}`, discount: "0", lines: [{ medicineId: medicine.id, quantity: 2 }] });
+    const pending = await dispense(orgA.organizationId, orgA.userId, controlledDispenseData(fixture, suffix, 2));
     expect(pending.status).toBe("PENDING_APPROVAL");
 
     const batchAfterRequest = await testDb.pharmacyBatch.findFirstOrThrow({ where: { organizationId: orgA.organizationId, medicineId: medicine.id } });
@@ -80,7 +120,7 @@ describe("Pharmacy controlled-drug maker-checker (real Postgres)", () => {
     const linesAfterRequest = await testDb.pharmacyDispensingLine.findMany({ where: { dispensingId: pending.id } });
     expect(linesAfterRequest).toHaveLength(0);
 
-    const approved = await approveControlledDispense(orgA.organizationId, "a-different-approver", pending.id);
+    const approved = await approveControlledDispense(orgA.organizationId, approverAId, pending.id);
     expect(approved.status).toBe("COMPLETED");
     const batchAfterApproval = await testDb.pharmacyBatch.findFirstOrThrow({ where: { organizationId: orgA.organizationId, medicineId: medicine.id } });
     expect(batchAfterApproval.quantity).toBe(8);
@@ -90,9 +130,10 @@ describe("Pharmacy controlled-drug maker-checker (real Postgres)", () => {
 
   it("blocks the requester from approving or rejecting their own request", async () => {
     const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const medicine = await newControlledMedicine(orgA, suffix);
+    const fixture = await newControlledDispenseFixture(orgA, suffix);
+    const { medicine } = fixture;
     await receiveBatch(orgA.organizationId, orgA.userId, { medicineId: medicine.id, batchNumber: `LOT-${suffix}`, quantity: 10, costPrice: "1.00", expiryDate: new Date(Date.now() + 86_400_000) });
-    const pending = await dispense(orgA.organizationId, orgA.userId, { dispensingNumber: `DSP-${suffix}`, discount: "0", lines: [{ medicineId: medicine.id, quantity: 1 }] });
+    const pending = await dispense(orgA.organizationId, orgA.userId, controlledDispenseData(fixture, suffix, 1));
 
     await expect(approveControlledDispense(orgA.organizationId, orgA.userId, pending.id)).rejects.toBeInstanceOf(PharmacyWorkflowError);
     await expect(rejectControlledDispense(orgA.organizationId, orgA.userId, pending.id, "self-reject attempt")).rejects.toBeInstanceOf(PharmacyWorkflowError);
@@ -103,11 +144,12 @@ describe("Pharmacy controlled-drug maker-checker (real Postgres)", () => {
 
   it("rejecting a pending dispense never moves stock", async () => {
     const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const medicine = await newControlledMedicine(orgA, suffix);
+    const fixture = await newControlledDispenseFixture(orgA, suffix);
+    const { medicine } = fixture;
     await receiveBatch(orgA.organizationId, orgA.userId, { medicineId: medicine.id, batchNumber: `LOT-${suffix}`, quantity: 10, costPrice: "1.00", expiryDate: new Date(Date.now() + 86_400_000) });
-    const pending = await dispense(orgA.organizationId, orgA.userId, { dispensingNumber: `DSP-${suffix}`, discount: "0", lines: [{ medicineId: medicine.id, quantity: 3 }] });
+    const pending = await dispense(orgA.organizationId, orgA.userId, controlledDispenseData(fixture, suffix, 3));
 
-    const rejected = await rejectControlledDispense(orgA.organizationId, "a-different-approver", pending.id, "Not clinically justified");
+    const rejected = await rejectControlledDispense(orgA.organizationId, approverAId, pending.id, "Not clinically justified");
     expect(rejected.status).toBe("REJECTED");
     const batch = await testDb.pharmacyBatch.findFirstOrThrow({ where: { organizationId: orgA.organizationId, medicineId: medicine.id } });
     expect(batch.quantity).toBe(10);
@@ -115,9 +157,10 @@ describe("Pharmacy controlled-drug maker-checker (real Postgres)", () => {
 
   it("rejects approving or rejecting a pending dispense that belongs to a different organization", async () => {
     const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const medicine = await newControlledMedicine(orgA, suffix);
+    const fixture = await newControlledDispenseFixture(orgA, suffix);
+    const { medicine } = fixture;
     await receiveBatch(orgA.organizationId, orgA.userId, { medicineId: medicine.id, batchNumber: `LOT-${suffix}`, quantity: 10, costPrice: "1.00", expiryDate: new Date(Date.now() + 86_400_000) });
-    const pending = await dispense(orgA.organizationId, orgA.userId, { dispensingNumber: `DSP-${suffix}`, discount: "0", lines: [{ medicineId: medicine.id, quantity: 1 }] });
+    const pending = await dispense(orgA.organizationId, orgA.userId, controlledDispenseData(fixture, suffix, 1));
 
     await expect(approveControlledDispense(orgB.organizationId, orgB.userId, pending.id)).rejects.toBeInstanceOf(PharmacyNotFoundError);
     await expect(rejectControlledDispense(orgB.organizationId, orgB.userId, pending.id, "cross-tenant")).rejects.toBeInstanceOf(PharmacyNotFoundError);
@@ -125,13 +168,14 @@ describe("Pharmacy controlled-drug maker-checker (real Postgres)", () => {
 
   it("two concurrent approval attempts on the same pending dispense: exactly one succeeds", async () => {
     const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const medicine = await newControlledMedicine(orgA, suffix);
+    const fixture = await newControlledDispenseFixture(orgA, suffix);
+    const { medicine } = fixture;
     await receiveBatch(orgA.organizationId, orgA.userId, { medicineId: medicine.id, batchNumber: `LOT-${suffix}`, quantity: 10, costPrice: "1.00", expiryDate: new Date(Date.now() + 86_400_000) });
-    const pending = await dispense(orgA.organizationId, orgA.userId, { dispensingNumber: `DSP-${suffix}`, discount: "0", lines: [{ medicineId: medicine.id, quantity: 2 }] });
+    const pending = await dispense(orgA.organizationId, orgA.userId, controlledDispenseData(fixture, suffix, 2));
 
     const results = await Promise.allSettled([
-      approveControlledDispense(orgA.organizationId, "approver-1", pending.id),
-      approveControlledDispense(orgA.organizationId, "approver-2", pending.id),
+      approveControlledDispense(orgA.organizationId, approverAId, pending.id),
+      approveControlledDispense(orgA.organizationId, approverBId, pending.id),
     ]);
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);

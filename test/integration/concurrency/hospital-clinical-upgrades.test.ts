@@ -12,11 +12,21 @@ import { createTestOrg, cleanupTestOrg, type TestOrg } from "../setup/fixtures";
 
 let orgA: TestOrg;
 let orgB: TestOrg;
+let thirdActorId: string;
 let facilityA: Awaited<ReturnType<typeof hospital.createHospitalFacility>>;
 let providerA: Awaited<ReturnType<typeof hospital.createHospitalProvider>>;
 
 beforeAll(async () => {
   [orgA, orgB] = await Promise.all([createTestOrg("hospital-clinical-a"), createTestOrg("hospital-clinical-b")]);
+  const thirdActor = await testDb.user.create({
+    data: {
+      name: "Hospital Clinical Third Actor",
+      email: `hospital-clinical-third-${Date.now()}-${Math.random().toString(36).slice(2)}@example.invalid`,
+      passwordHash: "integration-test-not-for-login",
+      status: "ACTIVE",
+    },
+  });
+  thirdActorId = thirdActor.id;
   facilityA = await hospital.createHospitalFacility(orgA.organizationId, { code: "MAIN", name: "Main Hospital" });
   providerA = await hospital.createHospitalProvider(orgA.organizationId, { facilityId: facilityA.id, name: "Dr. Clinical" });
 });
@@ -24,6 +34,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await cleanupTestOrg(orgA);
   await cleanupTestOrg(orgB);
+  await testDb.user.delete({ where: { id: thirdActorId } }).catch(() => {});
 });
 
 /** Creates a fresh, unresulted lab order item for orgA and returns its id. */
@@ -38,26 +49,26 @@ async function newLabItem() {
 describe("Hospital lab result maker-checker (real Postgres)", () => {
   it("blocks the same actor from entering and then verifying their own result when enforcement is on", async () => {
     const itemId = await newLabItem();
-    const result = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "5", enteredById: "actor-same" });
-    await expect(hospital.verifyHospitalLabResult(orgA.organizationId, result.id, "actor-same")).rejects.toThrow(hospital.HospitalStateError);
+    const result = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "5", enteredById: orgA.userId });
+    await expect(hospital.verifyHospitalLabResult(orgA.organizationId, result.id, orgA.userId)).rejects.toThrow(hospital.HospitalStateError);
     const stillUnverified = await testDb.hospitalLabResult.findUniqueOrThrow({ where: { id: result.id } });
     expect(stillUnverified.verifiedAt).toBeNull();
   });
 
   it("allows a different actor to verify", async () => {
     const itemId = await newLabItem();
-    const result = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "5", enteredById: "actor-a" });
-    const verified = await hospital.verifyHospitalLabResult(orgA.organizationId, result.id, "actor-b");
-    expect(verified.verifiedById).toBe("actor-b");
+    const result = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "5", enteredById: orgA.userId });
+    const verified = await hospital.verifyHospitalLabResult(orgA.organizationId, result.id, orgB.userId);
+    expect(verified.verifiedById).toBe(orgB.userId);
   });
 
   it("allows same-actor verification once the facility disables enforcement, and re-blocks it once re-enabled", async () => {
     const disabled = { facilityId: facilityA.id, timezone: "UTC", currency: "USD", mrnPrefix: "MRN", encounterPrefix: "ENC", appointmentPrefix: "APT", admissionPrefix: "ADM", invoicePrefix: "INV", receiptPrefix: "RCT", resultVerificationRequired: true, bedTransferRequiresReason: true, retentionYears: 7 };
     await hospital.upsertHospitalSettings(orgA.organizationId, { ...disabled, labImagingMakerCheckerEnforced: false });
     const itemId = await newLabItem();
-    const result = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "5", enteredById: "actor-same" });
-    const verified = await hospital.verifyHospitalLabResult(orgA.organizationId, result.id, "actor-same");
-    expect(verified.verifiedById).toBe("actor-same");
+    const result = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "5", enteredById: orgA.userId });
+    const verified = await hospital.verifyHospitalLabResult(orgA.organizationId, result.id, orgA.userId);
+    expect(verified.verifiedById).toBe(orgA.userId);
     await hospital.upsertHospitalSettings(orgA.organizationId, { ...disabled, labImagingMakerCheckerEnforced: true });
   });
 });
@@ -65,14 +76,14 @@ describe("Hospital lab result maker-checker (real Postgres)", () => {
 describe("Hospital lab result rejection workflow (real Postgres)", () => {
   it("reopens the item for a fresh entry after rejection, and never mutates the rejected row afterward", async () => {
     const itemId = await newLabItem();
-    const result = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "bad-entry", enteredById: "actor-a" });
-    const rejected = await hospital.rejectHospitalLabResult(orgA.organizationId, result.id, "actor-b", "Illegible handwriting");
+    const result = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "bad-entry", enteredById: orgA.userId });
+    const rejected = await hospital.rejectHospitalLabResult(orgA.organizationId, result.id, orgB.userId, "Illegible handwriting");
     expect(rejected.rejectedAt).not.toBeNull();
 
-    await expect(hospital.verifyHospitalLabResult(orgA.organizationId, result.id, "actor-b")).rejects.toThrow(hospital.HospitalStateError);
-    await expect(hospital.rejectHospitalLabResult(orgA.organizationId, result.id, "actor-b", "again")).rejects.toThrow(hospital.HospitalStateError);
+    await expect(hospital.verifyHospitalLabResult(orgA.organizationId, result.id, orgB.userId)).rejects.toThrow(hospital.HospitalStateError);
+    await expect(hospital.rejectHospitalLabResult(orgA.organizationId, result.id, orgB.userId, "again")).rejects.toThrow(hospital.HospitalStateError);
 
-    const fresh = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "5", enteredById: "actor-a" });
+    const fresh = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "5", enteredById: orgA.userId });
     expect(fresh.id).not.toBe(result.id);
     const preservedRejected = await testDb.hospitalLabResult.findUniqueOrThrow({ where: { id: result.id } });
     expect(preservedRejected.value).toBe("bad-entry");
@@ -82,21 +93,21 @@ describe("Hospital lab result rejection workflow (real Postgres)", () => {
 describe("Hospital tenant isolation and IDOR (real Postgres)", () => {
   it("rejects verifying a result that belongs to a different organization", async () => {
     const itemId = await newLabItem();
-    const result = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "5", enteredById: "actor-a" });
-    await expect(hospital.verifyHospitalLabResult(orgB.organizationId, result.id, "actor-x")).rejects.toBeInstanceOf(hospital.HospitalNotFoundError);
+    const result = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "5", enteredById: orgA.userId });
+    await expect(hospital.verifyHospitalLabResult(orgB.organizationId, result.id, orgB.userId)).rejects.toBeInstanceOf(hospital.HospitalNotFoundError);
     const untouched = await testDb.hospitalLabResult.findUniqueOrThrow({ where: { id: result.id } });
     expect(untouched.verifiedAt).toBeNull();
   });
 
   it("rejects rejecting and correcting a result that belongs to a different organization", async () => {
     const itemId = await newLabItem();
-    const result = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "5", enteredById: "actor-a" });
-    await hospital.verifyHospitalLabResult(orgA.organizationId, result.id, "actor-b");
-    await expect(hospital.correctHospitalLabResult(orgB.organizationId, result.id, { value: "999", correctionReason: "cross-tenant attempt", enteredById: "actor-x" })).rejects.toBeInstanceOf(hospital.HospitalNotFoundError);
+    const result = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "5", enteredById: orgA.userId });
+    await hospital.verifyHospitalLabResult(orgA.organizationId, result.id, orgB.userId);
+    await expect(hospital.correctHospitalLabResult(orgB.organizationId, result.id, { value: "999", correctionReason: "cross-tenant attempt", enteredById: orgB.userId })).rejects.toBeInstanceOf(hospital.HospitalNotFoundError);
 
     const itemId2 = await newLabItem();
-    const result2 = await hospital.enterHospitalLabResult(orgA.organizationId, itemId2, { value: "5", enteredById: "actor-a" });
-    await expect(hospital.rejectHospitalLabResult(orgB.organizationId, result2.id, "actor-x", "cross-tenant")).rejects.toBeInstanceOf(hospital.HospitalNotFoundError);
+    const result2 = await hospital.enterHospitalLabResult(orgA.organizationId, itemId2, { value: "5", enteredById: orgA.userId });
+    await expect(hospital.rejectHospitalLabResult(orgB.organizationId, result2.id, orgB.userId, "cross-tenant")).rejects.toBeInstanceOf(hospital.HospitalNotFoundError);
   });
 
   it("findHospitalPatientDuplicates never surfaces another tenant's patients", async () => {
@@ -112,11 +123,11 @@ describe("Hospital tenant isolation and IDOR (real Postgres)", () => {
 describe("Hospital lab result verification concurrency (real Postgres)", () => {
   it("two concurrent verify attempts on the same result: exactly one succeeds", async () => {
     const itemId = await newLabItem();
-    const result = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "5", enteredById: "actor-a" });
+    const result = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "5", enteredById: orgA.userId });
 
     const results = await Promise.allSettled([
-      hospital.verifyHospitalLabResult(orgA.organizationId, result.id, "actor-b"),
-      hospital.verifyHospitalLabResult(orgA.organizationId, result.id, "actor-c"),
+      hospital.verifyHospitalLabResult(orgA.organizationId, result.id, orgB.userId),
+      hospital.verifyHospitalLabResult(orgA.organizationId, result.id, thirdActorId),
     ]);
 
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
@@ -127,11 +138,11 @@ describe("Hospital lab result verification concurrency (real Postgres)", () => {
 
   it("a concurrent verify and reject on the same result: exactly one succeeds", async () => {
     const itemId = await newLabItem();
-    const result = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "5", enteredById: "actor-a" });
+    const result = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "5", enteredById: orgA.userId });
 
     const results = await Promise.allSettled([
-      hospital.verifyHospitalLabResult(orgA.organizationId, result.id, "actor-b"),
-      hospital.rejectHospitalLabResult(orgA.organizationId, result.id, "actor-c", "racing rejection"),
+      hospital.verifyHospitalLabResult(orgA.organizationId, result.id, orgB.userId),
+      hospital.rejectHospitalLabResult(orgA.organizationId, result.id, thirdActorId, "racing rejection"),
     ]);
 
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
