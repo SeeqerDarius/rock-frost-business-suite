@@ -1,5 +1,15 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-21: Inventory barcode and controlled physical-count release candidate
+
+- Added optional organization-scoped item barcodes and a tenant-scoped barcode resolver. A barcode is unique within one organization but may be reused by a different tenant. Item create and update actions return a bounded duplicate-barcode error without exposing database details.
+- Added the complete `/app/inventory/counts` workflow: warehouse snapshot, line-by-line physical entry, submission, separate approval or reasoned rejection, and an explicit final posting confirmation. The creator cannot review the same count. Draft, submitted, approved, rejected, and posted states are preserved for history.
+- Posting is ledger-safe. It atomically claims the approved count, locks each live stock row, calculates variance against the current locked quantity, and records immutable Inventory `ADJUSTMENT` movements. It does not overwrite absolute balances and a retry cannot post the same count twice.
+- Added `inventory.counts.manage` and `inventory.counts.approve`, seeded for Inventory Manager, plus navigation, documentation, guarded-route counts, a hand-written migration, five mocked service tests, and two real PostgreSQL tenant-isolation cases.
+- Important files: `prisma/migrations/20260821003000_inventory_counts_and_barcodes/migration.sql`, `prisma/schema.prisma`, `src/modules/inventory/service.ts`, `src/app/app/inventory/counts/`, `src/app/app/inventory/items/`, `src/modules/inventory-procurement/navigation.tsx`, `test/inventory-stock-counts.test.ts`, and `test/integration/tenant-isolation/inventory.test.ts`.
+- Validation: Prisma format, validate, and generate passed. TypeScript passed. ESLint passed. Full mocked suite passed with 83 files and 559 tests. The Next.js production build compiled 206 routes, including `/app/inventory/counts`. `git diff --check` passed. Customer-facing changed files contain no Unicode em dash. `TEST_DATABASE_URL` is not configured locally, so the new real PostgreSQL integration cases remain a required CI gate before merge or production deployment.
+- Release status: local release candidate only at this entry. Do not merge or deploy the schema migration until the disposable PostgreSQL integration workflow passes.
+
 ## 2026-08-20: Deploy and production verification for the Hostel Management module
 
 PR #4 merged as `daf669b`, shipped as Vercel deployment `dpl_3iJJsFHSnyhrgwEAGUocKkX6smw9`, READY on all production aliases (`app.rockfrostgroup.com`, `rockfrostgroup.com`, `admin.rockfrostgroup.com`). The additive Hostel migration (`20260820220000_add_hostel_module`) applied cleanly against the real production database. `/api/health` returns `{"ok":true,"database":"reachable"}` and the Vercel runtime-error aggregation shows nothing new in the 10 minutes after deploy. (Note: an initial health check right after merge hit the still-live previous deployment, since Vercel keeps serving the old one until the new build finishes — re-verified directly against this deployment's own URL once its `readyState` reported `READY`, not just the shared alias.)

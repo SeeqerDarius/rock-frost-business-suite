@@ -38,10 +38,18 @@ Either way, when a linked line *is* received with a warehouse, the receipt still
 
 Every route that existed before this change still exists at the same path, with the same permission gates:
 
-- `/app/inventory`, `/app/inventory/items`, `/warehouses`, `/stock`, `/movements`, `/reports`, `/settings`
+- `/app/inventory`, `/app/inventory/items`, `/warehouses`, `/stock`, `/movements`, `/counts`, `/reports`, `/settings`
 - `/app/procurement`, `/app/procurement/vendors`, `/requests`, `/orders`, `/reports`, `/settings`
 
 No redirects were added. `/app/inventory` changed *content* (it's now the combined overview instead of an Inventory-only one) but not its permission boundary — it still requires `canAccessModule(tenant, "inventory")` via `requireModuleAccess("inventory")`, exactly as before.
+
+## Physical stock counts and barcode lookup
+
+Inventory items may carry an optional barcode that is unique inside the organization. Barcode resolution always includes the organization identifier, so a scan cannot discover another tenant's catalogue. Different organizations may use the same manufacturer barcode.
+
+The Stock Counts page snapshots the expected quantity for every active item in one warehouse. Operators enter physical quantities while the count is a draft, then submit it for review. The creator cannot approve or reject the same count. Rejections require a reason. Approved counts require a second explicit confirmation before posting.
+
+Posting never overwrites an absolute stock balance. It locks the current stock row, calculates the difference between the approved physical quantity and the current live ledger balance, then records an immutable `ADJUSTMENT` movement. The approved-to-posted state is claimed atomically, preventing a retry or double-click from posting the same count twice. If stock changed after the original snapshot, the adjustment is calculated against the locked live quantity rather than the stale expected quantity.
 
 ## Known gaps
 

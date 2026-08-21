@@ -1,4 +1,4 @@
-import { LayoutGrid, Package, Warehouse, Layers, ArrowLeftRight, BarChart3, Settings, Building2, FileText, PackageCheck } from "lucide-react";
+import { LayoutGrid, Package, Warehouse, Layers, ArrowLeftRight, BarChart3, Settings, Building2, FileText, PackageCheck, ClipboardCheck } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 /**
@@ -32,6 +32,7 @@ const INVENTORY_ITEMS: ModuleNavItem[] = [
   { label: "Items", group: "Inventory", href: "/app/inventory/items", icon: <Package className="size-4" /> },
   { label: "Warehouses", group: "Inventory", href: "/app/inventory/warehouses", icon: <Warehouse className="size-4" /> },
   { label: "Stock", group: "Inventory", href: "/app/inventory/stock", icon: <Layers className="size-4" /> },
+  { label: "Stock Counts", group: "Inventory", href: "/app/inventory/counts", icon: <ClipboardCheck className="size-4" /> },
   { label: "Movements", group: "Inventory", href: "/app/inventory/movements", icon: <ArrowLeftRight className="size-4" /> },
   { label: "Inventory Reports", group: "Inventory", href: "/app/inventory/reports", icon: <BarChart3 className="size-4" /> },
   { label: "Inventory Settings", group: "Inventory", href: "/app/inventory/settings", icon: <Settings className="size-4" /> },

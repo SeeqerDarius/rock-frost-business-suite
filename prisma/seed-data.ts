@@ -55,6 +55,8 @@ export const PERMISSIONS = {
   INVENTORY_MOVEMENTS_MANAGE: "inventory.movements.manage",
   INVENTORY_REPORTS_VIEW: "inventory.reports.view",
   INVENTORY_SETTINGS_MANAGE: "inventory.settings.manage",
+  INVENTORY_COUNTS_MANAGE: "inventory.counts.manage",
+  INVENTORY_COUNTS_APPROVE: "inventory.counts.approve",
   ACCOUNTING_VIEW: "accounting.view",
   ACCOUNTING_ACCOUNTS_MANAGE: "accounting.accounts.manage",
   ACCOUNTING_INVOICES_MANAGE: "accounting.invoices.manage",
@@ -267,6 +269,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     PERMISSIONS.INVENTORY_MOVEMENTS_MANAGE,
     PERMISSIONS.INVENTORY_REPORTS_VIEW,
     PERMISSIONS.INVENTORY_SETTINGS_MANAGE,
+    PERMISSIONS.INVENTORY_COUNTS_MANAGE,
+    PERMISSIONS.INVENTORY_COUNTS_APPROVE,
   ]),
   "Accounting Manager": moduleRolePermissions([
     PERMISSIONS.ACCOUNTING_VIEW,

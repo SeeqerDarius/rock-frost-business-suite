@@ -148,4 +148,19 @@ describe("Inventory tenant isolation (real Postgres)", () => {
     const row = await testDb.inventoryItem.findUnique({ where: { id: orgBItemId } });
     expect(row?.organizationId).toBe(orgB.organizationId);
   });
+
+  it("rejects starting a physical count against another organization's warehouse", async () => {
+    await expect(inventory.createInventoryCount(orgA.organizationId, {
+      warehouseId: orgBWarehouseId,
+      countDate: new Date("2026-08-21"),
+      createdById: orgA.userId,
+    })).rejects.toThrow(inventory.NotFoundError);
+  });
+
+  it("keeps barcodes unique within an organization while allowing another tenant to use the same barcode", async () => {
+    const barcode = `BAR-${Date.now()}`;
+    await inventory.createItem(orgA.organizationId, { sku: `A-BAR-${Date.now()}`, barcode, name: "Org A Barcode Item", costPrice: "1.00" });
+    await expect(inventory.createItem(orgA.organizationId, { sku: `A-BAR-2-${Date.now()}`, barcode, name: "Org A Duplicate Barcode", costPrice: "1.00" })).rejects.toThrow(inventory.ItemBarcodeTakenError);
+    await expect(inventory.createItem(orgB.organizationId, { sku: `B-BAR-${Date.now()}`, barcode, name: "Org B Barcode Item", costPrice: "1.00" })).resolves.toMatchObject({ organizationId: orgB.organizationId, barcode });
+  });
 });

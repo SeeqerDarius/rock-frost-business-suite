@@ -17,7 +17,7 @@ The public marketing site has a generated sitemap and robots policy, unique cano
 - **Hotel Management:** rooms, guests, reservations, stay lifecycle, folios and payments, housekeeping, reporting, restaurant, channels, and enforced property settings for currency/timezone, stay policy, charges, numbering, settlement, and room-readiness workflow.
 - **School Management:** student/guardian administration with optional profile photos, academic periods, classes, enrollment, attendance, fees and reporting, followed by examinations, grading, timetables, transport, library, campus services and education-specific payroll integration.
 - **Hostel Management:** a separately subscribed companion to School Management for schools with boarding facilities. Buildings, rooms and beds (bed labels generated automatically from room capacity), student allocations, warden assignments per building, and hostel fee structures, invoices, and payments — see `docs/HOSTEL_MODULE.md`.
-- **Inventory & Procurement:** tenant-isolated item/category/warehouse catalogues, optional item images, stock levels, controlled movements, supplier management, purchasing approvals, orders, receiving, low-stock alerts, reporting, and POS integration.
+- **Inventory & Procurement:** tenant-isolated item/category/warehouse catalogues, optional item images and barcodes, stock levels, controlled physical counts with maker-checker variance posting, immutable movements, supplier management, purchasing approvals, orders, receiving, low-stock alerts, reporting, and POS integration.
 - **Human Resources & Payroll:** employee records, onboarding, leave, performance reviews, controlled maker-checker termination and reinstatement, offboarding, access and final-pay coordination, compensation, payroll runs, payslips, settings, and reporting in one product and subscription.
 - **Fleet Management:** administrator-linked driver logins, assigned-vehicle self-service, ownership-checked maintenance reporting, and manager-verified weekly and work-and-pay submissions.
 - **Accounting:** double-entry invoicing and expenses plus classified cash, bank and mobile-money accounts, locked opening-balance entries, a derived cashbook, period reconciliation history, imprest petty cash funds, and a Statement of Financial Position report.
@@ -102,7 +102,7 @@ Start with `OPERATOR_HANDOFF.md` at the repo root for the current state and next
 - `docs/DESIGN_SYSTEM.md` — UI foundation, tokens, component conventions
 - `docs/DEVELOPMENT_ROADMAP.md` — phased build history (all nineteen phases complete)
 - `docs/DATABASE_STRATEGY.md` — Prisma/Neon setup and migration workflow
-- `docs/AUTHENTICATION_AND_AUTHORIZATION.md` — real, enforced auth/RBAC (144 permission keys across sixteen modules)
+- `docs/AUTHENTICATION_AND_AUTHORIZATION.md` — real, enforced auth/RBAC (146 permission keys across sixteen modules)
 - `docs/BACKUP_AND_RECOVERY.md` — tenant-isolated module exports, protected merge restore, and infrastructure recovery boundaries
 - `docs/EMAIL_DELIVERY.md` — transactional templates, sender-domain authentication, and deliverability operations
 - `docs/TESTING_STRATEGY.md` — how work is validated, current automated test coverage
