@@ -145,7 +145,7 @@ const receiveLineSchema = z.object({
 
 export async function receiveExistingOrderLine(formData: FormData): Promise<void> {
   const tenant = await requireModuleAccess("procurement");
-  if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_ORDERS_MANAGE)) {
+  if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_RECEIPTS_MANAGE)) {
     redirect("/app/procurement/orders?error=forbidden");
   }
 

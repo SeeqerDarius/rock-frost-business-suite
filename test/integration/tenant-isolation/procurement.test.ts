@@ -74,4 +74,15 @@ describe("Procurement service — cross-tenant isolation against real Postgres",
     expect(list.map((v) => v.id)).not.toContain(orgBVendor.id);
     expect(list.map((v) => v.id)).toContain(orgAVendor.id);
   });
+
+  it("createSupplierInvoice rejects an order from another organization", async () => {
+    await expect(procurement.createSupplierInvoice(orgA.organizationId, {
+      vendorId: orgBVendor.id,
+      orderId: orgBOrder.id,
+      invoiceNumber: "FOREIGN-INV-1",
+      invoiceDate: new Date("2026-01-02"),
+      createdById: orgA.userId,
+      lines: [{ orderLineId: "foreign-line", quantity: 1, unitCost: "1.00" }],
+    })).rejects.toThrow(procurement.NotFoundError);
+  });
 });

@@ -1,4 +1,4 @@
-import { LayoutGrid, Package, Warehouse, Layers, ArrowLeftRight, BarChart3, Settings, Building2, FileText, PackageCheck, ClipboardCheck } from "lucide-react";
+import { LayoutGrid, Package, Warehouse, Layers, ArrowLeftRight, BarChart3, Settings, Building2, FileText, PackageCheck, ClipboardCheck, ReceiptText, FileCheck2 } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 /**
@@ -42,6 +42,8 @@ const PROCUREMENT_ITEMS: ModuleNavItem[] = [
   { label: "Vendors", group: "Procurement", href: "/app/procurement/vendors", icon: <Building2 className="size-4" /> },
   { label: "Requests", group: "Procurement", href: "/app/procurement/requests", icon: <FileText className="size-4" /> },
   { label: "Orders", group: "Procurement", href: "/app/procurement/orders", icon: <PackageCheck className="size-4" /> },
+  { label: "Goods Receipts", group: "Procurement", href: "/app/procurement/receipts", icon: <ReceiptText className="size-4" /> },
+  { label: "Supplier Invoices", group: "Procurement", href: "/app/procurement/invoices", icon: <FileCheck2 className="size-4" /> },
   { label: "Procurement Reports", group: "Procurement", href: "/app/procurement/reports", icon: <BarChart3 className="size-4" /> },
   { label: "Procurement Settings", group: "Procurement", href: "/app/procurement/settings", icon: <Settings className="size-4" /> },
 ];

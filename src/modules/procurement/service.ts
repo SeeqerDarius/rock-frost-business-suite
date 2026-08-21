@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import { recordMovement } from "@/modules/inventory/service";
-import type { ProcurementRequestStatus, ProcurementOrderStatus } from "@prisma/client";
+import { Prisma, type ProcurementRequestStatus, type ProcurementOrderStatus } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import {
   getOrganizationModuleConfiguration,
@@ -71,7 +71,7 @@ async function generateRequestNumber(organizationId: string) {
 export function listRequests(organizationId: string) {
   return db.procurementRequest.findMany({
     where: { organizationId },
-    include: { item: true, requestedBy: true, approvedBy: true },
+    include: { item: true, requestedBy: true, approvedBy: true, lines: { include: { item: true } } },
     orderBy: { createdAt: "desc" },
   });
 }
@@ -83,25 +83,47 @@ interface RequestInput {
   estimatedCost?: string | null;
   notes?: string | null;
   requestedById?: string | null;
+  lines?: Array<{ itemId?: string | null; description: string; quantity: number; estimatedCost?: string | null }>;
 }
 
 export async function createRequest(organizationId: string, data: RequestInput) {
-  if (data.itemId) {
-    const item = await db.inventoryItem.findFirst({ where: { id: data.itemId, organizationId } });
-    if (!item) throw new NotFoundError("Item not found.");
+  const lines = data.lines?.length ? data.lines : [{ itemId: data.itemId, description: data.description, quantity: data.quantity, estimatedCost: data.estimatedCost }];
+  if (lines.length === 0 || lines.length > 50) throw new RequestStateError("A request must contain between 1 and 50 lines.");
+  for (const line of lines) {
+    if (!line.description.trim() || !Number.isInteger(line.quantity) || line.quantity <= 0) throw new RequestStateError("Every request line needs a description and positive whole-number quantity.");
+    if (line.itemId) {
+      const item = await db.inventoryItem.findFirst({ where: { id: line.itemId, organizationId } });
+      if (!item) throw new NotFoundError("Item not found.");
+    }
   }
 
   return createWithUniqueRetry(async () => {
     const requestNumber = await generateRequestNumber(organizationId);
-    return db.procurementRequest.create({ data: { organizationId, requestNumber, ...data } });
+    const first = lines[0];
+    return db.procurementRequest.create({
+      data: {
+        organizationId,
+        requestNumber,
+        requestedById: data.requestedById,
+        notes: data.notes,
+        itemId: first.itemId,
+        description: first.description,
+        quantity: first.quantity,
+        estimatedCost: first.estimatedCost,
+        lines: { create: lines.map((line) => ({ organizationId, ...line })) },
+      },
+      include: { lines: true },
+    });
   });
 }
 
 export class RequestStateError extends Error {}
+export class RequestApprovalError extends Error {}
 
 export async function approveRequest(organizationId: string, id: string, approvedById?: string | null) {
   const request = await db.procurementRequest.findFirst({ where: { id, organizationId } });
   if (!request) throw new NotFoundError("Request not found.");
+  if (approvedById && request.requestedById === approvedById) throw new RequestApprovalError("The request creator cannot approve the same request.");
   const claimed = await db.procurementRequest.updateMany({
     where: { id, status: "PENDING" },
     data: { status: "APPROVED", approvedById, approvedAt: new Date() },
@@ -113,6 +135,7 @@ export async function approveRequest(organizationId: string, id: string, approve
 export async function rejectRequest(organizationId: string, id: string, approvedById?: string | null) {
   const request = await db.procurementRequest.findFirst({ where: { id, organizationId } });
   if (!request) throw new NotFoundError("Request not found.");
+  if (approvedById && request.requestedById === approvedById) throw new RequestApprovalError("The request creator cannot reject the same request.");
   const claimed = await db.procurementRequest.updateMany({
     where: { id, status: "PENDING" },
     data: { status: "REJECTED", approvedById, approvedAt: new Date() },
@@ -320,7 +343,97 @@ export async function receiveOrderLine(
     }
 
     await recomputeOrderStatus(tx, input.orderId);
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${organizationId}:procurement-receipt-number`}))`;
+    const receiptSequence = await tx.procurementGoodsReceipt.count({ where: { organizationId } });
+    await tx.procurementGoodsReceipt.create({
+      data: {
+        organizationId,
+        receiptNumber: `GRN-${String(receiptSequence + 1).padStart(6, "0")}`,
+        orderId: input.orderId,
+        warehouseId: input.warehouseId,
+        receivedById: input.createdById,
+        lines: { create: [{ orderLineId: line.id, itemId: line.itemId, quantity: input.quantity }] },
+      },
+    });
   });
+}
+
+// --- Goods receipts and supplier invoices ---
+
+export function listGoodsReceipts(organizationId: string) {
+  return db.procurementGoodsReceipt.findMany({
+    where: { organizationId },
+    include: { order: { include: { vendor: true } }, warehouse: true, receivedBy: true, lines: { include: { orderLine: true, item: true } } },
+    orderBy: { receivedAt: "desc" },
+    take: 200,
+  });
+}
+
+export function listSupplierInvoices(organizationId: string) {
+  return db.procurementSupplierInvoice.findMany({
+    where: { organizationId },
+    include: { vendor: true, order: true, createdBy: true, approvedBy: true, lines: { include: { orderLine: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+}
+
+export class InvoiceMatchError extends Error {}
+export class InvoiceApprovalError extends Error {}
+
+export async function createSupplierInvoice(
+  organizationId: string,
+  input: { vendorId: string; orderId: string; invoiceNumber: string; invoiceDate: Date; createdById?: string | null; lines: Array<{ orderLineId: string; quantity: number; unitCost: string }> },
+) {
+  if (!input.invoiceNumber.trim() || input.lines.length === 0 || input.lines.length > 100) throw new InvoiceMatchError("Invoice number and lines are required.");
+  const order = await db.procurementOrder.findFirst({ where: { id: input.orderId, organizationId, vendorId: input.vendorId }, include: { lines: true } });
+  if (!order) throw new NotFoundError("Purchase order not found for this vendor.");
+  const orderLines = new Map(order.lines.map((line) => [line.id, line]));
+  const previouslyInvoiced = await db.procurementSupplierInvoiceLine.findMany({
+    where: { orderLineId: { in: input.lines.map((line) => line.orderLineId) }, invoice: { organizationId, status: { not: "REJECTED" } } },
+    select: { orderLineId: true, quantity: true },
+  });
+  const invoicedByLine = new Map<string, number>();
+  for (const line of previouslyInvoiced) invoicedByLine.set(line.orderLineId, (invoicedByLine.get(line.orderLineId) ?? 0) + line.quantity);
+  let total = new Prisma.Decimal(0);
+  let exceptionNote: string | null = null;
+  for (const line of input.lines) {
+    const ordered = orderLines.get(line.orderLineId);
+    if (!ordered || !Number.isInteger(line.quantity) || line.quantity <= 0) throw new InvoiceMatchError("An invoice line is invalid.");
+    const cost = new Prisma.Decimal(line.unitCost);
+    if (cost.isNegative()) throw new InvoiceMatchError("Unit cost cannot be negative.");
+    total = total.plus(cost.mul(line.quantity));
+    if (line.quantity + (invoicedByLine.get(line.orderLineId) ?? 0) > ordered.receivedQuantity) throw new InvoiceMatchError("Invoice quantity exceeds the remaining received quantity.");
+    if (!cost.equals(ordered.unitCost)) exceptionNote = "Invoice unit cost does not match the purchase order.";
+  }
+  return db.procurementSupplierInvoice.create({
+    data: {
+      organizationId,
+      vendorId: input.vendorId,
+      orderId: input.orderId,
+      invoiceNumber: input.invoiceNumber.trim(),
+      invoiceDate: input.invoiceDate,
+      createdById: input.createdById,
+      totalAmount: total,
+      status: exceptionNote ? "EXCEPTION" : "MATCHED",
+      exceptionNote,
+      lines: { create: input.lines.map((line) => ({ ...line, description: orderLines.get(line.orderLineId)!.description })) },
+    },
+    include: { lines: true },
+  });
+}
+
+export async function reviewSupplierInvoice(organizationId: string, invoiceId: string, actorId: string, decision: "APPROVE" | "REJECT") {
+  const invoice = await db.procurementSupplierInvoice.findFirst({ where: { id: invoiceId, organizationId, status: { in: ["MATCHED", "EXCEPTION"] } } });
+  if (!invoice) throw new InvoiceApprovalError("Invoice is not awaiting review.");
+  if (invoice.createdById === actorId) throw new InvoiceApprovalError("The invoice creator cannot review the same invoice.");
+  if (decision === "APPROVE" && invoice.status === "EXCEPTION") throw new InvoiceApprovalError("Resolve the three-way match exception before approval.");
+  const claimed = await db.procurementSupplierInvoice.updateMany({
+    where: { id: invoice.id, organizationId, status: invoice.status },
+    data: decision === "APPROVE" ? { status: "APPROVED", approvedById: actorId, approvedAt: new Date() } : { status: "REJECTED", approvedById: actorId, approvedAt: new Date() },
+  });
+  if (claimed.count === 0) throw new InvoiceApprovalError("Invoice was already reviewed.");
+  return db.procurementSupplierInvoice.findFirstOrThrow({ where: { id: invoice.id, organizationId } });
 }
 
 // --- Settings ---

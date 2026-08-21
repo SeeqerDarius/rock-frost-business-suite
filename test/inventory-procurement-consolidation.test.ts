@@ -21,7 +21,9 @@ const mockDb = {
   procurementOrderLine: { findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
   procurementRequest: { findMany: vi.fn() },
   procurementVendor: { count: vi.fn() },
+  procurementGoodsReceipt: { count: vi.fn(), create: vi.fn() },
   $transaction: vi.fn(),
+  $executeRaw: vi.fn(),
 };
 
 vi.mock("@/lib/db", () => ({ db: mockDb }));
