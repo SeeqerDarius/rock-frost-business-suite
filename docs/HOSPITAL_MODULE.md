@@ -38,8 +38,10 @@ verticals are merged to `main` and live in production as of 2026-08-12.
    concurrency, not the count itself), demographics, contacts, next of kin, emergency contact, allergies, free-text
    alerts, national ID, blood group, consent-on-file flag, and status. `findHospitalPatientDuplicates()` is a real,
    tested, **advisory-only** duplicate check (same first/last name + date of birth) — it never blocks registration,
-   because two real patients can legitimately share both. It is not yet wired into the registration form's UI as an
-   inline warning; see "Known gaps" below.
+   because two real patients can legitimately share both. The registration dialog
+   (`src/app/app/hospital/patients/patient-registration-dialog.tsx`) now calls this check via a `useActionState`
+   button before submit and shows any matches inline; the actual submit still goes straight to
+   `createPatientAction` whether or not a check was run, so registration itself is still never blocked.
 3. **Appointments** — provider/department scheduling with a transactional overlap check
    (`assertProviderAvailable`) that rejects a new or edited appointment whose time window overlaps another active
    appointment for the same provider. Check-in, cancellation (with reason), and no-show are explicit state
@@ -59,17 +61,38 @@ verticals are merged to `main` and live in production as of 2026-08-12.
    throws `HospitalStateError` if called against a verified item; a correction always calls
    `correctHospitalLabResult`, which inserts a **new** `HospitalLabResult` row with `supersedesResultId` pointing at
    the row it corrects. The prior verified row's `value` is never touched — see the "immutable clinical records"
-   integration test for a direct database assertion of this.
-7. **Imaging** — the same order → schedule → finding → verify → correct-by-supersession pattern as laboratory.
+   integration test for a direct database assertion of this. Entry (`hospital.lab.enter`) and verification
+   (`hospital.lab.verify`) are separate permissions (see "Permissions and roles"), and `verifyHospitalLabResult`
+   additionally enforces a configurable maker-checker rule: when `HospitalSettings.labImagingMakerCheckerEnforced`
+   is true (the default), the person who entered a result cannot also verify it, checked by comparing
+   `enteredById`/`verifiedById` — a role-level permission split alone doesn't stop this in a small clinic where one
+   role (e.g. Laboratory Scientist) legitimately holds both permissions, so the actor-identity check is the real
+   enforcement, exactly like `HrTerminationRequest`'s maker-checker for terminations. A verifier who is not ready to
+   confirm a result can `rejectHospitalLabResult` it instead of verifying: this reopens the order item for a fresh
+   entry (never mutates or deletes the rejected row) and requires a reason. Both `verifyHospitalLabResult` and
+   `rejectHospitalLabResult` use a conditional `updateMany` (not a plain `update`) so two concurrent verify/reject
+   attempts on the same result can never both succeed. Every entry, verification, rejection, and correction writes a
+   focused `logAuditEvent` row (`lab_result.entered` / `.verified` / `.rejected` / `.corrected`) inside the same
+   transaction as the mutation.
+7. **Imaging** — the same order → schedule → finding → verify → correct-by-supersession pattern as laboratory, now
+   with the identical `hospital.imaging.enter`/`hospital.imaging.verify` split, maker-checker enforcement, rejection
+   workflow, concurrency-safe conditional updates, and audit events as laboratory (`imaging_finding.*` actions).
+   `enterHospitalImagingFinding` also now blocks re-entry once the order's current finding is verified (parity with
+   lab's item-status guard — previously it had no such check and could silently insert an orphaned second finding).
    `externalAccessionNumber` and `externalSystemReference` are the explicit, deliberately opaque boundary to an
    outside PACS/imaging system; this schema stores no DICOM or other binary imaging payload anywhere.
 8. **Medication orders** — `HospitalMedicationOrder` is a Hospital-owned, versioned contract
    (`contractVersion: Int`). The service layer never reads or writes a Pharmacy table — there is no foreign key,
    Prisma relation, or service call into anything Pharmacy owns anywhere in this branch.
-   `externalDispenseReference` is a plain nullable string field Codex's Pharmacy branch is expected to populate with
-   its own dispensing-record identifier after both branches merge; until then it simply records manual dispensing
-   reference text if a clinic enters one by hand. This matches `docs/PHARMACY_AND_HOSPITAL_ROADMAP.md`'s "Medication
-   orders will cross into Pharmacy through a versioned prescription/dispensing contract."
+   `externalDispenseReference` is a plain nullable string field a future integration is expected to populate with
+   its own dispensing-record identifier; until then it simply records manual dispensing reference text if a clinic
+   enters one by hand. This matches `docs/PHARMACY_AND_HOSPITAL_ROADMAP.md`'s "Medication orders will cross into
+   Pharmacy through a versioned prescription/dispensing contract." The clinical-upgrades tranche
+   (this document's "Clinical upgrades tranche" section below) deliberately does not build that connection — it only
+   documents that the eventual contract must also be **idempotent**: whichever side initiates the cross-module call
+   needs to include a client-generated request id so a retried call (e.g. after a timeout) applies once, not twice.
+   No such request-id field or call exists yet on either side; this is a documented requirement for whoever builds
+   the real integration, not a delivered mechanism.
 9. **Billing** — service charges, invoices with line items, `Decimal(12,2)` money throughout (never JS floating
    point), payments, void (only permitted before any payment is recorded), and insurance claims.
    `recordHospitalPayment` recomputes the invoice's paid-to-date total and validates the new payment against the
@@ -105,32 +128,43 @@ verticals are merged to `main` and live in production as of 2026-08-12.
 
 ## Permissions and roles
 
-13 `hospital.*` permission keys (`view`, `facility.manage`, `patients.manage`, `appointments.manage`,
-`encounters.manage`, `admissions.manage`, `lab.manage`, `imaging.manage`, `medications.manage`, `nursing.manage`,
-`billing.manage`, `reports.view`, `settings.manage`), added identically to `src/lib/auth/permissions.ts` and
-`prisma/seed-data.ts` (the latter is a deliberate duplicate per that file's own documented reason: it can't import
-the former's `server-only` module from a plain `tsx`/Vitest context).
+15 `hospital.*` permission keys (`view`, `facility.manage`, `patients.manage`, `appointments.manage`,
+`encounters.manage`, `admissions.manage`, `lab.enter`, `lab.verify`, `imaging.enter`, `imaging.verify`,
+`medications.manage`, `nursing.manage`, `billing.manage`, `reports.view`, `settings.manage`), added identically to
+`src/lib/auth/permissions.ts` and `prisma/seed-data.ts` (the latter is a deliberate duplicate per that file's own
+documented reason: it can't import the former's `server-only` module from a plain `tsx`/Vitest context). The
+clinical-upgrades tranche replaced the original single `lab.manage`/`imaging.manage` keys with the `enter`/`verify`
+split described above.
 
 Nine least-privilege system roles, each holding only the `hospital.*` keys its job actually needs:
 
 | Role | Key permissions |
 |---|---|
-| Hospital Administrator | all 13 `hospital.*` keys |
+| Hospital Administrator | all 15 `hospital.*` keys |
 | Receptionist | patients, appointments |
-| Doctor | patients, encounters, admissions, lab, imaging, medications, reports |
+| Doctor | patients, encounters, admissions, lab.enter, imaging.enter, medications, reports |
 | Nurse | patients, encounters, admissions, nursing |
-| Laboratory Scientist | lab |
-| Radiology Staff | imaging |
+| Laboratory Scientist | lab.enter, lab.verify |
+| Radiology Staff | imaging.enter, imaging.verify |
 | Hospital Pharmacist | medications (the dispensing-integration boundary role) |
 | Billing Officer | billing, reports |
 | Records Officer | patients, reports |
 
+Laboratory Scientist and Radiology Staff each hold both halves of their split (today's clinics run this as one
+role), so maker-checker enforcement (see item 6/7 above) is what actually prevents self-verification for those
+roles, not the permission split alone. Doctor only holds `lab.enter`/`imaging.enter` (ordering tests), not `verify`.
+
+## Clinical upgrades tranche (branch `agent/claude-clinical-upgrades`)
+
+Delivered on top of the scope above, in an isolated branch, without merging or deploying: the inline
+duplicate-patient advisory (item 2), the `lab.enter`/`lab.verify` and `imaging.enter`/`imaging.verify` permission
+split with maker-checker enforcement and a rejection workflow (items 6–7), and the "Permissions and roles" table
+update. See `OPERATOR_HANDOFF.md`'s dated entry for this branch for exact files, the migration name, and validation
+results. This tranche intentionally does not touch Pharmacy's tables or build the medication-order integration —
+see item 8's note on the future idempotent contract requirement.
+
 ## Known gaps / follow-ups
 
-- **Duplicate-patient detection is not surfaced inline in the registration form.** `findHospitalPatientDuplicates()`
-  is real, tested, and safe to call, but the New Patient dialog doesn't yet call it client-side and show a warning
-  before submit. Registration itself is never blocked by it either way, so this is a UX polish gap, not a data-
-  integrity gap.
 - **No E2E/browser verification was performed on this branch.** No tenant login credentials were available in this
   session. `tsc`, ESLint, the full mocked unit suite, and a production build all pass; the real-Postgres integration
   suite could not be executed in this environment (no `TEST_DATABASE_URL` configured) — see
@@ -138,11 +172,13 @@ Nine least-privilege system roles, each holding only the `hospital.*` keys its j
 - **Reports are operational summaries, not exportable/printable clinical or regulatory report formats** (e.g. no
   NHIA claim file format, no ICD-coded diagnosis export). This module records diagnoses as free text with an
   optional code field; it does not validate against any specific coding system.
-- **No dedicated `hospital.lab.verify`/`hospital.imaging.verify` permission split.** Entry and verification of a
-  result both currently require `hospital.lab.manage` / `hospital.imaging.manage` — a narrower two-person-integrity
-  model (one role enters, a different role verifies) would need a new permission key and is a reasonable future
-  hardening pass, not something the task brief explicitly required.
+- **A correction does not reset the order item's status.** After `correctHospitalLabResult`/
+  `correctHospitalImagingFinding` inserts a new (unverified) row superseding a verified one, the parent
+  `HospitalLabOrderItem`/imaging order status stays whatever it was (typically `VERIFIED`) rather than reopening for
+  re-verification of the corrected value. This is a pre-existing characteristic of the correction-by-supersession
+  design, not something this tranche changed; flagged for a future decision on whether a correction should also
+  require re-verification.
 - **`docs/PHARMACY_AND_HOSPITAL_ROADMAP.md`** existed only as an uncommitted draft in the shared working tree at the
-  time this branch was created from `origin/main`, so it is not part of this branch's history. Whoever integrates
-  this branch should reconcile that document's "Hospital production boundary" section against the scope actually
-  delivered here.
+  time the Hospital module's original branch was created from `origin/main`, so it was not part of that branch's
+  history either. Whoever integrates this branch should still reconcile that document's "Hospital production
+  boundary" section against the scope actually delivered across both branches.

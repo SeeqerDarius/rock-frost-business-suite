@@ -77,7 +77,12 @@ Hospital Management (merged to `main`, live in production) follows the same
 contract — see `HOSPITAL_MODULE.md`. Its one deliberate
 cross-module boundary is medication orders reaching Pharmacy through a
 versioned, Hospital-owned contract (`HospitalMedicationOrder`); it does not
-and must never read or write a Pharmacy table directly.
+and must never read or write a Pharmacy table directly. That contract must
+also be **idempotent** once it's actually built — whichever side initiates
+the cross-module call includes a client-generated request id so a retried
+call applies once, not twice. As of the clinical-upgrades tranche this is a
+documented requirement for the future integration, not a delivered
+mechanism; no request-id field exists yet on either side.
 
 1. Add its entry to `src/platform/modules/registry.ts` (key, name, description, icon, `routePrefix` — must be `/app`-prefixed, e.g. `/app/crm` — status).
 2. If it has real navigation, add `src/modules/<key>/navigation.tsx` and reference it from the registry entry. Every `href` in it must also be `/app`-prefixed.

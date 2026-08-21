@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma, type HospitalAbnormalFlag, type HospitalAppointmentStatus, type HospitalClaimStatus, type HospitalClinicalNoteType, type HospitalDisposition, type HospitalNursingTaskStatus, type HospitalPaymentMethod, type HospitalReferralStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
+import { logAuditEvent } from "@/lib/audit";
 
 type Tx = Prisma.TransactionClient;
 
@@ -310,6 +311,12 @@ export async function createHospitalLabOrder(organizationId: string, data: { enc
   return db.hospitalLabOrder.create({ data: { organizationId, encounterId: data.encounterId, patientId: data.patientId, orderedById: data.orderedById, items: { create: tests.map((test) => ({ organizationId, labTestId: test.id })) } }, include: { items: true } });
 }
 
+/** Reads the org's lab/imaging maker-checker toggle, defaulting to enforced when no settings row exists yet. */
+async function isMakerCheckerEnforced(organizationId: string) {
+  const settings = await orgDefaultSettings(organizationId);
+  return settings?.labImagingMakerCheckerEnforced ?? true;
+}
+
 export async function collectHospitalLabSpecimen(organizationId: string, itemId: string) {
   const item = await db.hospitalLabOrderItem.findFirst({ where: { id: itemId, organizationId, status: "ORDERED" } });
   if (!item) throw new HospitalNotFoundError("Ordered lab item not found.");
@@ -327,6 +334,7 @@ export async function enterHospitalLabResult(organizationId: string, itemId: str
   return db.$transaction(async (tx) => {
     const result = await tx.hospitalLabResult.create({ data: { organizationId, labOrderItemId: itemId, ...data } });
     await tx.hospitalLabOrderItem.update({ where: { id: itemId }, data: { status: "RESULTED" } });
+    await logAuditEvent({ organizationId, userId: data.enteredById, module: "hospital", action: "lab_result.entered", entityName: "HospitalLabResult", entityId: result.id, metadata: { labOrderItemId: itemId, abnormalFlag: result.abnormalFlag } }, tx);
     return result;
   });
 }
@@ -335,10 +343,34 @@ export async function verifyHospitalLabResult(organizationId: string, resultId: 
   const result = await db.hospitalLabResult.findFirst({ where: { id: resultId, organizationId } });
   if (!result) throw new HospitalNotFoundError("Result not found.");
   if (result.verifiedAt) throw new HospitalStateError("Result is already verified.");
+  if (result.rejectedAt) throw new HospitalStateError("A rejected result cannot be verified. Enter a fresh result instead.");
+  if ((await isMakerCheckerEnforced(organizationId)) && result.enteredById && verifiedById && result.enteredById === verifiedById) {
+    throw new HospitalStateError("The person who entered this result cannot also verify it.");
+  }
   return db.$transaction(async (tx) => {
-    const verified = await tx.hospitalLabResult.update({ where: { id: resultId }, data: { verifiedAt: new Date(), verifiedById } });
+    const updated = await tx.hospitalLabResult.updateMany({ where: { id: resultId, organizationId, verifiedAt: null, rejectedAt: null }, data: { verifiedAt: new Date(), verifiedById } });
+    if (!updated.count) throw new HospitalStateError("Result is already verified or rejected.");
+    const verified = await tx.hospitalLabResult.findUniqueOrThrow({ where: { id: resultId } });
     await tx.hospitalLabOrderItem.update({ where: { id: result.labOrderItemId }, data: { status: "VERIFIED" } });
+    await logAuditEvent({ organizationId, userId: verifiedById, module: "hospital", action: "lab_result.verified", entityName: "HospitalLabResult", entityId: resultId }, tx);
     return verified;
+  });
+}
+
+/** A verifier declines an unverified result — the item reopens for a fresh entry, nothing is deleted. */
+export async function rejectHospitalLabResult(organizationId: string, resultId: string, rejectedById: string | null, reason: string) {
+  if (!reason.trim()) throw new HospitalStateError("A rejection reason is required.");
+  const result = await db.hospitalLabResult.findFirst({ where: { id: resultId, organizationId } });
+  if (!result) throw new HospitalNotFoundError("Result not found.");
+  if (result.verifiedAt) throw new HospitalStateError("A verified result cannot be rejected. Correct it instead.");
+  if (result.rejectedAt) throw new HospitalStateError("Result is already rejected.");
+  return db.$transaction(async (tx) => {
+    const updated = await tx.hospitalLabResult.updateMany({ where: { id: resultId, organizationId, verifiedAt: null, rejectedAt: null }, data: { rejectedAt: new Date(), rejectedById, rejectionReason: reason } });
+    if (!updated.count) throw new HospitalStateError("Result is already verified or rejected.");
+    const rejected = await tx.hospitalLabResult.findUniqueOrThrow({ where: { id: resultId } });
+    await tx.hospitalLabOrderItem.update({ where: { id: result.labOrderItemId }, data: { status: "SPECIMEN_COLLECTED" } });
+    await logAuditEvent({ organizationId, userId: rejectedById, module: "hospital", action: "lab_result.rejected", entityName: "HospitalLabResult", entityId: resultId, metadata: { reason } }, tx);
+    return rejected;
   });
 }
 
@@ -347,7 +379,11 @@ export async function correctHospitalLabResult(organizationId: string, priorResu
   const prior = await db.hospitalLabResult.findFirst({ where: { id: priorResultId, organizationId } });
   if (!prior) throw new HospitalNotFoundError("Result not found.");
   if (!prior.verifiedAt) throw new HospitalStateError("Only a verified result can be corrected — edit the unverified result directly instead.");
-  return db.hospitalLabResult.create({ data: { organizationId, labOrderItemId: prior.labOrderItemId, supersedesResultId: prior.id, ...data } });
+  return db.$transaction(async (tx) => {
+    const corrected = await tx.hospitalLabResult.create({ data: { organizationId, labOrderItemId: prior.labOrderItemId, supersedesResultId: prior.id, ...data } });
+    await logAuditEvent({ organizationId, userId: data.enteredById, module: "hospital", action: "lab_result.corrected", entityName: "HospitalLabResult", entityId: corrected.id, metadata: { supersedesResultId: prior.id, correctionReason: data.correctionReason } }, tx);
+    return corrected;
+  });
 }
 
 // ---------------------------------------------------------------------
@@ -385,11 +421,14 @@ export async function scheduleHospitalImagingOrder(organizationId: string, order
 }
 
 export async function enterHospitalImagingFinding(organizationId: string, orderId: string, data: { findings: string; impression?: string | null; enteredById?: string | null }) {
-  const order = await db.hospitalImagingOrder.findFirst({ where: { id: orderId, organizationId } });
+  const order = await db.hospitalImagingOrder.findFirst({ where: { id: orderId, organizationId }, include: { findings: true } });
   if (!order) throw new HospitalNotFoundError("Imaging order not found.");
+  const current = order.findings.find((finding) => !order.findings.some((other) => other.supersedesFindingId === finding.id));
+  if (current?.verifiedAt) throw new HospitalStateError("This finding is already verified. Enter a correction instead.");
   return db.$transaction(async (tx) => {
     const finding = await tx.hospitalImagingFinding.create({ data: { organizationId, imagingOrderId: orderId, ...data } });
     await tx.hospitalImagingOrder.update({ where: { id: orderId }, data: { status: "COMPLETED" } });
+    await logAuditEvent({ organizationId, userId: data.enteredById, module: "hospital", action: "imaging_finding.entered", entityName: "HospitalImagingFinding", entityId: finding.id, metadata: { imagingOrderId: orderId } }, tx);
     return finding;
   });
 }
@@ -398,14 +437,44 @@ export async function verifyHospitalImagingFinding(organizationId: string, findi
   const finding = await db.hospitalImagingFinding.findFirst({ where: { id: findingId, organizationId } });
   if (!finding) throw new HospitalNotFoundError("Finding not found.");
   if (finding.verifiedAt) throw new HospitalStateError("Finding is already verified.");
-  return db.hospitalImagingFinding.update({ where: { id: findingId }, data: { verifiedAt: new Date(), verifiedById } });
+  if (finding.rejectedAt) throw new HospitalStateError("A rejected finding cannot be verified. Enter a fresh finding instead.");
+  if ((await isMakerCheckerEnforced(organizationId)) && finding.enteredById && verifiedById && finding.enteredById === verifiedById) {
+    throw new HospitalStateError("The person who entered this finding cannot also verify it.");
+  }
+  return db.$transaction(async (tx) => {
+    const updated = await tx.hospitalImagingFinding.updateMany({ where: { id: findingId, organizationId, verifiedAt: null, rejectedAt: null }, data: { verifiedAt: new Date(), verifiedById } });
+    if (!updated.count) throw new HospitalStateError("Finding is already verified or rejected.");
+    const verified = await tx.hospitalImagingFinding.findUniqueOrThrow({ where: { id: findingId } });
+    await logAuditEvent({ organizationId, userId: verifiedById, module: "hospital", action: "imaging_finding.verified", entityName: "HospitalImagingFinding", entityId: findingId }, tx);
+    return verified;
+  });
+}
+
+/** A verifier declines an unverified finding — a fresh enterHospitalImagingFinding call is then allowed for the order. */
+export async function rejectHospitalImagingFinding(organizationId: string, findingId: string, rejectedById: string | null, reason: string) {
+  if (!reason.trim()) throw new HospitalStateError("A rejection reason is required.");
+  const finding = await db.hospitalImagingFinding.findFirst({ where: { id: findingId, organizationId } });
+  if (!finding) throw new HospitalNotFoundError("Finding not found.");
+  if (finding.verifiedAt) throw new HospitalStateError("A verified finding cannot be rejected. Correct it instead.");
+  if (finding.rejectedAt) throw new HospitalStateError("Finding is already rejected.");
+  return db.$transaction(async (tx) => {
+    const updated = await tx.hospitalImagingFinding.updateMany({ where: { id: findingId, organizationId, verifiedAt: null, rejectedAt: null }, data: { rejectedAt: new Date(), rejectedById, rejectionReason: reason } });
+    if (!updated.count) throw new HospitalStateError("Finding is already verified or rejected.");
+    const rejected = await tx.hospitalImagingFinding.findUniqueOrThrow({ where: { id: findingId } });
+    await logAuditEvent({ organizationId, userId: rejectedById, module: "hospital", action: "imaging_finding.rejected", entityName: "HospitalImagingFinding", entityId: findingId, metadata: { reason } }, tx);
+    return rejected;
+  });
 }
 
 export async function correctHospitalImagingFinding(organizationId: string, priorFindingId: string, data: { findings: string; impression?: string | null; enteredById?: string | null; correctionReason: string }) {
   const prior = await db.hospitalImagingFinding.findFirst({ where: { id: priorFindingId, organizationId } });
   if (!prior) throw new HospitalNotFoundError("Finding not found.");
   if (!prior.verifiedAt) throw new HospitalStateError("Only a verified finding can be corrected — edit the unverified finding directly instead.");
-  return db.hospitalImagingFinding.create({ data: { organizationId, imagingOrderId: prior.imagingOrderId, supersedesFindingId: prior.id, ...data } });
+  return db.$transaction(async (tx) => {
+    const corrected = await tx.hospitalImagingFinding.create({ data: { organizationId, imagingOrderId: prior.imagingOrderId, supersedesFindingId: prior.id, ...data } });
+    await logAuditEvent({ organizationId, userId: data.enteredById, module: "hospital", action: "imaging_finding.corrected", entityName: "HospitalImagingFinding", entityId: corrected.id, metadata: { supersedesFindingId: prior.id, correctionReason: data.correctionReason } }, tx);
+    return corrected;
+  });
 }
 
 // ---------------------------------------------------------------------
@@ -602,7 +671,7 @@ export function listHospitalSettings(organizationId: string) {
 export interface HospitalSettingsInput {
   facilityId: string; timezone: string; currency: string;
   mrnPrefix: string; encounterPrefix: string; appointmentPrefix: string; admissionPrefix: string; invoicePrefix: string; receiptPrefix: string;
-  resultVerificationRequired: boolean; bedTransferRequiresReason: boolean; retentionYears: number;
+  resultVerificationRequired: boolean; labImagingMakerCheckerEnforced: boolean; bedTransferRequiresReason: boolean; retentionYears: number;
 }
 
 export async function upsertHospitalSettings(organizationId: string, data: HospitalSettingsInput) {

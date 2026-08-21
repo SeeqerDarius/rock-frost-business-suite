@@ -112,6 +112,27 @@ export async function createPatientAction(formData: FormData) {
   await hospital.createHospitalPatient(tenant.organizationId, parsed.data); revalidatePath(path); redirect(`${path}?saved=1`);
 }
 
+export interface PatientDuplicateCheckState {
+  duplicates?: { id: string; mrn: string; firstName: string; lastName: string; dateOfBirth: string }[];
+  error?: string;
+}
+
+/**
+ * Advisory only — never blocks registration. A client component calls this
+ * via useActionState as the first/last name and date-of-birth fields are
+ * filled in; the actual createPatientAction submit is unaffected either way.
+ */
+export async function checkPatientDuplicatesAction(_previousState: PatientDuplicateCheckState, formData: FormData): Promise<PatientDuplicateCheckState> {
+  const tenant = await requireModuleAccess("hospital");
+  if (!hasPermission(tenant, PERMISSIONS.HOSPITAL_PATIENTS_MANAGE)) return { error: "Not authorized." };
+  const firstName = clean(formData.get("firstName")); const lastName = clean(formData.get("lastName")); const dateOfBirthRaw = clean(formData.get("dateOfBirth"));
+  if (!firstName || !lastName || !dateOfBirthRaw) return {};
+  const dateOfBirth = new Date(dateOfBirthRaw);
+  if (Number.isNaN(dateOfBirth.getTime())) return {};
+  const duplicates = await hospital.findHospitalPatientDuplicates(tenant.organizationId, firstName, lastName, dateOfBirth);
+  return { duplicates: duplicates.map((patient) => ({ id: patient.id, mrn: patient.mrn, firstName: patient.firstName, lastName: patient.lastName, dateOfBirth: patient.dateOfBirth.toISOString() })) };
+}
+
 // --- Appointments ---
 
 export async function createAppointmentAction(formData: FormData) {
@@ -244,14 +265,14 @@ export async function dischargePatientAction(formData: FormData) {
 // --- Laboratory ---
 
 export async function createLabTestAction(formData: FormData) {
-  const path = "/app/hospital/laboratory"; const tenant = await authorize(PERMISSIONS.HOSPITAL_LAB_MANAGE, path);
+  const path = "/app/hospital/laboratory"; const tenant = await authorize(PERMISSIONS.HOSPITAL_LAB_ENTER, path);
   const parsed = parseWithSchema(z.object({ code: shortText, name: shortText, specimenType: shortText.nullable(), price: moneyAmountPositive }), { code: clean(formData.get("code")) ?? "", name: clean(formData.get("name")) ?? "", specimenType: clean(formData.get("specimenType")), price: clean(formData.get("price")) });
   if (!parsed.success) redirect(`${path}?error=invalid`);
   await hospital.createHospitalLabTest(tenant.organizationId, parsed.data); revalidatePath(path); redirect(`${path}?saved=1`);
 }
 
 export async function createLabOrderAction(formData: FormData) {
-  const path = "/app/hospital/laboratory"; const tenant = await authorize(PERMISSIONS.HOSPITAL_LAB_MANAGE, path);
+  const path = "/app/hospital/laboratory"; const tenant = await authorize(PERMISSIONS.HOSPITAL_LAB_ENTER, path);
   const testIds = formData.getAll("testIds").map((value) => String(value)).filter(Boolean);
   const parsed = parseWithSchema(z.object({ encounterId: cuid, patientId: cuid, testIds: z.array(cuid).min(1) }), { encounterId: clean(formData.get("encounterId")) ?? "", patientId: clean(formData.get("patientId")) ?? "", testIds });
   if (!parsed.success) redirect(`${path}?error=invalid`);
@@ -260,14 +281,14 @@ export async function createLabOrderAction(formData: FormData) {
 }
 
 export async function collectSpecimenAction(formData: FormData) {
-  const path = "/app/hospital/laboratory"; const tenant = await authorize(PERMISSIONS.HOSPITAL_LAB_MANAGE, path);
+  const path = "/app/hospital/laboratory"; const tenant = await authorize(PERMISSIONS.HOSPITAL_LAB_ENTER, path);
   const itemId = clean(formData.get("itemId")); if (!itemId) redirect(`${path}?error=invalid`);
   try { await hospital.collectHospitalLabSpecimen(tenant.organizationId, itemId); } catch (error) { handleServiceError(error, path); }
   revalidatePath(path); redirect(`${path}?saved=1`);
 }
 
 export async function enterLabResultAction(formData: FormData) {
-  const path = "/app/hospital/laboratory"; const tenant = await authorize(PERMISSIONS.HOSPITAL_LAB_MANAGE, path);
+  const path = "/app/hospital/laboratory"; const tenant = await authorize(PERMISSIONS.HOSPITAL_LAB_ENTER, path);
   const parsed = parseWithSchema(z.object({ itemId: cuid, value: shortText, unit: shortText.nullable(), referenceRange: shortText.nullable(), abnormalFlag }), { itemId: clean(formData.get("itemId")) ?? "", value: clean(formData.get("value")) ?? "", unit: clean(formData.get("unit")), referenceRange: clean(formData.get("referenceRange")), abnormalFlag: clean(formData.get("abnormalFlag")) ?? "NORMAL" });
   if (!parsed.success) redirect(`${path}?error=invalid`);
   const { itemId, ...data } = parsed.data;
@@ -276,14 +297,21 @@ export async function enterLabResultAction(formData: FormData) {
 }
 
 export async function verifyLabResultAction(formData: FormData) {
-  const path = "/app/hospital/laboratory"; const tenant = await authorize(PERMISSIONS.HOSPITAL_LAB_MANAGE, path);
+  const path = "/app/hospital/laboratory"; const tenant = await authorize(PERMISSIONS.HOSPITAL_LAB_VERIFY, path);
   const resultId = clean(formData.get("resultId")); if (!resultId) redirect(`${path}?error=invalid`);
   try { await hospital.verifyHospitalLabResult(tenant.organizationId, resultId, tenant.userId); } catch (error) { handleServiceError(error, path); }
   revalidatePath(path); redirect(`${path}?saved=1`);
 }
 
+export async function rejectLabResultAction(formData: FormData) {
+  const path = "/app/hospital/laboratory"; const tenant = await authorize(PERMISSIONS.HOSPITAL_LAB_VERIFY, path);
+  const resultId = clean(formData.get("resultId")); const reason = clean(formData.get("reason")) ?? ""; if (!resultId) redirect(`${path}?error=invalid`);
+  try { await hospital.rejectHospitalLabResult(tenant.organizationId, resultId, tenant.userId, reason); } catch (error) { handleServiceError(error, path); }
+  revalidatePath(path); redirect(`${path}?saved=1`);
+}
+
 export async function correctLabResultAction(formData: FormData) {
-  const path = "/app/hospital/laboratory"; const tenant = await authorize(PERMISSIONS.HOSPITAL_LAB_MANAGE, path);
+  const path = "/app/hospital/laboratory"; const tenant = await authorize(PERMISSIONS.HOSPITAL_LAB_ENTER, path);
   const parsed = parseWithSchema(z.object({ priorResultId: cuid, value: shortText, unit: shortText.nullable(), referenceRange: shortText.nullable(), abnormalFlag, correctionReason: shortText }), { priorResultId: clean(formData.get("priorResultId")) ?? "", value: clean(formData.get("value")) ?? "", unit: clean(formData.get("unit")), referenceRange: clean(formData.get("referenceRange")), abnormalFlag: clean(formData.get("abnormalFlag")) ?? "NORMAL", correctionReason: clean(formData.get("correctionReason")) ?? "" });
   if (!parsed.success) redirect(`${path}?error=invalid`);
   const { priorResultId, ...data } = parsed.data;
@@ -294,14 +322,14 @@ export async function correctLabResultAction(formData: FormData) {
 // --- Imaging ---
 
 export async function createImagingTestAction(formData: FormData) {
-  const path = "/app/hospital/imaging"; const tenant = await authorize(PERMISSIONS.HOSPITAL_IMAGING_MANAGE, path);
+  const path = "/app/hospital/imaging"; const tenant = await authorize(PERMISSIONS.HOSPITAL_IMAGING_ENTER, path);
   const parsed = parseWithSchema(z.object({ code: shortText, name: shortText, modality: shortText, price: moneyAmountPositive }), { code: clean(formData.get("code")) ?? "", name: clean(formData.get("name")) ?? "", modality: clean(formData.get("modality")) ?? "", price: clean(formData.get("price")) });
   if (!parsed.success) redirect(`${path}?error=invalid`);
   await hospital.createHospitalImagingTest(tenant.organizationId, parsed.data); revalidatePath(path); redirect(`${path}?saved=1`);
 }
 
 export async function createImagingOrderAction(formData: FormData) {
-  const path = "/app/hospital/imaging"; const tenant = await authorize(PERMISSIONS.HOSPITAL_IMAGING_MANAGE, path);
+  const path = "/app/hospital/imaging"; const tenant = await authorize(PERMISSIONS.HOSPITAL_IMAGING_ENTER, path);
   const parsed = parseWithSchema(z.object({ encounterId: cuid, patientId: cuid, imagingTestId: cuid }), { encounterId: clean(formData.get("encounterId")) ?? "", patientId: clean(formData.get("patientId")) ?? "", imagingTestId: clean(formData.get("imagingTestId")) ?? "" });
   if (!parsed.success) redirect(`${path}?error=invalid`);
   try { await hospital.createHospitalImagingOrder(tenant.organizationId, { ...parsed.data, orderedById: tenant.userId }); } catch (error) { handleServiceError(error, path); }
@@ -309,7 +337,7 @@ export async function createImagingOrderAction(formData: FormData) {
 }
 
 export async function scheduleImagingOrderAction(formData: FormData) {
-  const path = "/app/hospital/imaging"; const tenant = await authorize(PERMISSIONS.HOSPITAL_IMAGING_MANAGE, path);
+  const path = "/app/hospital/imaging"; const tenant = await authorize(PERMISSIONS.HOSPITAL_IMAGING_ENTER, path);
   const parsed = parseWithSchema(z.object({ orderId: cuid, scheduledAt: dateTimeInput, externalAccessionNumber: shortText.nullable(), externalSystemReference: shortText.nullable() }), { orderId: clean(formData.get("orderId")) ?? "", scheduledAt: clean(formData.get("scheduledAt")), externalAccessionNumber: clean(formData.get("externalAccessionNumber")), externalSystemReference: clean(formData.get("externalSystemReference")) });
   if (!parsed.success) redirect(`${path}?error=invalid`);
   const { orderId, scheduledAt, externalAccessionNumber, externalSystemReference } = parsed.data;
@@ -318,7 +346,7 @@ export async function scheduleImagingOrderAction(formData: FormData) {
 }
 
 export async function enterImagingFindingAction(formData: FormData) {
-  const path = "/app/hospital/imaging"; const tenant = await authorize(PERMISSIONS.HOSPITAL_IMAGING_MANAGE, path);
+  const path = "/app/hospital/imaging"; const tenant = await authorize(PERMISSIONS.HOSPITAL_IMAGING_ENTER, path);
   const parsed = parseWithSchema(z.object({ orderId: cuid, findings: longText.min(1), impression: longText.nullable() }), { orderId: clean(formData.get("orderId")) ?? "", findings: clean(formData.get("findings")) ?? "", impression: clean(formData.get("impression")) });
   if (!parsed.success) redirect(`${path}?error=invalid`);
   const { orderId, ...data } = parsed.data;
@@ -327,14 +355,21 @@ export async function enterImagingFindingAction(formData: FormData) {
 }
 
 export async function verifyImagingFindingAction(formData: FormData) {
-  const path = "/app/hospital/imaging"; const tenant = await authorize(PERMISSIONS.HOSPITAL_IMAGING_MANAGE, path);
+  const path = "/app/hospital/imaging"; const tenant = await authorize(PERMISSIONS.HOSPITAL_IMAGING_VERIFY, path);
   const findingId = clean(formData.get("findingId")); if (!findingId) redirect(`${path}?error=invalid`);
   try { await hospital.verifyHospitalImagingFinding(tenant.organizationId, findingId, tenant.userId); } catch (error) { handleServiceError(error, path); }
   revalidatePath(path); redirect(`${path}?saved=1`);
 }
 
+export async function rejectImagingFindingAction(formData: FormData) {
+  const path = "/app/hospital/imaging"; const tenant = await authorize(PERMISSIONS.HOSPITAL_IMAGING_VERIFY, path);
+  const findingId = clean(formData.get("findingId")); const reason = clean(formData.get("reason")) ?? ""; if (!findingId) redirect(`${path}?error=invalid`);
+  try { await hospital.rejectHospitalImagingFinding(tenant.organizationId, findingId, tenant.userId, reason); } catch (error) { handleServiceError(error, path); }
+  revalidatePath(path); redirect(`${path}?saved=1`);
+}
+
 export async function correctImagingFindingAction(formData: FormData) {
-  const path = "/app/hospital/imaging"; const tenant = await authorize(PERMISSIONS.HOSPITAL_IMAGING_MANAGE, path);
+  const path = "/app/hospital/imaging"; const tenant = await authorize(PERMISSIONS.HOSPITAL_IMAGING_ENTER, path);
   const parsed = parseWithSchema(z.object({ priorFindingId: cuid, findings: longText.min(1), impression: longText.nullable(), correctionReason: shortText }), { priorFindingId: clean(formData.get("priorFindingId")) ?? "", findings: clean(formData.get("findings")) ?? "", impression: clean(formData.get("impression")), correctionReason: clean(formData.get("correctionReason")) ?? "" });
   if (!parsed.success) redirect(`${path}?error=invalid`);
   const { priorFindingId, ...data } = parsed.data;
@@ -502,11 +537,11 @@ export async function upsertHospitalSettingsAction(formData: FormData) {
   const parsed = z.object({
     facilityId: cuid, timezone: shortText, currency: z.string().trim().toUpperCase().length(3),
     mrnPrefix: prefix, encounterPrefix: prefix, appointmentPrefix: prefix, admissionPrefix: prefix, invoicePrefix: prefix, receiptPrefix: prefix,
-    resultVerificationRequired: z.boolean(), bedTransferRequiresReason: z.boolean(), retentionYears: int(1, 100),
+    resultVerificationRequired: z.boolean(), labImagingMakerCheckerEnforced: z.boolean(), bedTransferRequiresReason: z.boolean(), retentionYears: int(1, 100),
   }).safeParse({
     facilityId: clean(formData.get("facilityId")), timezone: clean(formData.get("timezone")), currency: clean(formData.get("currency")),
     mrnPrefix: clean(formData.get("mrnPrefix")), encounterPrefix: clean(formData.get("encounterPrefix")), appointmentPrefix: clean(formData.get("appointmentPrefix")), admissionPrefix: clean(formData.get("admissionPrefix")), invoicePrefix: clean(formData.get("invoicePrefix")), receiptPrefix: clean(formData.get("receiptPrefix")),
-    resultVerificationRequired: formData.get("resultVerificationRequired") === "on", bedTransferRequiresReason: formData.get("bedTransferRequiresReason") === "on", retentionYears: clean(formData.get("retentionYears")) ?? "7",
+    resultVerificationRequired: formData.get("resultVerificationRequired") === "on", labImagingMakerCheckerEnforced: formData.get("labImagingMakerCheckerEnforced") === "on", bedTransferRequiresReason: formData.get("bedTransferRequiresReason") === "on", retentionYears: clean(formData.get("retentionYears")) ?? "7",
   });
   if (!parsed.success) redirect(`${path}?error=invalid`);
   try { await hospital.upsertHospitalSettings(tenant.organizationId, parsed.data); } catch (error) { handleServiceError(error, path); }

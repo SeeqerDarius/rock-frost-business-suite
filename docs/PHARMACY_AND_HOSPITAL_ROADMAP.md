@@ -10,13 +10,15 @@ Pharmacy owns medicine/product registration, regulatory class, suppliers, purcha
 
 Batch quarantine, recall, and release require an operator reason and create an audit event. Dispensing reversal is a compensating transaction: it preserves the original sale, appends controlled-register reversals, restores prescription balances and eligible stock, and never silently releases recalled or quarantined stock.
 
+As of the clinical-upgrades tranche, medicines and batches carry a tenant-scoped barcode field with lookup functions (`findMedicineByBarcode`/`findBatchByBarcode`); a controlled-drug dispense can require a second person's approval (`PharmacySettings.controlledDispenseMakerCheckerEnabled`, default on) — the requester cannot approve or reject their own request, and no stock moves until approval; and an append-only `PharmacyStockMovement` ledger backs five reconciliation workflows (physical count, general adjustment, write-off, supplier return, patient return), each blocked from taking a batch negative unless `PharmacySettings.allowNegativeStock` is explicitly on. Patient returns are record-only — a returned medication is never automatically restocked as dispensable. See `docs/HOSPITAL_MODULE.md`'s "Clinical upgrades tranche" note and `OPERATOR_HANDOFF.md` for the exact branch and validation results.
+
 It integrates with shared Accounting/POS/Procurement only through explicit service contracts. A tenant may use Pharmacy independently; enabling it does not require enabling those horizontal modules.
 
 The product supports operational record keeping but does not itself grant a pharmacy licence, validate a clinician's professional registration, replace pharmacist judgement, submit statutory reports automatically, or certify regulatory compliance. Each deploying organization remains responsible for Pharmacy Council/FDA licensing, configuration, record-retention policy, and professional review.
 
 ## Hospital production boundary
 
-Hospital will own patient identity/MRN, appointments, encounters, triage/vitals, clinical notes, diagnoses, orders, laboratory, imaging, nursing, beds/admissions/discharge, theatre, billing/insurance/claims, consent, referrals, and clinical reports. Medication orders will cross into Pharmacy through a versioned prescription/dispensing contract. Hospital delivery requires a separate clinical safety and privacy review before production activation.
+Hospital will own patient identity/MRN, appointments, encounters, triage/vitals, clinical notes, diagnoses, orders, laboratory, imaging, nursing, beds/admissions/discharge, theatre, billing/insurance/claims, consent, referrals, and clinical reports. Medication orders will cross into Pharmacy through a versioned, idempotent prescription/dispensing contract: whichever side initiates the call includes a client-generated request id so a retried call (after a timeout, a redeploy, a duplicate webhook) applies once, never twice. As of the clinical-upgrades tranche (`docs/HOSPITAL_MODULE.md`) this idempotency requirement is documented but not built; `HospitalMedicationOrder.externalDispenseReference` remains a plain opaque string with no request-id semantics yet. Hospital delivery requires a separate clinical safety and privacy review before production activation.
 
 ## Offline deployment model
 

@@ -9,11 +9,13 @@ import { Label } from "@/components/ui/label";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listHospitalImagingOrders, listHospitalImagingTests, listHospitalEncounters, listHospitalPatients } from "@/modules/hospital/service";
-import { createImagingTestAction, createImagingOrderAction, scheduleImagingOrderAction, enterImagingFindingAction, verifyImagingFindingAction, correctImagingFindingAction } from "../actions";
+import { createImagingTestAction, createImagingOrderAction, scheduleImagingOrderAction, enterImagingFindingAction, verifyImagingFindingAction, rejectImagingFindingAction, correctImagingFindingAction } from "../actions";
 
 export default async function HospitalImagingPage() {
   const tenant = await requireModuleAccess("hospital");
-  const canManage = hasPermission(tenant, PERMISSIONS.HOSPITAL_IMAGING_MANAGE);
+  const canEnter = hasPermission(tenant, PERMISSIONS.HOSPITAL_IMAGING_ENTER);
+  const canVerify = hasPermission(tenant, PERMISSIONS.HOSPITAL_IMAGING_VERIFY);
+  const canManage = canEnter || canVerify;
   const [orders, tests, encounters, patients] = await Promise.all([
     listHospitalImagingOrders(tenant.organizationId),
     listHospitalImagingTests(tenant.organizationId),
@@ -26,7 +28,7 @@ export default async function HospitalImagingPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <PageHeader title="Imaging" description="Test catalogue, ordering, scheduling, findings, and verification." />
-        {canManage ? (
+        {canEnter ? (
           <div className="flex gap-2">
             <EntityDialog trigger={<Button size="sm" variant="outline">Add test</Button>} title="Add imaging test" action={createImagingTestAction}>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -60,10 +62,10 @@ export default async function HospitalImagingPage() {
                   </div>
                   <Badge variant="outline">{order.status.replaceAll("_", " ")}</Badge>
                 </div>
-                {currentFinding ? <p className="mt-2 text-sm text-muted-foreground">Findings: {currentFinding.findings}{currentFinding.impression ? ` — Impression: ${currentFinding.impression}` : ""}{currentFinding.verifiedAt ? " (verified)" : ""}</p> : null}
+                {currentFinding ? <p className="mt-2 text-sm text-muted-foreground">Findings: {currentFinding.findings}{currentFinding.impression ? `. Impression: ${currentFinding.impression}` : ""}{currentFinding.verifiedAt ? " (verified)" : currentFinding.rejectedAt ? ` (rejected: ${currentFinding.rejectionReason})` : ""}</p> : null}
                 {canManage ? (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {["ORDERED", "SCHEDULED"].includes(order.status) ? (
+                    {canEnter && ["ORDERED", "SCHEDULED"].includes(order.status) ? (
                       <form action={scheduleImagingOrderAction} className="flex flex-wrap items-end gap-2">
                         <input type="hidden" name="orderId" value={order.id} />
                         <Input name="scheduledAt" type="datetime-local" required className="h-8 text-xs" />
@@ -71,7 +73,7 @@ export default async function HospitalImagingPage() {
                         <Button size="sm" variant="outline" type="submit">Schedule</Button>
                       </form>
                     ) : null}
-                    {!currentFinding ? (
+                    {canEnter && (!currentFinding || (currentFinding.rejectedAt && !currentFinding.verifiedAt)) ? (
                       <form action={enterImagingFindingAction} className="flex flex-wrap items-end gap-2">
                         <input type="hidden" name="orderId" value={order.id} />
                         <Input name="findings" placeholder="Findings" required className="h-8 w-48 text-xs" />
@@ -79,10 +81,17 @@ export default async function HospitalImagingPage() {
                         <Button size="sm" type="submit">Enter findings</Button>
                       </form>
                     ) : null}
-                    {currentFinding && !currentFinding.verifiedAt ? (
-                      <form action={verifyImagingFindingAction}><input type="hidden" name="findingId" value={currentFinding.id} /><Button size="sm" type="submit">Verify</Button></form>
+                    {canVerify && currentFinding && !currentFinding.verifiedAt && !currentFinding.rejectedAt ? (
+                      <>
+                        <form action={verifyImagingFindingAction}><input type="hidden" name="findingId" value={currentFinding.id} /><Button size="sm" type="submit">Verify</Button></form>
+                        <form action={rejectImagingFindingAction} className="flex items-end gap-2">
+                          <input type="hidden" name="findingId" value={currentFinding.id} />
+                          <Input name="reason" placeholder="Rejection reason" required className="h-8 w-32 text-xs" />
+                          <Button size="sm" variant="outline" type="submit">Reject</Button>
+                        </form>
+                      </>
                     ) : null}
-                    {currentFinding?.verifiedAt ? (
+                    {canEnter && currentFinding?.verifiedAt ? (
                       <form action={correctImagingFindingAction} className="flex flex-wrap items-end gap-2">
                         <input type="hidden" name="priorFindingId" value={currentFinding.id} />
                         <Input name="findings" placeholder="Corrected findings" required className="h-8 w-48 text-xs" />
