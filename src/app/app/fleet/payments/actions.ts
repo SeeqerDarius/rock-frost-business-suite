@@ -8,6 +8,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createFleetPayment, updateFleetPaymentStatus, reviewFleetDriverPaymentSubmission, NotFoundError } from "@/modules/fleet/service";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { logAuditEvent } from "@/lib/audit";
+import { postModuleRevenue, reverseModuleRevenue } from "@/lib/accounting-integration";
 import { moneyAmount, shortText, longText, cuid, dateInput, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
@@ -87,8 +88,19 @@ export async function verifyPayment(formData: FormData): Promise<void> {
 
   if (decision === "reject") {
     await updateFleetPaymentStatus(tenant.organizationId, id, "REJECTED", false);
+    await reverseModuleRevenue(tenant.organizationId, { sourceType: "FLEET_PAYMENT", sourceId: id, postingPurpose: "COLLECTED", reason: "Fleet payment rejected after verification", actorId: tenant.userId });
   } else {
-    await updateFleetPaymentStatus(tenant.organizationId, id, "VERIFIED", true);
+    const payment = await updateFleetPaymentStatus(tenant.organizationId, id, "VERIFIED", true);
+    await postModuleRevenue(tenant.organizationId, {
+      sourceModule: "fleet",
+      sourceType: "FLEET_PAYMENT",
+      sourceId: payment.id,
+      postingPurpose: "COLLECTED",
+      amount: payment.amount.toString(),
+      entryDate: payment.date,
+      description: `Fleet payment verified: ${payment.reference} (${payment.type})`,
+      createdById: tenant.userId,
+    });
   }
 
   revalidatePath("/app/fleet/payments");

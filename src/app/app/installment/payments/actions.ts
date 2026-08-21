@@ -24,6 +24,7 @@ import {
 import { moneyAmount, shortText, longText, dateInput, parseWithSchema } from "@/lib/validation";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit";
+import { postModuleRevenue, reverseModuleRevenue } from "@/lib/accounting-integration";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -91,6 +92,17 @@ export async function createPayment(formData: FormData): Promise<void> {
       entityName: "HirePurchaseAccount",
       entityId: payment.accountId,
       metadata: { amount: payment.amount.toString(), receiptNo: payment.receiptNo },
+    });
+
+    await postModuleRevenue(tenant.organizationId, {
+      sourceModule: "installment",
+      sourceType: "INSTALLMENT_PAYMENT",
+      sourceId: payment.id,
+      postingPurpose: "COLLECTED",
+      amount: payment.amount.toString(),
+      entryDate: payment.paymentDate,
+      description: `Installment payment received: receipt ${payment.receiptNo}`,
+      createdById: session?.user?.id ?? null,
     });
   } catch (error) {
     if (error instanceof PaymentBlockedError) {
@@ -290,6 +302,7 @@ export async function removePayment(formData: FormData): Promise<void> {
       action: "installment.payment.deleted", entityName: "HirePurchasePayment", entityId: id,
       metadata: { receiptNo: payment.receiptNo, accountId: payment.accountId, amount: payment.amount.toString() },
     });
+    await reverseModuleRevenue(tenant.organizationId, { sourceType: "INSTALLMENT_PAYMENT", sourceId: id, postingPurpose: "COLLECTED", reason: `Installment payment deleted: receipt ${payment.receiptNo}`, actorId: session.user.id });
   } catch (error) {
     if (error instanceof PaymentCreditLockedError) redirect("/app/installment/payments?error=credit-locked");
     if (error instanceof NotFoundError) redirect("/app/installment/payments?error=not-found");

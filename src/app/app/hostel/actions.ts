@@ -11,6 +11,7 @@ import {
   createHostelFeeStructure, issueHostelFeeStructure, createHostelFeeInvoice, recordHostelFeePayment,
   HostelStateError, HostelNotFoundError,
 } from "@/modules/hostel/service";
+import { postModuleRevenue } from "@/lib/accounting-integration";
 
 const clean = (value: FormDataEntryValue | null) => { const text = String(value ?? "").trim(); return text || null; };
 async function auth(permission: string, path: string) { const tenant = await requireModuleAccess("hostel"); if (!hasPermission(tenant, permission)) redirect(`${path}?error=forbidden`); return tenant; }
@@ -111,6 +112,18 @@ export async function recordFeePaymentAction(f: FormData) {
   const p = parseWithSchema(z.object({ invoiceId: cuid, amount: moneyAmountPositive, method: z.enum(["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "ONLINE", "OTHER"]), reference: shortText.nullable() }), { invoiceId: clean(f.get("invoiceId")) ?? "", amount: clean(f.get("amount")), method: clean(f.get("method")), reference: clean(f.get("reference")) });
   if (!p.success) redirect(`${path}?error=invalid`);
   const { invoiceId, ...data } = p.data;
-  try { await recordHostelFeePayment(t.organizationId, invoiceId, data); } catch (e) { fail(path, e); }
+  try {
+    const payment = await recordHostelFeePayment(t.organizationId, invoiceId, data);
+    await postModuleRevenue(t.organizationId, {
+      sourceModule: "hostel",
+      sourceType: "HOSTEL_FEE_PAYMENT",
+      sourceId: payment.id,
+      postingPurpose: "COLLECTED",
+      amount: payment.amount.toString(),
+      entryDate: payment.receivedAt,
+      description: `Hostel fee payment received: receipt ${payment.receiptNumber}`,
+      createdById: t.userId,
+    });
+  } catch (e) { fail(path, e); }
   revalidatePath(path); redirect(`${path}?saved=1`);
 }

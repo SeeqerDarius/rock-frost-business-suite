@@ -10,6 +10,7 @@ import { createSale, SaleStateError, InsufficientStockError, InvalidSaleInputErr
 import { shortText, positiveInt, moneyAmountNonNegative, cuid, parseWithSchema } from "@/lib/validation";
 import type { PosPaymentMethod } from "@prisma/client";
 import { logAuditEvent } from "@/lib/audit";
+import { postModuleRevenue } from "@/lib/accounting-integration";
 
 function clean(value: FormDataEntryValue | null): string {
   return String(value ?? "").trim();
@@ -100,6 +101,17 @@ export async function completeSale(formData: FormData): Promise<void> {
       entityName: "PosSale",
       entityId: sale.id,
       metadata: { saleNumber: sale.saleNumber, total: Number(sale.total), lineCount: lines.length },
+    });
+
+    await postModuleRevenue(tenant.organizationId, {
+      sourceModule: "pos",
+      sourceType: "POS_SALE",
+      sourceId: sale.id,
+      postingPurpose: "COLLECTED",
+      amount: sale.total.toString(),
+      entryDate: sale.createdAt,
+      description: `POS sale ${sale.saleNumber}`,
+      createdById: session?.user?.id ?? null,
     });
   } catch (error) {
     if (error instanceof InsufficientStockError || error instanceof InvalidSaleInputError) {

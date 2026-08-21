@@ -4,8 +4,20 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getAccountingSummary, getStatementOfFinancialPosition } from "@/modules/accounting/service";
+import { getAccountingSummary, getStatementOfFinancialPosition, listAccounts, listJournalEntries } from "@/modules/accounting/service";
 import { ReportExportLinks } from "@/components/reports/report-export-links";
+
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  FLEET_PAYMENT: "Fleet",
+  PHARMACY_DISPENSING: "Pharmacy",
+  HOSPITAL_PAYMENT: "Hospital",
+  POS_SALE: "POS",
+  INSTALLMENT_PAYMENT: "Installment",
+  HOSTEL_FEE_PAYMENT: "Hostel",
+  HOTEL_PAYMENT: "Hotel",
+  SCHOOL_FEE_PAYMENT: "School",
+  INVOICE: "Manual invoice",
+};
 
 export default async function AccountingReportsPage() {
   const tenant = await requireModuleAccess("accounting");
@@ -19,10 +31,17 @@ export default async function AccountingReportsPage() {
     );
   }
 
-  const [summary, position] = await Promise.all([
+  const [summary, position, accounts, journalEntries] = await Promise.all([
     getAccountingSummary(tenant.organizationId),
     getStatementOfFinancialPosition(tenant.organizationId),
+    listAccounts(tenant.organizationId),
+    listJournalEntries(tenant.organizationId),
   ]);
+
+  const revenueAccounts = accounts.filter((account) => account.type === "REVENUE").sort((a, b) => a.code.localeCompare(b.code));
+  const revenueEntries = journalEntries
+    .filter((entry) => entry.lines.some((line) => line.account.type === "REVENUE" && Number(line.credit) > 0))
+    .slice(0, 25);
 
   const plStats = [
     { label: "Total revenue", value: summary.totalRevenue.toFixed(2) },
@@ -51,6 +70,65 @@ export default async function AccountingReportsPage() {
               <p className="text-lg font-medium">{stat.value}</p>
             </div>
           ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Revenue by source</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Every module the organization has activated posts its own confirmed revenue here automatically when money is
+            collected (a verified Fleet payment, a completed Pharmacy dispensing, a paid Hospital/Hostel/Hotel/School invoice,
+            a POS sale, an Installment payment). Each source keeps its own account below, so a total can always be traced back
+            to the module and record it came from.
+          </p>
+          {revenueAccounts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No revenue has been recorded yet.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {revenueAccounts.map((account) => (
+                <div key={account.id} className="flex items-center justify-between text-sm">
+                  <span>{account.name} <span className="text-xs text-muted-foreground">({account.code})</span></span>
+                  <span className="font-mono text-xs">{account.balance.toFixed(2)}</span>
+                </div>
+              ))}
+              <div className="mt-2 flex items-center justify-between border-t pt-2 text-sm font-medium">
+                <span>Total revenue</span>
+                <span>{summary.totalRevenue.toFixed(2)}</span>
+              </div>
+            </div>
+          )}
+          {revenueEntries.length > 0 ? (
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Date</th>
+                    <th className="px-3 py-2 font-medium">Source</th>
+                    <th className="px-3 py-2 font-medium">Description</th>
+                    <th className="px-3 py-2 font-medium">Posting #</th>
+                    <th className="px-3 py-2 text-right font-medium">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {revenueEntries.map((entry) => {
+                    const revenueLine = entry.lines.find((line) => line.account.type === "REVENUE" && Number(line.credit) > 0);
+                    return (
+                      <tr key={entry.id} className="border-t">
+                        <td className="px-3 py-2 text-muted-foreground">{entry.entryDate.toLocaleDateString()}</td>
+                        <td className="px-3 py-2">{SOURCE_TYPE_LABELS[entry.sourceType ?? ""] ?? entry.sourceType ?? "Manual"}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{entry.description}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{entry.postingNumber}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs">{revenueLine ? Number(revenueLine.credit).toFixed(2) : "-"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

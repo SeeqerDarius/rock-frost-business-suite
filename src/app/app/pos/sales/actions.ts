@@ -9,6 +9,7 @@ import { getServerAuthSession } from "@/lib/auth/session";
 import { refundSale, SaleStateError, NotFoundError } from "@/modules/pos/service";
 import { cuid, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
+import { reverseModuleRevenue } from "@/lib/accounting-integration";
 
 function clean(value: FormDataEntryValue | null): string {
   return String(value ?? "").trim();
@@ -42,6 +43,8 @@ export async function refundExistingSale(formData: FormData): Promise<void> {
       entityId: sale.id,
       metadata: { saleNumber: sale.saleNumber },
     });
+
+    await reverseModuleRevenue(tenant.organizationId, { sourceType: "POS_SALE", sourceId: sale.id, postingPurpose: "COLLECTED", reason: `POS sale ${sale.saleNumber} refunded`, actorId: session?.user?.id ?? null });
   } catch (error) {
     if (error instanceof SaleStateError) {
       await logAuditEvent({
