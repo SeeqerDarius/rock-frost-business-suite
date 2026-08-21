@@ -72,6 +72,8 @@ jobs:
 
       - name: Production build
         run: npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
 
   # Real-PostgreSQL integration/concurrency suite (test/integration/**),
   # against a genuinely disposable database that exists only for the
