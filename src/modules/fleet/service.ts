@@ -436,10 +436,26 @@ export async function reviewFleetDriverPaymentSubmission(organizationId: string,
       });
       fleetPaymentId = payment.id;
     }
-    return tx.fleetDriverPaymentSubmission.update({
+    const reviewedSubmission = await tx.fleetDriverPaymentSubmission.update({
       where: { id },
       data: { status: approved ? "APPROVED" : "REJECTED", reviewedById: reviewerId, reviewedAt: new Date(), rejectionReason: approved ? null : rejectionReason, fleetPaymentId },
     });
+    await logAuditEvent({
+      organizationId,
+      userId: reviewerId,
+      module: "fleet",
+      action: approved ? "driver.payment_approved" : "driver.payment_rejected",
+      entityName: "FleetDriverPaymentSubmission",
+      entityId: submission.id,
+      metadata: {
+        driverId: submission.driverId,
+        vehicleId: submission.vehicleId,
+        submissionType: submission.submissionType,
+        amount: submission.amount.toString(),
+        paymentId: fleetPaymentId,
+      },
+    }, tx);
+    return reviewedSubmission;
   });
 }
 

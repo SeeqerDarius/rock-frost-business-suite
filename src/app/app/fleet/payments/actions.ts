@@ -7,7 +7,6 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createFleetPayment, updateFleetPaymentStatus, reviewFleetDriverPaymentSubmission, NotFoundError } from "@/modules/fleet/service";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { logAuditEvent } from "@/lib/audit";
 import { moneyAmount, shortText, longText, cuid, dateInput, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
@@ -97,10 +96,51 @@ export async function verifyPayment(formData: FormData): Promise<void> {
 
 export async function reviewDriverSubmission(formData: FormData): Promise<void> {
   const tenant = await requireModuleAccess("fleet");
-  if (!hasPermission(tenant, PERMISSIONS.FLEET_PAYMENTS_MANAGE)) redirect("/app/fleet/payments?error=forbidden");
-  const session = await getServerAuthSession(); if (!session?.user?.id) redirect("/login");
-  const id = clean(formData.get("id")); const approved = formData.get("decision") === "approve";
-  if (!id) redirect("/app/fleet/payments?error=invalid-input");
-  try { await reviewFleetDriverPaymentSubmission(tenant.organizationId, id, session.user.id, approved, clean(formData.get("rejectionReason"))); await logAuditEvent({ organizationId: tenant.organizationId, userId: session.user.id, module: "fleet", action: approved ? "driver.payment_approved" : "driver.payment_rejected", entityName: "FleetDriverPaymentSubmission", entityId: id }); } catch (error) { if (error instanceof NotFoundError) redirect("/app/fleet/payments?error=invalid-input"); throw error; }
-  revalidatePath("/app/fleet/payments"); revalidatePath("/app/fleet/driver-portal"); redirect("/app/fleet/payments?saved=1");
+  if (!hasPermission(tenant, PERMISSIONS.FLEET_PAYMENTS_MANAGE)) {
+    redirect("/app/fleet/payments?error=forbidden");
+  }
+
+  const session = await getServerAuthSession();
+  if (!session?.user?.id) redirect("/login");
+
+  const parsed = parseWithSchema(
+    z.object({
+      id: cuid,
+      decision: z.enum(["approve", "reject"]),
+    }),
+    {
+      id: clean(formData.get("id")),
+      decision: clean(formData.get("decision")),
+    },
+  );
+  if (!parsed.success) {
+    redirect("/app/fleet/payments?error=invalid-input");
+  }
+
+  const approved = parsed.data.decision === "approve";
+  try {
+    await reviewFleetDriverPaymentSubmission(
+      tenant.organizationId,
+      parsed.data.id,
+      session.user.id,
+      approved,
+      clean(formData.get("rejectionReason")),
+    );
+  } catch (error) {
+    if (error instanceof NotFoundError) {
+      redirect("/app/fleet/payments?error=already-reviewed");
+    }
+    console.error("[fleet:driver-payment-review] failed", {
+      organizationId: tenant.organizationId,
+      submissionId: parsed.data.id,
+      reviewerId: session.user.id,
+      decision: parsed.data.decision,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+    redirect("/app/fleet/payments?error=review-failed");
+  }
+
+  revalidatePath("/app/fleet/payments");
+  revalidatePath("/app/fleet/driver-portal");
+  redirect(`/app/fleet/payments?reviewed=${approved ? "approved" : "rejected"}`);
 }

@@ -1,7 +1,7 @@
 import { LayoutGrid, Grid3x3, BarChart3, Bell, Building2, ShieldCheck, MessageSquarePlus, CreditCard } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 import type { TenantContext } from "@/lib/tenant";
-import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { hasPermission, isFleetDriverRole, PERMISSIONS } from "@/lib/auth/permissions";
 
 /**
  * Top-level workspace navigation — organization scope, not tied to any one
@@ -17,10 +17,17 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 export async function getWorkspaceNavigation(tenant: TenantContext): Promise<ModuleNavItem[]> {
   const items: ModuleNavItem[] = [
     { label: "Overview", href: "/app/dashboard", icon: <LayoutGrid className="size-4" /> },
-    { label: "Modules", href: "/app/modules", icon: <Grid3x3 className="size-4" /> },
-    { label: "Reports", href: "/app/reports", icon: <BarChart3 className="size-4" /> },
     { label: "Notifications", href: "/app/notifications", icon: <Bell className="size-4" /> },
   ];
+
+  if (!isFleetDriverRole(tenant)) {
+    items.splice(
+      1,
+      0,
+      { label: "Modules", href: "/app/modules", icon: <Grid3x3 className="size-4" /> },
+      { label: "Reports", href: "/app/reports", icon: <BarChart3 className="size-4" /> },
+    );
+  }
 
   if (hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) {
     items.push(
