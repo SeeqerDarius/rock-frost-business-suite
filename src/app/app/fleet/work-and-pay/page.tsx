@@ -15,8 +15,9 @@ import { createWorkAndPayContract, recordContractPayment, updateContractStatus }
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage work & pay contracts.",
-  "missing-fields": "Contract name, vehicle, client name, contract amount, and weekly amount are required.",
+  "missing-fields": "Contract name, vehicle, client name, contract amount, payment schedule, and instalment amount are required.",
   "invalid-amount": "Enter a valid payment amount.",
+  "invalid-evidence": "Choose a supported payment method and enter its transaction reference. Cash references are optional.",
   "not-found": "That vehicle or contract could not be found.",
 };
 
@@ -81,7 +82,7 @@ export default async function FleetWorkAndPayPage({
               <Label htmlFor="clientName">Client name</Label>
               <Input id="clientName" name="clientName" required />
             </div>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="contractAmount">Contract amount</Label>
                 <Input id="contractAmount" name="contractAmount" type="number" step="0.01" required />
@@ -90,15 +91,24 @@ export default async function FleetWorkAndPayPage({
                 <Label htmlFor="depositAmount">Deposit</Label>
                 <Input id="depositAmount" name="depositAmount" type="number" step="0.01" defaultValue="0" />
               </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="weeklyPaymentAmount">Weekly amount</Label>
-                <Input id="weeklyPaymentAmount" name="weeklyPaymentAmount" type="number" step="0.01" required />
+                <Label htmlFor="paymentSchedule">Payment schedule</Label>
+                <select id="paymentSchedule" name="paymentSchedule" defaultValue="WEEKLY" className="h-10 w-full rounded-md border bg-background px-3" required>
+                  <option value="DAILY">Daily</option>
+                  <option value="WEEKLY">Weekly</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="scheduledPaymentAmount">Required instalment amount</Label>
+                <Input id="scheduledPaymentAmount" name="scheduledPaymentAmount" type="number" min="0.01" step="0.01" required />
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="remainingDurationWeeks">Duration (weeks)</Label>
-                <Input id="remainingDurationWeeks" name="remainingDurationWeeks" type="number" />
+                <Label htmlFor="remainingPaymentPeriods">Estimated number of payments</Label>
+                <Input id="remainingPaymentPeriods" name="remainingPaymentPeriods" type="number" min="1" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="startsAt">Starts</Label>
@@ -142,7 +152,7 @@ export default async function FleetWorkAndPayPage({
                 <TableCell className="text-muted-foreground">{contract.clientName}</TableCell>
                 <TableCell className="text-muted-foreground">
                   {Number(contract.amountPaid).toFixed(2)} / {Number(contract.contractAmount).toFixed(2)} (
-                  {Number(contract.completionPercentage).toFixed(0)}%)
+                  {Number(contract.completionPercentage).toFixed(0)}%). {Number(contract.scheduledPaymentAmount ?? contract.weeklyPaymentAmount).toFixed(2)} per {contract.paymentSchedule === "DAILY" ? "day" : "week"}
                 </TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[contract.contractStatus]}>{contract.contractStatus}</Badge>
@@ -157,7 +167,7 @@ export default async function FleetWorkAndPayPage({
                               Record payment
                             </Button>
                           }
-                          title={`Record payment: ${contract.contractName}`}
+                          title={`Record office-received payment: ${contract.contractName}`}
                           action={recordContractPayment}
                           submitLabel="Record"
                         >
@@ -169,9 +179,29 @@ export default async function FleetWorkAndPayPage({
                               name="amount"
                               type="number"
                               step="0.01"
-                              defaultValue={contract.weeklyPaymentAmount.toString()}
+                              defaultValue={(contract.scheduledPaymentAmount ?? contract.weeklyPaymentAmount).toString()}
                               required
                             />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`paymentDate-${contract.id}`}>Payment date</Label>
+                            <Input id={`paymentDate-${contract.id}`} name="paymentDate" type="date" max={new Date().toISOString().slice(0, 10)} defaultValue={new Date().toISOString().slice(0, 10)} required />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`paymentMethod-${contract.id}`}>Payment method</Label>
+                            <select id={`paymentMethod-${contract.id}`} name="paymentMethod" defaultValue="CASH" className="h-10 w-full rounded-md border bg-background px-3" required>
+                              <option value="CASH">Cash</option>
+                              <option value="MOBILE_MONEY">Mobile money</option>
+                              <option value="BANK_TRANSFER">Bank transfer</option>
+                              <option value="CARD">Card</option>
+                              <option value="CHEQUE">Cheque</option>
+                              <option value="OTHER">Other</option>
+                            </select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`reference-${contract.id}`}>Receipt or transaction reference</Label>
+                            <Input id={`reference-${contract.id}`} name="reference" />
+                            <p className="text-xs text-muted-foreground">Required for non-cash payments.</p>
                           </div>
                         </EntityDialog>
                       ) : null}

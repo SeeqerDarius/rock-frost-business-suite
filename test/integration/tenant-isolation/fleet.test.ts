@@ -120,7 +120,8 @@ describe("Fleet service — cross-tenant isolation against real Postgres", () =>
         clientName: "Client",
         contractAmount: "1000.00",
         depositAmount: "100.00",
-        weeklyPaymentAmount: "50.00",
+        paymentSchedule: "WEEKLY",
+        scheduledPaymentAmount: "50.00",
       }),
     ).rejects.toThrow(fleet.NotFoundError);
   });

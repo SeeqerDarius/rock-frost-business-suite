@@ -18,7 +18,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "missing-fields": "Asset tag and plate number are required.",
   duplicate: "A vehicle with that asset tag or plate number already exists.",
   "not-found": "That owner or driver could not be found.",
-  "invalid-target": "Choose Daily or Weekly and enter a target amount greater than zero, or select No sales target.",
+  "invalid-target": "Choose Daily or Weekly and enter a remittance amount greater than zero, or select No required remittance.",
 };
 
 const STATUS_OPTIONS: Record<string, string> = {
@@ -38,9 +38,9 @@ const STATUS_BADGE_VARIANT: Record<string, "default" | "outline" | "destructive"
 };
 
 const SALES_TARGET_OPTIONS: Record<string, string> = {
-  NONE: "No sales target",
-  DAILY: "Daily sales",
-  WEEKLY: "Weekly sales",
+  NONE: "No required remittance",
+  DAILY: "Daily remittance",
+  WEEKLY: "Weekly remittance",
 };
 
 interface VehicleFieldsProps {
@@ -96,7 +96,7 @@ function VehicleFields({ vehicle, owners, drivers }: VehicleFieldsProps) {
       </div>
       <div className="grid gap-4 rounded-lg border p-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor={`salesTargetPeriod${idSuffix}`}>Driver sales schedule</Label>
+          <Label htmlFor={`salesTargetPeriod${idSuffix}`}>Driver remittance schedule</Label>
           <Select name="salesTargetPeriod" defaultValue={vehicle?.salesTargetPeriod ?? "NONE"} items={SALES_TARGET_OPTIONS}>
             <SelectTrigger id={`salesTargetPeriod${idSuffix}`} className="w-full">
               <SelectValue />
@@ -109,11 +109,11 @@ function VehicleFields({ vehicle, owners, drivers }: VehicleFieldsProps) {
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`salesTargetAmount${idSuffix}`}>Required sales amount</Label>
+          <Label htmlFor={`salesTargetAmount${idSuffix}`}>Required remittance amount</Label>
           <Input id={`salesTargetAmount${idSuffix}`} name="salesTargetAmount" type="number" min="0.01" step="0.01" defaultValue={vehicle?.salesTargetAmount ?? ""} />
         </div>
         <p className="text-xs text-muted-foreground sm:col-span-2">
-          Use this for normal daily or weekly sales vehicles. Work & Pay amounts remain controlled by their contract.
+          Use this for vehicles whose drivers remit a required amount daily or weekly. Work & Pay amounts are controlled by their contract.
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">

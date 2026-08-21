@@ -41,7 +41,7 @@ export default async function FleetReportsPage() {
     { label: "Vehicles under maintenance", value: summary.maintenanceVehicleCount },
     { label: "Pending maintenance", value: summary.pendingMaintenanceCount },
     { label: "Active work & pay contracts", value: summary.activeContractCount },
-    { label: "Weekly collections", value: report.weeklyCollections.toFixed(2) },
+    { label: "Weekly remittances", value: report.weeklyCollections.toFixed(2) },
     { label: "Pending payments", value: report.pendingPaymentCount },
     { label: "Documents due", value: report.expiringDocumentCount },
     { label: "Repairs awaiting verification", value: report.unverifiedRepairCount },
@@ -89,7 +89,7 @@ export default async function FleetReportsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Owner and investor performance</CardTitle>
-          <CardDescription>Portfolio collections, outstanding agreements, maintenance cost and net cash position.</CardDescription>
+          <CardDescription>Portfolio remittances, outstanding agreements, maintenance cost and net cash position.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {report.investors.length === 0 ? <p className="text-sm text-muted-foreground">No owner portfolios yet.</p> : report.investors.map((row) => (

@@ -41,6 +41,8 @@ An active entitlement for either a primary or legacy group member expands to bot
 
 CRM data must not appear inside Fleet or Installment pages unless there is a deliberate, documented integration (recorded in `docs/DECISIONS.md`, not silently added). The same applies to Accounting data appearing inside any other module. If a future feature genuinely needs cross-module data (e.g. an organization-wide report combining Fleet revenue and Installment collections), it belongs in **organization scope** (`/reports`), built as its own explicit cross-module reporting feature — not smuggled into a module page.
 
+One deliberate workforce integration exists at the organization boundary. When HR is enabled, accepting or reactivating an internal organization membership, changing an active member to an internal role, or enabling HR creates a missing linked `HrEmployee`. This does not expose Fleet or any other module's operational records inside HR. It establishes the shared person identity that HR and Payroll require. Existing HR-managed fields are never overwritten, and external `Vehicle Owner` and `Investor` memberships are excluded.
+
 ## How this is enforced today
 
 Structurally, via nested layouts — see `docs/ARCHITECTURE.md`'s "How module isolation is enforced structurally" section. Each module route tree has its own `layout.tsx` with its own `AppShell` instance and its own navigation array; there is no shared conditional-sidebar logic that could drift.

@@ -6,6 +6,7 @@ import { logAuditEvent } from "@/lib/audit";
 import { isPlatformUser } from "@/lib/auth/platform-identity";
 import { PERMISSIONS } from "@/lib/auth/permissions";
 import { ensureFleetDriverForUser, ensureFleetOwnerForUser } from "@/modules/fleet/service";
+import { ensureHrEmployeeForUser } from "@/modules/hr/service";
 
 const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const RESEND_COOLDOWN_MS = 60 * 1000; // 1 resend per minute per invitation
@@ -171,6 +172,12 @@ export async function acceptInvitationNewUser(token: string, passwordHash: strin
     if (invitation.membership.role?.name === "Vehicle Owner") {
       await ensureFleetOwnerForUser(tx, invitation.organizationId, invitation.membership.userId);
     }
+    await ensureHrEmployeeForUser(tx, invitation.organizationId, invitation.membership.userId, invitation.membership.role?.name, {
+      branchId: invitation.membership.branchId,
+      joinedAt: new Date(),
+      actorId: invitation.membership.userId,
+      membershipId: invitation.membershipId,
+    });
     await logAuditEvent(
       {
         organizationId: invitation.organizationId,
@@ -220,6 +227,12 @@ export async function acceptInvitationExistingUser(token: string, sessionUserId:
     if (invitation.membership.role?.name === "Vehicle Owner") {
       await ensureFleetOwnerForUser(tx, invitation.organizationId, sessionUserId);
     }
+    await ensureHrEmployeeForUser(tx, invitation.organizationId, sessionUserId, invitation.membership.role?.name, {
+      branchId: invitation.membership.branchId,
+      joinedAt: new Date(),
+      actorId: sessionUserId,
+      membershipId: invitation.membershipId,
+    });
     await logAuditEvent(
       {
         organizationId: invitation.organizationId,

@@ -43,7 +43,7 @@ afterAll(async () => {
   await testDb.user.deleteMany({ where: { id: { in: [driverUserId, ownerUserId] } } });
 });
 
-describe("Fleet driver sales and owner access (real Postgres)", () => {
+describe("Fleet driver remittances and owner access (real Postgres)", () => {
   it("returns only vehicles assigned or owned by the current actor", async () => {
     const driverVehicles = await fleet.listFleetActorVehicles(org.organizationId, driverUserId, { driver: true, owner: false });
     expect(driverVehicles.map((vehicle) => vehicle.id)).toEqual([assignedVehicleId]);
@@ -53,7 +53,7 @@ describe("Fleet driver sales and owner access (real Postgres)", () => {
     expect(ownerVehicles.map((vehicle) => vehicle.id)).toEqual([assignedVehicleId]);
   });
 
-  it("accepts the configured daily collection and preserves target and period", async () => {
+  it("accepts a recorded daily remittance and preserves the required amount and period", async () => {
     const periodStart = new Date("2026-08-20T00:00:00.000Z");
     const submission = await fleet.submitFleetDriverPayment(org.organizationId, driverUserId, {
       vehicleId: assignedVehicleId,
@@ -61,7 +61,8 @@ describe("Fleet driver sales and owner access (real Postgres)", () => {
       periodStart,
       amount: "140.00",
       paymentDate: periodStart,
-      paymentMethod: "Mobile money",
+      paymentMethod: "MOBILE_MONEY",
+      reference: "MOMO-140",
     });
     expect(submission.status).toBe("PENDING");
     expect(submission.expectedAmount?.toString()).toBe("150");
@@ -74,7 +75,7 @@ describe("Fleet driver sales and owner access (real Postgres)", () => {
       periodStart,
       amount: "150.00",
       paymentDate: periodStart,
-      paymentMethod: "Cash",
+      paymentMethod: "CASH",
     })).rejects.toThrow(fleet.FleetDuplicateSubmissionError);
 
     const approved = await fleet.reviewFleetDriverPaymentSubmission(org.organizationId, submission.id, org.userId, true);
@@ -85,12 +86,12 @@ describe("Fleet driver sales and owner access (real Postgres)", () => {
     expect(payment?.relatedEntityId).toBe(assignedVehicleId);
   });
 
-  it("rejects another vehicle and a sales frequency not configured for the assignment", async () => {
+  it("rejects another vehicle and a remittance frequency not configured for the assignment", async () => {
     const input = {
       amount: "150.00",
       paymentDate: new Date("2026-08-21T00:00:00.000Z"),
       periodStart: new Date("2026-08-21T00:00:00.000Z"),
-      paymentMethod: "Cash",
+      paymentMethod: "CASH",
     };
     await expect(fleet.submitFleetDriverPayment(org.organizationId, driverUserId, {
       ...input,
@@ -104,6 +105,17 @@ describe("Fleet driver sales and owner access (real Postgres)", () => {
     })).rejects.toThrow(fleet.FleetSalesTargetError);
   });
 
+  it("requires a transaction reference for non-cash remittances", async () => {
+    await expect(fleet.submitFleetDriverPayment(org.organizationId, driverUserId, {
+      vehicleId: assignedVehicleId,
+      submissionType: "DAILY_SALES",
+      periodStart: new Date("2026-08-23T00:00:00.000Z"),
+      amount: "150.00",
+      paymentDate: new Date("2026-08-23T00:00:00.000Z"),
+      paymentMethod: "MOBILE_MONEY",
+    })).rejects.toThrow(fleet.FleetPaymentEvidenceError);
+  });
+
   it("serializes duplicate submission and approval attempts", async () => {
     const periodStart = new Date("2026-08-22T00:00:00.000Z");
     const input = {
@@ -112,7 +124,7 @@ describe("Fleet driver sales and owner access (real Postgres)", () => {
       periodStart,
       amount: "150.00",
       paymentDate: periodStart,
-      paymentMethod: "Cash",
+      paymentMethod: "CASH",
     };
     const submissions = await Promise.allSettled([
       fleet.submitFleetDriverPayment(org.organizationId, driverUserId, input),
@@ -131,14 +143,15 @@ describe("Fleet driver sales and owner access (real Postgres)", () => {
     expect(await testDb.fleetPayment.count({ where: { reference: `DRV-${submission.id.slice(-8).toUpperCase()}` } })).toBe(1);
   });
 
-  it("updates the Work & Pay balance exactly when a driver submission is approved", async () => {
+  it("supports a daily Work & Pay schedule and updates its balance only after approval", async () => {
     const contract = await fleet.createFleetWorkAndPayContract(org.organizationId, {
       contractName: "Driver contract",
       vehicleId: assignedVehicleId,
       clientName: "Customer",
       contractAmount: "1000.00",
       depositAmount: "100.00",
-      weeklyPaymentAmount: "100.00",
+      paymentSchedule: "DAILY",
+      scheduledPaymentAmount: "100.00",
     });
     const submission = await fleet.submitFleetDriverPayment(org.organizationId, driverUserId, {
       vehicleId: assignedVehicleId,
@@ -147,8 +160,10 @@ describe("Fleet driver sales and owner access (real Postgres)", () => {
       periodStart: new Date("2026-08-17T00:00:00.000Z"),
       amount: "100.00",
       paymentDate: new Date("2026-08-21T00:00:00.000Z"),
-      paymentMethod: "Bank",
+      paymentMethod: "BANK_TRANSFER",
+      reference: "BANK-100",
     });
+    expect(submission.periodEnd.toISOString()).toBe(submission.periodStart.toISOString());
     await fleet.reviewFleetDriverPaymentSubmission(org.organizationId, submission.id, org.userId, true);
     const updated = await testDb.fleetWorkAndPayContract.findUnique({ where: { id: contract.id } });
     expect(updated?.amountPaid.toString()).toBe("200");

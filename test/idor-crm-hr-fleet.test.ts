@@ -19,6 +19,7 @@ const mockDb = {
   fleetMaintenanceRequest: { create: vi.fn() },
   fleetWorkAndPayContract: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   fleetPayment: { create: vi.fn() },
+  auditLog: { create: vi.fn() },
   $transaction: vi.fn(),
 };
 
@@ -151,14 +152,19 @@ describe("Fleet service — cross-tenant IDOR fixes and payment atomicity", () =
         clientName: "Client",
         contractAmount: "1000.00",
         depositAmount: "100.00",
-        weeklyPaymentAmount: "50.00",
+        paymentSchedule: "WEEKLY",
+        scheduledPaymentAmount: "50.00",
       }),
     ).rejects.toThrow(fleet.NotFoundError);
     expect(mockDb.fleetWorkAndPayContract.create).not.toHaveBeenCalled();
   });
 
   it("recordFleetWorkAndPayPayment rejects a non-positive amount before touching the database", async () => {
-    await expect(fleet.recordFleetWorkAndPayPayment(ORG, "contract-1", -50)).rejects.toThrow(
+    await expect(fleet.recordFleetWorkAndPayPayment(ORG, "contract-1", {
+      amount: -50,
+      paymentDate: new Date(),
+      paymentMethod: "CASH",
+    })).rejects.toThrow(
       fleet.InvalidPaymentAmountError,
     );
     expect(mockDb.fleetWorkAndPayContract.findFirst).not.toHaveBeenCalled();
@@ -174,9 +180,14 @@ describe("Fleet service — cross-tenant IDOR fixes and payment atomicity", () =
         contractAmount: "100.00",
         contractStatus: "ACTIVE",
       })
-      .mockResolvedValueOnce({ id: "contract-1" });
+      .mockResolvedValueOnce({ id: "contract-1", outstandingBalance: "0.00" });
+    mockDb.fleetPayment.create.mockResolvedValue({ id: "payment-1" });
 
-    await fleet.recordFleetWorkAndPayPayment(ORG, "contract-1", 50);
+    await fleet.recordFleetWorkAndPayPayment(ORG, "contract-1", {
+      amount: 50,
+      paymentDate: new Date("2026-08-21T00:00:00.000Z"),
+      paymentMethod: "CASH",
+    });
 
     expect(mockDb.fleetWorkAndPayContract.update).toHaveBeenNthCalledWith(1, {
       where: { id: "contract-1", organizationId: ORG },

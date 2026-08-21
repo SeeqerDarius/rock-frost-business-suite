@@ -17,6 +17,7 @@ import { isPlatformUser } from "@/lib/auth/platform-identity";
 import { isRoleAssignableToOrganization, resolveAssignableModuleKeys, roleDisplayName } from "@/lib/administration-roles";
 import { assertRoleHasAvailableSeats, SeatLimitExceededError } from "@/platform/subscriptions/seats";
 import { ensureFleetDriverForUser, ensureFleetOwnerForUser } from "@/modules/fleet/service";
+import { ensureHrEmployeeForUser } from "@/modules/hr/service";
 
 function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
@@ -182,6 +183,14 @@ export async function changeMemberRole(formData: FormData): Promise<void> {
       if (member.status === "ACTIVE" && role.name === "Vehicle Owner") {
         await ensureFleetOwnerForUser(tx, tenant.organizationId, member.userId);
       }
+      if (member.status === "ACTIVE") {
+        await ensureHrEmployeeForUser(tx, tenant.organizationId, member.userId, role.name, {
+          branchId: member.branchId,
+          joinedAt: member.joinedAt,
+          actorId: tenant.userId,
+          membershipId: member.id,
+        });
+      }
       await logAuditEvent({
         organizationId: tenant.organizationId,
         userId: tenant.userId,
@@ -272,6 +281,18 @@ export async function reactivateMember(formData: FormData): Promise<void> {
       if (!member?.roleId || member.roleId !== role.id) throw new Error("MEMBER_NOT_FOUND");
       await assertRoleHasAvailableSeats(tx, tenant.organizationId, role.id, member.id);
       await tx.organizationMember.update({ where: { id: member.id }, data: { status: "ACTIVE" } });
+      if (role.rolePermissions.some((rp) => rp.permission.key === PERMISSIONS.FLEET_DRIVER_SELF_SERVICE)) {
+        await ensureFleetDriverForUser(tx, tenant.organizationId, member.userId);
+      }
+      if (role.name === "Vehicle Owner") {
+        await ensureFleetOwnerForUser(tx, tenant.organizationId, member.userId);
+      }
+      await ensureHrEmployeeForUser(tx, tenant.organizationId, member.userId, role.name, {
+        branchId: member.branchId,
+        joinedAt: member.joinedAt,
+        actorId: tenant.userId,
+        membershipId: member.id,
+      });
       await logAuditEvent({
         organizationId: tenant.organizationId,
         userId: tenant.userId,

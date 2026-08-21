@@ -9,6 +9,7 @@ import { getServerAuthSession } from "@/lib/auth/session";
 import { cuid, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
 import { productGroupKeys } from "@/platform/modules/product-groups";
+import { syncActiveOrganizationMembersToHr } from "@/modules/hr/service";
 
 const toggleSchema = z.object({
   organizationId: cuid,
@@ -44,7 +45,7 @@ export async function toggleOrganizationModule(formData: FormData): Promise<void
   await db.$transaction(async (tx) => {
     const groupedModules = await tx.module.findMany({
       where: { code: { in: [...productGroupKeys(module_.code)] } },
-      select: { id: true },
+      select: { id: true, code: true },
     });
     for (const groupedModule of groupedModules) {
       await tx.organizationModule.upsert({
@@ -52,6 +53,9 @@ export async function toggleOrganizationModule(formData: FormData): Promise<void
         update: { enabled, enabledAt: enabled ? new Date() : undefined },
         create: { organizationId, moduleId: groupedModule.id, enabled, enabledAt: enabled ? new Date() : null },
       });
+    }
+    if (enabled && groupedModules.some((groupedModule) => groupedModule.code === "hr")) {
+      await syncActiveOrganizationMembersToHr(tx, organizationId, session?.user?.id);
     }
 
     await logAuditEvent(

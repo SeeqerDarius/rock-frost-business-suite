@@ -11,6 +11,7 @@ import {
   InvalidPaymentAmountError,
   FleetDuplicateSubmissionError,
   FleetSalesTargetError,
+  FleetPaymentEvidenceError,
 } from "@/modules/fleet/service";
 import { logAuditEvent } from "@/lib/audit";
 import type { FleetDriverSubmissionType } from "@prisma/client";
@@ -44,12 +45,13 @@ export async function submitDriverPayment(formData: FormData): Promise<void> {
       paymentDate: new Date(`${paymentDate}T00:00:00.000Z`), paymentMethod,
       reference: clean(formData.get("reference")), notes: clean(formData.get("notes")),
     });
-    await logAuditEvent({ organizationId: tenant.organizationId, userId: session.user.id, module: "fleet", action: "driver.payment_submitted", entityName: "FleetDriverPaymentSubmission", entityId: submission.id, metadata: { amount, vehicleId, submissionType, periodStart } });
+    await logAuditEvent({ organizationId: tenant.organizationId, userId: session.user.id, module: "fleet", action: "driver.payment_submitted", entityName: "FleetDriverPaymentSubmission", entityId: submission.id, metadata: { amount, vehicleId, submissionType, periodStart, paymentMethod, reference: clean(formData.get("reference")) } });
   } catch (error) {
     if (error instanceof NotFoundError) redirect("/app/fleet/driver-portal?error=not-found");
     if (error instanceof InvalidPaymentAmountError) redirect("/app/fleet/driver-portal?error=invalid-amount");
     if (error instanceof FleetDuplicateSubmissionError) redirect("/app/fleet/driver-portal?error=duplicate-period");
     if (error instanceof FleetSalesTargetError) redirect("/app/fleet/driver-portal?error=invalid-target");
+    if (error instanceof FleetPaymentEvidenceError) redirect("/app/fleet/driver-portal?error=invalid-evidence");
     throw error;
   }
   revalidatePath("/app/fleet/driver-portal");

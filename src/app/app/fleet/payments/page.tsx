@@ -21,7 +21,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  WEEKLY_SALES: "Weekly sales",
+  WEEKLY_SALES: "Vehicle remittance",
   OWNER_PAYOUT: "Owner payout",
   DRIVER_PAYMENT: "Driver payment",
   MAINTENANCE: "Maintenance",
@@ -30,9 +30,18 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const SUBMISSION_LABELS: Record<string, string> = {
-  DAILY_SALES: "Daily sales",
-  WEEKLY_SALES: "Weekly sales",
-  WORK_AND_PAY: "Work & Pay",
+  DAILY_SALES: "Daily vehicle remittance",
+  WEEKLY_SALES: "Weekly vehicle remittance",
+  WORK_AND_PAY: "Work & Pay instalment",
+};
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  CASH: "Cash",
+  MOBILE_MONEY: "Mobile money",
+  BANK_TRANSFER: "Bank transfer",
+  CARD: "Card",
+  CHEQUE: "Cheque",
+  OTHER: "Other",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive"> = {
@@ -55,7 +64,7 @@ export default async function FleetPaymentsPage({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <PageHeader title="Payments" description="Weekly sales, Work & Pay collections, owner payouts, driver payments, and fleet transactions." />
+        <PageHeader title="Payments" description="Driver remittances, Work & Pay instalments, owner payouts, and other fleet transactions." />
         {canManage ? (
           <EntityDialog
             trigger={
@@ -170,8 +179,8 @@ export default async function FleetPaymentsPage({
       )}
       {canManage ? (
         <section className="rounded-xl border p-5">
-          <h2 className="font-semibold">Driver-submitted collections</h2>
-          <p className="text-sm text-muted-foreground">Review the assigned vehicle, period, target, variance, and payment details before verification.</p>
+          <h2 className="font-semibold">Driver-recorded payments</h2>
+          <p className="text-sm text-muted-foreground">Confirm that the company received the payment. Review its assigned vehicle, payment period, required amount, variance, method, and reference before approval.</p>
           <div className="mt-3 space-y-2">
             {driverSubmissions.map((item) => {
               const variance = item.expectedAmount ? Number(item.amount) - Number(item.expectedAmount) : null;
@@ -181,7 +190,7 @@ export default async function FleetPaymentsPage({
                     <p className="font-medium">{item.driver.name}. {item.vehicle?.plateNumber ?? "No vehicle"}. {SUBMISSION_LABELS[item.submissionType]}</p>
                     <p className="text-muted-foreground">
                       {item.periodStart.toLocaleDateString()} to {item.periodEnd.toLocaleDateString()}. {tenant.organization.currency ?? "GHS"} {Number(item.amount).toFixed(2)}.
-                      {variance === null ? "" : ` Target ${Number(item.expectedAmount).toFixed(2)}, variance ${variance >= 0 ? "+" : ""}${variance.toFixed(2)}.`} {item.paymentMethod}
+                      {variance === null ? "" : ` Required ${Number(item.expectedAmount).toFixed(2)}, variance ${variance >= 0 ? "+" : ""}${variance.toFixed(2)}.`} {PAYMENT_METHOD_LABELS[item.paymentMethod] ?? item.paymentMethod}{item.reference ? `, reference ${item.reference}` : ""}.
                     </p>
                   </div>
                   <div className="flex items-center gap-2">

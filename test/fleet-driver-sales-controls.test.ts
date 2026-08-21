@@ -6,7 +6,7 @@ import { fleetMaintenancePhotoData, parseFleetMaintenancePhoto } from "@/lib/fle
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
-describe("Fleet driver sales controls", () => {
+describe("Fleet driver remittance controls", () => {
   it("keeps Driver assignment-scoped and makes Vehicle Owner available", () => {
     expect(ROLE_PERMISSIONS.Driver).toContain(PERMISSIONS.FLEET_DRIVER_SELF_SERVICE);
     expect(ROLE_PERMISSIONS.Driver).not.toContain(PERMISSIONS.FLEET_VIEW);
@@ -23,11 +23,13 @@ describe("Fleet driver sales controls", () => {
     expect(overview).toContain('redirect("/app/fleet/driver-portal")');
   });
 
-  it("classifies ordinary driver collections as sales and Work & Pay submissions as contract payments", () => {
+  it("classifies vehicle remittances and Work & Pay submissions as verified fleet payments", () => {
     const service = read("src/modules/fleet/service.ts");
     expect(service).toContain('submission.submissionType === "WORK_AND_PAY" ? "WORK_AND_PAY" : "WEEKLY_SALES"');
     expect(service).toContain('relatedEntity: submission.contractId ? "FleetWorkAndPayContract" : "FleetVehicle"');
     expect(service).toContain("FleetDuplicateSubmissionError");
+    expect(service).toContain("FleetPaymentEvidenceError");
+    expect(service).toContain("scheduledPaymentAmount");
   });
 
   it("accepts only a bounded image with a real supported signature", async () => {
