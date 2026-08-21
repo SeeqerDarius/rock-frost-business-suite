@@ -10,6 +10,7 @@ import { createSale, SaleStateError, InsufficientStockError, InvalidSaleInputErr
 import { shortText, positiveInt, moneyAmountNonNegative, cuid, parseWithSchema } from "@/lib/validation";
 import type { PosPaymentMethod } from "@prisma/client";
 import { logAuditEvent } from "@/lib/audit";
+import { postModuleRevenue } from "@/lib/accounting-integration";
 
 const clean = (value: FormDataEntryValue | null) => String(value ?? "").trim();
 const optional = <T extends z.ZodTypeAny>(schema: T) => z.union([schema, z.literal("")]).transform((value) => value === "" ? null : value);
@@ -41,6 +42,19 @@ export async function completeSale(formData: FormData): Promise<void> {
       status: parsed.data.mode,
     });
     await logAuditEvent({ organizationId: tenant.organizationId, userId: session?.user?.id ?? null, module: "pos", action: parsed.data.mode === "SUSPENDED" ? "pos.sale.suspend" : "pos.sale", entityName: "PosSale", entityId: sale.id, metadata: { saleNumber: sale.saleNumber, total: Number(sale.total), lineCount: linesParsed.data.length } });
+
+    if (parsed.data.mode === "COMPLETED") {
+      await postModuleRevenue(tenant.organizationId, {
+        sourceModule: "pos",
+        sourceType: "POS_SALE",
+        sourceId: sale.id,
+        postingPurpose: "COLLECTED",
+        amount: sale.total.toString(),
+        entryDate: sale.createdAt,
+        description: `POS sale ${sale.saleNumber}`,
+        createdById: session?.user?.id ?? null,
+      });
+    }
   } catch (error) {
     if (error instanceof InsufficientStockError) redirect("/app/pos/sell?error=insufficient-stock");
     if (error instanceof SaleStateError) redirect("/app/pos/sell?error=no-open-session");

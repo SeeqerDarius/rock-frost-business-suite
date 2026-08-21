@@ -7,6 +7,7 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { cuid, shortText, longText, moneyAmountPositive, dateInput, parseWithSchema } from "@/lib/validation";
 import * as hospital from "@/modules/hospital/service";
+import { postModuleRevenue } from "@/lib/accounting-integration";
 
 const clean = (value: FormDataEntryValue | null) => { const text = String(value ?? "").trim(); return text || null; };
 const int = (min: number, max: number) => z.coerce.number().int().min(min).max(max);
@@ -427,7 +428,19 @@ export async function recordPaymentAction(formData: FormData) {
   const parsed = parseWithSchema(z.object({ invoiceId: cuid, amount: moneyAmountPositive, method: paymentMethod, reference: shortText.nullable() }), { invoiceId: clean(formData.get("invoiceId")) ?? "", amount: clean(formData.get("amount")), method: clean(formData.get("method")), reference: clean(formData.get("reference")) });
   if (!parsed.success) redirect(`${path}?error=invalid`);
   const { invoiceId, ...data } = parsed.data;
-  try { await hospital.recordHospitalPayment(tenant.organizationId, invoiceId, { ...data, receivedById: tenant.userId }); } catch (error) { handleServiceError(error, path, "not-found", "balance"); }
+  try {
+    const payment = await hospital.recordHospitalPayment(tenant.organizationId, invoiceId, { ...data, receivedById: tenant.userId });
+    await postModuleRevenue(tenant.organizationId, {
+      sourceModule: "hospital",
+      sourceType: "HOSPITAL_PAYMENT",
+      sourceId: payment.id,
+      postingPurpose: "COLLECTED",
+      amount: payment.amount.toString(),
+      entryDate: payment.receivedAt,
+      description: `Hospital payment received: receipt ${payment.receiptNumber}`,
+      createdById: tenant.userId,
+    });
+  } catch (error) { handleServiceError(error, path, "not-found", "balance"); }
   revalidatePath(path); redirect(`${path}?saved=1`);
 }
 

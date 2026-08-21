@@ -33,6 +33,12 @@ Each integration must provide:
 
 Posting into a closed period fails without partially changing either module. Integration services must display the failure and allow an authorized retry after correction or period reopening.
 
+## Module integrations delivered
+
+Fleet, Pharmacy, Hospital, POS, Installment, Hostel, Hotel, and School now call `postSourceJournalEntry()` — through a shared `postModuleRevenue()`/`reverseModuleRevenue()` helper in `src/lib/accounting-integration.ts`, not directly — at the moment each module treats its own money as confirmed (a verified Fleet payment, a completed Pharmacy dispensing, a Hospital/Hostel/Hotel/School fee payment, a POS sale, an Installment payment). See `docs/DECISIONS.md`'s 2026-08-21 entry for the full design and its explicit non-goals (Payroll/Procurement are not wired; they are expense/liability-side, not revenue). Each module posts into its own auto-provisioned Revenue sub-account (4100–4800) rather than the shared 4000 Revenue account manual invoices use, so Accounting's Reports page can show a "Revenue by source" breakdown — a manager can trace any total back to the module and record that produced it.
+
+The integration is conditional on the organization having activated Accounting (`isModuleActiveForOrg()`) — a source module's own operation is never blocked, delayed, or altered by Accounting being unsubscribed, and a failed post is caught and logged, never thrown back to the caller.
+
 ## Current boundary
 
-This release establishes posting identity, period locking, and reversals. Full accounts receivable, accounts payable, bank-statement matching, tax, budget, fixed-asset, and multi-currency workflows remain separate future releases and must not be marketed as delivered by this foundation.
+This release establishes posting identity, period locking, and reversals. Full accounts receivable, accounts payable, bank-statement matching, tax, budget, fixed-asset, and multi-currency workflows remain separate future releases and must not be marketed as delivered by this foundation. The revenue-side module integrations above are real; expense/liability-side integrations (payroll runs, purchase-order receipts) are not yet built.

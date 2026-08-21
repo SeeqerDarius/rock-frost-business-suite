@@ -7,6 +7,7 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { parseWithSchema, shortText, cuid, moneyAmount, positiveInt, email } from "@/lib/validation";
 import { approveControlledDispense, createMedicine, createPatient, createPrescriber, createPrescription, createSupplier, dispense, findBatchByBarcode, findMedicineByBarcode, receiveBatch, recordPatientReturn, recordStockAdjustment, recordStockCount, recordSupplierReturn, recordWriteOff, rejectControlledDispense, reverseDispensing, updateBatchStatus, updatePharmacySettings } from "@/modules/pharmacy/service";
+import { postModuleRevenue, reverseModuleRevenue } from "@/lib/accounting-integration";
 
 function requirePermission(permission: string, route: string) { return requireModuleAccess("pharmacy").then((tenant) => { if (!hasPermission(tenant, permission)) redirect(`${route}?error=forbidden`); return tenant; }); }
 
@@ -114,7 +115,19 @@ export async function addPrescription(formData: FormData) {
 export async function completeDispensing(formData: FormData) {
   const tenant = await requirePermission(PERMISSIONS.PHARMACY_DISPENSING_MANAGE, "/app/pharmacy/dispensing");
   const parsed = parseWithSchema(z.object({ dispensingNumber: shortText, patientId: z.union([cuid, z.literal("")]).optional(), prescriptionId: z.union([cuid, z.literal("")]).optional(), medicineId: cuid, prescriptionLineId: z.union([cuid, z.literal("")]).optional(), quantity: positiveInt, discount: moneyAmount, paymentMethod: shortText.optional(), paymentReference: shortText.optional() }), Object.fromEntries(formData));
-  if (!parsed.success) redirect("/app/pharmacy/dispensing?error=invalid"); await dispense(tenant.organizationId, tenant.userId, { dispensingNumber: parsed.data.dispensingNumber, patientId: parsed.data.patientId || null, prescriptionId: parsed.data.prescriptionId || null, discount: parsed.data.discount, paymentMethod: parsed.data.paymentMethod, paymentReference: parsed.data.paymentReference, lines: [{ medicineId: parsed.data.medicineId, prescriptionLineId: parsed.data.prescriptionLineId || null, quantity: parsed.data.quantity }] }); revalidatePath("/app/pharmacy"); redirect("/app/pharmacy/dispensing?saved=1");
+  if (!parsed.success) redirect("/app/pharmacy/dispensing?error=invalid");
+  const dispensing = await dispense(tenant.organizationId, tenant.userId, { dispensingNumber: parsed.data.dispensingNumber, patientId: parsed.data.patientId || null, prescriptionId: parsed.data.prescriptionId || null, discount: parsed.data.discount, paymentMethod: parsed.data.paymentMethod, paymentReference: parsed.data.paymentReference, lines: [{ medicineId: parsed.data.medicineId, prescriptionLineId: parsed.data.prescriptionLineId || null, quantity: parsed.data.quantity }] });
+  await postModuleRevenue(tenant.organizationId, {
+    sourceModule: "pharmacy",
+    sourceType: "PHARMACY_DISPENSING",
+    sourceId: dispensing.id,
+    postingPurpose: "COLLECTED",
+    amount: dispensing.total.toString(),
+    entryDate: dispensing.dispensedAt,
+    description: `Pharmacy dispensing ${dispensing.dispensingNumber}`,
+    createdById: tenant.userId,
+  });
+  revalidatePath("/app/pharmacy"); redirect("/app/pharmacy/dispensing?saved=1");
 }
 
 export async function approveControlledDispenseAction(formData: FormData) {
@@ -138,6 +151,7 @@ export async function reverseCompletedDispensing(formData: FormData) {
   const parsed = parseWithSchema(z.object({ dispensingId: cuid, reason: shortText }), Object.fromEntries(formData));
   if (!parsed.success) redirect("/app/pharmacy/dispensing?error=invalid");
   await reverseDispensing(tenant.organizationId, tenant.userId, parsed.data.dispensingId, parsed.data.reason);
+  await reverseModuleRevenue(tenant.organizationId, { sourceType: "PHARMACY_DISPENSING", sourceId: parsed.data.dispensingId, postingPurpose: "COLLECTED", reason: parsed.data.reason, actorId: tenant.userId });
   revalidatePath("/app/pharmacy"); redirect("/app/pharmacy/dispensing?saved=1");
 }
 
