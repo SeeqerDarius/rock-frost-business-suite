@@ -131,13 +131,25 @@ export async function reviewDriverSubmission(formData: FormData): Promise<void> 
 
   const approved = parsed.data.decision === "approve";
   try {
-    await reviewFleetDriverPaymentSubmission(
+    const submission = await reviewFleetDriverPaymentSubmission(
       tenant.organizationId,
       parsed.data.id,
       session.user.id,
       approved,
       clean(formData.get("rejectionReason")),
     );
+    if (approved && submission.fleetPaymentId) {
+      await postModuleRevenue(tenant.organizationId, {
+        sourceModule: "fleet",
+        sourceType: "FLEET_PAYMENT",
+        sourceId: submission.fleetPaymentId,
+        postingPurpose: "COLLECTED",
+        amount: submission.amount.toString(),
+        entryDate: submission.paymentDate,
+        description: `Fleet driver remittance approved: ${submission.reference ?? submission.id} (${submission.submissionType})`,
+        createdById: session.user.id,
+      });
+    }
   } catch (error) {
     if (error instanceof NotFoundError) {
       redirect("/app/fleet/payments?error=already-reviewed");

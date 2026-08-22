@@ -390,6 +390,19 @@ export async function returnSaleLines(
  * second's updateMany matches zero rows because the first already flipped
  * the status, so it throws SaleStateError instead of double-returning stock.
  */
+/**
+ * Not called from any route today (test-only) — this is a full-sale
+ * refund, distinct from returnSaleLines()'s partial-line return. If this is
+ * ever wired to a UI action, the caller MUST call reverseModuleRevenue()
+ * immediately after, keyed on { sourceType: "POS_SALE", sourceId: sale.id,
+ * postingPurpose: "COLLECTED" } — the same identity sell/actions.ts and
+ * resumeSale() post under — so the original sale's journal entry is
+ * reversed rather than left standing for a sale that no longer exists.
+ * Unlike returnSaleLines() (which posts its own distinct refund event
+ * because only part of the sale is undone), a full refund undoes the whole
+ * sale, so reversing the original entry is the correct shape here, not a
+ * second offsetting post.
+ */
 export async function refundSale(organizationId: string, saleId: string, refundedById?: string | null) {
   const sale = await db.posSale.findFirst({
     where: { id: saleId, organizationId },

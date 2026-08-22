@@ -23,6 +23,7 @@ import type { HirePurchaseAccountStatus } from "@prisma/client";
 import { dateInput, moneyAmountNonNegative, parseWithSchema } from "@/lib/validation";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit";
+import { postModuleRevenue } from "@/lib/accounting-integration";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -68,7 +69,20 @@ export async function createInstallmentAccount(formData: FormData): Promise<void
   const { startDate, initialDeposit } = parsed.data;
 
   try {
-    await createAccount(tenant.organizationId, scope, { customerId, productId, inventoryStaffId, startDate, initialDeposit });
+    const { depositPayment } = await createAccount(tenant.organizationId, scope, { customerId, productId, inventoryStaffId, startDate, initialDeposit });
+    if (depositPayment) {
+      const session = await getServerAuthSession();
+      await postModuleRevenue(tenant.organizationId, {
+        sourceModule: "installment",
+        sourceType: "INSTALLMENT_PAYMENT",
+        sourceId: depositPayment.id,
+        postingPurpose: "COLLECTED",
+        amount: depositPayment.amount.toString(),
+        entryDate: depositPayment.paymentDate,
+        description: `Installment deposit received: receipt ${depositPayment.receiptNo}`,
+        createdById: session?.user?.id ?? null,
+      });
+    }
   } catch (error) {
     if (error instanceof MinimumDepositError) {
       redirect("/app/installment/accounts?error=below-minimum-deposit");

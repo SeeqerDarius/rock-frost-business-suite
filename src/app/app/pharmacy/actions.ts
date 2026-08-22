@@ -117,16 +117,22 @@ export async function completeDispensing(formData: FormData) {
   const parsed = parseWithSchema(z.object({ dispensingNumber: shortText, patientId: z.union([cuid, z.literal("")]).optional(), prescriptionId: z.union([cuid, z.literal("")]).optional(), medicineId: cuid, prescriptionLineId: z.union([cuid, z.literal("")]).optional(), quantity: positiveInt, discount: moneyAmount, paymentMethod: shortText.optional(), paymentReference: shortText.optional() }), Object.fromEntries(formData));
   if (!parsed.success) redirect("/app/pharmacy/dispensing?error=invalid");
   const dispensing = await dispense(tenant.organizationId, tenant.userId, { dispensingNumber: parsed.data.dispensingNumber, patientId: parsed.data.patientId || null, prescriptionId: parsed.data.prescriptionId || null, discount: parsed.data.discount, paymentMethod: parsed.data.paymentMethod, paymentReference: parsed.data.paymentReference, lines: [{ medicineId: parsed.data.medicineId, prescriptionLineId: parsed.data.prescriptionLineId || null, quantity: parsed.data.quantity }] });
-  await postModuleRevenue(tenant.organizationId, {
-    sourceModule: "pharmacy",
-    sourceType: "PHARMACY_DISPENSING",
-    sourceId: dispensing.id,
-    postingPurpose: "COLLECTED",
-    amount: dispensing.total.toString(),
-    entryDate: dispensing.dispensedAt,
-    description: `Pharmacy dispensing ${dispensing.dispensingNumber}`,
-    createdById: tenant.userId,
-  });
+  // A controlled-drug dispense with maker-checker enabled comes back
+  // PENDING_APPROVAL — nothing was actually dispensed yet (see dispense()'s
+  // own doc comment), so revenue posts only once approveControlledDispense()
+  // completes it, not here.
+  if (dispensing.status === "COMPLETED") {
+    await postModuleRevenue(tenant.organizationId, {
+      sourceModule: "pharmacy",
+      sourceType: "PHARMACY_DISPENSING",
+      sourceId: dispensing.id,
+      postingPurpose: "COLLECTED",
+      amount: dispensing.total.toString(),
+      entryDate: dispensing.dispensedAt,
+      description: `Pharmacy dispensing ${dispensing.dispensingNumber}`,
+      createdById: tenant.userId,
+    });
+  }
   revalidatePath("/app/pharmacy"); redirect("/app/pharmacy/dispensing?saved=1");
 }
 
@@ -134,7 +140,17 @@ export async function approveControlledDispenseAction(formData: FormData) {
   const tenant = await requirePermission(PERMISSIONS.PHARMACY_RESTRICTED_APPROVE, "/app/pharmacy/dispensing");
   const parsed = parseWithSchema(z.object({ dispensingId: cuid }), Object.fromEntries(formData));
   if (!parsed.success) redirect("/app/pharmacy/dispensing?error=invalid");
-  await approveControlledDispense(tenant.organizationId, tenant.userId, parsed.data.dispensingId);
+  const approved = await approveControlledDispense(tenant.organizationId, tenant.userId, parsed.data.dispensingId);
+  await postModuleRevenue(tenant.organizationId, {
+    sourceModule: "pharmacy",
+    sourceType: "PHARMACY_DISPENSING",
+    sourceId: approved.id,
+    postingPurpose: "COLLECTED",
+    amount: approved.total.toString(),
+    entryDate: approved.dispensedAt,
+    description: `Pharmacy dispensing ${approved.dispensingNumber} (controlled, approved)`,
+    createdById: tenant.userId,
+  });
   revalidatePath("/app/pharmacy"); redirect("/app/pharmacy/dispensing?saved=1");
 }
 

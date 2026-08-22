@@ -14,6 +14,7 @@ import {
 } from "@/modules/fleet/service";
 import type { FleetContractStatus, FleetSalesTargetPeriod } from "@prisma/client";
 import { getServerAuthSession } from "@/lib/auth/session";
+import { postModuleRevenue } from "@/lib/accounting-integration";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -45,7 +46,8 @@ export async function createWorkAndPayContract(formData: FormData): Promise<void
   const startsAtRaw = clean(formData.get("startsAt"));
 
   try {
-    await createFleetWorkAndPayContract(tenant.organizationId, {
+    const session = await getServerAuthSession();
+    const { contract, depositPayment } = await createFleetWorkAndPayContract(tenant.organizationId, {
       contractName,
       vehicleId,
       clientName,
@@ -56,6 +58,18 @@ export async function createWorkAndPayContract(formData: FormData): Promise<void
       remainingPaymentPeriods: cleanInt(formData.get("remainingPaymentPeriods")),
       startsAt: startsAtRaw ? new Date(startsAtRaw) : null,
     });
+    if (depositPayment) {
+      await postModuleRevenue(tenant.organizationId, {
+        sourceModule: "fleet",
+        sourceType: "FLEET_PAYMENT",
+        sourceId: depositPayment.id,
+        postingPurpose: "COLLECTED",
+        amount: depositPayment.amount.toString(),
+        entryDate: depositPayment.date,
+        description: `Work & Pay deposit: ${contract.contractName}`,
+        createdById: session?.user?.id ?? null,
+      });
+    }
   } catch (error) {
     if (error instanceof NotFoundError) redirect("/app/fleet/work-and-pay?error=not-found");
     if (error instanceof InvalidPaymentAmountError) redirect("/app/fleet/work-and-pay?error=invalid-amount");
@@ -84,12 +98,22 @@ export async function recordContractPayment(formData: FormData): Promise<void> {
 
   try {
     const session = await getServerAuthSession();
-    await recordFleetWorkAndPayPayment(tenant.organizationId, id, {
+    const { contract, payment } = await recordFleetWorkAndPayPayment(tenant.organizationId, id, {
       amount,
       paymentDate: new Date(`${paymentDate}T00:00:00.000Z`),
       paymentMethod: paymentMethod as "CASH" | "MOBILE_MONEY" | "BANK_TRANSFER" | "CARD" | "CHEQUE" | "OTHER",
       reference: clean(formData.get("reference")),
       actorId: session?.user?.id,
+    });
+    await postModuleRevenue(tenant.organizationId, {
+      sourceModule: "fleet",
+      sourceType: "FLEET_PAYMENT",
+      sourceId: payment.id,
+      postingPurpose: "COLLECTED",
+      amount: payment.amount.toString(),
+      entryDate: payment.date,
+      description: `Work & Pay instalment recorded: ${contract.contractName}`,
+      createdById: session?.user?.id ?? null,
     });
   } catch (error) {
     if (error instanceof NotFoundError) redirect("/app/fleet/work-and-pay?error=not-found");

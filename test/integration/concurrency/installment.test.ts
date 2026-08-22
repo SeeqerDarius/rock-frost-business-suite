@@ -38,12 +38,13 @@ const PRODUCT_INPUT = {
 };
 
 async function openAccount() {
-  return installment.createAccount(org.organizationId, ORGANIZATION_SCOPE, {
+  const { account } = await installment.createAccount(org.organizationId, ORGANIZATION_SCOPE, {
     customerId: customer.id,
     productId: product.id,
     inventoryStaffId: staff.id,
     startDate: new Date("2026-01-01"),
   });
+  return account;
 }
 
 beforeAll(async () => {

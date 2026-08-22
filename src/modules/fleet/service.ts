@@ -1024,8 +1024,9 @@ export async function createFleetWorkAndPayContract(
         contractStatus: outstandingBalance.lessThanOrEqualTo(0) ? "COMPLETED" : "ACTIVE",
       },
     });
+    let depositPayment = null;
     if (depositAmount.greaterThan(0)) {
-      await tx.fleetPayment.create({
+      depositPayment = await tx.fleetPayment.create({
         data: {
           organizationId,
           reference: `WAP-DEP-${Date.now().toString(36).toUpperCase()}-${contract.id.slice(-5).toUpperCase()}`,
@@ -1040,7 +1041,7 @@ export async function createFleetWorkAndPayContract(
         },
       });
     }
-    return contract;
+    return { contract, depositPayment };
   });
 }
 
@@ -1117,7 +1118,7 @@ export async function recordFleetWorkAndPayPayment(organizationId: string, id: s
       entityId: ledgerPayment.id,
       metadata: { contractId: id, amount: amount.toFixed(2), paymentMethod: data.paymentMethod, resultingOutstandingBalance: finalContract.outstandingBalance.toString() },
     }, tx);
-    return finalContract;
+    return { contract: finalContract, payment: ledgerPayment };
   });
 }
 

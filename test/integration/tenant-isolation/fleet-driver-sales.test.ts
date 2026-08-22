@@ -155,7 +155,7 @@ describe("Fleet driver remittances and owner access (real Postgres)", () => {
     });
     const submission = await fleet.submitFleetDriverPayment(org.organizationId, driverUserId, {
       vehicleId: assignedVehicleId,
-      contractId: contract.id,
+      contractId: contract.contract.id,
       submissionType: "WORK_AND_PAY",
       periodStart: new Date("2026-08-17T00:00:00.000Z"),
       amount: "100.00",
@@ -165,7 +165,7 @@ describe("Fleet driver remittances and owner access (real Postgres)", () => {
     });
     expect(submission.periodEnd.toISOString()).toBe(submission.periodStart.toISOString());
     await fleet.reviewFleetDriverPaymentSubmission(org.organizationId, submission.id, org.userId, true);
-    const updated = await testDb.fleetWorkAndPayContract.findUnique({ where: { id: contract.id } });
+    const updated = await testDb.fleetWorkAndPayContract.findUnique({ where: { id: contract.contract.id } });
     expect(updated?.amountPaid.toString()).toBe("200");
     expect(updated?.outstandingBalance.toString()).toBe("800");
   });

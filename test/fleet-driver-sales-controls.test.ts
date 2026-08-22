@@ -60,6 +60,29 @@ describe("Fleet driver remittance controls", () => {
     expect(service).toContain("scheduledPaymentAmount");
   });
 
+  it("posts a driver-submitted remittance's revenue to Accounting once it's approved, and Work & Pay deposits/instalments too", () => {
+    const paymentsActions = read("src/app/app/fleet/payments/actions.ts");
+    const workAndPayActions = read("src/app/app/fleet/work-and-pay/actions.ts");
+    const service = read("src/modules/fleet/service.ts");
+    // Driver-submission approval: the code path that creates a VERIFIED
+    // fleetPayment outside the office-verified verifyPayment() flow — this
+    // used to update the Fleet dashboard total without ever reaching
+    // Accounting.
+    expect(paymentsActions).toContain("if (approved && submission.fleetPaymentId)");
+    expect(paymentsActions).toContain('sourceType: "FLEET_PAYMENT"');
+    // Work & Pay deposit at contract creation and office-recorded instalments
+    // are the other two silent gaps in the same class.
+    expect(workAndPayActions).toContain("if (depositPayment)");
+    expect(workAndPayActions).toContain("postModuleRevenue(tenant.organizationId, {");
+    expect(workAndPayActions).toContain("payment.id");
+    // service.ts now surfaces the created payment row on all three paths so
+    // the caller (which runs after the transaction commits, since
+    // postModuleRevenue can't nest inside another module's own
+    // db.$transaction) has what it needs to post.
+    expect(service).toContain("return { contract, depositPayment };");
+    expect(service).toContain("return { contract: finalContract, payment: ledgerPayment };");
+  });
+
   it("accepts only a bounded image with a real supported signature", async () => {
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
     const encoded = await fleetMaintenancePhotoData(new File([png], "fault.png", { type: "image/png" }));

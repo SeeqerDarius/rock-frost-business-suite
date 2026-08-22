@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => {
     reactivateAccount: vi.fn(),
     recordPayment: vi.fn(),
     updatePayment: vi.fn(),
+    deletePayment: vi.fn(),
     markCreditRefunded: vi.fn(),
     voidCredit: vi.fn(),
     applyCreditToAccount: vi.fn(),
@@ -24,6 +25,9 @@ const mocks = vi.hoisted(() => {
     logAuditEvent: vi.fn(),
     revalidatePath: vi.fn(),
     redirect: vi.fn(),
+    postModuleRevenue: vi.fn(),
+    postModuleRevenueRefund: vi.fn(),
+    reverseAllModuleRevenueForSource: vi.fn(),
   };
 });
 
@@ -54,6 +58,7 @@ vi.mock("@/modules/installment/service", () => ({
   reactivateAccount: mocks.reactivateAccount,
   recordPayment: mocks.recordPayment,
   updatePayment: mocks.updatePayment,
+  deletePayment: mocks.deletePayment,
   markCreditRefunded: mocks.markCreditRefunded,
   voidCredit: mocks.voidCredit,
   applyCreditToAccount: mocks.applyCreditToAccount,
@@ -76,10 +81,15 @@ vi.mock("@/lib/auth/verify-password", () => ({
 vi.mock("@/lib/audit", () => ({ logAuditEvent: mocks.logAuditEvent }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
+vi.mock("@/lib/accounting-integration", () => ({
+  postModuleRevenue: mocks.postModuleRevenue,
+  postModuleRevenueRefund: mocks.postModuleRevenueRefund,
+  reverseAllModuleRevenueForSource: mocks.reverseAllModuleRevenueForSource,
+}));
 
 const { upsertCustomer } = await import("@/app/app/installment/customers/actions");
 const { createInstallmentAccount } = await import("@/app/app/installment/accounts/actions");
-const { createPayment } = await import("@/app/app/installment/payments/actions");
+const { createPayment, editPayment, removePayment } = await import("@/app/app/installment/payments/actions");
 
 const ORG = "org-1";
 const TENANT = { organizationId: ORG, userId: "user-1" };
@@ -126,6 +136,10 @@ beforeEach(() => {
   mocks.redirect.mockImplementation((location: string) => {
     throw new RedirectSignal(location);
   });
+  mocks.postModuleRevenue.mockResolvedValue({ posted: true, journalEntryId: "journal-1" });
+  mocks.postModuleRevenueRefund.mockResolvedValue({ posted: true, journalEntryId: "journal-2" });
+  mocks.reverseAllModuleRevenueForSource.mockResolvedValue({ reversedCount: 1 });
+  mocks.verifyCurrentPassword.mockResolvedValue(true);
 });
 
 describe("installment Server Action ownership boundary", () => {
@@ -182,5 +196,106 @@ describe("installment Server Action ownership boundary", () => {
     );
     expect(mocks.logAuditEvent).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+});
+
+describe("installment Accounting integration wiring", () => {
+  it("posts the initial deposit to Accounting when an account is opened with one", async () => {
+    const depositPayment = { id: "payment-dep-1", amount: { toString: () => "50.00" }, paymentDate: new Date("2025-01-01"), receiptNo: "RCPT-1" };
+    mocks.createAccount.mockResolvedValue({ account: { id: "account-1" }, depositPayment });
+
+    const formData = accountForm();
+    formData.set("initialDeposit", "50.00");
+
+    await expectRedirect(createInstallmentAccount(formData), "/app/installment/accounts?saved=1");
+
+    expect(mocks.postModuleRevenue).toHaveBeenCalledWith(ORG, expect.objectContaining({
+      sourceModule: "installment",
+      sourceType: "INSTALLMENT_PAYMENT",
+      sourceId: "payment-dep-1",
+      postingPurpose: "COLLECTED",
+      amount: "50.00",
+    }));
+  });
+
+  it("does not call Accounting when an account is opened with no deposit", async () => {
+    mocks.createAccount.mockResolvedValue({ account: { id: "account-1" }, depositPayment: null });
+
+    await expectRedirect(createInstallmentAccount(accountForm()), "/app/installment/accounts?saved=1");
+
+    expect(mocks.postModuleRevenue).not.toHaveBeenCalled();
+  });
+
+  it("posts a positive adjustment when a payment's amount is edited upward, keyed uniquely per edit", async () => {
+    const updatedAt = new Date("2025-01-02T10:00:00.000Z");
+    mocks.updatePayment.mockResolvedValue({ payment: { id: "payment-1", receiptNo: "RCPT-1", updatedAt }, amountDelta: "25.00" });
+
+    const formData = new FormData();
+    formData.set("id", "payment-1");
+    formData.set("amount", "125.00");
+    formData.set("paymentDate", "2025-01-02");
+    formData.set("method", "Cash");
+
+    await expectRedirect(editPayment(formData), "/app/installment/payments?saved=1");
+
+    expect(mocks.postModuleRevenue).toHaveBeenCalledWith(ORG, expect.objectContaining({
+      sourceType: "INSTALLMENT_PAYMENT",
+      sourceId: "payment-1",
+      postingPurpose: `ADJUSTED_${updatedAt.getTime()}`,
+      amount: "25.00",
+    }));
+    expect(mocks.postModuleRevenueRefund).not.toHaveBeenCalled();
+  });
+
+  it("posts a compensating refund-shaped entry when a payment's amount is edited downward", async () => {
+    const updatedAt = new Date("2025-01-02T10:00:00.000Z");
+    mocks.updatePayment.mockResolvedValue({ payment: { id: "payment-1", receiptNo: "RCPT-1", updatedAt }, amountDelta: "-15.00" });
+
+    const formData = new FormData();
+    formData.set("id", "payment-1");
+    formData.set("amount", "85.00");
+    formData.set("paymentDate", "2025-01-02");
+    formData.set("method", "Cash");
+
+    await expectRedirect(editPayment(formData), "/app/installment/payments?saved=1");
+
+    expect(mocks.postModuleRevenueRefund).toHaveBeenCalledWith(ORG, expect.objectContaining({
+      sourceType: "INSTALLMENT_PAYMENT",
+      sourceId: "payment-1",
+      postingPurpose: `ADJUSTED_${updatedAt.getTime()}`,
+      amount: "15.00",
+    }));
+    expect(mocks.postModuleRevenue).not.toHaveBeenCalled();
+  });
+
+  it("does not touch Accounting when an edit changes only non-financial fields", async () => {
+    const updatedAt = new Date("2025-01-02T10:00:00.000Z");
+    mocks.updatePayment.mockResolvedValue({ payment: { id: "payment-1", receiptNo: "RCPT-1", updatedAt }, amountDelta: null });
+
+    const formData = new FormData();
+    formData.set("id", "payment-1");
+    formData.set("amount", "100.00");
+    formData.set("paymentDate", "2025-01-02");
+    formData.set("method", "Mobile Money");
+
+    await expectRedirect(editPayment(formData), "/app/installment/payments?saved=1");
+
+    expect(mocks.postModuleRevenue).not.toHaveBeenCalled();
+    expect(mocks.postModuleRevenueRefund).not.toHaveBeenCalled();
+  });
+
+  it("reverses every posted entry for a payment (original plus any adjustments) when it's deleted", async () => {
+    mocks.deletePayment.mockResolvedValue({ id: "payment-1", receiptNo: "RCPT-1", accountId: "account-1", amount: { toString: () => "100.00" } });
+
+    const formData = new FormData();
+    formData.set("id", "payment-1");
+    formData.set("confirmPassword", "correct-password");
+
+    await expectRedirect(removePayment(formData), "/app/installment/payments?saved=1");
+
+    expect(mocks.reverseAllModuleRevenueForSource).toHaveBeenCalledWith(ORG, expect.objectContaining({
+      sourceType: "INSTALLMENT_PAYMENT",
+      sourceId: "payment-1",
+    }));
   });
 });

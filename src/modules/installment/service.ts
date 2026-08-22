@@ -744,9 +744,10 @@ export async function createAccount(
         },
       });
 
+      let depositPayment = null;
       if (depositAmount.greaterThan(0) && receiptNo) {
         const nextBalance = Prisma.Decimal.max(new Prisma.Decimal(targetAmount).minus(depositAmount), 0);
-        await tx.hirePurchasePayment.create({
+        depositPayment = await tx.hirePurchasePayment.create({
           data: {
             organizationId,
             accountId: account.id,
@@ -767,7 +768,7 @@ export async function createAccount(
         });
       }
 
-      return account;
+      return { account, depositPayment };
     });
   });
 }
@@ -1119,6 +1120,15 @@ export async function updatePayment(
     if (updated.count !== 1) throw new NotFoundError("Record not found.");
 
     await recalculateAccountAfterPaymentChange(tx, organizationId, scope, payment.accountId);
+
+    // The original payment snapshot (pre-edit) and the signed amount delta,
+    // so the caller can post an amount-correction entry to Accounting — the
+    // originally-posted "COLLECTED" entry is never itself edited or
+    // reversed (this ledger's postings are immutable once posted; see
+    // docs/ACCOUNTING_MODULE.md's "Ledger foundation"), only corrected with
+    // a distinct compensating entry, same principle as a full reversal.
+    const amountDelta = amountChanged ? new Prisma.Decimal(data.amount).minus(payment.amount).toFixed(2) : null;
+    return { payment, amountDelta };
   });
 }
 

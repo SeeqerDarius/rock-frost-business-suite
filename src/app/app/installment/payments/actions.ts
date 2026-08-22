@@ -24,7 +24,7 @@ import {
 import { moneyAmount, shortText, longText, dateInput, parseWithSchema } from "@/lib/validation";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit";
-import { postModuleRevenue, reverseModuleRevenue } from "@/lib/accounting-integration";
+import { postModuleRevenue, postModuleRevenueRefund, reverseAllModuleRevenueForSource } from "@/lib/accounting-integration";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -167,12 +167,41 @@ export async function editPayment(formData: FormData): Promise<void> {
   }
 
   try {
-    await updatePayment(tenant.organizationId, scope, id, {
+    const { payment, amountDelta } = await updatePayment(tenant.organizationId, scope, id, {
       amount: parsed.data.amount,
       paymentDate: parsed.data.paymentDate,
       method: parsed.data.method,
       notes: parsed.data.notes ?? null,
     });
+    // The originally-posted "COLLECTED" entry is never itself edited or
+    // reversed here — only corrected with its own distinct entry, keyed
+    // uniquely per edit via the pre-edit updatedAt timestamp so repeated
+    // edits within the edit window each get their own correction rather
+    // than colliding on postSourceJournalEntry's source-identity uniqueness.
+    if (amountDelta && Number(amountDelta) !== 0) {
+      const session = await getServerAuthSession();
+      const adjustmentInput = {
+        sourceModule: "installment" as const,
+        sourceType: "INSTALLMENT_PAYMENT",
+        sourceId: payment.id,
+        postingPurpose: `ADJUSTED_${payment.updatedAt.getTime()}`,
+        entryDate: parsed.data.paymentDate,
+        createdById: session?.user?.id ?? null,
+      };
+      if (Number(amountDelta) > 0) {
+        await postModuleRevenue(tenant.organizationId, {
+          ...adjustmentInput,
+          amount: amountDelta,
+          description: `Installment payment receipt ${payment.receiptNo} amount corrected upward`,
+        });
+      } else {
+        await postModuleRevenueRefund(tenant.organizationId, {
+          ...adjustmentInput,
+          amount: Math.abs(Number(amountDelta)).toFixed(2),
+          description: `Installment payment receipt ${payment.receiptNo} amount corrected downward`,
+        });
+      }
+    }
   } catch (error) {
     if (error instanceof PaymentEditWindowError) {
       redirect("/app/installment/payments?error=edit-window");
@@ -302,7 +331,10 @@ export async function removePayment(formData: FormData): Promise<void> {
       action: "installment.payment.deleted", entityName: "HirePurchasePayment", entityId: id,
       metadata: { receiptNo: payment.receiptNo, accountId: payment.accountId, amount: payment.amount.toString() },
     });
-    await reverseModuleRevenue(tenant.organizationId, { sourceType: "INSTALLMENT_PAYMENT", sourceId: id, postingPurpose: "COLLECTED", reason: `Installment payment deleted: receipt ${payment.receiptNo}`, actorId: session.user.id });
+    // Reverses the original "COLLECTED" post and any amount-correction
+    // entries from editPayment() together, since deleting the payment
+    // undoes all revenue it ever contributed, not just the original post.
+    await reverseAllModuleRevenueForSource(tenant.organizationId, { sourceType: "INSTALLMENT_PAYMENT", sourceId: id, reason: `Installment payment deleted: receipt ${payment.receiptNo}`, actorId: session.user.id });
   } catch (error) {
     if (error instanceof PaymentCreditLockedError) redirect("/app/installment/payments?error=credit-locked");
     if (error instanceof NotFoundError) redirect("/app/installment/payments?error=not-found");

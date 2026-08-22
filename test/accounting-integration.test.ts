@@ -4,7 +4,7 @@ const mockDb = {
   organizationModule: { findFirst: vi.fn() },
   subscription: { findMany: vi.fn() },
   accountingAccount: { findFirst: vi.fn(), create: vi.fn(), findFirstOrThrow: vi.fn() },
-  accountingJournalEntry: { findFirst: vi.fn() },
+  accountingJournalEntry: { findFirst: vi.fn(), findMany: vi.fn() },
 };
 
 vi.mock("@/lib/db", () => ({ db: mockDb }));
@@ -193,5 +193,44 @@ describe("reverseModuleRevenue", () => {
   it("never throws on failure", async () => {
     mockDb.accountingJournalEntry.findFirst.mockRejectedValue(new Error("db unavailable"));
     await expect(integration.reverseModuleRevenue("org-1", { sourceType: "FLEET_PAYMENT", sourceId: "payment-1", postingPurpose: "COLLECTED", reason: "x" })).resolves.toEqual({ posted: false, reason: "error" });
+  });
+});
+
+describe("reverseAllModuleRevenueForSource", () => {
+  it("reverses every POSTED entry for the source regardless of postingPurpose", async () => {
+    mockDb.accountingJournalEntry.findMany.mockResolvedValue([
+      { id: "journal-1", postingPurpose: "COLLECTED" },
+      { id: "journal-2", postingPurpose: "ADJUSTED_1755800000000" },
+    ]);
+    mockAccounting.reverseJournalEntry.mockResolvedValue({ id: "reversal" });
+
+    const result = await integration.reverseAllModuleRevenueForSource("org-1", { sourceType: "INSTALLMENT_PAYMENT", sourceId: "payment-1", reason: "deleted", actorId: "user-1" });
+
+    expect(result).toEqual({ reversedCount: 2 });
+    expect(mockAccounting.reverseJournalEntry).toHaveBeenCalledTimes(2);
+    expect(mockAccounting.reverseJournalEntry).toHaveBeenCalledWith("org-1", "journal-1", expect.objectContaining({ reason: "deleted", actorId: "user-1" }));
+    expect(mockAccounting.reverseJournalEntry).toHaveBeenCalledWith("org-1", "journal-2", expect.objectContaining({ reason: "deleted", actorId: "user-1" }));
+  });
+
+  it("is a no-op returning reversedCount: 0 when nothing was ever posted for this source", async () => {
+    mockDb.accountingJournalEntry.findMany.mockResolvedValue([]);
+    const result = await integration.reverseAllModuleRevenueForSource("org-1", { sourceType: "INSTALLMENT_PAYMENT", sourceId: "payment-1", reason: "deleted" });
+    expect(result).toEqual({ reversedCount: 0 });
+    expect(mockAccounting.reverseJournalEntry).not.toHaveBeenCalled();
+  });
+
+  it("continues reversing remaining entries and excludes only the failed one from the count if one reversal throws", async () => {
+    mockDb.accountingJournalEntry.findMany.mockResolvedValue([
+      { id: "journal-1", postingPurpose: "COLLECTED" },
+      { id: "journal-2", postingPurpose: "ADJUSTED_1" },
+    ]);
+    mockAccounting.reverseJournalEntry
+      .mockRejectedValueOnce(new Error("already reversed"))
+      .mockResolvedValueOnce({ id: "reversal-2" });
+
+    const result = await integration.reverseAllModuleRevenueForSource("org-1", { sourceType: "INSTALLMENT_PAYMENT", sourceId: "payment-1", reason: "deleted" });
+
+    expect(result).toEqual({ reversedCount: 1 });
+    expect(mockAccounting.reverseJournalEntry).toHaveBeenCalledTimes(2);
   });
 });

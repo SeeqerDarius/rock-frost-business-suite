@@ -230,3 +230,33 @@ export async function reverseModuleRevenue(organizationId: string, input: { sour
     return { posted: false, reason: "error" };
   }
 }
+
+/**
+ * Reverses every currently-POSTED entry for a source record, regardless of
+ * postingPurpose — for a module (e.g. Installment's editable payments) where
+ * a single source record can accumulate more than one posted entry over its
+ * life (the original "COLLECTED" post plus any later amount-correction
+ * entries, each under its own postingPurpose since postSourceJournalEntry's
+ * organizationId+sourceType+sourceId+postingPurpose uniqueness means a
+ * correction can never reuse the original's purpose — see postModuleRevenue
+ * call sites that post amount-correction deltas). Use this instead of
+ * reverseModuleRevenue when the whole source record is being deleted, so
+ * nothing it ever posted is left standing. A no-op (not an error) if
+ * nothing was ever posted for this source.
+ */
+export async function reverseAllModuleRevenueForSource(organizationId: string, input: { sourceType: string; sourceId: string; reason: string; actorId?: string | null }): Promise<{ reversedCount: number }> {
+  const entries = await db.accountingJournalEntry.findMany({
+    where: { organizationId, sourceType: input.sourceType, sourceId: input.sourceId, status: "POSTED" },
+    select: { id: true, postingPurpose: true },
+  });
+  let reversedCount = 0;
+  for (const entry of entries) {
+    try {
+      await reverseJournalEntry(organizationId, entry.id, { entryDate: new Date(), reason: input.reason, actorId: input.actorId });
+      reversedCount++;
+    } catch (error) {
+      console.error("[accounting-integration] Failed to reverse one of a source's module revenue entries:", { organizationId, sourceType: input.sourceType, sourceId: input.sourceId, postingPurpose: entry.postingPurpose, error });
+    }
+  }
+  return { reversedCount };
+}
