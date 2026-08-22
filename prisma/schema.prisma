@@ -125,6 +125,11 @@ enum SubscriptionStatus {
   CANCELLED
 }
 
+enum SubscriptionPaymentStatus {
+  SUCCESS
+  FAILED
+}
+
 enum FleetVehicleStatus {
   AVAILABLE
   ASSIGNED
@@ -528,6 +533,7 @@ model Organization {
   moduleRequests                  ModuleRequest[]
   contactSubmissions              ContactSubmission[]
   subscriptions                   Subscription[]
+  subscriptionPayments            SubscriptionPayment[]
   deletionRequestedBy             User?                            @relation("OrganizationDeletionRequestedBy", fields: [deletionRequestedById], references: [id], onDelete: SetNull)
   hospitalFacilities              HospitalFacility[]
   hospitalDepartments             HospitalDepartment[]
@@ -1044,41 +1050,73 @@ model ContactSubmission {
 }
 
 model Subscription {
-  id                  String                  @id @default(cuid())
-  organizationId      String
-  moduleId            String
-  moduleRequestId     String?                 @unique
-  contactSubmissionId String?                 @unique
-  mode                SubscriptionMode
-  status              SubscriptionStatus      @default(PENDING_PAYMENT)
-  durationMonths      Int
-  amount              Decimal                 @db.Decimal(18, 2)
-  currency            String                  @default("GHS")
-  startsAt            DateTime?
-  endsAt              DateTime?
-  autoRenew           Boolean                 @default(false)
-  seatLimit           Int?
-  paymentReference    String?
-  paymentMethod       String?
-  gatewayProvider     PaymentGatewayProvider?
-  paidAt              DateTime?
-  notes               String?                 @db.Text
-  createdById         String
-  activatedById       String?
-  createdAt           DateTime                @default(now())
-  updatedAt           DateTime                @updatedAt
+  id                         String                  @id @default(cuid())
+  organizationId             String
+  moduleId                   String
+  moduleRequestId            String?                 @unique
+  contactSubmissionId        String?                 @unique
+  mode                       SubscriptionMode
+  status                     SubscriptionStatus      @default(PENDING_PAYMENT)
+  durationMonths             Int
+  amount                     Decimal                 @db.Decimal(18, 2)
+  currency                   String                  @default("GHS")
+  startsAt                   DateTime?
+  endsAt                     DateTime?
+  autoRenew                  Boolean                 @default(false)
+  seatLimit                  Int?
+  paymentReference           String?
+  paymentMethod              String?
+  gatewayProvider            PaymentGatewayProvider?
+  paidAt                     DateTime?
+  paystackPlanCode           String?                 @unique
+  paystackSubscriptionCode   String?                 @unique
+  paystackCustomerCode       String?
+  paystackEmailToken         String?
+  paystackNextPaymentAt      DateTime?
+  paystackSubscriptionStatus String?
+  lastRenewalAt              DateTime?
+  lastPaymentFailureAt       DateTime?
+  renewalFailureCount        Int                     @default(0)
+  notes                      String?                 @db.Text
+  createdById                String
+  activatedById              String?
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
 
-  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  module            Module             @relation(fields: [moduleId], references: [id], onDelete: Restrict)
-  moduleRequest     ModuleRequest?     @relation(fields: [moduleRequestId], references: [id], onDelete: SetNull)
-  contactSubmission ContactSubmission? @relation(fields: [contactSubmissionId], references: [id], onDelete: SetNull)
-  createdBy         User               @relation("SubscriptionsCreated", fields: [createdById], references: [id], onDelete: Restrict)
-  activatedBy       User?              @relation("SubscriptionsActivated", fields: [activatedById], references: [id], onDelete: SetNull)
+  organization      Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  module            Module                @relation(fields: [moduleId], references: [id], onDelete: Restrict)
+  moduleRequest     ModuleRequest?        @relation(fields: [moduleRequestId], references: [id], onDelete: SetNull)
+  contactSubmission ContactSubmission?    @relation(fields: [contactSubmissionId], references: [id], onDelete: SetNull)
+  createdBy         User                  @relation("SubscriptionsCreated", fields: [createdById], references: [id], onDelete: Restrict)
+  activatedBy       User?                 @relation("SubscriptionsActivated", fields: [activatedById], references: [id], onDelete: SetNull)
+  payments          SubscriptionPayment[]
 
   @@index([organizationId, status])
   @@index([moduleId, status])
   @@index([endsAt])
   @@index([gatewayProvider, paymentReference])
+}
+
+model SubscriptionPayment {
+  id               String                    @id @default(cuid())
+  organizationId   String
+  subscriptionId   String
+  gatewayProvider  PaymentGatewayProvider
+  paymentReference String
+  invoiceCode      String?
+  status           SubscriptionPaymentStatus
+  amount           Decimal                   @db.Decimal(18, 2)
+  currency         String
+  paidAt           DateTime?
+  failureReason    String?
+  createdAt        DateTime                  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([gatewayProvider, paymentReference])
+  @@index([organizationId, createdAt])
+  @@index([subscriptionId, createdAt])
 }
 
 model Notification {

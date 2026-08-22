@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
 
 const tx = {
-  subscription: { findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn(() => []) },
+  subscription: { findFirst: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn(), findMany: vi.fn(() => []) },
+  subscriptionPayment: { findUnique: vi.fn(), upsert: vi.fn() },
   organization: { update: vi.fn() },
   // organizationModule.findFirst defaults to null so ensureRevenueAccountsForOrg's
   // own isModuleActiveForOrg("accounting") check no-ops immediately — these
@@ -12,6 +13,7 @@ const tx = {
   moduleRequest: { update: vi.fn() },
   organizationMember: { findMany: vi.fn() },
   notification: { createMany: vi.fn() },
+  $executeRaw: vi.fn(),
 };
 const mockDb = {
   subscription: { findFirst: vi.fn(), updateMany: vi.fn() },
@@ -46,6 +48,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockDb.user.findUnique.mockResolvedValue({ email: "owner@example.com" });
   tx.organizationMember.findMany.mockResolvedValue([{ userId: "owner-1" }]);
+  tx.subscriptionPayment.findUnique.mockResolvedValue(null);
+  tx.subscription.findUniqueOrThrow.mockImplementation(async () => tx.subscription.findFirst());
 });
 
 describe("initiateGatewayPayment", () => {
@@ -70,7 +74,7 @@ describe("initiateGatewayPayment", () => {
     }));
     expect(mockDb.subscription.updateMany).toHaveBeenCalledWith({
       where: { id: "subscription-1", status: "PENDING_PAYMENT" },
-      data: { paymentReference: "sub_subscription-1_xyz", gatewayProvider: "PAYSTACK" },
+      data: { paymentReference: "sub_subscription-1_xyz", gatewayProvider: "PAYSTACK", paystackPlanCode: undefined },
     });
   });
 
@@ -123,6 +127,7 @@ describe("initiateGatewayPayment", () => {
 describe("activateSubscriptionFromGateway", () => {
   it("activates a pending subscription once the verified amount/currency match", async () => {
     tx.subscription.findFirst.mockResolvedValue(baseSubscription());
+    tx.subscription.findUniqueOrThrow.mockResolvedValue(baseSubscription());
     tx.subscription.update.mockResolvedValue({ id: "subscription-1", status: "ACTIVE" });
 
     await activateSubscriptionFromGateway({
@@ -151,6 +156,7 @@ describe("activateSubscriptionFromGateway", () => {
 
   it("is idempotent — a second call against an already-ACTIVE subscription is a no-op", async () => {
     tx.subscription.findFirst.mockResolvedValue(baseSubscription({ status: "ACTIVE" }));
+    tx.subscription.findUniqueOrThrow.mockResolvedValue(baseSubscription({ status: "ACTIVE" }));
 
     const result = await activateSubscriptionFromGateway({
       reference: "sub_subscription-1_xyz",
@@ -166,6 +172,7 @@ describe("activateSubscriptionFromGateway", () => {
 
   it("rejects a verified amount that does not match the subscription's stored amount", async () => {
     tx.subscription.findFirst.mockResolvedValue(baseSubscription());
+    tx.subscription.findUniqueOrThrow.mockResolvedValue(baseSubscription());
 
     await expect(
       activateSubscriptionFromGateway({

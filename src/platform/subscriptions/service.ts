@@ -5,12 +5,26 @@ import { Prisma, type Subscription } from "@prisma/client";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 import { initializeTransaction, type GatewayProvider } from "@/lib/payments";
+import { createPlan as createPaystackPlan, disableSubscription as disablePaystackSubscription, getSubscriptionManagementLink } from "@/lib/payments/paystack";
 import { ensureRevenueAccountsForOrg } from "@/lib/accounting-integration";
 
 const AWAITING_ACTIVATION_STATUSES = ["DRAFT", "PENDING_PAYMENT", "PAST_DUE"] as const;
 
 type Tx = Prisma.TransactionClient;
 type SubscriptionRow = Subscription;
+
+const PAYSTACK_INTERVAL_BY_MONTHS = {
+  1: "monthly",
+  3: "quarterly",
+  6: "biannually",
+  12: "annually",
+} as const;
+
+function addSubscriptionTerm(from: Date, durationMonths: number) {
+  const end = new Date(from);
+  end.setUTCMonth(end.getUTCMonth() + durationMonths);
+  return end;
+}
 
 /**
  * The shared "payment confirmed, grant access" tail shared by the manual
@@ -25,8 +39,7 @@ async function finalizeActivation(
   input: { paymentReference: string; paymentMethod: string; activatedById: string | null; startsAt?: Date },
 ) {
   const startsAt = input.startsAt ?? new Date();
-  const endsAt = new Date(startsAt);
-  endsAt.setUTCMonth(endsAt.getUTCMonth() + current.durationMonths);
+  const endsAt = addSubscriptionTerm(startsAt, current.durationMonths);
 
   const subscription = await tx.subscription.update({
     where: { id: current.id },
@@ -220,18 +233,30 @@ export async function initiateGatewayPayment(input: {
   if (!payer?.email) throw new Error("Payer email not found.");
 
   const reference = `sub_${current.id}_${randomBytes(6).toString("hex")}`;
+  let paystackPlanCode = current.paystackPlanCode;
+  if (input.provider === "PAYSTACK" && current.autoRenew) {
+    const interval = PAYSTACK_INTERVAL_BY_MONTHS[current.durationMonths as keyof typeof PAYSTACK_INTERVAL_BY_MONTHS];
+    if (!interval) throw new Error("Automatic Paystack renewal supports 1, 3, 6, or 12-month billing terms.");
+    paystackPlanCode ??= await createPaystackPlan({
+      name: `Rock Frost ${current.id}`,
+      amount: current.amount.toFixed(2),
+      currency: current.currency,
+      interval,
+    });
+  }
   const result = await initializeTransaction(input.provider, {
     reference,
     amount: current.amount.toFixed(2),
     currency: current.currency,
     customerEmail: payer.email,
     callbackUrl: input.callbackUrl,
+    planCode: input.provider === "PAYSTACK" ? paystackPlanCode ?? undefined : undefined,
     metadata: { subscriptionId: current.id, organizationId: current.organizationId },
   });
 
   const stamped = await db.subscription.updateMany({
     where: { id: current.id, status: current.status },
-    data: { paymentReference: result.reference, gatewayProvider: input.provider },
+    data: { paymentReference: result.reference, gatewayProvider: input.provider, paystackPlanCode },
   });
   if (stamped.count === 0) throw new Error("Subscription status changed before payment could be initiated.");
 
@@ -263,28 +288,259 @@ export async function activateSubscriptionFromGateway(input: {
   verifiedCurrency: string;
 }) {
   return db.$transaction(async (tx) => {
-    const current = await tx.subscription.findFirst({
+    let current = await tx.subscription.findFirst({
       where: { paymentReference: input.reference, gatewayProvider: input.provider },
     });
     if (!current) throw new Error("Subscription not found for this payment reference.");
-    if (current.status === "ACTIVE") return current;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`subscription-payment:${current.id}`}))`;
+    current = await tx.subscription.findUniqueOrThrow({ where: { id: current.id } });
+    const existingPayment = await tx.subscriptionPayment.findUnique({
+      where: { gatewayProvider_paymentReference: { gatewayProvider: input.provider, paymentReference: input.reference } },
+    });
+    if (existingPayment && current.status === "ACTIVE") return current;
     if (!AWAITING_ACTIVATION_STATUSES.includes(current.status as (typeof AWAITING_ACTIVATION_STATUSES)[number])) {
-      throw new Error("Subscription is not awaiting activation.");
+      if (current.status !== "ACTIVE") throw new Error("Subscription is not awaiting activation.");
     }
 
     if (input.verifiedAmount !== current.amount.toFixed(2) || input.verifiedCurrency !== current.currency) {
       throw new Error("Verified payment amount/currency does not match the subscription.");
     }
 
-    return finalizeActivation(tx, current, {
+    const subscription = current.status === "ACTIVE" ? current : await finalizeActivation(tx, current, {
       paymentReference: input.reference,
       paymentMethod: input.provider,
       activatedById: null,
     });
+    await tx.subscriptionPayment.upsert({
+      where: { gatewayProvider_paymentReference: { gatewayProvider: input.provider, paymentReference: input.reference } },
+      update: {},
+      create: {
+        organizationId: current.organizationId,
+        subscriptionId: current.id,
+        gatewayProvider: input.provider,
+        paymentReference: input.reference,
+        status: "SUCCESS",
+        amount: input.verifiedAmount,
+        currency: input.verifiedCurrency,
+        paidAt: new Date(),
+      },
+    });
+    return subscription;
   });
 }
 
+export async function registerPaystackSubscription(input: {
+  planCode: string;
+  subscriptionCode: string;
+  emailToken?: string | null;
+  customerCode?: string | null;
+  nextPaymentAt?: Date | null;
+  status?: string | null;
+}) {
+  const result = await db.subscription.updateMany({
+    where: { paystackPlanCode: input.planCode, gatewayProvider: "PAYSTACK" },
+    data: {
+      paystackSubscriptionCode: input.subscriptionCode,
+      paystackEmailToken: input.emailToken ?? null,
+      paystackCustomerCode: input.customerCode ?? null,
+      paystackNextPaymentAt: input.nextPaymentAt ?? null,
+      paystackSubscriptionStatus: input.status ?? "active",
+    },
+  });
+  if (result.count !== 1) {
+    throw new Error("No unique Paystack subscription matched the recurring plan code.");
+  }
+  return result;
+}
+
+export async function processPaystackRenewal(input: {
+  subscriptionCode: string;
+  reference: string;
+  amount: string;
+  currency: string;
+  paidAt?: Date | null;
+  nextPaymentAt?: Date | null;
+}) {
+  return db.$transaction(async (tx) => {
+    let current = await tx.subscription.findUnique({ where: { paystackSubscriptionCode: input.subscriptionCode } });
+    if (!current) throw new Error("Subscription not found for Paystack subscription code.");
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`subscription-renewal:${current.id}`}))`;
+    current = await tx.subscription.findUniqueOrThrow({ where: { id: current.id } });
+    const existing = await tx.subscriptionPayment.findUnique({
+      where: { gatewayProvider_paymentReference: { gatewayProvider: "PAYSTACK", paymentReference: input.reference } },
+    });
+    if (existing) return current;
+    if (!current.autoRenew) throw new Error("Automatic renewal is disabled for this subscription.");
+    if (input.amount !== current.amount.toFixed(2) || input.currency !== current.currency) {
+      throw new Error("Verified renewal amount/currency does not match the subscription.");
+    }
+    const paidAt = input.paidAt ?? new Date();
+    const renewalBase = current.endsAt && current.endsAt > paidAt ? current.endsAt : paidAt;
+    const endsAt = addSubscriptionTerm(renewalBase, current.durationMonths);
+    const updated = await tx.subscription.update({
+      where: { id: current.id },
+      data: {
+        status: "ACTIVE",
+        startsAt: current.startsAt ?? paidAt,
+        endsAt,
+        paidAt,
+        lastRenewalAt: paidAt,
+        paymentReference: input.reference,
+        paymentMethod: "PAYSTACK",
+        paystackNextPaymentAt: input.nextPaymentAt ?? null,
+        paystackSubscriptionStatus: "active",
+        lastPaymentFailureAt: null,
+        renewalFailureCount: 0,
+      },
+    });
+    await tx.subscriptionPayment.create({
+      data: {
+        organizationId: current.organizationId,
+        subscriptionId: current.id,
+        gatewayProvider: "PAYSTACK",
+        paymentReference: input.reference,
+        status: "SUCCESS",
+        amount: input.amount,
+        currency: input.currency,
+        paidAt,
+      },
+    });
+    await tx.organizationModule.updateMany({
+      where: { organizationId: current.organizationId, moduleId: current.moduleId },
+      data: { enabled: true, enabledAt: paidAt },
+    });
+    await logAuditEvent({
+      organizationId: current.organizationId,
+      module: "platform",
+      action: "subscription.renewed",
+      entityName: "Subscription",
+      entityId: current.id,
+      metadata: { provider: "PAYSTACK", reference: input.reference, endsAt: endsAt.toISOString() },
+    }, tx);
+    return updated;
+  });
+}
+
+export async function recordPaystackRenewalFailure(input: {
+  subscriptionCode: string;
+  reference: string;
+  invoiceCode?: string | null;
+  amount: string;
+  currency: string;
+  reason?: string | null;
+}) {
+  return db.$transaction(async (tx) => {
+    const current = await tx.subscription.findUnique({ where: { paystackSubscriptionCode: input.subscriptionCode } });
+    if (!current) throw new Error("Subscription not found for Paystack subscription code.");
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`subscription-renewal:${current.id}`}))`;
+    const existing = await tx.subscriptionPayment.findUnique({
+      where: { gatewayProvider_paymentReference: { gatewayProvider: "PAYSTACK", paymentReference: input.reference } },
+    });
+    if (existing) return current;
+    await tx.subscriptionPayment.upsert({
+      where: { gatewayProvider_paymentReference: { gatewayProvider: "PAYSTACK", paymentReference: input.reference } },
+      update: {},
+      create: {
+        organizationId: current.organizationId,
+        subscriptionId: current.id,
+        gatewayProvider: "PAYSTACK",
+        paymentReference: input.reference,
+        invoiceCode: input.invoiceCode ?? null,
+        status: "FAILED",
+        amount: input.amount,
+        currency: input.currency,
+        failureReason: input.reason ?? "Paystack renewal payment failed",
+      },
+    });
+    const updated = await tx.subscription.update({
+      where: { id: current.id },
+      data: {
+        status: "PAST_DUE",
+        paystackSubscriptionStatus: "attention",
+        lastPaymentFailureAt: new Date(),
+        renewalFailureCount: { increment: 1 },
+      },
+    });
+    await tx.organizationModule.updateMany({
+      where: { organizationId: current.organizationId, moduleId: current.moduleId },
+      data: { enabled: false },
+    });
+    await tx.notification.createMany({
+      data: (await tx.organizationMember.findMany({
+        where: { organizationId: current.organizationId, status: "ACTIVE" },
+        select: { userId: true },
+      })).map(({ userId }) => ({
+        organizationId: current.organizationId,
+        userId,
+        type: "SUBSCRIPTION_RENEWAL_FAILED",
+        title: "Subscription renewal payment failed",
+        message: "Module access is paused until payment is completed or the Paystack payment card is updated.",
+        status: "QUEUED" as const,
+        metadata: { subscriptionId: current.id, moduleId: current.moduleId, provider: "PAYSTACK" },
+      })),
+    });
+    await logAuditEvent({
+      organizationId: current.organizationId,
+      module: "platform",
+      action: "subscription.renewal_failed",
+      entityName: "Subscription",
+      entityId: current.id,
+      status: "FAILURE",
+      metadata: { provider: "PAYSTACK", reference: input.reference, invoiceCode: input.invoiceCode ?? null },
+    }, tx);
+    return updated;
+  });
+}
+
+export async function updatePaystackSubscriptionState(input: { subscriptionCode: string; status: string; nextPaymentAt?: Date | null }) {
+  return db.subscription.update({
+    where: { paystackSubscriptionCode: input.subscriptionCode },
+    data: {
+      paystackSubscriptionStatus: input.status,
+      paystackNextPaymentAt: input.nextPaymentAt ?? null,
+      ...(input.status === "non-renewing" || input.status === "complete" || input.status === "cancelled" ? { autoRenew: false } : {}),
+    },
+  });
+}
+
+export async function getPaystackManagementLinkForOrganization(subscriptionId: string, organizationId: string) {
+  const subscription = await db.subscription.findFirst({
+    where: { id: subscriptionId, organizationId, gatewayProvider: "PAYSTACK", autoRenew: true },
+    select: { paystackSubscriptionCode: true },
+  });
+  if (!subscription?.paystackSubscriptionCode) throw new Error("Paystack recurring subscription is not active yet.");
+  return getSubscriptionManagementLink(subscription.paystackSubscriptionCode);
+}
+
+export async function cancelPaystackAutomaticRenewal(subscriptionId: string, organizationId: string, actorId: string) {
+  const current = await db.subscription.findFirst({ where: { id: subscriptionId, organizationId, gatewayProvider: "PAYSTACK" } });
+  if (!current?.paystackSubscriptionCode || !current.paystackEmailToken) throw new Error("Paystack recurring subscription is not active yet.");
+  await disablePaystackSubscription(current.paystackSubscriptionCode, current.paystackEmailToken);
+  const updated = await db.subscription.update({
+    where: { id: current.id },
+    data: { autoRenew: false, paystackSubscriptionStatus: "non-renewing" },
+  });
+  await logAuditEvent({
+    organizationId,
+    userId: actorId,
+    module: "platform",
+    action: "subscription.auto_renew_cancelled",
+    entityName: "Subscription",
+    entityId: current.id,
+    metadata: { provider: "PAYSTACK" },
+  });
+  return updated;
+}
+
 export async function cancelSubscription(input: { subscriptionId: string; actorId: string }) {
+  const gatewaySubscription = await db.subscription.findUnique({ where: { id: input.subscriptionId } });
+  if (!gatewaySubscription) throw new Error("Subscription not found.");
+  if (gatewaySubscription.autoRenew && gatewaySubscription.gatewayProvider === "PAYSTACK") {
+    if (!gatewaySubscription.paystackSubscriptionCode || !gatewaySubscription.paystackEmailToken) {
+      throw new Error("Paystack automatic renewal is not fully registered. Cancel it from Paystack before cancelling local access.");
+    }
+    await disablePaystackSubscription(gatewaySubscription.paystackSubscriptionCode, gatewaySubscription.paystackEmailToken);
+  }
   return db.$transaction(async (tx) => {
     const current = await tx.subscription.findUnique({ where: { id: input.subscriptionId } });
     if (!current) throw new Error("Subscription not found.");

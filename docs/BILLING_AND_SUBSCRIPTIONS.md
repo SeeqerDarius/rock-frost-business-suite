@@ -80,6 +80,18 @@ Provider credentials are documented in `.env.example`
 `FLUTTERWAVE_SECRET_KEY`/`FLUTTERWAVE_PUBLIC_KEY`/`FLUTTERWAVE_WEBHOOK_HASH`)
 and remain optional — the gateway is simply unavailable until set.
 
+### Paystack automatic renewal
+
+`PLATFORM_MANAGED` subscriptions with `autoRenew` enabled use Paystack recurring card billing for supported contract terms. The application creates a dedicated Paystack plan for the stored agreement amount and currency, then includes that plan in the customer's first hosted checkout. Supported recurring terms are 1 month, 3 months, 6 months, and 12 months, matching Paystack's monthly, quarterly, biannual, and annual intervals. The stored agreement remains authoritative. Existing subscriptions are never repriced from the current public catalogue.
+
+The signed Paystack webhook stores the provider plan, customer, subscription, email-token, status, and next-payment identifiers without storing card numbers or authorization secrets. Successful renewal charges are verified server-to-server, recorded once in `SubscriptionPayment`, and extend access by the subscription's stored duration. A PostgreSQL advisory transaction lock and the unique provider/reference constraint make webhook replays and concurrent callback delivery idempotent.
+
+Paystack does not retry failed subscription charges. An `invoice.payment_failed` event is therefore recorded once, moves the subscription to `PAST_DUE`, pauses only the affected module, and exposes a payment-management path to organization administrators. Successful later payment reactivates the module and clears the failure counter. Tenant administrators can open Paystack's hosted card-management page or cancel future renewal. Cancelling renewal does not end already-paid access; it remains available until the stored end date.
+
+Paystack recurring subscriptions currently support cards for Ghana. Direct Debit recurring subscriptions are provider-limited to Nigeria. Mobile Money can still be used for supported one-time checkout, but it is not represented as an automatically reusable Ghana subscription authorization in this implementation.
+
+Production must define `PAYSTACK_SECRET_KEY` and `PAYSTACK_PUBLIC_KEY` in Vercel and configure Paystack's live webhook URL as `https://app.rockfrostgroup.com/api/payments/paystack/webhook`. The secret key is server-only. Never expose it in client code, logs, screenshots, source control, or support messages.
+
 **Reference/idempotency model.** `Subscription.paymentReference` is written
 twice, not once: at **initiation** (`initiateGatewayPayment()` in
 `src/platform/subscriptions/service.ts`), our own generated reference

@@ -18,6 +18,57 @@ function fromSubunits(subunits: number): string {
   return (subunits / 100).toFixed(2);
 }
 
+async function paystackRequest(path: string, init: RequestInit = {}) {
+  const secretKey = getSecretKey();
+  if (!secretKey) throw new Error("Paystack is not configured (PAYSTACK_SECRET_KEY unset).");
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...init.headers,
+    },
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok || !body?.status) {
+    throw new Error(`Paystack request failed: ${body?.message ?? response.statusText}`);
+  }
+  return body.data;
+}
+
+export type PaystackPlanInterval = "monthly" | "quarterly" | "biannually" | "annually";
+
+export async function createPlan(input: { name: string; amount: string; currency: string; interval: PaystackPlanInterval }): Promise<string> {
+  const data = await paystackRequest("/plan", {
+    method: "POST",
+    body: JSON.stringify({
+      name: input.name,
+      amount: toSubunits(input.amount),
+      currency: input.currency,
+      interval: input.interval,
+      invoice_limit: 0,
+      send_invoices: true,
+      send_sms: false,
+      description: "Rock Frost Business Suite automatic module renewal",
+    }),
+  });
+  if (!data?.plan_code) throw new Error("Paystack plan creation did not return a plan code.");
+  return String(data.plan_code);
+}
+
+export async function getSubscriptionManagementLink(subscriptionCode: string): Promise<string> {
+  const data = await paystackRequest(`/subscription/${encodeURIComponent(subscriptionCode)}/manage/link`);
+  if (!data?.link) throw new Error("Paystack did not return a subscription management link.");
+  return String(data.link);
+}
+
+export async function disableSubscription(code: string, token: string): Promise<void> {
+  await paystackRequest("/subscription/disable", {
+    method: "POST",
+    body: JSON.stringify({ code, token }),
+  });
+}
+
 export async function initializeTransaction(input: InitializeTransactionInput): Promise<InitializeTransactionResult> {
   const secretKey = getSecretKey();
   if (!secretKey) throw new Error("Paystack is not configured (PAYSTACK_SECRET_KEY unset).");
@@ -34,6 +85,7 @@ export async function initializeTransaction(input: InitializeTransactionInput): 
       email: input.customerEmail,
       currency: input.currency,
       callback_url: input.callbackUrl,
+      ...(input.planCode ? { plan: input.planCode } : {}),
       metadata: input.metadata ?? {},
     }),
   });

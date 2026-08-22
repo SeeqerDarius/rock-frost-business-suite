@@ -1,5 +1,17 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-22: Paystack automatic subscription renewal
+
+Paystack-backed `PLATFORM_MANAGED` agreements can now become genuine recurring card subscriptions when `autoRenew` is enabled. The first checkout creates and uses a dedicated plan for the stored amount, currency, and supported 1, 3, 6, or 12-month interval. Signed webhook events register the Paystack subscription, verify every successful charge server-to-server, extend access exactly once, record immutable payment history, pause the affected module after a non-retried failed renewal, and track cancellation or non-renewing state. Tenant billing now displays recent payments, next-payment state, Paystack's hosted card-management link, and automatic-renewal cancellation that preserves the already-paid access period.
+
+Schema migration `20260822233000_paystack_recurring_subscriptions` adds provider identifiers and renewal state to `Subscription`, plus the tenant-owned `SubscriptionPayment` ledger with a unique provider/reference idempotency constraint. No card number, PIN, reusable authorization code, or secret API key is stored. Important files include `prisma/schema.prisma`, the migration, `src/lib/payments/paystack.ts`, `src/platform/subscriptions/service.ts`, the Paystack webhook route, organization Billing actions/page, and Paystack unit and real-PostgreSQL integration tests.
+
+Pre-release validation: Prisma format, validation, and client generation passed. TypeScript and ESLint passed with zero errors. The full mocked suite passed 84 files and 519 tests, including the signed-webhook and provider-client coverage. Migration `20260822233000_paystack_recurring_subscriptions` applied to isolated Neon branch `test/codex-paystack-recurring`, where all 3 real-PostgreSQL renewal, replay-idempotency, amount-validation, failed-payment, notification, and module-suspension tests passed. The Next.js production build compiled successfully and generated all 208 static pages. Remaining release steps are live webhook configuration verification, commit/push/deployment, production migration and health verification, and the runtime error scan.
+
+## 2026-08-22: Work & Pay assigned-driver production release
+
+Release commit `d970651` was fast-forwarded to `main`. Vercel production deployment `dpl_LBNyqhRbuGZVa8j9EDotYkJZ6S9e` reached READY and ran migration `20260821213000_fleet_work_pay_driver_link` before building. It is aliased to the Rock Frost production domains. Post-deploy `/api/health` returned HTTP 200 with `database: reachable`, and the deployment error scan returned no runtime logs. The isolated Neon test branch `test/codex-fleet-work-pay-driver-link` was deleted after validation.
+
 ## 2026-08-22: Closed every remaining gap between a module's total revenue and what Accounting sees
 
 - **User's question that drove this**: after the eager-provisioning fix below, the user asked whether a driver recording a sale (and the Fleet dashboard total changing) would now reflect in Accounts. It did not — Fleet driver-submission approval is a separate code path from the office-verified-payment path the original integration wired, so a real, undocumented gap existed. The user then restated the actual requirement directly: "the total revenue of a module should reflect in the accounts module" — confirmed as the correct framing (matches how QuickBooks/Xero/NetSuite reconcile a module's own ledger to the GL), and audited accordingly rather than just patching the one Fleet case reported.

@@ -11,6 +11,8 @@ export interface InitializeTransactionInput {
   customerEmail: string;
   /** Where the gateway redirects the browser back to after checkout. */
   callbackUrl: string;
+  /** Paystack plan code. When present, successful checkout creates a recurring card subscription. */
+  planCode?: string;
   metadata?: Record<string, unknown>;
 }
 

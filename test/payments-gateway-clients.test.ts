@@ -30,13 +30,37 @@ describe("Paystack client", () => {
       currency: "GHS",
       customerEmail: "owner@example.com",
       callbackUrl: "https://app.example.com/callback",
+      planCode: "PLN_monthly",
     });
 
     expect(result).toEqual({ checkoutUrl: "https://checkout.paystack.com/abc", reference: "ref-1" });
     const [, options] = fetchMock.mock.calls[0];
     const body = JSON.parse(options.body);
     expect(body.amount).toBe(120050);
+    expect(body.plan).toBe("PLN_monthly");
     expect(options.headers.Authorization).toBe("Bearer sk_test_123");
+  });
+
+  it("creates a recurring plan in currency subunits", async () => {
+    vi.stubEnv("PAYSTACK_SECRET_KEY", "sk_test_123");
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: true, data: { plan_code: "PLN_abc" } }),
+    });
+    await expect(paystack.createPlan({ name: "Annual module", amount: "1200.50", currency: "GHS", interval: "annually" })).resolves.toBe("PLN_abc");
+    const [, options] = fetchMock.mock.calls[0];
+    expect(JSON.parse(options.body)).toMatchObject({ amount: 120050, currency: "GHS", interval: "annually", invoice_limit: 0 });
+  });
+
+  it("generates a management link and disables renewal with the server-side token", async () => {
+    vi.stubEnv("PAYSTACK_SECRET_KEY", "sk_test_123");
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ status: true, data: { link: "https://paystack.com/manage/subscription" } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ status: true, data: {} }) });
+    await expect(paystack.getSubscriptionManagementLink("SUB_abc")).resolves.toBe("https://paystack.com/manage/subscription");
+    await expect(paystack.disableSubscription("SUB_abc", "email-token")).resolves.toBeUndefined();
+    const [, options] = fetchMock.mock.calls[1];
+    expect(JSON.parse(options.body)).toEqual({ code: "SUB_abc", token: "email-token" });
   });
 
   it("converts subunits back to a 2-decimal major-unit string when verifying", async () => {

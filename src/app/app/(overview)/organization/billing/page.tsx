@@ -9,12 +9,14 @@ import { db } from "@/lib/db";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { configuredGatewayProviders } from "@/lib/payments";
-import { startGatewayPayment } from "./actions";
+import { cancelPaystackRenewal, managePaystackSubscription, startGatewayPayment } from "./actions";
 import { getOrganizationSeatUsage } from "@/platform/subscriptions/seats";
 
 const ERRORS: Record<string, string> = {
   invalid: "That subscription could not be found.",
   "payment-failed": "We couldn't start that payment. Please try again shortly.",
+  "manage-failed": "We couldn't open Paystack subscription management. Please try again shortly.",
+  "cancel-failed": "We couldn't cancel automatic renewal. No billing change was made.",
 };
 
 const PROVIDER_LABELS: Record<string, string> = { PAYSTACK: "Paystack", FLUTTERWAVE: "Flutterwave" };
@@ -22,7 +24,7 @@ const PROVIDER_LABELS: Record<string, string> = { PAYSTACK: "Paystack", FLUTTERW
 export default async function OrganizationBillingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; "renewal-cancelled"?: string }>;
 }) {
   const tenant = await requireCurrentTenant();
 
@@ -39,9 +41,13 @@ export default async function OrganizationBillingPage({
     );
   }
 
-  const { error } = await searchParams;
+  const { error, "renewal-cancelled": renewalCancelled } = await searchParams;
   const [subscriptions, seatUsage] = await Promise.all([
-    db.subscription.findMany({ where: { organizationId: tenant.organizationId }, include: { module: true }, orderBy: { createdAt: "desc" } }),
+    db.subscription.findMany({
+      where: { organizationId: tenant.organizationId },
+      include: { module: true, payments: { orderBy: { createdAt: "desc" }, take: 5 } },
+      orderBy: { createdAt: "desc" },
+    }),
     getOrganizationSeatUsage(tenant.organizationId),
   ]);
   const availableProviders = configuredGatewayProviders();
@@ -53,6 +59,12 @@ export default async function OrganizationBillingPage({
         <Alert variant="destructive">
           <AlertTitle>Payment could not be started</AlertTitle>
           <AlertDescription>{ERRORS[error]}</AlertDescription>
+        </Alert>
+      ) : null}
+      {renewalCancelled ? (
+        <Alert>
+          <AlertTitle>Automatic renewal cancelled</AlertTitle>
+          <AlertDescription>Your current access remains available until the displayed end date.</AlertDescription>
         </Alert>
       ) : null}
 
@@ -93,6 +105,36 @@ export default async function OrganizationBillingPage({
                       <p>{(() => { const usage = seatUsage.find((entry) => entry.moduleId === subscription.moduleId); return usage?.limit == null ? `${usage?.used ?? 0} users · Unlimited seats` : `${usage.used} of ${usage.limit} user seats`; })()}</p>
                     </div>
                   ) : null}
+                  {subscription.autoRenew && subscription.gatewayProvider === "PAYSTACK" ? (
+                    <div className="space-y-2 rounded-md border p-3 text-sm">
+                      <p className="font-medium">Automatic renewal is active</p>
+                      <p className="text-muted-foreground">
+                        Next Paystack attempt: {subscription.paystackNextPaymentAt?.toLocaleDateString() ?? "Awaiting Paystack schedule confirmation"}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {subscription.paystackSubscriptionCode ? (
+                          <form action={managePaystackSubscription}>
+                            <input type="hidden" name="subscriptionId" value={subscription.id} />
+                            <Button type="submit" variant="outline" size="sm">Manage payment card</Button>
+                          </form>
+                        ) : null}
+                        {subscription.paystackSubscriptionCode && subscription.paystackEmailToken ? (
+                          <form action={cancelPaystackRenewal}>
+                            <input type="hidden" name="subscriptionId" value={subscription.id} />
+                            <Button type="submit" variant="outline" size="sm">Cancel automatic renewal</Button>
+                          </form>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : subscription.gatewayProvider === "PAYSTACK" && subscription.paystackSubscriptionStatus === "non-renewing" ? (
+                    <p className="text-sm text-muted-foreground">Automatic renewal is cancelled. Access continues until the current end date.</p>
+                  ) : null}
+                  {subscription.status === "PAST_DUE" ? (
+                    <Alert variant="destructive">
+                      <AlertTitle>Renewal payment failed</AlertTitle>
+                      <AlertDescription>Module access is paused. Update your payment card or complete a new payment to restore access.</AlertDescription>
+                    </Alert>
+                  ) : null}
                   {awaitingPayment ? (
                     availableProviders.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
@@ -114,6 +156,17 @@ export default async function OrganizationBillingPage({
                     <p className="text-sm text-muted-foreground">
                       Awaiting payment confirmation from your Rock Frost contact.
                     </p>
+                  ) : null}
+                  {subscription.payments.length ? (
+                    <div className="space-y-2 border-t pt-3">
+                      <p className="text-sm font-medium">Recent online payments</p>
+                      {subscription.payments.map((payment) => (
+                        <div key={payment.id} className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+                          <span>{payment.createdAt.toLocaleDateString()} · {payment.currency} {payment.amount.toString()}</span>
+                          <Badge variant={payment.status === "SUCCESS" ? "default" : "destructive"}>{payment.status}</Badge>
+                        </div>
+                      ))}
+                    </div>
                   ) : null}
                 </CardContent>
               </Card>
