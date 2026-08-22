@@ -45,6 +45,8 @@ Every step writes an immutable `FleetMaintenanceEvent` containing actor, event t
 ## Financial behavior
 
 - New Work & Pay agreements calculate amount paid, outstanding balance and completion percentage from the contract value and deposit.
+- A new Work & Pay agreement can be created only for a vehicle with an active assigned driver. The server selects that driver as the client, stores the driver relationship and a historical name snapshot, and ignores any attempt to supply a different client name. The contract selector shows the assigned driver beside each eligible vehicle.
+- Driver self-service accepts a Work & Pay remittance only when both the vehicle and the contract are linked to the authenticated driver. Reassigning a vehicle therefore does not give the new driver access to the previous driver's contract.
 - Deposits are written to the central Fleet payment ledger.
 - A vehicle can be configured with no required remittance, a daily remittance amount, or a weekly remittance amount. Work & Pay remains controlled by its own daily or weekly contract schedule.
 - The driver first pays the company outside the application by cash, mobile money, bank transfer, card, cheque, or another supported method. The driver then records the completed payment for manager verification. The application does not claim that initiating the form itself transfers money.
@@ -64,6 +66,7 @@ Every step writes an immutable `FleetMaintenanceEvent` containing actor, event t
 - Server Components and Server Actions independently verify permissions.
 - The Driver system role does not hold `fleet.view`. It uses `fleet.driver.self_service`, so it cannot open organization-wide vehicles, drivers, owners, payments, reports, settings, or summary dashboards.
 - The Driver Workspace and the main workspace dashboard show only the current driver's assigned vehicles, open maintenance work, active contracts, targets, and submissions.
+- Work & Pay contracts shown inside the Driver Workspace are filtered by the stored contract driver, not only by the vehicle's current assignment.
 - The exact system Driver role sees only Overview and Notifications in the workspace sidebar. The organization module catalogue, cross-module Reports page, and header module launcher are hidden, and direct requests to the two organization-wide pages return the driver to the assignment-scoped dashboard. Custom roles are not restricted by name alone.
 - Maintenance lists and vehicle selectors are filtered on the server to assigned driver vehicles or linked owner vehicles for self-service users. Hiding a menu item is never the privacy boundary.
 - The Vehicle Owner system role is available only when Fleet is active. Assigning or accepting that role creates one linked `FleetOwner` profile idempotently.

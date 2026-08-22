@@ -149,13 +149,27 @@ describe("Fleet service — cross-tenant IDOR fixes and payment atomicity", () =
       fleet.createFleetWorkAndPayContract(ORG, {
         contractName: "Contract 1",
         vehicleId: "vehicle-foreign",
-        clientName: "Client",
         contractAmount: "1000.00",
         depositAmount: "100.00",
         paymentSchedule: "WEEKLY",
         scheduledPaymentAmount: "50.00",
       }),
     ).rejects.toThrow(fleet.NotFoundError);
+    expect(mockDb.fleetWorkAndPayContract.create).not.toHaveBeenCalled();
+  });
+
+  it("createFleetWorkAndPayContract requires an active assigned driver", async () => {
+    mockDb.fleetVehicle.findFirst.mockResolvedValue({ id: "vehicle-1", branchId: null, assignedDriver: null });
+    await expect(
+      fleet.createFleetWorkAndPayContract(ORG, {
+        contractName: "Contract 1",
+        vehicleId: "vehicle-1",
+        contractAmount: "1000.00",
+        depositAmount: "100.00",
+        paymentSchedule: "WEEKLY",
+        scheduledPaymentAmount: "50.00",
+      }),
+    ).rejects.toThrow(fleet.FleetDriverAssignmentError);
     expect(mockDb.fleetWorkAndPayContract.create).not.toHaveBeenCalled();
   });
 

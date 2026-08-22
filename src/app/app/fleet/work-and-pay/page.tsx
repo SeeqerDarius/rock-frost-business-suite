@@ -15,10 +15,11 @@ import { createWorkAndPayContract, recordContractPayment, updateContractStatus }
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage work & pay contracts.",
-  "missing-fields": "Contract name, vehicle, client name, contract amount, payment schedule, and instalment amount are required.",
+  "missing-fields": "Contract name, vehicle, contract amount, payment schedule, and instalment amount are required.",
   "invalid-amount": "Enter a valid payment amount.",
   "invalid-evidence": "Choose a supported payment method and enter its transaction reference. Cash references are optional.",
   "not-found": "That vehicle or contract could not be found.",
+  "driver-required": "Assign an active driver to the vehicle before creating its Work & Pay contract.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
@@ -42,13 +43,19 @@ export default async function FleetWorkAndPayPage({
     listFleetWorkAndPayContracts(tenant.organizationId),
     listFleetVehicles(tenant.organizationId),
   ]);
-  const vehicleItems: Record<string, string> = Object.fromEntries(vehicles.map((v) => [v.id, `${v.assetTag} - ${v.plateNumber}`]));
+  const eligibleVehicles = vehicles.filter((vehicle) => vehicle.assignedDriver?.status === "ACTIVE");
+  const vehicleItems: Record<string, string> = Object.fromEntries(
+    eligibleVehicles.map((vehicle) => [
+      vehicle.id,
+      `${vehicle.assetTag} - ${vehicle.plateNumber} (Driver: ${vehicle.assignedDriver!.name})`,
+    ]),
+  );
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <PageHeader title="Work & Pay" description="Work-and-pay contracts between the fleet and drivers or clients." />
-        {canManage && vehicles.length > 0 ? (
+        <PageHeader title="Work & Pay" description="Work & Pay contracts linked to each vehicle's assigned driver." />
+        {canManage && eligibleVehicles.length > 0 ? (
           <EntityDialog
             trigger={
               <Button size="sm">
@@ -64,7 +71,7 @@ export default async function FleetWorkAndPayPage({
               <Input id="contractName" name="contractName" required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="vehicleId">Vehicle</Label>
+              <Label htmlFor="vehicleId">Vehicle and assigned driver</Label>
               <Select name="vehicleId" items={vehicleItems}>
                 <SelectTrigger id="vehicleId" className="w-full">
                   <SelectValue placeholder="Select a vehicle" />
@@ -77,10 +84,7 @@ export default async function FleetWorkAndPayPage({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="clientName">Client name</Label>
-              <Input id="clientName" name="clientName" required />
+              <p className="text-xs text-muted-foreground">The assigned driver is selected automatically as the Work & Pay client.</p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -119,6 +123,12 @@ export default async function FleetWorkAndPayPage({
         ) : null}
       </div>
 
+      {canManage && eligibleVehicles.length === 0 ? (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+          Assign an active driver to a vehicle before creating a Work & Pay contract.
+        </div>
+      ) : null}
+
       {saved ? (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
           Saved.
@@ -149,7 +159,7 @@ export default async function FleetWorkAndPayPage({
               <TableRow key={contract.id}>
                 <TableCell className="font-medium">{contract.contractName}</TableCell>
                 <TableCell className="text-muted-foreground">{contract.vehicle.assetTag}</TableCell>
-                <TableCell className="text-muted-foreground">{contract.clientName}</TableCell>
+                <TableCell className="text-muted-foreground">{contract.driver?.name ?? contract.clientName}</TableCell>
                 <TableCell className="text-muted-foreground">
                   {Number(contract.amountPaid).toFixed(2)} / {Number(contract.contractAmount).toFixed(2)} (
                   {Number(contract.completionPercentage).toFixed(0)}%). {Number(contract.scheduledPaymentAmount ?? contract.weeklyPaymentAmount).toFixed(2)} per {contract.paymentSchedule === "DAILY" ? "day" : "week"}

@@ -246,7 +246,10 @@ export async function getFleetDriverWorkspace(organizationId: string, userId: st
       assignedVehicles: {
         include: {
           maintenanceRequests: { orderBy: { requestedAt: "desc" }, take: 10 },
-          workAndPayContracts: { where: { contractStatus: "ACTIVE" }, orderBy: { createdAt: "desc" } },
+          workAndPayContracts: {
+            where: { contractStatus: "ACTIVE", driver: { userId } },
+            orderBy: { createdAt: "desc" },
+          },
         },
       },
       paymentSubmissions: { include: { vehicle: true, contract: true }, orderBy: { createdAt: "desc" }, take: 20 },
@@ -257,6 +260,7 @@ export async function getFleetDriverWorkspace(organizationId: string, userId: st
 export class FleetDuplicateSubmissionError extends Error {}
 export class FleetSalesTargetError extends Error {}
 export class FleetPaymentEvidenceError extends Error {}
+export class FleetDriverAssignmentError extends Error {}
 
 export const FLEET_REMITTANCE_METHODS = ["CASH", "MOBILE_MONEY", "BANK_TRANSFER", "CARD", "CHEQUE", "OTHER"] as const;
 export type FleetRemittanceMethod = (typeof FLEET_REMITTANCE_METHODS)[number];
@@ -317,7 +321,13 @@ export async function submitFleetDriverPayment(
   if (data.submissionType === "WORK_AND_PAY") {
     if (!data.contractId) throw new FleetSalesTargetError("Select an active Work & Pay contract.");
     const contract = await db.fleetWorkAndPayContract.findFirst({
-      where: { id: data.contractId, organizationId, vehicleId: vehicle.id, contractStatus: { in: ["ACTIVE", "PAUSED"] } },
+      where: {
+        id: data.contractId,
+        organizationId,
+        vehicleId: vehicle.id,
+        driverId: driver.id,
+        contractStatus: { in: ["ACTIVE", "PAUSED"] },
+      },
     });
     if (!contract) throw new NotFoundError("Assigned contract not found.");
     paymentSchedule = contract.paymentSchedule;
@@ -971,7 +981,7 @@ export function updateFleetPaymentStatus(organizationId: string, id: string, sta
 export function listFleetWorkAndPayContracts(organizationId: string) {
   return db.fleetWorkAndPayContract.findMany({
     where: { organizationId },
-    include: { vehicle: true },
+    include: { vehicle: true, driver: true },
     orderBy: { createdAt: "desc" },
   });
 }
@@ -981,7 +991,6 @@ export async function createFleetWorkAndPayContract(
   data: {
     contractName: string;
     vehicleId: string;
-    clientName: string;
     contractAmount: string;
     depositAmount: string;
     paymentSchedule: FleetSalesTargetPeriod;
@@ -991,7 +1000,6 @@ export async function createFleetWorkAndPayContract(
     branchId?: string | null;
   }
 ) {
-  await requireVehicle(organizationId, data.vehicleId);
   if (!(["DAILY", "WEEKLY"] as const).includes(data.paymentSchedule)) {
     throw new InvalidPaymentAmountError("Choose a daily or weekly payment schedule.");
   }
@@ -1009,12 +1017,24 @@ export async function createFleetWorkAndPayContract(
     throw new InvalidPaymentAmountError("Contract and deposit amounts are invalid.");
   }
   return db.$transaction(async (tx) => {
+    const vehicle = await tx.fleetVehicle.findFirst({
+      where: { id: data.vehicleId, organizationId },
+      include: { assignedDriver: true },
+    });
+    if (!vehicle) throw new NotFoundError("Vehicle not found.");
+    if (!vehicle.assignedDriver || vehicle.assignedDriver.status !== "ACTIVE") {
+      throw new FleetDriverAssignmentError("Assign an active driver to the vehicle before creating a Work & Pay contract.");
+    }
+
     const outstandingBalance = contractAmount.minus(depositAmount);
     const completionPercentage = contractAmount.isPositive() ? depositAmount.div(contractAmount).times(100) : new Prisma.Decimal(0);
     const contract = await tx.fleetWorkAndPayContract.create({
       data: {
         organizationId,
         ...data,
+        branchId: data.branchId ?? vehicle.branchId,
+        driverId: vehicle.assignedDriver.id,
+        clientName: vehicle.assignedDriver.name,
         weeklyPaymentAmount: scheduledPaymentAmount,
         scheduledPaymentAmount,
         remainingDurationWeeks: data.paymentSchedule === "WEEKLY" ? data.remainingPaymentPeriods : null,

@@ -11,6 +11,7 @@ import {
   NotFoundError,
   InvalidPaymentAmountError,
   FleetPaymentEvidenceError,
+  FleetDriverAssignmentError,
 } from "@/modules/fleet/service";
 import type { FleetContractStatus, FleetSalesTargetPeriod } from "@prisma/client";
 import { getServerAuthSession } from "@/lib/auth/session";
@@ -34,12 +35,11 @@ export async function createWorkAndPayContract(formData: FormData): Promise<void
 
   const contractName = clean(formData.get("contractName"));
   const vehicleId = clean(formData.get("vehicleId"));
-  const clientName = clean(formData.get("clientName"));
   const contractAmount = clean(formData.get("contractAmount"));
   const paymentSchedule = clean(formData.get("paymentSchedule")) as FleetSalesTargetPeriod | null;
   const scheduledPaymentAmount = clean(formData.get("scheduledPaymentAmount"));
 
-  if (!contractName || !vehicleId || !clientName || !contractAmount || !scheduledPaymentAmount || !paymentSchedule || !["DAILY", "WEEKLY"].includes(paymentSchedule)) {
+  if (!contractName || !vehicleId || !contractAmount || !scheduledPaymentAmount || !paymentSchedule || !["DAILY", "WEEKLY"].includes(paymentSchedule)) {
     redirect("/app/fleet/work-and-pay?error=missing-fields");
   }
 
@@ -50,7 +50,6 @@ export async function createWorkAndPayContract(formData: FormData): Promise<void
     const { contract, depositPayment } = await createFleetWorkAndPayContract(tenant.organizationId, {
       contractName,
       vehicleId,
-      clientName,
       contractAmount,
       depositAmount: clean(formData.get("depositAmount")) ?? "0",
       paymentSchedule,
@@ -72,6 +71,7 @@ export async function createWorkAndPayContract(formData: FormData): Promise<void
     }
   } catch (error) {
     if (error instanceof NotFoundError) redirect("/app/fleet/work-and-pay?error=not-found");
+    if (error instanceof FleetDriverAssignmentError) redirect("/app/fleet/work-and-pay?error=driver-required");
     if (error instanceof InvalidPaymentAmountError) redirect("/app/fleet/work-and-pay?error=invalid-amount");
     throw error;
   }

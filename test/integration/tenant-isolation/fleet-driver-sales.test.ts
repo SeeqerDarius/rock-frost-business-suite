@@ -144,18 +144,19 @@ describe("Fleet driver remittances and owner access (real Postgres)", () => {
   });
 
   it("supports a daily Work & Pay schedule and updates its balance only after approval", async () => {
-    const contract = await fleet.createFleetWorkAndPayContract(org.organizationId, {
+    const { contract } = await fleet.createFleetWorkAndPayContract(org.organizationId, {
       contractName: "Driver contract",
       vehicleId: assignedVehicleId,
-      clientName: "Customer",
       contractAmount: "1000.00",
       depositAmount: "100.00",
       paymentSchedule: "DAILY",
       scheduledPaymentAmount: "100.00",
     });
+    expect(contract.driverId).not.toBeNull();
+    expect(contract.clientName).toBe("Assigned Driver");
     const submission = await fleet.submitFleetDriverPayment(org.organizationId, driverUserId, {
       vehicleId: assignedVehicleId,
-      contractId: contract.contract.id,
+      contractId: contract.id,
       submissionType: "WORK_AND_PAY",
       periodStart: new Date("2026-08-17T00:00:00.000Z"),
       amount: "100.00",
@@ -165,9 +166,28 @@ describe("Fleet driver remittances and owner access (real Postgres)", () => {
     });
     expect(submission.periodEnd.toISOString()).toBe(submission.periodStart.toISOString());
     await fleet.reviewFleetDriverPaymentSubmission(org.organizationId, submission.id, org.userId, true);
-    const updated = await testDb.fleetWorkAndPayContract.findUnique({ where: { id: contract.contract.id } });
+    const updated = await testDb.fleetWorkAndPayContract.findUnique({ where: { id: contract.id } });
     expect(updated?.amountPaid.toString()).toBe("200");
     expect(updated?.outstandingBalance.toString()).toBe("800");
+
+    const replacementDriver = await fleet.createFleetDriver(org.organizationId, {
+      name: "Replacement Driver",
+      userId: ownerUserId,
+    });
+    await testDb.fleetVehicle.update({ where: { id: assignedVehicleId }, data: { assignedDriverId: replacementDriver.id } });
+    try {
+      await expect(fleet.submitFleetDriverPayment(org.organizationId, ownerUserId, {
+        vehicleId: assignedVehicleId,
+        contractId: contract.id,
+        submissionType: "WORK_AND_PAY",
+        periodStart: new Date("2026-08-18T00:00:00.000Z"),
+        amount: "100.00",
+        paymentDate: new Date("2026-08-22T00:00:00.000Z"),
+        paymentMethod: "CASH",
+      })).rejects.toThrow(fleet.NotFoundError);
+    } finally {
+      await testDb.fleetVehicle.update({ where: { id: assignedVehicleId }, data: { assignedDriverId: contract.driverId } });
+    }
   });
 
   it("seeds a least-privilege Vehicle Owner role and removes organization-wide Fleet view from Driver", async () => {

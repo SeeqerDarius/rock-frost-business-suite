@@ -117,7 +117,6 @@ describe("Fleet service — cross-tenant isolation against real Postgres", () =>
       fleet.createFleetWorkAndPayContract(orgA.organizationId, {
         contractName: "Contract 1",
         vehicleId: vehicleB.id,
-        clientName: "Client",
         contractAmount: "1000.00",
         depositAmount: "100.00",
         paymentSchedule: "WEEKLY",

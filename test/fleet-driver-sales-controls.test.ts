@@ -58,6 +58,23 @@ describe("Fleet driver remittance controls", () => {
     expect(service).toContain("FleetDuplicateSubmissionError");
     expect(service).toContain("FleetPaymentEvidenceError");
     expect(service).toContain("scheduledPaymentAmount");
+    expect(service).toContain("driverId: vehicle.assignedDriver.id");
+    expect(service).toContain("clientName: vehicle.assignedDriver.name");
+    expect(service).toContain("driverId: driver.id");
+    expect(service).toContain('where: { contractStatus: "ACTIVE", driver: { userId } }');
+  });
+
+  it("derives the Work & Pay client from the selected vehicle assignment", () => {
+    const page = read("src/app/app/fleet/work-and-pay/page.tsx");
+    const actions = read("src/app/app/fleet/work-and-pay/actions.ts");
+    const migration = read("prisma/migrations/20260821213000_fleet_work_pay_driver_link/migration.sql");
+    expect(page).toContain("The assigned driver is selected automatically as the Work & Pay client.");
+    expect(page).not.toContain('name="clientName"');
+    expect(actions).not.toContain('formData.get("clientName")');
+    expect(actions).toContain("FleetDriverAssignmentError");
+    expect(migration).toContain('ADD COLUMN "driverId" TEXT');
+    expect(migration).toContain('vehicle."assignedDriverId"');
+    expect(migration).toContain('FOREIGN KEY ("driverId") REFERENCES "FleetDriver"("id")');
   });
 
   it("posts a driver-submitted remittance's revenue to Accounting once it's approved, and Work & Pay deposits/instalments too", () => {
