@@ -18,6 +18,7 @@ Integrated release commit `cd509d5` was fast-forwarded to `main`. Vercel deploym
 - **Verified in a real browser**: `getBoundingClientRect()` confirmed 157.9×28 at 1280px desktop with no overlap with nav links, and at 375px mobile the logo-to-"Sign in" gap is 4px (down from ~27px at `h-6`, tighter but not overlapping) — screenshotted both the public header and the login page to confirm it doesn't read as cramped.
 - **Important files**: `src/components/layout/logo.tsx`, `docs/UI_UX_REFRESH.md` (also fixed a stale `/RFGgg.png` reference in the shimmer-mask implementation note, left over from the swap below — it should have said `/rft.png`).
 - **Validation**: `npx tsc --noEmit` — passed. `npm run lint` — passed. `npm run test` — passed: 88 files, 528 tests. `npm run build` — passed.
+- **Production deploy verified**: this branch was rebased once more onto concurrently-pushed pricing work before landing as `7dc32be`. Vercel production deployment `dpl_Fe5eSRofs6s5sNxWreVybk6qQH8e` reached `READY`. `/api/health` returned `{"ok":true,"database":"reachable"}`. Confirmed live on the production login page: `getBoundingClientRect()` on the logo returns 157.9×28, matching the local verification exactly, and the `<img src>` still resolves to `/rft.png`. No runtime errors in the following 15 minutes.
 
 ## 2026-08-23: Swapped the compact animated brand logo to the new `rft.png` wordmark
 
