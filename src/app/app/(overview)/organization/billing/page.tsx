@@ -1,4 +1,4 @@
-import { CreditCard, Lock, ShoppingBag } from "lucide-react";
+import { CreditCard, Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -10,6 +10,7 @@ import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { configuredGatewayProviders } from "@/lib/payments";
 import { cancelPaystackRenewal, managePaystackSubscription, startGatewayPayment, startSelfServiceCheckout } from "./actions";
+import { ModuleCart } from "./module-cart";
 import { getOrganizationSeatUsage } from "@/platform/subscriptions/seats";
 import { formatGhs, MODULE_PRICES, PRICING_BUNDLES } from "@/lib/pricing";
 import { getModule } from "@/platform/modules/registry";
@@ -21,7 +22,7 @@ const ERRORS: Record<string, string> = {
   "manage-failed": "We couldn't open Paystack subscription management. Please try again shortly.",
   "cancel-failed": "We couldn't cancel automatic renewal. No billing change was made.",
   "invalid-selection": "Choose a valid module and billing period.",
-  "already-subscribed": "This product already has an active or pending subscription. Use its payment option below.",
+  "already-subscribed": "One or more selected products already have an active or pending subscription. Refresh the page and try again.",
 };
 
 const PROVIDER_LABELS: Record<string, string> = { PAYSTACK: "Paystack", FLUTTERWAVE: "Flutterwave" };
@@ -78,49 +79,17 @@ export default async function OrganizationBillingPage({
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-lg font-semibold">Add a module</h2>
-          <p className="text-sm text-muted-foreground">Choose a product and pay securely. Access activates automatically after Paystack confirms payment.</p>
+          <h2 className="text-lg font-semibold">Add modules</h2>
+          <p className="text-sm text-muted-foreground">Check as many products as you need, then pay for all of them in a single payment. Access activates automatically after Paystack confirms payment.</p>
         </div>
         {selfServiceProducts.length ? (
-          <div className="grid gap-3 lg:grid-cols-2">
-            {selfServiceProducts.map((price) => {
+          <ModuleCart
+            products={selfServiceProducts.flatMap((price) => {
               const module_ = getModule(price.moduleKey);
-              if (!module_) return null;
-              return (
-                <Card key={price.moduleKey}>
-                  <CardHeader>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <CardTitle>{module_.name}</CardTitle>
-                        <CardDescription>{module_.description}</CardDescription>
-                      </div>
-                      <ShoppingBag className="size-5 shrink-0 text-primary" />
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <form action={startSelfServiceCheckout} className="space-y-3">
-                      <input type="hidden" name="productKey" value={price.moduleKey} />
-                      <input type="hidden" name="productType" value="MODULE" />
-                      <label className="block space-y-1 text-sm">
-                        <span className="font-medium">Billing period</span>
-                        <select name="billingCycle" className="h-10 w-full rounded-md border bg-background px-3" defaultValue="ANNUAL">
-                          <option value="MONTHLY">Monthly, {formatGhs(price.monthlyGhs)}</option>
-                          <option value="ANNUAL">Annual, {formatGhs(price.annualGhs)}</option>
-                        </select>
-                      </label>
-                      <p className="text-xs text-muted-foreground">Includes {price.includedSeats} user seats. Additional seats can be arranged from Billing.</p>
-                      <label className="flex items-start gap-2 text-sm">
-                        <input type="checkbox" name="autoRenew" value="true" defaultChecked className="mt-1 size-4" />
-                        <span>Renew automatically using the card authorized at checkout.</span>
-                      </label>
-                      <Button type="submit" disabled={!paystackAvailable} variant={type === "module" && product === price.moduleKey ? "default" : "outline"}>Continue to secure payment</Button>
-                      {!paystackAvailable ? <p className="text-xs text-muted-foreground">Paystack checkout is temporarily unavailable.</p> : null}
-                    </form>
-                  </CardContent>
-                </Card>
-              );
+              return module_ ? [{ ...price, name: module_.name, description: module_.description }] : [];
             })}
-          </div>
+            paystackAvailable={paystackAvailable}
+          />
         ) : (
           <p className="rounded-md border p-4 text-sm text-muted-foreground">Every available product already has an active or pending subscription.</p>
         )}

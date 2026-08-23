@@ -9,10 +9,25 @@ describe("self-service subscription UI", () => {
   it("offers server-backed catalogue checkout from tenant Billing", () => {
     const page = read("src/app/app/(overview)/organization/billing/page.tsx");
     const actions = read("src/app/app/(overview)/organization/billing/actions.ts");
-    expect(page).toContain("Add a module");
+    expect(page).toContain("Add modules");
     expect(page).toContain("startSelfServiceCheckout");
     expect(actions).toContain("createSelfServiceSubscription");
     expect(actions).toContain('provider: "PAYSTACK"');
+  });
+
+  it("checks out a multi-module cart in a single payment instead of one per module", () => {
+    const page = read("src/app/app/(overview)/organization/billing/page.tsx");
+    const cart = read("src/app/app/(overview)/organization/billing/module-cart.tsx");
+    const actions = read("src/app/app/(overview)/organization/billing/actions.ts");
+    const service = read("src/platform/subscriptions/service.ts");
+    expect(page).toContain("<ModuleCart");
+    expect(cart).toContain('name="moduleKeys"');
+    expect(cart).toContain("startCartCheckout");
+    expect(actions).toContain("export async function startCartCheckout");
+    expect(actions).toContain("formData.getAll(\"moduleKeys\")");
+    expect(actions).toContain("createSelfServiceCartSubscription");
+    expect(service).toContain("export async function createSelfServiceCartSubscription");
+    expect(service).toContain("expandProductModuleKeys(uniqueKeys)");
   });
 
   it("renders a detailed verified thank-you page with a direct module launch", () => {

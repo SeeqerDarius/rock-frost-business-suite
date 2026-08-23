@@ -9,7 +9,7 @@ import { createPlan as createPaystackPlan, disableSubscription as disablePaystac
 import { ensureRevenueAccountsForOrg } from "@/lib/accounting-integration";
 import { MODULE_PRICE_BY_KEY, PRICING_BUNDLE_BY_KEY, type PricingBundleKey } from "@/lib/pricing";
 import { getModule, type BusinessModuleKey } from "@/platform/modules/registry";
-import { productGroupKeys } from "@/platform/modules/product-groups";
+import { expandProductModuleKeys, productGroupKeys } from "@/platform/modules/product-groups";
 
 const AWAITING_ACTIVATION_STATUSES = ["DRAFT", "PENDING_PAYMENT", "PAST_DUE"] as const;
 
@@ -168,6 +168,94 @@ export async function createSelfServiceBundleSubscription(input: {
       entityName: "Subscription",
       entityId: subscription.id,
       metadata: { bundleKey: bundle.key, billingCycle: input.billingCycle, amount, entitledModuleKeys },
+    }, tx);
+    return subscription;
+  });
+}
+
+/**
+ * A self-service "cart" checkout: an ad-hoc set of modules the tenant picked
+ * themselves (unlike createSelfServiceBundleSubscription's fixed, discounted
+ * PRICING_BUNDLES catalogue), priced as the plain sum of each selected
+ * module's own price and paid for in one Paystack checkout instead of one
+ * per module. Reuses the exact same entitledModuleKeys mechanism a real
+ * bundle uses — activation, notifications, and renewal all already key off
+ * entitledModuleKeys generically (see subscriptionModuleIds below) and don't
+ * care whether bundleKey is set, so no other code needed to change for this
+ * to activate correctly.
+ */
+export async function createSelfServiceCartSubscription(input: {
+  organizationId: string;
+  moduleKeys: BusinessModuleKey[];
+  billingCycle: "MONTHLY" | "ANNUAL";
+  autoRenew: boolean;
+  actorId: string;
+}) {
+  const uniqueKeys = [...new Set(input.moduleKeys)];
+  if (!uniqueKeys.length) throw new Error("Select at least one product.");
+  for (const key of uniqueKeys) {
+    const price = MODULE_PRICE_BY_KEY.get(key);
+    const definition = getModule(key);
+    if (!price || !definition || definition.catalogueVisible === false) {
+      throw new Error("One or more selected products are not available for self-service purchase.");
+    }
+  }
+
+  const durationMonths = input.billingCycle === "ANNUAL" ? 12 : 1;
+  // Priced on the plain sum of each selected module's own price — an ad-hoc
+  // cart is not a curated PRICING_BUNDLES discount, so no bundle rate applies.
+  const amount = uniqueKeys.reduce((sum, key) => {
+    const price = MODULE_PRICE_BY_KEY.get(key)!;
+    return sum + (input.billingCycle === "ANNUAL" ? price.annualGhs : price.monthlyGhs);
+  }, 0);
+  const entitledModuleKeys = expandProductModuleKeys(uniqueKeys);
+  const includedSeats = Math.max(...uniqueKeys.map((key) => MODULE_PRICE_BY_KEY.get(key)!.includedSeats));
+
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`self-service-cart:${input.organizationId}`}))`;
+    const modules = await tx.module.findMany({
+      where: { code: { in: entitledModuleKeys }, status: "ACTIVE" },
+      select: { id: true, code: true },
+    });
+    if (modules.length !== entitledModuleKeys.length) throw new Error("One or more selected products are unavailable.");
+    const existing = await tx.subscription.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        status: { notIn: ["CANCELLED", "EXPIRED"] },
+        OR: [
+          { moduleId: { in: modules.map((entry) => entry.id) } },
+          { entitledModuleKeys: { hasSome: entitledModuleKeys } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (existing) throw new SelfServiceSubscriptionExistsError("One or more selected products already have an active or pending subscription.");
+    const primaryModule = modules.find((entry) => entry.code === uniqueKeys[0]);
+    if (!primaryModule) throw new Error("The selected primary product is unavailable.");
+    const subscription = await tx.subscription.create({
+      data: {
+        organizationId: input.organizationId,
+        moduleId: primaryModule.id,
+        mode: "PLATFORM_MANAGED",
+        durationMonths,
+        amount: new Prisma.Decimal(amount),
+        currency: "GHS",
+        autoRenew: input.autoRenew,
+        seatLimit: includedSeats,
+        entitledModuleKeys,
+        notes: `Self-service cart checkout: ${uniqueKeys.join(", ")}`,
+        createdById: input.actorId,
+        status: "PENDING_PAYMENT",
+      },
+    });
+    await logAuditEvent({
+      organizationId: input.organizationId,
+      userId: input.actorId,
+      module: "platform",
+      action: "subscription.self_service_cart_created",
+      entityName: "Subscription",
+      entityId: subscription.id,
+      metadata: { moduleKeys: uniqueKeys, billingCycle: input.billingCycle, amount, entitledModuleKeys },
     }, tx);
     return subscription;
   });

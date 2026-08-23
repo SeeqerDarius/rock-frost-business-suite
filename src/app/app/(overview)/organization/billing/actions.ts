@@ -6,7 +6,7 @@ import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { cuid, parseWithSchema } from "@/lib/validation";
 import { buildTenantAppUrl } from "@/lib/app-url";
-import { cancelPaystackAutomaticRenewal, createSelfServiceBundleSubscription, createSelfServiceSubscription, getPaystackManagementLinkForOrganization, initiateGatewayPayment, SelfServiceSubscriptionExistsError } from "@/platform/subscriptions/service";
+import { cancelPaystackAutomaticRenewal, createSelfServiceBundleSubscription, createSelfServiceCartSubscription, createSelfServiceSubscription, getPaystackManagementLinkForOrganization, initiateGatewayPayment, SelfServiceSubscriptionExistsError } from "@/platform/subscriptions/service";
 import { MODULE_PRICE_BY_KEY, PRICING_BUNDLE_BY_KEY, type PricingBundleKey } from "@/lib/pricing";
 import type { BusinessModuleKey } from "@/platform/modules/registry";
 
@@ -84,6 +84,51 @@ export async function startSelfServiceCheckout(formData: FormData): Promise<void
     checkoutUrl = result.checkoutUrl;
   } catch (error) {
     console.error("[billing] Failed to start self-service checkout:", error);
+    if (error instanceof SelfServiceSubscriptionExistsError) {
+      redirect("/app/organization/billing?error=already-subscribed");
+    }
+    redirect("/app/organization/billing?error=payment-failed");
+  }
+  redirect(checkoutUrl);
+}
+
+const cartSchema = z.object({
+  moduleKeys: z.array(z.string().trim().min(1)).min(1),
+  billingCycle: z.enum(["MONTHLY", "ANNUAL"]),
+});
+
+export async function startCartCheckout(formData: FormData): Promise<void> {
+  const tenant = await requireCurrentTenant();
+  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) redirect("/app/dashboard");
+
+  const moduleKeys = [...new Set(formData.getAll("moduleKeys").map((value) => String(value).trim()).filter(Boolean))];
+  const parsed = parseWithSchema(cartSchema, {
+    moduleKeys,
+    billingCycle: String(formData.get("billingCycle") ?? ""),
+  });
+  if (!parsed.success || parsed.data.moduleKeys.some((key) => !MODULE_PRICE_BY_KEY.has(key as BusinessModuleKey))) {
+    redirect("/app/organization/billing?error=invalid-selection");
+  }
+
+  let checkoutUrl: string;
+  try {
+    const subscription = await createSelfServiceCartSubscription({
+      organizationId: tenant.organizationId,
+      moduleKeys: parsed.data.moduleKeys as BusinessModuleKey[],
+      billingCycle: parsed.data.billingCycle,
+      autoRenew: formData.get("autoRenew") === "true",
+      actorId: tenant.userId,
+    });
+    const result = await initiateGatewayPayment({
+      subscriptionId: subscription.id,
+      organizationId: tenant.organizationId,
+      provider: "PAYSTACK",
+      payerUserId: tenant.userId,
+      callbackUrl: buildTenantAppUrl(CALLBACK_PATH.PAYSTACK),
+    });
+    checkoutUrl = result.checkoutUrl;
+  } catch (error) {
+    console.error("[billing] Failed to start cart checkout:", error);
     if (error instanceof SelfServiceSubscriptionExistsError) {
       redirect("/app/organization/billing?error=already-subscribed");
     }
