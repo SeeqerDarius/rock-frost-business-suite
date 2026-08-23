@@ -47,6 +47,7 @@ export const PERMISSIONS = {
   ACCOUNTING_VIEW: "accounting.view",
   ACCOUNTING_ACCOUNTS_MANAGE: "accounting.accounts.manage",
   ACCOUNTING_INVOICES_MANAGE: "accounting.invoices.manage",
+  ACCOUNTING_RECEIVABLES_MANAGE: "accounting.receivables.manage",
   ACCOUNTING_EXPENSES_MANAGE: "accounting.expenses.manage",
   ACCOUNTING_REPORTS_VIEW: "accounting.reports.view",
   ACCOUNTING_SETTINGS_MANAGE: "accounting.settings.manage",

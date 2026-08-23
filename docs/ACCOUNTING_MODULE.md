@@ -65,7 +65,13 @@ A module posting revenue from one call site is not the same guarantee as "this m
 
 ## Current boundary
 
-This release establishes posting identity, period locking, source-owned reversals, operational insights, and grounded Accounting Q&A. Full accounts receivable, accounts payable, bank-statement matching, tax, budget, fixed-asset, forecasting, and multi-currency workflows remain separate future releases and must not be marketed as delivered by this foundation. The revenue-side module integrations above are real; expense/liability-side integrations (payroll runs, purchase-order receipts) are not yet built.
+This release establishes posting identity, period locking, source-owned reversals, operational insights, grounded Accounting Q&A, supplier payables, and explicit customer receivable allocations. Bank-statement import matching, tax, budget, fixed-asset, forecasting, and multi-currency workflows remain separate future releases and must not be marketed as delivered by this foundation.
 # Procurement payable integration
 
 Supplier invoice approval in Inventory and Procurement creates an idempotent accrual in Accounting: debit Inventory Asset (1200), credit Accounts Payable (2000). A partial or final supplier payment debits Accounts Payable and credits the organization-owned cash, bank, or mobile-money account selected at payment time. Procurement owns the operational invoice and payment record. Accounting owns its immutable journal. Users must correct source transactions through their source workflow rather than manually reversing a source-owned journal.
+
+# Accounts receivable
+
+Customer receipts are explicit immutable allocation records rather than only an invoice-level running total. Each receipt records the invoice, amount, date, payment method, receiving cash, bank, or mobile-money account, optional reference and notes, and the user who recorded it. Invoice balances remain concurrency locked, so simultaneous receipts cannot overpay an invoice. Every new receipt has its own idempotent journal identity and posts debit to the selected liquidity account and credit to Accounts Receivable.
+
+The Receivables page groups invoices by normalized customer email, falling back to normalized customer name when no email is available. It shows invoiced, paid, outstanding, and overdue balances plus statement-style invoice and receipt history. `accounting.receivables.manage` controls receipt entry separately from invoice creation.

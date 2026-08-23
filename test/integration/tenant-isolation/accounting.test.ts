@@ -90,6 +90,13 @@ describe("Accounting tenant isolation (real Postgres)", () => {
     ).rejects.toThrow(accounting.NotFoundError);
   });
 
+  it("recordInvoicePayment rejects another organization's receiving account", async () => {
+    const invoice = await accounting.createInvoice(orgA.organizationId, { customerName: "Org A Customer", amount: "25.00", issueDate: new Date(), dueDate: new Date() });
+    await accounting.markInvoiceSent(orgA.organizationId, invoice.id);
+    await expect(accounting.recordInvoicePayment(orgA.organizationId, invoice.id, { amount: "25.00", paymentDate: new Date(), accountId: orgBAccountId, paymentMethod: "CASH", reference: "CROSS-TENANT" })).rejects.toThrow(accounting.InvalidPaymentError);
+    expect(await testDb.accountingReceivablePayment.count({ where: { invoiceId: invoice.id } })).toBe(0);
+  });
+
   it("payExpense rejects an expense id belonging to another organization", async () => {
     await expect(accounting.payExpense(orgA.organizationId, orgBExpenseId, new Date())).rejects.toThrow(
       accounting.NotFoundError,

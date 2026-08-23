@@ -154,8 +154,8 @@ describe("module authorization source coverage", () => {
     // milestone 11 hardening pass found and fixed - the pages themselves
     // were already correctly guarded, this sweep just was not exercising
     // them).
-    // 107: Accounting Insights adds one guarded reporting page.
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(107);
+    // 108: Accounting Receivables adds one guarded reporting page.
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(108);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
     // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
     // all Hostel Server Actions, same shape as School's) joins the sweep

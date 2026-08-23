@@ -306,6 +306,7 @@ model User {
   procurementInvoicesCreated      ProcurementSupplierInvoice[]     @relation("ProcurementInvoicesCreated")
   procurementInvoicesApproved     ProcurementSupplierInvoice[]     @relation("ProcurementInvoicesApproved")
   procurementSupplierPayments     ProcurementSupplierPayment[]
+  accountingReceivablePayments    AccountingReceivablePayment[]
   payrollRunsCreated              PayrollRun[]
   posSessionsOpened               PosSession[]                     @relation("PosSessionsOpened")
   posSessionsClosed               PosSession[]                     @relation("PosSessionsClosed")
@@ -463,6 +464,7 @@ model Organization {
   procurementGoodsReceipts        ProcurementGoodsReceipt[]
   procurementSupplierInvoices     ProcurementSupplierInvoice[]
   procurementSupplierPayments     ProcurementSupplierPayment[]
+  accountingReceivablePayments    AccountingReceivablePayment[]
   procurementSettings             ProcurementSettings?
   payrollCompensations            PayrollCompensation[]
   payrollRuns                     PayrollRun[]
@@ -2061,12 +2063,13 @@ model AccountingAccount {
   openingBalancePostedAt DateTime?
   createdAt              DateTime                @default(now())
 
-  organization     Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  journalLines     AccountingJournalLine[]
-  expenseCategory  AccountingExpenseCategory[]
-  reconciliations  AccountingReconciliation[]
-  pettyCashFund    AccountingPettyCashFund?
-  supplierPayments ProcurementSupplierPayment[]
+  organization       Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  journalLines       AccountingJournalLine[]
+  expenseCategory    AccountingExpenseCategory[]
+  reconciliations    AccountingReconciliation[]
+  pettyCashFund      AccountingPettyCashFund?
+  supplierPayments   ProcurementSupplierPayment[]
+  receivablePayments AccountingReceivablePayment[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -2106,13 +2109,37 @@ model AccountingInvoice {
   createdAt      DateTime                @default(now())
   updatedAt      DateTime                @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  createdBy    User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  organization Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?                       @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  createdBy    User?                         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  payments     AccountingReceivablePayment[]
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, status])
   @@index([branchId])
+}
+
+model AccountingReceivablePayment {
+  id             String   @id @default(cuid())
+  organizationId String
+  invoiceId      String
+  accountId      String
+  paymentMethod  String
+  amount         Decimal  @db.Decimal(12, 2)
+  paymentDate    DateTime
+  reference      String?
+  notes          String?  @db.Text
+  createdById    String?
+  createdAt      DateTime @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      AccountingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  account      AccountingAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  createdBy    User?             @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, paymentDate])
+  @@index([invoiceId, paymentDate])
+  @@index([accountId])
 }
 
 model AccountingExpense {

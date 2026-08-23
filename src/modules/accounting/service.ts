@@ -471,7 +471,25 @@ async function generateInvoiceNumber(organizationId: string) {
 
 export async function listInvoices(organizationId: string) {
   await sweepOverdueInvoices(organizationId);
-  return db.accountingInvoice.findMany({ where: { organizationId }, orderBy: { createdAt: "desc" } });
+  return db.accountingInvoice.findMany({ where: { organizationId }, include: { payments: { include: { account: true, createdBy: true }, orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }] } }, orderBy: { createdAt: "desc" } });
+}
+
+export async function getReceivablesSummary(organizationId: string) {
+  await sweepOverdueInvoices(organizationId);
+  const invoices = await db.accountingInvoice.findMany({ where: { organizationId, status: { in: ["SENT", "OVERDUE", "PAID"] } }, include: { payments: { include: { account: true }, orderBy: { paymentDate: "asc" } } }, orderBy: [{ customerName: "asc" }, { issueDate: "asc" }] });
+  const customers = new Map<string, { key: string; customerName: string; customerEmail: string | null; invoiced: Prisma.Decimal; paid: Prisma.Decimal; outstanding: Prisma.Decimal; overdue: Prisma.Decimal; invoices: typeof invoices }>();
+  for (const invoice of invoices) {
+    const key = invoice.customerEmail?.trim().toLowerCase() || `name:${invoice.customerName.trim().toLowerCase()}`;
+    const current = customers.get(key) ?? { key, customerName: invoice.customerName, customerEmail: invoice.customerEmail, invoiced: new Prisma.Decimal(0), paid: new Prisma.Decimal(0), outstanding: new Prisma.Decimal(0), overdue: new Prisma.Decimal(0), invoices: [] };
+    const outstanding = invoice.status === "VOID" ? new Prisma.Decimal(0) : invoice.amount.minus(invoice.amountPaid);
+    current.invoiced = current.invoiced.plus(invoice.amount);
+    current.paid = current.paid.plus(invoice.amountPaid);
+    current.outstanding = current.outstanding.plus(outstanding);
+    if (invoice.status === "OVERDUE") current.overdue = current.overdue.plus(outstanding);
+    current.invoices.push(invoice);
+    customers.set(key, current);
+  }
+  return [...customers.values()];
 }
 
 interface InvoiceInput {
@@ -547,7 +565,9 @@ type LockedInvoiceRow = { id: string; amount: Prisma.Decimal | string; amountPai
  * amountPaid before deciding whether it still fits — see
  * docs/HARDENING_PLAN.md's Pass 4 section.
  */
-export async function recordInvoicePayment(organizationId: string, id: string, amount: string, paymentDate: Date) {
+export async function recordInvoicePayment(organizationId: string, id: string, inputOrAmount: { amount: string; paymentDate: Date; accountId: string; paymentMethod: string; reference?: string | null; notes?: string | null; createdById?: string | null } | string, legacyPaymentDate?: Date) {
+  const legacy = typeof inputOrAmount === "string";
+  const amount = legacy ? inputOrAmount : inputOrAmount.amount;
   // Prisma.Decimal throughout — this is a comparison against a database
   // Decimal column and a value that gets atomically incremented into it, so
   // exact arithmetic matters; JS Number comparison previously needed a 0.005
@@ -557,9 +577,12 @@ export async function recordInvoicePayment(organizationId: string, id: string, a
   if (!paymentAmount.isFinite() || paymentAmount.lessThanOrEqualTo(0)) {
     throw new InvalidPaymentError("Payment amount must be a positive number.");
   }
+  const input = legacy ? { amount, paymentDate: legacyPaymentDate ?? new Date(), accountId: "", paymentMethod: "CASH" } : inputOrAmount;
 
   const invoice = await db.accountingInvoice.findFirst({ where: { id, organizationId } });
   if (!invoice) throw new NotFoundError("Invoice not found.");
+  if (paymentAmount.greaterThan(new Prisma.Decimal(invoice.amount).minus(invoice.amountPaid))) throw new InvalidPaymentError("Payment exceeds the current outstanding balance.");
+  const [ar, legacyCash] = await Promise.all([getDefaultAccount(organizationId, "1100"), legacy ? getDefaultAccount(organizationId, "1000") : Promise.resolve(null)]);
 
   return db.$transaction(async (tx) => {
     const [locked] = await tx.$queryRaw<LockedInvoiceRow[]>`
@@ -581,19 +604,21 @@ export async function recordInvoicePayment(organizationId: string, id: string, a
     // Only fetched once the payment is actually valid — no point creating
     // the default chart-of-accounts rows for a payment that's about to be
     // rejected.
-    const [cash, ar] = await Promise.all([
-      getDefaultAccount(organizationId, "1000"),
-      getDefaultAccount(organizationId, "1100"),
-    ]);
+    const receivingAccount = legacy ? legacyCash : await tx.accountingAccount.findFirst({ where: { id: input.accountId, organizationId, active: true, liquidityType: { in: ["CASH", "BANK", "MOBILE_MONEY"] } } });
+    if (!receivingAccount) throw new InvalidPaymentError("Select an active cash, bank, or mobile-money account owned by this organization.");
+    if (!input.paymentMethod.trim()) throw new InvalidPaymentError("Payment method is required.");
+
+    const payment = legacy ? null : await tx.accountingReceivablePayment.create({ data: { organizationId, invoiceId: invoice.id, accountId: receivingAccount.id, paymentMethod: input.paymentMethod.trim(), amount: paymentAmount, paymentDate: input.paymentDate, reference: input.reference?.trim() || null, notes: input.notes?.trim() || null, createdById: input.createdById } });
 
     await postJournalEntry(tx, organizationId, {
-      entryDate: paymentDate,
+      entryDate: input.paymentDate,
       description: `Payment received for invoice ${invoice.invoiceNumber}`,
-      sourceType: "INVOICE",
-      sourceId: invoice.id,
+      sourceType: payment ? "ACCOUNTING_RECEIVABLE_PAYMENT" : "INVOICE",
+      sourceId: payment?.id ?? invoice.id,
+      postingPurpose: payment ? "RECEIVED" : undefined,
       lines: [
-        { accountId: cash.id, debit: amount },
-        { accountId: ar.id, credit: amount },
+        { accountId: receivingAccount.id, debit: input.amount },
+        { accountId: ar.id, credit: input.amount },
       ],
     });
 
@@ -603,13 +628,9 @@ export async function recordInvoicePayment(organizationId: string, id: string, a
     });
 
     const isFullyPaid = new Prisma.Decimal(updated.amountPaid).greaterThanOrEqualTo(updated.amount);
-    if (!isFullyPaid) return updated;
-
-    return tx.accountingInvoice.update({
-      where: { id },
-      data: { status: "PAID", paidAt: paymentDate },
-    });
-  });
+    const finalInvoice = isFullyPaid ? await tx.accountingInvoice.update({ where: { id }, data: { status: "PAID", paidAt: input.paymentDate } }) : updated;
+    return { invoice: finalInvoice, payment };
+  }, { timeout: 20_000 });
 }
 
 /**

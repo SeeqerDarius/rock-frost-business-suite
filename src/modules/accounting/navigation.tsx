@@ -1,4 +1,4 @@
-import { LayoutGrid, BookOpen, FileText, Receipt, ScrollText, BarChart3, Settings, Landmark, Wallet, CalendarRange, Sparkles } from "lucide-react";
+import { LayoutGrid, BookOpen, FileText, Receipt, ScrollText, BarChart3, Settings, Landmark, Wallet, CalendarRange, Sparkles, UsersRound } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const accountingNavigation: ModuleNavItem[] = [
@@ -6,6 +6,7 @@ export const accountingNavigation: ModuleNavItem[] = [
   { label: "Insights", href: "/app/accounting/insights", icon: <Sparkles className="size-4" /> },
   { label: "Chart of Accounts", href: "/app/accounting/accounts", icon: <BookOpen className="size-4" /> },
   { label: "Invoices", href: "/app/accounting/invoices", icon: <FileText className="size-4" /> },
+  { label: "Receivables", href: "/app/accounting/receivables", icon: <UsersRound className="size-4" /> },
   { label: "Expenses", href: "/app/accounting/expenses", icon: <Receipt className="size-4" /> },
   { label: "Petty Cash", href: "/app/accounting/petty-cash", icon: <Wallet className="size-4" /> },
   { label: "Journal", href: "/app/accounting/journal", icon: <ScrollText className="size-4" /> },

@@ -26,14 +26,14 @@ beforeAll(async () => {
   await accounting.ensureDefaultAccounts(orgExactPay.organizationId);
   await accounting.ensureDefaultAccounts(orgSend.organizationId);
   await accounting.ensureDefaultAccounts(orgInvoiceNumbers.organizationId);
-});
+}, 90_000);
 
 afterAll(async () => {
   await cleanupTestOrg(orgOverpay);
   await cleanupTestOrg(orgExactPay);
   await cleanupTestOrg(orgSend);
   await cleanupTestOrg(orgInvoiceNumbers);
-});
+}, 90_000);
 
 async function createSentInvoice(organizationId: string, amount: string) {
   const invoice = await accounting.createInvoice(organizationId, {
@@ -45,13 +45,21 @@ async function createSentInvoice(organizationId: string, amount: string) {
   return accounting.markInvoiceSent(organizationId, invoice.id);
 }
 
+async function receiptInput(organizationId: string, amount: string, reference: string) {
+  const account = (await accounting.ensureDefaultAccounts(organizationId)).find((item) => item.code === "1000");
+  if (!account) throw new Error("Default cash account missing.");
+  return { amount, paymentDate: new Date("2026-01-15"), accountId: account.id, paymentMethod: "CASH", reference };
+}
+
 describe("Accounting concurrency (real Postgres)", () => {
   it("two concurrent payments that together would overpay: exactly one succeeds, amountPaid reflects only the winner", async () => {
     const invoice = await createSentInvoice(orgOverpay.organizationId, "100.00");
+    const inputA = await receiptInput(orgOverpay.organizationId, "60.00", "OVERPAY-A");
+    const inputB = await receiptInput(orgOverpay.organizationId, "60.00", "OVERPAY-B");
 
     const results = await Promise.allSettled([
-      accounting.recordInvoicePayment(orgOverpay.organizationId, invoice.id, "60.00", new Date("2026-01-15")),
-      accounting.recordInvoicePayment(orgOverpay.organizationId, invoice.id, "60.00", new Date("2026-01-15")),
+      accounting.recordInvoicePayment(orgOverpay.organizationId, invoice.id, inputA),
+      accounting.recordInvoicePayment(orgOverpay.organizationId, invoice.id, inputB),
     ]);
 
     const fulfilled = results.filter((r) => r.status === "fulfilled");
@@ -63,14 +71,17 @@ describe("Accounting concurrency (real Postgres)", () => {
     const finalInvoice = await testDb.accountingInvoice.findUniqueOrThrow({ where: { id: invoice.id } });
     expect(finalInvoice.amountPaid.toFixed(2)).toBe("60.00");
     expect(finalInvoice.status).toBe("SENT");
+    expect(await testDb.accountingReceivablePayment.count({ where: { invoiceId: invoice.id } })).toBe(1);
   });
 
   it("two concurrent payments that together exactly fit both succeed, amountPaid is exact, invoice is PAID", async () => {
     const invoice = await createSentInvoice(orgExactPay.organizationId, "100.00");
+    const inputA = await receiptInput(orgExactPay.organizationId, "50.00", "EXACT-A");
+    const inputB = await receiptInput(orgExactPay.organizationId, "50.00", "EXACT-B");
 
     const [resultA, resultB] = await Promise.all([
-      accounting.recordInvoicePayment(orgExactPay.organizationId, invoice.id, "50.00", new Date("2026-01-15")),
-      accounting.recordInvoicePayment(orgExactPay.organizationId, invoice.id, "50.00", new Date("2026-01-15")),
+      accounting.recordInvoicePayment(orgExactPay.organizationId, invoice.id, inputA),
+      accounting.recordInvoicePayment(orgExactPay.organizationId, invoice.id, inputB),
     ]);
 
     expect(resultA).toBeTruthy();
@@ -79,6 +90,7 @@ describe("Accounting concurrency (real Postgres)", () => {
     const finalInvoice = await testDb.accountingInvoice.findUniqueOrThrow({ where: { id: invoice.id } });
     expect(finalInvoice.amountPaid.toFixed(2)).toBe("100.00");
     expect(finalInvoice.status).toBe("PAID");
+    expect(await testDb.accountingReceivablePayment.count({ where: { invoiceId: invoice.id } })).toBe(2);
   });
 
   it("two concurrent markInvoiceSent calls on the same DRAFT invoice: exactly one succeeds, exactly one journal entry posted", async () => {

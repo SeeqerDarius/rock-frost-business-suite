@@ -110,11 +110,11 @@ export async function sendInvoice(formData: FormData): Promise<void> {
   redirect("/app/accounting/invoices?saved=1");
 }
 
-const payInvoiceSchema = z.object({ id: cuid, amount: moneyAmount, paymentDate: dateInput });
+const payInvoiceSchema = z.object({ id: cuid, amount: moneyAmount, paymentDate: dateInput, accountId: cuid, paymentMethod: z.enum(["CASH", "BANK_TRANSFER", "MOBILE_MONEY", "CHEQUE", "CARD", "OTHER"]), reference: shortText.nullable().optional(), notes: longText.nullable().optional() });
 
 export async function payInvoice(formData: FormData): Promise<void> {
   const tenant = await requireModuleAccess("accounting");
-  if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_INVOICES_MANAGE)) {
+  if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_RECEIVABLES_MANAGE)) {
     redirect("/app/accounting/invoices?error=forbidden");
   }
 
@@ -122,17 +122,21 @@ export async function payInvoice(formData: FormData): Promise<void> {
     id: clean(formData.get("id")),
     amount: clean(formData.get("amount")),
     paymentDate: clean(formData.get("paymentDate")),
+    accountId: clean(formData.get("accountId")),
+    paymentMethod: clean(formData.get("paymentMethod")),
+    reference: clean(formData.get("reference")),
+    notes: clean(formData.get("notes")),
   });
   if (!parsed.success) {
     redirect("/app/accounting/invoices?error=missing-fields");
   }
-  const { id, amount, paymentDate } = parsed.data;
+  const { id, amount, paymentDate, accountId, paymentMethod, reference, notes } = parsed.data;
 
   const session = await getServerAuthSession();
 
   let invoice;
   try {
-    invoice = await recordInvoicePayment(tenant.organizationId, id, amount, paymentDate);
+    invoice = await recordInvoicePayment(tenant.organizationId, id, { amount, paymentDate, accountId, paymentMethod, reference, notes, createdById: session?.user?.id ?? null });
   } catch (error) {
     if (error instanceof AccountingPeriodLockedError) redirect("/app/accounting/invoices?error=period-closed");
     if (error instanceof InvalidPaymentError) {
@@ -161,8 +165,8 @@ export async function payInvoice(formData: FormData): Promise<void> {
     module: "accounting",
     action: "invoice.payment",
     entityName: "AccountingInvoice",
-    entityId: invoice.id,
-    metadata: { amount },
+    entityId: invoice.payment?.id ?? invoice.invoice.id,
+    metadata: { invoiceId: invoice.invoice.id, amount, paymentMethod, accountId },
   });
 
   revalidatePath("/app/accounting/invoices");
