@@ -2,6 +2,7 @@ import { AccountingModuleShowcase } from "@/components/marketing/module-showcase
 import { AnalyticsModuleShowcase } from "@/components/marketing/module-showcases/analytics";
 import { CrmModuleShowcase } from "@/components/marketing/module-showcases/crm";
 import { FleetModuleShowcase } from "@/components/marketing/module-showcases/fleet";
+import { HostelModuleShowcase } from "@/components/marketing/module-showcases/hostel";
 import { HotelModuleShowcase } from "@/components/marketing/module-showcases/hotel";
 import { HospitalModuleShowcase } from "@/components/marketing/module-showcases/hospital";
 import { HrModuleShowcase } from "@/components/marketing/module-showcases/hr";
@@ -14,7 +15,7 @@ import { ProcurementModuleShowcase } from "@/components/marketing/module-showcas
 import { ProjectsModuleShowcase } from "@/components/marketing/module-showcases/projects";
 import { SchoolModuleShowcase } from "@/components/marketing/module-showcases/school";
 
-const MODULE_SHOWCASES: Partial<Record<string, React.ComponentType>> = {
+export const MODULE_SHOWCASES: Partial<Record<string, React.ComponentType>> = {
   fleet: FleetModuleShowcase,
   installment: InstallmentModuleShowcase,
   crm: CrmModuleShowcase,
@@ -27,6 +28,7 @@ const MODULE_SHOWCASES: Partial<Record<string, React.ComponentType>> = {
   analytics: AnalyticsModuleShowcase,
   pos: PosModuleShowcase,
   hotel: HotelModuleShowcase,
+  hostel: HostelModuleShowcase,
   school: SchoolModuleShowcase,
   pharmacy: PharmacyModuleShowcase,
   hospital: HospitalModuleShowcase,
