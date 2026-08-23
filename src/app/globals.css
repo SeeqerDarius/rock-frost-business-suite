@@ -171,11 +171,11 @@
 .logo-shimmer {
   position: relative;
   overflow: hidden;
-  -webkit-mask-image: url("/RFGgg.png");
+  -webkit-mask-image: url("/rft.png");
   -webkit-mask-size: contain;
   -webkit-mask-repeat: no-repeat;
   -webkit-mask-position: center;
-  mask-image: url("/RFGgg.png");
+  mask-image: url("/rft.png");
   mask-size: contain;
   mask-repeat: no-repeat;
   mask-position: center;

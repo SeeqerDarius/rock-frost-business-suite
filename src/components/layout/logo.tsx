@@ -24,10 +24,10 @@ export function Logo({
         )}
       >
         <Image
-          src="/RFGgg.png"
+          src="/rft.png"
           alt="Rock Frost"
           width={1015}
-          height={129}
+          height={180}
           className="h-full w-full object-contain drop-shadow-[0_1px_1px_rgba(0,0,0,0.85)]"
           priority
         />
