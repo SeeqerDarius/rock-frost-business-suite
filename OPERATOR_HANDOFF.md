@@ -8,6 +8,8 @@ Accounting now includes `/app/accounting/insights` for authorized reporting user
 
 Concurrent public-asset changes appeared during this work: four demo-logo SVGs and `public/og-image.svg` were removed and `public/rft.png` was added. They were preserved exactly as found and excluded from this Accounting release, along with the pre-existing `.agents/` and `skills-lock.json` files.
 
+Integrated release commit `cd509d5` was fast-forwarded to `main`. Vercel deployment `dpl_ANSUwZuyN91nMCKseGjd8NZwDKQA` reached READY and was confirmed as the artifact serving `app.rockfrostgroup.com`, `admin.rockfrostgroup.com`, the root domain, and `www`. Production `/api/health` returned HTTP 200 with the database reachable; `/app/accounting/insights` reached the new authenticated route boundary; and the post-deploy log scan showed only those successful verification requests with no runtime errors. The disposable Neon branch was deleted and the branch list was verified to contain only `production`. No live Groq prompt was submitted against a customer's data during release verification; the assistant provider path is covered through the existing mocked-client boundary, deterministic fallback, permission tests, production compilation, and tenant-scoped aggregate implementation.
+
 ## 2026-08-23: Three-product trials, public direct subscription, combined suites, and contact handoff
 
 Trial workspaces are now capped at three customer-facing products. Product-group companions count once, and enforcement happens under an organization-scoped PostgreSQL advisory transaction lock in both the platform module toggle and module-request approval path. Module configuration no longer accidentally enables a missing assignment. Paid subscriptions remain unrestricted by this trial limit.
