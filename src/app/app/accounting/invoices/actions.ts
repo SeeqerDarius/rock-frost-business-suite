@@ -31,6 +31,7 @@ const createInvoiceSchema = z.object({
   amount: moneyAmount,
   issueDate: dateInput,
   dueDate: dateInput,
+  taxCodeId: cuid.nullable().optional(),
 });
 
 export async function createNewInvoice(formData: FormData): Promise<void> {
@@ -46,11 +47,12 @@ export async function createNewInvoice(formData: FormData): Promise<void> {
     amount: clean(formData.get("amount")),
     issueDate: clean(formData.get("issueDate")),
     dueDate: clean(formData.get("dueDate")),
+    taxCodeId: clean(formData.get("taxCodeId")),
   });
   if (!parsed.success) {
     redirect("/app/accounting/invoices?error=missing-fields");
   }
-  const { customerName, customerEmail, description, amount, issueDate, dueDate } = parsed.data;
+  const { customerName, customerEmail, description, amount, issueDate, dueDate, taxCodeId } = parsed.data;
 
   const session = await getServerAuthSession();
   await createInvoice(
@@ -62,6 +64,7 @@ export async function createNewInvoice(formData: FormData): Promise<void> {
       amount,
       issueDate,
       dueDate,
+      taxCodeId: taxCodeId ?? null,
     },
     session?.user?.id ?? null,
   );

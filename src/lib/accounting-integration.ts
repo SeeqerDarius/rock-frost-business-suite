@@ -3,7 +3,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { primaryProductKey } from "@/platform/modules/product-groups";
-import { ensureDefaultAccounts, postSourceJournalEntry, reverseSourceJournalEntry } from "@/modules/accounting/service";
+import { ensureDefaultAccounts, postProcurementTaxAccrual, postSourceJournalEntry, reverseSourceJournalEntry } from "@/modules/accounting/service";
 
 /**
  * The one place every revenue-generating module posts into Accounting's
@@ -147,22 +147,10 @@ export type PostModuleRevenueResult =
   | { posted: true; journalEntryId: string }
   | { posted: false; reason: "accounting-not-enabled" | "error" };
 
-export async function postProcurementInvoiceAccrual(organizationId: string, input: { invoiceId: string; amount: string; invoiceDate: Date; description: string; actorId?: string | null }): Promise<PostModuleRevenueResult> {
+export async function postProcurementInvoiceAccrual(organizationId: string, input: { invoiceId: string; invoiceNumber: string; vendorName: string; taxCodeId?: string | null; taxableAmount: string; vatAmount: string; nhilAmount: string; getfundAmount: string; totalAmount: string; invoiceDate: Date; description: string; actorId?: string | null }): Promise<PostModuleRevenueResult> {
   try {
     if (!(await isModuleActiveForOrg(db, organizationId, "accounting"))) return { posted: false, reason: "accounting-not-enabled" };
-    const accounts = await ensureDefaultAccounts(organizationId);
-    const inventory = accounts.find((account) => account.code === "1200");
-    const payable = accounts.find((account) => account.code === "2000");
-    if (!inventory || !payable) throw new Error("Default inventory or payable account missing.");
-    const entry = await postSourceJournalEntry(organizationId, {
-      sourceType: "PROCUREMENT_SUPPLIER_INVOICE",
-      sourceId: input.invoiceId,
-      postingPurpose: "APPROVED",
-      entryDate: input.invoiceDate,
-      description: input.description,
-      createdById: input.actorId,
-      lines: [{ accountId: inventory.id, debit: input.amount }, { accountId: payable.id, credit: input.amount }],
-    });
+    const entry = await postProcurementTaxAccrual(organizationId, input);
     return { posted: true, journalEntryId: entry.id };
   } catch (error) {
     console.error("[accounting-integration] Failed to accrue supplier invoice:", { organizationId, invoiceId: input.invoiceId, error });

@@ -21,7 +21,7 @@ const mockDb = {
   posRegister: { create: vi.fn(), update: vi.fn() },
   inventoryWarehouse: { findFirst: vi.fn() },
 
-  accountingAccount: { count: vi.fn(), findMany: vi.fn() },
+  accountingAccount: { count: vi.fn(), findMany: vi.fn(), createMany: vi.fn() },
   accountingJournalEntry: { create: vi.fn(), count: vi.fn(), findFirst: vi.fn() },
   accountingPeriod: { findFirst: vi.fn() },
   accountingInvoice: { findFirst: vi.fn(), update: vi.fn() },

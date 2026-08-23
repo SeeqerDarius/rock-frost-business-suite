@@ -5,6 +5,7 @@ import { recordMovement } from "@/modules/inventory/service";
 import { Prisma, type ProcurementRequestStatus, type ProcurementOrderStatus } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { isModuleActiveForOrg, postProcurementInvoiceAccrual, postProcurementSupplierPayment } from "@/lib/accounting-integration";
+import { calculateTax } from "@/modules/accounting/tax-service";
 import {
   getOrganizationModuleConfiguration,
   updateOrganizationModuleConfigurationValues,
@@ -373,7 +374,7 @@ export function listGoodsReceipts(organizationId: string) {
 export function listSupplierInvoices(organizationId: string) {
   return db.procurementSupplierInvoice.findMany({
     where: { organizationId },
-    include: { vendor: true, order: true, createdBy: true, approvedBy: true, payments: { include: { account: true, createdBy: true }, orderBy: { paymentDate: "desc" } }, lines: { include: { orderLine: true } } },
+    include: { vendor: true, order: true, taxCode: true, createdBy: true, approvedBy: true, payments: { include: { account: true, createdBy: true }, orderBy: { paymentDate: "desc" } }, lines: { include: { orderLine: true } } },
     orderBy: { createdAt: "desc" },
     take: 200,
   });
@@ -393,7 +394,7 @@ export async function listSupplierPaymentAccounts(organizationId: string) {
 
 export async function createSupplierInvoice(
   organizationId: string,
-  input: { vendorId: string; orderId: string; invoiceNumber: string; invoiceDate: Date; dueDate?: Date | null; createdById?: string | null; lines: Array<{ orderLineId: string; quantity: number; unitCost: string }> },
+  input: { vendorId: string; orderId: string; invoiceNumber: string; invoiceDate: Date; dueDate?: Date | null; taxCodeId?: string | null; createdById?: string | null; lines: Array<{ orderLineId: string; quantity: number; unitCost: string }> },
 ) {
   if (!input.invoiceNumber.trim() || input.lines.length === 0 || input.lines.length > 100) throw new InvoiceMatchError("Invoice number and lines are required.");
   const aggregated = new Map<string, { orderLineId: string; quantity: number; unitCost: string }>();
@@ -427,11 +428,12 @@ export async function createSupplierInvoice(
       if (line.quantity + (invoicedByLine.get(line.orderLineId) ?? 0) > ordered.receivedQuantity) throw new InvoiceMatchError("Invoice quantity exceeds the remaining received quantity.");
       if (!cost.equals(ordered.unitCost)) exceptionNote = "Invoice unit cost does not match the purchase order.";
     }
+    const tax = await calculateTax(organizationId, total, input.taxCodeId, input.invoiceDate);
     return tx.procurementSupplierInvoice.create({
       data: {
         organizationId, vendorId: input.vendorId, orderId: input.orderId,
         invoiceNumber: input.invoiceNumber.trim(), invoiceDate: input.invoiceDate, dueDate: input.dueDate,
-        createdById: input.createdById, totalAmount: total,
+        createdById: input.createdById, taxCodeId: tax.taxCode?.id, taxableAmount: tax.taxableAmount, vatAmount: tax.vatAmount, nhilAmount: tax.nhilAmount, getfundAmount: tax.getfundAmount, totalAmount: tax.grossAmount,
         status: exceptionNote ? "EXCEPTION" : "MATCHED", exceptionNote,
         lines: { create: lines.map((line) => ({ ...line, description: orderLines.get(line.orderLineId)!.description })) },
       },
@@ -441,7 +443,7 @@ export async function createSupplierInvoice(
 }
 
 export async function reviewSupplierInvoice(organizationId: string, invoiceId: string, actorId: string, decision: "APPROVE" | "REJECT") {
-  const invoice = await db.procurementSupplierInvoice.findFirst({ where: { id: invoiceId, organizationId, status: { in: ["MATCHED", "EXCEPTION"] } } });
+  const invoice = await db.procurementSupplierInvoice.findFirst({ where: { id: invoiceId, organizationId, status: { in: ["MATCHED", "EXCEPTION"] } }, include: { vendor: true } });
   if (!invoice) throw new InvoiceApprovalError("Invoice is not awaiting review.");
   if (invoice.createdById === actorId) throw new InvoiceApprovalError("The invoice creator cannot review the same invoice.");
   if (decision === "APPROVE" && invoice.status === "EXCEPTION") throw new InvoiceApprovalError("Resolve the three-way match exception before approval.");
@@ -450,9 +452,9 @@ export async function reviewSupplierInvoice(organizationId: string, invoiceId: s
     data: decision === "APPROVE" ? { status: "APPROVED", approvedById: actorId, approvedAt: new Date() } : { status: "REJECTED", approvedById: actorId, approvedAt: new Date() },
   });
   if (claimed.count === 0) throw new InvoiceApprovalError("Invoice was already reviewed.");
-  const reviewed = await db.procurementSupplierInvoice.findFirstOrThrow({ where: { id: invoice.id, organizationId } });
+  const reviewed = await db.procurementSupplierInvoice.findFirstOrThrow({ where: { id: invoice.id, organizationId }, include: { vendor: true } });
   if (decision === "APPROVE") {
-    const posting = await postProcurementInvoiceAccrual(organizationId, { invoiceId: reviewed.id, amount: reviewed.totalAmount.toString(), invoiceDate: reviewed.invoiceDate, description: `Supplier invoice ${reviewed.invoiceNumber}`, actorId });
+    const posting = await postProcurementInvoiceAccrual(organizationId, { invoiceId: reviewed.id, invoiceNumber: reviewed.invoiceNumber, vendorName: reviewed.vendor.name, taxCodeId: reviewed.taxCodeId, taxableAmount: reviewed.taxableAmount.toString(), vatAmount: reviewed.vatAmount.toString(), nhilAmount: reviewed.nhilAmount.toString(), getfundAmount: reviewed.getfundAmount.toString(), totalAmount: reviewed.totalAmount.toString(), invoiceDate: reviewed.invoiceDate, description: `Supplier invoice ${reviewed.invoiceNumber}`, actorId });
     if (!posting.posted && posting.reason === "error") {
       await db.procurementSupplierInvoice.updateMany({ where: { id: reviewed.id, organizationId, status: "APPROVED", approvedById: actorId }, data: { status: "MATCHED", approvedById: null, approvedAt: null } });
       throw new InvoiceApprovalError("Accounting could not record the supplier liability. The approval was not saved.");

@@ -10,6 +10,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockDb = {
   accountingAccount: { findMany: vi.fn(), createMany: vi.fn() },
+  $transaction: vi.fn(),
+  $executeRaw: vi.fn(),
 };
 
 vi.mock("@/lib/db", () => ({ db: mockDb }));
@@ -29,6 +31,7 @@ const FULL_ACCOUNTS = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockDb.$transaction.mockImplementation(async (fn: (tx: typeof mockDb) => Promise<unknown>) => fn(mockDb));
   // ensureDefaultAccounts' isSystem-scoped findMany call (no include) sees
   // every default code already present, so it never calls createMany;
   // listAccounts' own findMany call (with the journalLines include) is

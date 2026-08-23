@@ -65,10 +65,12 @@ A module posting revenue from one call site is not the same guarantee as "this m
 
 ## Current boundary
 
-This release establishes posting identity, period locking, source-owned reversals, operational insights, grounded Accounting Q&A, supplier payables, and explicit customer receivable allocations. Bank-statement import matching, tax, budget, fixed-asset, forecasting, and multi-currency workflows remain separate future releases and must not be marketed as delivered by this foundation.
+This release establishes posting identity, period locking, source-owned reversals, operational insights, grounded Accounting Q&A, supplier payables, explicit customer receivable allocations, effective-dated tax codes, invoice output-tax evidence, Procurement input-tax evidence, and controlled VAT working returns. See `docs/TAX_AND_STATUTORY_REPORTING.md` for the legal and filing boundary.
+
+Bank-statement import matching, budgeting, fixed assets, forecasting, consolidation, multi-company accounting, multi-currency revaluation, and component-level tax capture from modules other than Accounting and Procurement remain separate future releases and must not be marketed as delivered.
 # Procurement payable integration
 
-Supplier invoice approval in Inventory and Procurement creates an idempotent accrual in Accounting: debit Inventory Asset (1200), credit Accounts Payable (2000). A partial or final supplier payment debits Accounts Payable and credits the organization-owned cash, bank, or mobile-money account selected at payment time. Procurement owns the operational invoice and payment record. Accounting owns its immutable journal. Users must correct source transactions through their source workflow rather than manually reversing a source-owned journal.
+Supplier invoice approval in Inventory and Procurement creates an idempotent accrual in Accounting. Untaxed invoices debit Inventory Asset and credit Accounts Payable. Taxed invoices additionally debit the separate recoverable input VAT, NHIL, and GETFund accounts while Accounts Payable receives the gross value. A partial or final supplier payment debits Accounts Payable and credits the organization-owned cash, bank, or mobile-money account selected at payment time. Procurement owns the operational invoice and payment record. Accounting owns its immutable journal and tax evidence. Users must correct source transactions through their source workflow rather than manually reversing a source-owned journal.
 
 # Accounts receivable
 

@@ -8,6 +8,7 @@ import {
   getOrganizationModuleConfiguration,
   updateOrganizationModuleConfigurationValues,
 } from "@/platform/module-requests/configuration";
+import { calculateTax } from "./tax-service";
 
 const DEFAULT_INVOICE_NUMBER_PREFIX = "INV";
 const PREFIX_PATTERN = /^[A-Z0-9]{2,8}$/;
@@ -41,21 +42,26 @@ const DEFAULT_ACCOUNTS: { code: string; name: string; type: AccountingAccountTyp
   { code: "1000", name: "Cash", type: "ASSET", liquidityType: "CASH" },
   { code: "1100", name: "Accounts Receivable", type: "ASSET" },
   { code: "1200", name: "Inventory Asset", type: "ASSET" },
+  { code: "1300", name: "Recoverable Input VAT", type: "ASSET" },
+  { code: "1310", name: "Recoverable Input NHIL", type: "ASSET" },
+  { code: "1320", name: "Recoverable Input GETFund Levy", type: "ASSET" },
   { code: "2000", name: "Accounts Payable", type: "LIABILITY" },
+  { code: "2100", name: "VAT Payable", type: "LIABILITY" },
+  { code: "2110", name: "NHIL Payable", type: "LIABILITY" },
+  { code: "2120", name: "GETFund Levy Payable", type: "LIABILITY" },
   { code: "4000", name: "Revenue", type: "REVENUE" },
   { code: "5000", name: "General Expenses", type: "EXPENSE" },
 ];
 
 export async function ensureDefaultAccounts(organizationId: string) {
-  const existing = await db.accountingAccount.findMany({ where: { organizationId, isSystem: true } });
-  const existingCodes = new Set(existing.map((a) => a.code));
-  const missing = DEFAULT_ACCOUNTS.filter((a) => !existingCodes.has(a.code));
-  if (missing.length > 0) {
-    await db.accountingAccount.createMany({
-      data: missing.map((a) => ({ organizationId, ...a, isSystem: true })),
-    });
-  }
-  return db.accountingAccount.findMany({ where: { organizationId, isSystem: true } });
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${organizationId}:accounting-default-accounts`}))`;
+    const existing = await tx.accountingAccount.findMany({ where: { organizationId, isSystem: true } });
+    const existingCodes = new Set(existing.map((account) => account.code));
+    const missing = DEFAULT_ACCOUNTS.filter((account) => !existingCodes.has(account.code));
+    if (missing.length > 0) await tx.accountingAccount.createMany({ data: missing.map((account) => ({ organizationId, ...account, isSystem: true })), skipDuplicates: true });
+    return tx.accountingAccount.findMany({ where: { organizationId, isSystem: true } });
+  }, { timeout: 20_000 });
 }
 
 async function getDefaultAccount(organizationId: string, code: string) {
@@ -471,7 +477,7 @@ async function generateInvoiceNumber(organizationId: string) {
 
 export async function listInvoices(organizationId: string) {
   await sweepOverdueInvoices(organizationId);
-  return db.accountingInvoice.findMany({ where: { organizationId }, include: { payments: { include: { account: true, createdBy: true }, orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }] } }, orderBy: { createdAt: "desc" } });
+  return db.accountingInvoice.findMany({ where: { organizationId }, include: { taxCode: true, payments: { include: { account: true, createdBy: true }, orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }] } }, orderBy: { createdAt: "desc" } });
 }
 
 export async function getReceivablesSummary(organizationId: string) {
@@ -499,12 +505,14 @@ interface InvoiceInput {
   amount: string;
   issueDate: Date;
   dueDate: Date;
+  taxCodeId?: string | null;
 }
 
 export async function createInvoice(organizationId: string, data: InvoiceInput, createdById?: string | null) {
+  const tax = await calculateTax(organizationId, data.amount, data.taxCodeId, data.issueDate);
   return createWithUniqueRetry(async () => {
     const invoiceNumber = await generateInvoiceNumber(organizationId);
-    return db.accountingInvoice.create({ data: { organizationId, invoiceNumber, createdById, ...data } });
+    return db.accountingInvoice.create({ data: { organizationId, invoiceNumber, createdById, customerName: data.customerName, customerEmail: data.customerEmail, description: data.description, issueDate: data.issueDate, dueDate: data.dueDate, taxCodeId: tax.taxCode?.id, taxableAmount: tax.taxableAmount, vatAmount: tax.vatAmount, nhilAmount: tax.nhilAmount, getfundAmount: tax.getfundAmount, amount: tax.grossAmount } });
   });
 }
 
@@ -522,10 +530,9 @@ export async function markInvoiceSent(organizationId: string, id: string) {
   const invoice = await db.accountingInvoice.findFirst({ where: { id, organizationId } });
   if (!invoice) throw new NotFoundError("Invoice not found.");
 
-  const [ar, revenue] = await Promise.all([
-    getDefaultAccount(organizationId, "1100"),
-    getDefaultAccount(organizationId, "4000"),
-  ]);
+  const accounts = await ensureDefaultAccounts(organizationId);
+  const findAccount = (code: string) => { const account = accounts.find((candidate) => candidate.code === code); if (!account) throw new Error(`Default account ${code} missing.`); return account; };
+  const [ar, revenue, vatPayable, nhilPayable, getfundPayable] = [findAccount("1100"), findAccount("4000"), findAccount("2100"), findAccount("2110"), findAccount("2120")];
 
   return db.$transaction(async (tx) => {
     const claimed = await tx.accountingInvoice.updateMany({
@@ -541,9 +548,13 @@ export async function markInvoiceSent(organizationId: string, id: string) {
       sourceId: invoice.id,
       lines: [
         { accountId: ar.id, debit: invoice.amount.toString() },
-        { accountId: revenue.id, credit: invoice.amount.toString() },
+        { accountId: revenue.id, credit: invoice.taxableAmount.toString() },
+        ...(invoice.vatAmount.isPositive() ? [{ accountId: vatPayable.id, credit: invoice.vatAmount.toString() }] : []),
+        ...(invoice.nhilAmount.isPositive() ? [{ accountId: nhilPayable.id, credit: invoice.nhilAmount.toString() }] : []),
+        ...(invoice.getfundAmount.isPositive() ? [{ accountId: getfundPayable.id, credit: invoice.getfundAmount.toString() }] : []),
       ],
     });
+    await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: invoice.taxCodeId, direction: "OUTPUT", transactionDate: invoice.issueDate, sourceType: "ACCOUNTING_INVOICE", sourceId: invoice.id, documentNumber: invoice.invoiceNumber, counterparty: invoice.customerName, taxableAmount: invoice.taxableAmount, vatAmount: invoice.vatAmount, nhilAmount: invoice.nhilAmount, getfundAmount: invoice.getfundAmount } });
     return tx.accountingInvoice.findUniqueOrThrow({ where: { id } });
   });
 }
@@ -633,6 +644,20 @@ export async function recordInvoicePayment(organizationId: string, id: string, i
   }, { timeout: 20_000 });
 }
 
+export async function postProcurementTaxAccrual(organizationId: string, input: { invoiceId: string; invoiceNumber: string; vendorName: string; invoiceDate: Date; taxCodeId?: string | null; taxableAmount: Prisma.Decimal.Value; vatAmount: Prisma.Decimal.Value; nhilAmount: Prisma.Decimal.Value; getfundAmount: Prisma.Decimal.Value; totalAmount: Prisma.Decimal.Value; actorId?: string | null }) {
+  const accounts = await ensureDefaultAccounts(organizationId);
+  const findAccount = (code: string) => { const account = accounts.find((candidate) => candidate.code === code); if (!account) throw new Error(`Default account ${code} missing.`); return account; };
+  const [inventory, inputVat, inputNhil, inputGetfund, payable] = [findAccount("1200"), findAccount("1300"), findAccount("1310"), findAccount("1320"), findAccount("2000")];
+  const vatAmount = new Prisma.Decimal(input.vatAmount);
+  const nhilAmount = new Prisma.Decimal(input.nhilAmount);
+  const getfundAmount = new Prisma.Decimal(input.getfundAmount);
+  return db.$transaction(async (tx) => {
+    const entry = await postJournalEntry(tx, organizationId, { sourceType: "PROCUREMENT_SUPPLIER_INVOICE", sourceId: input.invoiceId, postingPurpose: "APPROVED", entryDate: input.invoiceDate, description: `Supplier invoice ${input.invoiceNumber}`, createdById: input.actorId, lines: [{ accountId: inventory.id, debit: new Prisma.Decimal(input.taxableAmount).toString() }, ...(vatAmount.isPositive() ? [{ accountId: inputVat.id, debit: vatAmount.toString() }] : []), ...(nhilAmount.isPositive() ? [{ accountId: inputNhil.id, debit: nhilAmount.toString() }] : []), ...(getfundAmount.isPositive() ? [{ accountId: inputGetfund.id, debit: getfundAmount.toString() }] : []), { accountId: payable.id, credit: new Prisma.Decimal(input.totalAmount).toString() }] });
+    await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: input.taxCodeId, direction: "INPUT", transactionDate: input.invoiceDate, sourceType: "PROCUREMENT_SUPPLIER_INVOICE", sourceId: input.invoiceId, documentNumber: input.invoiceNumber, counterparty: input.vendorName, taxableAmount: input.taxableAmount, vatAmount: input.vatAmount, nhilAmount: input.nhilAmount, getfundAmount: input.getfundAmount } });
+    return entry;
+  });
+}
+
 /**
  * Voiding a SENT/OVERDUE invoice now posts a reversing journal entry
  * (Debit Revenue / Credit AR — the exact opposite of the entry
@@ -647,9 +672,7 @@ export async function voidInvoice(organizationId: string, id: string) {
   if (Number(invoice.amountPaid) > 0) throw new InvoiceStateError("Cannot void an invoice that has received payment.");
 
   const needsReversal = invoice.status === "SENT" || invoice.status === "OVERDUE";
-  const accounts = needsReversal
-    ? await Promise.all([getDefaultAccount(organizationId, "1100"), getDefaultAccount(organizationId, "4000")])
-    : null;
+  const accounts = needsReversal ? await ensureDefaultAccounts(organizationId) : null;
 
   return db.$transaction(async (tx) => {
     const claimed = await tx.accountingInvoice.updateMany({
@@ -659,17 +682,22 @@ export async function voidInvoice(organizationId: string, id: string) {
     if (claimed.count === 0) throw new InvoiceStateError("This invoice can no longer be voided.");
 
     if (accounts) {
-      const [ar, revenue] = accounts;
+      const findAccount = (code: string) => { const account = accounts.find((candidate) => candidate.code === code); if (!account) throw new Error(`Default account ${code} missing.`); return account; };
+      const [ar, revenue, vatPayable, nhilPayable, getfundPayable] = [findAccount("1100"), findAccount("4000"), findAccount("2100"), findAccount("2110"), findAccount("2120")];
       await postJournalEntry(tx, organizationId, {
         entryDate: new Date(),
         description: `Void of invoice ${invoice.invoiceNumber} (reversal)`,
         sourceType: "INVOICE_VOID",
         sourceId: invoice.id,
         lines: [
-          { accountId: revenue.id, debit: invoice.amount.toString() },
+          { accountId: revenue.id, debit: invoice.taxableAmount.toString() },
+          ...(invoice.vatAmount.isPositive() ? [{ accountId: vatPayable.id, debit: invoice.vatAmount.toString() }] : []),
+          ...(invoice.nhilAmount.isPositive() ? [{ accountId: nhilPayable.id, debit: invoice.nhilAmount.toString() }] : []),
+          ...(invoice.getfundAmount.isPositive() ? [{ accountId: getfundPayable.id, debit: invoice.getfundAmount.toString() }] : []),
           { accountId: ar.id, credit: invoice.amount.toString() },
         ],
       });
+      await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: invoice.taxCodeId, direction: "ADJUSTMENT", transactionDate: new Date(), sourceType: "ACCOUNTING_INVOICE_VOID", sourceId: invoice.id, documentNumber: invoice.invoiceNumber, counterparty: invoice.customerName, taxableAmount: invoice.taxableAmount.negated(), vatAmount: invoice.vatAmount.negated(), nhilAmount: invoice.nhilAmount.negated(), getfundAmount: invoice.getfundAmount.negated(), notes: "Invoice voided" } });
     }
 
     return tx.accountingInvoice.findUniqueOrThrow({ where: { id } });

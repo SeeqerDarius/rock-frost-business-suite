@@ -450,6 +450,9 @@ model Organization {
   accountingPeriods               AccountingPeriod[]
   accountingPettyCashFunds        AccountingPettyCashFund[]
   accountingPettyCashTransactions AccountingPettyCashTransaction[]
+  accountingTaxCodes              AccountingTaxCode[]
+  accountingTaxTransactions       AccountingTaxTransaction[]
+  accountingTaxPeriods            AccountingTaxPeriod[]
   hrEmployees                     HrEmployee[]
   hrTerminationRequests           HrTerminationRequest[]
   hrEmployeeStatusHistory         HrEmployeeStatusHistory[]
@@ -2049,6 +2052,26 @@ enum AccountingJournalStatus {
   REVERSED
 }
 
+enum AccountingTaxTreatment {
+  STANDARD
+  ZERO_RATED
+  EXEMPT
+  RELIEVED
+  OUT_OF_SCOPE
+}
+
+enum AccountingTaxDirection {
+  OUTPUT
+  INPUT
+  ADJUSTMENT
+}
+
+enum AccountingTaxPeriodStatus {
+  OPEN
+  LOCKED
+  FILED
+}
+
 model AccountingAccount {
   id                     String                  @id @default(cuid())
   organizationId         String
@@ -2100,6 +2123,11 @@ model AccountingInvoice {
   customerEmail  String?
   description    String?                 @db.Text
   amount         Decimal                 @db.Decimal(12, 2)
+  taxableAmount  Decimal                 @default(0) @db.Decimal(12, 2)
+  vatAmount      Decimal                 @default(0) @db.Decimal(12, 2)
+  nhilAmount     Decimal                 @default(0) @db.Decimal(12, 2)
+  getfundAmount  Decimal                 @default(0) @db.Decimal(12, 2)
+  taxCodeId      String?
   amountPaid     Decimal                 @default(0) @db.Decimal(12, 2)
   issueDate      DateTime
   dueDate        DateTime
@@ -2113,10 +2141,85 @@ model AccountingInvoice {
   branch       Branch?                       @relation(fields: [branchId], references: [id], onDelete: SetNull)
   createdBy    User?                         @relation(fields: [createdById], references: [id], onDelete: SetNull)
   payments     AccountingReceivablePayment[]
+  taxCode      AccountingTaxCode?            @relation(fields: [taxCodeId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, status])
   @@index([branchId])
+  @@index([taxCodeId])
+}
+
+model AccountingTaxCode {
+  id             String                 @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  jurisdiction   String
+  treatment      AccountingTaxTreatment
+  vatRate        Decimal                @default(0) @db.Decimal(7, 4)
+  nhilRate       Decimal                @default(0) @db.Decimal(7, 4)
+  getfundRate    Decimal                @default(0) @db.Decimal(7, 4)
+  effectiveFrom  DateTime
+  effectiveTo    DateTime?
+  active         Boolean                @default(true)
+  isSystem       Boolean                @default(false)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  organization     Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoices         AccountingInvoice[]
+  transactions     AccountingTaxTransaction[]
+  supplierInvoices ProcurementSupplierInvoice[]
+
+  @@unique([organizationId, code, effectiveFrom])
+  @@index([organizationId, active, effectiveFrom])
+}
+
+model AccountingTaxTransaction {
+  id              String                 @id @default(cuid())
+  organizationId  String
+  taxCodeId       String?
+  direction       AccountingTaxDirection
+  transactionDate DateTime
+  sourceType      String
+  sourceId        String
+  documentNumber  String?
+  counterparty    String?
+  taxableAmount   Decimal                @db.Decimal(14, 2)
+  vatAmount       Decimal                @default(0) @db.Decimal(14, 2)
+  nhilAmount      Decimal                @default(0) @db.Decimal(14, 2)
+  getfundAmount   Decimal                @default(0) @db.Decimal(14, 2)
+  notes           String?                @db.Text
+  createdAt       DateTime               @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  taxCode      AccountingTaxCode? @relation(fields: [taxCodeId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, sourceType, sourceId, direction])
+  @@index([organizationId, transactionDate, direction])
+  @@index([taxCodeId])
+}
+
+model AccountingTaxPeriod {
+  id              String                    @id @default(cuid())
+  organizationId  String
+  name            String
+  startDate       DateTime
+  endDate         DateTime
+  filingDueDate   DateTime
+  jurisdiction    String
+  status          AccountingTaxPeriodStatus @default(OPEN)
+  lockedAt        DateTime?
+  filedAt         DateTime?
+  filingReference String?
+  notes           String?                   @db.Text
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, startDate, endDate, jurisdiction])
+  @@index([organizationId, status, startDate])
 }
 
 model AccountingReceivablePayment {
@@ -2761,6 +2864,11 @@ model ProcurementSupplierInvoice {
   dueDate        DateTime?
   status         ProcurementSupplierInvoiceStatus @default(DRAFT)
   totalAmount    Decimal                          @db.Decimal(12, 2)
+  taxableAmount  Decimal                          @default(0) @db.Decimal(12, 2)
+  vatAmount      Decimal                          @default(0) @db.Decimal(12, 2)
+  nhilAmount     Decimal                          @default(0) @db.Decimal(12, 2)
+  getfundAmount  Decimal                          @default(0) @db.Decimal(12, 2)
+  taxCodeId      String?
   amountPaid     Decimal                          @default(0) @db.Decimal(12, 2)
   exceptionNote  String?                          @db.Text
   createdById    String?
@@ -2777,10 +2885,12 @@ model ProcurementSupplierInvoice {
   approvedBy   User?                            @relation("ProcurementInvoicesApproved", fields: [approvedById], references: [id], onDelete: SetNull)
   lines        ProcurementSupplierInvoiceLine[]
   payments     ProcurementSupplierPayment[]
+  taxCode      AccountingTaxCode?               @relation(fields: [taxCodeId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, vendorId, invoiceNumber])
   @@index([organizationId, status])
   @@index([orderId])
+  @@index([taxCodeId])
 }
 
 model ProcurementSupplierPayment {

@@ -154,8 +154,8 @@ describe("module authorization source coverage", () => {
     // milestone 11 hardening pass found and fixed - the pages themselves
     // were already correctly guarded, this sweep just was not exercising
     // them).
-    // 108: Accounting Receivables adds one guarded reporting page.
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(108);
+    // 109: Accounting Tax and VAT adds one guarded reporting page.
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(109);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
     // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
     // all Hostel Server Actions, same shape as School's) joins the sweep
@@ -164,8 +164,8 @@ describe("module authorization source coverage", () => {
     // guarded actions file for the petty cash workflow, and 51 was up from
     // 50 because School's single actions.ts was included for the same
     // reason as the page.tsx count above.
-    // 57: Accounting Insights adds one separately guarded assistant action file.
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(57);
+    // 58: Accounting Tax and VAT adds one separately guarded action file.
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(58);
 
     for (const { moduleKey, filePath } of guardedFiles) {
       const source = readFileSync(filePath, "utf8");

@@ -11,7 +11,7 @@ import { cuid, dateInput, moneyAmountNonNegative, parseWithSchema, positiveInt, 
 import { createSupplierInvoice, InvoiceApprovalError, InvoiceMatchError, NotFoundError, recordSupplierPayment, reviewSupplierInvoice, SupplierPaymentError } from "@/modules/procurement/service";
 
 const PATH = "/app/procurement/invoices";
-const createSchema = z.object({ vendorId: cuid, orderId: cuid, invoiceNumber: shortText, invoiceDate: dateInput, dueDate: dateInput.optional(), lines: z.array(z.object({ orderLineId: cuid, quantity: positiveInt, unitCost: moneyAmountNonNegative })).min(1).max(100) });
+const createSchema = z.object({ vendorId: cuid, orderId: cuid, invoiceNumber: shortText, invoiceDate: dateInput, dueDate: dateInput.optional(), taxCodeId: cuid.nullable().optional(), lines: z.array(z.object({ orderLineId: cuid, quantity: positiveInt, unitCost: moneyAmountNonNegative })).min(1).max(100) });
 const reviewSchema = z.object({ invoiceId: cuid, decision: z.enum(["APPROVE", "REJECT"]) });
 const paymentSchema = z.object({ invoiceId: cuid, accountId: cuid.optional(), paymentMethod: z.enum(["CASH", "BANK_TRANSFER", "MOBILE_MONEY", "CHEQUE", "OTHER"]), amount: z.coerce.number().positive().transform(String), paymentDate: dateInput, reference: shortText.optional(), notes: z.string().trim().max(1000).optional() });
 const clean = (formData: FormData, key: string) => String(formData.get(key) ?? "").trim();
@@ -21,7 +21,7 @@ export async function createInvoiceAction(formData: FormData): Promise<void> {
   if (!hasPermission(tenant, PERMISSIONS.PROCUREMENT_INVOICES_MANAGE)) redirect(`${PATH}?error=forbidden`);
   let lines: unknown;
   try { lines = JSON.parse(clean(formData, "linesJson")); } catch { redirect(`${PATH}?error=invalid`); }
-  const parsed = parseWithSchema(createSchema, { vendorId: clean(formData, "vendorId"), orderId: clean(formData, "orderId"), invoiceNumber: clean(formData, "invoiceNumber"), invoiceDate: clean(formData, "invoiceDate"), dueDate: clean(formData, "dueDate") || undefined, lines });
+  const parsed = parseWithSchema(createSchema, { vendorId: clean(formData, "vendorId"), orderId: clean(formData, "orderId"), invoiceNumber: clean(formData, "invoiceNumber"), invoiceDate: clean(formData, "invoiceDate"), dueDate: clean(formData, "dueDate") || undefined, taxCodeId: clean(formData, "taxCodeId") || null, lines });
   if (!parsed.success) redirect(`${PATH}?error=invalid`);
   const session = await getServerAuthSession();
   try {

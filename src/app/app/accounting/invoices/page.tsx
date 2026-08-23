@@ -12,6 +12,7 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listAccounts, listInvoices } from "@/modules/accounting/service";
+import { listTaxCodes } from "@/modules/accounting/tax-service";
 import { createNewInvoice, sendInvoice, payInvoice, voidExistingInvoice } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -41,7 +42,7 @@ export default async function AccountingInvoicesPage({
   const tenant = await requireModuleAccess("accounting");
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_INVOICES_MANAGE);
   const canReceive = hasPermission(tenant, PERMISSIONS.ACCOUNTING_RECEIVABLES_MANAGE);
-  const [invoices, accounts] = await Promise.all([listInvoices(tenant.organizationId), listAccounts(tenant.organizationId)]);
+  const [invoices, accounts, taxCodes] = await Promise.all([listInvoices(tenant.organizationId), listAccounts(tenant.organizationId), listTaxCodes(tenant.organizationId)]);
   const receivingAccounts = accounts.filter((account) => account.active && account.liquidityType !== "NONE");
   const today = new Date().toISOString().slice(0, 10);
 
@@ -61,13 +62,20 @@ export default async function AccountingInvoicesPage({
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="amount">Amount</Label>
+              <Label htmlFor="amount">Taxable amount</Label>
                 <Input id="amount" name="amount" type="number" step="0.01" required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="issueDate">Issue date</Label>
                 <Input id="issueDate" name="issueDate" type="date" defaultValue={today} required />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="taxCodeId">Tax treatment</Label>
+              <select id="taxCodeId" name="taxCodeId" className="h-10 w-full rounded-md border bg-background px-3">
+                <option value="">No tax</option>
+                {taxCodes.filter((taxCode) => taxCode.active).map((taxCode) => <option key={taxCode.id} value={taxCode.id}>{taxCode.code}: {taxCode.name} ({Number(taxCode.vatRate) + Number(taxCode.nhilRate) + Number(taxCode.getfundRate)}%)</option>)}
+              </select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="dueDate">Due date</Label>
@@ -112,7 +120,7 @@ export default async function AccountingInvoicesPage({
               <Fragment key={invoice.id}><TableRow>
                 <TableCell className="font-mono text-xs">{invoice.invoiceNumber}</TableCell>
                 <TableCell className="font-medium">{invoice.customerName}</TableCell>
-                <TableCell className="text-muted-foreground">{Number(invoice.amount).toFixed(2)}</TableCell>
+                <TableCell className="text-muted-foreground"><div>{Number(invoice.amount).toFixed(2)}</div>{invoice.taxCode ? <div className="text-xs">Tax {Number(invoice.vatAmount) + Number(invoice.nhilAmount) + Number(invoice.getfundAmount)} ({invoice.taxCode.code})</div> : null}</TableCell>
                 <TableCell className="text-muted-foreground">{Number(invoice.amountPaid).toFixed(2)}</TableCell>
                 <TableCell className="text-muted-foreground">{invoice.dueDate.toLocaleDateString()}</TableCell>
                 <TableCell>

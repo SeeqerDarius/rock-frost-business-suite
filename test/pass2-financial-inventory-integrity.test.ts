@@ -215,7 +215,7 @@ describe("Accounting — journal account IDOR, invoice payment validation, doubl
       issueDate: new Date(),
       amount: "100.00",
     });
-    mockDb.accountingAccount.findMany.mockResolvedValue([{ id: "acct-ar", code: "1100" }, { id: "acct-rev", code: "4000" }]);
+    mockDb.accountingAccount.findMany.mockResolvedValue([{ id: "acct-ar", code: "1100" }, { id: "acct-rev", code: "4000" }, { id: "acct-vat", code: "2100" }, { id: "acct-nhil", code: "2110" }, { id: "acct-getfund", code: "2120" }]);
     mockDb.accountingInvoice.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(accounting.markInvoiceSent(ORG, "inv-1")).rejects.toThrow(accounting.InvoiceStateError);
