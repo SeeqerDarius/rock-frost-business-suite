@@ -32,4 +32,12 @@ describe("Accounting journal integrity and insights surface", () => {
     expect(insightsAssistant).toContain("LoaderCircle");
     expect(insightsAssistant).toContain("inputRef.current?.focus()");
   });
+
+  it("brands the assistant and uses the signed-in user's uploaded profile image", () => {
+    expect(insightsPage).toContain("userImage={user?.image ?? null}");
+    expect(insightsAssistant).toContain("Rock Frost Business Assistant");
+    expect(insightsAssistant).toContain('/rf-business-assistant.png');
+    expect(insightsAssistant).toContain('src={userImage}');
+    expect(insightsAssistant).toContain('/icon-192.png');
+  });
 });

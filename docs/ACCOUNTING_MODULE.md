@@ -24,6 +24,8 @@ The optional business-question assistant additionally requires `ai.assistant.use
 
 The assistant composer clears as soon as a valid question is submitted, displays the submitted question as an outgoing chat bubble, blocks duplicate sends while the answer is being prepared, and shows a reduced-motion-safe progress indicator. The completed answer animates into place and keyboard focus returns to the composer for the next question.
 
+The chat identifies itself as **Rock Frost Business Assistant**. The compact Rock Frost favicon in the header preserves the product identity, while the dedicated assistant character at `public/rf-business-assistant.png` distinguishes automated answers from human messages. The signed-in user's outgoing questions use the profile image already stored on their user account, with name initials as an accessible fallback when no image has been uploaded.
+
 ## Accounting periods
 
 Organizations can define non-overlapping accounting periods. Closing a period blocks all new journal postings dated inside that period, including automated postings and reversals. Reopening is explicit, permission-controlled, and audited.

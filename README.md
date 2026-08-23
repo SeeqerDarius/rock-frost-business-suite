@@ -91,6 +91,8 @@ test/             Vitest suite — mocked-db unit/integration tests for the hard
 docs/             Authoritative documentation (this rebuild) + docs/archive/ (retired, non-authoritative)
 ```
 
+Accounting Insights includes the branded Rock Frost Business Assistant. Assistant replies use a dedicated visual identity, while each signed-in user's questions use their uploaded profile photo with an initials fallback.
+
 ## Documentation
 
 Start with `OPERATOR_HANDOFF.md` at the repo root for the current state and next steps, and `docs/HARDENING_PLAN.md` for the production-hardening track specifically. Then:

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { db } from "@/lib/db";
 import { ACCOUNTING_INSIGHT_PERIODS, getAccountingInsights, type AccountingInsightPeriod } from "@/modules/accounting/insights";
 import { InsightsChart } from "./insights-chart";
 import { InsightAssistant } from "./insight-assistant";
@@ -26,7 +27,13 @@ export default async function AccountingInsightsPage({ searchParams }: { searchP
   }
   const requested = Number((await searchParams).days);
   const period: AccountingInsightPeriod = ACCOUNTING_INSIGHT_PERIODS.includes(requested as AccountingInsightPeriod) ? requested as AccountingInsightPeriod : 30;
-  const insights = await getAccountingInsights(tenant.organizationId, period);
+  const [insights, user] = await Promise.all([
+    getAccountingInsights(tenant.organizationId, period),
+    db.user.findUnique({
+      where: { id: tenant.userId },
+      select: { name: true, email: true, image: true },
+    }),
+  ]);
   const canAsk = hasPermission(tenant, PERMISSIONS.AI_ASSISTANT_USE);
   const maximumSource = Math.max(1, ...insights.sources.map((source) => Math.abs(source.amount)));
   const cards = [
@@ -53,7 +60,13 @@ export default async function AccountingInsightsPage({ searchParams }: { searchP
             <Card><CardHeader><CardTitle>Items requiring attention</CardTitle></CardHeader><CardContent className="space-y-4"><div className="flex gap-3"><AlertTriangle className="mt-0.5 size-4 text-amber-500" /><div><p className="text-sm font-medium">{insights.overdueInvoiceCount} overdue invoices</p><p className="text-xs text-muted-foreground">{money(insights.overdueInvoiceTotal)} requires collection follow-up.</p></div></div><div className="flex gap-3"><ReceiptText className="mt-0.5 size-4 text-muted-foreground" /><div><p className="text-sm font-medium">{insights.pendingExpenseCount} pending expenses</p><p className="text-xs text-muted-foreground">{money(insights.pendingExpenseTotal)} has not been fully processed.</p></div></div><div className="rounded-md bg-muted/60 p-3 text-xs text-muted-foreground">Insights reflect transactions recorded in Rock Frost. Reconcile bank, cash and external statements before making final financial decisions.</div></CardContent></Card>
           </div>
         </div>
-        {canAsk ? <InsightAssistant period={period} /> : <Card><CardContent className="pt-6"><EmptyState icon={Lock} title="Business assistant unavailable" description="Your role does not include AI assistant access." /></CardContent></Card>}
+        {canAsk ? (
+          <InsightAssistant
+            period={period}
+            userName={user?.name ?? user?.email ?? "You"}
+            userImage={user?.image ?? null}
+          />
+        ) : <Card><CardContent className="pt-6"><EmptyState icon={Lock} title="Business assistant unavailable" description="Your role does not include AI assistant access." /></CardContent></Card>}
       </div>
     </div>
   );

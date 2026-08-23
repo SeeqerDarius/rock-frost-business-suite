@@ -1,5 +1,11 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-23: Branded Accounting assistant identity and user chat avatars
+
+Accounting Insights now presents the grounded question-and-answer experience as **Rock Frost Business Assistant**. The header uses the existing Rock Frost favicon, automated responses use the user-supplied transparent character image copied to `public/rf-business-assistant.png`, and outgoing questions use the signed-in user's stored profile image. Initials remain the fallback when no profile image exists or an image cannot load. The server page resolves only the current authenticated user's name, email, and image alongside Accounting insights, so the client does not supply another user's identity and no schema or environment change is required.
+
+Important files are `src/app/app/accounting/insights/{page,insight-assistant}.tsx`, `public/rf-business-assistant.png`, `test/accounting-insights-ui.test.ts`, and `docs/ACCOUNTING_MODULE.md`. No schema migration or disposable-database integration run was required because this changes a server-resolved profile projection and client rendering only. `git diff --check`, TypeScript, and ESLint passed. The focused Accounting Insights UI test passed 4 tests. The full mocked suite passed 88 files and 531 tests. The Next.js 16.2.12 production build compiled successfully and generated all 211 static pages. React review found no new client fetch waterfall, broad client boundary, unstable effect dependency, or heavy dependency. Release and production verification evidence follows after deployment.
+
 ## 2026-08-23: Source-owned accounting reversals and Accounting Insights
 
 The generic Accounting Journal now shows **Reverse entry** only for `MANUAL` journals. Source-generated entries display their managed status and must be corrected in Fleet, POS, Pharmacy, Hospital, Hotel, Hostel, School, Installment, invoice, expense, petty-cash, or other originating workflows. This is a real service boundary, not only a hidden button: `reverseJournalEntry()` rejects non-manual sources, while `reverseSourceJournalEntry()` requires the exact server-resolved source type, source id, and posting purpose. Shared module revenue correction helpers now use that identity-checked boundary, preserving legitimate refunds and deletions as immutable compensating entries.
