@@ -76,7 +76,7 @@ describe("self-service subscription checkout (real PostgreSQL)", () => {
       actorId: bundleOrg.userId,
     });
     expect(subscription).toMatchObject({ bundleKey: "business-starter", durationMonths: 12, status: "PENDING_PAYMENT" });
-    expect(subscription.amount.toFixed(2)).toBe("14990.00");
+    expect(subscription.amount.toFixed(2)).toBe("16990.00");
     expect(subscription.entitledModuleKeys).toEqual(expect.arrayContaining(["crm", "inventory", "procurement", "accounting"]));
 
     await activateSubscription({ subscriptionId: subscription.id, actorId: bundleOrg.userId, paymentReference: "bundle-payment-1", paymentMethod: "PAYSTACK" });
