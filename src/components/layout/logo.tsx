@@ -20,7 +20,7 @@ export function Logo({
       <span
         className={cn(
           "logo-shimmer relative inline-block shrink-0",
-          compact ? "h-4 max-w-12" : "h-6 max-w-[188px]",
+          compact ? "h-4 max-w-12" : "h-7 max-w-[188px]",
         )}
       >
         <Image
