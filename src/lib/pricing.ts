@@ -28,15 +28,18 @@ export const MODULE_PRICES: readonly ModulePrice[] = [
 export const MODULE_PRICE_BY_KEY = new Map(MODULE_PRICES.map((price) => [price.moduleKey, price]));
 
 export const PRICING_BUNDLES = [
-  { name: "Business Starter", monthlyGhs: 1499, modules: ["CRM", "Inventory & Procurement", "Accounting"] },
-  { name: "Retail Suite", monthlyGhs: 1999, modules: ["POS", "Inventory & Procurement", "Accounting", "CRM"] },
-  { name: "Operations Suite", monthlyGhs: 1999, modules: ["Human Resources & Payroll", "Inventory & Procurement", "Projects"] },
-  { name: "Business Complete", monthlyGhs: 3299, modules: ["CRM", "Inventory & Procurement", "Accounting", "Human Resources & Payroll", "Projects", "Analytics"] },
-  { name: "School Complete", monthlyGhs: 2999, modules: ["School", "Accounting", "Human Resources & Payroll", "Inventory & Procurement"] },
-  { name: "School & Hostel Complete", monthlyGhs: 3299, modules: ["School", "Hostel", "Accounting", "Human Resources & Payroll"] },
-  { name: "Pharmacy Complete", monthlyGhs: 2699, modules: ["Pharmacy", "Inventory & Procurement", "POS", "Accounting"] },
-  { name: "Hospital Complete", monthlyGhs: 4799, modules: ["Hospital", "Pharmacy", "Inventory & Procurement", "Accounting", "Human Resources & Payroll"] },
+  { key: "business-starter", name: "Business Starter", monthlyGhs: 1499, moduleKeys: ["crm", "inventory", "accounting"], modules: ["CRM", "Inventory & Procurement", "Accounting"] },
+  { key: "retail-suite", name: "Retail Suite", monthlyGhs: 1999, moduleKeys: ["pos", "inventory", "accounting", "crm"], modules: ["POS", "Inventory & Procurement", "Accounting", "CRM"] },
+  { key: "operations-suite", name: "Operations Suite", monthlyGhs: 1999, moduleKeys: ["hr", "inventory", "projects"], modules: ["Human Resources & Payroll", "Inventory & Procurement", "Projects"] },
+  { key: "business-complete", name: "Business Complete", monthlyGhs: 3299, moduleKeys: ["crm", "inventory", "accounting", "hr", "projects", "analytics"], modules: ["CRM", "Inventory & Procurement", "Accounting", "Human Resources & Payroll", "Projects", "Analytics"] },
+  { key: "school-complete", name: "School Complete", monthlyGhs: 2999, moduleKeys: ["school", "accounting", "hr", "inventory"], modules: ["School", "Accounting", "Human Resources & Payroll", "Inventory & Procurement"] },
+  { key: "school-hostel-complete", name: "School & Hostel Complete", monthlyGhs: 3299, moduleKeys: ["school", "hostel", "accounting", "hr"], modules: ["School", "Hostel", "Accounting", "Human Resources & Payroll"] },
+  { key: "pharmacy-complete", name: "Pharmacy Complete", monthlyGhs: 2699, moduleKeys: ["pharmacy", "inventory", "pos", "accounting"], modules: ["Pharmacy", "Inventory & Procurement", "POS", "Accounting"] },
+  { key: "hospital-complete", name: "Hospital Complete", monthlyGhs: 4799, moduleKeys: ["hospital", "pharmacy", "inventory", "accounting", "hr"], modules: ["Hospital", "Pharmacy", "Inventory & Procurement", "Accounting", "Human Resources & Payroll"] },
 ] as const;
+
+export type PricingBundleKey = (typeof PRICING_BUNDLES)[number]["key"];
+export const PRICING_BUNDLE_BY_KEY = new Map(PRICING_BUNDLES.map((bundle) => [bundle.key, bundle]));
 
 export function recommendedSubscriptionQuote(moduleKey: string, durationMonths: number) {
   const price = MODULE_PRICE_BY_KEY.get(moduleKey as BusinessModuleKey);

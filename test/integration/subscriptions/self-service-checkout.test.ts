@@ -1,15 +1,17 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cleanupTestOrg, createTestOrg, type TestOrg } from "../setup/fixtures";
 import { testDb } from "../setup/db";
-import { createSelfServiceSubscription, SelfServiceSubscriptionExistsError } from "@/platform/subscriptions/service";
+import { activateSubscription, createSelfServiceBundleSubscription, createSelfServiceSubscription, SelfServiceSubscriptionExistsError } from "@/platform/subscriptions/service";
 
 let org: TestOrg;
+let bundleOrg: TestOrg;
 
 beforeAll(async () => {
   org = await createTestOrg("self-service-subscriptions");
+  bundleOrg = await createTestOrg("self-service-bundle");
 });
 
-afterAll(async () => cleanupTestOrg(org));
+afterAll(async () => { await cleanupTestOrg(org); await cleanupTestOrg(bundleOrg); });
 
 describe("self-service subscription checkout (real PostgreSQL)", () => {
   it("creates a monthly pending subscription from the server catalogue", async () => {
@@ -63,5 +65,26 @@ describe("self-service subscription checkout (real PostgreSQL)", () => {
     expect(await testDb.subscription.count({
       where: { organizationId: org.organizationId, moduleId: projectModule.id, status: "PENDING_PAYMENT" },
     })).toBe(1);
+  });
+
+  it("activates every entitlement in a combined suite after one verified payment", async () => {
+    const subscription = await createSelfServiceBundleSubscription({
+      organizationId: bundleOrg.organizationId,
+      bundleKey: "business-starter",
+      billingCycle: "ANNUAL",
+      autoRenew: true,
+      actorId: bundleOrg.userId,
+    });
+    expect(subscription).toMatchObject({ bundleKey: "business-starter", durationMonths: 12, status: "PENDING_PAYMENT" });
+    expect(subscription.amount.toFixed(2)).toBe("14990.00");
+    expect(subscription.entitledModuleKeys).toEqual(expect.arrayContaining(["crm", "inventory", "procurement", "accounting"]));
+
+    await activateSubscription({ subscriptionId: subscription.id, actorId: bundleOrg.userId, paymentReference: "bundle-payment-1", paymentMethod: "PAYSTACK" });
+    const enabled = await testDb.organizationModule.findMany({
+      where: { organizationId: bundleOrg.organizationId, enabled: true },
+      select: { module: { select: { code: true } } },
+    });
+    expect(enabled.map((entry) => entry.module.code)).toEqual(expect.arrayContaining(["crm", "inventory", "procurement", "accounting"]));
+    expect((await testDb.organization.findUniqueOrThrow({ where: { id: bundleOrg.organizationId } })).status).toBe("ACTIVE");
   });
 });

@@ -7,7 +7,7 @@ import { logAuditEvent } from "@/lib/audit";
 import { initializeTransaction, type GatewayProvider } from "@/lib/payments";
 import { createPlan as createPaystackPlan, disableSubscription as disablePaystackSubscription, getSubscriptionManagementLink } from "@/lib/payments/paystack";
 import { ensureRevenueAccountsForOrg } from "@/lib/accounting-integration";
-import { MODULE_PRICE_BY_KEY } from "@/lib/pricing";
+import { MODULE_PRICE_BY_KEY, PRICING_BUNDLE_BY_KEY, type PricingBundleKey } from "@/lib/pricing";
 import { getModule, type BusinessModuleKey } from "@/platform/modules/registry";
 import { productGroupKeys } from "@/platform/modules/product-groups";
 
@@ -27,6 +27,15 @@ function addSubscriptionTerm(from: Date, durationMonths: number) {
   const end = new Date(from);
   end.setUTCMonth(end.getUTCMonth() + durationMonths);
   return end;
+}
+
+async function subscriptionModuleIds(tx: Tx, subscription: Pick<SubscriptionRow, "moduleId" | "entitledModuleKeys">) {
+  const entitlementKeys = subscription.entitledModuleKeys ?? [];
+  if (!entitlementKeys.length) return [subscription.moduleId];
+  return (await tx.module.findMany({
+    where: { code: { in: entitlementKeys } },
+    select: { id: true },
+  })).map((entry) => entry.id);
 }
 
 export class SelfServiceSubscriptionExistsError extends Error {}
@@ -59,8 +68,11 @@ export async function createSelfServiceSubscription(input: {
     const existing = await tx.subscription.findFirst({
       where: {
         organizationId: input.organizationId,
-        moduleId: { in: modules.map((module_) => module_.id) },
         status: { notIn: ["CANCELLED", "EXPIRED"] },
+        OR: [
+          { moduleId: { in: modules.map((module_) => module_.id) } },
+          { entitledModuleKeys: { hasSome: modules.map((module_) => module_.code) } },
+        ],
       },
       select: { id: true },
     });
@@ -91,6 +103,71 @@ export async function createSelfServiceSubscription(input: {
       entityName: "Subscription",
       entityId: subscription.id,
       metadata: { moduleKey: input.moduleKey, billingCycle: input.billingCycle, amount, currency: "GHS", seatLimit: price.includedSeats },
+    }, tx);
+    return subscription;
+  });
+}
+
+export async function createSelfServiceBundleSubscription(input: {
+  organizationId: string;
+  bundleKey: PricingBundleKey;
+  billingCycle: "MONTHLY" | "ANNUAL";
+  autoRenew: boolean;
+  actorId: string;
+}) {
+  const bundle = PRICING_BUNDLE_BY_KEY.get(input.bundleKey);
+  if (!bundle) throw new Error("This suite is not available for self-service purchase.");
+  const durationMonths = input.billingCycle === "ANNUAL" ? 12 : 1;
+  const amount = input.billingCycle === "ANNUAL" ? bundle.monthlyGhs * 10 : bundle.monthlyGhs;
+  const entitledModuleKeys = [...new Set(bundle.moduleKeys.flatMap((key) => [...productGroupKeys(key)]))];
+
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`self-service-bundle:${input.organizationId}`}))`;
+    const modules = await tx.module.findMany({
+      where: { code: { in: entitledModuleKeys }, status: "ACTIVE" },
+      select: { id: true, code: true },
+    });
+    if (modules.length !== entitledModuleKeys.length) throw new Error("One or more suite modules are unavailable.");
+    const existing = await tx.subscription.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        status: { notIn: ["CANCELLED", "EXPIRED"] },
+        OR: [
+          { moduleId: { in: modules.map((entry) => entry.id) } },
+          { entitledModuleKeys: { hasSome: entitledModuleKeys } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (existing) throw new SelfServiceSubscriptionExistsError("A product in this suite already has an active or pending subscription.");
+    const primaryModule = modules.find((entry) => entry.code === bundle.moduleKeys[0]);
+    if (!primaryModule) throw new Error("The suite's primary module is unavailable.");
+    const includedSeats = Math.max(...bundle.moduleKeys.map((key) => MODULE_PRICE_BY_KEY.get(key as BusinessModuleKey)?.includedSeats ?? 1));
+    const subscription = await tx.subscription.create({
+      data: {
+        organizationId: input.organizationId,
+        moduleId: primaryModule.id,
+        mode: "PLATFORM_MANAGED",
+        durationMonths,
+        amount: new Prisma.Decimal(amount),
+        currency: "GHS",
+        autoRenew: input.autoRenew,
+        seatLimit: includedSeats,
+        bundleKey: bundle.key,
+        entitledModuleKeys,
+        notes: `Self-service suite checkout: ${bundle.name}`,
+        createdById: input.actorId,
+        status: "PENDING_PAYMENT",
+      },
+    });
+    await logAuditEvent({
+      organizationId: input.organizationId,
+      userId: input.actorId,
+      module: "platform",
+      action: "subscription.self_service_bundle_created",
+      entityName: "Subscription",
+      entityId: subscription.id,
+      metadata: { bundleKey: bundle.key, billingCycle: input.billingCycle, amount, entitledModuleKeys },
     }, tx);
     return subscription;
   });
@@ -128,6 +205,19 @@ async function finalizeActivation(
     update: { enabled: true, enabledAt: startsAt },
     create: { organizationId: current.organizationId, moduleId: current.moduleId, enabled: true, enabledAt: startsAt },
   });
+  if ((current.entitledModuleKeys ?? []).length) {
+    const entitledModules = await tx.module.findMany({
+      where: { code: { in: current.entitledModuleKeys ?? [] }, status: "ACTIVE" },
+      select: { id: true },
+    });
+    for (const module_ of entitledModules) {
+      await tx.organizationModule.upsert({
+        where: { organizationId_moduleId: { organizationId: current.organizationId, moduleId: module_.id } },
+        update: { enabled: true, enabledAt: startsAt },
+        create: { organizationId: current.organizationId, moduleId: module_.id, enabled: true, enabledAt: startsAt },
+      });
+    }
+  }
   // Eagerly provisions any newly-active revenue-generating module's Accounting
   // ledger account (or, if Accounting itself is what just activated, backfills
   // every already-active revenue module's account in one call) — see
@@ -151,8 +241,8 @@ async function finalizeActivation(
       organizationId: current.organizationId,
       userId,
       type: "SUBSCRIPTION_ACTIVATED",
-      title: "Module subscription activated",
-      message: `Your module access is active until ${endsAt.toLocaleDateString()}.`,
+      title: `${current.bundleKey ? "Suite" : "Module"} subscription activated`,
+      message: `Your ${current.bundleKey ? "suite" : "module"} access is active until ${endsAt.toLocaleDateString()}.`,
       status: "QUEUED" as const,
       metadata: { subscriptionId: current.id, moduleId: current.moduleId, endsAt: endsAt.toISOString() },
     })),
@@ -271,7 +361,7 @@ export async function activateSubscription(input: {
       activatedById: input.actorId,
       startsAt: input.startsAt,
     });
-  });
+  }, { timeout: 20_000 });
 }
 
 /**
@@ -396,7 +486,7 @@ export async function activateSubscriptionFromGateway(input: {
       },
     });
     return subscription;
-  });
+  }, { timeout: 20_000 });
 }
 
 export async function registerPaystackSubscription(input: {
@@ -476,7 +566,7 @@ export async function processPaystackRenewal(input: {
       },
     });
     await tx.organizationModule.updateMany({
-      where: { organizationId: current.organizationId, moduleId: current.moduleId },
+      where: { organizationId: current.organizationId, moduleId: { in: await subscriptionModuleIds(tx, current) } },
       data: { enabled: true, enabledAt: paidAt },
     });
     await logAuditEvent({
@@ -532,7 +622,7 @@ export async function recordPaystackRenewalFailure(input: {
       },
     });
     await tx.organizationModule.updateMany({
-      where: { organizationId: current.organizationId, moduleId: current.moduleId },
+      where: { organizationId: current.organizationId, moduleId: { in: await subscriptionModuleIds(tx, current) } },
       data: { enabled: false },
     });
     await tx.notification.createMany({
@@ -615,12 +705,20 @@ export async function cancelSubscription(input: { subscriptionId: string; actorI
     const current = await tx.subscription.findUnique({ where: { id: input.subscriptionId } });
     if (!current) throw new Error("Subscription not found.");
     const subscription = await tx.subscription.update({ where: { id: current.id }, data: { status: "CANCELLED", autoRenew: false } });
+    const moduleIds = await subscriptionModuleIds(tx, current);
+    const moduleCodes = (await tx.module.findMany({ where: { id: { in: moduleIds } }, select: { code: true } })).map((entry) => entry.code);
     const activeReplacement = await tx.subscription.findFirst({
-      where: { organizationId: current.organizationId, moduleId: current.moduleId, status: "ACTIVE", id: { not: current.id }, endsAt: { gt: new Date() } },
+      where: {
+        organizationId: current.organizationId,
+        status: "ACTIVE",
+        id: { not: current.id },
+        endsAt: { gt: new Date() },
+        OR: [{ moduleId: { in: moduleIds } }, { entitledModuleKeys: { hasSome: moduleCodes } }],
+      },
     });
     if (!activeReplacement) {
       await tx.organizationModule.updateMany({
-        where: { organizationId: current.organizationId, moduleId: current.moduleId },
+        where: { organizationId: current.organizationId, moduleId: { in: moduleIds } },
         data: { enabled: false },
       });
     }

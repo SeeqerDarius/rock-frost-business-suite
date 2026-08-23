@@ -45,6 +45,7 @@ export default async function PlatformSettingsPage({ searchParams }: {
   const configuredDays = Number(metadata.organizationDeletionRecoveryDays);
   const recoveryDays = Number.isInteger(configuredDays) ? configuredDays : 30;
   const marketing = readPlatformMarketing(metadata);
+  const publicContact = metadata.publicContact && typeof metadata.publicContact === "object" && !Array.isArray(metadata.publicContact) ? metadata.publicContact as Record<string, string> : {};
   const { saved, error } = await searchParams;
 
   return <div className="space-y-6">
@@ -64,6 +65,8 @@ export default async function PlatformSettingsPage({ searchParams }: {
             <div className="space-y-2"><Label htmlFor="eyebrow">Section label</Label><Input id="eyebrow" name="eyebrow" maxLength={60} defaultValue={marketing.eyebrow} required /></div>
             <div className="space-y-2"><Label htmlFor="headline">Headline</Label><Input id="headline" name="headline" maxLength={140} defaultValue={marketing.headline} required /></div>
             <div className="space-y-2"><Label htmlFor="description">Description</Label><Textarea id="description" name="description" maxLength={240} rows={3} defaultValue={marketing.description} required /></div>
+            <div className="border-t pt-4"><p className="font-medium">Public contact details</p><p className="text-sm text-muted-foreground">Shown on the public Contact page. Leave a field empty to use the platform organization profile where available.</p></div>
+            <div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label htmlFor="salesEmail">Sales email</Label><Input id="salesEmail" name="salesEmail" type="email" defaultValue={publicContact.salesEmail ?? ""} /></div><div className="space-y-2"><Label htmlFor="supportEmail">Support email</Label><Input id="supportEmail" name="supportEmail" type="email" defaultValue={publicContact.supportEmail ?? ""} /></div><div className="space-y-2"><Label htmlFor="publicPhone">Public phone</Label><Input id="publicPhone" name="publicPhone" defaultValue={publicContact.phone ?? ""} /></div><div className="space-y-2"><Label htmlFor="publicWhatsapp">WhatsApp number</Label><Input id="publicWhatsapp" name="publicWhatsapp" defaultValue={publicContact.whatsapp ?? ""} /></div></div>
             <Button type="submit">Save platform controls</Button>
           </form>
         </CardContent>

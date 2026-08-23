@@ -3,9 +3,42 @@ import "server-only";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 import { getPlatformAnchorOrganizationIds } from "@/lib/platform-organizations";
+import { primaryProductKey } from "@/platform/modules/product-groups";
 
 export const TRIAL_DURATION_DAYS = 14;
+export const TRIAL_PRODUCT_LIMIT = 3;
 const DAY_MS = 86_400_000;
+
+type TrialTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+export class TrialProductLimitError extends Error {}
+
+/**
+ * Enforces the public trial promise at the database boundary. Product groups
+ * such as HR plus Payroll and Inventory plus Procurement count once.
+ */
+export async function assertTrialProductLimit(
+  tx: TrialTx,
+  organizationId: string,
+  requestedModuleCodes: readonly string[],
+): Promise<void> {
+  const organization = await tx.organization.findUnique({
+    where: { id: organizationId },
+    select: { status: true },
+  });
+  if (organization?.status !== "TRIAL") return;
+
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`trial-products:${organizationId}`}))`;
+  const active = await tx.organizationModule.findMany({
+    where: { organizationId, enabled: true },
+    select: { module: { select: { code: true } } },
+  });
+  const products = new Set(active.map((entry) => primaryProductKey(entry.module.code)));
+  requestedModuleCodes.forEach((code) => products.add(primaryProductKey(code)));
+  if (products.size > TRIAL_PRODUCT_LIMIT) {
+    throw new TrialProductLimitError(`A 14-day trial can include up to ${TRIAL_PRODUCT_LIMIT} products.`);
+  }
+}
 
 export function getTrialEndsAt(createdAt: Date): Date {
   return new Date(createdAt.getTime() + TRIAL_DURATION_DAYS * DAY_MS);

@@ -11,7 +11,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { configuredGatewayProviders } from "@/lib/payments";
 import { cancelPaystackRenewal, managePaystackSubscription, startGatewayPayment, startSelfServiceCheckout } from "./actions";
 import { getOrganizationSeatUsage } from "@/platform/subscriptions/seats";
-import { formatGhs, MODULE_PRICES } from "@/lib/pricing";
+import { formatGhs, MODULE_PRICES, PRICING_BUNDLES } from "@/lib/pricing";
 import { getModule } from "@/platform/modules/registry";
 import { primaryProductKey } from "@/platform/modules/product-groups";
 
@@ -29,7 +29,7 @@ const PROVIDER_LABELS: Record<string, string> = { PAYSTACK: "Paystack", FLUTTERW
 export default async function OrganizationBillingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; "renewal-cancelled"?: string }>;
+  searchParams: Promise<{ error?: string; "renewal-cancelled"?: string; product?: string; type?: string }>;
 }) {
   const tenant = await requireCurrentTenant();
 
@@ -46,7 +46,7 @@ export default async function OrganizationBillingPage({
     );
   }
 
-  const { error, "renewal-cancelled": renewalCancelled } = await searchParams;
+  const { error, "renewal-cancelled": renewalCancelled, product, type } = await searchParams;
   const [subscriptions, seatUsage] = await Promise.all([
     db.subscription.findMany({
       where: { organizationId: tenant.organizationId },
@@ -56,7 +56,7 @@ export default async function OrganizationBillingPage({
     getOrganizationSeatUsage(tenant.organizationId),
   ]);
   const availableProviders = configuredGatewayProviders();
-  const subscribedProducts = new Set(subscriptions.map((subscription) => primaryProductKey(subscription.module.code)));
+  const subscribedProducts = new Set(subscriptions.flatMap((subscription) => subscription.entitledModuleKeys.length ? subscription.entitledModuleKeys.map(primaryProductKey) : [primaryProductKey(subscription.module.code)]));
   const selfServiceProducts = MODULE_PRICES.filter((price) => !subscribedProducts.has(price.moduleKey));
   const paystackAvailable = availableProviders.includes("PAYSTACK");
 
@@ -99,7 +99,8 @@ export default async function OrganizationBillingPage({
                   </CardHeader>
                   <CardContent>
                     <form action={startSelfServiceCheckout} className="space-y-3">
-                      <input type="hidden" name="moduleKey" value={price.moduleKey} />
+                      <input type="hidden" name="productKey" value={price.moduleKey} />
+                      <input type="hidden" name="productType" value="MODULE" />
                       <label className="block space-y-1 text-sm">
                         <span className="font-medium">Billing period</span>
                         <select name="billingCycle" className="h-10 w-full rounded-md border bg-background px-3" defaultValue="ANNUAL">
@@ -112,7 +113,7 @@ export default async function OrganizationBillingPage({
                         <input type="checkbox" name="autoRenew" value="true" defaultChecked className="mt-1 size-4" />
                         <span>Renew automatically using the card authorized at checkout.</span>
                       </label>
-                      <Button type="submit" disabled={!paystackAvailable}>Continue to secure payment</Button>
+                      <Button type="submit" disabled={!paystackAvailable} variant={type === "module" && product === price.moduleKey ? "default" : "outline"}>Continue to secure payment</Button>
                       {!paystackAvailable ? <p className="text-xs text-muted-foreground">Paystack checkout is temporarily unavailable.</p> : null}
                     </form>
                   </CardContent>
@@ -123,6 +124,29 @@ export default async function OrganizationBillingPage({
         ) : (
           <p className="rounded-md border p-4 text-sm text-muted-foreground">Every available product already has an active or pending subscription.</p>
         )}
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold">Subscribe to a combined suite</h2>
+          <p className="text-sm text-muted-foreground">One payment activates every product listed in the suite.</p>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {PRICING_BUNDLES.map((bundle) => (
+            <Card key={bundle.key} className={type === "bundle" && product === bundle.key ? "border-primary" : undefined}>
+              <CardHeader><CardTitle>{bundle.name}</CardTitle><CardDescription>{bundle.modules.join(", ")}</CardDescription></CardHeader>
+              <CardContent>
+                <form action={startSelfServiceCheckout} className="space-y-3">
+                  <input type="hidden" name="productKey" value={bundle.key} />
+                  <input type="hidden" name="productType" value="BUNDLE" />
+                  <label className="block space-y-1 text-sm"><span className="font-medium">Billing period</span><select name="billingCycle" className="h-10 w-full rounded-md border bg-background px-3" defaultValue="ANNUAL"><option value="MONTHLY">Monthly, {formatGhs(bundle.monthlyGhs)}</option><option value="ANNUAL">Annual, {formatGhs(bundle.monthlyGhs * 10)}</option></select></label>
+                  <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="autoRenew" value="true" defaultChecked className="mt-1 size-4" /><span>Renew automatically using the card authorized at checkout.</span></label>
+                  <Button type="submit" disabled={!paystackAvailable}>Continue to secure payment</Button>
+                </form>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </section>
 
       {subscriptions.length === 0 ? (
@@ -158,7 +182,7 @@ export default async function OrganizationBillingPage({
                 <CardContent className="space-y-3">
                   {subscription.status === "ACTIVE" ? (
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                      <p>Active until {subscription.endsAt?.toLocaleDateString() ?? "—"}</p>
+                      <p>Active until {subscription.endsAt?.toLocaleDateString() ?? "Not available"}</p>
                       <p>{(() => { const usage = seatUsage.find((entry) => entry.moduleId === subscription.moduleId); return usage?.limit == null ? `${usage?.used ?? 0} users · Unlimited seats` : `${usage.used} of ${usage.limit} user seats`; })()}</p>
                     </div>
                   ) : null}
@@ -195,7 +219,7 @@ export default async function OrganizationBillingPage({
                   {awaitingPayment ? (
                     availableProviders.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
-                        Online payment isn&apos;t available right now — contact Rock Frost to arrange payment.
+                        Online payment isn&apos;t available right now. Contact Rock Frost to arrange payment.
                       </p>
                     ) : (
                       <div className="flex flex-wrap gap-2">

@@ -6,8 +6,8 @@ import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { cuid, parseWithSchema } from "@/lib/validation";
 import { buildTenantAppUrl } from "@/lib/app-url";
-import { cancelPaystackAutomaticRenewal, createSelfServiceSubscription, getPaystackManagementLinkForOrganization, initiateGatewayPayment, SelfServiceSubscriptionExistsError } from "@/platform/subscriptions/service";
-import { MODULE_PRICE_BY_KEY } from "@/lib/pricing";
+import { cancelPaystackAutomaticRenewal, createSelfServiceBundleSubscription, createSelfServiceSubscription, getPaystackManagementLinkForOrganization, initiateGatewayPayment, SelfServiceSubscriptionExistsError } from "@/platform/subscriptions/service";
+import { MODULE_PRICE_BY_KEY, PRICING_BUNDLE_BY_KEY, type PricingBundleKey } from "@/lib/pricing";
 import type { BusinessModuleKey } from "@/platform/modules/registry";
 
 const startSchema = z.object({
@@ -49,7 +49,8 @@ export async function startGatewayPayment(formData: FormData): Promise<void> {
 }
 
 const selfServiceSchema = z.object({
-  moduleKey: z.string().trim().min(1),
+  productKey: z.string().trim().min(1),
+  productType: z.enum(["MODULE", "BUNDLE"]),
   billingCycle: z.enum(["MONTHLY", "ANNUAL"]),
 });
 
@@ -57,22 +58,22 @@ export async function startSelfServiceCheckout(formData: FormData): Promise<void
   const tenant = await requireCurrentTenant();
   if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) redirect("/app/dashboard");
   const parsed = parseWithSchema(selfServiceSchema, {
-    moduleKey: String(formData.get("moduleKey") ?? ""),
+    productKey: String(formData.get("productKey") ?? formData.get("moduleKey") ?? ""),
+    productType: String(formData.get("productType") ?? "MODULE"),
     billingCycle: String(formData.get("billingCycle") ?? ""),
   });
-  if (!parsed.success || !MODULE_PRICE_BY_KEY.has(parsed.data.moduleKey as BusinessModuleKey)) {
+  if (!parsed.success || (parsed.data.productType === "MODULE"
+    ? !MODULE_PRICE_BY_KEY.has(parsed.data.productKey as BusinessModuleKey)
+    : !PRICING_BUNDLE_BY_KEY.has(parsed.data.productKey as PricingBundleKey))) {
     redirect("/app/organization/billing?error=invalid-selection");
   }
 
   let checkoutUrl: string;
   try {
-    const subscription = await createSelfServiceSubscription({
-      organizationId: tenant.organizationId,
-      moduleKey: parsed.data.moduleKey as BusinessModuleKey,
-      billingCycle: parsed.data.billingCycle,
-      autoRenew: formData.get("autoRenew") === "true",
-      actorId: tenant.userId,
-    });
+    const common = { organizationId: tenant.organizationId, billingCycle: parsed.data.billingCycle, autoRenew: formData.get("autoRenew") === "true", actorId: tenant.userId };
+    const subscription = parsed.data.productType === "BUNDLE"
+      ? await createSelfServiceBundleSubscription({ ...common, bundleKey: parsed.data.productKey as PricingBundleKey })
+      : await createSelfServiceSubscription({ ...common, moduleKey: parsed.data.productKey as BusinessModuleKey });
     const result = await initiateGatewayPayment({
       subscriptionId: subscription.id,
       organizationId: tenant.organizationId,

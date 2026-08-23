@@ -33,9 +33,10 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function InvitePage({
   searchParams,
 }: {
-  searchParams: Promise<{ token?: string; error?: string }>;
+  searchParams: Promise<{ token?: string; error?: string; next?: string }>;
 }) {
-  const { token, error } = await searchParams;
+  const { token, error, next } = await searchParams;
+  const safeNext = next === "/app/organization/billing" ? next : undefined;
 
   if (!token) {
     return (
@@ -88,6 +89,7 @@ export default async function InvitePage({
           {isSignedInAsInvitee ? (
             <form action={acceptInviteExisting}>
               <input type="hidden" name="token" value={token} />
+              {safeNext ? <input type="hidden" name="next" value={safeNext} /> : null}
               <Button type="submit" className="w-full">
                 Accept invitation
               </Button>
@@ -96,7 +98,7 @@ export default async function InvitePage({
             <Button
               className="w-full"
               nativeButton={false}
-              render={<Link href={`/login?callbackUrl=${encodeURIComponent(`/invite?token=${token}`)}`} />}
+              render={<Link href={`/login?callbackUrl=${encodeURIComponent(`/invite?token=${token}${safeNext ? `&next=${encodeURIComponent(safeNext)}` : ""}`)}`} />}
             >
               Log in to accept
             </Button>
@@ -120,6 +122,7 @@ export default async function InvitePage({
         ) : null}
         <form action={acceptInvite} className="space-y-4">
           <input type="hidden" name="token" value={token} />
+          {safeNext ? <input type="hidden" name="next" value={safeNext} /> : null}
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
             <Input id="password" name="password" type="password" autoComplete="new-password" minLength={8} required />

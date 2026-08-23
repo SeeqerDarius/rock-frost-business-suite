@@ -12,7 +12,7 @@ Catalogue changes apply to new quotes and renewal offers. Existing subscriptions
 
 The public `/pricing` page publishes individual modules, included seats, annual amounts, popular suites, and the enterprise starting price. The platform subscription form uses the same catalogue to prefill the agreed amount and seat limit when an operator selects a module. These values remain editable because negotiated discounts, migrations, extra branches, custom development, and enterprise agreements must still be recorded at their actually agreed amount.
 
-Bundles are sales packages rather than a new entitlement object. Operators must create the underlying module subscriptions with the correct module-specific seat limits so access, roles, backups, cancellation, and expiry remain isolated per module. Students, guardians, patients, and customer records are business records and do not consume staff-user seats.
+Combined suites are first-class self-service entitlements. One `Subscription` stores the stable suite key and the exact module keys granted by that purchase. One verified payment enables every entitled module atomically; renewal failure, cancellation, and access checks cover the same entitlement set. Existing module-specific subscriptions remain unchanged. Students, guardians, patients, and customer records are business records and do not consume staff-user seats.
 
 Each subscription can carry a positive user-seat limit or be explicitly unlimited. A seat is consumed by every `ACTIVE` or `INVITED` organization membership whose assigned role contains a permission under that product's permission namespace. Combined products count a member once when the role contains either internal namespace. A role spanning several unrelated products consumes one seat in each applicable product. Pending invitations reserve seats immediately; revoking an invitation marks its membership removed and releases the seat.
 
@@ -21,6 +21,14 @@ Tenant administrators see current usage in Administration and Billing. The platf
 Organization administrators can change a member's role, reversibly deactivate/reactivate active members, and see both used and remaining seats per module. Role changes are limited to roles compatible with the organization's currently active modules and are rejected if the destination role would exceed any applicable seat limit. Deactivation changes the membership to `SUSPENDED`, which immediately removes it from authentication and seat counts; reactivation rechecks current seat availability before restoring access. The acting administrator cannot deactivate themselves, and the final active Organization Owner cannot be deactivated or demoted.
 
 ## Implemented lifecycle
+
+### Direct public subscription
+
+Visitors can bypass the demo and operator-approval workflow from `/pricing` or `/subscribe`. They choose an individual product or combined suite, monthly or annual billing, and provide organization-owner details. The server verifies bot protection, validates the product against the authoritative catalogue, creates an isolated organization with a pending subscription, and emails the existing single-use invitation. The invitation returns the verified owner to Billing after password setup and sign-in. Payment is deliberately not taken before email ownership is verified.
+
+Paystack confirmation activates the selected product or every entitlement in the selected suite without platform-owner approval. The browser redirect never grants access by itself. The existing signed webhook and server-to-server payment verification remain authoritative.
+
+Trial workspaces may have at most three customer-facing products enabled at once. Consolidated internal pairs, including HR plus Payroll and Inventory plus Procurement, count as one product. The limit is enforced inside the module-enable transaction and the request-approval enable path, not only in the interface. Paid suites are not restricted by the trial cap because payment moves the organization to `ACTIVE`.
 
 The public acquisition and platform-operator workflows share one record chain:
 

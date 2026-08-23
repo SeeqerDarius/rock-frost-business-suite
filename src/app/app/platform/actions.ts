@@ -11,16 +11,17 @@ import { logAuditEvent } from "@/lib/audit";
 import { productGroupKeys } from "@/platform/modules/product-groups";
 import { syncActiveOrganizationMembersToHr } from "@/modules/hr/service";
 import { ensureRevenueAccountsForOrg } from "@/lib/accounting-integration";
+import { assertTrialProductLimit, TrialProductLimitError } from "@/platform/trials/service";
 
 const toggleSchema = z.object({
   organizationId: cuid,
   moduleId: cuid,
 });
 
-export async function toggleOrganizationModule(formData: FormData): Promise<void> {
+export async function toggleOrganizationModule(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   const tenant = await requireCurrentTenant();
   if (!isPlatformOperator(tenant)) {
-    return;
+    return { ok: false, error: "You do not have permission to change modules." };
   }
 
   const parsed = parseWithSchema(toggleSchema, {
@@ -28,7 +29,7 @@ export async function toggleOrganizationModule(formData: FormData): Promise<void
     moduleId: String(formData.get("moduleId") ?? "").trim(),
   });
   if (!parsed.success) {
-    return;
+    return { ok: false, error: "The module selection is invalid." };
   }
   const { organizationId, moduleId } = parsed.data;
   const enabled = formData.get("enabled") === "true";
@@ -40,14 +41,16 @@ export async function toggleOrganizationModule(formData: FormData): Promise<void
   ]);
 
   if (!organization || !module_) {
-    return;
+    return { ok: false, error: "The organization or module was not found." };
   }
 
-  await db.$transaction(async (tx) => {
-    const groupedModules = await tx.module.findMany({
-      where: { code: { in: [...productGroupKeys(module_.code)] } },
-      select: { id: true, code: true },
-    });
+  try {
+    await db.$transaction(async (tx) => {
+      const groupedModules = await tx.module.findMany({
+        where: { code: { in: [...productGroupKeys(module_.code)] } },
+        select: { id: true, code: true },
+      });
+      if (enabled) await assertTrialProductLimit(tx, organizationId, groupedModules.map((entry) => entry.code));
     for (const groupedModule of groupedModules) {
       await tx.organizationModule.upsert({
         where: { organizationId_moduleId: { organizationId, moduleId: groupedModule.id } },
@@ -74,10 +77,15 @@ export async function toggleOrganizationModule(formData: FormData): Promise<void
       },
       tx,
     );
-  });
+    });
+  } catch (error) {
+    if (error instanceof TrialProductLimitError) return { ok: false, error: error.message };
+    throw error;
+  }
 
   revalidatePath("/app/platform/organizations");
   revalidatePath("/app/platform/modules");
   revalidatePath("/app/modules");
   revalidatePath("/app/dashboard");
+  return { ok: true };
 }

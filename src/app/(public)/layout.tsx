@@ -2,6 +2,7 @@ import { PublicHeader } from "@/components/layout/public-header";
 import { PublicFooter } from "@/components/layout/public-footer";
 import { JsonLd } from "@/components/seo/json-ld";
 import { COMPANY_NAME, DEFAULT_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo";
+import { PublicSupportFloat } from "@/components/support/public-support-float";
 
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -31,6 +32,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
       <PublicHeader />
       <main id="main-content" tabIndex={-1} className="flex-1">{children}</main>
       <PublicFooter />
+      <PublicSupportFloat />
     </div>
   );
 }

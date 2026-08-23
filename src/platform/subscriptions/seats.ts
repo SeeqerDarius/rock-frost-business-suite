@@ -60,19 +60,22 @@ export async function getOrganizationSeatUsage(organizationId: string, client: D
   const subscriptions = await currentSeatSubscriptions(client, organizationId);
   const grouped = new Map<string, { moduleId: string; moduleCode: string; moduleName: string; limits: number[]; hasUnlimited: boolean }>();
   for (const subscription of subscriptions) {
-    const moduleDefinition = getModule(subscription.module.code);
-    const productCode = moduleDefinition?.productKey ?? subscription.module.code;
-    const productDefinition = getModule(productCode);
-    const entry = grouped.get(productCode) ?? {
-      moduleId: subscription.moduleId,
-      moduleCode: productCode,
-      moduleName: productDefinition?.name ?? subscription.module.name,
-      limits: [],
-      hasUnlimited: false,
-    };
-    if (subscription.seatLimit == null) entry.hasUnlimited = true;
-    else entry.limits.push(subscription.seatLimit);
-    grouped.set(productCode, entry);
+    const entitlementCodes = subscription.entitledModuleKeys.length
+      ? [...new Set(subscription.entitledModuleKeys.map((code) => getModule(code)?.productKey ?? code))]
+      : [getModule(subscription.module.code)?.productKey ?? subscription.module.code];
+    for (const productCode of entitlementCodes) {
+      const productDefinition = getModule(productCode);
+      const entry = grouped.get(productCode) ?? {
+        moduleId: subscription.moduleId,
+        moduleCode: productCode,
+        moduleName: productDefinition?.name ?? subscription.module.name,
+        limits: [],
+        hasUnlimited: false,
+      };
+      if (subscription.seatLimit == null) entry.hasUnlimited = true;
+      else entry.limits.push(subscription.seatLimit);
+      grouped.set(productCode, entry);
+    }
   }
   return Promise.all([...grouped.values()].map(async (entry) => ({
     moduleId: entry.moduleId,

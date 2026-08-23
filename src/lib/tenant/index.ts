@@ -127,7 +127,7 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
     }),
     db.subscription.findMany({
       where: { organizationId: membership.organizationId },
-      select: { moduleId: true, module: { select: { code: true } } },
+      select: { moduleId: true, entitledModuleKeys: true, module: { select: { code: true } } },
       distinct: ["moduleId"],
     }),
     db.subscription.findMany({
@@ -137,15 +137,17 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
         startsAt: { lte: new Date() },
         endsAt: { gt: new Date() },
       },
-      select: { moduleId: true, module: { select: { code: true } } },
+      select: { moduleId: true, entitledModuleKeys: true, module: { select: { code: true } } },
     }),
   ]);
 
   const permissions = membership.role?.rolePermissions.map((rp) => rp.permission.key) ?? [];
   const subscriptionProductKey = (item: { moduleId: string; module?: { code: string } }) =>
     primaryProductKey(item.module?.code ?? enabledModules.find((assignment) => assignment.moduleId === item.moduleId)?.module.code ?? item.moduleId);
-  const subscriptionControlled = new Set(subscriptionModules.map(subscriptionProductKey));
-  const paidAndCurrent = new Set(activeSubscriptions.map(subscriptionProductKey));
+  const subscriptionControlled = new Set(subscriptionModules.flatMap((item) =>
+    item.entitledModuleKeys?.length ? item.entitledModuleKeys.map(primaryProductKey) : [subscriptionProductKey(item)]));
+  const paidAndCurrent = new Set(activeSubscriptions.flatMap((item) =>
+    item.entitledModuleKeys?.length ? item.entitledModuleKeys.map(primaryProductKey) : [subscriptionProductKey(item)]));
   const enabledModuleKeys = expandProductModuleKeys(enabledModules
     .filter((om) => {
       const productKey = primaryProductKey(om.module.code);

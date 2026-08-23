@@ -142,6 +142,7 @@ export async function resetPassword(formData: FormData): Promise<void> {
  */
 export async function acceptInvite(formData: FormData): Promise<void> {
   const token = clean(formData.get("token"));
+  const next = clean(formData.get("next")) === "/app/organization/billing" ? "/app/organization/billing" : "";
   const password = passwordValue(formData.get("password"));
   const confirmPassword = passwordValue(formData.get("confirmPassword"));
 
@@ -168,7 +169,7 @@ export async function acceptInvite(formData: FormData): Promise<void> {
     throw error;
   }
 
-  redirect(`/login?activated=1&email=${encodeURIComponent(invitedEmail)}`);
+  redirect(`/login?activated=1&email=${encodeURIComponent(invitedEmail)}${next ? `&callbackUrl=${encodeURIComponent(next)}` : ""}`);
 }
 
 /**

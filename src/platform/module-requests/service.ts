@@ -4,6 +4,8 @@ import type { ModuleRequestPriority, ModuleRequestStatus, ModuleRequestType } fr
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 import { ensureRevenueAccountsForOrg } from "@/lib/accounting-integration";
+import { assertTrialProductLimit } from "@/platform/trials/service";
+import { productGroupKeys } from "@/platform/modules/product-groups";
 
 export interface CreateModuleRequestInput {
   organizationId: string;
@@ -111,20 +113,12 @@ export async function updateModuleRequest(input: UpdateModuleRequestInput) {
       if (!current.moduleId || current.type !== "ENABLE_EXISTING") {
         throw new Error("Only an existing-module request can enable a module.");
       }
-      await tx.organizationModule.upsert({
-        where: {
-          organizationId_moduleId: {
-            organizationId: current.organizationId,
-            moduleId: current.moduleId,
-          },
-        },
+      const groupedModules = await tx.module.findMany({ where: { code: { in: [...productGroupKeys(current.module?.code ?? "")] } }, select: { id: true, code: true } });
+      await assertTrialProductLimit(tx, current.organizationId, groupedModules.map((entry) => entry.code));
+      for (const module_ of groupedModules) await tx.organizationModule.upsert({
+        where: { organizationId_moduleId: { organizationId: current.organizationId, moduleId: module_.id } },
         update: { enabled: true, enabledAt: new Date() },
-        create: {
-          organizationId: current.organizationId,
-          moduleId: current.moduleId,
-          enabled: true,
-          enabledAt: new Date(),
-        },
+        create: { organizationId: current.organizationId, moduleId: module_.id, enabled: true, enabledAt: new Date() },
       });
       await ensureRevenueAccountsForOrg(tx, current.organizationId);
     }

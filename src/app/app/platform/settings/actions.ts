@@ -18,6 +18,10 @@ const marketingSchema = z.object({
   eyebrow: z.string().trim().min(2).max(60),
   headline: z.string().trim().min(5).max(140),
   description: z.string().trim().min(5).max(240),
+  salesEmail: z.union([z.string().trim().email().max(320), z.literal("")]),
+  supportEmail: z.union([z.string().trim().email().max(320), z.literal("")]),
+  publicPhone: z.string().trim().max(40),
+  publicWhatsapp: z.string().trim().max(40),
 });
 
 const customerSchema = z.object({
@@ -74,10 +78,15 @@ export async function updatePlatformSettings(formData: FormData): Promise<void> 
     eyebrow: String(formData.get("eyebrow") ?? ""),
     headline: String(formData.get("headline") ?? ""),
     description: String(formData.get("description") ?? ""),
+    salesEmail: String(formData.get("salesEmail") ?? ""),
+    supportEmail: String(formData.get("supportEmail") ?? ""),
+    publicPhone: String(formData.get("publicPhone") ?? ""),
+    publicWhatsapp: String(formData.get("publicWhatsapp") ?? ""),
   });
   if (!parsed.success) redirect("/app/platform/settings?error=invalid-settings");
   const current = readPlatformMarketing(metadata);
   metadata.organizationDeletionRecoveryDays = parsed.data.organizationDeletionRecoveryDays;
+  metadata.publicContact = { salesEmail: parsed.data.salesEmail, supportEmail: parsed.data.supportEmail, phone: parsed.data.publicPhone, whatsapp: parsed.data.publicWhatsapp };
   metadata.publicMarketing = {
     ...publicMarketingInput(current),
     showcaseEnabled: parsed.data.showcaseEnabled,
@@ -94,7 +103,7 @@ export async function updatePlatformSettings(formData: FormData): Promise<void> 
     action: "platform.settings_updated",
     entityName: "Organization",
     entityId: tenant.organizationId,
-    metadata: { showcaseEnabled: parsed.data.showcaseEnabled, showIndustry: parsed.data.showIndustry },
+    metadata: { showcaseEnabled: parsed.data.showcaseEnabled, showIndustry: parsed.data.showIndustry, publicContactUpdated: true },
   });
   revalidateSettingsAndMarketing();
   redirect("/app/platform/settings?saved=settings");

@@ -27,8 +27,8 @@ export function PublicHeader() {
           <Button variant="ghost" nativeButton={false} render={<Link href="/login" />}>
             Sign in
           </Button>
-          <Button nativeButton={false} render={<Link href="/contact" />}>
-            Request demo
+          <Button nativeButton={false} render={<Link href="/subscribe" />}>
+            Subscribe
           </Button>
         </div>
       </div>

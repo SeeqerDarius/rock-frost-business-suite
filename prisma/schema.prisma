@@ -1078,6 +1078,8 @@ model Subscription {
   lastPaymentFailureAt       DateTime?
   renewalFailureCount        Int                     @default(0)
   notes                      String?                 @db.Text
+  bundleKey                  String?
+  entitledModuleKeys         String[]                @default([])
   createdById                String
   activatedById              String?
   createdAt                  DateTime                @default(now())
@@ -1095,6 +1097,7 @@ model Subscription {
   @@index([moduleId, status])
   @@index([endsAt])
   @@index([gatewayProvider, paymentReference])
+  @@index([bundleKey])
 }
 
 model SubscriptionPayment {

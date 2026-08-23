@@ -104,7 +104,7 @@ export async function updateOrganizationModuleConfigurationValues(
   await db.organizationModule.upsert({
     where: { organizationId_moduleId: { organizationId, moduleId: module_.id } },
     update: { configuration: merged as unknown as Prisma.InputJsonValue },
-    create: { organizationId, moduleId: module_.id, enabled: true, configuration: merged as unknown as Prisma.InputJsonValue },
+    create: { organizationId, moduleId: module_.id, enabled: false, configuration: merged as unknown as Prisma.InputJsonValue },
   });
 
   await logAuditEvent({
