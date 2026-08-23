@@ -6,7 +6,9 @@ import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { cuid, parseWithSchema } from "@/lib/validation";
 import { buildTenantAppUrl } from "@/lib/app-url";
-import { cancelPaystackAutomaticRenewal, getPaystackManagementLinkForOrganization, initiateGatewayPayment } from "@/platform/subscriptions/service";
+import { cancelPaystackAutomaticRenewal, createSelfServiceSubscription, getPaystackManagementLinkForOrganization, initiateGatewayPayment, SelfServiceSubscriptionExistsError } from "@/platform/subscriptions/service";
+import { MODULE_PRICE_BY_KEY } from "@/lib/pricing";
+import type { BusinessModuleKey } from "@/platform/modules/registry";
 
 const startSchema = z.object({
   subscriptionId: cuid,
@@ -43,6 +45,49 @@ export async function startGatewayPayment(formData: FormData): Promise<void> {
     redirect("/app/organization/billing?error=payment-failed");
   }
 
+  redirect(checkoutUrl);
+}
+
+const selfServiceSchema = z.object({
+  moduleKey: z.string().trim().min(1),
+  billingCycle: z.enum(["MONTHLY", "ANNUAL"]),
+});
+
+export async function startSelfServiceCheckout(formData: FormData): Promise<void> {
+  const tenant = await requireCurrentTenant();
+  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) redirect("/app/dashboard");
+  const parsed = parseWithSchema(selfServiceSchema, {
+    moduleKey: String(formData.get("moduleKey") ?? ""),
+    billingCycle: String(formData.get("billingCycle") ?? ""),
+  });
+  if (!parsed.success || !MODULE_PRICE_BY_KEY.has(parsed.data.moduleKey as BusinessModuleKey)) {
+    redirect("/app/organization/billing?error=invalid-selection");
+  }
+
+  let checkoutUrl: string;
+  try {
+    const subscription = await createSelfServiceSubscription({
+      organizationId: tenant.organizationId,
+      moduleKey: parsed.data.moduleKey as BusinessModuleKey,
+      billingCycle: parsed.data.billingCycle,
+      autoRenew: formData.get("autoRenew") === "true",
+      actorId: tenant.userId,
+    });
+    const result = await initiateGatewayPayment({
+      subscriptionId: subscription.id,
+      organizationId: tenant.organizationId,
+      provider: "PAYSTACK",
+      payerUserId: tenant.userId,
+      callbackUrl: buildTenantAppUrl(CALLBACK_PATH.PAYSTACK),
+    });
+    checkoutUrl = result.checkoutUrl;
+  } catch (error) {
+    console.error("[billing] Failed to start self-service checkout:", error);
+    if (error instanceof SelfServiceSubscriptionExistsError) {
+      redirect("/app/organization/billing?error=already-subscribed");
+    }
+    redirect("/app/organization/billing?error=payment-failed");
+  }
   redirect(checkoutUrl);
 }
 

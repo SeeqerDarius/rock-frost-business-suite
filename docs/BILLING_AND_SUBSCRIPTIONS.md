@@ -92,6 +92,14 @@ Paystack recurring subscriptions currently support cards for Ghana. Direct Debit
 
 Production must define `PAYSTACK_SECRET_KEY` and `PAYSTACK_PUBLIC_KEY` in Vercel and configure Paystack's live webhook URL as `https://app.rockfrostgroup.com/api/payments/paystack/webhook`. The secret key is server-only. Never expose it in client code, logs, screenshots, source control, or support messages.
 
+### Tenant self-service checkout
+
+An organization administrator with organization-settings permission can purchase an unsubscribed catalogue product directly from `/app/organization/billing`. They choose monthly or annual billing and whether Paystack should renew the subscription automatically. The client submits only the product key and billing-period choice. The server re-reads the authoritative catalogue price, included seats, active module record, organization identity, and authenticated payer before creating the pending subscription and redirecting to Paystack. A PostgreSQL advisory transaction lock prevents simultaneous clicks from creating duplicate active or pending subscriptions for the same consolidated product.
+
+No platform-owner approval is required for this path. Access is still never granted by the browser redirect alone. After Paystack verifies the charge server-to-server, the shared activation transaction enables the product, activates the organization where necessary, provisions connected Accounting revenue accounts, records the immutable payment, sends notifications, and writes the tenant audit event. The signed webhook remains the authoritative recovery path if the customer closes checkout before returning.
+
+Paystack returns the customer to `/app/organization/billing/callback/paystack`. A verified payment renders a dedicated thank-you page with the product, amount, payment date, access period, end date, renewal status, payment reference, a direct `Open module` action, and a link back to Billing. Failed or delayed verification never displays a false success; the customer is sent back to Billing to check status or retry.
+
 **Reference/idempotency model.** `Subscription.paymentReference` is written
 twice, not once: at **initiation** (`initiateGatewayPayment()` in
 `src/platform/subscriptions/service.ts`), our own generated reference

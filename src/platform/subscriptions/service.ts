@@ -7,6 +7,9 @@ import { logAuditEvent } from "@/lib/audit";
 import { initializeTransaction, type GatewayProvider } from "@/lib/payments";
 import { createPlan as createPaystackPlan, disableSubscription as disablePaystackSubscription, getSubscriptionManagementLink } from "@/lib/payments/paystack";
 import { ensureRevenueAccountsForOrg } from "@/lib/accounting-integration";
+import { MODULE_PRICE_BY_KEY } from "@/lib/pricing";
+import { getModule, type BusinessModuleKey } from "@/platform/modules/registry";
+import { productGroupKeys } from "@/platform/modules/product-groups";
 
 const AWAITING_ACTIVATION_STATUSES = ["DRAFT", "PENDING_PAYMENT", "PAST_DUE"] as const;
 
@@ -24,6 +27,73 @@ function addSubscriptionTerm(from: Date, durationMonths: number) {
   const end = new Date(from);
   end.setUTCMonth(end.getUTCMonth() + durationMonths);
   return end;
+}
+
+export class SelfServiceSubscriptionExistsError extends Error {}
+
+export async function createSelfServiceSubscription(input: {
+  organizationId: string;
+  moduleKey: BusinessModuleKey;
+  billingCycle: "MONTHLY" | "ANNUAL";
+  autoRenew: boolean;
+  actorId: string;
+}) {
+  const price = MODULE_PRICE_BY_KEY.get(input.moduleKey);
+  const definition = getModule(input.moduleKey);
+  if (!price || !definition || definition.catalogueVisible === false) {
+    throw new Error("This module is not available for self-service purchase.");
+  }
+
+  const durationMonths = input.billingCycle === "ANNUAL" ? 12 : 1;
+  const amount = input.billingCycle === "ANNUAL" ? price.annualGhs : price.monthlyGhs;
+
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`self-service-subscription:${input.organizationId}:${input.moduleKey}`}))`;
+    const modules = await tx.module.findMany({
+      where: { code: { in: [...productGroupKeys(input.moduleKey)] }, status: "ACTIVE" },
+      select: { id: true, code: true },
+    });
+    const primaryModule = modules.find((module_) => module_.code === input.moduleKey);
+    if (!primaryModule) throw new Error("The selected module is not available.");
+
+    const existing = await tx.subscription.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        moduleId: { in: modules.map((module_) => module_.id) },
+        status: { notIn: ["CANCELLED", "EXPIRED"] },
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new SelfServiceSubscriptionExistsError("This product already has an active or pending subscription.");
+    }
+
+    const subscription = await tx.subscription.create({
+      data: {
+        organizationId: input.organizationId,
+        moduleId: primaryModule.id,
+        mode: "PLATFORM_MANAGED",
+        durationMonths,
+        amount: new Prisma.Decimal(amount),
+        currency: "GHS",
+        autoRenew: input.autoRenew,
+        seatLimit: price.includedSeats,
+        notes: "Self-service catalogue checkout",
+        createdById: input.actorId,
+        status: "PENDING_PAYMENT",
+      },
+    });
+    await logAuditEvent({
+      organizationId: input.organizationId,
+      userId: input.actorId,
+      module: "platform",
+      action: "subscription.self_service_created",
+      entityName: "Subscription",
+      entityId: subscription.id,
+      metadata: { moduleKey: input.moduleKey, billingCycle: input.billingCycle, amount, currency: "GHS", seatLimit: price.includedSeats },
+    }, tx);
+    return subscription;
+  });
 }
 
 /**
