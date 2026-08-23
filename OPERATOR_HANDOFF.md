@@ -20,6 +20,7 @@ Integrated release commit `cd509d5` was fast-forwarded to `main`. Vercel deploym
 - **Not done**: `public/RFGgg.png` and `public/rfggggg.png` were left on disk, unreferenced by any component now — deleting an asset wasn't asked for.
 - **No schema, permission, or route change.**
 - **Validation**: `npx tsc --noEmit` — passed. `npm run lint` — passed. `npm run test` — passed: 87 files, 524 tests (no existing test referenced the old filename/dimensions). `npm run build` — passed.
+- **Production deploy verified**: this branch was rebased twice more onto concurrently-pushed work (three-product trials, tenant self-service checkout, source-owned accounting reversals and Accounting Insights) before landing as `3f01a88`, re-validated clean after each. Vercel production deployment `dpl_HHokjvKiwBt8PE4pcVAnrDuP3Uis` reached `READY`. `/api/health` returned `{"ok":true,"database":"reachable"}`. Confirmed live on the production login page (`app.rockfrostgroup.com`, which renders the default-size `Logo`): `document.querySelector('img').src` and the computed `mask-image` both resolve to `/rft.png`, and a screenshot shows "ROCK FROST TECHNOLOGIES" rendering cleanly above the sign-in card. No runtime errors attributable to this deployment in the following 15 minutes.
 
 ## 2026-08-23: Three-product trials, public direct subscription, combined suites, and contact handoff
 
