@@ -10,6 +10,18 @@ Accounting uses an immutable double-entry journal. Account balances are derived 
 
 Every journal entry has an organization-scoped posting number. Source modules post through `postSourceJournalEntry()` using a unique tuple of organization, source type, source id, and posting purpose. Retrying the same source operation returns the original posting instead of duplicating it.
 
+### Reversal ownership
+
+The Journal screen offers **Reverse entry** only for entries whose source type is `MANUAL`. Entries posted by Fleet, POS, Pharmacy, Hospital, Hotel, Hostel, School, Installment, invoices, expenses, opening balances, petty cash, and other managed workflows cannot be reversed from the generic journal screen. Their source workflow owns validation, state transitions, refund or void rules, permissions, and audit context.
+
+This is enforced in the UI and in the Accounting service. `reverseJournalEntry()` rejects every non-manual source even if a caller crafts a Server Action request. Legitimate source workflows use `reverseSourceJournalEntry()` through the shared Accounting integration and must present the exact source type, source id, and posting purpose already stored on the journal. The original entry remains immutable and the correction remains a compensating journal entry.
+
+## Accounting Insights
+
+`/app/accounting/insights` provides a tenant-scoped command center for users with `accounting.reports.view`. It includes 30-day, 90-day, and 12-month views of recorded revenue, expenses, net income, cash and bank balance, average revenue transaction, revenue by originating module, overdue invoices, pending expenses, and revenue/expense trends.
+
+The optional business-question assistant additionally requires `ai.assistant.use`. It receives only the selected organization's already-aggregated Accounting Insights payload, never an organization id supplied by the browser. Questions are limited to 30 per user per hour and are audited without storing the question text. If Groq is unavailable, deterministic answers from the same figures keep the feature usable. Figures are decision support, not audited financial, tax, or forecasting advice, and the UI tells users to reconcile external statements.
+
 ## Accounting periods
 
 Organizations can define non-overlapping accounting periods. Closing a period blocks all new journal postings dated inside that period, including automated postings and reversals. Reopening is explicit, permission-controlled, and audited.
@@ -49,4 +61,4 @@ A module posting revenue from one call site is not the same guarantee as "this m
 
 ## Current boundary
 
-This release establishes posting identity, period locking, and reversals. Full accounts receivable, accounts payable, bank-statement matching, tax, budget, fixed-asset, and multi-currency workflows remain separate future releases and must not be marketed as delivered by this foundation. The revenue-side module integrations above are real; expense/liability-side integrations (payroll runs, purchase-order receipts) are not yet built.
+This release establishes posting identity, period locking, source-owned reversals, operational insights, and grounded Accounting Q&A. Full accounts receivable, accounts payable, bank-statement matching, tax, budget, fixed-asset, forecasting, and multi-currency workflows remain separate future releases and must not be marketed as delivered by this foundation. The revenue-side module integrations above are real; expense/liability-side integrations (payroll runs, purchase-order receipts) are not yet built.

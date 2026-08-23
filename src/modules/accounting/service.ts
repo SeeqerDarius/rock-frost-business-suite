@@ -342,10 +342,15 @@ export async function reopenAccountingPeriod(organizationId: string, periodId: s
   });
 }
 
-export async function reverseJournalEntry(
+async function reverseJournalEntryInternal(
   organizationId: string,
   journalEntryId: string,
-  data: { entryDate: Date; reason: string; actorId?: string | null },
+  data: {
+    entryDate: Date;
+    reason: string;
+    actorId?: string | null;
+    expectedSource?: { sourceType: string; sourceId: string; postingPurpose: string };
+  },
 ) {
   return db.$transaction(async (tx) => {
     const original = await tx.accountingJournalEntry.findFirst({
@@ -355,6 +360,17 @@ export async function reverseJournalEntry(
     if (!original) throw new NotFoundError("Journal entry not found.");
     if (original.status !== "POSTED" || original.reversalOfId || original.reversal) {
       throw new JournalReversalError("This journal entry cannot be reversed.");
+    }
+    if (data.expectedSource) {
+      if (
+        original.sourceType !== data.expectedSource.sourceType ||
+        original.sourceId !== data.expectedSource.sourceId ||
+        original.postingPurpose !== data.expectedSource.postingPurpose
+      ) {
+        throw new JournalReversalError("The source-managed journal identity does not match.");
+      }
+    } else if (original.sourceType !== "MANUAL") {
+      throw new JournalReversalError("Source-managed journal entries must be corrected from their originating module.");
     }
     const reversal = await postJournalEntry(tx, organizationId, {
       entryDate: data.entryDate,
@@ -375,8 +391,39 @@ export async function reverseJournalEntry(
       data: { status: "REVERSED" },
     });
     if (claimed.count === 0) throw new JournalReversalError("This journal entry was already reversed.");
-    await tx.accountingJournalEntry.update({ where: { id: reversal.id }, data: { reversalOfId: original.id } });
-    return reversal;
+    return tx.accountingJournalEntry.update({ where: { id: reversal.id }, data: { reversalOfId: original.id } });
+  });
+}
+
+/** User-facing reversal boundary. Only a genuinely manual journal can be reversed here. */
+export function reverseJournalEntry(
+  organizationId: string,
+  journalEntryId: string,
+  data: { entryDate: Date; reason: string; actorId?: string | null },
+) {
+  return reverseJournalEntryInternal(organizationId, journalEntryId, data);
+}
+
+/**
+ * Source-module compensation boundary. The caller must present the complete,
+ * server-resolved posting identity so it cannot reverse an unrelated entry.
+ */
+export function reverseSourceJournalEntry(
+  organizationId: string,
+  journalEntryId: string,
+  data: {
+    entryDate: Date;
+    reason: string;
+    actorId?: string | null;
+    sourceType: string;
+    sourceId: string;
+    postingPurpose: string;
+  },
+) {
+  const { sourceType, sourceId, postingPurpose, ...reversal } = data;
+  return reverseJournalEntryInternal(organizationId, journalEntryId, {
+    ...reversal,
+    expectedSource: { sourceType, sourceId, postingPurpose },
   });
 }
 

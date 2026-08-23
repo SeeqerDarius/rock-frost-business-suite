@@ -1,6 +1,10 @@
 # AI Support Assistant
 
-**Status: implemented.** An AI participant inside the existing tenant<->platform Support chat (`docs/SUPPORT_MESSAGING.md`) — not a standalone page. This doc covers the tool-calling architecture; see `docs/SUPPORT_MESSAGING.md`'s "AI-assisted first response" section for how it's wired into the conversation itself (when it fires, the presence-based hand-off-to-a-human behavior, the UI treatment).
+**Status: implemented.** AI is available in two controlled surfaces: the existing tenant-to-platform Support chat and Accounting Insights at `/app/accounting/insights`. This document covers both security boundaries. See `docs/SUPPORT_MESSAGING.md` for the support conversation's presence-based human handoff.
+
+## Accounting Insights assistant
+
+The Accounting assistant is not a general database agent. The server resolves the signed-in tenant, checks `accounting.reports.view` and `ai.assistant.use`, computes a bounded 30-day, 90-day, or 12-month aggregate, and sends only that aggregate plus the user's question to Groq. The browser cannot supply an organization id. A 30-question per-user hourly limit is enforced through tenant-scoped audit events, and the question text is not stored in the audit trail. If the provider is unavailable or unconfigured, deterministic answers use the same aggregate instead of failing the page.
 
 ## History
 

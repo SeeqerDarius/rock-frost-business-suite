@@ -3,7 +3,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { primaryProductKey } from "@/platform/modules/product-groups";
-import { ensureDefaultAccounts, postSourceJournalEntry, reverseJournalEntry } from "@/modules/accounting/service";
+import { ensureDefaultAccounts, postSourceJournalEntry, reverseSourceJournalEntry } from "@/modules/accounting/service";
 
 /**
  * The one place every revenue-generating module posts into Accounting's
@@ -211,7 +211,7 @@ async function postModuleRevenueEntry(organizationId: string, input: PostModuleR
  * Reverses a previously posted module-revenue entry (e.g. a verified Fleet
  * payment later rejected, a dispensing sale reversed) by locating it via
  * the same sourceType+sourceId+postingPurpose identity used to post it,
- * then delegating to Accounting's own reverseJournalEntry so the reversal
+ * then delegating to Accounting's source-identity reversal boundary so the reversal
  * is itself a real, auditable journal entry — never a silent balance edit.
  * A no-op (not an error) if nothing was ever posted for this source, since
  * that's the expected case when Accounting wasn't enabled at posting time.
@@ -223,7 +223,14 @@ export async function reverseModuleRevenue(organizationId: string, input: { sour
       select: { id: true },
     });
     if (!original) return { posted: false, reason: "accounting-not-enabled" };
-    const reversal = await reverseJournalEntry(organizationId, original.id, { entryDate: new Date(), reason: input.reason, actorId: input.actorId });
+    const reversal = await reverseSourceJournalEntry(organizationId, original.id, {
+      entryDate: new Date(),
+      reason: input.reason,
+      actorId: input.actorId,
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
+      postingPurpose: input.postingPurpose,
+    });
     return { posted: true, journalEntryId: reversal.id };
   } catch (error) {
     console.error("[accounting-integration] Failed to reverse module revenue:", { organizationId, sourceType: input.sourceType, sourceId: input.sourceId, postingPurpose: input.postingPurpose, error });
@@ -252,7 +259,15 @@ export async function reverseAllModuleRevenueForSource(organizationId: string, i
   let reversedCount = 0;
   for (const entry of entries) {
     try {
-      await reverseJournalEntry(organizationId, entry.id, { entryDate: new Date(), reason: input.reason, actorId: input.actorId });
+      if (!entry.postingPurpose) throw new Error("Source posting purpose is missing.");
+      await reverseSourceJournalEntry(organizationId, entry.id, {
+        entryDate: new Date(),
+        reason: input.reason,
+        actorId: input.actorId,
+        sourceType: input.sourceType,
+        sourceId: input.sourceId,
+        postingPurpose: entry.postingPurpose,
+      });
       reversedCount++;
     } catch (error) {
       console.error("[accounting-integration] Failed to reverse one of a source's module revenue entries:", { organizationId, sourceType: input.sourceType, sourceId: input.sourceId, postingPurpose: entry.postingPurpose, error });

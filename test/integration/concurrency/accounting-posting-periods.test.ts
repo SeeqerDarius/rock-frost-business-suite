@@ -62,6 +62,34 @@ describe("Accounting source posting and period serialization (real Postgres)", (
     expect(entries[0].lines).toHaveLength(2);
   });
 
+  it("blocks journal-screen reversal of a source posting but allows its identity-matched source workflow", async () => {
+    const input = {
+      sourceType: "FLEET_PAYMENT",
+      sourceId: "fleet-payment-reversal-boundary",
+      postingPurpose: "COLLECTED",
+      entryDate: new Date("2026-04-10T12:00:00.000Z"),
+      description: "Fleet payment reversal boundary",
+      lines: await journalLines(idempotencyOrg.organizationId),
+    };
+    const entry = await accounting.postSourceJournalEntry(idempotencyOrg.organizationId, input);
+
+    await expect(accounting.reverseJournalEntry(idempotencyOrg.organizationId, entry.id, {
+      entryDate: new Date("2026-04-11T12:00:00.000Z"),
+      reason: "Attempted manual correction",
+    })).rejects.toBeInstanceOf(accounting.JournalReversalError);
+
+    const reversal = await accounting.reverseSourceJournalEntry(idempotencyOrg.organizationId, entry.id, {
+      entryDate: new Date("2026-04-11T12:00:00.000Z"),
+      reason: "Source payment was rejected",
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
+      postingPurpose: input.postingPurpose,
+    });
+    const original = await testDb.accountingJournalEntry.findUniqueOrThrow({ where: { id: entry.id } });
+    expect(original.status).toBe("REVERSED");
+    expect(reversal.reversalOfId).toBe(entry.id);
+  });
+
   it("serializes a source posting against closing its accounting period", async () => {
     const period = await accounting.createAccountingPeriod(periodRaceOrg.organizationId, {
       name: "March 2026",

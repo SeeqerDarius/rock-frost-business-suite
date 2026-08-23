@@ -66,6 +66,9 @@ describe("Accounting posting foundation", () => {
         id: "journal-1",
         organizationId: "org-1",
         status: "POSTED",
+        sourceType: "MANUAL",
+        sourceId: null,
+        postingPurpose: null,
         reversalOfId: null,
         reversal: null,
         postingNumber: "JRN-00000001",
@@ -83,5 +86,56 @@ describe("Accounting posting foundation", () => {
 
     expect(mockDb.accountingJournalEntry.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { status: "REVERSED" } }));
     expect(mockDb.accountingJournalEntry.update).toHaveBeenCalledWith({ where: { id: "journal-2" }, data: { reversalOfId: "journal-1" } });
+  });
+
+  it("rejects a user-facing reversal for a source-managed entry", async () => {
+    mockDb.accountingJournalEntry.findFirst.mockResolvedValue({
+      id: "journal-1",
+      organizationId: "org-1",
+      status: "POSTED",
+      sourceType: "FLEET_PAYMENT",
+      sourceId: "payment-1",
+      postingPurpose: "COLLECTED",
+      reversalOfId: null,
+      reversal: null,
+      lines: [],
+    });
+
+    await expect(accounting.reverseJournalEntry("org-1", "journal-1", { entryDate: new Date("2026-08-02"), reason: "Correction" }))
+      .rejects.toBeInstanceOf(accounting.JournalReversalError);
+    expect(mockDb.accountingJournalEntry.create).not.toHaveBeenCalled();
+  });
+
+  it("allows a source workflow to reverse only when the full posting identity matches", async () => {
+    mockDb.accountingJournalEntry.findFirst
+      .mockResolvedValueOnce({
+        id: "journal-1",
+        organizationId: "org-1",
+        status: "POSTED",
+        sourceType: "FLEET_PAYMENT",
+        sourceId: "payment-1",
+        postingPurpose: "COLLECTED",
+        reversalOfId: null,
+        reversal: null,
+        postingNumber: "JRN-00000001",
+        reference: null,
+        lines: [
+          { accountId: "cash", debit: { toFixed: () => "100.00" }, credit: { toFixed: () => "0.00" } },
+          { accountId: "revenue", debit: { toFixed: () => "0.00" }, credit: { toFixed: () => "100.00" } },
+        ],
+      })
+      .mockResolvedValueOnce(null);
+    mockDb.accountingJournalEntry.create.mockResolvedValue({ id: "journal-2" });
+    mockDb.accountingJournalEntry.updateMany.mockResolvedValue({ count: 1 });
+
+    await accounting.reverseSourceJournalEntry("org-1", "journal-1", {
+      entryDate: new Date("2026-08-02"),
+      reason: "Fleet payment rejected",
+      sourceType: "FLEET_PAYMENT",
+      sourceId: "payment-1",
+      postingPurpose: "COLLECTED",
+    });
+
+    expect(mockDb.accountingJournalEntry.create).toHaveBeenCalled();
   });
 });

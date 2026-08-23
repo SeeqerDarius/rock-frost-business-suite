@@ -32,7 +32,7 @@ const sections = [
     body: [
       "To provide and operate the Service, including authenticating accounts, enforcing the permissions your organization assigns, and keeping each organization's data isolated from every other organization's.",
       "To respond to inquiries submitted through our contact form, and to send transactional messages such as account invitations, password resets, and security notifications.",
-      "Where enabled, to power an optional AI support assistant inside the Service. Each reply is generated only from that conversation and from live data the requesting user already has permission to see through explicitly defined, permission-checked lookups: it cannot be asked to reach another organization's data, and it never emails anyone.",
+      "Where enabled, to power optional AI support and Accounting Insights assistants inside the Service. Replies use only the signed-in organization's conversation or permission-checked, tenant-scoped business figures. The assistants cannot be asked to access another organization's data, and they never email anyone.",
       "We do not sell personal data, and we do not use Customer Data your organization controls for our own advertising or profiling purposes.",
     ],
   },
@@ -53,7 +53,7 @@ const sections = [
       "Hosting and application delivery (Vercel)",
       "Database hosting, currently on infrastructure located in the United States (Neon, on AWS)",
       "Transactional email delivery, for invitations, password resets, and notifications (Resend)",
-      "AI inference for the optional in-app support assistant, where an organization's users choose to use it (Groq)",
+      "AI inference for optional in-app support and Accounting Insights assistants, where an organization's authorized users choose to use them (Groq)",
       "Payment processing, for organizations that pay online once a payment gateway is enabled on their account (Paystack and/or Flutterwave)",
     ],
     trailingBody: [

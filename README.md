@@ -81,7 +81,7 @@ See `docs/ARCHITECTURE.md` for the full breakdown. Short version:
 ```
 src/
   app/            App Router routes: (public) marketing site, (auth) sign-in/reset/invite, app/ (everything behind sign-in, at /app/*, one route tree per module plus app/platform for Rock Frost operators)
-  modules/        Per-module service layer + navigation + dashboard widget (fleet/, installment/, crm/, inventory/, accounting/, hr/, procurement/, payroll/, analytics/, pos/, projects/)
+  modules/        Per-module service layer, navigation, dashboards and Accounting Insights (fleet/, installment/, crm/, inventory/, accounting/, hr/, procurement/, payroll/, analytics/, pos/, projects/)
   platform/       Shared platform concerns: module registry, platform-scope navigation, dashboard widget registry
   components/     Genuinely reusable UI: ui/ (shadcn primitives), layout/, navigation/, feedback/, forms/
   lib/            Shared utilities: db client, auth (NextAuth config, session revocation, invitations, permissions), tenant resolution, email, validation

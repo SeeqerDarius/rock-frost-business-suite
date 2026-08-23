@@ -127,7 +127,10 @@ export default async function AccountingJournalPage({
                   </div>
                 ))}
               </div>
-              {canReverse && entry.status === "POSTED" && !entry.reversalOfId ? <div className="mt-3 flex justify-end"><EntityDialog trigger={<Button size="sm" variant="outline">Reverse entry</Button>} title="Reverse journal entry" description="The original entry remains in the ledger. A new entry posts the opposite debit and credit lines." action={reverseJournalEntryAction}>
+              {entry.sourceType !== "MANUAL" ? (
+                <p className="mt-3 text-xs text-muted-foreground">Managed by its source workflow. Corrections must be made in the originating module.</p>
+              ) : null}
+              {canReverse && entry.sourceType === "MANUAL" && entry.status === "POSTED" && !entry.reversalOfId ? <div className="mt-3 flex justify-end"><EntityDialog trigger={<Button size="sm" variant="outline">Reverse entry</Button>} title="Reverse journal entry" description="The original entry remains in the ledger. A new entry posts the opposite debit and credit lines." action={reverseJournalEntryAction}>
                 <input type="hidden" name="id" value={entry.id} />
                 <div className="space-y-2"><Label htmlFor={`entryDate-${entry.id}`}>Reversal date</Label><Input id={`entryDate-${entry.id}`} name="entryDate" type="date" defaultValue={today} required /></div>
                 <div className="space-y-2"><Label htmlFor={`reason-${entry.id}`}>Reason</Label><Input id={`reason-${entry.id}`} name="reason" required /></div>
