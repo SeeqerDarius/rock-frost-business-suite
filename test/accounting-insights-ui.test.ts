@@ -5,6 +5,7 @@ const journalPage = readFileSync("src/app/app/accounting/journal/page.tsx", "utf
 const journalService = readFileSync("src/modules/accounting/service.ts", "utf8");
 const insightsPage = readFileSync("src/app/app/accounting/insights/page.tsx", "utf8");
 const insightsAction = readFileSync("src/app/app/accounting/insights/actions.ts", "utf8");
+const insightsAssistant = readFileSync("src/app/app/accounting/insights/insight-assistant.tsx", "utf8");
 const navigation = readFileSync("src/modules/accounting/navigation.tsx", "utf8");
 
 describe("Accounting journal integrity and insights surface", () => {
@@ -22,5 +23,13 @@ describe("Accounting journal integrity and insights surface", () => {
     expect(insightsAction).toContain('requireModuleAccess("accounting")');
     expect(insightsAction).toContain("ACCOUNTING_REPORTS_VIEW");
     expect(insightsAction).toContain("AI_ASSISTANT_USE");
+  });
+
+  it("clears submitted questions immediately and exposes a visible pending response state", () => {
+    expect(insightsAssistant).toContain('setQuestion("")');
+    expect(insightsAssistant).toContain("setSubmittedQuestion(submitted)");
+    expect(insightsAssistant).toContain("Reviewing the selected period...");
+    expect(insightsAssistant).toContain("LoaderCircle");
+    expect(insightsAssistant).toContain("inputRef.current?.focus()");
   });
 });

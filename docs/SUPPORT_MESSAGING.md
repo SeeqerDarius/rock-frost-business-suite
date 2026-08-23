@@ -30,7 +30,7 @@ The panel and both bubble triggers use `tw-animate-css` utilities (the same anim
 - **Trigger icon**: the bubble morphs between a message icon and a close (X) icon via a small crossfade + rotate transition (`transition-all duration-200`), rather than an abrupt swap.
 - **Entrance**: both bubbles play a brief scale/fade-in (`zoom-in-75`, 300ms) on first mount, plus a `hover:scale-105`/`active:scale-95` micro-interaction, consistent with this design system's existing button press feedback (`active:translate-y-px` in `button.tsx`).
 - All of the above collapses to near-instant automatically under `prefers-reduced-motion` via this codebase's existing blanket rule in `globals.css` (`animation-duration`/`transition-duration: 0.01ms !important`) — no per-component reduced-motion handling was needed.
-- **Responsiveness**: below the `sm` breakpoint the panel is `inset-4` (near-full-screen, a comfortable single-hand chat surface on a phone) rather than a small corner card; at `sm` and above it reverts to a fixed `w-96`/`h-[32rem]` card anchored to the bottom-right corner. `SupportChat` gained an optional `className` prop (merged via `cn`/`tailwind-merge`) specifically so the floating widget can override its default fixed height with this responsive sizing without changing the component used by the two full, non-floating pages.
+- **Responsiveness**: the panel uses dynamic viewport height and always reserves space above the launcher. On phones it spans the available width with small side margins. At `sm` and above it is capped at 24rem wide and 36rem high, but still shrinks when browser zoom, a short laptop viewport, or an on-screen keyboard leaves less room. The header, automation disclosure, and composer are non-shrinking; only the message history scrolls. This prevents the composer or conversation controls from being clipped outside the visible panel. The launcher is 48px instead of 56px so it remains discoverable without obscuring nearby controls.
 
 ## Data model
 
@@ -55,6 +55,8 @@ This intentionally answers "is a support surface currently open," not "is this u
 ## Message delivery (polling, not push)
 
 `SupportChat` (`src/components/support/support-chat.tsx`) polls for new messages, presence, and read receipts every 4 seconds via a Server Action, gated the same way as the heartbeat (visible tabs only) — and fires once immediately on mount, not just on the interval, so a panel that lazy-loads without server-rendered history (the floating widget) populates right away instead of sitting empty for up to 4 seconds. New messages are deduplicated against a client-side `Set` of known IDs and appended past a `lastTimestampRef` cursor, so a message the sender just sent (appended optimistically on send) is never duplicated when the next poll also returns it.
+
+Sending is optimistic at the interface layer. The composer clears immediately, a temporary outgoing bubble shows a spinner and `Sending`, and the textarea remains available for the user's next draft. When the server acknowledges the message, the temporary bubble is replaced by the authoritative stored message and its sent/read receipt. If sending fails, the text is restored only when the user has not already started a replacement draft, so typed work is never silently overwritten.
 
 ## Read receipts
 

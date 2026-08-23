@@ -247,4 +247,15 @@ describe("Support messaging — access-guard source coverage", () => {
     expect(templateHandler, "handleSelectTemplate function body").not.toBeNull();
     expect(templateHandler![1]).not.toMatch(/handleSubmit|onSend|startSendTransition/);
   });
+
+  it("keeps the floating panel inside the dynamic viewport and reserves space for its composer", () => {
+    const widgetSource = read("src/components/support/floating-support-widget.tsx");
+    const chatSource = read("src/components/support/support-chat.tsx");
+
+    expect(widgetSource).toContain("100dvh-6rem");
+    expect(widgetSource).toContain("size-12");
+    expect(chatSource).toContain('ScrollArea className="min-h-0 flex-1"');
+    expect(chatSource).toContain('className="shrink-0 border-t bg-background p-3"');
+    expect(chatSource).toContain("setPendingMessage");
+  });
 });

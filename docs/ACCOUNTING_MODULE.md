@@ -22,6 +22,8 @@ This is enforced in the UI and in the Accounting service. `reverseJournalEntry()
 
 The optional business-question assistant additionally requires `ai.assistant.use`. It receives only the selected organization's already-aggregated Accounting Insights payload, never an organization id supplied by the browser. Questions are limited to 30 per user per hour and are audited without storing the question text. If Groq is unavailable, deterministic answers from the same figures keep the feature usable. Figures are decision support, not audited financial, tax, or forecasting advice, and the UI tells users to reconcile external statements.
 
+The assistant composer clears as soon as a valid question is submitted, displays the submitted question as an outgoing chat bubble, blocks duplicate sends while the answer is being prepared, and shows a reduced-motion-safe progress indicator. The completed answer animates into place and keyboard focus returns to the composer for the next question.
+
 ## Accounting periods
 
 Organizations can define non-overlapping accounting periods. Closing a period blocks all new journal postings dated inside that period, including automated postings and reversals. Reopening is explicit, permission-controlled, and audited.

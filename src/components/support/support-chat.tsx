@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
-import { Send, X, ExternalLink, Sparkles, CheckCheck, Check } from "lucide-react";
+import { Send, X, ExternalLink, Sparkles, CheckCheck, Check, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -93,6 +93,7 @@ export function SupportChat({
   const [online, setOnline] = useState(initialOnline);
   const [otherPartyReadAt, setOtherPartyReadAt] = useState(initialOtherPartyReadAt);
   const [draft, setDraft] = useState("");
+  const [pendingMessage, setPendingMessage] = useState<{ content: string; createdAt: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSending, startSendTransition] = useTransition();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -112,7 +113,7 @@ export function SupportChat({
     if (viewport && isNearBottomRef.current) {
       viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
     }
-  }, [messages]);
+  }, [messages, pendingMessage]);
 
   useEffect(() => {
     function handleScroll() {
@@ -183,16 +184,22 @@ export function SupportChat({
     const content = draft.trim();
     if (!content || isSending) return;
     setError(null);
+    setDraft("");
+    setPendingMessage({ content, createdAt: new Date().toISOString() });
+    inputRef.current?.focus();
     startSendTransition(async () => {
       try {
         const result = await onSend(content);
         setMessages((prev) => [...prev, result.message]);
         lastTimestampRef.current = result.message.createdAt;
         setOtherPartyReadAt(result.otherPartyReadAt);
-        setDraft("");
+        setPendingMessage(null);
         inputRef.current?.focus();
       } catch {
+        setPendingMessage(null);
+        setDraft((currentDraft) => currentDraft || content);
         setError("Couldn't send that message. Please try again.");
+        inputRef.current?.focus();
       }
     });
   }
@@ -210,8 +217,8 @@ export function SupportChat({
   }
 
   return (
-    <div className={cn("flex h-[32rem] flex-col overflow-hidden rounded-xl border bg-background", className)}>
-      <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+    <div className={cn("flex h-[32rem] min-h-0 flex-col overflow-hidden rounded-xl border bg-background", className)}>
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b px-3 py-2.5 sm:px-4 sm:py-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <Avatar size="sm">
             <AvatarFallback>{initialsFor(otherPartyLabel)}</AvatarFallback>
@@ -241,13 +248,13 @@ export function SupportChat({
       </div>
 
       {messages.some((message) => message.senderRole === "AI") ? (
-        <p className="border-b bg-muted/40 px-4 py-1.5 text-center text-[11px] text-muted-foreground">
+        <p className="shrink-0 border-b bg-muted/40 px-3 py-1.5 text-center text-[11px] leading-4 text-muted-foreground sm:px-4">
           Some replies here are automated. The Rock Frost team can always help too.
         </p>
       ) : null}
 
-      <ScrollArea className="flex-1">
-        <div ref={scrollRef} className="flex h-full flex-col gap-3 overflow-y-auto p-4">
+      <ScrollArea className="min-h-0 flex-1">
+        <div ref={scrollRef} className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-3 sm:p-4">
           <div aria-live="polite" className="sr-only">
             {messages.length > 0 ? `Latest message from ${messages.at(-1)!.senderName}: ${messages.at(-1)!.content}` : ""}
           </div>
@@ -307,10 +314,26 @@ export function SupportChat({
               );
             })
           )}
+          {pendingMessage ? (
+            <div className="flex animate-in flex-row-reverse items-end gap-2 fade-in-0 slide-in-from-bottom-2 duration-200">
+              <Avatar size="sm" className="mb-4 shrink-0 opacity-70">
+                <AvatarFallback>{viewerRole === "TENANT" ? "You" : "RF"}</AvatarFallback>
+              </Avatar>
+              <div className="flex max-w-[75%] flex-col items-end gap-1">
+                <div className="rounded-2xl rounded-br-sm bg-primary/80 px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap text-primary-foreground break-words">
+                  {pendingMessage.content}
+                </div>
+                <p className="flex items-center gap-1 px-1 text-[11px] text-muted-foreground">
+                  <LoaderCircle className="size-3 animate-spin" aria-hidden="true" />
+                  Sending
+                </p>
+              </div>
+            </div>
+          ) : null}
         </div>
       </ScrollArea>
 
-      <form onSubmit={handleSubmit} className="border-t p-3">
+      <form onSubmit={handleSubmit} className="shrink-0 border-t bg-background p-3">
         {disabled ? (
           <p className="rounded-md bg-muted/60 px-3 py-2 text-center text-xs text-muted-foreground">{disabledReason}</p>
         ) : (
@@ -345,11 +368,10 @@ export function SupportChat({
                 placeholder="Write a message…"
                 rows={1}
                 maxLength={4000}
-                disabled={isSending}
                 className="max-h-32 resize-none"
               />
               <Button type="submit" size="icon" disabled={isSending || draft.trim().length === 0} aria-label="Send message">
-                <Send className="size-4" />
+                {isSending ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
               </Button>
             </div>
             {error ? <p className="mt-1.5 text-xs text-destructive">{error}</p> : <p className="mt-1.5 text-xs text-muted-foreground">Enter to send · Shift+Enter for a new line{templates && templates.length > 0 ? " · Quick replies available" : ""}</p>}

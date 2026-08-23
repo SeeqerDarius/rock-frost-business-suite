@@ -118,8 +118,7 @@ export function FloatingSupportWidget({
           role="dialog"
           aria-label="Support chat"
           className={cn(
-            "fixed z-50 origin-bottom-right",
-            "inset-4 sm:inset-auto sm:bottom-24 sm:right-6 sm:h-[32rem] sm:w-96",
+            "fixed right-3 bottom-20 left-3 z-50 h-[min(36rem,calc(100dvh-6rem))] origin-bottom-right sm:right-5 sm:bottom-20 sm:left-auto sm:w-[min(24rem,calc(100vw-2.5rem))]",
             open
               ? "animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4 duration-200"
               : "pointer-events-none animate-out fade-out-0 zoom-out-95 slide-out-to-bottom-2 duration-150",
@@ -138,7 +137,7 @@ export function FloatingSupportWidget({
             onHeartbeat={onHeartbeat}
             onMarkRead={onMarkRead}
             onClose={closePanel}
-            className="h-full max-h-[calc(100vh-2rem)] sm:h-[32rem] sm:max-h-[32rem]"
+            className="h-full min-h-0 max-h-none"
           />
         </div>
       ) : null}
@@ -150,20 +149,20 @@ export function FloatingSupportWidget({
         onClick={handleToggle}
         aria-label={open ? "Close support chat" : unread > 0 ? `Open support chat, ${unread} unread` : "Open support chat"}
         aria-expanded={open}
-        className="fixed bottom-4 right-4 z-50 size-14 animate-in fade-in-0 zoom-in-75 rounded-full shadow-lg duration-300 hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6"
+        className="fixed right-4 bottom-4 z-50 size-12 animate-in fade-in-0 zoom-in-75 rounded-full shadow-lg duration-300 hover:scale-105 active:scale-95 sm:right-5 sm:bottom-5"
       >
-        <span className="relative flex size-6 items-center justify-center">
+        <span className="relative flex size-5 items-center justify-center">
           <MessageCircle
             aria-hidden="true"
             className={cn(
-              "absolute size-6 transition-all duration-200 ease-out",
+              "absolute size-5 transition-all duration-200 ease-out",
               open ? "scale-50 rotate-45 opacity-0" : "scale-100 rotate-0 opacity-100",
             )}
           />
           <X
             aria-hidden="true"
             className={cn(
-              "absolute size-6 transition-all duration-200 ease-out",
+              "absolute size-5 transition-all duration-200 ease-out",
               open ? "scale-100 rotate-0 opacity-100" : "scale-50 -rotate-45 opacity-0",
             )}
           />

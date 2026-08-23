@@ -46,7 +46,7 @@ The public `/company` page positions Rock Frost Technologies as a broader techno
 
 All public marketing pages share an editorial hero system, fluid display typography, translucent premium panels, and a restrained blue-white atmospheric background. This visual system is scoped to the public site and does not alter authenticated tenant or platform workspaces.
 
-Every tenant can reach in-app Support via a floating chat bubble available everywhere in the workspace, with an online indicator, read receipts, AI assistance, and human handoff; platform operators reply from a two-pane inbox (`/app/platform/support`) across every organization. Public pages also expose a floating Contact entry point, while Platform Settings controls the public sales email, support email, phone, and WhatsApp details. No email is sent by the authenticated chat feature. See `docs/SUPPORT_MESSAGING.md`.
+Every tenant can reach in-app Support via a responsive floating chat bubble available everywhere in the workspace, with an online indicator, read receipts, optimistic sending feedback, AI assistance, and human handoff; platform operators reply from a two-pane inbox (`/app/platform/support`) across every organization. Public pages also expose a floating Contact entry point, while Platform Settings controls the public sales email, support email, phone, and WhatsApp details. No email is sent by the authenticated chat feature. See `docs/SUPPORT_MESSAGING.md`.
 
 ## Stack
 
