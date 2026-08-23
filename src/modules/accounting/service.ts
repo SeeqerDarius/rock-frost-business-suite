@@ -40,6 +40,7 @@ export async function updateAccountingSettings(organizationId: string, data: { i
 const DEFAULT_ACCOUNTS: { code: string; name: string; type: AccountingAccountType; liquidityType?: AccountingLiquidityType }[] = [
   { code: "1000", name: "Cash", type: "ASSET", liquidityType: "CASH" },
   { code: "1100", name: "Accounts Receivable", type: "ASSET" },
+  { code: "1200", name: "Inventory Asset", type: "ASSET" },
   { code: "2000", name: "Accounts Payable", type: "LIABILITY" },
   { code: "4000", name: "Revenue", type: "REVENUE" },
   { code: "5000", name: "General Expenses", type: "EXPENSE" },

@@ -68,3 +68,8 @@ Supplier invoices are available at `/app/procurement/invoices`. Each invoice is 
 - The module launcher, module registry entries, subscription/entitlement handling, and any customer-facing "Inventory & Procurement" bundling at the catalogue/pricing level are centrally owned (`src/platform/modules/registry.ts`, subscription/billing/module-request code) and out of scope for this change — see the central follow-up recorded in `OPERATOR_HANDOFF.md`'s entry for this work.
 - The combined overview's "needs follow-up" preview lists are capped at 5 rows each with a link to the full page; there is no pagination on the preview itself (matching this codebase's existing lack of pagination on the underlying list pages).
 - Real-Postgres integration tests for this change were not executed in the environment this work was done in (no `TEST_DATABASE_URL` configured) — see `docs/TESTING_STRATEGY.md`. The mocked-DB unit suite (`test/inventory-procurement-consolidation.test.ts`) does run in CI/local validation.
+# Supplier accounts payable
+
+Approved supplier invoices now become controlled accounts-payable liabilities when Accounting is active. Approval posts Inventory Asset against Accounts Payable using an idempotent source journal. Authorized users can record partial or full supplier payments with due dates, payment method, reference, payment history, and an outstanding balance. Concurrent payment attempts are serialized so an invoice cannot be overpaid. Each payment posts Accounts Payable against the selected cash, bank, or mobile-money account.
+
+Procurement also remains independently usable. If Accounting is not active, supplier payments and balances are still recorded inside Procurement without creating a journal or requiring an Accounting cash account.

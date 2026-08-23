@@ -147,6 +147,51 @@ export type PostModuleRevenueResult =
   | { posted: true; journalEntryId: string }
   | { posted: false; reason: "accounting-not-enabled" | "error" };
 
+export async function postProcurementInvoiceAccrual(organizationId: string, input: { invoiceId: string; amount: string; invoiceDate: Date; description: string; actorId?: string | null }): Promise<PostModuleRevenueResult> {
+  try {
+    if (!(await isModuleActiveForOrg(db, organizationId, "accounting"))) return { posted: false, reason: "accounting-not-enabled" };
+    const accounts = await ensureDefaultAccounts(organizationId);
+    const inventory = accounts.find((account) => account.code === "1200");
+    const payable = accounts.find((account) => account.code === "2000");
+    if (!inventory || !payable) throw new Error("Default inventory or payable account missing.");
+    const entry = await postSourceJournalEntry(organizationId, {
+      sourceType: "PROCUREMENT_SUPPLIER_INVOICE",
+      sourceId: input.invoiceId,
+      postingPurpose: "APPROVED",
+      entryDate: input.invoiceDate,
+      description: input.description,
+      createdById: input.actorId,
+      lines: [{ accountId: inventory.id, debit: input.amount }, { accountId: payable.id, credit: input.amount }],
+    });
+    return { posted: true, journalEntryId: entry.id };
+  } catch (error) {
+    console.error("[accounting-integration] Failed to accrue supplier invoice:", { organizationId, invoiceId: input.invoiceId, error });
+    return { posted: false, reason: "error" };
+  }
+}
+
+export async function postProcurementSupplierPayment(organizationId: string, input: { paymentId: string; accountId: string; amount: string; paymentDate: Date; description: string; actorId?: string | null }): Promise<PostModuleRevenueResult> {
+  try {
+    if (!(await isModuleActiveForOrg(db, organizationId, "accounting"))) return { posted: false, reason: "accounting-not-enabled" };
+    const payable = (await ensureDefaultAccounts(organizationId)).find((account) => account.code === "2000");
+    const liquidity = await db.accountingAccount.findFirst({ where: { id: input.accountId, organizationId, active: true, liquidityType: { in: ["CASH", "BANK", "MOBILE_MONEY"] } } });
+    if (!payable || !liquidity) throw new Error("A valid payable and organization liquidity account are required.");
+    const entry = await postSourceJournalEntry(organizationId, {
+      sourceType: "PROCUREMENT_SUPPLIER_PAYMENT",
+      sourceId: input.paymentId,
+      postingPurpose: "PAID",
+      entryDate: input.paymentDate,
+      description: input.description,
+      createdById: input.actorId,
+      lines: [{ accountId: payable.id, debit: input.amount }, { accountId: liquidity.id, credit: input.amount }],
+    });
+    return { posted: true, journalEntryId: entry.id };
+  } catch (error) {
+    console.error("[accounting-integration] Failed to post supplier payment:", { organizationId, paymentId: input.paymentId, error });
+    return { posted: false, reason: "error" };
+  }
+}
+
 /**
  * Records a module's cash-basis revenue event in Accounting: debit the
  * shared Cash account, credit that module's own revenue sub-account, so a

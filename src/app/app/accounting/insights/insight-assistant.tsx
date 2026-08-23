@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import { ArrowUp, LoaderCircle, RotateCcw, Sparkles } from "lucide-react";
+import { ArrowUp, LoaderCircle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { askAccountingInsights, type AccountingInsightAssistantState } from "./actions";

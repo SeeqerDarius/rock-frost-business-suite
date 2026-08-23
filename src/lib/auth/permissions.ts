@@ -75,6 +75,7 @@ export const PERMISSIONS = {
   PROCUREMENT_RECEIPTS_MANAGE: "procurement.receipts.manage",
   PROCUREMENT_INVOICES_MANAGE: "procurement.invoices.manage",
   PROCUREMENT_INVOICES_APPROVE: "procurement.invoices.approve",
+  PROCUREMENT_PAYMENTS_MANAGE: "procurement.payments.manage",
   PROCUREMENT_REPORTS_VIEW: "procurement.reports.view",
   PROCUREMENT_SETTINGS_MANAGE: "procurement.settings.manage",
   PAYROLL_VIEW: "payroll.view",

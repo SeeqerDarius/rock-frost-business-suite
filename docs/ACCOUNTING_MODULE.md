@@ -66,3 +66,6 @@ A module posting revenue from one call site is not the same guarantee as "this m
 ## Current boundary
 
 This release establishes posting identity, period locking, source-owned reversals, operational insights, and grounded Accounting Q&A. Full accounts receivable, accounts payable, bank-statement matching, tax, budget, fixed-asset, forecasting, and multi-currency workflows remain separate future releases and must not be marketed as delivered by this foundation. The revenue-side module integrations above are real; expense/liability-side integrations (payroll runs, purchase-order receipts) are not yet built.
+# Procurement payable integration
+
+Supplier invoice approval in Inventory and Procurement creates an idempotent accrual in Accounting: debit Inventory Asset (1200), credit Accounts Payable (2000). A partial or final supplier payment debits Accounts Payable and credits the organization-owned cash, bank, or mobile-money account selected at payment time. Procurement owns the operational invoice and payment record. Accounting owns its immutable journal. Users must correct source transactions through their source workflow rather than manually reversing a source-owned journal.

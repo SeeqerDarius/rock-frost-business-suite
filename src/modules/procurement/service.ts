@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { recordMovement } from "@/modules/inventory/service";
 import { Prisma, type ProcurementRequestStatus, type ProcurementOrderStatus } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
+import { isModuleActiveForOrg, postProcurementInvoiceAccrual, postProcurementSupplierPayment } from "@/lib/accounting-integration";
 import {
   getOrganizationModuleConfiguration,
   updateOrganizationModuleConfigurationValues,
@@ -372,7 +373,7 @@ export function listGoodsReceipts(organizationId: string) {
 export function listSupplierInvoices(organizationId: string) {
   return db.procurementSupplierInvoice.findMany({
     where: { organizationId },
-    include: { vendor: true, order: true, createdBy: true, approvedBy: true, lines: { include: { orderLine: true } } },
+    include: { vendor: true, order: true, createdBy: true, approvedBy: true, payments: { include: { account: true, createdBy: true }, orderBy: { paymentDate: "desc" } }, lines: { include: { orderLine: true } } },
     orderBy: { createdAt: "desc" },
     take: 200,
   });
@@ -380,10 +381,19 @@ export function listSupplierInvoices(organizationId: string) {
 
 export class InvoiceMatchError extends Error {}
 export class InvoiceApprovalError extends Error {}
+export class SupplierPaymentError extends Error {}
+
+export async function listSupplierPaymentAccounts(organizationId: string) {
+  if (!(await isModuleActiveForOrg(db, organizationId, "accounting"))) return [];
+  return db.accountingAccount.findMany({
+    where: { organizationId, active: true, liquidityType: { in: ["CASH", "BANK", "MOBILE_MONEY"] } },
+    orderBy: [{ code: "asc" }, { name: "asc" }],
+  });
+}
 
 export async function createSupplierInvoice(
   organizationId: string,
-  input: { vendorId: string; orderId: string; invoiceNumber: string; invoiceDate: Date; createdById?: string | null; lines: Array<{ orderLineId: string; quantity: number; unitCost: string }> },
+  input: { vendorId: string; orderId: string; invoiceNumber: string; invoiceDate: Date; dueDate?: Date | null; createdById?: string | null; lines: Array<{ orderLineId: string; quantity: number; unitCost: string }> },
 ) {
   if (!input.invoiceNumber.trim() || input.lines.length === 0 || input.lines.length > 100) throw new InvoiceMatchError("Invoice number and lines are required.");
   const aggregated = new Map<string, { orderLineId: string; quantity: number; unitCost: string }>();
@@ -420,7 +430,7 @@ export async function createSupplierInvoice(
     return tx.procurementSupplierInvoice.create({
       data: {
         organizationId, vendorId: input.vendorId, orderId: input.orderId,
-        invoiceNumber: input.invoiceNumber.trim(), invoiceDate: input.invoiceDate,
+        invoiceNumber: input.invoiceNumber.trim(), invoiceDate: input.invoiceDate, dueDate: input.dueDate,
         createdById: input.createdById, totalAmount: total,
         status: exceptionNote ? "EXCEPTION" : "MATCHED", exceptionNote,
         lines: { create: lines.map((line) => ({ ...line, description: orderLines.get(line.orderLineId)!.description })) },
@@ -440,7 +450,49 @@ export async function reviewSupplierInvoice(organizationId: string, invoiceId: s
     data: decision === "APPROVE" ? { status: "APPROVED", approvedById: actorId, approvedAt: new Date() } : { status: "REJECTED", approvedById: actorId, approvedAt: new Date() },
   });
   if (claimed.count === 0) throw new InvoiceApprovalError("Invoice was already reviewed.");
-  return db.procurementSupplierInvoice.findFirstOrThrow({ where: { id: invoice.id, organizationId } });
+  const reviewed = await db.procurementSupplierInvoice.findFirstOrThrow({ where: { id: invoice.id, organizationId } });
+  if (decision === "APPROVE") {
+    const posting = await postProcurementInvoiceAccrual(organizationId, { invoiceId: reviewed.id, amount: reviewed.totalAmount.toString(), invoiceDate: reviewed.invoiceDate, description: `Supplier invoice ${reviewed.invoiceNumber}`, actorId });
+    if (!posting.posted && posting.reason === "error") {
+      await db.procurementSupplierInvoice.updateMany({ where: { id: reviewed.id, organizationId, status: "APPROVED", approvedById: actorId }, data: { status: "MATCHED", approvedById: null, approvedAt: null } });
+      throw new InvoiceApprovalError("Accounting could not record the supplier liability. The approval was not saved.");
+    }
+  }
+  return reviewed;
+}
+
+export async function recordSupplierPayment(organizationId: string, input: { invoiceId: string; accountId?: string | null; paymentMethod: string; amount: string; paymentDate: Date; reference?: string | null; notes?: string | null; createdById?: string | null }) {
+  const amount = new Prisma.Decimal(input.amount);
+  if (!amount.isPositive() || !input.paymentMethod.trim()) throw new SupplierPaymentError("A positive amount and payment method are required.");
+  const accountingEnabled = await isModuleActiveForOrg(db, organizationId, "accounting");
+  if (accountingEnabled && !input.accountId) throw new SupplierPaymentError("Select the cash or bank account used for this payment.");
+  const payment = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${organizationId}:supplier-payment:${input.invoiceId}`}))`;
+    const invoice = await tx.procurementSupplierInvoice.findFirst({ where: { id: input.invoiceId, organizationId, status: { in: ["APPROVED", "PARTIALLY_PAID"] } } });
+    if (!invoice) throw new SupplierPaymentError("Only approved unpaid invoices can be paid.");
+    if (accountingEnabled) {
+      const account = await tx.accountingAccount.findFirst({ where: { id: input.accountId!, organizationId, active: true, liquidityType: { in: ["CASH", "BANK", "MOBILE_MONEY"] } } });
+      if (!account) throw new SupplierPaymentError("The selected payment account is unavailable.");
+    }
+    const remaining = invoice.totalAmount.minus(invoice.amountPaid);
+    if (amount.greaterThan(remaining)) throw new SupplierPaymentError("Payment exceeds the outstanding supplier balance.");
+    const nextPaid = invoice.amountPaid.plus(amount);
+    const fullyPaid = nextPaid.equals(invoice.totalAmount);
+    const created = await tx.procurementSupplierPayment.create({ data: { organizationId, invoiceId: invoice.id, accountId: accountingEnabled ? input.accountId : null, paymentMethod: input.paymentMethod.trim(), amount, paymentDate: input.paymentDate, reference: input.reference?.trim() || null, notes: input.notes?.trim() || null, createdById: input.createdById } });
+    await tx.procurementSupplierInvoice.update({ where: { id: invoice.id }, data: { amountPaid: nextPaid, status: fullyPaid ? "PAID" : "PARTIALLY_PAID", paidAt: fullyPaid ? input.paymentDate : null } });
+    return { ...created, invoiceNumber: invoice.invoiceNumber, previousStatus: invoice.status, previousAmountPaid: invoice.amountPaid, previousPaidAt: invoice.paidAt };
+  });
+  if (accountingEnabled && payment.accountId) {
+    const posting = await postProcurementSupplierPayment(organizationId, { paymentId: payment.id, accountId: payment.accountId, amount: payment.amount.toString(), paymentDate: payment.paymentDate, description: `Payment for supplier invoice ${payment.invoiceNumber}`, actorId: input.createdById });
+    if (!posting.posted) {
+      await db.$transaction(async (tx) => {
+        await tx.procurementSupplierPayment.deleteMany({ where: { id: payment.id, organizationId } });
+        await tx.procurementSupplierInvoice.update({ where: { id: input.invoiceId }, data: { status: payment.previousStatus, amountPaid: payment.previousAmountPaid, paidAt: payment.previousPaidAt } });
+      });
+      throw new SupplierPaymentError("Accounting could not record the payment. The supplier payment was not saved.");
+    }
+  }
+  return payment;
 }
 
 // --- Settings ---

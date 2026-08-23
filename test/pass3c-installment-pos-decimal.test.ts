@@ -180,6 +180,7 @@ describe("Decimal-precision hygiene — exact arithmetic replacing JS Number/eps
     mockDb.accountingAccount.findMany.mockResolvedValue([
       { id: "acct-cash", code: "1000" },
       { id: "acct-ar", code: "1100" },
+      { id: "acct-inventory", code: "1200" },
       { id: "acct-ap", code: "2000" },
       { id: "acct-rev", code: "4000" },
       { id: "acct-exp", code: "5000" },
