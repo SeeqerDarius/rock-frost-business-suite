@@ -1,5 +1,14 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-24: Quick launch removed from Overview entirely
+
+- **Follows directly from the previous entry**: after Overview's stat cards lost their "Open X" buttons, the user asked for the "Quick launch" icon grid removed from Overview too. Overview (`src/app/app/(overview)/dashboard/page.tsx`) is now purely a summary page - no navigation controls of any kind (the enabled-modules view has none; the zero-modules empty state keeps its one "Browse modules" link to `/app/modules`, which is a distinct affordance, not Quick launch). Navigating to a module now happens via the top-bar module switcher or a sidebar link, not from Overview itself.
+- **Modules page is unaffected** - it already carries the same icon-tile visual (non-clickable), from the previous entry.
+- **Important files**: `src/app/app/(overview)/dashboard/page.tsx`, `src/platform/modules/{workspace-navigation,dashboard-widgets}.tsx` (doc comments updated, they referenced Quick launch as still living on Overview), `test/pos-sell-and-launcher-redesign.test.ts` (renamed the describe block from "dashboard quick-launch grid" to "dashboard and module navigation," rewrote the two tests that asserted Quick launch's presence to assert its absence instead).
+- **Validation**: no schema change. `npx tsc --noEmit`, `npm run lint`, `npm run test` (93 files, 629 tests - same count as the previous entry, since tests were rewritten rather than added), and `npm run build` all passed.
+- **Not verified live in a browser**: no test tenant credentials in this environment, consistent with every other change this session.
+- **Production deploy verified**: <!-- filled in after push and deploy verification -->
+
 ## 2026-08-24: Public contact Sales email corrected (production data change, no code)
 
 - **Not a code or schema change** — the public `/contact` page's "Sales" email address (`owner@rockfrostgroup.com`) was live production data, not something in the repository. `src/lib/public-contact.ts`'s `getPublicContactDetails()` falls back to the platform's own anchor `Organization.billingEmail` whenever no `metadata.publicContact.salesEmail` override is configured, and no override existed.

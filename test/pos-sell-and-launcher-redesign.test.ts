@@ -5,15 +5,14 @@ import path from "node:path";
 const root = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
 
-describe("dashboard quick-launch grid", () => {
-  it("shows a large tappable icon tile per enabled module as the first thing after sign-in", () => {
+describe("dashboard and module navigation", () => {
+  it("Overview has no Quick launch grid and no navigation controls at all - the module switcher and sidebar are the way in", () => {
     const source = read("src/app/app/(overview)/dashboard/page.tsx");
-    expect(source).toContain("Quick launch");
-    expect(source).toContain("size-14 rounded-2xl");
-    expect(source).toContain("accessibleModule.routePrefix");
+    expect(source).not.toContain("Quick launch");
+    expect(source).not.toContain("accessibleModule.routePrefix");
   });
 
-  it("keeps a separate Modules sidebar tab as a read-only 'what's active' reference alongside Quick launch", () => {
+  it("keeps a separate Modules sidebar tab as a read-only 'what's active' reference", () => {
     const navigation = read("src/platform/modules/workspace-navigation.tsx");
     expect(navigation).toContain('label: "Modules"');
     expect(navigation).toContain('href: "/app/modules"');
@@ -33,7 +32,7 @@ describe("dashboard quick-launch grid", () => {
     expect(modulesPage).not.toContain("Open");
   });
 
-  it("Overview's own card grid shows module stats without an Open button - Quick launch is the only way to navigate from there", () => {
+  it("Overview's own card grid shows module stats without an Open button - it's summary-only now, with no navigation element on the page at all", () => {
     const dashboard = read("src/app/app/(overview)/dashboard/page.tsx");
     expect(dashboard).toContain("linkable={false}");
     expect(dashboard).not.toContain("Open {mod.name}");
