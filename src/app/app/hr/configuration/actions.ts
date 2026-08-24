@@ -12,7 +12,8 @@ import {
   createWorkingSchedule, deleteWorkingSchedule,
   createTimeType, deleteTimeType,
   createJobPosition, deleteJobPosition,
-  createContractTemplate, deleteContractTemplate,
+  createContractTemplate, updateContractTemplate, deleteContractTemplate,
+  type ContractTemplateInput,
 } from "@/modules/hr/service";
 
 function clean(value: FormDataEntryValue | null) {
@@ -265,14 +266,41 @@ export async function removeJobPosition(formData: FormData): Promise<void> {
   redirect("/app/hr/settings?saved=1");
 }
 
-export async function addContractTemplate(formData: FormData): Promise<void> {
-  const tenant = await requireConfigAccess();
+function parseContractTemplateInput(formData: FormData): ContractTemplateInput | null {
   const name = clean(formData.get("name"));
-  if (!name) redirect("/app/hr/settings?error=missing-fields");
+  if (!name) return null;
+  const wageRaw = clean(formData.get("wage"));
+  const wage = wageRaw ? Number(wageRaw) : 0;
+  if (Number.isNaN(wage) || wage < 0) return null;
+
+  return {
+    name,
+    jobPositionId: clean(formData.get("jobPositionId")),
+    department: clean(formData.get("department")),
+    hrResponsibleId: clean(formData.get("hrResponsibleId")),
+    employeeTypeId: clean(formData.get("employeeTypeId")),
+    wageType: clean(formData.get("wageType")) ?? "FIXED",
+    payFrequency: clean(formData.get("payFrequency")) ?? "MONTHLY",
+    wage,
+    excludedFromPayRuns: formData.get("excludedFromPayRuns") === "on",
+    workingScheduleId: clean(formData.get("workingScheduleId")),
+  };
+}
+
+export async function saveContractTemplate(formData: FormData): Promise<void> {
+  const tenant = await requireConfigAccess();
+  const id = clean(formData.get("id"));
+  const input = parseContractTemplateInput(formData);
+  if (!input) redirect("/app/hr/settings?error=missing-fields");
 
   try {
-    await createContractTemplate(tenant.organizationId, name);
-  } catch {
+    if (id) {
+      await updateContractTemplate(tenant.organizationId, id, input);
+    } else {
+      await createContractTemplate(tenant.organizationId, input);
+    }
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/hr/settings?error=not-found");
     redirect("/app/hr/settings?error=duplicate");
   }
   revalidatePath("/app/hr/settings");

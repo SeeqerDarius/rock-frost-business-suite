@@ -14,10 +14,12 @@ import {
   getHrSettings, listLeaveTypes, listPlanTemplates,
   listSkillTypes, listEmployeeTypes, listWorkLocations, listDepartureReasons,
   listWorkingSchedules, listTimeTypes, listJobPositions, listContractTemplates,
+  listContractTemplateResponsibleCandidates,
 } from "@/modules/hr/service";
 import { addLeaveType, saveHrSettings, savePlanTemplate, removePlanTemplate } from "./actions";
 import { PlanTemplateForm } from "./plan-template-form";
 import { NamedLookupSection } from "../configuration/named-lookup-section";
+import { ContractTemplateFields } from "../configuration/contract-template-fields";
 import {
   addSkillType, removeSkillType, addSkill, removeSkill,
   addEmployeeType, removeEmployeeType,
@@ -26,10 +28,12 @@ import {
   addWorkingSchedule, removeWorkingSchedule,
   addTimeType, removeTimeType,
   addJobPosition, removeJobPosition,
-  addContractTemplate, removeContractTemplate,
+  saveContractTemplate, removeContractTemplate,
 } from "../configuration/actions";
 
 const WORK_LOCATION_TYPE_LABELS: Record<string, string> = { OFFICE: "Office", REMOTE: "Remote", HYBRID: "Hybrid" };
+const PAY_FREQUENCY_LABEL: Record<string, string> = { MONTHLY: "Monthly", BIWEEKLY: "Bi-weekly", WEEKLY: "Weekly" };
+const WAGE_TYPE_LABEL: Record<string, string> = { FIXED: "Fixed", HOURLY: "Hourly" };
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage HR settings.",
@@ -62,6 +66,7 @@ export default async function HrSettingsPage({
   const [
     leaveTypes, settings, onboardingTemplates, offboardingTemplates,
     skillTypes, employeeTypes, workLocations, departureReasons, workingSchedules, timeTypes, jobPositions, contractTemplates,
+    contractResponsibleCandidates,
   ] = await Promise.all([
     listLeaveTypes(tenant.organizationId),
     getHrSettings(tenant.organizationId),
@@ -75,7 +80,12 @@ export default async function HrSettingsPage({
     listTimeTypes(tenant.organizationId),
     listJobPositions(tenant.organizationId),
     listContractTemplates(tenant.organizationId),
+    listContractTemplateResponsibleCandidates(tenant.organizationId),
   ]);
+  const jobPositionItems: Record<string, string> = Object.fromEntries(jobPositions.map((p) => [p.id, p.name]));
+  const employeeTypeItems: Record<string, string> = Object.fromEntries(employeeTypes.map((t) => [t.id, t.name]));
+  const workingScheduleItems: Record<string, string> = Object.fromEntries(workingSchedules.map((s) => [s.id, s.name]));
+  const responsibleItems: Record<string, string> = Object.fromEntries(contractResponsibleCandidates.map((u) => [u.id, u.name ?? u.email]));
 
   return (
     <div className="space-y-6">
@@ -318,14 +328,85 @@ export default async function HrSettingsPage({
             removeAction={removeJobPosition}
           />
 
-          <NamedLookupSection
-            title="Contract Templates"
-            icon={<FileText className="size-5 text-muted-foreground" />}
-            description="Named templates for employee contracts."
-            items={contractTemplates}
-            addAction={addContractTemplate}
-            removeAction={removeContractTemplate}
-          />
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <FileText className="size-5 text-muted-foreground" />
+                  <CardTitle>Contract Templates</CardTitle>
+                </div>
+                <Dialog>
+                  <DialogTrigger render={<Button size="sm" variant="outline"><Plus />New template</Button>} />
+                  <DialogContent className="sm:max-w-2xl">
+                    <DialogHeader><DialogTitle>New contract template</DialogTitle></DialogHeader>
+                    <form action={saveContractTemplate} className="space-y-4">
+                      <ContractTemplateFields
+                        jobPositionItems={jobPositionItems}
+                        employeeTypeItems={employeeTypeItems}
+                        workingScheduleItems={workingScheduleItems}
+                        responsibleItems={responsibleItems}
+                      />
+                      <Button type="submit" className="w-full">Create template</Button>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </div>
+              <CardDescription>What a job&apos;s contract should start from: job, HR responsible, department, and salary information.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {contractTemplates.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No contract templates yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {contractTemplates.map((template) => (
+                    <li key={template.id} className="flex items-center justify-between rounded-md border px-3 py-2">
+                      <div>
+                        <p className="text-sm font-medium">{template.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {template.jobPosition?.name ?? "No job"} · {template.department ?? "No department"} · {PAY_FREQUENCY_LABEL[template.payFrequency] ?? template.payFrequency} {WAGE_TYPE_LABEL[template.wageType] ?? template.wageType} {Number(template.wage).toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="flex gap-1">
+                        <Dialog>
+                          <DialogTrigger render={<Button size="sm" variant="ghost">Edit</Button>} />
+                          <DialogContent className="sm:max-w-2xl">
+                            <DialogHeader><DialogTitle>Edit {template.name}</DialogTitle></DialogHeader>
+                            <form action={saveContractTemplate} className="space-y-4">
+                              <input type="hidden" name="id" value={template.id} />
+                              <ContractTemplateFields
+                                template={{
+                                  id: template.id,
+                                  name: template.name,
+                                  jobPositionId: template.jobPositionId,
+                                  department: template.department,
+                                  hrResponsibleId: template.hrResponsibleId,
+                                  employeeTypeId: template.employeeTypeId,
+                                  wageType: template.wageType,
+                                  payFrequency: template.payFrequency,
+                                  wage: template.wage.toString(),
+                                  excludedFromPayRuns: template.excludedFromPayRuns,
+                                  workingScheduleId: template.workingScheduleId,
+                                }}
+                                jobPositionItems={jobPositionItems}
+                                employeeTypeItems={employeeTypeItems}
+                                workingScheduleItems={workingScheduleItems}
+                                responsibleItems={responsibleItems}
+                              />
+                              <Button type="submit" className="w-full">Save changes</Button>
+                            </form>
+                          </DialogContent>
+                        </Dialog>
+                        <form action={removeContractTemplate}>
+                          <input type="hidden" name="id" value={template.id} />
+                          <Button type="submit" size="sm" variant="ghost">Delete</Button>
+                        </form>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

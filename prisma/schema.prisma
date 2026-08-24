@@ -297,6 +297,7 @@ model User {
   accountingPettyCashFundsCreated AccountingPettyCashFund[]
   accountingPettyCashTxnsCreated  AccountingPettyCashTransaction[]
   hrEmployeeProfiles              HrEmployee[]
+  hrContractTemplatesResponsible  HrContractTemplate[]
   hrLeaveRequestsApproved         HrLeaveRequest[]
   hrPerformanceReviewsConducted   HrPerformanceReview[]
   procurementRequestsRequested    ProcurementRequest[]             @relation("ProcurementRequestsRequested")
@@ -2852,7 +2853,8 @@ model HrEmployeeType {
   name           String
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contractTemplates HrContractTemplate[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -2889,7 +2891,8 @@ model HrWorkingSchedule {
   name           String
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contractTemplates HrContractTemplate[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -2913,22 +2916,50 @@ model HrJobPosition {
   name           String
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contractTemplates HrContractTemplate[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
 }
 
+/**
+ * The one lookup from the batch above that graduated into a real, editable
+ * form (matching Odoo's own Contract Template: job, HR responsible,
+ * department, and a Salary Information section) rather than shipping as a
+ * bare name - still no document generation and no link into Payroll's own
+ * PayrollCompensation, which stays the source of truth once an employee is
+ * actually hired; a template is just what a future contract should start
+ * from.
+ */
 model HrContractTemplate {
-  id             String   @id @default(cuid())
-  organizationId String
-  name           String
-  createdAt      DateTime @default(now())
+  id                  String   @id @default(cuid())
+  organizationId      String
+  name                String
+  jobPositionId       String?
+  department          String?
+  hrResponsibleId     String?
+  employeeTypeId      String?
+  wageType            String   @default("FIXED")
+  payFrequency        String   @default("MONTHLY")
+  wage                Decimal  @default(0) @db.Decimal(12, 2)
+  excludedFromPayRuns Boolean  @default(false)
+  workingScheduleId   String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobPosition     HrJobPosition?     @relation(fields: [jobPositionId], references: [id], onDelete: SetNull)
+  hrResponsible   User?              @relation(fields: [hrResponsibleId], references: [id], onDelete: SetNull)
+  employeeType    HrEmployeeType?    @relation(fields: [employeeTypeId], references: [id], onDelete: SetNull)
+  workingSchedule HrWorkingSchedule? @relation(fields: [workingScheduleId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, name])
   @@index([organizationId])
+  @@index([jobPositionId])
+  @@index([hrResponsibleId])
+  @@index([employeeTypeId])
+  @@index([workingScheduleId])
 }
 
 model HrLeaveType {

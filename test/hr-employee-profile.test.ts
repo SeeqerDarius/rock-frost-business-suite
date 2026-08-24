@@ -55,19 +55,21 @@ describe("HR Skills subsystem", () => {
 });
 
 describe("HR Configuration: remaining lookups and Job Position wiring", () => {
-  it("Configuration tab adds all 7 remaining lookups, built on the shared NamedLookupSection component", () => {
+  it("Configuration tab adds all 7 remaining lookups: 6 built on the shared NamedLookupSection component, Contract Templates as its own graduated form", () => {
     for (const listFn of ["listEmployeeTypes", "listWorkLocations", "listDepartureReasons", "listWorkingSchedules", "listTimeTypes", "listJobPositions", "listContractTemplates"]) {
       expect(settingsPage).toContain(listFn);
     }
     expect(settingsPage).toContain("NamedLookupSection");
-    expect(settingsPage.match(/<NamedLookupSection/g)?.length).toBe(7);
+    expect(settingsPage.match(/<NamedLookupSection/g)?.length).toBe(6);
   });
 
-  it("Configuration actions expose add/remove for all 7 remaining lookups", () => {
-    for (const name of ["EmployeeType", "WorkLocation", "DepartureReason", "WorkingSchedule", "TimeType", "JobPosition", "ContractTemplate"]) {
+  it("Configuration actions expose add/remove for the 6 name-only lookups, and save/remove for the graduated Contract Template form", () => {
+    for (const name of ["EmployeeType", "WorkLocation", "DepartureReason", "WorkingSchedule", "TimeType", "JobPosition"]) {
       expect(configurationActions).toContain(`export async function add${name}`);
       expect(configurationActions).toContain(`export async function remove${name}`);
     }
+    expect(configurationActions).toContain("export async function saveContractTemplate");
+    expect(configurationActions).toContain("export async function removeContractTemplate");
   });
 
   it("service layer ships real CRUD for the lookups without deeper logic (no calendar engine, no document generation)", () => {
@@ -91,6 +93,35 @@ describe("HR Configuration: remaining lookups and Job Position wiring", () => {
     expect(employeeFields).toContain("jobPositionNames");
     expect(employeeFields).toContain("<datalist");
     expect(employeeFields).toContain('name="jobTitle"');
+  });
+});
+
+describe("HR Contract Template: full editable form", () => {
+  it("service layer exposes create/update/delete plus a responsible-candidate list, with foreign keys validated per-organization", () => {
+    expect(hrService).toContain("export async function createContractTemplate");
+    expect(hrService).toContain("export async function updateContractTemplate");
+    expect(hrService).toContain("export async function deleteContractTemplate");
+    expect(hrService).toContain("export async function listContractTemplateResponsibleCandidates");
+    expect(hrService).toContain("requireContractTemplateForeignKeys");
+  });
+
+  it("schema carries job, HR responsible, department, and Salary Information fields, not just a name", () => {
+    expect(configurationActions).toContain("ContractTemplateInput");
+    expect(configurationActions).toContain("export async function saveContractTemplate");
+    const contractTemplateFields = readFileSync("src/app/app/hr/configuration/contract-template-fields.tsx", "utf8");
+    expect(contractTemplateFields).toContain("jobPositionId");
+    expect(contractTemplateFields).toContain("hrResponsibleId");
+    expect(contractTemplateFields).toContain("department");
+    expect(contractTemplateFields).toContain("wageType");
+    expect(contractTemplateFields).toContain("payFrequency");
+    expect(contractTemplateFields).toContain("excludedFromPayRuns");
+    expect(contractTemplateFields).toContain("workingScheduleId");
+  });
+
+  it("Settings page renders Contract Templates as its own editable Dialog-based section, not the shared name-only NamedLookupSection", () => {
+    expect(settingsPage).toContain("ContractTemplateFields");
+    expect(settingsPage).toContain("saveContractTemplate");
+    expect(settingsPage).toContain("New contract template");
   });
 });
 

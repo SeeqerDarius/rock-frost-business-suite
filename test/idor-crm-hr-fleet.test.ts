@@ -17,6 +17,10 @@ const mockDb = {
   hrSkillType: { findFirst: vi.fn() },
   hrSkill: { findFirst: vi.fn() },
   hrEmployeeSkill: { findFirst: vi.fn(), upsert: vi.fn() },
+  hrJobPosition: { findFirst: vi.fn() },
+  hrEmployeeType: { findFirst: vi.fn() },
+  hrWorkingSchedule: { findFirst: vi.fn() },
+  hrContractTemplate: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
 
   fleetOwner: { findFirst: vi.fn() },
   fleetDriver: { findFirst: vi.fn() },
@@ -168,6 +172,36 @@ describe("HR service — cross-tenant IDOR fixes", () => {
     mockDb.hrSkill.findFirst.mockResolvedValue(null);
     await expect(hr.setEmployeeSkill(ORG, "emp-1", "skill-foreign", 3)).rejects.toThrow(hr.NotFoundError);
     expect(mockDb.hrEmployeeSkill.upsert).not.toHaveBeenCalled();
+  });
+
+  it("createContractTemplate rejects a jobPositionId from another organization", async () => {
+    mockDb.hrJobPosition.findFirst.mockResolvedValue(null);
+    await expect(hr.createContractTemplate(ORG, { name: "Sales Rep Template", jobPositionId: "pos-foreign" })).rejects.toThrow(hr.NotFoundError);
+    expect(mockDb.hrContractTemplate.create).not.toHaveBeenCalled();
+  });
+
+  it("createContractTemplate rejects an employeeTypeId from another organization", async () => {
+    mockDb.hrEmployeeType.findFirst.mockResolvedValue(null);
+    await expect(hr.createContractTemplate(ORG, { name: "Sales Rep Template", employeeTypeId: "type-foreign" })).rejects.toThrow(hr.NotFoundError);
+    expect(mockDb.hrContractTemplate.create).not.toHaveBeenCalled();
+  });
+
+  it("createContractTemplate rejects a workingScheduleId from another organization", async () => {
+    mockDb.hrWorkingSchedule.findFirst.mockResolvedValue(null);
+    await expect(hr.createContractTemplate(ORG, { name: "Sales Rep Template", workingScheduleId: "sched-foreign" })).rejects.toThrow(hr.NotFoundError);
+    expect(mockDb.hrContractTemplate.create).not.toHaveBeenCalled();
+  });
+
+  it("createContractTemplate rejects an hrResponsibleId who isn't an active member of the organization", async () => {
+    mockDb.organizationMember.findFirst.mockResolvedValue(null);
+    await expect(hr.createContractTemplate(ORG, { name: "Sales Rep Template", hrResponsibleId: "user-foreign" })).rejects.toThrow(hr.NotFoundError);
+    expect(mockDb.hrContractTemplate.create).not.toHaveBeenCalled();
+  });
+
+  it("updateContractTemplate rejects an id from another organization before validating any foreign key", async () => {
+    mockDb.hrContractTemplate.findFirst.mockResolvedValue(null);
+    await expect(hr.updateContractTemplate(ORG, "template-foreign", { name: "Renamed" })).rejects.toThrow(hr.NotFoundError);
+    expect(mockDb.hrContractTemplate.update).not.toHaveBeenCalled();
   });
 });
 

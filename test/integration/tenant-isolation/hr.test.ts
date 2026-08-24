@@ -142,4 +142,55 @@ describe("HR service — cross-tenant isolation against real Postgres", () => {
     await hr.deleteJobPosition(orgA.organizationId, position.id);
     expect((await hr.listJobPositions(orgA.organizationId)).map((p) => p.id)).not.toContain(position.id);
   });
+
+  it("Contract Template: creates with real cross-referenced foreign keys, rejects every one from another organization, and updates in place", async () => {
+    const position = await hr.createJobPosition(orgA.organizationId, "Field Sales Rep");
+    const employeeType = await hr.createEmployeeType(orgA.organizationId, "Full Time");
+    const schedule = await hr.createWorkingSchedule(orgA.organizationId, "40 hours/week");
+
+    // Org A's own foreign keys, plus Org A's real active member as HR Responsible, all succeed together.
+    const template = await hr.createContractTemplate(orgA.organizationId, {
+      name: "Field Sales Contract",
+      jobPositionId: position.id,
+      department: "Sales",
+      hrResponsibleId: orgA.userId,
+      employeeTypeId: employeeType.id,
+      wageType: "FIXED",
+      payFrequency: "MONTHLY",
+      wage: 3500,
+      excludedFromPayRuns: false,
+      workingScheduleId: schedule.id,
+    });
+    expect(template.wage.toString()).toBe("3500");
+
+    // Every foreign key is rejected when it belongs to another organization - including a real user (Org B's own owner) for hrResponsibleId, not just a made-up id.
+    await expect(hr.createContractTemplate(orgB.organizationId, { name: "Should fail", jobPositionId: position.id })).rejects.toThrow(hr.NotFoundError);
+    await expect(hr.createContractTemplate(orgB.organizationId, { name: "Should fail", employeeTypeId: employeeType.id })).rejects.toThrow(hr.NotFoundError);
+    await expect(hr.createContractTemplate(orgB.organizationId, { name: "Should fail", workingScheduleId: schedule.id })).rejects.toThrow(hr.NotFoundError);
+    await expect(hr.createContractTemplate(orgA.organizationId, { name: "Should fail", hrResponsibleId: orgB.userId })).rejects.toThrow(hr.NotFoundError);
+
+    // Org B can't update Org A's template, even with entirely valid-looking data.
+    await expect(hr.updateContractTemplate(orgB.organizationId, template.id, { name: "Hijacked" })).rejects.toThrow(hr.NotFoundError);
+
+    // The real form always resubmits every field (matching every other edit dialog in this codebase), so the update call does too here.
+    const updated = await hr.updateContractTemplate(orgA.organizationId, template.id, {
+      name: "Field Sales Contract",
+      jobPositionId: position.id,
+      department: "Sales",
+      hrResponsibleId: orgA.userId,
+      employeeTypeId: employeeType.id,
+      wageType: "FIXED",
+      payFrequency: "MONTHLY",
+      wage: 4000,
+      excludedFromPayRuns: true,
+      workingScheduleId: schedule.id,
+    });
+    expect(updated.wage.toString()).toBe("4000");
+    expect(updated.excludedFromPayRuns).toBe(true);
+
+    const [listed] = await hr.listContractTemplates(orgA.organizationId);
+    expect(listed.jobPosition?.name).toBe("Field Sales Rep");
+    expect(listed.hrResponsible?.id).toBe(orgA.userId);
+    expect((await hr.listContractTemplates(orgB.organizationId)).map((t) => t.id)).not.toContain(template.id);
+  });
 });

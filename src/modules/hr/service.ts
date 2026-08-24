@@ -691,10 +691,10 @@ export async function getSkillsInventory(organizationId: string) {
 
 // --- Configuration: simple named lookups ---
 // Real CRUD, deliberately without deeper logic yet (no calendar engine for
-// HrWorkingSchedule, no document generation for HrContractTemplate, no link
-// into other workflows) - see docs/HR_MODULE.md. HrJobPosition is the one
-// exception with a real consumer: it seeds a creatable combobox for
-// HrEmployee.jobTitle, which stays the free-text column of record.
+// HrWorkingSchedule, no link into other workflows) - see docs/HR_MODULE.md.
+// HrJobPosition seeds a creatable combobox for HrEmployee.jobTitle, which
+// stays the free-text column of record. HrContractTemplate graduated into a
+// full editable form (see below) rather than a bare name.
 
 export function listEmployeeTypes(organizationId: string) {
   return db.hrEmployeeType.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
@@ -762,12 +762,80 @@ export async function deleteJobPosition(organizationId: string, id: string) {
   return db.hrJobPosition.delete({ where: { id } });
 }
 
+/** Platform users who can be picked as a Contract Template's HR Responsible -
+ * the same "active organization members with a login" shape CRM's
+ * listActiveMembers() already uses for its owner pickers. */
+export async function listContractTemplateResponsibleCandidates(organizationId: string) {
+  const members = await db.organizationMember.findMany({
+    where: { organizationId, status: "ACTIVE" },
+    include: { user: true },
+    orderBy: { user: { name: "asc" } },
+  });
+  return members.map((member) => member.user);
+}
+
 export function listContractTemplates(organizationId: string) {
-  return db.hrContractTemplate.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+  return db.hrContractTemplate.findMany({
+    where: { organizationId },
+    include: { jobPosition: true, hrResponsible: true, employeeType: true, workingSchedule: true },
+    orderBy: { name: "asc" },
+  });
 }
-export function createContractTemplate(organizationId: string, name: string) {
-  return db.hrContractTemplate.create({ data: { organizationId, name } });
+
+export interface ContractTemplateInput {
+  name: string;
+  jobPositionId?: string | null;
+  department?: string | null;
+  hrResponsibleId?: string | null;
+  employeeTypeId?: string | null;
+  wageType?: string;
+  payFrequency?: string;
+  wage?: number;
+  excludedFromPayRuns?: boolean;
+  workingScheduleId?: string | null;
 }
+
+async function requireContractTemplateForeignKeys(organizationId: string, data: ContractTemplateInput) {
+  if (data.jobPositionId && !await db.hrJobPosition.findFirst({ where: { id: data.jobPositionId, organizationId } })) {
+    throw new NotFoundError("Job position not found.");
+  }
+  if (data.employeeTypeId && !await db.hrEmployeeType.findFirst({ where: { id: data.employeeTypeId, organizationId } })) {
+    throw new NotFoundError("Employee type not found.");
+  }
+  if (data.workingScheduleId && !await db.hrWorkingSchedule.findFirst({ where: { id: data.workingScheduleId, organizationId } })) {
+    throw new NotFoundError("Working schedule not found.");
+  }
+  if (data.hrResponsibleId && !await db.organizationMember.findFirst({ where: { organizationId, userId: data.hrResponsibleId, status: "ACTIVE" } })) {
+    throw new NotFoundError("HR responsible not found.");
+  }
+}
+
+function contractTemplateWriteData(data: ContractTemplateInput) {
+  return {
+    name: data.name,
+    jobPositionId: data.jobPositionId ?? null,
+    department: data.department ?? null,
+    hrResponsibleId: data.hrResponsibleId ?? null,
+    employeeTypeId: data.employeeTypeId ?? null,
+    wageType: data.wageType ?? "FIXED",
+    payFrequency: data.payFrequency ?? "MONTHLY",
+    wage: data.wage ?? 0,
+    excludedFromPayRuns: data.excludedFromPayRuns ?? false,
+    workingScheduleId: data.workingScheduleId ?? null,
+  };
+}
+
+export async function createContractTemplate(organizationId: string, data: ContractTemplateInput) {
+  await requireContractTemplateForeignKeys(organizationId, data);
+  return db.hrContractTemplate.create({ data: { organizationId, ...contractTemplateWriteData(data) } });
+}
+
+export async function updateContractTemplate(organizationId: string, id: string, data: ContractTemplateInput) {
+  if (!await db.hrContractTemplate.findFirst({ where: { id, organizationId } })) throw new NotFoundError("Contract template not found.");
+  await requireContractTemplateForeignKeys(organizationId, data);
+  return db.hrContractTemplate.update({ where: { id }, data: contractTemplateWriteData(data) });
+}
+
 export async function deleteContractTemplate(organizationId: string, id: string) {
   if (!await db.hrContractTemplate.findFirst({ where: { id, organizationId } })) throw new NotFoundError("Contract template not found.");
   return db.hrContractTemplate.delete({ where: { id } });
