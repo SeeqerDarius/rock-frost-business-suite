@@ -1,5 +1,14 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-24: Modules page tiles are clickable again
+
+- **A direct bug report, not a redesign**: the previous entry deliberately made the Modules page's icon tiles non-clickable at the user's explicit request ("remove the cards and replace it with the quick launch icons so it no longer is a quick launch"). Live-testing that result, the user found it counterintuitive - a grid of tiles reads as a launcher regardless of intent, and clicking one and getting nothing felt broken. `src/app/app/(overview)/modules/page.tsx` now wraps each tile in a real `<Link href={accessibleModule.routePrefix}>` again, same as Overview's old Quick launch tiles.
+- **Overview itself is unchanged** - it still has no Quick launch grid and no "Open X" buttons on its cards, per the still-standing instruction to remove those specifically from Overview. Only the Modules page's own click behavior was reverted.
+- **Important files**: `src/app/app/(overview)/modules/page.tsx`, `src/platform/modules/workspace-navigation.tsx` (doc comment corrected), `test/pos-sell-and-launcher-redesign.test.ts` (the "plain icon-tile status grid" test flipped to "clickable icon-tile launcher").
+- **Validation**: no schema change. `npx tsc --noEmit`, `npm run lint`, `npm run test` (94 files, 634 tests - same count, tests rewritten not added), and `npm run build` all passed.
+- **Not verified live in a browser**: no test tenant credentials in this environment - this was caught by the user's own live testing, not mine, which is exactly why that gap has been flagged after every UI-only phase this session.
+- **Production deploy verified**: <!-- filled in after push and deploy verification -->
+
 ## 2026-08-24: Platform dashboard gains cross-tenant "Business activity" (no schema change)
 
 - **Prompted by a conversational exchange, not a screenshot this time**: the user asked what a platform operator currently has to track the business as a whole, and I noted `/app/platform/dashboard` only showed administrative counts (organizations, active members, module adoption) with no actual business metrics rolled up across tenants. The user asked to implement it.

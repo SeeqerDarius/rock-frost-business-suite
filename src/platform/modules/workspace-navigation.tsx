@@ -14,13 +14,11 @@ import { hasPermission, isFleetDriverRole, PERMISSIONS } from "@/lib/auth/permis
  * tenant workspace via the floating chat bubble (src/app/app/layout.tsx),
  * not a sidebar destination. See docs/SUPPORT_MESSAGING.md.
  *
- * "Modules" is a read-only "what's active" reference, distinct from
- * Overview: Overview's own "Quick launch" icon grid was removed along with
- * its cards' "Open X" buttons, so Overview is now summary-only - navigation
- * happens via the module switcher in the top bar or a sidebar link, not
- * from Overview itself. Modules shows a plain, non-clickable icon-tile grid
- * (the same visual Quick launch used to be) so a user glancing at this tab
- * only sees what's actually active, without it doubling as a launcher.
+ * "Modules" is the icon-tile launcher, distinct from Overview: Overview's
+ * own "Quick launch" icon grid and its cards' "Open X" buttons were both
+ * removed, so Overview is summary-only. Modules carries the launcher job
+ * instead - the same icon-tile grid Quick launch used to show on Overview,
+ * each tile a real link that opens its module.
  */
 export async function getWorkspaceNavigation(tenant: TenantContext): Promise<ModuleNavItem[]> {
   const items: ModuleNavItem[] = [

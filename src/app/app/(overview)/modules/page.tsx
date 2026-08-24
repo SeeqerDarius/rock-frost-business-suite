@@ -10,10 +10,8 @@ import { productGroupKeys } from "@/platform/modules/product-groups";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, isFleetDriverRole, PERMISSIONS } from "@/lib/auth/permissions";
 
-/** A read-only "what's active" reference, distinct from Overview: the same
- * icon-tile visual as Overview's "Quick launch" grid, but plain (non-
- * clickable) divs instead of Links - this is a status list, not a launcher,
- * so navigating away from it isn't the point. */
+/** The same icon-tile grid Overview's "Quick launch" used to show, moved
+ * here as its own dedicated page: click a tile to open that module. */
 export default async function ModulesPage() {
   const tenant = await requireCurrentTenant();
   if (isFleetDriverRole(tenant)) redirect("/app/dashboard");
@@ -21,7 +19,7 @@ export default async function ModulesPage() {
   const enabledModules = catalogueModuleRegistry.flatMap((mod) => {
     const accessibleKey = productGroupKeys(mod.key).find((key) => tenant.accessibleModuleKeys.includes(key));
     const accessibleModule = accessibleKey ? getModule(accessibleKey) : null;
-    return mod.status === "available" && accessibleModule ? [mod] : [];
+    return mod.status === "available" && accessibleModule ? [{ definition: mod, accessibleModule }] : [];
   });
 
   return (
@@ -42,11 +40,15 @@ export default async function ModulesPage() {
         />
       ) : (
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
-          {enabledModules.map((mod) => (
-            <div key={mod.key} className="flex flex-col items-center gap-2 rounded-xl border bg-card p-3 text-center">
+          {enabledModules.map(({ definition: mod, accessibleModule }) => (
+            <Link
+              key={mod.key}
+              href={accessibleModule.routePrefix as never}
+              className="flex flex-col items-center gap-2 rounded-xl border bg-card p-3 text-center transition-colors hover:border-primary/40 hover:bg-secondary/50"
+            >
               <IconBadge size="lg" className="size-14 rounded-2xl"><mod.icon className="size-7" /></IconBadge>
               <span className="text-xs leading-tight font-medium">{mod.name}</span>
-            </div>
+            </Link>
           ))}
         </div>
       )}

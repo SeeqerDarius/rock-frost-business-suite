@@ -12,7 +12,7 @@ describe("dashboard and module navigation", () => {
     expect(source).not.toContain("accessibleModule.routePrefix");
   });
 
-  it("keeps a separate Modules sidebar tab as a read-only 'what's active' reference", () => {
+  it("keeps a separate Modules sidebar tab", () => {
     const navigation = read("src/platform/modules/workspace-navigation.tsx");
     expect(navigation).toContain('label: "Modules"');
     expect(navigation).toContain('href: "/app/modules"');
@@ -24,11 +24,11 @@ describe("dashboard and module navigation", () => {
     expect(dashboard).toContain('href="/app/modules"');
   });
 
-  it("Modules page is a plain icon-tile status grid, not the widget cards or a launcher", () => {
+  it("Modules page is a clickable icon-tile launcher, not the widget cards - each tile opens its module", () => {
     const modulesPage = read("src/app/app/(overview)/modules/page.tsx");
     expect(modulesPage).not.toContain("dashboardWidgets");
     expect(modulesPage).toContain("size-14 rounded-2xl");
-    expect(modulesPage).not.toContain("accessibleModule.routePrefix");
+    expect(modulesPage).toContain("accessibleModule.routePrefix");
     expect(modulesPage).not.toContain("Open");
   });
 
