@@ -32,7 +32,9 @@ Employee photos follow the same convention used for Inventory item images and Sc
 
 ## Organization chart
 
-Built entirely on the existing `HrEmployee.managerId` self-relation, no schema addition. The profile page's own chart widget shows just the immediate manager and direct-report count; `getOrgChartTree()` (`src/modules/hr/service.ts`) walks up to the top-most ancestor with no manager and renders every descendant beneath it as a recursive indented tree at `/app/hr/employees/[employeeId]/org-chart`, guarded against a manager-reference cycle with a visited set (defensive: normal edits can't create one, but the query doesn't assume that).
+Built entirely on the existing `HrEmployee.managerId` self-relation, no schema addition. The profile page's own chart widget shows just the immediate manager and direct-report count; `getOrgChartTree()` (`src/modules/hr/service.ts`) walks up to the top-most ancestor with no manager and returns the full nested tree beneath it, guarded against a manager-reference cycle with a visited set (defensive: normal edits can't create one, but the query doesn't assume that).
+
+The "full chart" page (`/app/hr/employees/[employeeId]/org-chart`) renders that tree as a real photo-card-and-connector-line chart (`org-chart-node.tsx`, a client component for per-node expand/collapse — the first two levels auto-expand): each node is a card (photo, name, job title), connected to its children by hand-built flexbox + `<div>` border lines, not a CSS `:first-child`/`:last-child` trick or a charting dependency (none exists in this codebase, and none is justified at the realistic scale here — a few dozen employees, 2-4 reporting levels). A child's horizontal connector position is computed directly from its index among equal-width flex siblings (`(i + 0.5) / n`), which is more robust to asymmetric subtrees than the classic CSS-pseudo-selector org-chart pattern. `PersonAvatar` (photo, or an initial on a colored circle) is shared between the profile page and the chart via `src/app/app/hr/employees/person-avatar.tsx`.
 
 ## Termination and offboarding
 

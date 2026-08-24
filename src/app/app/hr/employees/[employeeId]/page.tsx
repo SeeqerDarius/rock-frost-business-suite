@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Mail, Phone, Smartphone, CalendarClock, History as HistoryIcon, Network, CircleCheck } from "lucide-react";
@@ -19,6 +18,7 @@ import { isRoleAssignableToOrganization, resolveAssignableModuleKeys, roleDispla
 import { getEmployeeProfile, getEmployeeStatusHistory, listManagerCandidates, listPlanTemplates, listPendingPlanActivities } from "@/modules/hr/service";
 import { upsertEmployee } from "../actions";
 import { EmployeeFields } from "../employee-fields";
+import { PersonAvatar } from "../person-avatar";
 import { markPlanActivityDone, createUserForEmployee, saveResumeEntry, removeResumeEntry } from "./actions";
 import { LaunchPlanDialog } from "./launch-plan-dialog";
 
@@ -45,16 +45,6 @@ const ERROR_MESSAGES: Record<string, string> = {
   "delivery-failed": "The account was created but the invitation email could not be delivered.",
 };
 
-function PersonAvatar({ id, fullName, photoData, size = 56 }: { id: string; fullName: string; photoData: string | null; size?: number }) {
-  if (photoData) {
-    return <Image src={`/api/hr/employees/${id}/photo`} alt={fullName} width={size} height={size} unoptimized className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />;
-  }
-  return (
-    <span className="flex shrink-0 items-center justify-center rounded-full bg-primary/10 text-lg font-semibold text-primary" style={{ width: size, height: size }}>
-      {fullName.slice(0, 1).toUpperCase()}
-    </span>
-  );
-}
 
 export default async function HrEmployeeProfilePage({
   params,

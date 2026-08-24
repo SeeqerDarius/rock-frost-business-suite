@@ -6,6 +6,8 @@ const employeesPage = readFileSync("src/app/app/hr/employees/page.tsx", "utf8");
 const navigation = readFileSync("src/modules/hr/navigation.tsx", "utf8");
 const profilePage = readFileSync("src/app/app/hr/employees/[employeeId]/page.tsx", "utf8");
 const orgChartPage = readFileSync("src/app/app/hr/employees/[employeeId]/org-chart/page.tsx", "utf8");
+const orgChartNode = readFileSync("src/app/app/hr/employees/[employeeId]/org-chart/org-chart-node.tsx", "utf8");
+const personAvatar = readFileSync("src/app/app/hr/employees/person-avatar.tsx", "utf8");
 const hrService = readFileSync("src/modules/hr/service.ts", "utf8");
 const settingsPage = readFileSync("src/app/app/hr/settings/page.tsx", "utf8");
 const settingsActions = readFileSync("src/app/app/hr/settings/actions.ts", "utf8");
@@ -76,6 +78,23 @@ describe("HR full organization chart page", () => {
     expect(orgChartPage).toContain('await requireModuleAccess("hr")');
     expect(orgChartPage).toContain("getOrgChartTree(tenant.organizationId, employeeId)");
     expect(orgChartPage).toContain("if (!tree) notFound();");
+  });
+
+  it("renders a real photo-card-and-connector-line tree with expand/collapse, not a plain indented list", () => {
+    expect(orgChartPage).toContain("OrgChartNode");
+    expect(orgChartNode).toContain('"use client"');
+    expect(orgChartNode).toContain("useState");
+    expect(orgChartNode).toContain("PersonAvatar");
+    expect(orgChartNode).not.toContain("<ul");
+  });
+
+  it("computes each child's horizontal connector position from its index among equal-width siblings", () => {
+    expect(orgChartNode).toContain("50 / node.children.length");
+  });
+
+  it("PersonAvatar is shared between the profile page and the org chart, not duplicated", () => {
+    expect(personAvatar).toContain("export function PersonAvatar");
+    expect(orgChartNode).toContain('from "../../person-avatar"');
   });
 
   it("getOrgChartTree guards against a manager cycle with a visited set", () => {
