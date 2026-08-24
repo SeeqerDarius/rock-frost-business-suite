@@ -24,8 +24,8 @@
 - **Important files**: `src/modules/pos/{service,navigation}.tsx`, `src/app/app/pos/sales/page.tsx`, `src/app/app/pos/{sessions,payments}/page.tsx` (new), `docs/POS_OPERATIONS.md`, `test/pos-sell-and-launcher-redesign.test.ts`, `test/module-access.test.ts` (guarded-page count 109 → 111 for the two new pages).
 - **No schema change** — both new pages and `listPayments()` read existing tables (`PosSession`, `PosPayment`) exactly as modeled.
 - **Validation**: `npx tsc --noEmit` — passed. `npm run lint` — passed. `npm run test` — passed: 89 files, 543 tests. `npm run build` — passed, all 215 pages compiled.
-- **[[THIRD DEPLOY VERIFICATION PLACEHOLDER — filled in after this deploys]]**
-- **Not done yet**: the full Odoo-style Product model (Sales/Purchase/POS applicability, Goods/Service/Combo type, tax linkage, tabbed form, stock stat buttons) — a genuine multi-session schema and cross-module change, tracked separately rather than folded into this pass.
+- **Production deploy verified**: commit `35f5660` reached Vercel production deployment `dpl_E3tBQUZn6HTWZ4bkSRwFDQuB6jf2` (`READY`, all production aliases attached). `/api/health` returned `{"ok":true,"database":"reachable"}`. `get_runtime_errors` for the following hour returned no errors.
+- **Not done yet**: the full Odoo-style Product model (Sales/Purchase/POS applicability, Goods/Service/Combo type, tax linkage, tabbed form, stock stat buttons) — a genuine multi-session schema and cross-module change. Scoped via plan mode (see the following entry) rather than folded into this pass.
 
 ## 2026-08-23: Branded Accounting assistant identity and user chat avatars
 
