@@ -162,6 +162,15 @@ export function listSales(organizationId: string) {
   });
 }
 
+export function listPayments(organizationId: string) {
+  return db.posPayment.findMany({
+    where: { organizationId },
+    include: { sale: { include: { register: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+}
+
 interface SaleLineInput {
   itemId?: string | null;
   description: string;

@@ -155,7 +155,10 @@ describe("module authorization source coverage", () => {
     // were already correctly guarded, this sweep just was not exercising
     // them).
     // 109: Accounting Tax and VAT adds one guarded reporting page.
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(109);
+    // 111, up from 109: POS gains two new guarded reporting pages, Sessions
+    // (a history log of past/current till sessions) and Payments (a list of
+    // every payment recorded across every sale) - both requireModuleAccess("pos").
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(111);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
     // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
     // all Hostel Server Actions, same shape as School's) joins the sweep

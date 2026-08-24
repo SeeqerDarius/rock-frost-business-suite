@@ -41,7 +41,7 @@ export default async function PosSalesPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Sales" description="Every sale recorded across every register." />
+      <PageHeader title="Orders" description="Every sale recorded across every register." />
 
       {saved ? (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
@@ -63,6 +63,7 @@ export default async function PosSalesPage({
               <TableHead>Number</TableHead>
               <TableHead>Register</TableHead>
               <TableHead>Customer</TableHead>
+              <TableHead>Employee</TableHead>
               <TableHead>Total</TableHead>
               <TableHead>Payment</TableHead>
               <TableHead>Status</TableHead>
@@ -75,6 +76,7 @@ export default async function PosSalesPage({
                 <TableCell className="font-mono text-xs">{sale.saleNumber}</TableCell>
                 <TableCell className="text-muted-foreground">{sale.register.name}</TableCell>
                 <TableCell className="text-muted-foreground">{sale.customerName ?? "-"}</TableCell>
+                <TableCell className="text-muted-foreground">{sale.soldBy?.name ?? "-"}</TableCell>
                 <TableCell className="font-medium">{Number(sale.total).toFixed(2)}</TableCell>
                 <TableCell className="text-muted-foreground">{sale.paymentMethod}</TableCell>
                 <TableCell>

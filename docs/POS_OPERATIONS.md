@@ -2,6 +2,15 @@
 
 The POS module provides tenant-scoped registers, till sessions, sales, payments, returns, stock integration, settings, and reports.
 
+## Navigation (2026-08-24)
+
+`/app/pos/sales` is labeled **Orders** in the sidebar (the route itself is unchanged) and now also shows the selling employee, matching what a cashier expects from an "orders" list: every sale across every register, who sold it, its total, payment method, and status, with Resume/Return actions inline.
+
+Two read-only history pages were added, both gated on `pos.reports.view` like the existing Reports page:
+
+- **Sessions** (`/app/pos/sessions`) — every till session ever opened, not just the currently-open one shown on Registers: register, opened/closed by and when, opening float, closing cash, variance, and how many sales it recorded. Reuses the pre-existing `listSessions()` query, which no page had rendered until now.
+- **Payments** (`/app/pos/payments`) — every individual payment recorded against a sale, across every register, with a running total per payment method (cash/card/mobile money/other) above the list. New `listPayments()` in `src/modules/pos/service.ts`.
+
 ## Checkout
 
 - A sale contains 1 to 100 lines. The browser cart is dynamic, but the Server Action validates the complete payload again.

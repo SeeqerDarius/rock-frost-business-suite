@@ -70,3 +70,29 @@ describe("POS sell screen: tap-to-add product grid and keypad", () => {
     expect(fnBody).not.toContain("revalidatePath");
   });
 });
+
+describe("POS Sessions and Payments history, and the Orders rename", () => {
+  it("adds a Sessions history page reusing the existing listSessions() query", () => {
+    const service = read("src/modules/pos/service.ts");
+    expect(service).toContain("export function listSessions");
+    const page = read("src/app/app/pos/sessions/page.tsx");
+    expect(page).toContain("listSessions");
+    expect(page).toContain("PERMISSIONS.POS_REPORTS_VIEW");
+  });
+
+  it("adds a Payments list page backed by a new listPayments() query", () => {
+    const service = read("src/modules/pos/service.ts");
+    expect(service).toContain("export function listPayments");
+    expect(service).toContain("db.posPayment.findMany");
+    const page = read("src/app/app/pos/payments/page.tsx");
+    expect(page).toContain("listPayments");
+    expect(page).toContain("PERMISSIONS.POS_REPORTS_VIEW");
+  });
+
+  it("renames the Sales nav item to Orders and adds Sessions/Payments, without dropping the underlying route", () => {
+    const navigation = read("src/modules/pos/navigation.tsx");
+    expect(navigation).toContain('{ label: "Orders", href: "/app/pos/sales"');
+    expect(navigation).toContain('{ label: "Sessions", href: "/app/pos/sessions"');
+    expect(navigation).toContain('{ label: "Payments", href: "/app/pos/payments"');
+  });
+});
