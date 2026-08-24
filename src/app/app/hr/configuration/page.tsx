@@ -1,4 +1,4 @@
-import { Lock, Sparkles, X, Plus } from "lucide-react";
+import { Lock, Sparkles, X, Plus, Users, MapPin, LogOut, CalendarClock, Clock, Briefcase, FileText } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -6,8 +6,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listSkillTypes } from "@/modules/hr/service";
-import { addSkillType, removeSkillType, addSkill, removeSkill } from "./actions";
+import {
+  listSkillTypes,
+  listEmployeeTypes, listWorkLocations, listDepartureReasons,
+  listWorkingSchedules, listTimeTypes, listJobPositions, listContractTemplates,
+} from "@/modules/hr/service";
+import { NamedLookupSection } from "./named-lookup-section";
+import {
+  addSkillType, removeSkillType, addSkill, removeSkill,
+  addEmployeeType, removeEmployeeType,
+  addWorkLocation, removeWorkLocation,
+  addDepartureReason, removeDepartureReason,
+  addWorkingSchedule, removeWorkingSchedule,
+  addTimeType, removeTimeType,
+  addJobPosition, removeJobPosition,
+  addContractTemplate, removeContractTemplate,
+} from "./actions";
+
+const WORK_LOCATION_TYPE_LABELS: Record<string, string> = { OFFICE: "Office", REMOTE: "Remote", HYBRID: "Hybrid" };
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage HR configuration.",
@@ -33,7 +49,16 @@ export default async function HrConfigurationPage({
     );
   }
 
-  const skillTypes = await listSkillTypes(tenant.organizationId);
+  const [skillTypes, employeeTypes, workLocations, departureReasons, workingSchedules, timeTypes, jobPositions, contractTemplates] = await Promise.all([
+    listSkillTypes(tenant.organizationId),
+    listEmployeeTypes(tenant.organizationId),
+    listWorkLocations(tenant.organizationId),
+    listDepartureReasons(tenant.organizationId),
+    listWorkingSchedules(tenant.organizationId),
+    listTimeTypes(tenant.organizationId),
+    listJobPositions(tenant.organizationId),
+    listContractTemplates(tenant.organizationId),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -96,6 +121,70 @@ export default async function HrConfigurationPage({
           </form>
         </CardContent>
       </Card>
+
+      <NamedLookupSection
+        title="Employee Types"
+        icon={<Users className="size-5 text-muted-foreground" />}
+        description="Employment categories, such as Full Time or Contractor."
+        items={employeeTypes}
+        addAction={addEmployeeType}
+        removeAction={removeEmployeeType}
+      />
+
+      <NamedLookupSection
+        title="Work Locations"
+        icon={<MapPin className="size-5 text-muted-foreground" />}
+        description="Where employees are based: office, remote, or hybrid."
+        items={workLocations.map((l) => ({ id: l.id, name: l.name, extra: WORK_LOCATION_TYPE_LABELS[l.locationType] }))}
+        addAction={addWorkLocation}
+        removeAction={removeWorkLocation}
+        extraField={{ name: "locationType", label: "Type", options: WORK_LOCATION_TYPE_LABELS, defaultValue: "OFFICE" }}
+      />
+
+      <NamedLookupSection
+        title="Departure Reasons"
+        icon={<LogOut className="size-5 text-muted-foreground" />}
+        description="Standard reasons recorded when an employee leaves."
+        items={departureReasons}
+        addAction={addDepartureReason}
+        removeAction={removeDepartureReason}
+      />
+
+      <NamedLookupSection
+        title="Working Schedules"
+        icon={<CalendarClock className="size-5 text-muted-foreground" />}
+        description="Named schedules, such as Standard 40 Hours or Part Time."
+        items={workingSchedules}
+        addAction={addWorkingSchedule}
+        removeAction={removeWorkingSchedule}
+      />
+
+      <NamedLookupSection
+        title="Time Types"
+        icon={<Clock className="size-5 text-muted-foreground" />}
+        description="Categories used for logging time, such as Attendance or Overtime."
+        items={timeTypes}
+        addAction={addTimeType}
+        removeAction={removeTimeType}
+      />
+
+      <NamedLookupSection
+        title="Job Positions"
+        icon={<Briefcase className="size-5 text-muted-foreground" />}
+        description="A reusable catalogue of job titles, offered as suggestions on the employee form."
+        items={jobPositions}
+        addAction={addJobPosition}
+        removeAction={removeJobPosition}
+      />
+
+      <NamedLookupSection
+        title="Contract Templates"
+        icon={<FileText className="size-5 text-muted-foreground" />}
+        description="Named templates for employee contracts."
+        items={contractTemplates}
+        addAction={addContractTemplate}
+        removeAction={removeContractTemplate}
+      />
     </div>
   );
 }

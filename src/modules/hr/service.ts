@@ -689,6 +689,90 @@ export async function getSkillsInventory(organizationId: string) {
   );
 }
 
+// --- Configuration: simple named lookups ---
+// Real CRUD, deliberately without deeper logic yet (no calendar engine for
+// HrWorkingSchedule, no document generation for HrContractTemplate, no link
+// into other workflows) - see docs/HR_MODULE.md. HrJobPosition is the one
+// exception with a real consumer: it seeds a creatable combobox for
+// HrEmployee.jobTitle, which stays the free-text column of record.
+
+export function listEmployeeTypes(organizationId: string) {
+  return db.hrEmployeeType.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+}
+export function createEmployeeType(organizationId: string, name: string) {
+  return db.hrEmployeeType.create({ data: { organizationId, name } });
+}
+export async function deleteEmployeeType(organizationId: string, id: string) {
+  if (!await db.hrEmployeeType.findFirst({ where: { id, organizationId } })) throw new NotFoundError("Employee type not found.");
+  return db.hrEmployeeType.delete({ where: { id } });
+}
+
+export function listWorkLocations(organizationId: string) {
+  return db.hrWorkLocation.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+}
+export function createWorkLocation(organizationId: string, name: string, locationType: "OFFICE" | "REMOTE" | "HYBRID") {
+  return db.hrWorkLocation.create({ data: { organizationId, name, locationType } });
+}
+export async function deleteWorkLocation(organizationId: string, id: string) {
+  if (!await db.hrWorkLocation.findFirst({ where: { id, organizationId } })) throw new NotFoundError("Work location not found.");
+  return db.hrWorkLocation.delete({ where: { id } });
+}
+
+export function listDepartureReasons(organizationId: string) {
+  return db.hrDepartureReason.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+}
+export function createDepartureReason(organizationId: string, name: string) {
+  return db.hrDepartureReason.create({ data: { organizationId, name } });
+}
+export async function deleteDepartureReason(organizationId: string, id: string) {
+  if (!await db.hrDepartureReason.findFirst({ where: { id, organizationId } })) throw new NotFoundError("Departure reason not found.");
+  return db.hrDepartureReason.delete({ where: { id } });
+}
+
+export function listWorkingSchedules(organizationId: string) {
+  return db.hrWorkingSchedule.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+}
+export function createWorkingSchedule(organizationId: string, name: string) {
+  return db.hrWorkingSchedule.create({ data: { organizationId, name } });
+}
+export async function deleteWorkingSchedule(organizationId: string, id: string) {
+  if (!await db.hrWorkingSchedule.findFirst({ where: { id, organizationId } })) throw new NotFoundError("Working schedule not found.");
+  return db.hrWorkingSchedule.delete({ where: { id } });
+}
+
+export function listTimeTypes(organizationId: string) {
+  return db.hrTimeType.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+}
+export function createTimeType(organizationId: string, name: string) {
+  return db.hrTimeType.create({ data: { organizationId, name } });
+}
+export async function deleteTimeType(organizationId: string, id: string) {
+  if (!await db.hrTimeType.findFirst({ where: { id, organizationId } })) throw new NotFoundError("Time type not found.");
+  return db.hrTimeType.delete({ where: { id } });
+}
+
+export function listJobPositions(organizationId: string) {
+  return db.hrJobPosition.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+}
+export function createJobPosition(organizationId: string, name: string) {
+  return db.hrJobPosition.create({ data: { organizationId, name } });
+}
+export async function deleteJobPosition(organizationId: string, id: string) {
+  if (!await db.hrJobPosition.findFirst({ where: { id, organizationId } })) throw new NotFoundError("Job position not found.");
+  return db.hrJobPosition.delete({ where: { id } });
+}
+
+export function listContractTemplates(organizationId: string) {
+  return db.hrContractTemplate.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+}
+export function createContractTemplate(organizationId: string, name: string) {
+  return db.hrContractTemplate.create({ data: { organizationId, name } });
+}
+export async function deleteContractTemplate(organizationId: string, id: string) {
+  if (!await db.hrContractTemplate.findFirst({ where: { id, organizationId } })) throw new NotFoundError("Contract template not found.");
+  return db.hrContractTemplate.delete({ where: { id } });
+}
+
 // --- Reports ---
 
 export async function getHrSummary(organizationId: string) {

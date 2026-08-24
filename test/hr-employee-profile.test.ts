@@ -17,7 +17,9 @@ const permissions = readFileSync("src/lib/auth/permissions.ts", "utf8");
 const directoryPage = readFileSync("src/app/app/hr/directory/page.tsx", "utf8");
 const configurationPage = readFileSync("src/app/app/hr/configuration/page.tsx", "utf8");
 const configurationActions = readFileSync("src/app/app/hr/configuration/actions.ts", "utf8");
+const namedLookupSection = readFileSync("src/app/app/hr/configuration/named-lookup-section.tsx", "utf8");
 const reportsPage = readFileSync("src/app/app/hr/reports/page.tsx", "utf8");
+const employeeFields = readFileSync("src/app/app/hr/employees/employee-fields.tsx", "utf8");
 
 describe("HR Skills subsystem", () => {
   it("no stored progress percentage - the schema keeps only level, UI derives progress", () => {
@@ -43,6 +45,46 @@ describe("HR Skills subsystem", () => {
   it("Skills Inventory report aggregates employee count and average level per skill", () => {
     expect(reportsPage).toContain("getSkillsInventory");
     expect(reportsPage).toContain("Skills inventory");
+  });
+});
+
+describe("HR Configuration: remaining lookups and Job Position wiring", () => {
+  it("Configuration page adds all 7 remaining lookups, built on the shared NamedLookupSection component", () => {
+    for (const listFn of ["listEmployeeTypes", "listWorkLocations", "listDepartureReasons", "listWorkingSchedules", "listTimeTypes", "listJobPositions", "listContractTemplates"]) {
+      expect(configurationPage).toContain(listFn);
+    }
+    expect(configurationPage).toContain("NamedLookupSection");
+    expect(configurationPage.match(/<NamedLookupSection/g)?.length).toBe(7);
+  });
+
+  it("Configuration actions expose add/remove for all 7 remaining lookups", () => {
+    for (const name of ["EmployeeType", "WorkLocation", "DepartureReason", "WorkingSchedule", "TimeType", "JobPosition", "ContractTemplate"]) {
+      expect(configurationActions).toContain(`export async function add${name}`);
+      expect(configurationActions).toContain(`export async function remove${name}`);
+    }
+  });
+
+  it("service layer ships real CRUD for the lookups without deeper logic (no calendar engine, no document generation)", () => {
+    expect(hrService).toContain("export function listWorkingSchedules");
+    expect(hrService).toContain("export function listContractTemplates");
+    expect(hrService).not.toContain("generateContract");
+  });
+
+  it("NamedLookupSection renders a name list, an inline add form, and a delete button per row", () => {
+    expect(namedLookupSection).toContain("addAction");
+    expect(namedLookupSection).toContain("removeAction");
+    expect(namedLookupSection).toContain('name="name"');
+  });
+
+  it("Work Location lookup carries a locationType (Office/Remote/Hybrid), the one lookup with an extra field", () => {
+    expect(configurationPage).toContain("WORK_LOCATION_TYPE_LABELS");
+    expect(configurationPage).toContain("extraField");
+  });
+
+  it("Job Position seeds a creatable combobox on the employee jobTitle field, which stays free-text", () => {
+    expect(employeeFields).toContain("jobPositionNames");
+    expect(employeeFields).toContain("<datalist");
+    expect(employeeFields).toContain('name="jobTitle"');
   });
 });
 

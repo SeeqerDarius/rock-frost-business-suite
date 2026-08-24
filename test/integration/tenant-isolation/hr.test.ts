@@ -128,4 +128,18 @@ describe("HR service — cross-tenant isolation against real Postgres", () => {
     // The inventory never leaks into Org B, which has no skill types at all.
     expect(await hr.getSkillsInventory(orgB.organizationId)).toEqual([]);
   });
+
+  it("Configuration lookups: Org A's job position and work location are invisible to Org B and cannot be deleted cross-tenant", async () => {
+    const position = await hr.createJobPosition(orgA.organizationId, "Regional Sales Manager");
+    const location = await hr.createWorkLocation(orgA.organizationId, "Accra HQ", "OFFICE");
+
+    expect((await hr.listJobPositions(orgB.organizationId)).map((p) => p.id)).not.toContain(position.id);
+    expect((await hr.listWorkLocations(orgB.organizationId)).map((l) => l.id)).not.toContain(location.id);
+
+    await expect(hr.deleteJobPosition(orgB.organizationId, position.id)).rejects.toThrow(hr.NotFoundError);
+    await expect(hr.deleteWorkLocation(orgB.organizationId, location.id)).rejects.toThrow(hr.NotFoundError);
+
+    await hr.deleteJobPosition(orgA.organizationId, position.id);
+    expect((await hr.listJobPositions(orgA.organizationId)).map((p) => p.id)).not.toContain(position.id);
+  });
 });

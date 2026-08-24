@@ -7,10 +7,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 export interface EmployeeFieldsProps {
   employee?: { id: string; fullName: string; email: string | null; phone: string | null; mobilePhone: string | null; tags: string[]; photoData: string | null; jobTitle: string | null; department: string | null; hireDate: Date; managerId: string | null; notes: string | null };
   managerItems: Record<string, string>;
+  jobPositionNames?: string[];
 }
 
-export function EmployeeFields({ employee, managerItems }: EmployeeFieldsProps) {
+export function EmployeeFields({ employee, managerItems, jobPositionNames = [] }: EmployeeFieldsProps) {
   const idSuffix = employee ? "-edit" : "";
+  const jobTitleListId = `jobTitleOptions${idSuffix}`;
   return (
     <>
       <div className="space-y-2">
@@ -31,7 +33,14 @@ export function EmployeeFields({ employee, managerItems }: EmployeeFieldsProps) 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor={`jobTitle${idSuffix}`}>Job title</Label>
-          <Input id={`jobTitle${idSuffix}`} name="jobTitle" defaultValue={employee?.jobTitle ?? ""} />
+          <Input id={`jobTitle${idSuffix}`} name="jobTitle" list={jobPositionNames.length > 0 ? jobTitleListId : undefined} defaultValue={employee?.jobTitle ?? ""} placeholder="Pick a position or type a new one" />
+          {jobPositionNames.length > 0 ? (
+            <datalist id={jobTitleListId}>
+              {jobPositionNames.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+          ) : null}
         </div>
         <div className="space-y-2">
           <Label htmlFor={`department${idSuffix}`}>Department</Label>

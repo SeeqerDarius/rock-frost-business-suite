@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listEmployees, listManagerCandidates } from "@/modules/hr/service";
+import { listEmployees, listManagerCandidates, listJobPositions } from "@/modules/hr/service";
 import { upsertEmployee, activateExistingEmployee, changeEmployeeStatus } from "./actions";
 import { EmployeeFields } from "./employee-fields";
 
@@ -54,12 +54,14 @@ export default async function HrEmployeesPage({
   const isKanban = view === "kanban";
   const tenant = await requireModuleAccess("hr");
   const canManage = hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_EDIT) || hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE);
-  const [allEmployees, managers] = await Promise.all([
+  const [allEmployees, managers, jobPositions] = await Promise.all([
     listEmployees(tenant.organizationId),
     listManagerCandidates(tenant.organizationId),
+    listJobPositions(tenant.organizationId),
   ]);
   const employees = department ? allEmployees.filter((employee) => (employee.department ?? "Unassigned") === department) : allEmployees;
   const managerItems: Record<string, string> = Object.fromEntries(managers.map((m) => [m.id, m.fullName]));
+  const jobPositionNames = jobPositions.map((p) => p.name);
   const viewHref = (nextView: "table" | "kanban") => {
     const params = new URLSearchParams();
     if (department) params.set("department", department);
@@ -79,7 +81,7 @@ export default async function HrEmployeesPage({
           </div>
           {canManage ? (
             <EntityDialog trigger={<Button size="sm"><Plus />New employee</Button>} title="New employee" action={upsertEmployee} contentClassName="sm:max-w-xl">
-              <EmployeeFields managerItems={managerItems} />
+              <EmployeeFields managerItems={managerItems} jobPositionNames={jobPositionNames} />
             </EntityDialog>
           ) : null}
         </div>
@@ -183,7 +185,7 @@ export default async function HrEmployeesPage({
                         contentClassName="sm:max-w-xl"
                       >
                         <input type="hidden" name="id" value={employee.id} />
-                        <EmployeeFields employee={employee} managerItems={managerItems} />
+                        <EmployeeFields employee={employee} managerItems={managerItems} jobPositionNames={jobPositionNames} />
                       </EntityDialog>
                     </div>
                   </TableCell>

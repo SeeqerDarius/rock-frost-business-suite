@@ -15,7 +15,7 @@ import { db } from "@/lib/db";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { isRoleAssignableToOrganization, resolveAssignableModuleKeys, roleDisplayName } from "@/lib/administration-roles";
-import { getEmployeeProfile, getEmployeeStatusHistory, listManagerCandidates, listPlanTemplates, listPendingPlanActivities, listEmployeeSkills, listSkillTypes } from "@/modules/hr/service";
+import { getEmployeeProfile, getEmployeeStatusHistory, listManagerCandidates, listPlanTemplates, listPendingPlanActivities, listEmployeeSkills, listSkillTypes, listJobPositions } from "@/modules/hr/service";
 import { upsertEmployee } from "../actions";
 import { EmployeeFields } from "../employee-fields";
 import { PersonAvatar } from "../person-avatar";
@@ -58,7 +58,7 @@ export default async function HrEmployeeProfilePage({
   const tenant = await requireModuleAccess("hr");
   const canManage = hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_EDIT) || hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE);
   const canLaunchPlans = hasPermission(tenant, PERMISSIONS.HR_ONBOARDING_MANAGE);
-  const [employee, statusHistory, managers, onboardingTemplates, offboardingTemplates, pendingActivities, roles, assignableModuleKeys, employeeSkills, skillTypes] = await Promise.all([
+  const [employee, statusHistory, managers, onboardingTemplates, offboardingTemplates, pendingActivities, roles, assignableModuleKeys, employeeSkills, skillTypes, jobPositions] = await Promise.all([
     getEmployeeProfile(tenant.organizationId, employeeId),
     getEmployeeStatusHistory(tenant.organizationId, employeeId),
     listManagerCandidates(tenant.organizationId),
@@ -73,9 +73,11 @@ export default async function HrEmployeeProfilePage({
     resolveAssignableModuleKeys(tenant.organizationId, tenant.enabledModuleKeys),
     listEmployeeSkills(tenant.organizationId, employeeId),
     listSkillTypes(tenant.organizationId),
+    listJobPositions(tenant.organizationId),
   ]);
   if (!employee) notFound();
   const managerItems: Record<string, string> = Object.fromEntries(managers.filter((m) => m.id !== employee.id).map((m) => [m.id, m.fullName]));
+  const jobPositionNames = jobPositions.map((p) => p.name);
   const defaultKind = employee.status === "TERMINATION_PENDING" ? "OFFBOARDING" : "ONBOARDING";
   const defaultTargetDate = (employee.status === "TERMINATION_PENDING" && employee.terminationDate ? employee.terminationDate : employee.hireDate).toISOString().slice(0, 10);
   const assignableRoles = roles.filter((role) => isRoleAssignableToOrganization(role, tenant.organizationId, assignableModuleKeys));
@@ -111,7 +113,7 @@ export default async function HrEmployeeProfilePage({
         {canManage ? (
           <EntityDialog trigger={<Button size="sm" variant="outline">Edit</Button>} title="Edit employee" action={upsertEmployee} submitLabel="Save changes" contentClassName="sm:max-w-xl">
             <input type="hidden" name="id" value={employee.id} />
-            <EmployeeFields employee={employee} managerItems={managerItems} />
+            <EmployeeFields employee={employee} managerItems={managerItems} jobPositionNames={jobPositionNames} />
           </EntityDialog>
         ) : null}
       </div>

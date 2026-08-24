@@ -461,6 +461,13 @@ model Organization {
   hrPlanInstances                 HrPlanInstance[]
   hrResumeEntries                 HrResumeEntry[]
   hrSkillTypes                    HrSkillType[]
+  hrEmployeeTypes                 HrEmployeeType[]
+  hrWorkLocations                 HrWorkLocation[]
+  hrDepartureReasons              HrDepartureReason[]
+  hrWorkingSchedules              HrWorkingSchedule[]
+  hrTimeTypes                     HrTimeType[]
+  hrJobPositions                  HrJobPosition[]
+  hrContractTemplates             HrContractTemplate[]
   hrLeaveTypes                    HrLeaveType[]
   hrLeaveRequests                 HrLeaveRequest[]
   hrPerformanceReviews            HrPerformanceReview[]
@@ -2822,6 +2829,106 @@ model HrEmployeeSkill {
   @@unique([employeeId, skillId])
   @@index([employeeId])
   @@index([skillId])
+}
+
+/**
+ * Simple organization-configured named lookups, shipped as real CRUD on the
+ * Configuration page but deliberately without deeper logic yet (no calendar
+ * engine for HrWorkingSchedule, no document generation for
+ * HrContractTemplate, no link into other workflows) - an explicit scoping
+ * decision, not a silent gap. HrJobPosition is the one exception with a real
+ * consumer: it seeds a creatable combobox for HrEmployee.jobTitle, which
+ * stays the free-text column of record (no FK, no migration risk).
+ */
+enum HrWorkLocationType {
+  OFFICE
+  REMOTE
+  HYBRID
+}
+
+model HrEmployeeType {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model HrWorkLocation {
+  id             String             @id @default(cuid())
+  organizationId String
+  name           String
+  locationType   HrWorkLocationType @default(OFFICE)
+  createdAt      DateTime           @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model HrDepartureReason {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model HrWorkingSchedule {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model HrTimeType {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model HrJobPosition {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model HrContractTemplate {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
 }
 
 model HrLeaveType {
