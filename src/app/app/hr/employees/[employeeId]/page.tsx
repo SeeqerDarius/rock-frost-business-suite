@@ -10,6 +10,8 @@ import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, Dialog
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/db";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
@@ -17,7 +19,7 @@ import { isRoleAssignableToOrganization, resolveAssignableModuleKeys, roleDispla
 import { getEmployeeProfile, getEmployeeStatusHistory, listManagerCandidates, listPlanTemplates, listPendingPlanActivities } from "@/modules/hr/service";
 import { upsertEmployee } from "../actions";
 import { EmployeeFields } from "../employee-fields";
-import { markPlanActivityDone, createUserForEmployee } from "./actions";
+import { markPlanActivityDone, createUserForEmployee, saveResumeEntry, removeResumeEntry } from "./actions";
 import { LaunchPlanDialog } from "./launch-plan-dialog";
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
@@ -29,6 +31,8 @@ const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "seco
   TERMINATED: "destructive",
   REINSTATED: "default",
 };
+
+const RESUME_TYPE_LABEL: Record<string, string> = { EXPERIENCE: "Experience", EDUCATION: "Education", INTERNAL: "Internal move" };
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to do that.",
@@ -179,6 +183,7 @@ export default async function HrEmployeeProfilePage({
       <Tabs defaultValue="work">
         <TabsList>
           <TabsTrigger value="work">Work</TabsTrigger>
+          <TabsTrigger value="resume">Resume</TabsTrigger>
           <TabsTrigger value="personal">Personal</TabsTrigger>
           <TabsTrigger value="payroll">Payroll</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
@@ -223,6 +228,64 @@ export default async function HrEmployeeProfilePage({
               ) : null}
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="resume" className="space-y-4 pt-4">
+          {canManage ? (
+            <EntityDialog trigger={<Button size="sm" variant="outline">Add entry</Button>} title="Add resume entry" action={saveResumeEntry}>
+              <input type="hidden" name="employeeId" value={employee.id} />
+              <div className="space-y-2">
+                <Label htmlFor="resume-title">Title</Label>
+                <Input id="resume-title" name="title" required placeholder="e.g. Sales Manager at Acme Ltd" />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="resume-type">Type</Label>
+                  <Select name="type" defaultValue="EXPERIENCE" items={RESUME_TYPE_LABEL}>
+                    <SelectTrigger id="resume-type" className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>{Object.entries(RESUME_TYPE_LABEL).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2"><Label htmlFor="resume-start">Start date</Label><Input id="resume-start" name="dateStart" type="date" required /></div>
+                <div className="space-y-2"><Label htmlFor="resume-end">End date</Label><Input id="resume-end" name="dateEnd" type="date" /></div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="resume-description">Description</Label>
+                <Textarea id="resume-description" name="description" rows={3} />
+              </div>
+            </EntityDialog>
+          ) : null}
+          {employee.resumeEntries.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No resume entries yet.</p>
+          ) : (
+            <ul className="space-y-3">
+              {employee.resumeEntries.map((entry) => (
+                <li key={entry.id} className="rounded-md border p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium">{entry.title}</p>
+                        <Badge variant="outline">{RESUME_TYPE_LABEL[entry.type] ?? entry.type}</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {entry.dateStart.toLocaleDateString()} – {entry.dateEnd ? entry.dateEnd.toLocaleDateString() : "Present"}
+                      </p>
+                      {entry.description ? <p className="mt-1 text-sm whitespace-pre-wrap">{entry.description}</p> : null}
+                    </div>
+                    {canManage ? (
+                      <form action={removeResumeEntry}>
+                        <input type="hidden" name="id" value={entry.id} />
+                        <input type="hidden" name="employeeId" value={employee.id} />
+                        <Button type="submit" size="sm" variant="ghost">Remove</Button>
+                      </form>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </TabsContent>
 
         <TabsContent value="personal" className="space-y-4 pt-4">

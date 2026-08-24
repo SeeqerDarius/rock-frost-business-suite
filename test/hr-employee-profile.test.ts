@@ -40,12 +40,23 @@ describe("HR employee profile page", () => {
     expect(profilePage).toContain("if (!employee) notFound();");
   });
 
-  it("presents Work, Personal, Payroll, and Settings tabs, but not a Resume tab (no backing data model)", () => {
+  it("presents Work, Resume, Personal, Payroll, and Settings tabs", () => {
     expect(profilePage).toContain('<TabsTrigger value="work">Work</TabsTrigger>');
+    expect(profilePage).toContain('<TabsTrigger value="resume">Resume</TabsTrigger>');
     expect(profilePage).toContain('<TabsTrigger value="personal">Personal</TabsTrigger>');
     expect(profilePage).toContain('<TabsTrigger value="payroll">Payroll</TabsTrigger>');
     expect(profilePage).toContain('<TabsTrigger value="settings">Settings</TabsTrigger>');
-    expect(profilePage).not.toContain("Resume");
+  });
+
+  it("Resume tab supports real CRUD (Odoo's own experience/education/internal-move entries), not a placeholder", () => {
+    expect(profilePage).toContain("employee.resumeEntries");
+    expect(profilePage).toContain("saveResumeEntry");
+    expect(profilePage).toContain("removeResumeEntry");
+    expect(employeeActions).toContain("export async function saveResumeEntry");
+    expect(employeeActions).toContain("export async function removeResumeEntry");
+    expect(hrService).toContain("export async function createResumeEntry");
+    expect(hrService).toContain("export async function updateResumeEntry");
+    expect(hrService).toContain("export async function deleteResumeEntry");
   });
 
   it("renders an organization chart widget built on the existing manager/reports relation, with a link to the full chart", () => {

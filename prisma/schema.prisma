@@ -459,6 +459,7 @@ model Organization {
   hrOffboardingTasks              HrOffboardingTask[]
   hrPlanTemplates                 HrPlanTemplate[]
   hrPlanInstances                 HrPlanInstance[]
+  hrResumeEntries                 HrResumeEntry[]
   hrLeaveTypes                    HrLeaveType[]
   hrLeaveRequests                 HrLeaveRequest[]
   hrPerformanceReviews            HrPerformanceReview[]
@@ -2557,6 +2558,7 @@ model HrEmployee {
   statusHistory       HrEmployeeStatusHistory[]
   offboardingTasks    HrOffboardingTask[]
   planInstances       HrPlanInstance[]
+  resumeEntries       HrResumeEntry[]
 
   @@unique([organizationId, employeeNumber])
   @@index([organizationId, status])
@@ -2740,6 +2742,36 @@ model HrPlanActivity {
   instance HrPlanInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
 
   @@index([instanceId, status])
+}
+
+enum HrResumeEntryType {
+  EXPERIENCE
+  EDUCATION
+  INTERNAL
+}
+
+/**
+ * A manually-curated CV entry (Odoo's Resume tab). Append-only in spirit,
+ * shaped like HrEmployeeStatusHistory above, but user-editable since this is
+ * a resume, not an audit trail.
+ */
+model HrResumeEntry {
+  id             String            @id @default(cuid())
+  organizationId String
+  employeeId     String
+  title          String
+  type           HrResumeEntryType
+  dateStart      DateTime
+  dateEnd        DateTime?
+  description    String?           @db.Text
+  sortOrder      Int               @default(0)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     HrEmployee   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, employeeId])
 }
 
 model HrLeaveType {

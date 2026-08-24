@@ -170,8 +170,36 @@ export function getEmployeeProfile(organizationId: string, id: string) {
       user: true,
       payrollCompensation: true,
       payslips: { orderBy: { createdAt: "desc" }, take: 5 },
+      resumeEntries: { orderBy: { dateStart: "desc" } },
     },
   });
+}
+
+// --- Resume ---
+
+interface ResumeEntryInput {
+  title: string;
+  type: "EXPERIENCE" | "EDUCATION" | "INTERNAL";
+  dateStart: Date;
+  dateEnd?: Date | null;
+  description?: string | null;
+}
+
+export async function createResumeEntry(organizationId: string, employeeId: string, data: ResumeEntryInput) {
+  await requireEmployee(organizationId, employeeId);
+  return db.hrResumeEntry.create({ data: { organizationId, employeeId, ...data } });
+}
+
+export async function updateResumeEntry(organizationId: string, id: string, data: ResumeEntryInput) {
+  const entry = await db.hrResumeEntry.findFirst({ where: { id, organizationId } });
+  if (!entry) throw new NotFoundError("Resume entry not found.");
+  return db.hrResumeEntry.update({ where: { id }, data });
+}
+
+export async function deleteResumeEntry(organizationId: string, id: string) {
+  const entry = await db.hrResumeEntry.findFirst({ where: { id, organizationId } });
+  if (!entry) throw new NotFoundError("Resume entry not found.");
+  return db.hrResumeEntry.delete({ where: { id } });
 }
 
 /** The employee's own ancestor chain plus every descendant beneath its top-most

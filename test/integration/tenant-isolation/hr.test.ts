@@ -91,4 +91,22 @@ describe("HR service — cross-tenant isolation against real Postgres", () => {
     expect(list.map((e) => e.id)).not.toContain(orgBEmployee.id);
     expect(list.map((e) => e.id)).toContain(orgAEmployee.id);
   });
+
+  it("createResumeEntry rejects an employeeId from another organization, and a legitimate entry round-trips through getEmployeeProfile", async () => {
+    await expect(
+      hr.createResumeEntry(orgA.organizationId, orgBEmployee.id, { title: "Should fail", type: "EXPERIENCE", dateStart: new Date("2025-01-01") }),
+    ).rejects.toThrow(hr.NotFoundError);
+
+    const entry = await hr.createResumeEntry(orgA.organizationId, orgAEmployee.id, {
+      title: "Sales Manager at Acme Ltd",
+      type: "EXPERIENCE",
+      dateStart: new Date("2023-01-01"),
+      dateEnd: new Date("2024-12-31"),
+      description: "Led the regional sales team.",
+    });
+    const profile = await hr.getEmployeeProfile(orgA.organizationId, orgAEmployee.id);
+    expect(profile?.resumeEntries.map((e) => e.id)).toContain(entry.id);
+
+    await expect(hr.updateResumeEntry(orgB.organizationId, entry.id, { title: "Cross-tenant edit", type: "EXPERIENCE", dateStart: new Date() })).rejects.toThrow(hr.NotFoundError);
+  });
 });

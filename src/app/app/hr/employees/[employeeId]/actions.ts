@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { previewPlanLaunch, launchPlan, completePlanActivity, NotFoundError } from "@/modules/hr/service";
+import { previewPlanLaunch, launchPlan, completePlanActivity, createResumeEntry, updateResumeEntry, deleteResumeEntry, NotFoundError } from "@/modules/hr/service";
 import { createInvitation, markInvitationDeliveryFailed } from "@/lib/auth/invitations";
 import { sendEmail } from "@/lib/email";
 import { invitationEmail } from "@/lib/email-templates";
@@ -163,4 +163,64 @@ export async function createUserForEmployee(formData: FormData): Promise<void> {
 
   revalidatePath(`/app/hr/employees/${employeeId}`);
   redirect(`/app/hr/employees/${employeeId}?${delivery.ok ? "saved=1" : "error=delivery-failed"}`);
+}
+
+function parseResumeEntry(formData: FormData) {
+  const title = clean(formData.get("title"));
+  const type = clean(formData.get("type"));
+  const dateStartRaw = clean(formData.get("dateStart"));
+  const dateEndRaw = clean(formData.get("dateEnd"));
+  if (!title || !type || !["EXPERIENCE", "EDUCATION", "INTERNAL"].includes(type) || !dateStartRaw) return null;
+  return {
+    title,
+    type: type as "EXPERIENCE" | "EDUCATION" | "INTERNAL",
+    dateStart: new Date(`${dateStartRaw}T00:00:00`),
+    dateEnd: dateEndRaw ? new Date(`${dateEndRaw}T00:00:00`) : null,
+    description: clean(formData.get("description")),
+  };
+}
+
+export async function saveResumeEntry(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("hr");
+  if (!hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_EDIT) && !hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE)) {
+    redirect("/app/hr/employees?error=forbidden");
+  }
+  const employeeId = clean(formData.get("employeeId"));
+  const id = clean(formData.get("id"));
+  const data = parseResumeEntry(formData);
+  if (!employeeId || !data) redirect(`/app/hr/employees/${employeeId}?error=missing-fields`);
+
+  try {
+    if (id) {
+      await updateResumeEntry(tenant.organizationId, id, data);
+    } else {
+      await createResumeEntry(tenant.organizationId, employeeId, data);
+    }
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect(`/app/hr/employees/${employeeId}?error=not-found`);
+    throw error;
+  }
+
+  revalidatePath(`/app/hr/employees/${employeeId}`);
+  redirect(`/app/hr/employees/${employeeId}?saved=1`);
+}
+
+export async function removeResumeEntry(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("hr");
+  if (!hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_EDIT) && !hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE)) {
+    redirect("/app/hr/employees?error=forbidden");
+  }
+  const employeeId = clean(formData.get("employeeId"));
+  const id = clean(formData.get("id"));
+  if (!employeeId || !id) return;
+
+  try {
+    await deleteResumeEntry(tenant.organizationId, id);
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect(`/app/hr/employees/${employeeId}?error=not-found`);
+    throw error;
+  }
+
+  revalidatePath(`/app/hr/employees/${employeeId}`);
+  redirect(`/app/hr/employees/${employeeId}?saved=1`);
 }

@@ -24,9 +24,11 @@ Employee photos follow the same convention used for Inventory item images and Sc
 
 ## Employee profile page
 
-`/app/hr/employees/[employeeId]` is the first individual employee detail view this module has had (previously, editing only happened inline from the list page). It shows a header (photo, name, contact info, tags, status), quick actions (Time off, a History dialog backed by `getEmployeeStatusHistory`), and four tabs: Work (department, job title, hire date, branch, manager, plus an organization chart widget), Personal (contact fields, notes), Payroll (`payrollCompensation` and the 5 most recent `payslips`, both already modeled on `HrEmployee` and now surfaced for the first time), and Settings (the linked platform `User` account, if any).
+`/app/hr/employees/[employeeId]` is the first individual employee detail view this module has had (previously, editing only happened inline from the list page). It shows a header (photo, name, contact info, tags, status), quick actions (Time off, a History dialog backed by `getEmployeeStatusHistory`), and five tabs: Work (department, job title, hire date, branch, manager, plus an organization chart widget), Resume (a manually-curated list of experience/education/internal-move entries, see below), Personal (contact fields, notes), Payroll (`payrollCompensation` and the 5 most recent `payslips`, both already modeled on `HrEmployee` and now surfaced for the first time), and Settings (the linked platform `User` account, if any).
 
-There is deliberately no Resume tab: it would be Odoo's work-history timeline, and there is no data model backing that in this codebase. Fabricating placeholder content for it would misrepresent what the page actually knows.
+## Resume
+
+`HrResumeEntry` (`title`, `type`: `EXPERIENCE`/`EDUCATION`/`INTERNAL`, `dateStart`, `dateEnd?`, `description?`) is a manually-curated, employee-scoped log shaped like the existing `HrEmployeeStatusHistory` — an append-only-in-spirit list, but user-editable since it's a resume, not an audit trail. CRUD (`createResumeEntry`/`updateResumeEntry`/`deleteResumeEntry` in `src/modules/hr/service.ts`) is exposed on the Resume tab via `saveResumeEntry`/`removeResumeEntry` (`src/app/app/hr/employees/[employeeId]/actions.ts`), gated the same as the rest of employee editing (`hr.employees.edit`/`hr.employees.manage`).
 
 ## Organization chart
 
