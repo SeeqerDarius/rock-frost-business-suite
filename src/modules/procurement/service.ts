@@ -304,7 +304,13 @@ export async function receiveOrderLine(
   const line = await db.procurementOrderLine.findFirst({ where: { id: input.lineId, orderId: input.orderId } });
   if (!line) throw new NotFoundError("Order line not found.");
 
-  if (line.itemId && !input.warehouseId) {
+  // A non-tracked item (trackInventory: false - a Service-type product ordered
+  // for its own sake, not to stock a warehouse) never needs a warehouse or a
+  // stock movement, the same way a line with no itemId at all doesn't.
+  const item = line.itemId ? await db.inventoryItem.findFirst({ where: { id: line.itemId, organizationId }, select: { trackInventory: true } }) : null;
+  const requiresStockMovement = Boolean(line.itemId) && (item?.trackInventory ?? true);
+
+  if (requiresStockMovement && !input.warehouseId) {
     throw new WarehouseRequiredError("Select a warehouse to receive this item into stock.");
   }
 
@@ -328,7 +334,7 @@ export async function receiveOrderLine(
       throw new ReceiveQuantityError("This line no longer has that much quantity remaining to receive.");
     }
 
-    if (line.itemId && input.warehouseId) {
+    if (requiresStockMovement && input.warehouseId && line.itemId) {
       await recordMovement(
         organizationId,
         {

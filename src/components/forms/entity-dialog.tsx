@@ -3,6 +3,7 @@
 import { useState, type ReactElement, type ReactNode } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface EntityDialogProps {
   trigger: ReactElement;
@@ -11,6 +12,8 @@ interface EntityDialogProps {
   action: (formData: FormData) => void | Promise<void>;
   children: ReactNode;
   submitLabel?: string;
+  /** Overrides the dialog's default `sm:max-w-lg` width for forms with more fields than the usual short entity form. */
+  contentClassName?: string;
 }
 
 /**
@@ -20,13 +23,13 @@ interface EntityDialogProps {
  * naturally close this dialog on submit, since the redirect re-renders
  * the whole page tree and this component's open state resets.
  */
-export function EntityDialog({ trigger, title, description, action, children, submitLabel = "Save" }: EntityDialogProps) {
+export function EntityDialog({ trigger, title, description, action, children, submitLabel = "Save", contentClassName }: EntityDialogProps) {
   const [open, setOpen] = useState(false);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={trigger} />
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className={cn("sm:max-w-lg", contentClassName)}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description ? <DialogDescription>{description}</DialogDescription> : null}

@@ -1,5 +1,17 @@
 # Architecture & Tooling Decisions
 
+## 2026-08-24 — Inventory items read Accounting's tax codes for their default sales tax
+
+**Decision:** `InventoryItem` gained an optional `taxCodeId` pointing at Accounting's `AccountingTaxCode`. Inventory's `createItem`/`updateItem` validate it with a new `requireTaxCode()` that calls Accounting's already-public `listTaxCodes(organizationId)` — never a direct `db.accountingTaxCode` query from Inventory's service layer.
+
+**Why:** The Items form was extended toward a fuller product model (product type, sales price separate from cost price, POS/Purchasable availability flags, tags) after the user asked for feature parity with a competitor's product form. A default sales tax on the product itself is part of that, and Accounting already owns a complete, effective-dated, auto-seeding tax-code system (`src/modules/accounting/tax-service.ts`) — building a second, Inventory-owned tax concept would duplicate it.
+
+**How the boundary is preserved:** `requireTaxCode()` only checks that the given id belongs to the organization (via `listTaxCodes`, the same function Procurement's supplier-invoice form already uses for its own tax picker) — it does not check whether the code is effective *today*, since an item's default tax is a standing catalogue setting, not a dated transaction; effective-dating is enforced separately, at whatever future point something actually posts tax evidence using this field. Selection works identically whether or not the organization has activated Accounting (confirmed existing precedent: Procurement's own tax-code picker is gated only on `requireModuleAccess("procurement")`, not on Accounting's activation) — only *posting* into Accounting's ledger is module-activation-gated, and nothing posts using this field yet.
+
+**Not done (and deliberately so):** POS does not yet compute or post per-line VAT/NHIL/GETFund evidence using an item's `taxCodeId` — this field is a foundation for that (closing a gap `docs/TAX_AND_STATUTORY_REPORTING.md` already names: POS is one of the eight revenue modules that still posts gross revenue only), not the posting integration itself. That remains a separate, larger piece of work.
+
+---
+
 ## 2026-08-22 — Every write path that finalizes a module's revenue must post to Accounting, not just the first one wired
 
 **Decision:** Audited all eight revenue-generating modules (Fleet, Pharmacy, Hospital, POS, Installment, Hostel, Hotel, School) for every code path that finalizes a confirmed-revenue record, not just the one already wired to `postModuleRevenue()`. Fixed three gaps in Fleet (a driver-submission approval, a Work & Pay deposit at contract creation, and an office-recorded Work & Pay instalment all created a VERIFIED `FleetPayment` — and moved the Fleet dashboard total — without ever posting to Accounting), a live correctness bug in Pharmacy (a controlled-drug dispense posted revenue when merely *requested*, before maker-checker approval completed it, and a subsequent rejection never reversed that phantom entry), and two gaps in Installment (an account-opening deposit, and a payment amount edited within its edit window). POS's `refundSale()` is documented but left unwired — it has zero live callers today (test-only), so there is no action-layer call site to wire yet. Hospital, Hotel, Hostel, and School each have exactly one revenue-finalizing code path and were confirmed already fully wired; no changes were needed there.

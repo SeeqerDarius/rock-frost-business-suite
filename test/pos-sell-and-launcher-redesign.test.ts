@@ -62,6 +62,20 @@ describe("POS sell screen: tap-to-add product grid and keypad", () => {
     expect(source).toContain("skuFromName");
   });
 
+  it("sells at salesPrice, not costPrice - the field a cashier actually types is the field POS charges", () => {
+    const sellPage = read("src/app/app/pos/sell/page.tsx");
+    expect(sellPage).toContain("Number(item.salesPrice)");
+    expect(sellPage).not.toContain("Number(item.costPrice)");
+    expect(sellPage).toContain("item.isPosAvailable");
+
+    const actions = read("src/app/app/pos/sell/actions.ts");
+    const fnStart = actions.indexOf("export async function createPosQuickItem");
+    const fnBody = actions.slice(fnStart);
+    expect(fnBody).toContain("salesPrice: parsed.data.price");
+    expect(fnBody).toContain('costPrice: "0"');
+    expect(fnBody).toContain("Number(item.salesPrice)");
+  });
+
   it("does not redirect or revalidate the quick-add action, so the in-progress cart survives", () => {
     const source = read("src/app/app/pos/sell/actions.ts");
     const fnStart = source.indexOf("export async function createPosQuickItem");

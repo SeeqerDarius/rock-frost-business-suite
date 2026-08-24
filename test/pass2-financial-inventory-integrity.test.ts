@@ -163,6 +163,33 @@ describe("Procurement — vendor/item IDOR, atomic receiving guard", () => {
       procurement.receiveOrderLine(ORG, { orderId: "order-1", lineId: "line-1", quantity: 5 }),
     ).rejects.toThrow(procurement.ReceiveQuantityError);
   });
+
+  it("receiveOrderLine does not require a warehouse for a non-tracked (Service-type) item", async () => {
+    mockDb.procurementOrder.findFirst.mockResolvedValue({ id: "order-1", organizationId: ORG, status: "SENT", orderNumber: "PO-0001" });
+    mockDb.procurementOrderLine.findFirst.mockResolvedValue({ id: "line-1", orderId: "order-1", quantity: 10, receivedQuantity: 0, itemId: "item-service" });
+    mockDb.inventoryItem.findFirst.mockResolvedValue({ trackInventory: false });
+    mockDb.procurementOrder.updateMany.mockResolvedValue({ count: 1 });
+    // Reaches the NEXT guard (the atomic receivedQuantity claim) instead of
+    // being blocked by WarehouseRequiredError first — proof the warehouse
+    // check was skipped for this non-tracked item, without needing to mock
+    // the entire rest of the happy path (goods-receipt creation, etc).
+    mockDb.procurementOrderLine.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      procurement.receiveOrderLine(ORG, { orderId: "order-1", lineId: "line-1", quantity: 5 }),
+    ).rejects.toThrow(procurement.ReceiveQuantityError);
+    expect(mockDb.inventoryMovement.create).not.toHaveBeenCalled();
+  });
+
+  it("receiveOrderLine still requires a warehouse for a tracked item", async () => {
+    mockDb.procurementOrder.findFirst.mockResolvedValue({ id: "order-1", organizationId: ORG, status: "SENT", orderNumber: "PO-0001" });
+    mockDb.procurementOrderLine.findFirst.mockResolvedValue({ id: "line-1", orderId: "order-1", quantity: 10, receivedQuantity: 0, itemId: "item-goods" });
+    mockDb.inventoryItem.findFirst.mockResolvedValue({ trackInventory: true });
+
+    await expect(
+      procurement.receiveOrderLine(ORG, { orderId: "order-1", lineId: "line-1", quantity: 5 }),
+    ).rejects.toThrow(procurement.WarehouseRequiredError);
+  });
 });
 
 describe("Accounting — journal account IDOR, invoice payment validation, double-post guard", () => {

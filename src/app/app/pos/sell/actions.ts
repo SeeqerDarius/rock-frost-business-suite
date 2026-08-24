@@ -120,11 +120,12 @@ export async function createPosQuickItem(formData: FormData): Promise<QuickItemR
         barcode: parsed.data.barcode,
         name: parsed.data.name,
         categoryId,
-        costPrice: parsed.data.price,
+        costPrice: "0",
+        salesPrice: parsed.data.price,
       });
       return {
         ok: true,
-        item: { id: item.id, name: item.name, sku: item.sku, barcode: item.barcode, price: Number(item.costPrice).toFixed(2), categoryId: item.categoryId, imageData: item.imageData },
+        item: { id: item.id, name: item.name, sku: item.sku, barcode: item.barcode, price: Number(item.salesPrice).toFixed(2), categoryId: item.categoryId, imageData: item.imageData },
         category: createdCategory,
       };
     } catch (error) {

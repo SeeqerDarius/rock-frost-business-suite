@@ -102,7 +102,7 @@ export default async function PosSellPage({
             </div>
 
             <SaleCart
-              items={items.map((item) => ({ id: item.id, name: item.name, sku: item.sku, barcode: item.barcode, price: Number(item.costPrice).toFixed(2), categoryId: item.categoryId, imageData: item.imageData }))}
+              items={items.filter((item) => item.isPosAvailable).map((item) => ({ id: item.id, name: item.name, sku: item.sku, barcode: item.barcode, price: Number(item.salesPrice).toFixed(2), categoryId: item.categoryId, imageData: item.imageData }))}
               categories={categories.map((category) => ({ id: category.id, name: category.name }))}
             />
           </form>

@@ -25,6 +25,10 @@ Two read-only history pages were added, both gated on `pos.reports.view` like th
 
 A cashier can add a new sellable item from the register itself ("New product" dialog) without navigating to Inventory: name, optional barcode, price, and a category picker that can create a new `InventoryCategory` inline. `createPosQuickItem` (`src/app/app/pos/sell/actions.ts`) generates the SKU automatically (retrying on a collision), is gated on `pos.sales.manage` like the rest of the sell screen, and returns the created item to the client instead of redirecting or calling `revalidatePath` — the in-progress cart is client state and must not be lost to a navigation. This is a pure interaction-layer change: `completeSale`'s line/payment contract and every server-side validation and posting rule above are unchanged.
 
+### Sells at salesPrice, filters to POS-available items (2026-08-24)
+
+The sell screen's product grid now shows only items with `isPosAvailable: true` (default `true`, unchanged for every pre-existing item) and sells at each item's `salesPrice` rather than `costPrice`. Before this, POS both displayed and charged `costPrice` — what the organization pays to acquire an item, not what it charges for it — because `InventoryItem` had only one price field. `createPosQuickItem`'s "New product" dialog now writes the price a cashier types into `salesPrice` (with `costPrice` defaulting to 0), matching what its label already said. See `docs/INVENTORY_PROCUREMENT_CONSOLIDATION.md`'s "Product model" section for the full field list this draws from.
+
 ### Dashboard quick launch (2026-08-24)
 
 `/app/dashboard`, the first screen after sign-in, opens with a "Quick launch" grid of large icon tiles, one per module enabled for the organization, linking straight into each module. The existing per-module summary widgets remain below it unchanged. Tile icons reuse the shared `IconBadge` brand treatment (single accent color) rather than a color-per-app scheme, to stay consistent with how module icons are styled everywhere else in the product.

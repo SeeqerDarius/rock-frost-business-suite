@@ -22,8 +22,11 @@ const itemSchema = z.object({
   barcode: shortText.nullable().optional(),
   name: shortText,
   categoryId: cuid.nullable(),
+  taxCodeId: cuid.nullable(),
   unit: shortText,
   costPrice: moneyAmount,
+  salesPrice: moneyAmount,
+  productType: z.enum(["GOODS", "SERVICE"]),
   reorderPoint: nonNegativeInt,
 });
 
@@ -40,8 +43,11 @@ export async function upsertItem(formData: FormData): Promise<void> {
     barcode: clean(formData.get("barcode")),
     name: clean(formData.get("name")) ?? "",
     categoryId: clean(formData.get("categoryId")),
+    taxCodeId: clean(formData.get("taxCodeId")),
     unit: clean(formData.get("unit")) ?? "unit",
     costPrice: clean(formData.get("costPrice")) ?? "",
+    salesPrice: clean(formData.get("salesPrice")) ?? "0",
+    productType: clean(formData.get("productType")) ?? "GOODS",
     reorderPoint: clean(formData.get("reorderPoint")) ?? "0",
   });
   if (!parsed.success) {
@@ -61,8 +67,14 @@ export async function upsertItem(formData: FormData): Promise<void> {
     barcode: parsed.data.barcode ?? null,
     name: parsed.data.name,
     categoryId: parsed.data.categoryId,
+    taxCodeId: parsed.data.taxCodeId,
     unit: parsed.data.unit,
     costPrice: parsed.data.costPrice,
+    salesPrice: parsed.data.salesPrice,
+    productType: parsed.data.productType,
+    trackInventory: formData.get("trackInventory") === "on",
+    isPosAvailable: formData.get("isPosAvailable") === "on",
+    isPurchasable: formData.get("isPurchasable") === "on",
     reorderPoint: parsed.data.reorderPoint,
     active: formData.get("active") === "on",
     ...(imageData !== undefined ? { imageData } : {}),

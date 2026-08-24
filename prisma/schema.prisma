@@ -1881,23 +1881,36 @@ model InventoryWarehouse {
   @@index([branchId])
 }
 
+enum InventoryProductType {
+  GOODS
+  SERVICE
+}
+
 model InventoryItem {
-  id             String   @id @default(cuid())
+  id             String               @id @default(cuid())
   organizationId String
   sku            String
   barcode        String?
   name           String
   imageData      String?
   categoryId     String?
-  unit           String   @default("unit")
-  costPrice      Decimal  @default(0) @db.Decimal(12, 2)
-  reorderPoint   Int      @default(0)
-  active         Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  unit           String               @default("unit")
+  costPrice      Decimal              @default(0) @db.Decimal(12, 2)
+  salesPrice     Decimal              @default(0) @db.Decimal(12, 2)
+  taxCodeId      String?
+  productType    InventoryProductType @default(GOODS)
+  trackInventory Boolean              @default(true)
+  isPosAvailable Boolean              @default(true)
+  isPurchasable  Boolean              @default(true)
+  tags           String[]             @default([])
+  reorderPoint   Int                  @default(0)
+  active         Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
   organization            Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   category                InventoryCategory?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  taxCode                 AccountingTaxCode?            @relation(fields: [taxCodeId], references: [id], onDelete: SetNull)
   stock                   InventoryStock[]
   movements               InventoryMovement[]
   countLines              InventoryCountLine[]
@@ -1911,6 +1924,7 @@ model InventoryItem {
   @@unique([organizationId, barcode])
   @@index([organizationId])
   @@index([categoryId])
+  @@index([taxCodeId])
 }
 
 model InventoryStock {
@@ -2170,6 +2184,7 @@ model AccountingTaxCode {
   invoices         AccountingInvoice[]
   transactions     AccountingTaxTransaction[]
   supplierInvoices ProcurementSupplierInvoice[]
+  inventoryItems   InventoryItem[]
 
   @@unique([organizationId, code, effectiveFrom])
   @@index([organizationId, active, effectiveFrom])

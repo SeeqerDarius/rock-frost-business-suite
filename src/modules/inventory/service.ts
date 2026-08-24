@@ -1,11 +1,12 @@
 import "server-only";
 
 import { db } from "@/lib/db";
-import type { InventoryMovementType } from "@prisma/client";
+import type { InventoryMovementType, InventoryProductType } from "@prisma/client";
 import {
   getOrganizationModuleConfiguration,
   updateOrganizationModuleConfigurationValues,
 } from "@/platform/module-requests/configuration";
+import { listTaxCodes } from "@/modules/accounting/tax-service";
 
 /**
  * Fresh module (no reference implementation to migrate from). Every function
@@ -85,6 +86,13 @@ interface ItemInput {
   categoryId?: string | null;
   unit?: string;
   costPrice: string;
+  salesPrice?: string;
+  taxCodeId?: string | null;
+  productType?: InventoryProductType;
+  trackInventory?: boolean;
+  isPosAvailable?: boolean;
+  isPurchasable?: boolean;
+  tags?: string[];
   reorderPoint?: number;
   active?: boolean;
 }
@@ -97,8 +105,19 @@ async function requireCategory(organizationId: string, categoryId: string) {
   if (!category) throw new NotFoundError("Category not found.");
 }
 
+/** Reuses Accounting's already-public, already-auto-seeding listTaxCodes() rather than
+ * querying AccountingTaxCode directly, per docs/MODULE_BOUNDARIES.md. Only checks the
+ * code belongs to this org - not whether it's effective today, since an item's default
+ * tax is a catalog setting, not a dated transaction (effective-dating is enforced at
+ * sale/posting time by Accounting's own calculateTax()). */
+async function requireTaxCode(organizationId: string, taxCodeId: string) {
+  const taxCodes = await listTaxCodes(organizationId);
+  if (!taxCodes.some((code) => code.id === taxCodeId)) throw new NotFoundError("Tax code not found.");
+}
+
 export async function createItem(organizationId: string, data: ItemInput) {
   if (data.categoryId) await requireCategory(organizationId, data.categoryId);
+  if (data.taxCodeId) await requireTaxCode(organizationId, data.taxCodeId);
   try {
     return await db.inventoryItem.create({ data: { organizationId, ...data } });
   } catch (error) {
@@ -113,6 +132,7 @@ export async function createItem(organizationId: string, data: ItemInput) {
 
 export async function updateItem(organizationId: string, id: string, data: ItemInput) {
   if (data.categoryId) await requireCategory(organizationId, data.categoryId);
+  if (data.taxCodeId) await requireTaxCode(organizationId, data.taxCodeId);
   try {
     return await db.inventoryItem.update({ where: { id, organizationId }, data });
   } catch (error) {
@@ -311,7 +331,7 @@ export async function createInventoryCount(
     const warehouse = await tx.inventoryWarehouse.findFirst({ where: { id: input.warehouseId, organizationId, active: true } });
     if (!warehouse) throw new NotFoundError("Warehouse not found.");
     const items = await tx.inventoryItem.findMany({
-      where: { organizationId, active: true },
+      where: { organizationId, active: true, trackInventory: true },
       include: { stock: { where: { warehouseId: input.warehouseId } } },
       orderBy: { name: "asc" },
     });

@@ -84,4 +84,17 @@ describe("inventory stock counts", () => {
     expect(mockDb.inventoryStock.update).toHaveBeenCalledWith({ where: { id: "stock-1" }, data: { quantity: { increment: 2 } } });
     expect(mockDb.inventoryMovement.create).toHaveBeenCalledWith({ data: expect.objectContaining({ organizationId: ORG, itemId: "item-1", quantity: 2, reference: "CNT-000001" }) });
   });
+
+  it("only snapshots inventory-tracked items into a new physical count, not Service-type items", async () => {
+    mockDb.inventoryWarehouse.findFirst.mockResolvedValue({ id: "warehouse-1", active: true });
+    mockDb.inventoryItem.findMany.mockResolvedValue([{ id: "item-1", stock: [{ quantity: 5 }] }]);
+    mockDb.inventoryCount.count.mockResolvedValue(0);
+    mockDb.inventoryCount.create.mockResolvedValue({ id: "count-1" });
+
+    await inventory.createInventoryCount(ORG, { warehouseId: "warehouse-1", countDate: new Date("2026-08-24") });
+
+    expect(mockDb.inventoryItem.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { organizationId: ORG, active: true, trackInventory: true },
+    }));
+  });
 });
