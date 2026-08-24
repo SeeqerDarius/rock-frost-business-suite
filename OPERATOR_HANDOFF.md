@@ -7,7 +7,7 @@
 - **Important files**: `src/app/app/(overview)/dashboard/page.tsx`, `src/platform/modules/{workspace-navigation,dashboard-widgets}.tsx` (doc comments updated, they referenced Quick launch as still living on Overview), `test/pos-sell-and-launcher-redesign.test.ts` (renamed the describe block from "dashboard quick-launch grid" to "dashboard and module navigation," rewrote the two tests that asserted Quick launch's presence to assert its absence instead).
 - **Validation**: no schema change. `npx tsc --noEmit`, `npm run lint`, `npm run test` (93 files, 629 tests - same count as the previous entry, since tests were rewritten rather than added), and `npm run build` all passed.
 - **Not verified live in a browser**: no test tenant credentials in this environment, consistent with every other change this session.
-- **Production deploy verified**: <!-- filled in after push and deploy verification -->
+- **Production deploy verified**: commit `231563e` reached Vercel production deployment `dpl_3VSDZTgv3M87QpbZyAnL5k9LkedA` (`READY`, all production aliases attached). `/api/health` returned `{"ok":true,"database":"reachable"}`; `get_runtime_errors` (1h window) returned none.
 
 ## 2026-08-24: Public contact Sales email corrected (production data change, no code)
 
@@ -26,7 +26,7 @@
 - **Important files**: `src/app/app/(overview)/{dashboard,modules}/page.tsx`, `src/platform/modules/{workspace-navigation,dashboard-widgets}.tsx`, `test/pos-sell-and-launcher-redesign.test.ts` (rewrote the Modules-page assertion from "reuses widgets read-only" to "plain icon-tile grid, no widgets, no Link, no Open," added a new assertion for Overview's own no-Open-button change).
 - **Validation**: no schema change. `npx tsc --noEmit`, `npm run lint`, `npm run test` (93 files, 629 tests, up from 93/628), and `npm run build` all passed.
 - **Not verified live in a browser**: no test tenant credentials in this environment, consistent with every other change this session.
-- **Production deploy verified**: <!-- filled in after push and deploy verification -->
+- **Production deploy verified**: commit `8dd3d98` reached Vercel production deployment `dpl_89KHbuH3iikbYyXQQiQUnoDkatfa` (`READY`, all production aliases attached). `/api/health` returned `{"ok":true,"database":"reachable"}`; `get_runtime_errors` (1h window) returned none.
 
 ## 2026-08-24: Contract Templates graduated into a full editable form (schema migration)
 
