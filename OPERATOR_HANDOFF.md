@@ -19,7 +19,7 @@
 - **Important files**: `src/app/app/(overview)/modules/page.tsx`, `src/platform/modules/workspace-navigation.tsx` (doc comment corrected), `test/pos-sell-and-launcher-redesign.test.ts` (the "plain icon-tile status grid" test flipped to "clickable icon-tile launcher").
 - **Validation**: no schema change. `npx tsc --noEmit`, `npm run lint`, `npm run test` (94 files, 634 tests - same count, tests rewritten not added), and `npm run build` all passed.
 - **Not verified live in a browser**: no test tenant credentials in this environment - this was caught by the user's own live testing, not mine, which is exactly why that gap has been flagged after every UI-only phase this session.
-- **Production deploy verified**: <!-- filled in after push and deploy verification -->
+- **Production deploy verified**: commit `e3fe14a` reached Vercel production deployment `dpl_APN6sQPQgckZCPeBnG6TmwgnHewa` (`READY`, all production aliases attached). `/api/health` returned `{"ok":true,"database":"reachable"}`. `get_runtime_errors` (1h window) shows one real but unrelated error worth flagging separately: a `PrismaClientKnownRequestError` (`P2002`, unique constraint on `InventoryWarehouse(organizationId, name)`) from an actual attempt to create a duplicate-named warehouse at `/app/inventory/warehouses`, tied to the prior deployment (`dpl_CFR4BgqFWLLDUrrq92HjWVtgXDDu`) rather than this one — a pre-existing gap where that duplicate-name case surfaces as a raw 500 instead of a friendly "that name is already in use" message, not caused by anything in this session's changes.
 
 ## 2026-08-24: Platform dashboard gains cross-tenant "Business activity" (no schema change)
 
