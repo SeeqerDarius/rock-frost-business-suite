@@ -40,6 +40,11 @@ src/
                                  routePrefix values are /app-prefixed (e.g. "/app/fleet").
       workspace-navigation.tsx   Organization-scope sidebar nav (used by (overview)).
       platform-navigation.tsx    Platform-scope sidebar nav (used by app/platform).
+    business-insights/
+      service.ts                 Platform-scope cross-tenant business metrics. Owns no tables of
+                                  its own — calls modules/analytics/service.ts's
+                                  getAnalyticsOverview() per organization, the platform-scope
+                                  equivalent of that module's own org-scope cross-module pattern.
   components/
     ui/                shadcn/ui primitives — generated code, treat as owned but don't hand-roll
                         edits that fight the generator; re-run `npx shadcn add <name> --overwrite`
