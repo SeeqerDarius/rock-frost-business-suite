@@ -27,13 +27,19 @@ describe("HR Skills subsystem", () => {
     expect(hrService).not.toContain("levelProgress");
   });
 
-  it("Configuration page manages Skill Types and Skills together, gated on hr.settings.manage", () => {
-    expect(configurationPage).toContain('await requireModuleAccess("hr")');
-    expect(configurationPage).toContain("PERMISSIONS.HR_SETTINGS_MANAGE");
-    expect(configurationPage).toContain("listSkillTypes");
+  it("Configuration lives as a tab on HR Settings, managing Skill Types and Skills together, gated on hr.settings.manage", () => {
+    expect(settingsPage).toContain('await requireModuleAccess("hr")');
+    expect(settingsPage).toContain("PERMISSIONS.HR_SETTINGS_MANAGE");
+    expect(settingsPage).toContain("listSkillTypes");
+    expect(settingsPage).toContain('<TabsTrigger value="configuration">Configuration</TabsTrigger>');
     expect(configurationActions).toContain("export async function addSkillType");
     expect(configurationActions).toContain("export async function addSkill");
-    expect(navigation).toContain('href: "/app/hr/configuration"');
+    expect(navigation).not.toContain('href: "/app/hr/configuration"');
+  });
+
+  it("the old /app/hr/configuration URL redirects into HR Settings rather than 404ing", () => {
+    expect(configurationPage).toContain('await requireModuleAccess("hr")');
+    expect(configurationPage).toContain('redirect("/app/hr/settings")');
   });
 
   it("employee skill assignment lives on the profile's Work tab, not a dedicated Skills tab", () => {
@@ -49,12 +55,12 @@ describe("HR Skills subsystem", () => {
 });
 
 describe("HR Configuration: remaining lookups and Job Position wiring", () => {
-  it("Configuration page adds all 7 remaining lookups, built on the shared NamedLookupSection component", () => {
+  it("Configuration tab adds all 7 remaining lookups, built on the shared NamedLookupSection component", () => {
     for (const listFn of ["listEmployeeTypes", "listWorkLocations", "listDepartureReasons", "listWorkingSchedules", "listTimeTypes", "listJobPositions", "listContractTemplates"]) {
-      expect(configurationPage).toContain(listFn);
+      expect(settingsPage).toContain(listFn);
     }
-    expect(configurationPage).toContain("NamedLookupSection");
-    expect(configurationPage.match(/<NamedLookupSection/g)?.length).toBe(7);
+    expect(settingsPage).toContain("NamedLookupSection");
+    expect(settingsPage.match(/<NamedLookupSection/g)?.length).toBe(7);
   });
 
   it("Configuration actions expose add/remove for all 7 remaining lookups", () => {
@@ -77,8 +83,8 @@ describe("HR Configuration: remaining lookups and Job Position wiring", () => {
   });
 
   it("Work Location lookup carries a locationType (Office/Remote/Hybrid), the one lookup with an extra field", () => {
-    expect(configurationPage).toContain("WORK_LOCATION_TYPE_LABELS");
-    expect(configurationPage).toContain("extraField");
+    expect(settingsPage).toContain("WORK_LOCATION_TYPE_LABELS");
+    expect(settingsPage).toContain("extraField");
   });
 
   it("Job Position seeds a creatable combobox on the employee jobTitle field, which stays free-text", () => {
@@ -117,9 +123,9 @@ describe("HR Departments and Employees kanban views", () => {
     expect(navigation).toContain('href: "/app/hr/departments"');
   });
 
-  it("Employees page supports a department filter and a kanban view alongside the existing table", () => {
+  it("Employees page supports a department filter and defaults to the kanban view, with table as the opt-in alternative", () => {
     expect(employeesPage).toContain("department?: string; view?: string");
-    expect(employeesPage).toContain('view === "kanban"');
+    expect(employeesPage).toContain('view !== "table"');
     expect(employeesPage).toContain("isKanban");
     expect(employeesPage).toContain("employee.tags.map");
   });

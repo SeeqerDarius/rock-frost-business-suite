@@ -6,7 +6,7 @@ import { IconBadge } from "@/components/ui/icon-badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getInventorySummary } from "@/modules/inventory/service";
 
-export async function InventoryDashboardWidget() {
+export async function InventoryDashboardWidget({ linkable = true }: { linkable?: boolean } = {}) {
   const tenant = await requireModuleAccess("inventory");
   const summary = await getInventorySummary(tenant.organizationId);
 
@@ -19,11 +19,13 @@ export async function InventoryDashboardWidget() {
           {summary.activeItemCount} active item{summary.activeItemCount === 1 ? "" : "s"} · {summary.lowStockItems.length} low stock · {summary.totalStockValue.toFixed(2)} on hand
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/inventory" />}>
-          Open Inventory
-        </Button>
-      </CardContent>
+      {linkable ? (
+        <CardContent>
+          <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/inventory" />}>
+            Open Inventory
+          </Button>
+        </CardContent>
+      ) : null}
     </Card>
   );
 }

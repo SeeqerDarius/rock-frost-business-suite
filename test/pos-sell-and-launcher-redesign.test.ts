@@ -13,16 +13,23 @@ describe("dashboard quick-launch grid", () => {
     expect(source).toContain("accessibleModule.routePrefix");
   });
 
-  it("drops the separate Modules sidebar tab now that Quick launch covers the same job", () => {
+  it("keeps a separate Modules sidebar tab as a read-only 'what's active' reference alongside Quick launch", () => {
     const navigation = read("src/platform/modules/workspace-navigation.tsx");
-    expect(navigation).not.toContain('label: "Modules"');
-    expect(navigation).not.toContain('href: "/app/modules"');
+    expect(navigation).toContain('label: "Modules"');
+    expect(navigation).toContain('href: "/app/modules"');
     // The route itself must stay: module-access.ts and the zero-modules
     // empty state on Overview both still redirect/link there.
     const moduleAccess = read("src/lib/auth/module-access.ts");
     expect(moduleAccess).toContain("/app/modules");
     const dashboard = read("src/app/app/(overview)/dashboard/page.tsx");
     expect(dashboard).toContain('href="/app/modules"');
+  });
+
+  it("Modules page reuses the dashboard summary widgets read-only, with no Open button", () => {
+    const modulesPage = read("src/app/app/(overview)/modules/page.tsx");
+    expect(modulesPage).toContain("dashboardWidgets");
+    expect(modulesPage).toContain("linkable={false}");
+    expect(modulesPage).not.toContain(">Open<");
   });
 });
 

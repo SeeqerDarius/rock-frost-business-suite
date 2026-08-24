@@ -9,7 +9,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { resolveInstallmentAccessScope } from "@/modules/installment/access";
 import { listAccounts, listCustomers, getEffectiveAccountStatus } from "@/modules/installment/service";
 
-export async function InstallmentDashboardWidget() {
+export async function InstallmentDashboardWidget({ linkable = true }: { linkable?: boolean } = {}) {
   const tenant = await requireModuleAccess("installment");
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_VIEW)) return null;
 
@@ -46,11 +46,13 @@ export async function InstallmentDashboardWidget() {
           {customers.length} customer{customers.length === 1 ? "" : "s"} · {activeCount} active account{activeCount === 1 ? "" : "s"}
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/installment" />}>
-          Open Installment Management
-        </Button>
-      </CardContent>
+      {linkable ? (
+        <CardContent>
+          <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/installment" />}>
+            Open Installment Management
+          </Button>
+        </CardContent>
+      ) : null}
     </Card>
   );
 }

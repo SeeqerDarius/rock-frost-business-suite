@@ -6,7 +6,7 @@ import { IconBadge } from "@/components/ui/icon-badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getAccountingSummary } from "@/modules/accounting/service";
 
-export async function AccountingDashboardWidget() {
+export async function AccountingDashboardWidget({ linkable = true }: { linkable?: boolean } = {}) {
   const tenant = await requireModuleAccess("accounting");
   const summary = await getAccountingSummary(tenant.organizationId);
 
@@ -19,11 +19,13 @@ export async function AccountingDashboardWidget() {
           {summary.cashBalance.toFixed(2)} cash · {summary.outstandingInvoiceCount} outstanding invoice{summary.outstandingInvoiceCount === 1 ? "" : "s"} · {summary.netIncome.toFixed(2)} net income
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/accounting" />}>
-          Open Accounting
-        </Button>
-      </CardContent>
+      {linkable ? (
+        <CardContent>
+          <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/accounting" />}>
+            Open Accounting
+          </Button>
+        </CardContent>
+      ) : null}
     </Card>
   );
 }

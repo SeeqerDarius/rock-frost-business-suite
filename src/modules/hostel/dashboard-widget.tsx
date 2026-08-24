@@ -6,7 +6,7 @@ import { IconBadge } from "@/components/ui/icon-badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getHostelSummary } from "@/modules/hostel/service";
 
-export async function HostelDashboardWidget() {
+export async function HostelDashboardWidget({ linkable = true }: { linkable?: boolean } = {}) {
   const tenant = await requireModuleAccess("hostel");
   const summary = await getHostelSummary(tenant.organizationId);
 
@@ -20,11 +20,13 @@ export async function HostelDashboardWidget() {
           {summary.activeAllocationCount} active allocation{summary.activeAllocationCount === 1 ? "" : "s"}
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/hostel" />}>
-          Open Hostel Management
-        </Button>
-      </CardContent>
+      {linkable ? (
+        <CardContent>
+          <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/hostel" />}>
+            Open Hostel Management
+          </Button>
+        </CardContent>
+      ) : null}
     </Card>
   );
 }

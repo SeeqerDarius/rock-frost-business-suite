@@ -6,7 +6,7 @@ import { IconBadge } from "@/components/ui/icon-badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getProcurementSummary } from "@/modules/procurement/service";
 
-export async function ProcurementDashboardWidget() {
+export async function ProcurementDashboardWidget({ linkable = true }: { linkable?: boolean } = {}) {
   const tenant = await requireModuleAccess("procurement");
   const summary = await getProcurementSummary(tenant.organizationId);
 
@@ -19,11 +19,13 @@ export async function ProcurementDashboardWidget() {
           {summary.pendingRequestCount} pending request{summary.pendingRequestCount === 1 ? "" : "s"} · {summary.openOrderCount} open order{summary.openOrderCount === 1 ? "" : "s"} · {summary.openOrderValue.toFixed(2)} outstanding
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/procurement" />}>
-          Open Procurement
-        </Button>
-      </CardContent>
+      {linkable ? (
+        <CardContent>
+          <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/procurement" />}>
+            Open Procurement
+          </Button>
+        </CardContent>
+      ) : null}
     </Card>
   );
 }

@@ -1,4 +1,4 @@
-import { LayoutGrid, BarChart3, Bell, Building2, ShieldCheck, MessageSquarePlus, CreditCard } from "lucide-react";
+import { LayoutGrid, Blocks, BarChart3, Bell, Building2, ShieldCheck, MessageSquarePlus, CreditCard } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 import type { TenantContext } from "@/lib/tenant";
 import { hasPermission, isFleetDriverRole, PERMISSIONS } from "@/lib/auth/permissions";
@@ -14,21 +14,23 @@ import { hasPermission, isFleetDriverRole, PERMISSIONS } from "@/lib/auth/permis
  * tenant workspace via the floating chat bubble (src/app/app/layout.tsx),
  * not a sidebar destination. See docs/SUPPORT_MESSAGING.md.
  *
- * "Modules" is deliberately not a nav item either: Overview's own "Quick
- * launch" tile grid now covers the same "jump to an enabled module" job.
- * The /app/modules route itself still exists (module-access.ts redirects
- * there, and the zero-modules empty state links to it), it's just no longer
- * duplicated as a persistent sidebar destination.
+ * "Modules" is a read-only "what's active" reference, distinct from
+ * Overview: Overview keeps the "Quick launch" tile grid plus each module's
+ * summary widget as a clickable launcher; Modules shows the same summary
+ * widgets read-only (no "Open X" button - navigation happens from the
+ * sidebar or Overview instead), so a user glancing at this tab only sees
+ * what's actually active for their organization.
  */
 export async function getWorkspaceNavigation(tenant: TenantContext): Promise<ModuleNavItem[]> {
   const items: ModuleNavItem[] = [
     { label: "Overview", href: "/app/dashboard", icon: <LayoutGrid className="size-4" /> },
+    { label: "Modules", href: "/app/modules", icon: <Blocks className="size-4" /> },
     { label: "Notifications", href: "/app/notifications", icon: <Bell className="size-4" /> },
   ];
 
   if (!isFleetDriverRole(tenant)) {
     items.splice(
-      1,
+      2,
       0,
       { label: "Reports", href: "/app/reports", icon: <BarChart3 className="size-4" /> },
     );

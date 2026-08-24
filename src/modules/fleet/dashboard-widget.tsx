@@ -7,7 +7,7 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getFleetDriverDashboardSummary, getFleetInvestorSummary, getFleetSummary } from "@/modules/fleet/service";
 
-export async function FleetDashboardWidget() {
+export async function FleetDashboardWidget({ linkable = true }: { linkable?: boolean } = {}) {
   const tenant = await requireModuleAccess("fleet");
   const isDriverOnly =
     hasPermission(tenant, PERMISSIONS.FLEET_DRIVER_SELF_SERVICE) &&
@@ -39,11 +39,13 @@ export async function FleetDashboardWidget() {
         <CardTitle className="mt-3">Fleet Management</CardTitle>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
-      <CardContent>
-        <Button size="sm" variant="outline" nativeButton={false} render={<Link href={href} />}>
-          Open Fleet Management
-        </Button>
-      </CardContent>
+      {linkable ? (
+        <CardContent>
+          <Button size="sm" variant="outline" nativeButton={false} render={<Link href={href} />}>
+            Open Fleet Management
+          </Button>
+        </CardContent>
+      ) : null}
     </Card>
   );
 }

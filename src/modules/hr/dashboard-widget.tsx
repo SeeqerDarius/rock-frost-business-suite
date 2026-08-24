@@ -6,7 +6,7 @@ import { IconBadge } from "@/components/ui/icon-badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getHrSummary } from "@/modules/hr/service";
 
-export async function HrDashboardWidget() {
+export async function HrDashboardWidget({ linkable = true }: { linkable?: boolean } = {}) {
   const tenant = await requireModuleAccess("hr");
   const summary = await getHrSummary(tenant.organizationId);
 
@@ -19,11 +19,13 @@ export async function HrDashboardWidget() {
           {summary.activeEmployeeCount} active employee{summary.activeEmployeeCount === 1 ? "" : "s"} · {summary.onboardingCount} onboarding · {summary.pendingLeaveCount} pending leave request{summary.pendingLeaveCount === 1 ? "" : "s"}
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/hr" />}>
-          Open HR
-        </Button>
-      </CardContent>
+      {linkable ? (
+        <CardContent>
+          <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/hr" />}>
+            Open HR
+          </Button>
+        </CardContent>
+      ) : null}
     </Card>
   );
 }

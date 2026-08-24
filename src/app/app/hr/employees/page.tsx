@@ -51,7 +51,7 @@ export default async function HrEmployeesPage({
   searchParams: Promise<{ saved?: string; error?: string; department?: string; view?: string }>;
 }) {
   const { saved, error, department, view } = await searchParams;
-  const isKanban = view === "kanban";
+  const isKanban = view !== "table";
   const tenant = await requireModuleAccess("hr");
   const canManage = hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_EDIT) || hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE);
   const [allEmployees, managers, jobPositions] = await Promise.all([
@@ -65,7 +65,7 @@ export default async function HrEmployeesPage({
   const viewHref = (nextView: "table" | "kanban") => {
     const params = new URLSearchParams();
     if (department) params.set("department", department);
-    if (nextView === "kanban") params.set("view", "kanban");
+    if (nextView === "table") params.set("view", "table");
     const query = params.toString();
     return `/app/hr/employees${query ? `?${query}` : ""}`;
   };
@@ -76,8 +76,8 @@ export default async function HrEmployeesPage({
         <PageHeader title="Employees" description={department ? `Employees in ${department}.` : "Every person your organization employs."} />
         <div className="flex items-center gap-2">
           <div className="flex overflow-hidden rounded-md border">
-            <Link href={viewHref("table")}><Button type="button" size="sm" variant={isKanban ? "ghost" : "secondary"} className="rounded-none"><ListIcon /></Button></Link>
             <Link href={viewHref("kanban")}><Button type="button" size="sm" variant={isKanban ? "secondary" : "ghost"} className="rounded-none"><LayoutGrid /></Button></Link>
+            <Link href={viewHref("table")}><Button type="button" size="sm" variant={isKanban ? "ghost" : "secondary"} className="rounded-none"><ListIcon /></Button></Link>
           </div>
           {canManage ? (
             <EntityDialog trigger={<Button size="sm"><Plus />New employee</Button>} title="New employee" action={upsertEmployee} contentClassName="sm:max-w-xl">

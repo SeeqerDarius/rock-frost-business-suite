@@ -6,8 +6,8 @@ import { IconBadge } from "@/components/ui/icon-badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getHotelSummary } from "@/modules/hotel/service";
 
-export async function HotelDashboardWidget() {
+export async function HotelDashboardWidget({ linkable = true }: { linkable?: boolean } = {}) {
   const tenant = await requireModuleAccess("hotel");
   const summary = await getHotelSummary(tenant.organizationId);
-  return <Card><CardHeader><IconBadge size="lg"><Building2 className="size-5" /></IconBadge><CardTitle className="mt-3">Hotel Management</CardTitle><CardDescription>{summary.occupiedRooms} occupied of {summary.totalRooms} rooms · {summary.inHouse} in house · {summary.housekeeping} housekeeping tasks</CardDescription></CardHeader><CardContent><Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/hotel" />}>Open Hotel</Button></CardContent></Card>;
+  return <Card><CardHeader><IconBadge size="lg"><Building2 className="size-5" /></IconBadge><CardTitle className="mt-3">Hotel Management</CardTitle><CardDescription>{summary.occupiedRooms} occupied of {summary.totalRooms} rooms · {summary.inHouse} in house · {summary.housekeeping} housekeeping tasks</CardDescription></CardHeader>{linkable ? <CardContent><Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/hotel" />}>Open Hotel</Button></CardContent> : null}</Card>;
 }

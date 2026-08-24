@@ -6,7 +6,7 @@ import { IconBadge } from "@/components/ui/icon-badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { getProjectsSummary } from "@/modules/projects/service";
 
-export async function ProjectsDashboardWidget() {
+export async function ProjectsDashboardWidget({ linkable = true }: { linkable?: boolean } = {}) {
   const tenant = await requireModuleAccess("projects");
   const summary = await getProjectsSummary(tenant.organizationId);
   const openTasks = summary.totalTaskCount - (summary.tasksByStatus.DONE ?? 0);
@@ -20,11 +20,13 @@ export async function ProjectsDashboardWidget() {
           {summary.activeProjectCount} active project{summary.activeProjectCount === 1 ? "" : "s"} · {openTasks} open task{openTasks === 1 ? "" : "s"} · {summary.overdueTaskCount} overdue
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/projects" />}>
-          Open Projects
-        </Button>
-      </CardContent>
+      {linkable ? (
+        <CardContent>
+          <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/projects" />}>
+            Open Projects
+          </Button>
+        </CardContent>
+      ) : null}
     </Card>
   );
 }
