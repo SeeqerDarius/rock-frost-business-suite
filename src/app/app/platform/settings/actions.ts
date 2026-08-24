@@ -1,13 +1,13 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 import { isValidProfileImage } from "@/lib/profile-image";
-import { readPlatformMarketing } from "@/lib/platform-marketing";
+import { readPlatformMarketing, PUBLIC_MARKETING_CACHE_TAG } from "@/lib/platform-marketing";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { isPlatformOperator } from "@/lib/auth/permissions";
 
@@ -67,6 +67,7 @@ async function persistMetadata(organizationId: string, metadata: Record<string, 
 function revalidateSettingsAndMarketing() {
   revalidatePath("/app/platform/settings");
   revalidatePath("/");
+  updateTag(PUBLIC_MARKETING_CACHE_TAG);
 }
 
 export async function updatePlatformSettings(formData: FormData): Promise<void> {

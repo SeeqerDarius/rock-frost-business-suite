@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
@@ -48,5 +49,24 @@ describe("public SEO", () => {
       { source: "/modules/payroll", destination: "/modules/hr", permanent: true },
       { source: "/modules/procurement", destination: "/modules/inventory", permanent: true },
     ]));
+  });
+
+  it("marks noIndex pages as not indexable while staying followable and canonical", () => {
+    const indexable = createPublicMetadata({ title: "Example", description: "Example description", path: "/example" });
+    expect(indexable.robots).toBeUndefined();
+
+    const noIndex = createPublicMetadata({ title: "Example", description: "Example description", path: "/example", noIndex: true });
+    expect(noIndex.robots).toEqual({ index: false, follow: true });
+    expect(noIndex.alternates).toEqual({ canonical: `${SITE_URL}/example` });
+  });
+
+  it("keeps the post-subscribe flow out of the search index and free of exposed customer emails", () => {
+    const subscribePage = readFileSync("src/app/(public)/subscribe/page.tsx", "utf8");
+    const thankYouPage = readFileSync("src/app/(public)/subscribe/thank-you/page.tsx", "utf8");
+    const subscribeActions = readFileSync("src/app/(public)/subscribe/actions.ts", "utf8");
+    expect(subscribePage).toContain("noIndex: true");
+    expect(thankYouPage).toContain("noIndex: true");
+    expect(subscribeActions).not.toMatch(/redirect\(`\/subscribe\/thank-you[^)]*email/);
+    expect(subscribeActions).not.toContain("?email=");
   });
 });

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
+import { unstable_cache } from "next/cache";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { IconBadge } from "@/components/ui/icon-badge";
@@ -9,9 +10,23 @@ import { createPublicMetadata, DEFAULT_DESCRIPTION, SITE_URL } from "@/lib/seo";
 import { db } from "@/lib/db";
 import { PUBLIC_SHOWCASE_FILTER, readPublicShowcase } from "@/lib/public-showcase";
 import { CustomerShowcase } from "@/components/marketing/customer-showcase";
-import { findPlatformOrganizationMetadata, readPlatformMarketing } from "@/lib/platform-marketing";
+import { findPlatformOrganizationMetadata, readPlatformMarketing, PUBLIC_MARKETING_CACHE_TAG } from "@/lib/platform-marketing";
 import { buildShowcaseCustomers } from "@/lib/showcase-composition";
 import { PublicHero } from "@/components/marketing/public-hero";
+
+/** Tenant-side showcase opt-ins change rarely: cached for 5 minutes (Next's
+ * Data Cache) rather than re-queried on every homepage view and crawl. See
+ * PUBLIC_MARKETING_CACHE_TAG for what invalidates it. */
+const readShowcaseOrganizations = unstable_cache(
+  async () => db.organization.findMany({
+    where: PUBLIC_SHOWCASE_FILTER,
+    select: { id: true, name: true, industry: true, metadata: true },
+    orderBy: { name: "asc" },
+    take: 12,
+  }),
+  ["public-homepage-showcase-organizations"],
+  { revalidate: 300, tags: [PUBLIC_MARKETING_CACHE_TAG] },
+);
 
 export const metadata = createPublicMetadata({
   title: "Business Management Software Ghana",
@@ -25,12 +40,7 @@ export default async function HomePage() {
   // rendering to the incoming request so builds never require database access.
   await connection();
   const [showcaseOrganizations, platformOrganization] = await Promise.all([
-    db.organization.findMany({
-      where: PUBLIC_SHOWCASE_FILTER,
-      select: { id: true, name: true, industry: true, metadata: true },
-      orderBy: { name: "asc" },
-      take: 12,
-    }),
+    readShowcaseOrganizations(),
     findPlatformOrganizationMetadata(),
   ]);
   const marketing = readPlatformMarketing(platformOrganization?.metadata);

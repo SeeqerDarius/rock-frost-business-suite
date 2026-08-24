@@ -1,7 +1,13 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import { PLATFORM_MEMBERSHIP_ROLE_WHERE } from "@/lib/auth/platform-identity";
+
+/** Busted by every action that changes platform marketing settings, an
+ * external showcase customer, or a tenant's public showcase: see
+ * updateTag() calls in src/app/app/platform/{settings,organizations}/actions.ts. */
+export const PUBLIC_MARKETING_CACHE_TAG = "public-marketing";
 
 export interface ExternalShowcaseCustomer {
   id: string;
@@ -69,11 +75,21 @@ export function readPlatformMarketing(metadata: unknown): PlatformMarketingSetti
   };
 }
 
-export async function findPlatformOrganizationMetadata() {
-  return db.organization.findFirst({
-    where: {
-      members: { some: { status: "ACTIVE", role: PLATFORM_MEMBERSHIP_ROLE_WHERE } },
-    },
-    select: { id: true, metadata: true },
-  });
-}
+/** Read on every public homepage view and every showcase-logo request: cached
+ * for 5 minutes (Next's Data Cache, not Vercel's edge/CDN cache: this route
+ * still renders per-request via connection(), so build time never needs
+ * database access, but the expensive query itself no longer runs on every
+ * single visit and crawl). Tagged so a settings change reflects immediately
+ * instead of waiting out the window. */
+export const findPlatformOrganizationMetadata = unstable_cache(
+  async () => {
+    return db.organization.findFirst({
+      where: {
+        members: { some: { status: "ACTIVE", role: PLATFORM_MEMBERSHIP_ROLE_WHERE } },
+      },
+      select: { id: true, metadata: true },
+    });
+  },
+  ["platform-organization-metadata"],
+  { revalidate: 300, tags: [PUBLIC_MARKETING_CACHE_TAG] },
+);

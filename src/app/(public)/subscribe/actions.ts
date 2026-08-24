@@ -81,5 +81,9 @@ export async function startPublicSubscription(formData: FormData): Promise<void>
   const inviteUrl = buildTenantAppUrl("/invite", { token, next: "/app/organization/billing" });
   const delivery = await sendEmail({ to: input.email, ...invitationEmail({ organizationName: input.organizationName, roleName: "Organization Owner", inviteUrl }) });
   if (!delivery.ok) await markInvitationDeliveryFailed(created.membership.id);
-  redirect(`/subscribe/thank-you?email=${encodeURIComponent(input.email)}${delivery.ok ? "" : "&delivery=failed"}`);
+  // Deliberately no email in this URL: it would sit in an indexable,
+  // crawlable, cacheable location (browser history, analytics, a support
+  // screenshot) for no real benefit. The person who just typed their own
+  // email into the form a moment ago does not need it echoed back.
+  redirect(`/subscribe/thank-you${delivery.ok ? "" : "?delivery=failed"}`);
 }

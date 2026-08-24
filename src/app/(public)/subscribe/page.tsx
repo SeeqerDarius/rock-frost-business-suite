@@ -7,8 +7,16 @@ import { TurnstileWidget } from "@/components/security/turnstile-widget";
 import { isBotProtectionConfigured } from "@/lib/bot-protection";
 import { createContactFormProof } from "@/lib/contact-form-protection";
 import { formatGhs, MODULE_PRICES, PRICING_BUNDLES } from "@/lib/pricing";
+import { createPublicMetadata } from "@/lib/seo";
 import { getModule } from "@/platform/modules/registry";
 import { startPublicSubscription } from "./actions";
+
+export const metadata = createPublicMetadata({
+  title: "Subscribe",
+  description: "Create your Rock Frost workspace and continue to secure payment.",
+  path: "/subscribe",
+  noIndex: true,
+});
 
 const errors: Record<string, string> = { verification: "We could not verify this request. Refresh and try again.", invalid: "Check the required details and try again.", product: "Choose an available product.", "platform-account": "Use a customer email address. Platform operator accounts cannot own customer workspaces.", "too-soon": "An account was just prepared for this email. Check your inbox before trying again.", unavailable: "Account setup is temporarily unavailable. Please contact Rock Frost." };
 

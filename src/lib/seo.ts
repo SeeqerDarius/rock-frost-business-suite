@@ -11,11 +11,16 @@ export function createPublicMetadata({
   description,
   path,
   keywords = [],
+  noIndex = false,
 }: {
   title: string;
   description: string;
   path: string;
   keywords?: string[];
+  /** For a real page that must stay reachable (a post-submit confirmation, a
+   * checkout step) but shouldn't be indexed or ranked, as opposed to a page
+   * that shouldn't exist for crawlers at all, which belongs in robots.ts instead. */
+  noIndex?: boolean;
 }): Metadata {
   const url = path === "/" ? SITE_URL : `${SITE_URL}${path}`;
   return {
@@ -23,6 +28,7 @@ export function createPublicMetadata({
     description,
     keywords,
     alternates: { canonical: url },
+    ...(noIndex ? { robots: { index: false, follow: true } } : {}),
     openGraph: {
       type: "website",
       locale: "en_GH",

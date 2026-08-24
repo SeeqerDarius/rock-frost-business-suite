@@ -1,12 +1,13 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 import { buildTenantAppUrl } from "@/lib/app-url";
+import { PUBLIC_MARKETING_CACHE_TAG } from "@/lib/platform-marketing";
 import { sendEmail } from "@/lib/email";
 import { invitationEmail } from "@/lib/email-templates";
 import {
@@ -329,6 +330,7 @@ export async function updateOrganizationPublicShowcase(formData: FormData): Prom
   });
   revalidatePath("/");
   revalidatePath(`/app/platform/organizations/${parsed.data.organizationId}`);
+  updateTag(PUBLIC_MARKETING_CACHE_TAG);
   redirect(`/app/platform/organizations/${parsed.data.organizationId}?showcase=updated`);
 }
 
