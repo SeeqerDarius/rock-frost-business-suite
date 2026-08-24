@@ -68,6 +68,7 @@ export const PERMISSIONS = {
   HR_REVIEWS_MANAGE: "hr.reviews.manage",
   HR_REPORTS_VIEW: "hr.reports.view",
   HR_SETTINGS_MANAGE: "hr.settings.manage",
+  HR_ONBOARDING_MANAGE: "hr.onboarding.manage",
   PROCUREMENT_VIEW: "procurement.view",
   PROCUREMENT_VENDORS_MANAGE: "procurement.vendors.manage",
   PROCUREMENT_REQUESTS_MANAGE: "procurement.requests.manage",

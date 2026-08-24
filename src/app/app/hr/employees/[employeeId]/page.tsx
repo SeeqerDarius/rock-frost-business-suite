@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Mail, Phone, Smartphone, CalendarClock, History as HistoryIcon, Network } from "lucide-react";
+import { Mail, Phone, Smartphone, CalendarClock, History as HistoryIcon, Network, CircleCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { IconBadge } from "@/components/ui/icon-badge";
@@ -10,9 +10,11 @@ import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, Dialog
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getEmployeeProfile, getEmployeeStatusHistory, listManagerCandidates } from "@/modules/hr/service";
+import { getEmployeeProfile, getEmployeeStatusHistory, listManagerCandidates, listPlanTemplates, listPendingPlanActivities } from "@/modules/hr/service";
 import { upsertEmployee } from "../actions";
 import { EmployeeFields } from "../employee-fields";
+import { markPlanActivityDone } from "./actions";
+import { LaunchPlanDialog } from "./launch-plan-dialog";
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
   ONBOARDING: "secondary",
@@ -22,6 +24,12 @@ const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "seco
   TERMINATION_PENDING: "secondary",
   TERMINATED: "destructive",
   REINSTATED: "default",
+};
+
+const ERROR_MESSAGES: Record<string, string> = {
+  forbidden: "You don't have permission to do that.",
+  "missing-fields": "Choose a template and a target date.",
+  "not-found": "That employee or template could not be found.",
 };
 
 function PersonAvatar({ id, fullName, photoData, size = 56 }: { id: string; fullName: string; photoData: string | null; size?: number }) {
@@ -35,21 +43,41 @@ function PersonAvatar({ id, fullName, photoData, size = 56 }: { id: string; full
   );
 }
 
-export default async function HrEmployeeProfilePage({ params }: { params: Promise<{ employeeId: string }> }) {
+export default async function HrEmployeeProfilePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ employeeId: string }>;
+  searchParams: Promise<{ saved?: string; error?: string }>;
+}) {
   const { employeeId } = await params;
+  const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("hr");
   const canManage = hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_EDIT) || hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE);
-  const [employee, statusHistory, managers] = await Promise.all([
+  const canLaunchPlans = hasPermission(tenant, PERMISSIONS.HR_ONBOARDING_MANAGE);
+  const [employee, statusHistory, managers, onboardingTemplates, offboardingTemplates, pendingActivities] = await Promise.all([
     getEmployeeProfile(tenant.organizationId, employeeId),
     getEmployeeStatusHistory(tenant.organizationId, employeeId),
     listManagerCandidates(tenant.organizationId),
+    listPlanTemplates(tenant.organizationId, "ONBOARDING"),
+    listPlanTemplates(tenant.organizationId, "OFFBOARDING"),
+    listPendingPlanActivities(tenant.organizationId, employeeId),
   ]);
   if (!employee) notFound();
   const managerItems: Record<string, string> = Object.fromEntries(managers.filter((m) => m.id !== employee.id).map((m) => [m.id, m.fullName]));
+  const defaultKind = employee.status === "TERMINATION_PENDING" ? "OFFBOARDING" : "ONBOARDING";
+  const defaultTargetDate = (employee.status === "TERMINATION_PENDING" && employee.terminationDate ? employee.terminationDate : employee.hireDate).toISOString().slice(0, 10);
 
   return (
     <div className="space-y-6">
       <Link href="/app/hr/employees" className="text-sm text-muted-foreground hover:underline">Back to Employees</Link>
+
+      {saved ? (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">Saved.</div>
+      ) : null}
+      {error && ERROR_MESSAGES[error] ? (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{ERROR_MESSAGES[error]}</div>
+      ) : null}
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-4">
@@ -77,6 +105,14 @@ export default async function HrEmployeeProfilePage({ params }: { params: Promis
 
       <div className="flex flex-wrap gap-2">
         <Link href="/app/hr/leave"><Button type="button" size="sm" variant="outline"><CalendarClock />Time off</Button></Link>
+        {canLaunchPlans ? (
+          <LaunchPlanDialog
+            employeeId={employee.id}
+            defaultKind={defaultKind}
+            defaultTargetDate={defaultTargetDate}
+            templates={[...onboardingTemplates, ...offboardingTemplates].map((t) => ({ id: t.id, kind: t.kind, name: t.name }))}
+          />
+        ) : null}
         <Dialog>
           <DialogTrigger render={<Button type="button" size="sm" variant="outline"><HistoryIcon />History</Button>} />
           <DialogContent>
@@ -99,6 +135,29 @@ export default async function HrEmployeeProfilePage({ params }: { params: Promis
           </DialogContent>
         </Dialog>
       </div>
+
+      {pendingActivities.length > 0 ? (
+        <div className="space-y-2 rounded-xl border p-4">
+          <h2 className="text-sm font-semibold">Pending activities</h2>
+          <ul className="space-y-2">
+            {pendingActivities.map((activity) => (
+              <li key={activity.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
+                <div>
+                  <p>{activity.title}</p>
+                  <p className="text-xs text-muted-foreground">Due {activity.dueDate.toLocaleDateString()}{!activity.ownerId ? " · no user assigned" : ""}</p>
+                </div>
+                {canLaunchPlans || canManage ? (
+                  <form action={markPlanActivityDone}>
+                    <input type="hidden" name="activityId" value={activity.id} />
+                    <input type="hidden" name="employeeId" value={employee.id} />
+                    <Button type="submit" size="sm" variant="ghost"><CircleCheck />Mark done</Button>
+                  </form>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <Tabs defaultValue="work">
         <TabsList>

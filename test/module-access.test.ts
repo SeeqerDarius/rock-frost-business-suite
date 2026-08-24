@@ -171,7 +171,9 @@ describe("module authorization source coverage", () => {
     // 50 because School's single actions.ts was included for the same
     // reason as the page.tsx count above.
     // 58: Accounting Tax and VAT adds one separately guarded action file.
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(58);
+    // 59, up from 58: HR's employee-profile actions.ts (Launch Plan, mark-activity-done)
+    // is a new guarded actions file, requireModuleAccess("hr").
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(59);
 
     for (const { moduleKey, filePath } of guardedFiles) {
       const source = readFileSync(filePath, "utf8");

@@ -457,6 +457,8 @@ model Organization {
   hrTerminationRequests           HrTerminationRequest[]
   hrEmployeeStatusHistory         HrEmployeeStatusHistory[]
   hrOffboardingTasks              HrOffboardingTask[]
+  hrPlanTemplates                 HrPlanTemplate[]
+  hrPlanInstances                 HrPlanInstance[]
   hrLeaveTypes                    HrLeaveType[]
   hrLeaveRequests                 HrLeaveRequest[]
   hrPerformanceReviews            HrPerformanceReview[]
@@ -2554,6 +2556,7 @@ model HrEmployee {
   terminationRequests HrTerminationRequest[]
   statusHistory       HrEmployeeStatusHistory[]
   offboardingTasks    HrOffboardingTask[]
+  planInstances       HrPlanInstance[]
 
   @@unique([organizationId, employeeNumber])
   @@index([organizationId, status])
@@ -2638,6 +2641,105 @@ model HrOffboardingTask {
 
   @@index([organizationId, completed])
   @@index([terminationId])
+}
+
+enum HrPlanKind {
+  ONBOARDING
+  OFFBOARDING
+}
+
+enum HrPlanActivityType {
+  TODO
+  EMAIL
+  CALL
+  MEETING
+  DOCUMENT
+}
+
+enum HrPlanActivityStatus {
+  PENDING
+  DONE
+}
+
+/**
+ * Who an activity defaults to when a template's plan is launched, resolved to a
+ * concrete HrPlanActivity.ownerId (or left null if that role has no linked user -
+ * see launchPlan() in src/modules/hr/service.ts).
+ */
+enum HrPlanOwnerRule {
+  EMPLOYEE
+  MANAGER
+  HR_MANAGER
+  UNASSIGNED
+}
+
+/**
+ * An organization-configured checklist a plan is launched from. Deliberately
+ * independent of HrTerminationRequest/HrOffboardingTask's maker-checker workflow
+ * above - this is a standalone, manually-triggered tool (Odoo's own "Launch Plan"
+ * is the same: no approval chain), not a replacement for it.
+ */
+model HrPlanTemplate {
+  id             String     @id @default(cuid())
+  organizationId String
+  kind           HrPlanKind
+  name           String
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  activities   HrPlanTemplateActivity[]
+  instances    HrPlanInstance[]
+
+  @@index([organizationId, kind])
+}
+
+model HrPlanTemplateActivity {
+  id                String             @id @default(cuid())
+  templateId        String
+  title             String
+  activityType      HrPlanActivityType
+  dueDateOffsetDays Int                @default(0)
+  ownerRule         HrPlanOwnerRule    @default(UNASSIGNED)
+  sortOrder         Int                @default(0)
+
+  template HrPlanTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+}
+
+model HrPlanInstance {
+  id             String     @id @default(cuid())
+  organizationId String
+  employeeId     String
+  kind           HrPlanKind
+  templateId     String?
+  targetDate     DateTime
+  launchedById   String
+  launchedAt     DateTime   @default(now())
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     HrEmployee       @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  template     HrPlanTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  activities   HrPlanActivity[]
+
+  @@index([organizationId, employeeId])
+}
+
+model HrPlanActivity {
+  id           String               @id @default(cuid())
+  instanceId   String
+  title        String
+  activityType HrPlanActivityType
+  dueDate      DateTime
+  ownerId      String?
+  status       HrPlanActivityStatus @default(PENDING)
+  completedAt  DateTime?
+  sortOrder    Int                  @default(0)
+
+  instance HrPlanInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@index([instanceId, status])
 }
 
 model HrLeaveType {
@@ -3115,13 +3217,17 @@ model PosSale {
   paymentMethod   PosPaymentMethod @default(CASH)
   status          PosSaleStatus    @default(COMPLETED)
   soldById        String?
-  /** Client-generated key for the offline-sync queue (src/app/app/pos/sell/offline-queue.ts):
+  /**
+   * Client-generated key for the offline-sync queue (src/app/app/pos/sell/offline-queue.ts):
    * lets a replayed sync call return the already-created sale instead of creating a
-   * duplicate. Null for every sale submitted while online. */
+   * duplicate. Null for every sale submitted while online.
+   */
   clientRequestId String?
-  /** When the sale actually happened, captured client-side at the moment of an offline
+  /**
+   * When the sale actually happened, captured client-side at the moment of an offline
    * sale (which may only reach the server, and get its createdAt, minutes later once
-   * synced). Null for online sales, where createdAt already reflects this. */
+   * synced). Null for online sales, where createdAt already reflects this.
+   */
   occurredAt      DateTime?
   createdAt       DateTime         @default(now())
 

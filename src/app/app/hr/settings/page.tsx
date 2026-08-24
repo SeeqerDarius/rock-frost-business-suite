@@ -1,4 +1,4 @@
-import { Lock, CalendarClock, Hash } from "lucide-react";
+import { Lock, CalendarClock, Hash, ListChecks, Plus } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -6,16 +6,21 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getHrSettings, listLeaveTypes } from "@/modules/hr/service";
-import { addLeaveType, saveHrSettings } from "./actions";
+import { getHrSettings, listLeaveTypes, listPlanTemplates } from "@/modules/hr/service";
+import { addLeaveType, saveHrSettings, savePlanTemplate, removePlanTemplate } from "./actions";
+import { PlanTemplateForm } from "./plan-template-form";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage HR settings.",
   "missing-fields": "A name is required.",
   "invalid-prefix": "Use 2-8 uppercase letters or numbers.",
+  "not-found": "That plan template could not be found.",
 };
+
+const PLAN_KIND_LABEL: Record<string, string> = { ONBOARDING: "Onboarding", OFFBOARDING: "Offboarding" };
 
 export default async function HrSettingsPage({
   searchParams,
@@ -34,9 +39,12 @@ export default async function HrSettingsPage({
     );
   }
 
-  const [leaveTypes, settings] = await Promise.all([
+  const canManagePlans = hasPermission(tenant, PERMISSIONS.HR_ONBOARDING_MANAGE);
+  const [leaveTypes, settings, onboardingTemplates, offboardingTemplates] = await Promise.all([
     listLeaveTypes(tenant.organizationId),
     getHrSettings(tenant.organizationId),
+    listPlanTemplates(tenant.organizationId, "ONBOARDING"),
+    listPlanTemplates(tenant.organizationId, "OFFBOARDING"),
   ]);
 
   return (
@@ -109,6 +117,61 @@ export default async function HrSettingsPage({
           </form>
         </CardContent>
       </Card>
+
+      {canManagePlans ? (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <ListChecks className="size-5 text-muted-foreground" />
+              <CardTitle>Onboarding &amp; offboarding plans</CardTitle>
+            </div>
+            <CardDescription>Checklist templates that generate dated, owner-assigned activities when launched from an employee&apos;s profile.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {([["ONBOARDING", onboardingTemplates], ["OFFBOARDING", offboardingTemplates]] as const).map(([kind, templates]) => (
+              <div key={kind} className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">{PLAN_KIND_LABEL[kind]}</h3>
+                  <Dialog>
+                    <DialogTrigger render={<Button size="sm" variant="outline"><Plus />New template</Button>} />
+                    <DialogContent className="sm:max-w-2xl">
+                      <DialogHeader><DialogTitle>New {PLAN_KIND_LABEL[kind].toLowerCase()} template</DialogTitle></DialogHeader>
+                      <PlanTemplateForm defaultKind={kind} action={savePlanTemplate} />
+                    </DialogContent>
+                  </Dialog>
+                </div>
+                {templates.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No {PLAN_KIND_LABEL[kind].toLowerCase()} templates yet.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {templates.map((template) => (
+                      <li key={template.id} className="flex items-center justify-between rounded-md border px-3 py-2">
+                        <div>
+                          <p className="text-sm font-medium">{template.name}</p>
+                          <p className="text-xs text-muted-foreground">{template.activities.length} {template.activities.length === 1 ? "activity" : "activities"}</p>
+                        </div>
+                        <div className="flex gap-1">
+                          <Dialog>
+                            <DialogTrigger render={<Button size="sm" variant="ghost">Edit</Button>} />
+                            <DialogContent className="sm:max-w-2xl">
+                              <DialogHeader><DialogTitle>Edit {template.name}</DialogTitle></DialogHeader>
+                              <PlanTemplateForm id={template.id} defaultKind={kind} defaultName={template.name} defaultActivities={template.activities} action={savePlanTemplate} />
+                            </DialogContent>
+                          </Dialog>
+                          <form action={removePlanTemplate}>
+                            <input type="hidden" name="id" value={template.id} />
+                            <Button type="submit" size="sm" variant="ghost">Delete</Button>
+                          </form>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

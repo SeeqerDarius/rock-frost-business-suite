@@ -11,6 +11,8 @@ const mockDb = {
   hrLeaveType: { findFirst: vi.fn() },
   hrLeaveRequest: { create: vi.fn() },
   hrPerformanceReview: { create: vi.fn() },
+  hrPlanTemplate: { findFirst: vi.fn() },
+  hrPlanInstance: { create: vi.fn() },
 
   fleetOwner: { findFirst: vi.fn() },
   fleetDriver: { findFirst: vi.fn() },
@@ -110,6 +112,24 @@ describe("HR service — cross-tenant IDOR fixes", () => {
       hr.createReview(ORG, { employeeId: "emp-foreign", reviewPeriodStart: new Date(), reviewPeriodEnd: new Date() }),
     ).rejects.toThrow(hr.NotFoundError);
     expect(mockDb.hrPerformanceReview.create).not.toHaveBeenCalled();
+  });
+
+  it("launchPlan rejects an employeeId from another organization", async () => {
+    mockDb.hrEmployee.findFirst.mockResolvedValue(null);
+    mockDb.hrPlanTemplate.findFirst.mockResolvedValue({ id: "tpl-1", activities: [] });
+    await expect(
+      hr.launchPlan(ORG, { employeeId: "emp-foreign", kind: "ONBOARDING", templateId: "tpl-1", targetDate: new Date(), launchedById: "user-1" }),
+    ).rejects.toThrow(hr.NotFoundError);
+    expect(mockDb.hrPlanInstance.create).not.toHaveBeenCalled();
+  });
+
+  it("launchPlan rejects a templateId from another organization", async () => {
+    mockDb.hrEmployee.findFirst.mockResolvedValue({ id: "emp-1", userId: null, manager: null });
+    mockDb.hrPlanTemplate.findFirst.mockResolvedValue(null);
+    await expect(
+      hr.launchPlan(ORG, { employeeId: "emp-1", kind: "ONBOARDING", templateId: "tpl-foreign", targetDate: new Date(), launchedById: "user-1" }),
+    ).rejects.toThrow(hr.NotFoundError);
+    expect(mockDb.hrPlanInstance.create).not.toHaveBeenCalled();
   });
 });
 

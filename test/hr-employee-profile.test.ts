@@ -7,6 +7,11 @@ const navigation = readFileSync("src/modules/hr/navigation.tsx", "utf8");
 const profilePage = readFileSync("src/app/app/hr/employees/[employeeId]/page.tsx", "utf8");
 const orgChartPage = readFileSync("src/app/app/hr/employees/[employeeId]/org-chart/page.tsx", "utf8");
 const hrService = readFileSync("src/modules/hr/service.ts", "utf8");
+const settingsPage = readFileSync("src/app/app/hr/settings/page.tsx", "utf8");
+const settingsActions = readFileSync("src/app/app/hr/settings/actions.ts", "utf8");
+const employeeActions = readFileSync("src/app/app/hr/employees/[employeeId]/actions.ts", "utf8");
+const launchPlanDialog = readFileSync("src/app/app/hr/employees/[employeeId]/launch-plan-dialog.tsx", "utf8");
+const permissions = readFileSync("src/lib/auth/permissions.ts", "utf8");
 
 describe("HR Departments and Employees kanban views", () => {
   it("adds a guarded Departments page grouping employees by department, linked from HR navigation", () => {
@@ -66,5 +71,51 @@ describe("HR full organization chart page", () => {
     expect(hrService).toContain("export async function getOrgChartTree");
     expect(hrService).toContain("seen.add(root.id)");
     expect(hrService).toContain("visited.has(child.id)");
+  });
+});
+
+describe("HR Launch Plan onboarding/offboarding automation", () => {
+  it("is gated behind a dedicated hr.onboarding.manage permission, separate from hr.employees.manage", () => {
+    expect(permissions).toContain('HR_ONBOARDING_MANAGE: "hr.onboarding.manage"');
+  });
+
+  it("HR Settings gets a plan-template CRUD section with no auto-seeded default templates", () => {
+    expect(settingsPage).toContain("Onboarding &amp; offboarding plans");
+    expect(settingsPage).toContain("listPlanTemplates");
+    expect(settingsPage).toContain("No {PLAN_KIND_LABEL[kind].toLowerCase()} templates yet.");
+    expect(settingsActions).toContain("export async function savePlanTemplate");
+    expect(settingsActions).toContain("export async function removePlanTemplate");
+  });
+
+  it("launchPlan resolves each activity's owner rule to a concrete user id or null (never guessed), matching the EMPLOYEE/MANAGER/HR_MANAGER/UNASSIGNED rules", () => {
+    expect(hrService).toContain("async function resolvePlanOwner");
+    expect(hrService).toContain('rule === "EMPLOYEE"');
+    expect(hrService).toContain('rule === "MANAGER"');
+    expect(hrService).toContain('rule === "HR_MANAGER"');
+    expect(hrService).toContain("PERMISSIONS.HR_EMPLOYEES_MANAGE");
+  });
+
+  it("Launch Plan is decoupled from the termination maker-checker workflow, not a replacement for it", () => {
+    expect(hrService).toContain("Deliberately independent of HrTerminationRequest/HrOffboardingTask");
+  });
+
+  it("the employee-profile actions file previews before committing and only mutates through launchPlan/completePlanActivity", () => {
+    expect(employeeActions).toContain("export async function previewLaunchPlan");
+    expect(employeeActions).toContain("export async function launchEmployeePlan");
+    expect(employeeActions).toContain("export async function markPlanActivityDone");
+    expect(employeeActions).toContain("PERMISSIONS.HR_ONBOARDING_MANAGE");
+  });
+
+  it("the Launch Plan dialog previews via a Server Action RPC call (startTransition), not a client-side fetch layer", () => {
+    expect(launchPlanDialog).toContain("useTransition");
+    expect(launchPlanDialog).toContain("previewLaunchPlan(formData)");
+    expect(launchPlanDialog).not.toMatch(/\bfetch\(/);
+    expect(launchPlanDialog).toContain("No user to assign");
+  });
+
+  it("profile page surfaces pending plan activities with a Mark done action", () => {
+    expect(profilePage).toContain("listPendingPlanActivities");
+    expect(profilePage).toContain("markPlanActivityDone");
+    expect(profilePage).toContain("Pending activities");
   });
 });

@@ -1,9 +1,10 @@
 import "server-only";
 
 import { db } from "@/lib/db";
-import type { HrEmployeeStatus } from "@prisma/client";
+import type { HrEmployeeStatus, HrPlanKind, HrPlanActivityType, HrPlanOwnerRule } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { logAuditEvent } from "@/lib/audit";
+import { PERMISSIONS } from "@/lib/auth/permissions";
 import {
   getOrganizationModuleConfiguration,
   updateOrganizationModuleConfigurationValues,
@@ -360,6 +361,134 @@ export async function reinstateEmployee(organizationId: string, employeeId: stri
 
 export async function setOffboardingTaskCompletion(organizationId: string, taskId: string, actorId: string, completed: boolean, notes?: string | null) {
   return db.hrOffboardingTask.update({ where: { id: taskId, organizationId }, data: { completed, completedById: completed ? actorId : null, completedAt: completed ? new Date() : null, notes } });
+}
+
+// --- Launch Plan (onboarding/offboarding automation) ---
+// Deliberately independent of HrTerminationRequest/HrOffboardingTask above -
+// a standalone, manually-triggered checklist tool, not part of that
+// approval chain. See docs/HR_MODULE.md.
+
+export function listPlanTemplates(organizationId: string, kind?: HrPlanKind) {
+  return db.hrPlanTemplate.findMany({
+    where: { organizationId, ...(kind ? { kind } : {}) },
+    include: { activities: { orderBy: { sortOrder: "asc" } } },
+    orderBy: { name: "asc" },
+  });
+}
+
+interface PlanTemplateActivityInput {
+  title: string;
+  activityType: HrPlanActivityType;
+  dueDateOffsetDays: number;
+  ownerRule: HrPlanOwnerRule;
+}
+
+export async function createPlanTemplate(organizationId: string, data: { kind: HrPlanKind; name: string; activities: PlanTemplateActivityInput[] }) {
+  return db.hrPlanTemplate.create({
+    data: {
+      organizationId,
+      kind: data.kind,
+      name: data.name,
+      activities: { create: data.activities.map((activity, index) => ({ ...activity, sortOrder: index })) },
+    },
+  });
+}
+
+export async function updatePlanTemplate(organizationId: string, id: string, data: { name: string; activities: PlanTemplateActivityInput[] }) {
+  const template = await db.hrPlanTemplate.findFirst({ where: { id, organizationId } });
+  if (!template) throw new NotFoundError("Plan template not found.");
+  return db.$transaction([
+    db.hrPlanTemplateActivity.deleteMany({ where: { templateId: id } }),
+    db.hrPlanTemplate.update({
+      where: { id },
+      data: {
+        name: data.name,
+        activities: { create: data.activities.map((activity, index) => ({ ...activity, sortOrder: index })) },
+      },
+    }),
+  ]);
+}
+
+export async function deletePlanTemplate(organizationId: string, id: string) {
+  const template = await db.hrPlanTemplate.findFirst({ where: { id, organizationId } });
+  if (!template) throw new NotFoundError("Plan template not found.");
+  return db.hrPlanTemplate.delete({ where: { id } });
+}
+
+/** Resolves an activity's owner rule to a concrete platform-user id at launch
+ * time, or null if that rule can't resolve to anyone with a linked account
+ * (matching Odoo's own "X has no user" warning behavior - never guessed at). */
+async function resolvePlanOwner(organizationId: string, rule: HrPlanOwnerRule, employee: { userId: string | null; manager: { userId: string | null } | null }) {
+  if (rule === "EMPLOYEE") return employee.userId;
+  if (rule === "MANAGER") return employee.manager?.userId ?? null;
+  if (rule === "HR_MANAGER") {
+    const holder = await db.organizationMember.findFirst({
+      where: { organizationId, status: "ACTIVE", role: { rolePermissions: { some: { permission: { key: PERMISSIONS.HR_EMPLOYEES_MANAGE } } } } },
+      orderBy: { createdAt: "asc" },
+      select: { userId: true },
+    });
+    return holder?.userId ?? null;
+  }
+  return null;
+}
+
+export async function previewPlanLaunch(organizationId: string, data: { employeeId: string; templateId: string; targetDate: Date }) {
+  const [employee, template] = await Promise.all([
+    db.hrEmployee.findFirst({ where: { id: data.employeeId, organizationId }, include: { manager: true } }),
+    db.hrPlanTemplate.findFirst({ where: { id: data.templateId, organizationId }, include: { activities: { orderBy: { sortOrder: "asc" } } } }),
+  ]);
+  if (!employee) throw new NotFoundError("Employee not found.");
+  if (!template) throw new NotFoundError("Plan template not found.");
+  return Promise.all(template.activities.map(async (activity) => ({
+    title: activity.title,
+    activityType: activity.activityType,
+    dueDate: new Date(data.targetDate.getTime() + activity.dueDateOffsetDays * 86400000),
+    ownerId: await resolvePlanOwner(organizationId, activity.ownerRule, employee),
+  })));
+}
+
+export async function launchPlan(organizationId: string, data: { employeeId: string; kind: HrPlanKind; templateId: string; targetDate: Date; launchedById: string }) {
+  const [employee, template] = await Promise.all([
+    db.hrEmployee.findFirst({ where: { id: data.employeeId, organizationId }, include: { manager: true } }),
+    db.hrPlanTemplate.findFirst({ where: { id: data.templateId, organizationId, kind: data.kind }, include: { activities: { orderBy: { sortOrder: "asc" } } } }),
+  ]);
+  if (!employee) throw new NotFoundError("Employee not found.");
+  if (!template) throw new NotFoundError("Plan template not found.");
+  const activities = await Promise.all(template.activities.map(async (activity, index) => ({
+    title: activity.title,
+    activityType: activity.activityType,
+    dueDate: new Date(data.targetDate.getTime() + activity.dueDateOffsetDays * 86400000),
+    ownerId: await resolvePlanOwner(organizationId, activity.ownerRule, employee),
+    sortOrder: index,
+  })));
+  return db.hrPlanInstance.create({
+    data: {
+      organizationId,
+      employeeId: data.employeeId,
+      kind: data.kind,
+      templateId: template.id,
+      targetDate: data.targetDate,
+      launchedById: data.launchedById,
+      activities: { create: activities },
+    },
+    include: { activities: true },
+  });
+}
+
+export function listPendingPlanActivities(organizationId: string, employeeId: string) {
+  return db.hrPlanActivity.findMany({
+    where: { status: "PENDING", instance: { organizationId, employeeId } },
+    include: { instance: true },
+    orderBy: { dueDate: "asc" },
+  });
+}
+
+export async function completePlanActivity(organizationId: string, activityId: string, actorId: string) {
+  const activity = await db.hrPlanActivity.findFirst({ where: { id: activityId, instance: { organizationId } } });
+  if (!activity) throw new NotFoundError("Plan activity not found.");
+  const updated = await db.hrPlanActivity.update({ where: { id: activityId }, data: { status: "DONE", completedAt: new Date() } });
+  await logAuditEvent({ organizationId, userId: actorId, module: "hr", action: "plan_activity.completed", entityName: "HrPlanActivity", entityId: activityId });
+  return updated;
 }
 
 // --- Leave types ---
