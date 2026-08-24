@@ -15,11 +15,11 @@ import { hasPermission, isFleetDriverRole, PERMISSIONS } from "@/lib/auth/permis
  * not a sidebar destination. See docs/SUPPORT_MESSAGING.md.
  *
  * "Modules" is a read-only "what's active" reference, distinct from
- * Overview: Overview keeps the "Quick launch" tile grid plus each module's
- * summary widget as a clickable launcher; Modules shows the same summary
- * widgets read-only (no "Open X" button - navigation happens from the
- * sidebar or Overview instead), so a user glancing at this tab only sees
- * what's actually active for their organization.
+ * Overview: Overview keeps its "Quick launch" icon grid clickable and its
+ * summary cards' "Open X" buttons removed (Quick launch is the one and only
+ * way to navigate from Overview); Modules shows the same icon-tile visual
+ * as Quick launch, but plain and non-clickable, so a user glancing at this
+ * tab only sees what's actually active, without it doubling as a launcher.
  */
 export async function getWorkspaceNavigation(tenant: TenantContext): Promise<ModuleNavItem[]> {
   const items: ModuleNavItem[] = [

@@ -1,5 +1,16 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-24: Overview loses its redundant Open buttons, Modules becomes a plain icon-tile status grid
+
+- **Follows directly from the previous entry's Modules-tab restoration**: the user looked at the shipped result and refined it further. Two changes, no schema involved.
+- **Overview (`src/app/app/(overview)/dashboard/page.tsx`)**: every card in the stat-card grid below "Quick launch" now renders with `linkable={false}` (widgets) or with its `CardContent`/Button removed entirely (the generic fallback card, for any module without a registered widget). Quick launch's icon grid is now the *only* way to navigate away from Overview - the cards underneath are summary-only, removing a redundant second "Open X" control that did the same job.
+- **Modules page (`src/app/app/(overview)/modules/page.tsx`) rebuilt again**: the previous entry's approach (reusing the dashboard summary widgets read-only) is gone. It's now a plain grid of icon tiles - the exact same visual as Overview's "Quick launch" (`IconBadge` + module name in a bordered tile) - but rendered as plain `<div>`s instead of `<Link>`s, so they're not clickable. No more per-module stats shown here at all: this page is now purely "which modules are active," nothing else. `dashboardWidgets` is no longer imported here.
+- **`src/platform/modules/{workspace-navigation,dashboard-widgets}.tsx` doc comments updated** to describe the current split accurately (they had gone stale after the previous entry's widget-reuse approach was superseded within the same session).
+- **Important files**: `src/app/app/(overview)/{dashboard,modules}/page.tsx`, `src/platform/modules/{workspace-navigation,dashboard-widgets}.tsx`, `test/pos-sell-and-launcher-redesign.test.ts` (rewrote the Modules-page assertion from "reuses widgets read-only" to "plain icon-tile grid, no widgets, no Link, no Open," added a new assertion for Overview's own no-Open-button change).
+- **Validation**: no schema change. `npx tsc --noEmit`, `npm run lint`, `npm run test` (93 files, 629 tests, up from 93/628), and `npm run build` all passed.
+- **Not verified live in a browser**: no test tenant credentials in this environment, consistent with every other change this session.
+- **Production deploy verified**: <!-- filled in after push and deploy verification -->
+
 ## 2026-08-24: Contract Templates graduated into a full editable form (schema migration)
 
 - **Follows directly from the Post-round-2 UI follow-ups entry below**: after HR Configuration moved into HR Settings, the user asked for Contract Templates specifically to be "fully made and implemented properly," matching Odoo's own Contract Template screen (Template Name, Job, HR Responsible, Department, then a Salary Information section: Contract Overview and Schedule). Until now `HrContractTemplate` was one of the 7 simple named lookups from HR round 2 phase J — just `{id, organizationId, name, createdAt}`.

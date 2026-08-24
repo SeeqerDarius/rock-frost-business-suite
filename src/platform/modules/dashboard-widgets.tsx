@@ -24,12 +24,13 @@ import { HospitalDashboardWidget } from "@/modules/hospital/dashboard-widget";
  * this file.
  *
  * A module with no entry here just doesn't get a widget — the dashboard
- * falls back to its generic "open module" card for that module.
+ * falls back to a generic summary card for that module instead.
  *
  * Every widget accepts an optional `linkable` prop (default true) that
- * toggles its "Open X" button - the Modules page reuses these same
- * widgets read-only (linkable={false}) instead of duplicating each
- * module's summary-fetch logic.
+ * toggles its "Open X" button. Overview renders every widget with
+ * linkable={false} since its own "Quick launch" icon grid is the one and
+ * only way to navigate from that page - the widget cards below it are
+ * summary-only.
  */
 export const dashboardWidgets: Record<string, ComponentType<{ linkable?: boolean }>> = {
   fleet: FleetDashboardWidget,

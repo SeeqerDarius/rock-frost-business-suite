@@ -25,11 +25,18 @@ describe("dashboard quick-launch grid", () => {
     expect(dashboard).toContain('href="/app/modules"');
   });
 
-  it("Modules page reuses the dashboard summary widgets read-only, with no Open button", () => {
+  it("Modules page is a plain icon-tile status grid, not the widget cards or a launcher", () => {
     const modulesPage = read("src/app/app/(overview)/modules/page.tsx");
-    expect(modulesPage).toContain("dashboardWidgets");
-    expect(modulesPage).toContain("linkable={false}");
-    expect(modulesPage).not.toContain(">Open<");
+    expect(modulesPage).not.toContain("dashboardWidgets");
+    expect(modulesPage).toContain("size-14 rounded-2xl");
+    expect(modulesPage).not.toContain("accessibleModule.routePrefix");
+    expect(modulesPage).not.toContain("Open");
+  });
+
+  it("Overview's own card grid shows module stats without an Open button - Quick launch is the only way to navigate from there", () => {
+    const dashboard = read("src/app/app/(overview)/dashboard/page.tsx");
+    expect(dashboard).toContain("linkable={false}");
+    expect(dashboard).not.toContain("Open {mod.name}");
   });
 });
 

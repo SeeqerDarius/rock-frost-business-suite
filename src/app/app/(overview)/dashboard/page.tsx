@@ -2,7 +2,7 @@ import Link from "next/link";
 import { LayoutGrid } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { IconBadge } from "@/components/ui/icon-badge";
 import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry";
@@ -56,7 +56,7 @@ export default async function OrganizationDashboardPage() {
           {enabledModules.map(({ definition: mod, accessibleModule }) => {
             const Widget = dashboardWidgets[accessibleModule.key];
             if (Widget) {
-              return <Widget key={mod.key} />;
+              return <Widget key={mod.key} linkable={false} />;
             }
 
             return (
@@ -66,11 +66,6 @@ export default async function OrganizationDashboardPage() {
                   <CardTitle className="mt-3">{mod.name}</CardTitle>
                   <CardDescription>{mod.description}</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <Button size="sm" variant="outline" nativeButton={false} render={<Link href={accessibleModule.routePrefix as never} />}>
-                    Open {mod.name}
-                  </Button>
-                </CardContent>
               </Card>
             );
           })}
