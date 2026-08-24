@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-24: Public contact Sales email corrected (production data change, no code)
+
+- **Not a code or schema change** — the public `/contact` page's "Sales" email address (`owner@rockfrostgroup.com`) was live production data, not something in the repository. `src/lib/public-contact.ts`'s `getPublicContactDetails()` falls back to the platform's own anchor `Organization.billingEmail` whenever no `metadata.publicContact.salesEmail` override is configured, and no override existed.
+- **What changed**: the platform's anchor organization ("Rock Frost Business Suite", `cms1cp8r900avc4tsh0x3os64`) now has `metadata.publicContact = { salesEmail: "info@rockfrostgroup.com", supportEmail: "", phone: "", whatsapp: "" }` set. `billingEmail` itself was deliberately left untouched, since it's also used for real billing/subscription correspondence elsewhere (`platform/organizations`, `(overview)/organization`, `subscribe/actions.ts`) and repurposing it just to fix the public contact fallback would have been the wrong lever.
+- **How it was applied**: with the user's explicit confirmation, via a one-off script using the same write shape `updatePlatformSettings()` (`src/app/app/platform/settings/actions.ts`) uses when an operator saves the Settings page's contact fields — same `metadata.publicContact` key, plus an `AuditLog` row (`platform.settings_updated`, noted as an operator-directed script rather than a UI save) for traceability. The script was deleted after running; nothing was added to the repository.
+- **Verified live**: `https://rockfrostgroup.com/contact` now shows "Sales — info@rockfrostgroup.com".
+- **No validation gate applies** — no code changed, so there's nothing to lint, test, or build for this entry.
+
 ## 2026-08-24: Overview loses its redundant Open buttons, Modules becomes a plain icon-tile status grid
 
 - **Follows directly from the previous entry's Modules-tab restoration**: the user looked at the shipped result and refined it further. Two changes, no schema involved.
