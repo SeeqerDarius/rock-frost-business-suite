@@ -1,17 +1,35 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Delete, Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Delete, Plus, Trash2, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ProductPicker, type PickerItem, type PickerCategory } from "./product-picker";
+import { completeSale } from "./actions";
+import {
+  enqueueSale,
+  generateClientRequestId,
+  listQueuedSales,
+  markQueuedSaleError,
+  removeQueuedSale,
+  type QueuedSale,
+} from "./offline-queue";
 
 type Line = { key: number; itemId: string | null; description: string; quantity: number; unitPrice: string };
 type Payment = { key: number; method: string; amount: string; reference: string };
 type KeypadMode = "qty" | "price";
 
 const KEYPAD_KEYS = ["7", "8", "9", "4", "5", "6", "1", "2", "3", ".", "0", "back"] as const;
+
+const ERROR_MESSAGES: Record<string, string> = {
+  forbidden: "You don't have permission to record sales.",
+  "missing-fields": "A session and payment method are required.",
+  "insufficient-stock": "There isn't enough stock of one of these items at this register's warehouse.",
+  "no-open-session": "That session is no longer open.",
+  "invalid-line": "Every line needs a positive whole-number quantity and a valid unit price.",
+  "not-found": "That session or register could not be found.",
+};
 
 function lineTotal(line: Line) {
   return Number(line.unitPrice || 0) * Number(line.quantity || 0);
@@ -32,7 +50,7 @@ function appendPriceDigit(field: string, digit: string): string {
   return field + digit;
 }
 
-export function SaleCart({ items: initialItems, categories: initialCategories }: { items: PickerItem[]; categories: PickerCategory[] }) {
+export function SaleCart({ items: initialItems, categories: initialCategories, organizationId }: { items: PickerItem[]; categories: PickerCategory[]; organizationId: string }) {
   const [items, setItems] = useState(initialItems);
   const [categories, setCategories] = useState(initialCategories);
   const [nextKey, setNextKey] = useState(2);
@@ -43,7 +61,67 @@ export function SaleCart({ items: initialItems, categories: initialCategories }:
   const [barcode, setBarcode] = useState("");
   const [payments, setPayments] = useState<Payment[]>([{ key: 1, method: "CASH", amount: "0.00", reference: "" }]);
   const [suspended, setSuspended] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
+  const [pendingCount, setPendingCount] = useState(() => listQueuedSales(organizationId).length);
+  const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const formRootRef = useRef<HTMLDivElement>(null);
   const total = useMemo(() => lines.reduce((sum, line) => sum + lineTotal(line), 0), [lines]);
+
+  function refreshPendingCount() {
+    setPendingCount(listQueuedSales(organizationId).length);
+  }
+
+  async function syncQueuedSales() {
+    for (const entry of listQueuedSales(organizationId)) {
+      const formData = new FormData();
+      formData.set("sessionId", entry.sessionId);
+      formData.set("customerName", entry.customerName ?? "");
+      formData.set("mode", entry.mode);
+      formData.set("lines", JSON.stringify(entry.lines));
+      formData.set("payments", JSON.stringify(entry.payments));
+      formData.set("clientRequestId", entry.clientRequestId);
+      formData.set("occurredAt", entry.occurredAt);
+      try {
+        const result = await completeSale(formData);
+        if (result.ok) {
+          removeQueuedSale(organizationId, entry.clientRequestId);
+        } else {
+          markQueuedSaleError(organizationId, entry.clientRequestId, ERROR_MESSAGES[result.error] ?? result.error);
+        }
+      } catch {
+        break; // still offline — stop for now, the next trigger will pick up where this left off
+      }
+    }
+    refreshPendingCount();
+  }
+
+  useEffect(() => {
+    queueMicrotask(() => { void syncQueuedSales(); });
+    function handleOnline() { setIsOnline(true); void syncQueuedSales(); }
+    function handleOffline() { setIsOnline(false); }
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    const interval = window.setInterval(() => { if (navigator.onLine) void syncQueuedSales(); }, 20000);
+
+    // The submit button is type="button" (submission is JS-driven so a
+    // network failure can be told apart from a validation error), but the
+    // surrounding <form> still has no action and no type="submit" control —
+    // this blocks the browser's own implicit-submit behavior (e.g. Enter in
+    // a lone text field) from ever navigating the page.
+    const form = formRootRef.current?.closest("form");
+    function preventNativeSubmit(event: SubmitEvent) { event.preventDefault(); }
+    form?.addEventListener("submit", preventNativeSubmit);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+      window.clearInterval(interval);
+      form?.removeEventListener("submit", preventNativeSubmit);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [organizationId]);
 
   function selectLine(key: number) {
     setSelectedKey(key);
@@ -115,11 +193,73 @@ export function SaleCart({ items: initialItems, categories: initialCategories }:
     addToCart(item);
   }
 
+  function resetCart() {
+    setLines([]);
+    setPayments([{ key: nextKey, method: "CASH", amount: "0.00", reference: "" }]);
+    setNextKey((value) => value + 1);
+    setSuspended(false);
+    setSelectedKey(null);
+  }
+
+  function handleSubmit() {
+    const form = formRootRef.current?.closest("form");
+    if (!form) return;
+    setSubmitError(null);
+    setSubmitMessage(null);
+    const formData = new FormData(form);
+    const clientRequestId = generateClientRequestId();
+    const occurredAt = new Date().toISOString();
+    formData.set("clientRequestId", clientRequestId);
+    formData.set("occurredAt", occurredAt);
+    const mode: QueuedSale["mode"] = suspended ? "SUSPENDED" : "COMPLETED";
+    const queuedEntry: QueuedSale = {
+      clientRequestId,
+      sessionId: String(formData.get("sessionId") ?? ""),
+      customerName: String(formData.get("customerName") ?? "").trim() || null,
+      lines: JSON.parse(String(formData.get("lines"))),
+      payments: JSON.parse(String(formData.get("payments"))),
+      mode,
+      occurredAt,
+    };
+
+    startTransition(async () => {
+      try {
+        const result = await completeSale(formData);
+        if (result.ok) {
+          resetCart();
+          setSubmitMessage(result.suspended ? "Sale suspended for later." : `Sale recorded: ${result.saleNumber}`);
+        } else {
+          setSubmitError(ERROR_MESSAGES[result.error] ?? "Something went wrong. Try again.");
+        }
+      } catch {
+        // A thrown (not returned) failure is a real network/transport problem,
+        // not a validation error the server actually evaluated — queue it.
+        enqueueSale(organizationId, queuedEntry);
+        refreshPendingCount();
+        resetCart();
+        setIsOnline(false);
+        setSubmitMessage("Saved offline. It will sync automatically once you're back online.");
+      }
+    });
+  }
+
   return (
-    <div className="grid gap-4 lg:grid-cols-[1.1fr_1.3fr]">
+    <div ref={formRootRef} className="grid gap-4 lg:grid-cols-[1.1fr_1.3fr]">
       <input type="hidden" name="lines" value={JSON.stringify(lines.map((line) => ({ itemId: line.itemId, description: line.description || "Item", quantity: line.quantity, unitPrice: sanitizeMoney(line.unitPrice) })))} />
       <input type="hidden" name="payments" value={JSON.stringify(payments.map((payment) => ({ method: payment.method, amount: payment.amount, reference: payment.reference })))} />
       <input type="hidden" name="mode" value={suspended ? "SUSPENDED" : "COMPLETED"} />
+      {!isOnline || pendingCount > 0 ? (
+        <div className="lg:col-span-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+          <span className="flex items-center gap-2"><WifiOff className="size-4" />{!isOnline ? "You're offline — sales are saved locally and will sync automatically." : `${pendingCount} sale${pendingCount === 1 ? "" : "s"} pending sync.`}</span>
+          {pendingCount > 0 ? <Button type="button" size="sm" variant="outline" onClick={() => void syncQueuedSales()}>Sync now</Button> : null}
+        </div>
+      ) : null}
+      {submitMessage ? (
+        <div className="lg:col-span-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">{submitMessage}</div>
+      ) : null}
+      {submitError ? (
+        <div className="lg:col-span-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{submitError}</div>
+      ) : null}
 
       <div className="space-y-3">
         <Input placeholder="Scan barcode, then press Enter" value={barcode} onChange={(event) => setBarcode(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); scanBarcode(); } }} />
@@ -197,12 +337,12 @@ export function SaleCart({ items: initialItems, categories: initialCategories }:
         </div>
 
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={suspended} onChange={(event) => setSuspended(event.target.checked)} />Suspend this sale for later</label>
-        <Button type="submit" size="lg" className="w-full" disabled={lines.length === 0}>{suspended ? "Suspend sale" : "Payment"}</Button>
+        <Button type="button" size="lg" className="w-full" disabled={lines.length === 0 || isPending} onClick={handleSubmit}>{isPending ? "Saving..." : suspended ? "Suspend sale" : "Payment"}</Button>
       </div>
 
       <div>
         <Label className="mb-2 block">Products</Label>
-        <ProductPicker items={items} categories={categories} onAddItem={addToCart} onItemCreated={onItemCreated} />
+        <ProductPicker items={items} categories={categories} onAddItem={addToCart} onItemCreated={onItemCreated} isOnline={isOnline} />
       </div>
     </div>
   );

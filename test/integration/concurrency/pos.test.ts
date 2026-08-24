@@ -113,6 +113,30 @@ describe("POS concurrency (real Postgres)", () => {
     expect(saleNumbers.size).toBe(2);
   });
 
+  it("two genuinely concurrent createSale calls with the same clientRequestId (offline-sync double-fire) commit exactly one sale, not two", async () => {
+    const { warehouse, item, session } = await setupRegisterAndSession(10);
+    const clientRequestId = `offline-race-${Date.now()}-${Math.random()}`;
+    const saleInput = {
+      sessionId: session.id,
+      paymentMethod: "CASH" as const,
+      lines: [{ itemId: item.id, description: "Offline Race Item", quantity: 3, unitPrice: "10.00" }],
+      clientRequestId,
+    };
+
+    const [saleA, saleB] = await Promise.all([pos.createSale(org.organizationId, saleInput), pos.createSale(org.organizationId, saleInput)]);
+
+    // Both callers must resolve to the very same sale, not two different ones.
+    expect(saleA.id).toBe(saleB.id);
+    expect(saleA.saleNumber).toBe(saleB.saleNumber);
+
+    const rowsWithThatKey = await testDb.posSale.findMany({ where: { organizationId: org.organizationId, clientRequestId } });
+    expect(rowsWithThatKey).toHaveLength(1);
+
+    // Stock was decremented once, not twice, for the one sale that actually exists.
+    const finalQuantity = await stockQuantity(item.id, warehouse.id);
+    expect(finalQuantity).toBe(7);
+  });
+
   it("two concurrent refunds on the same completed sale: exactly one succeeds, stock RECEIPT posted only once", async () => {
     const { warehouse, item, session } = await setupRegisterAndSession(20);
 

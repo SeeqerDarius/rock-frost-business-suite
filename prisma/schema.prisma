@@ -3101,18 +3101,26 @@ model PosSession {
 }
 
 model PosSale {
-  id             String           @id @default(cuid())
-  organizationId String
-  registerId     String
-  sessionId      String
-  saleNumber     String
-  customerName   String?
-  subtotal       Decimal          @db.Decimal(12, 2)
-  total          Decimal          @db.Decimal(12, 2)
-  paymentMethod  PosPaymentMethod @default(CASH)
-  status         PosSaleStatus    @default(COMPLETED)
-  soldById       String?
-  createdAt      DateTime         @default(now())
+  id              String           @id @default(cuid())
+  organizationId  String
+  registerId      String
+  sessionId       String
+  saleNumber      String
+  customerName    String?
+  subtotal        Decimal          @db.Decimal(12, 2)
+  total           Decimal          @db.Decimal(12, 2)
+  paymentMethod   PosPaymentMethod @default(CASH)
+  status          PosSaleStatus    @default(COMPLETED)
+  soldById        String?
+  /** Client-generated key for the offline-sync queue (src/app/app/pos/sell/offline-queue.ts):
+   * lets a replayed sync call return the already-created sale instead of creating a
+   * duplicate. Null for every sale submitted while online. */
+  clientRequestId String?
+  /** When the sale actually happened, captured client-side at the moment of an offline
+   * sale (which may only reach the server, and get its createdAt, minutes later once
+   * synced). Null for online sales, where createdAt already reflects this. */
+  occurredAt      DateTime?
+  createdAt       DateTime         @default(now())
 
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   register     PosRegister   @relation(fields: [registerId], references: [id], onDelete: Cascade)
@@ -3123,6 +3131,7 @@ model PosSale {
   returns      PosReturn[]
 
   @@unique([organizationId, saleNumber])
+  @@unique([organizationId, clientRequestId])
   @@index([organizationId, status])
   @@index([registerId])
   @@index([sessionId])

@@ -42,11 +42,17 @@ export function ProductPicker({
   categories,
   onAddItem,
   onItemCreated,
+  isOnline = true,
 }: {
   items: PickerItem[];
   categories: PickerCategory[];
   onAddItem: (item: PickerItem) => void;
   onItemCreated: (item: PickerItem, category?: PickerCategory) => void;
+  /** Creating a product writes new catalogue/category rows, which this app's lightweight
+   * offline queue deliberately does not attempt to sync (see offline-queue.ts) — real
+   * conflict resolution would be needed for that, which is out of scope. Selling
+   * already-catalogued items stays available offline; adding a new one waits. */
+  isOnline?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("all");
@@ -86,7 +92,7 @@ export function ProductPicker({
           <Input placeholder="Search products" className="pl-8" value={search} onChange={(event) => setSearch(event.target.value)} />
         </div>
         <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setFormError(null); }}>
-          <DialogTrigger render={<Button type="button" variant="outline" />}>
+          <DialogTrigger render={<Button type="button" variant="outline" disabled={!isOnline} title={isOnline ? undefined : "Adding a new product needs a connection"} />}>
             <Plus />New product
           </DialogTrigger>
           <DialogContent>

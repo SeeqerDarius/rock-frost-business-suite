@@ -127,6 +127,34 @@ describe("POS — register IDOR, sale input validation, atomic refund claim", ()
     expect(mockDb.posSession.findFirst).not.toHaveBeenCalled();
   });
 
+  it("createSale is idempotent on clientRequestId — an offline-sync replay returns the already-created sale instead of re-validating or creating a duplicate", async () => {
+    const alreadyCreated = { id: "sale-1", saleNumber: "SALE-00001", clientRequestId: "offline-abc" };
+    mockDb.posSale.findFirst.mockResolvedValue(alreadyCreated);
+
+    const result = await pos.createSale(ORG, {
+      sessionId: "sess-1",
+      paymentMethod: "CASH",
+      lines: [{ description: "Widget", quantity: 1, unitPrice: "10.00" }],
+      clientRequestId: "offline-abc",
+    });
+
+    expect(result).toBe(alreadyCreated);
+    expect(mockDb.posSale.findFirst).toHaveBeenCalledWith({ where: { organizationId: ORG, clientRequestId: "offline-abc" } });
+    // Short-circuited before any validation or session/register lookup — a
+    // replay must never re-check stock or session state against what may
+    // have changed since the original, already-committed attempt.
+    expect(mockDb.posSession.findFirst).not.toHaveBeenCalled();
+    expect(mockDb.posSale.create).not.toHaveBeenCalled();
+  });
+
+  it("createSale without a clientRequestId never queries by it (the common, online case)", async () => {
+    mockDb.posSession.findFirst.mockResolvedValue(null);
+    await expect(
+      pos.createSale(ORG, { sessionId: "sess-missing", paymentMethod: "CASH", lines: [{ description: "Widget", quantity: 1, unitPrice: "10.00" }] }),
+    ).rejects.toThrow(pos.NotFoundError);
+    expect(mockDb.posSale.findFirst).not.toHaveBeenCalled();
+  });
+
   it("refundSale throws SaleStateError when the atomic claim (COMPLETED->REFUNDED) matches zero rows — the second of two concurrent refunds", async () => {
     mockDb.posSale.findFirst.mockResolvedValue({
       id: "sale-1",

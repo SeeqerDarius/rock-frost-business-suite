@@ -192,6 +192,14 @@ interface SaleInput {
   lines: SaleLineInput[];
   payments?: PaymentInput[];
   status?: Extract<PosSaleStatus, "COMPLETED" | "SUSPENDED">;
+  /** Client-generated key for the offline-sync queue: a replayed sync call
+   * with the same key returns the sale already created by the first attempt
+   * instead of re-validating and creating a duplicate. See
+   * src/app/app/pos/sell/offline-queue.ts. */
+  clientRequestId?: string | null;
+  /** When the sale actually happened, for a sale recorded while offline and
+   * only reaching the server (and its createdAt) once synced. */
+  occurredAt?: Date | null;
 }
 
 export class SaleStateError extends Error {}
@@ -218,6 +226,17 @@ function validateLines(lines: SaleLineInput[]) {
  * some of its stock actually deducted.
  */
 export async function createSale(organizationId: string, data: SaleInput) {
+  if (data.clientRequestId) {
+    // Idempotent replay: an offline sync retry (the response to an earlier
+    // successful attempt was lost, or the browser retried before hearing
+    // back) must return the sale already created, not re-validate stock and
+    // create a second one. Re-validating here would be actively wrong: stock
+    // or session state may have legitimately changed since the first,
+    // already-committed attempt.
+    const existing = await db.posSale.findFirst({ where: { organizationId, clientRequestId: data.clientRequestId } });
+    if (existing) return existing;
+  }
+
   validateLines(data.lines);
 
   const session = await db.posSession.findFirst({ where: { id: data.sessionId, organizationId } });
@@ -280,48 +299,68 @@ export async function createSale(organizationId: string, data: SaleInput) {
   // The whole transaction attempt is retried (not just the create call),
   // regenerating saleNumber fresh each time — a collision can only be
   // detected once tx.posSale.create() runs, partway through the attempt.
-  return createWithUniqueRetry(async () => {
-    const saleNumber = await generateSaleNumber(organizationId);
-    return db.$transaction(async (tx) => {
-      const sale = await tx.posSale.create({
-        data: {
-          organizationId,
-          registerId: session.registerId,
-          sessionId: data.sessionId,
-          saleNumber,
-          customerName: data.customerName,
-          paymentMethod: data.paymentMethod,
-          soldById: data.soldById,
-          subtotal,
-          total: subtotal,
-          status: saleStatus,
-          lines: { create: lineTotals },
-          payments: { create: payments.map((payment) => ({ organizationId, ...payment })) },
-        },
-      });
-
-      if (saleStatus === "COMPLETED" && register.warehouseId) {
-        for (const line of data.lines) {
-          if (!line.itemId) continue;
-          await recordMovement(
+  try {
+    return await createWithUniqueRetry(async () => {
+      const saleNumber = await generateSaleNumber(organizationId);
+      return db.$transaction(async (tx) => {
+        const sale = await tx.posSale.create({
+          data: {
             organizationId,
-            {
-              itemId: line.itemId,
-              warehouseId: register.warehouseId,
-              type: "ISSUE",
-              quantity: line.quantity,
-              reference: saleNumber,
-              notes: `Sold via POS sale ${saleNumber}`,
-              createdById: data.soldById,
-            },
-            tx,
-          );
-        }
-      }
+            registerId: session.registerId,
+            sessionId: data.sessionId,
+            saleNumber,
+            customerName: data.customerName,
+            paymentMethod: data.paymentMethod,
+            soldById: data.soldById,
+            subtotal,
+            total: subtotal,
+            status: saleStatus,
+            clientRequestId: data.clientRequestId ?? null,
+            occurredAt: data.occurredAt ?? null,
+            lines: { create: lineTotals },
+            payments: { create: payments.map((payment) => ({ organizationId, ...payment })) },
+          },
+        });
 
-      return sale;
+        if (saleStatus === "COMPLETED" && register.warehouseId) {
+          for (const line of data.lines) {
+            if (!line.itemId) continue;
+            await recordMovement(
+              organizationId,
+              {
+                itemId: line.itemId,
+                warehouseId: register.warehouseId,
+                type: "ISSUE",
+                quantity: line.quantity,
+                reference: saleNumber,
+                notes: `Sold via POS sale ${saleNumber}`,
+                createdById: data.soldById,
+              },
+              tx,
+            );
+          }
+        }
+
+        return sale;
+      });
     });
-  });
+  } catch (error) {
+    // Two near-simultaneous sync attempts with the same clientRequestId (e.g.
+    // two browser tabs) can both pass the upfront idempotency check above and
+    // then race into create() — createWithUniqueRetry's generic P2002 retry
+    // would otherwise keep regenerating a fresh saleNumber and colliding on
+    // clientRequestId again every time, until it gives up and throws. Detect
+    // that specific collision and return the winner instead, same as the
+    // upfront check would have if it had run a moment later.
+    if (data.clientRequestId && error instanceof Error && "code" in error && error.code === "P2002") {
+      const target = (error as { meta?: { target?: string[] } }).meta?.target;
+      if (target?.includes("clientRequestId")) {
+        const winner = await db.posSale.findFirst({ where: { organizationId, clientRequestId: data.clientRequestId } });
+        if (winner) return winner;
+      }
+    }
+    throw error;
+  }
 }
 
 export async function resumeSuspendedSale(
