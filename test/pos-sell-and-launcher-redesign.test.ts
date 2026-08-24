@@ -12,6 +12,18 @@ describe("dashboard quick-launch grid", () => {
     expect(source).toContain("size-14 rounded-2xl");
     expect(source).toContain("accessibleModule.routePrefix");
   });
+
+  it("drops the separate Modules sidebar tab now that Quick launch covers the same job", () => {
+    const navigation = read("src/platform/modules/workspace-navigation.tsx");
+    expect(navigation).not.toContain('label: "Modules"');
+    expect(navigation).not.toContain('href: "/app/modules"');
+    // The route itself must stay: module-access.ts and the zero-modules
+    // empty state on Overview both still redirect/link there.
+    const moduleAccess = read("src/lib/auth/module-access.ts");
+    expect(moduleAccess).toContain("/app/modules");
+    const dashboard = read("src/app/app/(overview)/dashboard/page.tsx");
+    expect(dashboard).toContain('href="/app/modules"');
+  });
 });
 
 describe("POS sell screen: tap-to-add product grid and keypad", () => {

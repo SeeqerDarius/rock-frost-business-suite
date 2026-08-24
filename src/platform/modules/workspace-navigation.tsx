@@ -1,4 +1,4 @@
-import { LayoutGrid, Grid3x3, BarChart3, Bell, Building2, ShieldCheck, MessageSquarePlus, CreditCard } from "lucide-react";
+import { LayoutGrid, BarChart3, Bell, Building2, ShieldCheck, MessageSquarePlus, CreditCard } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 import type { TenantContext } from "@/lib/tenant";
 import { hasPermission, isFleetDriverRole, PERMISSIONS } from "@/lib/auth/permissions";
@@ -13,6 +13,12 @@ import { hasPermission, isFleetDriverRole, PERMISSIONS } from "@/lib/auth/permis
  * Support is deliberately not listed here — it's reachable everywhere in the
  * tenant workspace via the floating chat bubble (src/app/app/layout.tsx),
  * not a sidebar destination. See docs/SUPPORT_MESSAGING.md.
+ *
+ * "Modules" is deliberately not a nav item either: Overview's own "Quick
+ * launch" tile grid now covers the same "jump to an enabled module" job.
+ * The /app/modules route itself still exists (module-access.ts redirects
+ * there, and the zero-modules empty state links to it), it's just no longer
+ * duplicated as a persistent sidebar destination.
  */
 export async function getWorkspaceNavigation(tenant: TenantContext): Promise<ModuleNavItem[]> {
   const items: ModuleNavItem[] = [
@@ -24,7 +30,6 @@ export async function getWorkspaceNavigation(tenant: TenantContext): Promise<Mod
     items.splice(
       1,
       0,
-      { label: "Modules", href: "/app/modules", icon: <Grid3x3 className="size-4" /> },
       { label: "Reports", href: "/app/reports", icon: <BarChart3 className="size-4" /> },
     );
   }
