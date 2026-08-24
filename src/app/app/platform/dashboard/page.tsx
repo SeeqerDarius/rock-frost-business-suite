@@ -1,4 +1,4 @@
-import { Activity, Building2, Users, Blocks, TrendingUp, Wallet, Banknote, Contact, Boxes, ShoppingCart, UsersRound, Truck } from "lucide-react";
+import { Activity, Building2, Users, Blocks, TrendingUp, Wallet, Banknote, Contact, Boxes, ShoppingCart, UsersRound, Truck, DollarSign, Landmark } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +8,7 @@ import { requirePlatformOperator } from "@/lib/auth/module-access";
 import { getPlatformAnchorOrganizationIds } from "@/lib/platform-organizations";
 import { catalogueModuleKeys, getModule } from "@/platform/modules/registry";
 import { primaryProductKey } from "@/platform/modules/product-groups";
-import { getPlatformBusinessInsights } from "@/platform/business-insights/service";
+import { getPlatformBusinessInsights, getPlatformRevenueOverview, getPlatformOwnBusinessOverview } from "@/platform/business-insights/service";
 
 const STATUS_LABEL: Record<string, string> = { ACTIVE: "Active", TRIAL: "Trial", SUSPENDED: "Suspended", CANCELLED: "Cancelled" };
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = { ACTIVE: "default", TRIAL: "secondary", SUSPENDED: "destructive", CANCELLED: "outline" };
@@ -34,7 +34,7 @@ export default async function PlatformDashboardPage() {
   await requirePlatformOperator();
   const platformAnchorIds = await getPlatformAnchorOrganizationIds();
 
-  const [organizationCount, activeMemberCount, internalModuleAdoption, businessInsights] = await Promise.all([
+  const [organizationCount, activeMemberCount, internalModuleAdoption, businessInsights, revenueOverview, ownBusiness] = await Promise.all([
     db.organization.count({ where: { id: { notIn: platformAnchorIds } } }),
     db.organizationMember.count({ where: { status: "ACTIVE", organizationId: { notIn: platformAnchorIds } } }),
     db.module.findMany({
@@ -43,6 +43,8 @@ export default async function PlatformDashboardPage() {
       orderBy: { name: "asc" },
     }),
     getPlatformBusinessInsights(),
+    getPlatformRevenueOverview(),
+    getPlatformOwnBusinessOverview(),
   ]);
 
   const moduleAdoption = catalogueModuleKeys.map((productKey) => {
@@ -72,6 +74,107 @@ export default async function PlatformDashboardPage() {
       <div className="grid gap-4 sm:grid-cols-3">
         {stats.map((stat) => <OverviewMetricCard key={stat.label} {...stat} />)}
       </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <DollarSign className="size-5 text-muted-foreground" />
+            <CardTitle>Platform revenue</CardTitle>
+          </div>
+          <CardDescription>What organizations actually pay Rock Frost, from the subscription ledger - not any tenant&apos;s own business revenue.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {Object.keys(revenueOverview.revenueByCurrency).length === 0 ? (
+            <p className="text-sm text-muted-foreground">No subscriptions recorded yet.</p>
+          ) : (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {Object.entries(revenueOverview.revenueByCurrency).map(([currency, totals]) => (
+                  <div key={currency} className="space-y-2 rounded-lg border p-3">
+                    <p className="text-sm font-semibold">{currency}</p>
+                    <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
+                      <div className="flex items-center justify-between gap-2"><dt className="text-muted-foreground">MRR</dt><dd className="font-medium tabular-nums">{formatMoney(totals.mrr, currency)}</dd></div>
+                      <div className="flex items-center justify-between gap-2"><dt className="text-muted-foreground">Active subscriptions</dt><dd className="font-medium tabular-nums">{totals.activeSubscriptionCount}</dd></div>
+                      <div className="flex items-center justify-between gap-2"><dt className="text-muted-foreground">Collected to date</dt><dd className="font-medium tabular-nums">{formatMoney(totals.totalCollected, currency)}</dd></div>
+                      <div className="flex items-center justify-between gap-2"><dt className="text-muted-foreground">Pending payment</dt><dd className="font-medium tabular-nums">{formatMoney(totals.pendingAmount, currency)}</dd></div>
+                    </dl>
+                  </div>
+                ))}
+              </div>
+              {revenueOverview.monthlyTrend.length > 0 ? (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Collected by month</p>
+                  {(() => {
+                    const maxAmount = Math.max(...revenueOverview.monthlyTrend.map((row) => row.amount));
+                    return revenueOverview.monthlyTrend.map((row) => (
+                      <div key={`${row.month}-${row.currency}`} className="flex items-center gap-3 text-sm">
+                        <span className="w-20 shrink-0 text-muted-foreground tabular-nums">{row.month}</span>
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                          <div className="h-full rounded-full bg-primary" style={{ width: `${maxAmount > 0 ? (row.amount / maxAmount) * 100 : 0}%` }} />
+                        </div>
+                        <span className="w-28 shrink-0 text-right font-medium tabular-nums">{formatMoney(row.amount, row.currency)}</span>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              ) : null}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Landmark className="size-5 text-muted-foreground" />
+            <CardTitle>Rock Frost&apos;s own business</CardTitle>
+          </div>
+          <CardDescription>Employees and books for the organization running the platform itself, tracked the same way any tenant&apos;s are.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!ownBusiness.organizationId ? (
+            <p className="text-sm text-muted-foreground">No platform anchor organization found.</p>
+          ) : (
+            <>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="flex items-center gap-3 rounded-lg border p-3">
+                  <UsersRound className="size-5 text-muted-foreground" />
+                  <div>
+                    <p className="text-2xl font-semibold tabular-nums">{ownBusiness.employeeCount}</p>
+                    <p className="text-xs text-muted-foreground">Employees</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 rounded-lg border p-3">
+                  <Wallet className="size-5 text-muted-foreground" />
+                  <div>
+                    <p className="text-2xl font-semibold tabular-nums">{formatMoney(ownBusiness.overview?.cashBalance ?? 0, ownBusiness.currency ?? "USD")}</p>
+                    <p className="text-xs text-muted-foreground">Cash balance</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 rounded-lg border p-3">
+                  <Banknote className="size-5 text-muted-foreground" />
+                  <div>
+                    <p className="text-2xl font-semibold tabular-nums">{formatMoney(ownBusiness.overview?.netIncome ?? 0, ownBusiness.currency ?? "USD")}</p>
+                    <p className="text-xs text-muted-foreground">Net income</p>
+                  </div>
+                </div>
+              </div>
+              {ownBusiness.employees.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No employees on file yet. Add them from HR after switching into {ownBusiness.organizationName}&apos;s own workspace.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {ownBusiness.employees.map((employee) => (
+                    <li key={employee.id} className="flex items-center justify-between rounded-md border px-3 py-1.5 text-sm">
+                      <span>{employee.fullName}{employee.jobTitle ? <span className="ml-2 text-xs text-muted-foreground">{employee.jobTitle}</span> : null}</span>
+                      <Badge variant="outline">{employee.status}</Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

@@ -45,6 +45,10 @@ src/
                                   its own — calls modules/analytics/service.ts's
                                   getAnalyticsOverview() per organization, the platform-scope
                                   equivalent of that module's own org-scope cross-module pattern.
+                                  Also carries real Rock-Frost-actual-revenue reporting (from the
+                                  Subscription ledger, distinct from any tenant's own business
+                                  revenue) and the platform's own anchor organization's HR/
+                                  Accounting data, treated as a real Organization like any tenant.
   components/
     ui/                shadcn/ui primitives — generated code, treat as owned but don't hand-roll
                         edits that fight the generator; re-run `npx shadcn add <name> --overwrite`
