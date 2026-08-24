@@ -8,6 +8,7 @@
 - **Important files**: `src/app/app/hr/employees/[employeeId]/{actions,page}.tsx`, `docs/HR_MODULE.md`, `test/hr-employee-profile.test.ts`.
 - **Validation**: `npx tsc --noEmit`, `npm run lint`, `npm run test` (93 files, 596 tests, up from 93/592), and `npm run build` all passed. No migration, so no disposable-Neon-branch step was needed for this phase.
 - **Not verified live in a browser**: no test tenant credentials in this environment, consistent with every other change this session — the whole 5-phase arc's live browser click-through, including the actual invitation-email delivery this phase depends on, is still owed to the user before treating any of it as fully proven end to end.
+- **Production deploy verified**: commit `a212c4d` reached Vercel production deployment `dpl_AnPkgLvPBASxriSqBfNairqFxEtU` (`READY`, all production aliases attached). `/api/health` returned `{"ok":true,"database":"reachable"}`; `get_runtime_errors` returned none. This completes the 5-phase HR redesign arc — all five commits are live in production.
 
 ## 2026-08-24: HR module, phase D of 5 — Launch Plan onboarding/offboarding automation (schema migration)
 
