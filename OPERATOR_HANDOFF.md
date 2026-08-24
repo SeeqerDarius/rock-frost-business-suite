@@ -1,5 +1,14 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-24: HR module, phase B of 5 — Departments and Employees kanban views
+
+- **No schema change** — builds directly on phase A's `photoData`/`tags` columns.
+- **Departments page** (`/app/hr/employees` → new `/app/hr/departments`, added to `hrNavigation` before "Employees"): one tile per department with an employee count, reusing `getHrSummary()`'s existing `departmentCounts` grouping (already computed for the HR Overview page, just never rendered as its own view) rather than writing new grouping logic. Each tile links to `/app/hr/employees?department={name}`.
+- **Employees kanban view**: `/app/hr/employees` now supports `?view=table|kanban` (table stays the default, a plain `<Link>` toggle switches views — no client component needed, matching this app's server-component-only convention) and `?department=` to filter either view. The kanban tile (photo-or-initial avatar with a deterministic color hash for employees with no photo, name, job title, work email, work phone, status and tag `Badge` chips) reuses the exact tile pattern already established by the dashboard's Quick launch grid and POS's product picker, not a new visual language.
+- **Important files**: `src/app/app/hr/departments/page.tsx` (new), `src/app/app/hr/employees/page.tsx`, `src/modules/hr/navigation.tsx`, `docs/HR_MODULE.md`, `test/hr-employee-profile.test.ts` (new), `test/module-access.test.ts` (guarded-page count 111 → 112 for the new Departments page).
+- **Validation**: `npx tsc --noEmit`, `npm run lint`, `npm run test` (93 files, 576 tests, up from 92/574), and `npm run build` (confirms `/app/hr/departments` compiles as a guarded dynamic route) all passed. No migration, so no disposable-Neon-branch step was needed for this phase.
+- **Not verified live in a browser**: no test tenant credentials in this environment, consistent with every other change this session.
+
 ## 2026-08-24: HR module, phase A of 5 — employee photo, mobile phone, and tags (schema migration)
 
 - **User's request**: after the 5-screenshot Odoo POS comparison earlier in the day, the user shared 4 more screenshots of Odoo's Employees app (Departments kanban, an Employees kanban, an employee profile page with tabs and an org chart, and Odoo's "Launch Plan" onboarding/offboarding automation) and asked to bring the same into Rock Frost's HR module. Research found HR already has employees, a manager self-relation, and a full termination maker-checker workflow, but none of the four things shown. Asked the user to scope via `AskUserQuestion`; they picked all four. Planned via plan mode (including a Plan-agent review of the riskiest, least-precedented piece — the Launch Plan schema) into 5 sequential phases, each its own commit+deploy+verify cycle, matching this session's established discipline for schema-migration work. This entry is phase A, the foundational schema piece the other phases build on.

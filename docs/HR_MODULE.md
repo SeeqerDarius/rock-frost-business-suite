@@ -8,7 +8,11 @@ Employee rows are also created automatically whenever an organization member wit
 
 ## Departments
 
-There is no separate `Department` table. A department is just the distinct, non-null values of `HrEmployee.department`, with employees who have no department grouped under "Unassigned". `getHrSummary()`'s `departmentCounts` already computes this grouping (excluding terminated employees) for the HR Overview page; the Departments kanban view reuses the same grouping.
+There is no separate `Department` table. A department is just the distinct, non-null values of `HrEmployee.department`, with employees who have no department grouped under "Unassigned". `getHrSummary()`'s `departmentCounts` already computes this grouping (excluding terminated employees) for the HR Overview page; the Departments page (`/app/hr/departments`) reuses the same grouping, rendering one tile per department with an employee count, linking to `/app/hr/employees?department={name}`.
+
+## Employees views
+
+`/app/hr/employees` supports two presentations of the same data via `?view=table|kanban` (table is the default): the original table, and a tile-grid kanban view (photo-or-initial avatar, name, job title, work email, work phone, status and tag badges) built on the same tile pattern as the dashboard's Quick launch grid and POS's product picker. `?department=` filters either view to one department, matching the links from the Departments page.
 
 ## Employee photos
 
