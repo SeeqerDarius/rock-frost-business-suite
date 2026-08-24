@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { previewPlanLaunch, launchPlan, completePlanActivity, createResumeEntry, updateResumeEntry, deleteResumeEntry, NotFoundError } from "@/modules/hr/service";
+import { previewPlanLaunch, launchPlan, completePlanActivity, createResumeEntry, updateResumeEntry, deleteResumeEntry, setEmployeeSkill, removeEmployeeSkill, NotFoundError } from "@/modules/hr/service";
 import { createInvitation, markInvitationDeliveryFailed } from "@/lib/auth/invitations";
 import { sendEmail } from "@/lib/email";
 import { invitationEmail } from "@/lib/email-templates";
@@ -216,6 +216,49 @@ export async function removeResumeEntry(formData: FormData): Promise<void> {
 
   try {
     await deleteResumeEntry(tenant.organizationId, id);
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect(`/app/hr/employees/${employeeId}?error=not-found`);
+    throw error;
+  }
+
+  revalidatePath(`/app/hr/employees/${employeeId}`);
+  redirect(`/app/hr/employees/${employeeId}?saved=1`);
+}
+
+export async function saveEmployeeSkill(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("hr");
+  if (!hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_EDIT) && !hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE)) {
+    redirect("/app/hr/employees?error=forbidden");
+  }
+  const employeeId = clean(formData.get("employeeId"));
+  const skillId = clean(formData.get("skillId"));
+  const level = Number(clean(formData.get("level")) ?? "0");
+  if (!employeeId || !skillId || !Number.isInteger(level) || level < 1 || level > 5) {
+    redirect(`/app/hr/employees/${employeeId}?error=missing-fields`);
+  }
+
+  try {
+    await setEmployeeSkill(tenant.organizationId, employeeId, skillId, level);
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect(`/app/hr/employees/${employeeId}?error=not-found`);
+    throw error;
+  }
+
+  revalidatePath(`/app/hr/employees/${employeeId}`);
+  redirect(`/app/hr/employees/${employeeId}?saved=1`);
+}
+
+export async function removeEmployeeSkillAction(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("hr");
+  if (!hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_EDIT) && !hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE)) {
+    redirect("/app/hr/employees?error=forbidden");
+  }
+  const employeeId = clean(formData.get("employeeId"));
+  const id = clean(formData.get("id"));
+  if (!employeeId || !id) return;
+
+  try {
+    await removeEmployeeSkill(tenant.organizationId, id);
   } catch (error) {
     if (error instanceof NotFoundError) redirect(`/app/hr/employees/${employeeId}?error=not-found`);
     throw error;

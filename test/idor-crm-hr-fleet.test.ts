@@ -14,6 +14,9 @@ const mockDb = {
   hrPlanTemplate: { findFirst: vi.fn() },
   hrPlanInstance: { create: vi.fn() },
   hrResumeEntry: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+  hrSkillType: { findFirst: vi.fn() },
+  hrSkill: { findFirst: vi.fn() },
+  hrEmployeeSkill: { findFirst: vi.fn(), upsert: vi.fn() },
 
   fleetOwner: { findFirst: vi.fn() },
   fleetDriver: { findFirst: vi.fn() },
@@ -147,6 +150,24 @@ describe("HR service — cross-tenant IDOR fixes", () => {
       hr.updateResumeEntry(ORG, "entry-foreign", { title: "Should fail", type: "EXPERIENCE", dateStart: new Date() }),
     ).rejects.toThrow(hr.NotFoundError);
     expect(mockDb.hrResumeEntry.update).not.toHaveBeenCalled();
+  });
+
+  it("createSkill rejects a skillTypeId from another organization", async () => {
+    mockDb.hrSkillType.findFirst.mockResolvedValue(null);
+    await expect(hr.createSkill(ORG, "type-foreign", "Should fail")).rejects.toThrow(hr.NotFoundError);
+  });
+
+  it("setEmployeeSkill rejects an employeeId from another organization", async () => {
+    mockDb.hrEmployee.findFirst.mockResolvedValue(null);
+    await expect(hr.setEmployeeSkill(ORG, "emp-foreign", "skill-1", 3)).rejects.toThrow(hr.NotFoundError);
+    expect(mockDb.hrEmployeeSkill.upsert).not.toHaveBeenCalled();
+  });
+
+  it("setEmployeeSkill rejects a skillId from another organization, even under Org A's own employee", async () => {
+    mockDb.hrEmployee.findFirst.mockResolvedValue({ id: "emp-1" });
+    mockDb.hrSkill.findFirst.mockResolvedValue(null);
+    await expect(hr.setEmployeeSkill(ORG, "emp-1", "skill-foreign", 3)).rejects.toThrow(hr.NotFoundError);
+    expect(mockDb.hrEmployeeSkill.upsert).not.toHaveBeenCalled();
   });
 });
 

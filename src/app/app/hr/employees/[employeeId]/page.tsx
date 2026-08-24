@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Mail, Phone, Smartphone, CalendarClock, History as HistoryIcon, Network, CircleCheck } from "lucide-react";
+import { Mail, Phone, Smartphone, CalendarClock, History as HistoryIcon, Network, CircleCheck, Sparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { IconBadge } from "@/components/ui/icon-badge";
@@ -15,11 +15,11 @@ import { db } from "@/lib/db";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { isRoleAssignableToOrganization, resolveAssignableModuleKeys, roleDisplayName } from "@/lib/administration-roles";
-import { getEmployeeProfile, getEmployeeStatusHistory, listManagerCandidates, listPlanTemplates, listPendingPlanActivities } from "@/modules/hr/service";
+import { getEmployeeProfile, getEmployeeStatusHistory, listManagerCandidates, listPlanTemplates, listPendingPlanActivities, listEmployeeSkills, listSkillTypes } from "@/modules/hr/service";
 import { upsertEmployee } from "../actions";
 import { EmployeeFields } from "../employee-fields";
 import { PersonAvatar } from "../person-avatar";
-import { markPlanActivityDone, createUserForEmployee, saveResumeEntry, removeResumeEntry } from "./actions";
+import { markPlanActivityDone, createUserForEmployee, saveResumeEntry, removeResumeEntry, saveEmployeeSkill, removeEmployeeSkillAction } from "./actions";
 import { LaunchPlanDialog } from "./launch-plan-dialog";
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
@@ -58,7 +58,7 @@ export default async function HrEmployeeProfilePage({
   const tenant = await requireModuleAccess("hr");
   const canManage = hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_EDIT) || hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE);
   const canLaunchPlans = hasPermission(tenant, PERMISSIONS.HR_ONBOARDING_MANAGE);
-  const [employee, statusHistory, managers, onboardingTemplates, offboardingTemplates, pendingActivities, roles, assignableModuleKeys] = await Promise.all([
+  const [employee, statusHistory, managers, onboardingTemplates, offboardingTemplates, pendingActivities, roles, assignableModuleKeys, employeeSkills, skillTypes] = await Promise.all([
     getEmployeeProfile(tenant.organizationId, employeeId),
     getEmployeeStatusHistory(tenant.organizationId, employeeId),
     listManagerCandidates(tenant.organizationId),
@@ -71,6 +71,8 @@ export default async function HrEmployeeProfilePage({
       orderBy: { name: "asc" },
     }),
     resolveAssignableModuleKeys(tenant.organizationId, tenant.enabledModuleKeys),
+    listEmployeeSkills(tenant.organizationId, employeeId),
+    listSkillTypes(tenant.organizationId),
   ]);
   if (!employee) notFound();
   const managerItems: Record<string, string> = Object.fromEntries(managers.filter((m) => m.id !== employee.id).map((m) => [m.id, m.fullName]));
@@ -217,6 +219,61 @@ export default async function HrEmployeeProfilePage({
                 </>
               ) : null}
             </div>
+          </div>
+
+          <div className="space-y-3 rounded-xl border p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="flex items-center gap-1.5 text-sm font-semibold"><Sparkles className="size-4" />Skills</h2>
+              {canManage && skillTypes.some((t) => t.skills.length > 0) ? (
+                <EntityDialog trigger={<Button size="sm" variant="outline">Add skill</Button>} title="Add a skill" action={saveEmployeeSkill}>
+                  <input type="hidden" name="employeeId" value={employee.id} />
+                  <div className="space-y-2">
+                    <Label htmlFor="skill-id">Skill</Label>
+                    <Select name="skillId" items={Object.fromEntries(skillTypes.flatMap((t) => t.skills.map((s) => [s.id, `${s.name} (${t.name})`])))}>
+                      <SelectTrigger id="skill-id" className="w-full"><SelectValue placeholder="Choose a skill" /></SelectTrigger>
+                      <SelectContent>
+                        {skillTypes.map((t) => t.skills.map((s) => <SelectItem key={s.id} value={s.id}>{s.name} ({t.name})</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="skill-level">Level (1-5)</Label>
+                    <Select name="level" defaultValue="3" items={{ "1": "1", "2": "2", "3": "3", "4": "4", "5": "5" }}>
+                      <SelectTrigger id="skill-level" className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>{[1, 2, 3, 4, 5].map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                </EntityDialog>
+              ) : null}
+            </div>
+            {employeeSkills.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No skills recorded yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {employeeSkills.map((employeeSkill) => (
+                  <li key={employeeSkill.id} className="flex items-center justify-between gap-3 text-sm">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate">{employeeSkill.skill.name} <span className="text-xs text-muted-foreground">({employeeSkill.skill.skillType.name})</span></p>
+                      <div className="mt-1 flex gap-0.5">
+                        {[1, 2, 3, 4, 5].map((segment) => (
+                          <span key={segment} className={`h-1.5 flex-1 rounded-full ${segment <= employeeSkill.level ? "bg-primary" : "bg-secondary"}`} />
+                        ))}
+                      </div>
+                    </div>
+                    {canManage ? (
+                      <form action={removeEmployeeSkillAction}>
+                        <input type="hidden" name="id" value={employeeSkill.id} />
+                        <input type="hidden" name="employeeId" value={employee.id} />
+                        <Button type="submit" size="sm" variant="ghost"><X className="size-3.5" /></Button>
+                      </form>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {skillTypes.every((t) => t.skills.length === 0) ? (
+              <p className="text-xs text-muted-foreground">No skills configured yet. Set some up in <Link href="/app/hr/configuration" className="text-primary hover:underline">HR Configuration</Link>.</p>
+            ) : null}
           </div>
         </TabsContent>
 

@@ -15,6 +15,36 @@ const employeeActions = readFileSync("src/app/app/hr/employees/[employeeId]/acti
 const launchPlanDialog = readFileSync("src/app/app/hr/employees/[employeeId]/launch-plan-dialog.tsx", "utf8");
 const permissions = readFileSync("src/lib/auth/permissions.ts", "utf8");
 const directoryPage = readFileSync("src/app/app/hr/directory/page.tsx", "utf8");
+const configurationPage = readFileSync("src/app/app/hr/configuration/page.tsx", "utf8");
+const configurationActions = readFileSync("src/app/app/hr/configuration/actions.ts", "utf8");
+const reportsPage = readFileSync("src/app/app/hr/reports/page.tsx", "utf8");
+
+describe("HR Skills subsystem", () => {
+  it("no stored progress percentage - the schema keeps only level, UI derives progress", () => {
+    expect(hrService).toContain("level: number");
+    expect(hrService).not.toContain("levelProgress");
+  });
+
+  it("Configuration page manages Skill Types and Skills together, gated on hr.settings.manage", () => {
+    expect(configurationPage).toContain('await requireModuleAccess("hr")');
+    expect(configurationPage).toContain("PERMISSIONS.HR_SETTINGS_MANAGE");
+    expect(configurationPage).toContain("listSkillTypes");
+    expect(configurationActions).toContain("export async function addSkillType");
+    expect(configurationActions).toContain("export async function addSkill");
+    expect(navigation).toContain('href: "/app/hr/configuration"');
+  });
+
+  it("employee skill assignment lives on the profile's Work tab, not a dedicated Skills tab", () => {
+    expect(profilePage).toContain("listEmployeeSkills");
+    expect(profilePage).toContain("saveEmployeeSkill");
+    expect(profilePage).not.toContain('<TabsTrigger value="skills"');
+  });
+
+  it("Skills Inventory report aggregates employee count and average level per skill", () => {
+    expect(reportsPage).toContain("getSkillsInventory");
+    expect(reportsPage).toContain("Skills inventory");
+  });
+});
 
 describe("HR Directory page", () => {
   it("is HR-gated, same access model as Employees, not opened company-wide", () => {

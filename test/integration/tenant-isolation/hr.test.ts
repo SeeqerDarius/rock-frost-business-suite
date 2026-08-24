@@ -109,4 +109,23 @@ describe("HR service — cross-tenant isolation against real Postgres", () => {
 
     await expect(hr.updateResumeEntry(orgB.organizationId, entry.id, { title: "Cross-tenant edit", type: "EXPERIENCE", dateStart: new Date() })).rejects.toThrow(hr.NotFoundError);
   });
+
+  it("Skills: a skill created under Org A's skill type is invisible to Org B, and cross-tenant assignment is rejected", async () => {
+    const skillType = await hr.createSkillType(orgA.organizationId, "Languages");
+    const skill = await hr.createSkill(orgA.organizationId, skillType.id, "French");
+
+    // Org B can't create a skill under Org A's skill type.
+    await expect(hr.createSkill(orgB.organizationId, skillType.id, "Should fail")).rejects.toThrow(hr.NotFoundError);
+    // Org B can't assign Org A's skill to its own employee.
+    await expect(hr.setEmployeeSkill(orgB.organizationId, orgBEmployee.id, skill.id, 3)).rejects.toThrow(hr.NotFoundError);
+    // Org A's own employee can be assigned the skill, and it shows up in the inventory with the right average level.
+    const assignment = await hr.setEmployeeSkill(orgA.organizationId, orgAEmployee.id, skill.id, 4);
+    expect(assignment.level).toBe(4);
+    const inventory = await hr.getSkillsInventory(orgA.organizationId);
+    const row = inventory.find((r) => r.skillName === "French");
+    expect(row?.employeeCount).toBe(1);
+    expect(row?.averageLevel).toBe(4);
+    // The inventory never leaks into Org B, which has no skill types at all.
+    expect(await hr.getSkillsInventory(orgB.organizationId)).toEqual([]);
+  });
 });

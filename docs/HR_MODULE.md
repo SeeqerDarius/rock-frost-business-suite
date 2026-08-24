@@ -56,6 +56,18 @@ A standalone, manually-triggered checklist generator — deliberately independen
 
 **Launching a plan**: the "Launch plan" button on an employee's profile page opens `launch-plan-dialog.tsx` (kind toggle, target date, template picker). A "Preview" step calls `previewLaunchPlan()` — a Server Action invoked via `startTransition`, the same RPC pattern already used for `createPosQuickItem`/`completeSale`, not a client-side fetch layer — to compute and display the resolved activities (including any "no user" warnings) before the user commits with "Schedule" (`launchEmployeePlan()`, which actually creates the `HrPlanInstance`). Pending activities across all of an employee's plan instances are listed on their profile with a "Mark done" action (`completePlanActivity()`/`markPlanActivityDone()`).
 
+## Skills
+
+`HrSkillType` (organization-configured, e.g. Languages, Soft Skills) contains named `HrSkill` rows; `HrEmployeeSkill` is the per-employee assignment (`level` 1-5, `@@unique([employeeId, skillId])`). **No stored progress percentage** — the UI derives it as `level / 5 * 100`, so it can never drift out of sync with the level itself (a deliberate simplification from Odoo's own model, which bakes a percentage into a separate level-definition entity; that would be a 4th model for no real gain here).
+
+Skill Types and Skills are managed together on the Configuration page (below) — creating a type, then adding skills under it. Employees get skills assigned from their own profile's Work tab (a "Skills" section beneath the org chart, not a dedicated tab — the request never called for one). The Reports page's "Skills inventory" section (`getSkillsInventory()`) aggregates every skill across the organization: how many employees hold it, and their average level.
+
+## Configuration
+
+`/app/hr/configuration` is a single page consolidating HR's master-data lookups as stacked Card sections — deliberately **not** one route per lookup (Odoo's own Configuration menu shows 8 separate items, but this codebase already has its own precedent for "several small related settings" living in one page as separate sections: `hr/settings/page.tsx` itself stacks three unrelated models' CRUD in one file). Gated on `hr.settings.manage`, same as HR Settings.
+
+As of this entry it contains one section, **Skills** (see above). A later addition will bring in the remaining simple named lookups (Employee Types, Work Locations, Departure Reasons, Working Schedules, Time Types, Job Positions, Contract Templates) as more Card sections on the same page — shipped as real, functioning CRUD, but deliberately without deeper logic (no calendar engine for Working Schedules, no document generation for Contract Templates, no link into other workflows yet) per an explicit scoping decision with the user.
+
 ## Create User
 
 An employee with no linked platform account (`HrEmployee.userId` is `null`) and a work email on file gets a "Create user" button on the profile's Settings tab. `createUserForEmployee()` (`src/app/app/hr/employees/[employeeId]/actions.ts`) is a thin employee-specific wrapper around the exact same membership-creation transaction `inviteMember()` (`src/app/app/(overview)/administration/actions.ts`) already establishes for the "invite a new org member" flow — upsert `User`, check seat limits, upsert `OrganizationMember`, send the invitation email — with one addition: it also sets `HrEmployee.userId` to the created user's id inside the same transaction. An employee with no email on file is told to add one first, rather than the button silently doing nothing.

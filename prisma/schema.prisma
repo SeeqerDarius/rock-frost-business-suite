@@ -460,6 +460,7 @@ model Organization {
   hrPlanTemplates                 HrPlanTemplate[]
   hrPlanInstances                 HrPlanInstance[]
   hrResumeEntries                 HrResumeEntry[]
+  hrSkillTypes                    HrSkillType[]
   hrLeaveTypes                    HrLeaveType[]
   hrLeaveRequests                 HrLeaveRequest[]
   hrPerformanceReviews            HrPerformanceReview[]
@@ -2559,6 +2560,7 @@ model HrEmployee {
   offboardingTasks    HrOffboardingTask[]
   planInstances       HrPlanInstance[]
   resumeEntries       HrResumeEntry[]
+  employeeSkills      HrEmployeeSkill[]
 
   @@unique([organizationId, employeeNumber])
   @@index([organizationId, status])
@@ -2772,6 +2774,54 @@ model HrResumeEntry {
   employee     HrEmployee   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
 
   @@index([organizationId, employeeId])
+}
+
+/**
+ * Organization-configured Skill Types (e.g. Languages, Soft Skills) each
+ * containing named Skills; HrEmployeeSkill is the per-employee assignment
+ * with a 1-5 level. No stored progress percentage - the UI derives it as
+ * level/5*100 so it can never drift out of sync with the level itself.
+ */
+model HrSkillType {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  skills       HrSkill[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model HrSkill {
+  id          String   @id @default(cuid())
+  skillTypeId String
+  name        String
+  createdAt   DateTime @default(now())
+
+  skillType      HrSkillType       @relation(fields: [skillTypeId], references: [id], onDelete: Cascade)
+  employeeSkills HrEmployeeSkill[]
+
+  @@unique([skillTypeId, name])
+  @@index([skillTypeId])
+}
+
+model HrEmployeeSkill {
+  id         String   @id @default(cuid())
+  employeeId String
+  skillId    String
+  level      Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  employee HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  skill    HrSkill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, skillId])
+  @@index([employeeId])
+  @@index([skillId])
 }
 
 model HrLeaveType {

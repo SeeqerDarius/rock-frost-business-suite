@@ -612,6 +612,83 @@ export async function completeReview(organizationId: string, id: string) {
   return db.hrPerformanceReview.update({ where: { id }, data: { status: "COMPLETED", reviewDate: new Date() } });
 }
 
+// --- Skills ---
+
+export function listSkillTypes(organizationId: string) {
+  return db.hrSkillType.findMany({
+    where: { organizationId },
+    include: { skills: { orderBy: { name: "asc" } } },
+    orderBy: { name: "asc" },
+  });
+}
+
+export function createSkillType(organizationId: string, name: string) {
+  return db.hrSkillType.create({ data: { organizationId, name } });
+}
+
+export async function deleteSkillType(organizationId: string, id: string) {
+  const skillType = await db.hrSkillType.findFirst({ where: { id, organizationId } });
+  if (!skillType) throw new NotFoundError("Skill type not found.");
+  return db.hrSkillType.delete({ where: { id } });
+}
+
+export async function createSkill(organizationId: string, skillTypeId: string, name: string) {
+  const skillType = await db.hrSkillType.findFirst({ where: { id: skillTypeId, organizationId } });
+  if (!skillType) throw new NotFoundError("Skill type not found.");
+  return db.hrSkill.create({ data: { skillTypeId, name } });
+}
+
+export async function deleteSkill(organizationId: string, id: string) {
+  const skill = await db.hrSkill.findFirst({ where: { id, skillType: { organizationId } } });
+  if (!skill) throw new NotFoundError("Skill not found.");
+  return db.hrSkill.delete({ where: { id } });
+}
+
+export function listEmployeeSkills(organizationId: string, employeeId: string) {
+  return db.hrEmployeeSkill.findMany({
+    where: { employeeId, skill: { skillType: { organizationId } } },
+    include: { skill: { include: { skillType: true } } },
+    orderBy: { skill: { name: "asc" } },
+  });
+}
+
+export async function setEmployeeSkill(organizationId: string, employeeId: string, skillId: string, level: number) {
+  await requireEmployee(organizationId, employeeId);
+  const skill = await db.hrSkill.findFirst({ where: { id: skillId, skillType: { organizationId } } });
+  if (!skill) throw new NotFoundError("Skill not found.");
+  return db.hrEmployeeSkill.upsert({
+    where: { employeeId_skillId: { employeeId, skillId } },
+    update: { level },
+    create: { employeeId, skillId, level },
+  });
+}
+
+export async function removeEmployeeSkill(organizationId: string, id: string) {
+  const employeeSkill = await db.hrEmployeeSkill.findFirst({ where: { id, employee: { organizationId } } });
+  if (!employeeSkill) throw new NotFoundError("Employee skill not found.");
+  return db.hrEmployeeSkill.delete({ where: { id } });
+}
+
+/** For the Skills Inventory report: every skill an organization has, with how
+ * many employees hold it and their average level. */
+export async function getSkillsInventory(organizationId: string) {
+  const skillTypes = await db.hrSkillType.findMany({
+    where: { organizationId },
+    include: { skills: { include: { employeeSkills: true }, orderBy: { name: "asc" } } },
+    orderBy: { name: "asc" },
+  });
+  return skillTypes.flatMap((skillType) =>
+    skillType.skills.map((skill) => ({
+      skillTypeName: skillType.name,
+      skillName: skill.name,
+      employeeCount: skill.employeeSkills.length,
+      averageLevel: skill.employeeSkills.length
+        ? skill.employeeSkills.reduce((sum, es) => sum + es.level, 0) / skill.employeeSkills.length
+        : 0,
+    })),
+  );
+}
+
 // --- Reports ---
 
 export async function getHrSummary(organizationId: string) {
