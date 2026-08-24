@@ -36,6 +36,22 @@ export default async function OrganizationDashboardPage() {
           }
         />
       ) : (
+        <>
+        <section className="space-y-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Quick launch</p>
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
+            {enabledModules.map(({ definition: mod, accessibleModule }) => (
+              <Link
+                key={mod.key}
+                href={accessibleModule.routePrefix as never}
+                className="flex flex-col items-center gap-2 rounded-xl border bg-card p-3 text-center transition-colors hover:border-primary/40 hover:bg-secondary/50"
+              >
+                <IconBadge size="lg" className="size-14 rounded-2xl"><mod.icon className="size-7" /></IconBadge>
+                <span className="text-xs leading-tight font-medium">{mod.name}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {enabledModules.map(({ definition: mod, accessibleModule }) => {
             const Widget = dashboardWidgets[accessibleModule.key];
@@ -59,6 +75,7 @@ export default async function OrganizationDashboardPage() {
             );
           })}
         </div>
+        </>
       )}
     </div>
   );

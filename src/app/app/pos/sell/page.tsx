@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listRegisters } from "@/modules/pos/service";
-import { listItems } from "@/modules/inventory/service";
+import { listItems, listCategories } from "@/modules/inventory/service";
 import { completeSale } from "./actions";
 import { SaleCart } from "./sale-cart";
 
@@ -30,7 +30,11 @@ export default async function PosSellPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("pos");
   const canSell = hasPermission(tenant, PERMISSIONS.POS_SALES_MANAGE);
-  const [registers, items] = await Promise.all([listRegisters(tenant.organizationId), listItems(tenant.organizationId)]);
+  const [registers, items, categories] = await Promise.all([
+    listRegisters(tenant.organizationId),
+    listItems(tenant.organizationId),
+    listCategories(tenant.organizationId),
+  ]);
   const openSessionItems: Record<string, string> = Object.fromEntries(
     registers.filter((r) => r.sessions[0]).map((r) => [r.sessions[0].id, r.name]),
   );
@@ -71,7 +75,7 @@ export default async function PosSellPage({
       <Card>
         <CardHeader>
           <CardTitle>New sale</CardTitle>
-          <CardDescription>Add up to 100 lines, scan barcodes, split payment, or suspend the sale.</CardDescription>
+          <CardDescription>Tap products to add them, scan barcodes, split payment, or suspend the sale.</CardDescription>
         </CardHeader>
         <CardContent>
           <form action={completeSale} className="space-y-4">
@@ -91,13 +95,16 @@ export default async function PosSellPage({
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="customerName">Customer name (optional)</Label>
-              <Input id="customerName" name="customerName" />
+              <div className="space-y-2">
+                <Label htmlFor="customerName">Customer name (optional)</Label>
+                <Input id="customerName" name="customerName" />
+              </div>
             </div>
 
-            <SaleCart items={items.map((item) => ({ id: item.id, name: item.name, sku: item.sku, barcode: item.barcode, price: Number(item.costPrice).toFixed(2) }))} />
+            <SaleCart
+              items={items.map((item) => ({ id: item.id, name: item.name, sku: item.sku, barcode: item.barcode, price: Number(item.costPrice).toFixed(2), categoryId: item.categoryId, imageData: item.imageData }))}
+              categories={categories.map((category) => ({ id: category.id, name: category.name }))}
+            />
           </form>
         </CardContent>
       </Card>
