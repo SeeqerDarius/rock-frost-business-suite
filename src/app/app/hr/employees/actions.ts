@@ -5,11 +5,18 @@ import { revalidatePath } from "next/cache";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createEmployee, updateEmployee, activateEmployee, setEmployeeStatus, EmployeeStateError, NotFoundError } from "@/modules/hr/service";
+import { hrEmployeePhotoData } from "@/lib/hr-employee-image";
 import type { HrEmployeeStatus } from "@prisma/client";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
   return str.length > 0 ? str : null;
+}
+
+function parseTags(value: FormDataEntryValue | null) {
+  const str = String(value ?? "").trim();
+  if (!str) return [];
+  return [...new Set(str.split(",").map((tag) => tag.trim()).filter(Boolean))];
 }
 
 export async function upsertEmployee(formData: FormData): Promise<void> {
@@ -25,15 +32,27 @@ export async function upsertEmployee(formData: FormData): Promise<void> {
     redirect("/app/hr/employees?error=missing-fields");
   }
 
+  const photoFile = formData.get("photo");
+  let photoData: string | null | undefined;
+  try {
+    photoData = photoFile instanceof File ? await hrEmployeePhotoData(photoFile) ?? undefined : undefined;
+  } catch {
+    redirect("/app/hr/employees?error=invalid-photo");
+  }
+  if (id && formData.get("removePhoto") === "on" && !photoData) photoData = null;
+
   const data = {
     fullName,
     email: clean(formData.get("email")),
     phone: clean(formData.get("phone")),
+    mobilePhone: clean(formData.get("mobilePhone")),
+    tags: parseTags(formData.get("tags")),
     jobTitle: clean(formData.get("jobTitle")),
     department: clean(formData.get("department")),
     hireDate: new Date(`${hireDateRaw}T00:00:00`),
     managerId: clean(formData.get("managerId")),
     notes: clean(formData.get("notes")),
+    ...(photoData !== undefined ? { photoData } : {}),
   };
 
   try {

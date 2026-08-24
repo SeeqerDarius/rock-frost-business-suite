@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { UsersRound, Plus } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
@@ -19,6 +20,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "missing-fields": "Full name and hire date are required.",
   "invalid-state": "Only employees in onboarding can be activated.",
   "not-found": "That manager could not be found.",
+  "invalid-photo": "Choose a valid JPG, PNG, or WebP photo no larger than 1 MB.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
@@ -32,7 +34,7 @@ const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "seco
 };
 
 interface EmployeeFieldsProps {
-  employee?: { fullName: string; email: string | null; phone: string | null; jobTitle: string | null; department: string | null; hireDate: Date; managerId: string | null; notes: string | null };
+  employee?: { id: string; fullName: string; email: string | null; phone: string | null; mobilePhone: string | null; tags: string[]; photoData: string | null; jobTitle: string | null; department: string | null; hireDate: Date; managerId: string | null; notes: string | null };
   managerItems: Record<string, string>;
 }
 
@@ -43,6 +45,17 @@ function EmployeeFields({ employee, managerItems }: EmployeeFieldsProps) {
       <div className="space-y-2">
         <Label htmlFor={`fullName${idSuffix}`}>Full name</Label>
         <Input id={`fullName${idSuffix}`} name="fullName" defaultValue={employee?.fullName} required />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`photo${idSuffix}`}>{employee?.photoData ? "Replace photo" : "Photo"}</Label>
+        {employee?.photoData ? (
+          <div className="flex items-center gap-3 rounded-md border p-2">
+            <Image src={`/api/hr/employees/${employee.id}/photo`} alt={employee.fullName} width={56} height={56} unoptimized className="size-14 rounded-full object-cover" />
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="removePhoto" />Remove current photo</label>
+          </div>
+        ) : null}
+        <Input id={`photo${idSuffix}`} name="photo" type="file" accept="image/jpeg,image/png,image/webp" />
+        <p className="text-xs text-muted-foreground">Optional JPG, PNG, or WebP, up to 1 MB.</p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
@@ -60,9 +73,13 @@ function EmployeeFields({ employee, managerItems }: EmployeeFieldsProps) {
           <Input id={`email${idSuffix}`} name="email" type="email" defaultValue={employee?.email ?? ""} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`phone${idSuffix}`}>Phone</Label>
+          <Label htmlFor={`phone${idSuffix}`}>Work phone</Label>
           <Input id={`phone${idSuffix}`} name="phone" defaultValue={employee?.phone ?? ""} />
         </div>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`mobilePhone${idSuffix}`}>Mobile phone</Label>
+        <Input id={`mobilePhone${idSuffix}`} name="mobilePhone" defaultValue={employee?.mobilePhone ?? ""} />
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
@@ -93,6 +110,11 @@ function EmployeeFields({ employee, managerItems }: EmployeeFieldsProps) {
         </div>
       </div>
       <div className="space-y-2">
+        <Label htmlFor={`tags${idSuffix}`}>Tags</Label>
+        <Input id={`tags${idSuffix}`} name="tags" defaultValue={employee?.tags.join(", ") ?? ""} placeholder="e.g. Consultant, Remote" />
+        <p className="text-xs text-muted-foreground">Comma-separated.</p>
+      </div>
+      <div className="space-y-2">
         <Label htmlFor={`notes${idSuffix}`}>Notes</Label>
         <Textarea id={`notes${idSuffix}`} name="notes" defaultValue={employee?.notes ?? ""} rows={3} />
       </div>
@@ -119,7 +141,7 @@ export default async function HrEmployeesPage({
       <div className="flex items-center justify-between gap-4">
         <PageHeader title="Employees" description="Every person your organization employs." />
         {canManage ? (
-          <EntityDialog trigger={<Button size="sm"><Plus />New employee</Button>} title="New employee" action={upsertEmployee}>
+          <EntityDialog trigger={<Button size="sm"><Plus />New employee</Button>} title="New employee" action={upsertEmployee} contentClassName="sm:max-w-xl">
             <EmployeeFields managerItems={managerItems} />
           </EntityDialog>
         ) : null}
@@ -191,6 +213,7 @@ export default async function HrEmployeesPage({
                         title="Edit employee"
                         action={upsertEmployee}
                         submitLabel="Save changes"
+                        contentClassName="sm:max-w-xl"
                       >
                         <input type="hidden" name="id" value={employee.id} />
                         <EmployeeFields employee={employee} managerItems={managerItems} />

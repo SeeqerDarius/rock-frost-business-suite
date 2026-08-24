@@ -159,6 +159,10 @@ export function listManagerCandidates(organizationId: string) {
   });
 }
 
+export function getEmployeePhoto(organizationId: string, id: string) {
+  return db.hrEmployee.findFirst({ where: { id, organizationId }, select: { photoData: true, updatedAt: true } });
+}
+
 async function generateEmployeeNumber(organizationId: string) {
   const [{ employeeNumberPrefix }, count] = await Promise.all([
     getHrSettings(organizationId),
@@ -171,6 +175,9 @@ interface EmployeeInput {
   fullName: string;
   email?: string | null;
   phone?: string | null;
+  mobilePhone?: string | null;
+  tags?: string[];
+  photoData?: string | null;
   jobTitle?: string | null;
   department?: string | null;
   hireDate: Date;

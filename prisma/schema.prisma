@@ -2527,6 +2527,9 @@ model HrEmployee {
   fullName        String
   email           String?
   phone           String?
+  mobilePhone     String?
+  tags            String[]         @default([])
+  photoData       String?          @db.Text
   jobTitle        String?
   department      String?
   hireDate        DateTime
