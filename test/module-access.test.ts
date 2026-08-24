@@ -159,7 +159,9 @@ describe("module authorization source coverage", () => {
     // (a history log of past/current till sessions) and Payments (a list of
     // every payment recorded across every sale) - both requireModuleAccess("pos").
     // 112, up from 111: HR gains a Departments kanban page, requireModuleAccess("hr").
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(112);
+    // 114, up from 112: HR gains an employee profile page and its "full chart" org
+    // hierarchy page, both requireModuleAccess("hr").
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(114);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
     // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
     // all Hostel Server Actions, same shape as School's) joins the sweep

@@ -159,6 +159,54 @@ export function listManagerCandidates(organizationId: string) {
   });
 }
 
+export function getEmployeeProfile(organizationId: string, id: string) {
+  return db.hrEmployee.findFirst({
+    where: { id, organizationId },
+    include: {
+      branch: true,
+      manager: true,
+      reports: { orderBy: { fullName: "asc" } },
+      user: true,
+      payrollCompensation: true,
+      payslips: { orderBy: { createdAt: "desc" }, take: 5 },
+    },
+  });
+}
+
+/** The employee's own ancestor chain plus every descendant beneath its top-most
+ * ancestor, for the "full chart" recursive tree view. Bounded to this organization's
+ * employees only; a manager cycle (never possible through normal edits, since
+ * updateEmployee only ever points managerId at an existing employee, but not something
+ * this query should trust blindly) is guarded by a visited-set rather than assumed away. */
+export async function getOrgChartTree(organizationId: string, employeeId: string) {
+  const all = await db.hrEmployee.findMany({ where: { organizationId }, select: { id: true, fullName: true, jobTitle: true, managerId: true, photoData: true, status: true } });
+  const byId = new Map(all.map((employee) => [employee.id, employee]));
+  const start = byId.get(employeeId);
+  if (!start) return null;
+
+  let root = start;
+  const seen = new Set([root.id]);
+  while (root.managerId && byId.has(root.managerId) && !seen.has(root.managerId)) {
+    root = byId.get(root.managerId)!;
+    seen.add(root.id);
+  }
+
+  const childrenByManager = new Map<string, typeof all>();
+  for (const employee of all) {
+    if (!employee.managerId) continue;
+    const siblings = childrenByManager.get(employee.managerId) ?? [];
+    siblings.push(employee);
+    childrenByManager.set(employee.managerId, siblings);
+  }
+
+  type TreeNode = (typeof all)[number] & { children: TreeNode[] };
+  function build(node: (typeof all)[number], visited: Set<string>): TreeNode {
+    const children = (childrenByManager.get(node.id) ?? []).filter((child) => !visited.has(child.id));
+    return { ...node, children: children.map((child) => build(child, new Set([...visited, child.id]))) };
+  }
+  return build(root, new Set([root.id]));
+}
+
 export function getEmployeePhoto(organizationId: string, id: string) {
   return db.hrEmployee.findFirst({ where: { id, organizationId }, select: { photoData: true, updatedAt: true } });
 }

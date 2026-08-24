@@ -22,6 +22,16 @@ Employee photos follow the same convention used for Inventory item images and Sc
 
 `HrEmployee.tags` is a free-form `String[]`. The employee form takes a single comma-separated text input (`parseTags()` in `src/app/app/hr/employees/actions.ts`) rather than a dedicated chip/multi-select widget — no such widget exists anywhere else in this codebase yet, so this is the simplest correct mechanism rather than a placeholder.
 
+## Employee profile page
+
+`/app/hr/employees/[employeeId]` is the first individual employee detail view this module has had (previously, editing only happened inline from the list page). It shows a header (photo, name, contact info, tags, status), quick actions (Time off, a History dialog backed by `getEmployeeStatusHistory`), and four tabs: Work (department, job title, hire date, branch, manager, plus an organization chart widget), Personal (contact fields, notes), Payroll (`payrollCompensation` and the 5 most recent `payslips`, both already modeled on `HrEmployee` and now surfaced for the first time), and Settings (the linked platform `User` account, if any).
+
+There is deliberately no Resume tab: it would be Odoo's work-history timeline, and there is no data model backing that in this codebase. Fabricating placeholder content for it would misrepresent what the page actually knows.
+
+## Organization chart
+
+Built entirely on the existing `HrEmployee.managerId` self-relation, no schema addition. The profile page's own chart widget shows just the immediate manager and direct-report count; `getOrgChartTree()` (`src/modules/hr/service.ts`) walks up to the top-most ancestor with no manager and renders every descendant beneath it as a recursive indented tree at `/app/hr/employees/[employeeId]/org-chart`, guarded against a manager-reference cycle with a visited set (defensive: normal edits can't create one, but the query doesn't assume that).
+
 ## Termination and offboarding
 
 `HrTerminationRequest` drives a full maker-checker approval workflow (`initiateTermination`, `reviewTermination`, `applyApprovedTermination`, `cancelTermination`, `reinstateEmployee` in `src/modules/hr/service.ts`), with a fixed, hardcoded offboarding checklist (`OFFBOARDING_TASKS`) recorded per termination as `HrOffboardingTask` rows. This workflow is unrelated to, and unaffected by, the Launch Plan system described below.

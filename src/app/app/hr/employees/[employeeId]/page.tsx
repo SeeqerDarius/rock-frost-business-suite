@@ -1,0 +1,203 @@
+import Image from "next/image";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { Mail, Phone, Smartphone, CalendarClock, History as HistoryIcon, Network } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { IconBadge } from "@/components/ui/icon-badge";
+import { EntityDialog } from "@/components/forms/entity-dialog";
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { requireModuleAccess } from "@/lib/auth/module-access";
+import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { getEmployeeProfile, getEmployeeStatusHistory, listManagerCandidates } from "@/modules/hr/service";
+import { upsertEmployee } from "../actions";
+import { EmployeeFields } from "../employee-fields";
+
+const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
+  ONBOARDING: "secondary",
+  ACTIVE: "default",
+  ON_LEAVE: "outline",
+  SUSPENDED: "destructive",
+  TERMINATION_PENDING: "secondary",
+  TERMINATED: "destructive",
+  REINSTATED: "default",
+};
+
+function PersonAvatar({ id, fullName, photoData, size = 56 }: { id: string; fullName: string; photoData: string | null; size?: number }) {
+  if (photoData) {
+    return <Image src={`/api/hr/employees/${id}/photo`} alt={fullName} width={size} height={size} unoptimized className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />;
+  }
+  return (
+    <span className="flex shrink-0 items-center justify-center rounded-full bg-primary/10 text-lg font-semibold text-primary" style={{ width: size, height: size }}>
+      {fullName.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
+
+export default async function HrEmployeeProfilePage({ params }: { params: Promise<{ employeeId: string }> }) {
+  const { employeeId } = await params;
+  const tenant = await requireModuleAccess("hr");
+  const canManage = hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_EDIT) || hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE);
+  const [employee, statusHistory, managers] = await Promise.all([
+    getEmployeeProfile(tenant.organizationId, employeeId),
+    getEmployeeStatusHistory(tenant.organizationId, employeeId),
+    listManagerCandidates(tenant.organizationId),
+  ]);
+  if (!employee) notFound();
+  const managerItems: Record<string, string> = Object.fromEntries(managers.filter((m) => m.id !== employee.id).map((m) => [m.id, m.fullName]));
+
+  return (
+    <div className="space-y-6">
+      <Link href="/app/hr/employees" className="text-sm text-muted-foreground hover:underline">Back to Employees</Link>
+
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-4">
+          <PersonAvatar id={employee.id} fullName={employee.fullName} photoData={employee.photoData} />
+          <div className="space-y-1.5">
+            <h1 className="text-xl font-semibold">{employee.fullName}</h1>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+              {employee.email ? <span className="flex items-center gap-1.5"><Mail className="size-3.5" />{employee.email}</span> : null}
+              {employee.phone ? <span className="flex items-center gap-1.5"><Phone className="size-3.5" />{employee.phone}</span> : null}
+              {employee.mobilePhone ? <span className="flex items-center gap-1.5"><Smartphone className="size-3.5" />{employee.mobilePhone}</span> : null}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              <Badge variant={STATUS_BADGE[employee.status]}>{employee.status.replace("_", " ")}</Badge>
+              {employee.tags.map((tag) => <Badge key={tag} variant="outline">{tag}</Badge>)}
+            </div>
+          </div>
+        </div>
+        {canManage ? (
+          <EntityDialog trigger={<Button size="sm" variant="outline">Edit</Button>} title="Edit employee" action={upsertEmployee} submitLabel="Save changes" contentClassName="sm:max-w-xl">
+            <input type="hidden" name="id" value={employee.id} />
+            <EmployeeFields employee={employee} managerItems={managerItems} />
+          </EntityDialog>
+        ) : null}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Link href="/app/hr/leave"><Button type="button" size="sm" variant="outline"><CalendarClock />Time off</Button></Link>
+        <Dialog>
+          <DialogTrigger render={<Button type="button" size="sm" variant="outline"><HistoryIcon />History</Button>} />
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Status history</DialogTitle>
+              <DialogDescription>Every status change recorded for {employee.fullName}.</DialogDescription>
+            </DialogHeader>
+            {statusHistory.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No status changes recorded yet.</p>
+            ) : (
+              <ul className="max-h-80 space-y-3 overflow-y-auto text-sm">
+                {statusHistory.map((entry) => (
+                  <li key={entry.id} className="border-b pb-2 last:border-b-0">
+                    <p className="font-medium">{entry.previousStatus.replace("_", " ")} → {entry.newStatus.replace("_", " ")}</p>
+                    <p className="text-xs text-muted-foreground">{entry.effectiveDate.toLocaleDateString()}: {entry.reason}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <Tabs defaultValue="work">
+        <TabsList>
+          <TabsTrigger value="work">Work</TabsTrigger>
+          <TabsTrigger value="personal">Personal</TabsTrigger>
+          <TabsTrigger value="payroll">Payroll</TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="work" className="space-y-6 pt-4">
+          <dl className="grid gap-4 sm:grid-cols-2">
+            <div><dt className="text-xs text-muted-foreground">Employee number</dt><dd className="font-mono text-sm">{employee.employeeNumber}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">Job title</dt><dd className="text-sm">{employee.jobTitle ?? "-"}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">Department</dt><dd className="text-sm">{employee.department ? <Link href={`/app/hr/employees?department=${encodeURIComponent(employee.department)}`} className="hover:underline">{employee.department}</Link> : "-"}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">Branch</dt><dd className="text-sm">{employee.branch?.name ?? "-"}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">Hire date</dt><dd className="text-sm">{employee.hireDate.toLocaleDateString()}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">Manager</dt><dd className="text-sm">{employee.manager ? <Link href={`/app/hr/employees/${employee.manager.id}`} className="hover:underline">{employee.manager.fullName}</Link> : "-"}</dd></div>
+          </dl>
+
+          <div className="space-y-3 rounded-xl border p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Organization chart</h2>
+              <Link href={`/app/hr/employees/${employee.id}/org-chart`} className="flex items-center gap-1 text-xs text-primary hover:underline"><Network className="size-3.5" />Full chart</Link>
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              {employee.manager ? (
+                <Link href={`/app/hr/employees/${employee.manager.id}`} className="flex flex-col items-center gap-1">
+                  <PersonAvatar id={employee.manager.id} fullName={employee.manager.fullName} photoData={employee.manager.photoData} size={40} />
+                  <span className="text-xs font-medium">{employee.manager.fullName}</span>
+                  <span className="text-[11px] text-muted-foreground">{employee.manager.jobTitle ?? "-"}</span>
+                </Link>
+              ) : <p className="text-xs text-muted-foreground">No manager on record.</p>}
+              <div className="h-4 w-px bg-border" />
+              <div className="flex flex-col items-center gap-1 rounded-lg border-2 border-primary/40 p-2">
+                <PersonAvatar id={employee.id} fullName={employee.fullName} photoData={employee.photoData} size={40} />
+                <span className="text-xs font-medium">{employee.fullName}</span>
+              </div>
+              {employee.reports.length > 0 ? (
+                <>
+                  <div className="h-4 w-px bg-border" />
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <IconBadge size="sm"><span className="text-[11px] font-semibold">{employee.reports.length}</span></IconBadge>
+                    {employee.reports.length === 1 ? "direct report" : "direct reports"}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="personal" className="space-y-4 pt-4">
+          <dl className="grid gap-4 sm:grid-cols-2">
+            <div><dt className="text-xs text-muted-foreground">Work email</dt><dd className="text-sm">{employee.email ?? "-"}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">Work phone</dt><dd className="text-sm">{employee.phone ?? "-"}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">Mobile phone</dt><dd className="text-sm">{employee.mobilePhone ?? "-"}</dd></div>
+          </dl>
+          {employee.notes ? (
+            <div><p className="text-xs text-muted-foreground">Notes</p><p className="text-sm whitespace-pre-wrap">{employee.notes}</p></div>
+          ) : null}
+        </TabsContent>
+
+        <TabsContent value="payroll" className="space-y-6 pt-4">
+          {employee.payrollCompensation ? (
+            <dl className="grid gap-4 sm:grid-cols-3">
+              <div><dt className="text-xs text-muted-foreground">Base salary</dt><dd className="text-sm">{Number(employee.payrollCompensation.baseSalary).toFixed(2)}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Pay frequency</dt><dd className="text-sm">{employee.payrollCompensation.payFrequency}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Effective date</dt><dd className="text-sm">{employee.payrollCompensation.effectiveDate.toLocaleDateString()}</dd></div>
+            </dl>
+          ) : (
+            <p className="text-sm text-muted-foreground">No compensation set. <Link href="/app/payroll/compensation" className="text-primary hover:underline">Set it up in Payroll</Link>.</p>
+          )}
+          <div>
+            <h3 className="mb-2 text-sm font-semibold">Recent payslips</h3>
+            {employee.payslips.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No payslips yet.</p>
+            ) : (
+              <ul className="space-y-2 text-sm">
+                {employee.payslips.map((slip) => (
+                  <li key={slip.id} className="flex items-center justify-between rounded-md border px-3 py-2">
+                    <span className="text-muted-foreground">{slip.createdAt.toLocaleDateString()}</span>
+                    <span>Net {Number(slip.netPay).toFixed(2)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="settings" className="space-y-4 pt-4">
+          {employee.user ? (
+            <dl className="grid gap-4 sm:grid-cols-2">
+              <div><dt className="text-xs text-muted-foreground">Linked account</dt><dd className="text-sm">{employee.user.email}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Account status</dt><dd className="text-sm">{employee.user.status}</dd></div>
+            </dl>
+          ) : (
+            <p className="text-sm text-muted-foreground">No platform user account is linked to this employee yet.</p>
+          )}
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
