@@ -14,6 +14,10 @@ There is no separate `Department` table. A department is just the distinct, non-
 
 `/app/hr/employees` supports two presentations of the same data via `?view=table|kanban` (table is the default): the original table, and a tile-grid kanban view (photo-or-initial avatar, name, job title, work email, work phone, status and tag badges) built on the same tile pattern as the dashboard's Quick launch grid and POS's product picker. `?department=` filters either view to one department, matching the links from the Departments page.
 
+## Directory
+
+`/app/hr/directory` is a read-only, plain contact-lookup card grid (photo, name, job title, email, phone) — deliberately no status or tag badges, since it's a "who works here" lookup, not a management view. It stays behind the same `requireModuleAccess("hr")` gate as Employees (a deliberate decision, not opened company-wide the way Odoo's own Directory is), with a persistent department filter sidebar built on the same `getHrSummary().departmentCounts` grouping the Departments page uses.
+
 ## Employee photos
 
 Employee photos follow the same convention used for Inventory item images and School student/guardian photos: a validated base64 data URI stored directly on the row (`HrEmployee.photoData`), never a separate image table or file storage. Validation and parsing live in `src/lib/hr-employee-image.ts` (`hrEmployeePhotoData()`, `parseHrEmployeePhoto()` — 1 MB cap, JPEG/PNG/WebP only, magic-byte checked). Photos are served through `GET /api/hr/employees/[employeeId]/photo`, a tenant-scoped route mirroring `/api/inventory/items/[itemId]/image`.

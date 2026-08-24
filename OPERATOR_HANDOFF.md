@@ -1,5 +1,16 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-24: HR module round 2, phase H of 5 — Directory page
+
+- **No schema change** — reuses `listEmployees()` and `getHrSummary().departmentCounts`, both already existing.
+- **New `/app/hr/directory`**: a read-only, plain contact-lookup card grid (photo, name, job title, email, phone) — deliberately no status or tag badges, since this is a "who works here" lookup, not a management view (the Employees kanban already covers that job). Added as a plain top-level nav item after Employees.
+- **A real design fork was resolved with the user before this phase**: Odoo's own Directory is visible company-wide to any employee, not gated by HR-specific permissions. The user explicitly chose to keep ours behind the same `requireModuleAccess("hr")` gate as Employees today, rather than opening a new company-wide access model — simpler, and doesn't introduce a precedent for HR data being reachable without the HR module enabled.
+- **A persistent department filter sidebar** — new to this codebase (no existing page has a page-level filter sidebar; filters elsewhere are top-level, not side) — reuses `getHrSummary().departmentCounts`, matching the grouping the Departments page already established, not new logic.
+- **Important files**: `src/app/app/hr/directory/page.tsx` (new), `src/modules/hr/navigation.tsx`, `docs/HR_MODULE.md`, `test/hr-employee-profile.test.ts`, `test/module-access.test.ts` (guarded-page count 114 → 115).
+- **Validation**: `npx tsc --noEmit`, `npm run lint`, `npm run test` (93 files, 605 tests, up from 93/602), and `npm run build` (confirms `/app/hr/directory` compiles as a guarded dynamic route) all passed. No migration, so no disposable-Neon-branch step was needed for this phase.
+- **Not verified live in a browser**: no test tenant credentials in this environment, consistent with every other change this session.
+- **Production deploy verified (phase G)**: commit `a5541bb` reached Vercel production deployment `dpl_6GX7ZRad6U1Lth3ZJ8eKn7yXLXbP` (`READY`, all production aliases attached). `/api/health` returned `{"ok":true,"database":"reachable"}`; `get_runtime_errors` returned none.
+
 ## 2026-08-24: HR module round 2, phase G of 5 — a visually real organization chart
 
 - **No schema change** — the full nested tree already came from phase 1's `getOrgChartTree()`; this phase is a pure visual rebuild of how it's rendered.

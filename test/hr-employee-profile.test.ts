@@ -14,6 +14,28 @@ const settingsActions = readFileSync("src/app/app/hr/settings/actions.ts", "utf8
 const employeeActions = readFileSync("src/app/app/hr/employees/[employeeId]/actions.ts", "utf8");
 const launchPlanDialog = readFileSync("src/app/app/hr/employees/[employeeId]/launch-plan-dialog.tsx", "utf8");
 const permissions = readFileSync("src/lib/auth/permissions.ts", "utf8");
+const directoryPage = readFileSync("src/app/app/hr/directory/page.tsx", "utf8");
+
+describe("HR Directory page", () => {
+  it("is HR-gated, same access model as Employees, not opened company-wide", () => {
+    expect(directoryPage).toContain('await requireModuleAccess("hr")');
+    expect(navigation).toContain('href: "/app/hr/directory"');
+  });
+
+  it("is a read-only contact lookup: photo, name, job title, email, phone, no status or tag badges", () => {
+    expect(directoryPage).toContain("employee.jobTitle");
+    expect(directoryPage).toContain("employee.email");
+    expect(directoryPage).toContain("employee.phone");
+    expect(directoryPage).not.toContain("STATUS_BADGE");
+    expect(directoryPage).not.toContain("employee.tags");
+  });
+
+  it("filters by department via a sidebar list built on the existing departmentCounts grouping", () => {
+    expect(directoryPage).toContain("getHrSummary");
+    expect(directoryPage).toContain("departmentCounts");
+    expect(directoryPage).toContain("Promise<{ department?: string }>");
+  });
+});
 
 describe("HR Departments and Employees kanban views", () => {
   it("adds a guarded Departments page grouping employees by department, linked from HR navigation", () => {
