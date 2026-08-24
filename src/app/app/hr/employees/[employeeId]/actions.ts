@@ -2,9 +2,19 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { db } from "@/lib/db";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { getServerAuthSession } from "@/lib/auth/session";
 import { previewPlanLaunch, launchPlan, completePlanActivity, NotFoundError } from "@/modules/hr/service";
+import { createInvitation, markInvitationDeliveryFailed } from "@/lib/auth/invitations";
+import { sendEmail } from "@/lib/email";
+import { invitationEmail } from "@/lib/email-templates";
+import { buildTenantAppUrl } from "@/lib/app-url";
+import { isPlatformUser } from "@/lib/auth/platform-identity";
+import { isRoleAssignableToOrganization, resolveAssignableModuleKeys, roleDisplayName } from "@/lib/administration-roles";
+import { assertRoleHasAvailableSeats, SeatLimitExceededError } from "@/platform/subscriptions/seats";
+import { logAuditEvent } from "@/lib/audit";
 import type { HrPlanKind } from "@prisma/client";
 
 function clean(value: FormDataEntryValue | null) {
@@ -71,4 +81,86 @@ export async function markPlanActivityDone(formData: FormData): Promise<void> {
   await completePlanActivity(tenant.organizationId, activityId, tenant.userId);
   revalidatePath(`/app/hr/employees/${employeeId}`);
   redirect(`/app/hr/employees/${employeeId}?saved=1`);
+}
+
+class PlatformOwnerTenantError extends Error {}
+
+/** Thin employee-specific wrapper around the exact same membership-creation
+ * transaction inviteMember() (src/app/app/(overview)/administration/actions.ts)
+ * already establishes for the "invite a new org member" flow - not new
+ * membership logic, just also linking the result back to HrEmployee.userId. */
+export async function createUserForEmployee(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("hr");
+  if (!hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE)) {
+    redirect("/app/hr/employees?error=forbidden");
+  }
+
+  const employeeId = clean(formData.get("employeeId"));
+  const roleId = clean(formData.get("roleId"));
+  if (!employeeId || !roleId) redirect(`/app/hr/employees/${employeeId}?error=missing-fields`);
+
+  const employee = await db.hrEmployee.findFirst({ where: { id: employeeId, organizationId: tenant.organizationId } });
+  if (!employee) redirect("/app/hr/employees?error=not-found");
+  if (employee.userId) redirect(`/app/hr/employees/${employeeId}?error=already-linked`);
+  if (!employee.email) redirect(`/app/hr/employees/${employeeId}?error=missing-fields`);
+  const email = employee.email;
+
+  const existingUser = await db.user.findUnique({ where: { email }, select: { id: true } });
+  if (existingUser && await isPlatformUser(existingUser.id)) redirect(`/app/hr/employees/${employeeId}?error=platform-owner`);
+
+  const role = await db.role.findFirst({
+    where: { id: roleId, OR: [{ organizationId: tenant.organizationId }, { isSystem: true }] },
+    include: { rolePermissions: { include: { permission: true } } },
+  });
+  const assignableModuleKeys = await resolveAssignableModuleKeys(tenant.organizationId, tenant.enabledModuleKeys);
+  if (!role || role.name === "Super Admin" || !isRoleAssignableToOrganization(role, tenant.organizationId, assignableModuleKeys)) {
+    redirect(`/app/hr/employees/${employeeId}?error=invalid-role`);
+  }
+
+  const session = await getServerAuthSession();
+  let membership;
+  try {
+    membership = await db.$transaction(async (tx) => {
+      const user = await tx.user.upsert({ where: { email }, update: {}, create: { email, name: employee.fullName, phone: employee.phone, status: "INVITED" } });
+      if (await isPlatformUser(user.id, tx)) throw new PlatformOwnerTenantError();
+
+      const existingMembership = await tx.organizationMember.findUnique({
+        where: { organizationId_userId: { organizationId: tenant.organizationId, userId: user.id } },
+        select: { id: true },
+      });
+      await assertRoleHasAvailableSeats(tx, tenant.organizationId, roleId, existingMembership?.id);
+
+      const member = await tx.organizationMember.upsert({
+        where: { organizationId_userId: { organizationId: tenant.organizationId, userId: user.id } },
+        update: { roleId, status: "INVITED" },
+        create: { organizationId: tenant.organizationId, userId: user.id, roleId, status: "INVITED" },
+      });
+
+      await tx.hrEmployee.update({ where: { id: employee.id }, data: { userId: user.id } });
+
+      await logAuditEvent({
+        organizationId: tenant.organizationId,
+        userId: session?.user?.id,
+        module: "hr",
+        action: "employee.user_created",
+        entityName: "HrEmployee",
+        entityId: employee.id,
+        metadata: { email, role: role!.name },
+      }, tx);
+
+      return member;
+    });
+  } catch (error) {
+    if (error instanceof PlatformOwnerTenantError) redirect(`/app/hr/employees/${employeeId}?error=platform-owner`);
+    if (error instanceof SeatLimitExceededError) redirect(`/app/hr/employees/${employeeId}?error=seat-limit`);
+    throw error;
+  }
+
+  const token = await createInvitation({ organizationId: tenant.organizationId, membershipId: membership.id, email, createdById: session?.user?.id ?? null });
+  const inviteUrl = buildTenantAppUrl("/invite", { token });
+  const delivery = await sendEmail({ to: email, ...invitationEmail({ organizationName: tenant.organization.name, roleName: roleDisplayName(role!.name), inviteUrl }) });
+  if (!delivery.ok) await markInvitationDeliveryFailed(membership.id);
+
+  revalidatePath(`/app/hr/employees/${employeeId}`);
+  redirect(`/app/hr/employees/${employeeId}?${delivery.ok ? "saved=1" : "error=delivery-failed"}`);
 }

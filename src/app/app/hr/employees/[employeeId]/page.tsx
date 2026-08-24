@@ -8,12 +8,16 @@ import { IconBadge } from "@/components/ui/icon-badge";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { db } from "@/lib/db";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { isRoleAssignableToOrganization, resolveAssignableModuleKeys, roleDisplayName } from "@/lib/administration-roles";
 import { getEmployeeProfile, getEmployeeStatusHistory, listManagerCandidates, listPlanTemplates, listPendingPlanActivities } from "@/modules/hr/service";
 import { upsertEmployee } from "../actions";
 import { EmployeeFields } from "../employee-fields";
-import { markPlanActivityDone } from "./actions";
+import { markPlanActivityDone, createUserForEmployee } from "./actions";
 import { LaunchPlanDialog } from "./launch-plan-dialog";
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
@@ -28,8 +32,13 @@ const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "seco
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to do that.",
-  "missing-fields": "Choose a template and a target date.",
+  "missing-fields": "Choose a template and a target date, or a role and an employee email.",
   "not-found": "That employee or template could not be found.",
+  "already-linked": "This employee already has a linked account.",
+  "invalid-role": "Choose an assignable role.",
+  "platform-owner": "That email belongs to a Rock Frost platform account and cannot be linked here.",
+  "seat-limit": "That role has no available seats.",
+  "delivery-failed": "The account was created but the invitation email could not be delivered.",
 };
 
 function PersonAvatar({ id, fullName, photoData, size = 56 }: { id: string; fullName: string; photoData: string | null; size?: number }) {
@@ -55,18 +64,26 @@ export default async function HrEmployeeProfilePage({
   const tenant = await requireModuleAccess("hr");
   const canManage = hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_EDIT) || hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE);
   const canLaunchPlans = hasPermission(tenant, PERMISSIONS.HR_ONBOARDING_MANAGE);
-  const [employee, statusHistory, managers, onboardingTemplates, offboardingTemplates, pendingActivities] = await Promise.all([
+  const [employee, statusHistory, managers, onboardingTemplates, offboardingTemplates, pendingActivities, roles, assignableModuleKeys] = await Promise.all([
     getEmployeeProfile(tenant.organizationId, employeeId),
     getEmployeeStatusHistory(tenant.organizationId, employeeId),
     listManagerCandidates(tenant.organizationId),
     listPlanTemplates(tenant.organizationId, "ONBOARDING"),
     listPlanTemplates(tenant.organizationId, "OFFBOARDING"),
     listPendingPlanActivities(tenant.organizationId, employeeId),
+    db.role.findMany({
+      where: { OR: [{ organizationId: tenant.organizationId }, { isSystem: true }], name: { not: "Super Admin" } },
+      include: { rolePermissions: { include: { permission: true } } },
+      orderBy: { name: "asc" },
+    }),
+    resolveAssignableModuleKeys(tenant.organizationId, tenant.enabledModuleKeys),
   ]);
   if (!employee) notFound();
   const managerItems: Record<string, string> = Object.fromEntries(managers.filter((m) => m.id !== employee.id).map((m) => [m.id, m.fullName]));
   const defaultKind = employee.status === "TERMINATION_PENDING" ? "OFFBOARDING" : "ONBOARDING";
   const defaultTargetDate = (employee.status === "TERMINATION_PENDING" && employee.terminationDate ? employee.terminationDate : employee.hireDate).toISOString().slice(0, 10);
+  const assignableRoles = roles.filter((role) => isRoleAssignableToOrganization(role, tenant.organizationId, assignableModuleKeys));
+  const roleItems: Record<string, string> = Object.fromEntries(assignableRoles.map((role) => [role.id, roleDisplayName(role.name)]));
 
   return (
     <div className="space-y-6">
@@ -252,6 +269,21 @@ export default async function HrEmployeeProfilePage({
               <div><dt className="text-xs text-muted-foreground">Linked account</dt><dd className="text-sm">{employee.user.email}</dd></div>
               <div><dt className="text-xs text-muted-foreground">Account status</dt><dd className="text-sm">{employee.user.status}</dd></div>
             </dl>
+          ) : canManage ? (
+            employee.email ? (
+              <EntityDialog trigger={<Button size="sm">Create user</Button>} title="Create a user account" description={`Sends an invitation to ${employee.email} to sign in and access this organization.`} action={createUserForEmployee}>
+                <input type="hidden" name="employeeId" value={employee.id} />
+                <div className="space-y-2">
+                  <Label htmlFor="roleId">Role</Label>
+                  <Select name="roleId" items={roleItems}>
+                    <SelectTrigger id="roleId" className="w-full"><SelectValue placeholder="Choose a role" /></SelectTrigger>
+                    <SelectContent>{Object.entries(roleItems).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              </EntityDialog>
+            ) : (
+              <p className="text-sm text-muted-foreground">Add a work email for this employee before creating an account.</p>
+            )
           ) : (
             <p className="text-sm text-muted-foreground">No platform user account is linked to this employee yet.</p>
           )}

@@ -119,3 +119,28 @@ describe("HR Launch Plan onboarding/offboarding automation", () => {
     expect(profilePage).toContain("Pending activities");
   });
 });
+
+describe("HR Create User button", () => {
+  it("reuses inviteMember's exact membership-creation transaction shape rather than new logic", () => {
+    expect(employeeActions).toContain("export async function createUserForEmployee");
+    expect(employeeActions).toContain("tx.user.upsert");
+    expect(employeeActions).toContain("tx.organizationMember.upsert");
+    expect(employeeActions).toContain("assertRoleHasAvailableSeats");
+    expect(employeeActions).toContain("createInvitation(");
+  });
+
+  it("links the created user back to HrEmployee.userId inside the same transaction", () => {
+    expect(employeeActions).toContain("tx.hrEmployee.update({ where: { id: employee.id }, data: { userId: user.id } })");
+  });
+
+  it("blocks a Super Admin role and an employee with no email or an already-linked account", () => {
+    expect(employeeActions).toContain('role.name === "Super Admin"');
+    expect(employeeActions).toContain("if (employee.userId) redirect");
+    expect(employeeActions).toContain("if (!employee.email) redirect");
+  });
+
+  it("profile page only offers Create User once there is no linked account, and needs a work email first", () => {
+    expect(profilePage).toContain("createUserForEmployee");
+    expect(profilePage).toContain("Add a work email for this employee before creating an account.");
+  });
+});
