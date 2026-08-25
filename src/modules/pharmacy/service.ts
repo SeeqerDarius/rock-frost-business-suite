@@ -209,21 +209,63 @@ interface PharmacyPatientInput {
   notes?: string | null;
 }
 
-export function createPatient(organizationId: string, data: PharmacyPatientInput) {
-  return db.pharmacyPatient.create({ data: { organizationId, ...data } });
+export async function createPatient(organizationId: string, data: PharmacyPatientInput) {
+  try {
+    return await db.pharmacyPatient.create({ data: { organizationId, ...data } });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new PharmacyStockError("A patient with this patient number already exists.");
+    }
+    throw error;
+  }
 }
 
 /** Scoped by organizationId in the same `where` as `id`: a patient id belonging to a different organization throws rather than silently updating it. */
-export function updatePatient(organizationId: string, id: string, data: PharmacyPatientInput) {
-  return db.pharmacyPatient.update({ where: { id, organizationId }, data });
+export async function updatePatient(organizationId: string, id: string, data: PharmacyPatientInput) {
+  try {
+    return await db.pharmacyPatient.update({ where: { id, organizationId }, data });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new PharmacyStockError("A patient with this patient number already exists.");
+    }
+    throw error;
+  }
 }
 
+/** All prescribers, active or not - the Prescriptions page filters to active ones for the "new prescription" picker itself, but the management list needs to show everything to allow editing/reactivating. */
 export function listPrescribers(organizationId: string) {
-  return db.pharmacyPrescriber.findMany({ where: { organizationId, active: true }, orderBy: { fullName: "asc" } });
+  return db.pharmacyPrescriber.findMany({ where: { organizationId }, orderBy: { fullName: "asc" } });
 }
 
-export function createPrescriber(organizationId: string, data: { fullName: string; registrationNumber: string; facilityName?: string | null; phone?: string | null }) {
-  return db.pharmacyPrescriber.create({ data: { organizationId, ...data } });
+interface PharmacyPrescriberInput {
+  fullName: string;
+  registrationNumber: string;
+  facilityName?: string | null;
+  phone?: string | null;
+  active?: boolean;
+}
+
+export async function createPrescriber(organizationId: string, data: PharmacyPrescriberInput) {
+  try {
+    return await db.pharmacyPrescriber.create({ data: { organizationId, ...data } });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new PharmacyStockError("A prescriber with this registration number already exists.");
+    }
+    throw error;
+  }
+}
+
+/** Scoped by organizationId in the same `where` as `id`: a prescriber id belonging to a different organization throws rather than silently updating it. */
+export async function updatePrescriber(organizationId: string, id: string, data: PharmacyPrescriberInput) {
+  try {
+    return await db.pharmacyPrescriber.update({ where: { id, organizationId }, data });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new PharmacyStockError("A prescriber with this registration number already exists.");
+    }
+    throw error;
+  }
 }
 
 export async function createPrescription(organizationId: string, data: { prescriptionNumber: string; patientId: string; prescriberId: string; prescribedAt: Date; expiresAt?: Date | null; clinicalNotes?: string | null; lines: { medicineId: string; quantityPrescribed: number; dosage: string; frequency: string; duration?: string | null; instructions?: string | null }[] }) {
@@ -239,6 +281,14 @@ export async function createPrescription(organizationId: string, data: { prescri
 
 export function listDispensings(organizationId: string) {
   return db.pharmacyDispensing.findMany({ where: { organizationId }, include: { patient: true, lines: { include: { medicine: true, batch: true } } }, orderBy: { dispensedAt: "desc" }, take: 200 });
+}
+
+/** A single completed dispensing with everything a receipt needs to print - tenant-scoped, and only ever a COMPLETED sale (a pending/rejected/reversed record has nothing to receipt). */
+export function getDispensingReceipt(organizationId: string, id: string) {
+  return db.pharmacyDispensing.findFirst({
+    where: { id, organizationId, status: "COMPLETED" },
+    include: { patient: true, lines: { include: { medicine: true, batch: true } } },
+  });
 }
 
 export function listRestrictedRegister(organizationId: string) {

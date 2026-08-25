@@ -128,10 +128,31 @@ cookie server-side and passes it down as `initialConsent`.
   `PosPaymentMethod` Prisma enum and its Zod schema exactly.
 - POS barcode scanning works via a plain text input plus an Enter-keydown
   handler, a standard keyboard-wedge pattern compatible with any USB/Bluetooth
-  barcode scanner that types the code and presses Enter. No receipt printer,
-  cash drawer, or card-reader/payment-terminal integration exists anywhere in
-  the codebase; that remains a real capability gap, not something silently
-  patched in this pass.
+  barcode scanner that types the code and presses Enter. No cash drawer or
+  card-reader/payment-terminal integration exists anywhere in the codebase;
+  that remains a real capability gap, not something silently patched in this
+  pass.
+
+### Addendum (same day, follow-up requests): Prescriber management and a receipt
+
+Live follow-up on this same audit surfaced three more items, addressed the
+same day - see the `Prescriber management`/`Receipt printing` entry in
+`OPERATOR_HANDOFF.md` for the full writeup:
+
+- Prescribers had create-only, no list or edit - fixed with the same
+  list-plus-edit-dialog pattern as Patients.
+- A walk-in with a paper prescription from an unregistered patient or an
+  outside prescriber had no path through the New Prescription form without
+  first leaving it to register them - fixed with an inline "+ New
+  patient"/"+ New prescriber" option that reveals quick-add fields in place.
+- The "no receipt printer... exists anywhere in the codebase" finding above
+  is now specifically about POS; Pharmacy Dispensing gained a printable
+  receipt (a plain browser print view, no PDF generation or physical printer
+  integration) reachable from a "Receipt" button on each completed dispense.
+
+Validated separately from the numbers below - see the same-day
+`OPERATOR_HANDOFF.md` entry for this addendum's own test/lint/build results
+and production deploy verification.
 
 ## Verification
 

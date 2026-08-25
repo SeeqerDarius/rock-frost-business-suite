@@ -1,4 +1,5 @@
-import { ShoppingBag } from "lucide-react";
+import { ShoppingBag, Printer } from "lucide-react";
+import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Button } from "@/components/ui/button";
@@ -13,14 +14,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listDispensings, listMedicines, listPatients, listPendingControlledDispenses, listPrescriptions } from "@/modules/pharmacy/service";
 import { approveControlledDispenseAction, completeDispensing, rejectControlledDispenseAction, reverseCompletedDispensing } from "../actions";
 import { PharmacyStatusBanner } from "../status-banner";
-
-const PAYMENT_METHOD_ITEMS: Record<string, string> = {
-  CASH: "Cash",
-  CARD: "Card",
-  MOBILE_MONEY: "Mobile money",
-  INSURANCE: "Insurance",
-  OTHER: "Other",
-};
+import { PAYMENT_METHOD_ITEMS } from "../payment-methods";
 
 export default async function Page({
   searchParams,
@@ -179,6 +173,12 @@ export default async function Page({
                 <TableCell>{x.total.toFixed(2)}</TableCell>
                 <TableCell>
                   <Badge variant={x.status === "COMPLETED" ? "outline" : "destructive"}>{x.status}</Badge>
+                  {x.status === "COMPLETED" && (
+                    <Button size="sm" variant="outline" className="mt-2" nativeButton={false} render={<Link href={`/app/pharmacy/dispensing/${x.id}/receipt`} target="_blank" />}>
+                      <Printer />
+                      Receipt
+                    </Button>
+                  )}
                   {x.status === "COMPLETED" && (
                     <form action={reverseCompletedDispensing} className="mt-2 flex gap-2">
                       <input type="hidden" name="dispensingId" value={x.id} />

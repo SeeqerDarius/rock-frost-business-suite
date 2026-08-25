@@ -1,6 +1,8 @@
 const KNOWN_ERRORS: Record<string, string> = {
   forbidden: "You don't have permission to do that.",
   invalid: "Check the highlighted fields and try again.",
+  "missing-new-patient": "Enter a patient number and full name for the new patient.",
+  "missing-new-prescriber": "Enter a full name and registration number for the new prescriber.",
 };
 
 /**

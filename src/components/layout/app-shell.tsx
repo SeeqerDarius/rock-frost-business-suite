@@ -108,7 +108,7 @@ export function AppShell({
         aria-label={`${sectionLabel} sidebar`}
         data-collapsed={sidebarCollapsed}
         className={cn(
-          "sticky top-0 hidden h-dvh shrink-0 flex-col border-r bg-sidebar transition-[width] duration-200 lg:flex",
+          "sticky top-0 hidden h-dvh shrink-0 flex-col border-r bg-sidebar transition-[width] duration-200 lg:flex print:hidden",
           sidebarCollapsed ? "w-18" : "w-64",
         )}
       >
@@ -165,7 +165,7 @@ export function AppShell({
       </Sheet>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b bg-background/95 px-4 backdrop-blur sm:px-6">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b bg-background/95 px-4 backdrop-blur sm:px-6 print:hidden">
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation">
             <Menu className="size-4" />
           </Button>
@@ -178,7 +178,7 @@ export function AppShell({
             <UserMenu />
           </div>
         </header>
-        <main id="main-content" tabIndex={-1} className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+        <main id="main-content" tabIndex={-1} className="flex-1 p-4 sm:p-6 lg:p-8 print:p-0">{children}</main>
       </div>
       {organization ? (
         <TourRunner

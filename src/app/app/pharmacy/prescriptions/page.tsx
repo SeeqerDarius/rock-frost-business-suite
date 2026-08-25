@@ -1,4 +1,4 @@
-import { ClipboardList, Plus } from "lucide-react";
+import { ClipboardList, Plus, Stethoscope } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { EntityDialog } from "@/components/forms/entity-dialog";
@@ -6,13 +6,56 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { listMedicines, listPatients, listPrescribers, listPrescriptions } from "@/modules/pharmacy/service";
-import { addPrescriber, addPrescription } from "../actions";
+import { addPrescription, upsertPrescriber } from "../actions";
 import { PharmacyStatusBanner } from "../status-banner";
+import { PatientPicker, PrescriberPicker } from "./entity-picker";
+
+interface PrescriberFieldsProps {
+  prescriber?: {
+    id: string;
+    fullName: string;
+    registrationNumber: string;
+    facilityName: string | null;
+    phone: string | null;
+    active: boolean;
+  };
+}
+
+function PrescriberFields({ prescriber }: PrescriberFieldsProps) {
+  const idSuffix = prescriber ? "-edit" : "";
+  return (
+    <>
+      <div className="space-y-2">
+        <Label htmlFor={`prescriber-fullName${idSuffix}`} required>Full name</Label>
+        <Input id={`prescriber-fullName${idSuffix}`} name="fullName" defaultValue={prescriber?.fullName} required />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`prescriber-registrationNumber${idSuffix}`} required>Registration number</Label>
+        <Input id={`prescriber-registrationNumber${idSuffix}`} name="registrationNumber" defaultValue={prescriber?.registrationNumber} required />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`prescriber-facilityName${idSuffix}`}>Facility</Label>
+        <Input id={`prescriber-facilityName${idSuffix}`} name="facilityName" defaultValue={prescriber?.facilityName ?? ""} />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`prescriber-phone${idSuffix}`}>Phone</Label>
+        <Input id={`prescriber-phone${idSuffix}`} name="phone" defaultValue={prescriber?.phone ?? ""} />
+      </div>
+      {prescriber ? (
+        <label className="flex items-center gap-2 text-sm">
+          <Switch name="active" defaultChecked={prescriber.active} />
+          Active (selectable for new prescriptions)
+        </label>
+      ) : null}
+    </>
+  );
+}
 
 export default async function Page({
   searchParams,
@@ -27,8 +70,7 @@ export default async function Page({
     listPrescribers(t.organizationId),
     listMedicines(t.organizationId),
   ]);
-  const patientItems: Record<string, string> = Object.fromEntries(patients.map((x) => [x.id, x.fullName]));
-  const prescriberItems: Record<string, string> = Object.fromEntries(docs.map((x) => [x.id, x.fullName]));
+  const activePrescribers = docs.filter((x) => x.active);
   const medicineItems: Record<string, string> = Object.fromEntries(meds.map((x) => [x.id, x.name]));
 
   return (
@@ -36,23 +78,8 @@ export default async function Page({
       <div className="flex flex-wrap justify-between gap-2">
         <PageHeader title="Prescriptions" description="Validated prescribers, prescription lines, remaining quantities and expiry." />
         <div className="flex gap-2">
-          <EntityDialog trigger={<Button variant="outline"><Plus />Prescriber</Button>} title="Register prescriber" action={addPrescriber}>
-            <div className="space-y-2">
-              <Label htmlFor="prescriber-fullName" required>Full name</Label>
-              <Input id="prescriber-fullName" name="fullName" required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="prescriber-registrationNumber" required>Registration number</Label>
-              <Input id="prescriber-registrationNumber" name="registrationNumber" required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="prescriber-facilityName">Facility</Label>
-              <Input id="prescriber-facilityName" name="facilityName" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="prescriber-phone">Phone</Label>
-              <Input id="prescriber-phone" name="phone" />
-            </div>
+          <EntityDialog trigger={<Button variant="outline"><Plus />Prescriber</Button>} title="Register prescriber" action={upsertPrescriber}>
+            <PrescriberFields />
           </EntityDialog>
           <EntityDialog trigger={<Button><Plus />Prescription</Button>} title="New prescription" action={addPrescription} contentClassName="sm:max-w-xl">
             <div className="space-y-2">
@@ -60,20 +87,8 @@ export default async function Page({
               <Input id="prescription-number" name="prescriptionNumber" required />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="prescription-patientId" required>Patient</Label>
-                <Select name="patientId" items={patientItems}>
-                  <SelectTrigger id="prescription-patientId" className="w-full"><SelectValue placeholder="Select patient" /></SelectTrigger>
-                  <SelectContent>{patients.map((x) => <SelectItem key={x.id} value={x.id}>{x.fullName}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="prescription-prescriberId" required>Prescriber</Label>
-                <Select name="prescriberId" items={prescriberItems}>
-                  <SelectTrigger id="prescription-prescriberId" className="w-full"><SelectValue placeholder="Select prescriber" /></SelectTrigger>
-                  <SelectContent>{docs.map((x) => <SelectItem key={x.id} value={x.id}>{x.fullName}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
+              <PatientPicker patients={patients} />
+              <PrescriberPicker prescribers={activePrescribers} />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -150,6 +165,48 @@ export default async function Page({
           </TableBody>
         </Table>
       )}
+
+      <div>
+        <h2 className="mb-2 text-sm font-medium">Prescribers</h2>
+        {!docs.length ? (
+          <EmptyState icon={Stethoscope} title="No prescribers" description="Registered prescribers appear here." />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Registration number</TableHead>
+                <TableHead>Facility</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {docs.map((x) => (
+                <TableRow key={x.id}>
+                  <TableCell>{x.fullName}</TableCell>
+                  <TableCell>{x.registrationNumber}</TableCell>
+                  <TableCell className="text-muted-foreground">{x.facilityName ?? "-"}</TableCell>
+                  <TableCell className="text-muted-foreground">{x.phone ?? "-"}</TableCell>
+                  <TableCell><Badge variant={x.active ? "outline" : "secondary"}>{x.active ? "Active" : "Inactive"}</Badge></TableCell>
+                  <TableCell className="text-right">
+                    <EntityDialog
+                      trigger={<Button size="sm" variant="ghost">Edit</Button>}
+                      title="Edit prescriber"
+                      action={upsertPrescriber}
+                      submitLabel="Save changes"
+                    >
+                      <input type="hidden" name="id" value={x.id} />
+                      <PrescriberFields prescriber={x} />
+                    </EntityDialog>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
     </div>
   );
 }

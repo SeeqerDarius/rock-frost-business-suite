@@ -6,7 +6,7 @@ import { z } from "zod";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { parseWithSchema, shortText, cuid, moneyAmount, positiveInt, optionalShortText, optionalLongText, optionalEmail, optionalCoercedDate } from "@/lib/validation";
-import { approveControlledDispense, createMedicine, createPatient, createPrescriber, createPrescription, createSupplier, dispense, findBatchByBarcode, findMedicineByBarcode, receiveBatch, recordPatientReturn, recordStockAdjustment, recordStockCount, recordSupplierReturn, recordWriteOff, rejectControlledDispense, reverseDispensing, updateBatchStatus, updatePatient, updatePharmacySettings, PharmacyNotFoundError, PharmacyStockError, PharmacyPrescriptionRequiredError, PharmacyWorkflowError } from "@/modules/pharmacy/service";
+import { approveControlledDispense, createMedicine, createPatient, createPrescriber, createPrescription, createSupplier, dispense, findBatchByBarcode, findMedicineByBarcode, receiveBatch, recordPatientReturn, recordStockAdjustment, recordStockCount, recordSupplierReturn, recordWriteOff, rejectControlledDispense, reverseDispensing, updateBatchStatus, updatePatient, updatePharmacySettings, updatePrescriber, PharmacyNotFoundError, PharmacyStockError, PharmacyPrescriptionRequiredError, PharmacyWorkflowError } from "@/modules/pharmacy/service";
 import { postModuleRevenue, reverseModuleRevenue } from "@/lib/accounting-integration";
 
 /** Blank-string-safe optional enum, e.g. an unselected `<select>` submits `""`, not an absent key. */
@@ -136,24 +136,107 @@ export async function upsertPatient(formData: FormData) {
   if (!parsed.success) redirect("/app/pharmacy/patients?error=invalid");
   const { id, ...data } = parsed.data;
   if (id) {
-    await updatePatient(tenant.organizationId, id, data);
+    await runOrRedirect(() => updatePatient(tenant.organizationId, id, data), "/app/pharmacy/patients");
   } else {
-    await createPatient(tenant.organizationId, data);
+    await runOrRedirect(() => createPatient(tenant.organizationId, data), "/app/pharmacy/patients");
   }
   revalidatePath("/app/pharmacy/patients");
   redirect(`/app/pharmacy/patients?saved=${id ? "updated" : "1"}`);
 }
 
-export async function addPrescriber(formData: FormData) {
+const prescriberSchema = z.object({
+  id: z.union([cuid, z.literal("")]).optional(),
+  fullName: shortText,
+  registrationNumber: shortText,
+  facilityName: optionalShortText,
+  phone: optionalShortText,
+});
+
+/** Create or update, depending on whether an `id` is present - same upsert-dialog pattern as `upsertPatient`. */
+export async function upsertPrescriber(formData: FormData) {
   const tenant = await requirePermission(PERMISSIONS.PHARMACY_PRESCRIPTIONS_MANAGE, "/app/pharmacy/prescriptions");
-  const parsed = parseWithSchema(z.object({ fullName: shortText, registrationNumber: shortText, facilityName: optionalShortText, phone: optionalShortText }), Object.fromEntries(formData));
-  if (!parsed.success) redirect("/app/pharmacy/prescriptions?error=invalid"); await createPrescriber(tenant.organizationId, parsed.data); revalidatePath("/app/pharmacy/prescriptions"); redirect("/app/pharmacy/prescriptions?saved=1");
+  const parsed = parseWithSchema(prescriberSchema, Object.fromEntries(formData));
+  if (!parsed.success) redirect("/app/pharmacy/prescriptions?error=invalid");
+  const { id, ...data } = parsed.data;
+  if (id) {
+    await runOrRedirect(() => updatePrescriber(tenant.organizationId, id, data), "/app/pharmacy/prescriptions");
+  } else {
+    await runOrRedirect(() => createPrescriber(tenant.organizationId, data), "/app/pharmacy/prescriptions");
+  }
+  revalidatePath("/app/pharmacy/prescriptions");
+  redirect(`/app/pharmacy/prescriptions?saved=${id ? "updated" : "1"}`);
 }
+
+/**
+ * A patient/prescriber select can carry this sentinel instead of a real id -
+ * the matching "new*" fields are then required and a real record is created
+ * inline before the prescription itself, so front-desk staff logging a
+ * walk-in's paper prescription never has to leave this dialog first.
+ */
+const NEW_ENTITY = "__new__";
+
+const addPrescriptionSchema = z.object({
+  prescriptionNumber: shortText,
+  patientId: z.union([cuid, z.literal(NEW_ENTITY)]),
+  newPatientNumber: optionalShortText,
+  newPatientFullName: optionalShortText,
+  newPatientPhone: optionalShortText,
+  prescriberId: z.union([cuid, z.literal(NEW_ENTITY)]),
+  newPrescriberFullName: optionalShortText,
+  newPrescriberRegistrationNumber: optionalShortText,
+  newPrescriberFacilityName: optionalShortText,
+  newPrescriberPhone: optionalShortText,
+  prescribedAt: z.coerce.date(),
+  expiresAt: optionalCoercedDate,
+  medicineId: cuid,
+  quantityPrescribed: positiveInt,
+  dosage: shortText,
+  frequency: shortText,
+  duration: optionalShortText,
+  instructions: optionalLongText,
+  clinicalNotes: optionalLongText,
+});
 
 export async function addPrescription(formData: FormData) {
   const tenant = await requirePermission(PERMISSIONS.PHARMACY_PRESCRIPTIONS_MANAGE, "/app/pharmacy/prescriptions");
-  const parsed = parseWithSchema(z.object({ prescriptionNumber: shortText, patientId: cuid, prescriberId: cuid, prescribedAt: z.coerce.date(), expiresAt: optionalCoercedDate, medicineId: cuid, quantityPrescribed: positiveInt, dosage: shortText, frequency: shortText, duration: optionalShortText, instructions: optionalLongText, clinicalNotes: optionalLongText }), Object.fromEntries(formData));
-  if (!parsed.success) redirect("/app/pharmacy/prescriptions?error=invalid"); const { medicineId, quantityPrescribed, dosage, frequency, duration, instructions, ...header } = parsed.data; await runOrRedirect(() => createPrescription(tenant.organizationId, { ...header, lines: [{ medicineId, quantityPrescribed, dosage, frequency, duration, instructions }] }), "/app/pharmacy/prescriptions"); revalidatePath("/app/pharmacy"); redirect("/app/pharmacy/prescriptions?saved=1");
+  const parsed = parseWithSchema(addPrescriptionSchema, Object.fromEntries(formData));
+  if (!parsed.success) redirect("/app/pharmacy/prescriptions?error=invalid");
+  const data = parsed.data;
+
+  let patientId = data.patientId;
+  if (patientId === NEW_ENTITY) {
+    if (!data.newPatientNumber || !data.newPatientFullName) redirect("/app/pharmacy/prescriptions?error=missing-new-patient");
+    const patient = await runOrRedirect(
+      () => createPatient(tenant.organizationId, { patientNumber: data.newPatientNumber!, fullName: data.newPatientFullName!, phone: data.newPatientPhone }),
+      "/app/pharmacy/prescriptions",
+    );
+    patientId = patient.id;
+  }
+
+  let prescriberId = data.prescriberId;
+  if (prescriberId === NEW_ENTITY) {
+    if (!data.newPrescriberFullName || !data.newPrescriberRegistrationNumber) redirect("/app/pharmacy/prescriptions?error=missing-new-prescriber");
+    const prescriber = await runOrRedirect(
+      () => createPrescriber(tenant.organizationId, { fullName: data.newPrescriberFullName!, registrationNumber: data.newPrescriberRegistrationNumber!, facilityName: data.newPrescriberFacilityName, phone: data.newPrescriberPhone }),
+      "/app/pharmacy/prescriptions",
+    );
+    prescriberId = prescriber.id;
+  }
+
+  await runOrRedirect(
+    () => createPrescription(tenant.organizationId, {
+      prescriptionNumber: data.prescriptionNumber,
+      patientId,
+      prescriberId,
+      prescribedAt: data.prescribedAt,
+      expiresAt: data.expiresAt,
+      clinicalNotes: data.clinicalNotes,
+      lines: [{ medicineId: data.medicineId, quantityPrescribed: data.quantityPrescribed, dosage: data.dosage, frequency: data.frequency, duration: data.duration, instructions: data.instructions }],
+    }),
+    "/app/pharmacy/prescriptions",
+  );
+  revalidatePath("/app/pharmacy");
+  redirect("/app/pharmacy/prescriptions?saved=1");
 }
 
 export async function completeDispensing(formData: FormData) {

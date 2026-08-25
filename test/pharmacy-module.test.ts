@@ -49,9 +49,22 @@ describe("Pharmacy production boundary", () => {
 
   it("upsertPatient creates when no id is submitted and updates in place when one is, matching the CRM contacts edit pattern", () => {
     expect(actions).toContain("export async function upsertPatient(formData: FormData) {");
-    const upsertBlock = actions.slice(actions.indexOf("export async function upsertPatient"), actions.indexOf("export async function addPrescriber"));
-    expect(upsertBlock).toContain("await updatePatient(tenant.organizationId, id, data);");
-    expect(upsertBlock).toContain("await createPatient(tenant.organizationId, data);");
+    const upsertBlock = actions.slice(actions.indexOf("export async function upsertPatient"), actions.indexOf("const prescriberSchema"));
+    expect(upsertBlock).toContain("await runOrRedirect(() => updatePatient(tenant.organizationId, id, data), \"/app/pharmacy/patients\");");
+    expect(upsertBlock).toContain("await runOrRedirect(() => createPatient(tenant.organizationId, data), \"/app/pharmacy/patients\");");
+  });
+
+  it("upsertPrescriber follows the same create-or-update pattern, and addPrescription can register a new patient/prescriber inline for a walk-in with a paper prescription", () => {
+    expect(actions).toContain("export async function upsertPrescriber(formData: FormData) {");
+    const upsertBlock = actions.slice(actions.indexOf("export async function upsertPrescriber"), actions.indexOf("const NEW_ENTITY"));
+    expect(upsertBlock).toContain("await runOrRedirect(() => updatePrescriber(tenant.organizationId, id, data), \"/app/pharmacy/prescriptions\");");
+    expect(upsertBlock).toContain("await runOrRedirect(() => createPrescriber(tenant.organizationId, data), \"/app/pharmacy/prescriptions\");");
+
+    const prescriptionBlock = actions.slice(actions.indexOf("export async function addPrescription"), actions.indexOf("export async function completeDispensing"));
+    expect(prescriptionBlock).toContain('if (patientId === NEW_ENTITY) {');
+    expect(prescriptionBlock).toContain('if (prescriberId === NEW_ENTITY) {');
+    expect(prescriptionBlock).toContain("createPatient(tenant.organizationId, { patientNumber: data.newPatientNumber!, fullName: data.newPatientFullName!, phone: data.newPatientPhone })");
+    expect(prescriptionBlock).toContain("createPrescriber(tenant.organizationId, { fullName: data.newPrescriberFullName!, registrationNumber: data.newPrescriberRegistrationNumber!, facilityName: data.newPrescriberFacilityName, phone: data.newPrescriberPhone })");
   });
 
   it("routes every service-layer domain error (stock/workflow/prescription rule violations) back to the form instead of crashing to a generic error page", () => {
@@ -71,7 +84,7 @@ describe("Pharmacy production boundary", () => {
       "runOrRedirect(() => recordSupplierReturn(",
       "runOrRedirect(() => recordPatientReturn(",
       "runOrRedirect(() => updateBatchStatus(",
-      "runOrRedirect(() => createPrescription(",
+      "() => createPrescription(tenant.organizationId, {",
       "runOrRedirect(() => dispense(",
       "runOrRedirect(() => approveControlledDispense(",
       "runOrRedirect(() => rejectControlledDispense(",
@@ -79,5 +92,10 @@ describe("Pharmacy production boundary", () => {
     ]) {
       expect(actions).toContain(call);
     }
+  });
+
+  it("createPatient/createPrescriber convert a duplicate-number unique-constraint violation to a safe, user-facing message instead of a raw Prisma error", () => {
+    expect(service).toContain('throw new PharmacyStockError("A patient with this patient number already exists.");');
+    expect(service).toContain('throw new PharmacyStockError("A prescriber with this registration number already exists.");');
   });
 });
