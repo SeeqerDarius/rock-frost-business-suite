@@ -23,6 +23,7 @@ export default async function HrLayout({ children }: { children: React.ReactNode
   return (
     <AppShell
       sectionLabel="Human Resources & Payroll"
+      moduleKey="hr"
       navigation={getPeopleAndPayrollNavigation(tenant)}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}

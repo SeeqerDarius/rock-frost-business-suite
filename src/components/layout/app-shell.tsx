@@ -14,7 +14,9 @@ import { OrganizationSwitcher } from "@/components/navigation/organization-switc
 import { getActiveNavigationHref } from "@/components/navigation/active-navigation";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { TourRunner } from "@/components/onboarding/tour-runner";
 import { cn } from "@/lib/utils";
+import { getModule } from "@/platform/modules/registry";
 import type { ModuleNavItem } from "@/types/module";
 
 interface AppShellProps {
@@ -25,6 +27,12 @@ interface AppShellProps {
   enabledModuleKeys?: string[];
   homeHref?: string;
   showModuleLauncher?: boolean;
+  /** A business module key (e.g. "fleet") - when present, shows that
+   * module's own short intro (once per user) after the general tour, using
+   * its registry description and this shell's own navigation list. Omit
+   * for organization- and platform-scope shells, which have no single
+   * module of their own. */
+  moduleKey?: string;
   organization?: {
     organizationId: string;
     memberships: { organizationId: string; name: string; tenantCode: string }[];
@@ -77,6 +85,7 @@ export function AppShell({
   organization,
   homeHref = "/app/dashboard",
   showModuleLauncher = true,
+  moduleKey,
 }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const sidebarCollapsed = useSyncExternalStore(
@@ -103,14 +112,14 @@ export function AppShell({
           sidebarCollapsed ? "w-18" : "w-64",
         )}
       >
-        <div className={cn("flex h-16 items-center border-b px-4", sidebarCollapsed && "justify-center px-2")}>
+        <div data-tour="home-logo" className={cn("flex h-16 items-center border-b px-4", sidebarCollapsed && "justify-center px-2")}>
           <WorkspaceLogo homeHref={homeHref} compact={sidebarCollapsed} hasOrganization={Boolean(organization)} />
         </div>
         {organization && !sidebarCollapsed ? (
           <OrganizationSwitcher currentOrganizationId={organization.organizationId} memberships={organization.memberships} />
         ) : null}
         {!sidebarCollapsed ? <p className="px-5 pb-2 pt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">{sectionLabel}</p> : null}
-        <div className="min-h-0 flex-1 overflow-y-auto py-1">
+        <div data-tour="sidebar-nav" className="min-h-0 flex-1 overflow-y-auto py-1">
           <SidebarNav items={navigation} collapsed={sidebarCollapsed} />
         </div>
         {footerNavigation.length > 0 ? (
@@ -160,7 +169,7 @@ export function AppShell({
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation">
             <Menu className="size-4" />
           </Button>
-          <div className="min-w-0 flex-1">
+          <div data-tour="module-title" className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">{currentItem?.shortLabel ?? currentItem?.label ?? sectionLabel}</p>
             <p className="hidden truncate text-xs text-muted-foreground sm:block">{sectionLabel}</p>
           </div>
@@ -171,6 +180,15 @@ export function AppShell({
         </header>
         <main id="main-content" tabIndex={-1} className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
+      {organization ? (
+        <TourRunner
+          moduleKey={moduleKey}
+          sectionLabel={sectionLabel}
+          moduleDescription={moduleKey ? getModule(moduleKey)?.description : undefined}
+          navigation={navigation}
+          showModuleLauncher={showModuleLauncher}
+        />
+      ) : null}
     </div>
   );
 }

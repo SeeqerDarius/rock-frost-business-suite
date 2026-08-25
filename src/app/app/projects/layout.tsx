@@ -23,6 +23,7 @@ export default async function ProjectsLayout({ children }: { children: React.Rea
   return (
     <AppShell
       sectionLabel="Project Management"
+      moduleKey="projects"
       navigation={projectsNavigation}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}

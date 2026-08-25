@@ -330,6 +330,25 @@ model User {
   offlineMutations                OfflineMutation[]
   offlineConflictsResolved        OfflineConflict[]
   offlineActivationCodes          OfflineActivationCode[]
+  tourProgress                    UserTourProgress[]
+}
+
+/// Tracks which onboarding walkthroughs a user has completed or dismissed.
+/// User-scoped rather than organization-scoped: whether someone has already
+/// seen the general app tour or a given module's tour is a property of the
+/// person, not of any one workspace they belong to. tourKey is "general" for
+/// the whole-app tour, or a BusinessModuleKey (e.g. "fleet") for a
+/// module-specific one - see src/lib/tours/definitions.ts.
+model UserTourProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  tourKey     String
+  completedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tourKey])
+  @@index([userId])
 }
 
 model Account {

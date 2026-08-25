@@ -12,5 +12,5 @@ export default async function HospitalLayout({ children }: { children: React.Rea
   });
   if (!tenant) return null;
   if (!canAccessModule(tenant, "hospital")) return <div className="flex min-h-screen items-center justify-center px-6"><EmptyState icon={Lock} title="Hospital Management isn't available to you" description="Your organization must enable Hospital Management and your role must include Hospital permissions." /></div>;
-  return <AppShell sectionLabel="Hospital Management" navigation={hospitalNavigation} enabledModuleKeys={tenant.accessibleModuleKeys} organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}>{children}</AppShell>;
+  return <AppShell sectionLabel="Hospital Management" moduleKey="hospital" navigation={hospitalNavigation} enabledModuleKeys={tenant.accessibleModuleKeys} organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}>{children}</AppShell>;
 }
