@@ -154,7 +154,7 @@ export default async function SchoolAcademicPeriodsPage({ searchParams }: { sear
                       <TableCell className="font-medium">{term.name}</TableCell>
                       <TableCell className="text-muted-foreground">{formatDate(term.startDate)}</TableCell>
                       <TableCell className="text-muted-foreground">{formatDate(term.endDate)}</TableCell>
-                      <TableCell>{term.current ? <Badge>Current</Badge> : <Badge variant="outline">—</Badge>}</TableCell>
+                      <TableCell>{term.current ? <Badge>Current</Badge> : <Badge variant="outline">-</Badge>}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

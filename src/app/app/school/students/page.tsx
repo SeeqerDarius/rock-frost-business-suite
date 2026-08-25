@@ -160,7 +160,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
         saved={query.saved}
         error={query.error}
         savedMessage="The student record is up to date."
-        stateMessage="That status change isn't allowed from the student's current status — withdrawn and graduated records are final."
+        stateMessage="That status change isn't allowed from the student's current status: withdrawn and graduated records are final."
       />
       {!canManage ? <ReadOnlyNotice>Your role can review students and guardians but cannot admit or change them.</ReadOnlyNotice> : null}
       <PrerequisiteNotice items={[{ satisfied: campuses.length > 0, label: "Create a campus", href: "/app/school/campuses" }]} />
@@ -351,8 +351,8 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
                     <TableCell className="font-mono text-xs">{guardian.guardianNumber}</TableCell>
                     <TableCell className="font-medium">{guardian.firstName} {guardian.lastName}</TableCell>
                     <TableCell className="text-muted-foreground">{guardian.phone}</TableCell>
-                    <TableCell className="hidden text-muted-foreground md:table-cell">{guardian.email ?? "—"}</TableCell>
-                    <TableCell className="hidden text-muted-foreground lg:table-cell">{guardian.occupation ?? "—"}</TableCell>
+                    <TableCell className="hidden text-muted-foreground md:table-cell">{guardian.email ?? "-"}</TableCell>
+                    <TableCell className="hidden text-muted-foreground lg:table-cell">{guardian.occupation ?? "-"}</TableCell>
                   </TableRow>
                 );
               })}

@@ -81,7 +81,7 @@ export default async function ProjectsSettingsPage({
 
       <p className="text-sm text-muted-foreground">
         Task/milestone statuses and priorities are fixed, and milestone/project completion require every child
-        task/milestone to be done — these are enforced business rules, not configurable settings.
+        task/milestone to be done. These are enforced business rules, not configurable settings.
       </p>
     </div>
   );

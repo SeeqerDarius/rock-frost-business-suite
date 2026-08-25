@@ -22,7 +22,7 @@ export default async function SupportPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Support" description="Reach the Rock Frost team directly — questions, enquiries, or anything that isn't working the way it should. You can also reach us anytime from the chat bubble in the corner of the app." />
+      <PageHeader title="Support" description="Reach the Rock Frost team directly: questions, enquiries, or anything that isn't working the way it should. You can also reach us anytime from the chat bubble in the corner of the app." />
       <SupportChat
         viewerRole="TENANT"
         otherPartyLabel="Rock Frost Support"

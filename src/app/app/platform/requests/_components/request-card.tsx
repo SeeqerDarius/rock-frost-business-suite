@@ -160,7 +160,7 @@ export function RequestCard({
               <Label htmlFor={`note-${request.id}`}>Timeline note</Label>
               <Textarea id={`note-${request.id}`} name="note" rows={2} />
               <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <input type="checkbox" name="isInternal" value="true" /> Internal note — hidden from requester
+                <input type="checkbox" name="isInternal" value="true" /> Internal note (hidden from requester)
               </label>
             </div>
           </form>

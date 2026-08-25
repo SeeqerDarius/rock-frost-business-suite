@@ -88,7 +88,7 @@ export default async function PlatformSubscriptionsPage({ searchParams }: { sear
                   <Input name="startsAt" type="date" />
                   <Button type="submit">Confirm payment and activate</Button>
                 </form>
-              ) : <p className="text-sm text-muted-foreground">{subscription.startsAt?.toLocaleDateString() ?? "—"} → {subscription.endsAt?.toLocaleDateString() ?? "—"} {subscription.paymentReference ? `· ${subscription.paymentReference}` : ""}</p>}
+              ) : <p className="text-sm text-muted-foreground">{subscription.startsAt?.toLocaleDateString() ?? "N/A"} → {subscription.endsAt?.toLocaleDateString() ?? "N/A"} {subscription.paymentReference ? `· ${subscription.paymentReference}` : ""}</p>}
               {!["CANCELLED", "EXPIRED"].includes(subscription.status) ? <form action={cancelSubscriptionAction}><input type="hidden" name="subscriptionId" value={subscription.id} /><Button type="submit" size="sm" variant="outline">Cancel subscription</Button></form> : null}
             </CardContent>
           </Card>

@@ -17,7 +17,7 @@ export function formatMoney(value: Prisma.Decimal | number | string) {
 }
 
 export function formatDate(value: Date | null | undefined) {
-  return value ? dateOnly.format(value) : "—";
+  return value ? dateOnly.format(value) : "-";
 }
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];

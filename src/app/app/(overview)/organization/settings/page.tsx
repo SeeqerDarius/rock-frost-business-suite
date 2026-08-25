@@ -77,7 +77,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
           </div>
           <CardDescription>
             Replaces the Rock Frost mark in this workspace&apos;s sidebar for everyone in your organization. JPG, PNG, or
-            WebP, up to 1 MB — a square or wide logo with a transparent background works best.
+            WebP, up to 1 MB. A square or wide logo with a transparent background works best.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -90,7 +90,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
               )}
             </div>
             <p className="text-sm text-muted-foreground">
-              {organization.logoUrl ? "Currently shown in your sidebar." : "No logo uploaded yet — the Rock Frost mark is shown by default."}
+              {organization.logoUrl ? "Currently shown in your sidebar." : "No logo uploaded yet. The Rock Frost mark is shown by default."}
             </p>
           </div>
           <form action={uploadCompanyLogo} className="flex flex-wrap items-end gap-2">

@@ -111,7 +111,7 @@ export async function convertContactSubmission(formData: FormData): Promise<void
     contactSubmissionId: submission.id,
     moduleId: parsed.data.moduleId || null,
     type: parsed.data.type,
-    title: `${submission.reason.replaceAll("-", " ")} — ${submission.company}`,
+    title: `${submission.reason.replaceAll("-", " ")}: ${submission.company}`,
     businessJustification: submission.message || `Request submitted by ${submission.name} (${submission.email}).`,
   });
   await db.contactSubmission.update({
