@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-25: Optional pharmacy selects couldn't be reverted to "none" (no schema change)
+
+- **Live follow-up report on the same Dispensing form** just fixed: after mistakenly picking a value in Prescription/Prescription line (or Patient), there was no way back to "None (over-the-counter sale)"/"Walk-in" - the placeholder text only ever rendered before the field was first touched; the open dropdown list had no matching item to click to get back to it. Same gap existed on Dispensing's Payment method select and Stock's Receive-batch Supplier select (all four are genuinely optional fields with a Zod schema that already accepts `""`).
+- **Fixed by adding an explicit empty `<SelectItem value="">`** (label matching the placeholder) to each of the four selects, plus `defaultValue=""` and the empty key in the `items` map so Base UI's closed-trigger label resolution renders it correctly once explicitly selected - the exact pattern already used by CRM's owner select, just missing here.
+- **Important files**: `src/app/app/pharmacy/dispensing/page.tsx` (Patient, Prescription, Prescription line, Payment method), `src/app/app/pharmacy/stock/page.tsx` (Supplier).
+- **Validation**: `npx tsc --noEmit` — passed. `npm run lint` — passed. `npm run test` — passed: 95 files, 664 tests (no count change, UI-only). `npm run build` — passed. No schema change.
+- **Production deploy verified**: commit `87a7505` reached Vercel production deployment `dpl_5A5cJGY7z6TaPkKBjs3ZGasW1JRU` (`READY`, all production aliases attached). `/api/health` returned `{"ok":true,"database":"reachable"}`. `get_runtime_errors` (5m window, post-deploy) returned none.
+
 ## 2026-08-25: General UX fixes — Pharmacy patient editing, ID-leak audit, uncaught service errors, cookie consent (no schema change)
 
 - **Dense user bug report covering 12 items**, investigated with parallel read-only research agents before any edit, then fixed by pattern where the same bug class repeated across modules. Two live production crashes were reported by the user mid-fix and are covered in this same entry.
