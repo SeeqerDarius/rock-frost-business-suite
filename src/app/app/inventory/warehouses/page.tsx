@@ -16,6 +16,7 @@ import { upsertWarehouse } from "./actions";
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage warehouses.",
   "missing-fields": "A name is required.",
+  duplicate: "A warehouse with that name already exists.",
 };
 
 interface WarehouseFieldsProps {
