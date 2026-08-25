@@ -10,6 +10,7 @@
 - **Important files**: `src/types/module.ts`, `src/lib/tours/definitions.ts`, `src/components/navigation/sidebar-nav.tsx`, `src/components/layout/app-shell.tsx`, all 15 `navigation.tsx` files under `src/modules/` (14 standalone plus the shared inventory-procurement one), `test/onboarding-tours.test.ts`, `docs/ONBOARDING_TOURS.md`.
 - **Validation**: `npx tsc --noEmit` — passed. `npm run lint` — passed. `npm run test` — passed: 95 files, 656 tests (up from 653, +3). `npm run build` — passed, 218 pages. No schema change, so no disposable-Neon-branch step.
 - **Still honestly unverified live**: same limitation as the original onboarding-tours entry - no test-tenant credentials in this environment to click through the actual spotlight sequence.
+- **Production deploy verified**: commit `e821c01` reached Vercel production deployment `dpl_GA8MbHkCMvqDkTVj7Fak3CHpdmSi` (`READY`, all production aliases attached). `/api/health` returned `{"ok":true,"database":"reachable"}`; `/app/fleet` correctly returned HTTP 307 to `/login` for an anonymous request. `get_runtime_errors` (10m window) returned none.
 
 ## 2026-08-25: Cross-tenant "Business activity" collapsed by default (no schema change)
 
