@@ -74,9 +74,12 @@ export default async function Page({
             </div>
             <div className="space-y-2">
               <Label htmlFor="batch-supplierId">Supplier</Label>
-              <Select name="supplierId" items={supplierItems}>
+              <Select name="supplierId" defaultValue="" items={{ "": "Optional", ...supplierItems }}>
                 <SelectTrigger id="batch-supplierId" className="w-full"><SelectValue placeholder="Optional" /></SelectTrigger>
-                <SelectContent>{s.map((x) => <SelectItem key={x.id} value={x.id}>{x.name}</SelectItem>)}</SelectContent>
+                <SelectContent>
+                  <SelectItem value="">Optional</SelectItem>
+                  {s.map((x) => <SelectItem key={x.id} value={x.id}>{x.name}</SelectItem>)}
+                </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">

@@ -89,16 +89,22 @@ export default async function Page({
             </div>
             <div className="space-y-2">
               <Label htmlFor="dispensing-patientId">Patient</Label>
-              <Select name="patientId" items={patientItems}>
+              <Select name="patientId" defaultValue="" items={{ "": "Walk-in (no patient on file)", ...patientItems }}>
                 <SelectTrigger id="dispensing-patientId" className="w-full"><SelectValue placeholder="Walk-in (no patient on file)" /></SelectTrigger>
-                <SelectContent>{patients.map((x) => <SelectItem key={x.id} value={x.id}>{x.fullName}</SelectItem>)}</SelectContent>
+                <SelectContent>
+                  <SelectItem value="">Walk-in (no patient on file)</SelectItem>
+                  {patients.map((x) => <SelectItem key={x.id} value={x.id}>{x.fullName}</SelectItem>)}
+                </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="dispensing-prescriptionId">Prescription</Label>
-              <Select name="prescriptionId" items={prescriptionItems}>
+              <Select name="prescriptionId" defaultValue="" items={{ "": "None (over-the-counter sale)", ...prescriptionItems }}>
                 <SelectTrigger id="dispensing-prescriptionId" className="w-full"><SelectValue placeholder="None (over-the-counter sale)" /></SelectTrigger>
-                <SelectContent>{open.map((x) => <SelectItem key={x.id} value={x.id}>{x.prescriptionNumber}</SelectItem>)}</SelectContent>
+                <SelectContent>
+                  <SelectItem value="">None (over-the-counter sale)</SelectItem>
+                  {open.map((x) => <SelectItem key={x.id} value={x.id}>{x.prescriptionNumber}</SelectItem>)}
+                </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
@@ -110,9 +116,10 @@ export default async function Page({
             </div>
             <div className="space-y-2">
               <Label htmlFor="dispensing-prescriptionLineId">Prescription line</Label>
-              <Select name="prescriptionLineId" items={prescriptionLineItems}>
+              <Select name="prescriptionLineId" defaultValue="" items={{ "": "None (over-the-counter sale)", ...prescriptionLineItems }}>
                 <SelectTrigger id="dispensing-prescriptionLineId" className="w-full"><SelectValue placeholder="None (over-the-counter sale)" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="">None (over-the-counter sale)</SelectItem>
                   {open.flatMap((x) => x.lines).map((x) => (
                     <SelectItem key={x.id} value={x.id}>{x.medicine.name} ({x.quantityPrescribed - x.quantityDispensed} remaining)</SelectItem>
                   ))}
@@ -129,9 +136,10 @@ export default async function Page({
             </div>
             <div className="space-y-2">
               <Label htmlFor="dispensing-paymentMethod">Payment method</Label>
-              <Select name="paymentMethod" items={PAYMENT_METHOD_ITEMS}>
-                <SelectTrigger id="dispensing-paymentMethod" className="w-full"><SelectValue placeholder="Select" /></SelectTrigger>
+              <Select name="paymentMethod" defaultValue="" items={{ "": "Not specified", ...PAYMENT_METHOD_ITEMS }}>
+                <SelectTrigger id="dispensing-paymentMethod" className="w-full"><SelectValue placeholder="Not specified" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="">Not specified</SelectItem>
                   {Object.entries(PAYMENT_METHOD_ITEMS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
                 </SelectContent>
               </Select>
