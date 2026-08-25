@@ -119,7 +119,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
             {settings.dataRecoveryEnabled ?? true ? <input type="hidden" name="dataRecoveryEnabled" value="on" /> : null}
             <div className="max-w-xs space-y-2">
               <Label>Theme</Label>
-              <Select name="theme" defaultValue={settings.theme ?? "system"}>
+              <Select name="theme" defaultValue={settings.theme ?? "system"} items={{ system: "Follow device", light: "Light", dark: "Dark" }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="system">Follow device</SelectItem>
@@ -143,7 +143,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
             <input type="hidden" name="theme" value={settings.theme ?? "system"} />
             <div className="max-w-xs space-y-2">
               <Label>Backup frequency</Label>
-              <Select name="backupFrequency" defaultValue={settings.backupFrequency ?? "daily"}>
+              <Select name="backupFrequency" defaultValue={settings.backupFrequency ?? "daily"} items={{ daily: "Daily", weekly: "Weekly", monthly: "Monthly" }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="daily">Daily</SelectItem>

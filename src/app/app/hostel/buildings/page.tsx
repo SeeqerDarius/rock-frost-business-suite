@@ -48,7 +48,15 @@ export default async function HostelBuildingsPage({ searchParams }: { searchPara
                   {campusOptions.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </div>
-              <div className="space-y-2"><Label htmlFor="genderPolicy">Gender policy</Label><Input id="genderPolicy" name="genderPolicy" placeholder="Male, Female, Mixed" /></div>
+              <div className="space-y-2">
+                <Label htmlFor="genderPolicy">Gender policy</Label>
+                <select id="genderPolicy" name="genderPolicy" className="h-9 w-full rounded-md border bg-transparent px-3 text-sm" defaultValue="">
+                  <option value="">No policy</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Mixed">Mixed</option>
+                </select>
+              </div>
             </div>
             <div className="space-y-2"><Label htmlFor="address">Address</Label><Textarea id="address" name="address" rows={2} /></div>
           </EntityDialog>
@@ -80,7 +88,15 @@ export default async function HostelBuildingsPage({ searchParams }: { searchPara
                       <EntityDialog trigger={<Button size="sm" variant="outline">Edit</Button>} title={`Edit ${building.name}`} action={updateBuildingAction} submitLabel="Save changes">
                         <input type="hidden" name="id" value={building.id} />
                         <div className="space-y-2"><Label htmlFor={`name-${building.id}`}>Name</Label><Input id={`name-${building.id}`} name="name" defaultValue={building.name} required /></div>
-                        <div className="space-y-2"><Label htmlFor={`gender-${building.id}`}>Gender policy</Label><Input id={`gender-${building.id}`} name="genderPolicy" defaultValue={building.genderPolicy ?? ""} /></div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`gender-${building.id}`}>Gender policy</Label>
+                          <select id={`gender-${building.id}`} name="genderPolicy" className="h-9 w-full rounded-md border bg-transparent px-3 text-sm" defaultValue={building.genderPolicy ?? ""}>
+                            <option value="">No policy</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Mixed">Mixed</option>
+                          </select>
+                        </div>
                         <div className="space-y-2"><Label htmlFor={`address-${building.id}`}>Address</Label><Textarea id={`address-${building.id}`} name="address" rows={2} defaultValue={building.address ?? ""} /></div>
                         <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="active" defaultChecked={building.active} />Active</label>
                       </EntityDialog>

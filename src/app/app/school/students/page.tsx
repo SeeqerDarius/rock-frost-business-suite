@@ -86,7 +86,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
       </FieldGrid>
       <FieldGrid>
         <TextField id="student-dob" name="dateOfBirth" label="Date of birth" type="date" hint="Optional." />
-        <TextField id="student-gender" name="gender" label="Gender" maxLength={200} hint="Optional." />
+        <SelectField id="student-gender" name="gender" label="Gender" hint="Optional." options={[{ value: "Male", label: "Male" }, { value: "Female", label: "Female" }, { value: "Other", label: "Other" }]} />
       </FieldGrid>
       <TextField id="student-admission-date" name="admissionDate" label="Admission date" type="date" hint="Optional. Defaults to unset." />
       <div className="space-y-1.5">

@@ -38,8 +38,46 @@ describe("Pharmacy production boundary", () => {
     // and post only once approveControlledDispenseAction() actually
     // completes the sale.
     expect(actions).toContain('if (dispensing.status === "COMPLETED")');
-    expect(actions).toContain("const approved = await approveControlledDispense(tenant.organizationId, tenant.userId, parsed.data.dispensingId);");
+    expect(actions).toContain("const approved = await runOrRedirect(() => approveControlledDispense(tenant.organizationId, tenant.userId, parsed.data.dispensingId), \"/app/pharmacy/dispensing\");");
     const approveBlock = actions.slice(actions.indexOf("export async function approveControlledDispenseAction"), actions.indexOf("export async function rejectControlledDispenseAction"));
     expect(approveBlock).toContain("postModuleRevenue(tenant.organizationId, {");
+  });
+
+  it("updatePatient scopes the update by organizationId in the same where as id, so a patient id from another tenant 404s instead of being silently edited", () => {
+    expect(service).toContain("db.pharmacyPatient.update({ where: { id, organizationId }, data })");
+  });
+
+  it("upsertPatient creates when no id is submitted and updates in place when one is, matching the CRM contacts edit pattern", () => {
+    expect(actions).toContain("export async function upsertPatient(formData: FormData) {");
+    const upsertBlock = actions.slice(actions.indexOf("export async function upsertPatient"), actions.indexOf("export async function addPrescriber"));
+    expect(upsertBlock).toContain("await updatePatient(tenant.organizationId, id, data);");
+    expect(upsertBlock).toContain("await createPatient(tenant.organizationId, data);");
+  });
+
+  it("routes every service-layer domain error (stock/workflow/prescription rule violations) back to the form instead of crashing to a generic error page", () => {
+    // Regression coverage for a live production bug: receiveBatch()/dispense()/etc.
+    // throw PharmacyStockError/PharmacyNotFoundError/PharmacyPrescriptionRequiredError/
+    // PharmacyWorkflowError with an already-safe, user-facing message (e.g. "Batch
+    // quantity and expiry are invalid.") — without runOrRedirect, that throw was
+    // unhandled and crashed the whole request instead of redirecting back to the
+    // form with the actual reason.
+    expect(actions).toContain("async function runOrRedirect<T>(run: () => Promise<T>, errorRoute: string): Promise<T> {");
+    for (const call of [
+      "runOrRedirect(() => createMedicine(",
+      "runOrRedirect(() => receiveBatch(",
+      "runOrRedirect(() => recordStockCount(",
+      "runOrRedirect(() => recordStockAdjustment(",
+      "runOrRedirect(() => recordWriteOff(",
+      "runOrRedirect(() => recordSupplierReturn(",
+      "runOrRedirect(() => recordPatientReturn(",
+      "runOrRedirect(() => updateBatchStatus(",
+      "runOrRedirect(() => createPrescription(",
+      "runOrRedirect(() => dispense(",
+      "runOrRedirect(() => approveControlledDispense(",
+      "runOrRedirect(() => rejectControlledDispense(",
+      "runOrRedirect(() => reverseDispensing(",
+    ]) {
+      expect(actions).toContain(call);
+    }
   });
 });

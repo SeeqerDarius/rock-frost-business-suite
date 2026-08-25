@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { cookies } from "next/headers";
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -8,6 +9,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { DEFAULT_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo";
 import { ConsentManagedAnalytics } from "@/components/privacy/consent-managed-analytics";
+import { COOKIE_CONSENT_NAME, type CookieConsent } from "@/lib/cookie-consent";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -29,7 +31,10 @@ export const metadata: Metadata = {
     : undefined,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const rawConsent = (await cookies()).get(COOKIE_CONSENT_NAME)?.value;
+  const initialConsent: CookieConsent | null = rawConsent === "essential" || rawConsent === "analytics" ? rawConsent : null;
+
   return (
     <html lang="en" suppressHydrationWarning className={cn("font-sans", geist.variable)}>
       <body>
@@ -43,7 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
             <TooltipProvider>{children}</TooltipProvider>
             <Toaster />
-            <ConsentManagedAnalytics />
+            <ConsentManagedAnalytics initialConsent={initialConsent} />
           </ThemeProvider>
         </SessionProvider>
       </body>

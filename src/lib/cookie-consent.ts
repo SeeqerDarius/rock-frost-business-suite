@@ -15,12 +15,31 @@ export function readCookieConsent(cookieHeader: string): CookieConsent | null {
   return value === "essential" || value === "analytics" ? value : null;
 }
 
-export function serializeCookieConsent(consent: CookieConsent, secure: boolean): string {
+const CONSENT_ROOT_DOMAIN = "rockfrostgroup.com";
+
+/**
+ * This app serves www/app/admin.rockfrostgroup.com from one deployment. Auth
+ * cookies are deliberately host-only (see docs/ARCHITECTURE.md) to avoid an
+ * owner/tenant session collision, but consent has the opposite requirement:
+ * accepting on one hostname should count on all three, or the banner keeps
+ * reappearing as the user moves between them. Scope the domain only when the
+ * current host is actually one of the three production hostnames, never on
+ * localhost or a preview deployment, where a `rockfrostgroup.com` Domain
+ * attribute would just make the browser reject the cookie outright.
+ */
+function domainAttributeFor(hostname: string): string {
+  return hostname === CONSENT_ROOT_DOMAIN || hostname.endsWith(`.${CONSENT_ROOT_DOMAIN}`)
+    ? `Domain=.${CONSENT_ROOT_DOMAIN}`
+    : "";
+}
+
+export function serializeCookieConsent(consent: CookieConsent, secure: boolean, hostname: string): string {
   return [
     `${COOKIE_CONSENT_NAME}=${consent}`,
     "Path=/",
     `Max-Age=${COOKIE_CONSENT_MAX_AGE}`,
     "SameSite=Lax",
+    domainAttributeFor(hostname),
     secure ? "Secure" : "",
   ].filter(Boolean).join("; ");
 }

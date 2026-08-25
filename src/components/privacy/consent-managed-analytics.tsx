@@ -21,14 +21,14 @@ const SpeedInsights = dynamic(
   { ssr: false },
 );
 
-export function ConsentManagedAnalytics() {
+export function ConsentManagedAnalytics({ initialConsent }: { initialConsent: CookieConsent | null }) {
   const consent = useSyncExternalStore(
     (onStoreChange) => {
       window.addEventListener(COOKIE_CONSENT_CHANGED_EVENT, onStoreChange);
       return () => window.removeEventListener(COOKIE_CONSENT_CHANGED_EVENT, onStoreChange);
     },
     () => readCookieConsent(document.cookie),
-    () => null,
+    () => initialConsent,
   );
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -39,7 +39,7 @@ export function ConsentManagedAnalytics() {
   }, []);
 
   function saveConsent(nextConsent: CookieConsent) {
-    document.cookie = serializeCookieConsent(nextConsent, window.location.protocol === "https:");
+    document.cookie = serializeCookieConsent(nextConsent, window.location.protocol === "https:", window.location.hostname);
     window.dispatchEvent(new Event(COOKIE_CONSENT_CHANGED_EVENT));
     setIsSettingsOpen(false);
   }

@@ -13,6 +13,22 @@ the public footer. Essential authentication, security, and organization-state
 cookies remain independent because the application cannot operate safely
 without them. The public `/cookie-policy` route documents these categories.
 
+As of 2026-08-25, "applies site-wide" is enforced at the cookie level, not
+just in copy: `serializeCookieConsent()` (`src/lib/cookie-consent.ts`) sets
+`Domain=.rockfrostgroup.com` whenever the current hostname is one of the three
+production surfaces (`www`/`app`/`admin.rockfrostgroup.com`), so a choice made
+on one surface is honored on the others instead of re-prompting per host. This
+is the opposite of the auth-cookie policy (see `docs/ARCHITECTURE.md`), which
+is deliberately host-only to prevent an owner/tenant session collision; the
+domain attribute is applied only in the client-side `serializeCookieConsent()`
+call path, never to auth cookies. Local development and preview deployments
+fall outside `rockfrostgroup.com` and correctly get a host-only cookie. The
+root layout also reads the existing consent cookie server-side and passes it
+into `ConsentManagedAnalytics` as `initialConsent`, so the server-rendered
+markup already reflects a returning visitor's choice instead of always
+assuming "no decision yet" and showing the banner for one frame before
+client-side hydration corrects it.
+
 This control supports privacy compliance but is not a legal certification.
 Rock Frost must keep the published category list aligned with any future
 analytics, advertising, embedded-media, or profiling technology before that

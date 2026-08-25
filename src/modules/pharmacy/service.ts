@@ -197,8 +197,25 @@ export function listPatients(organizationId: string) {
   return db.pharmacyPatient.findMany({ where: { organizationId }, orderBy: { fullName: "asc" } });
 }
 
-export function createPatient(organizationId: string, data: { patientNumber: string; fullName: string; dateOfBirth?: Date | null; sex?: string | null; phone?: string | null; email?: string | null; address?: string | null; allergies?: string | null; notes?: string | null }) {
+interface PharmacyPatientInput {
+  patientNumber: string;
+  fullName: string;
+  dateOfBirth?: Date | null;
+  sex?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  allergies?: string | null;
+  notes?: string | null;
+}
+
+export function createPatient(organizationId: string, data: PharmacyPatientInput) {
   return db.pharmacyPatient.create({ data: { organizationId, ...data } });
+}
+
+/** Scoped by organizationId in the same `where` as `id`: a patient id belonging to a different organization throws rather than silently updating it. */
+export function updatePatient(organizationId: string, id: string, data: PharmacyPatientInput) {
+  return db.pharmacyPatient.update({ where: { id, organizationId }, data });
 }
 
 export function listPrescribers(organizationId: string) {
