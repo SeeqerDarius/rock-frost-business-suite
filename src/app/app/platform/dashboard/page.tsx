@@ -9,6 +9,7 @@ import { getPlatformAnchorOrganizationIds } from "@/lib/platform-organizations";
 import { catalogueModuleKeys, getModule } from "@/platform/modules/registry";
 import { primaryProductKey } from "@/platform/modules/product-groups";
 import { getPlatformBusinessInsights, getPlatformRevenueOverview, getPlatformOwnBusinessOverview } from "@/platform/business-insights/service";
+import { CollapsibleSection } from "./collapsible-section";
 
 const STATUS_LABEL: Record<string, string> = { ACTIVE: "Active", TRIAL: "Trial", SUSPENDED: "Suspended", CANCELLED: "Cancelled" };
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = { ACTIVE: "default", TRIAL: "secondary", SUSPENDED: "destructive", CANCELLED: "outline" };
@@ -194,47 +195,49 @@ export default async function PlatformDashboardPage() {
             Point of Sale, Projects, Hotel, School, Hostel, Pharmacy, and Hospital aren&apos;t summarized by Analytics yet, so they aren&apos;t reflected here.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {businessInsights.organizationsIncluded === 0 ? (
-            <p className="text-sm text-muted-foreground">No active or trial organization has any data to summarize yet.</p>
-          ) : (
-            <>
-              <div className="grid gap-4 sm:grid-cols-2">
-                {Object.entries(businessInsights.moneyByCurrency).map(([currency, totals]) => (
-                  <div key={currency} className="space-y-2 rounded-lg border p-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold">{currency}</p>
-                      <p className="text-xs text-muted-foreground">{totals.organizationCount} organization{totals.organizationCount === 1 ? "" : "s"}</p>
+        <CardContent>
+          <CollapsibleSection label="cross-tenant figures">
+            {businessInsights.organizationsIncluded === 0 ? (
+              <p className="text-sm text-muted-foreground">No active or trial organization has any data to summarize yet.</p>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {Object.entries(businessInsights.moneyByCurrency).map(([currency, totals]) => (
+                    <div key={currency} className="space-y-2 rounded-lg border p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold">{currency}</p>
+                        <p className="text-xs text-muted-foreground">{totals.organizationCount} organization{totals.organizationCount === 1 ? "" : "s"}</p>
+                      </div>
+                      <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
+                        {MONEY_FIELDS.map(({ key, label }) => (
+                          <div key={key} className="flex items-center justify-between gap-2">
+                            <dt className="text-muted-foreground">{label}</dt>
+                            <dd className="font-medium tabular-nums">{formatMoney(totals[key], currency)}</dd>
+                          </div>
+                        ))}
+                      </dl>
                     </div>
-                    <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
-                      {MONEY_FIELDS.map(({ key, label }) => (
-                        <div key={key} className="flex items-center justify-between gap-2">
-                          <dt className="text-muted-foreground">{label}</dt>
-                          <dd className="font-medium tabular-nums">{formatMoney(totals[key], currency)}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </div>
-                ))}
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="flex items-center gap-3 rounded-lg border p-3">
-                  <UsersRound className="size-5 text-muted-foreground" />
-                  <div>
-                    <p className="text-2xl font-semibold tabular-nums">{businessInsights.activeEmployees}</p>
-                    <p className="text-xs text-muted-foreground">Active employees across HR</p>
-                  </div>
+                  ))}
                 </div>
-                <div className="flex items-center gap-3 rounded-lg border p-3">
-                  <Truck className="size-5 text-muted-foreground" />
-                  <div>
-                    <p className="text-2xl font-semibold tabular-nums">{businessInsights.vehicleCount}</p>
-                    <p className="text-xs text-muted-foreground">Vehicles across Fleet</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex items-center gap-3 rounded-lg border p-3">
+                    <UsersRound className="size-5 text-muted-foreground" />
+                    <div>
+                      <p className="text-2xl font-semibold tabular-nums">{businessInsights.activeEmployees}</p>
+                      <p className="text-xs text-muted-foreground">Active employees across HR</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 rounded-lg border p-3">
+                    <Truck className="size-5 text-muted-foreground" />
+                    <div>
+                      <p className="text-2xl font-semibold tabular-nums">{businessInsights.vehicleCount}</p>
+                      <p className="text-xs text-muted-foreground">Vehicles across Fleet</p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </>
-          )}
+            )}
+          </CollapsibleSection>
         </CardContent>
       </Card>
 
