@@ -15,14 +15,23 @@ Two kinds of tour, both driven by `src/lib/tours/definitions.ts`:
   if the current shell doesn't show one, e.g. a Fleet driver's self-service
   view), and the account menu.
 - **Module tour** (`tourKey`: a `BusinessModuleKey`, e.g. `"fleet"`): a
-  short, two-step intro shown the first time a user opens that module.
-  **Its content is derived automatically** from data that already exists
-  for every module: the registry's own customer-facing `description`
-  (`src/platform/modules/registry.ts`) and that module's own navigation
-  array. There is no hand-written tour script per module, and there does
-  not need to be one for a module added in the future either - add a module
-  to the registry with a description and navigation array (already required
-  for every module) and it gets a working tour with no extra step.
+  welcome step plus one step per nav item, shown the first time a user
+  opens that module. **Its content is derived automatically** from data
+  that already exists for every module: the registry's own customer-facing
+  `description` (`src/platform/modules/registry.ts`) for the welcome step,
+  and each nav item's own `description` (`ModuleNavItem.description`,
+  `src/types/module.ts`) for its own step, spotlighting that item's actual
+  sidebar link (`[data-tour-nav="<href>"]`). This was deliberately upgraded
+  from an earlier one-paragraph-listing-labels design after direct feedback
+  that a two-step intro didn't actually teach a module's capability - one
+  real step per page, describing what that page lets you do, does. There is
+  still no hand-written *tour flow* per module: a module added to the
+  registry with a navigation array (already required) gets a working,
+  substantive tour automatically, with per-item `description` strings as
+  the one piece of content that genuinely does need writing once per nav
+  item (an item with none still gets a step, falling back to its label,
+  rather than being silently skipped - a missing description is a content
+  gap worth noticing, not a reason to under-teach that page).
 
 Both trigger from the exact same place: `AppShell` (`src/components/layout/app-shell.tsx`)
 mounts one `TourRunner` (`src/components/onboarding/tour-runner.tsx`), passing
@@ -106,7 +115,27 @@ with the same `data-tour` selector risks Joyride finding the wrong (hidden)
 element. `data-tour` attributes are therefore only present on the desktop
 `<aside>` block in `AppShell`, not the mobile `Sheet` block. A mobile user
 simply never sees an onboarding tour today - stated here plainly, not
-silently absorbed.
+silently absorbed. The same reasoning applies to per-item targets:
+`SidebarNav` accepts a `tourTargets` prop (stamping each link with
+`data-tour-nav="<href>"`) that `AppShell` passes only to its desktop
+`SidebarNav` instance, never the mobile one, so a module tour's per-page
+steps can never resolve to a hidden mobile-sheet link.
+
+## Where the per-item descriptions came from
+
+Every nav item's `description` was written by reading that item's actual
+page component (`src/app/app/<module>/<segment>/page.tsx`), not inferred
+from its label - accuracy mattered more than speed, since these strings
+are the tour's actual teaching content. This was done via four parallel
+research passes (one per group of four modules) that each read every nav
+item's real page code before writing its one-sentence description, then
+applied directly to each module's `navigation.tsx` (or the shared
+`inventory-procurement/navigation.tsx` for Inventory and Procurement,
+which render one combined nav list - see
+`docs/INVENTORY_PROCUREMENT_CONSOLIDATION.md`). A source-assertion test
+(`test/onboarding-tours.test.ts`) checks every module in the registry has
+a description on every nav item, so a future nav item added without one
+fails a real test rather than silently shipping an under-taught step.
 
 ## Replaying a tour
 

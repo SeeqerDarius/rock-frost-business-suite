@@ -52,11 +52,21 @@ export function buildGeneralTourSteps(showModuleLauncher: boolean): TourStep[] {
 }
 
 /**
- * A module's own short intro, derived from data that already exists for
- * every module (its registry description and its own navigation list)
- * rather than hand-written content per module - so a new module gets a
- * working tour the moment it is added to the registry, with no extra
- * content-authoring step required.
+ * A module's own tutorial: one step per nav item, so it actually teaches
+ * what the module can do rather than just orienting the user to its
+ * existence. Entirely derived from data that already exists for every
+ * module - the registry's own description, and each nav item's own
+ * `description` (src/types/module.ts) - so a new module gets a working,
+ * substantive tour the moment it's added to the registry with its
+ * navigation array filled in, with no separate content-authoring step.
+ *
+ * Each per-item step targets that item's own sidebar link
+ * (`[data-tour-nav="<href>"]`, stamped by SidebarNav when AppShell passes
+ * `tourTargets`) rather than the sidebar as a whole, so the spotlight
+ * genuinely highlights the specific page being described. An item with no
+ * `description` still gets a step (falling back to its label) rather than
+ * being silently skipped, since a missing description is a content gap
+ * worth someone noticing, not a reason to under-teach that page.
  */
 export function buildModuleTourSteps(sectionLabel: string, description: string | undefined, navigation: ModuleNavItem[]): TourStep[] {
   const steps: TourStep[] = [
@@ -67,11 +77,11 @@ export function buildModuleTourSteps(sectionLabel: string, description: string |
       placement: "bottom",
     },
   ];
-  if (navigation.length > 0) {
+  for (const item of navigation) {
     steps.push({
-      target: '[data-tour="sidebar-nav"]',
-      title: "What's in this menu",
-      content: `${sectionLabel} is organized into: ${navigation.map((item) => item.label).join(", ")}.`,
+      target: `[data-tour-nav="${item.href}"]`,
+      title: item.label,
+      content: item.description ?? `Go here for ${item.label.toLowerCase()}.`,
       placement: "right",
     });
   }

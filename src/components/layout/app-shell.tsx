@@ -120,7 +120,7 @@ export function AppShell({
         ) : null}
         {!sidebarCollapsed ? <p className="px-5 pb-2 pt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">{sectionLabel}</p> : null}
         <div data-tour="sidebar-nav" className="min-h-0 flex-1 overflow-y-auto py-1">
-          <SidebarNav items={navigation} collapsed={sidebarCollapsed} />
+          <SidebarNav items={navigation} collapsed={sidebarCollapsed} tourTargets />
         </div>
         {footerNavigation.length > 0 ? (
           <div className="border-t py-2">

@@ -20,21 +20,45 @@ describe("buildGeneralTourSteps", () => {
 });
 
 describe("buildModuleTourSteps", () => {
-  it("derives its content from the module's own description and navigation, with no hand-authored copy", () => {
+  it("gives every nav item its own step, targeting that item's own sidebar link, so the tour teaches the whole module", () => {
     const steps = buildModuleTourSteps("Fleet Management", "Track vehicles and drivers.", [
-      { label: "Vehicles", href: "/app/fleet/vehicles", icon: null },
-      { label: "Drivers", href: "/app/fleet/drivers", icon: null },
+      { label: "Vehicles", href: "/app/fleet/vehicles", icon: null, description: "Register and track every vehicle in your fleet." },
+      { label: "Drivers", href: "/app/fleet/drivers", icon: null, description: "Add and manage driver profiles." },
     ]);
+    expect(steps).toHaveLength(3); // welcome step + one per nav item
     expect(steps[0].title).toBe("Welcome to Fleet Management");
     expect(steps[0].content).toBe("Track vehicles and drivers.");
-    expect(steps[1].content).toContain("Vehicles");
-    expect(steps[1].content).toContain("Drivers");
+    expect(steps[1].target).toBe('[data-tour-nav="/app/fleet/vehicles"]');
+    expect(steps[1].title).toBe("Vehicles");
+    expect(steps[1].content).toBe("Register and track every vehicle in your fleet.");
+    expect(steps[2].target).toBe('[data-tour-nav="/app/fleet/drivers"]');
+    expect(steps[2].content).toBe("Add and manage driver profiles.");
   });
 
-  it("falls back to a generic welcome when the module has no registry description", () => {
+  it("still gives an item its own step, with a generic fallback, when that item has no description", () => {
+    const steps = buildModuleTourSteps("Fleet Management", "Track vehicles and drivers.", [
+      { label: "Vehicles", href: "/app/fleet/vehicles", icon: null },
+    ]);
+    expect(steps).toHaveLength(2);
+    expect(steps[1].content).toContain("Vehicles".toLowerCase());
+  });
+
+  it("falls back to a generic welcome when the module has no registry description, and adds no per-item steps for an empty navigation", () => {
     const steps = buildModuleTourSteps("Analytics", undefined, []);
     expect(steps[0].content).toContain("Analytics");
     expect(steps).toHaveLength(1);
+  });
+});
+
+describe("every module's own navigation array carries a description on (almost) every item", () => {
+  it("has real per-item tour content for every module, not just labels", () => {
+    for (const module_ of catalogueModuleRegistry) {
+      const withDescription = module_.navigation.filter((item) => item.description).length;
+      expect(withDescription, `${module_.key} should have at least one nav item with a description`).toBeGreaterThan(0);
+      // Every item should have one - flags a regression if a new nav item is added without one.
+      const missing = module_.navigation.filter((item) => !item.description).map((item) => item.label);
+      expect(missing, `${module_.key} is missing tour descriptions for: ${missing.join(", ")}`).toEqual([]);
+    }
   });
 });
 

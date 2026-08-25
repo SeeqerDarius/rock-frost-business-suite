@@ -15,6 +15,15 @@ export interface ModuleNavItem {
    * a rendered element can, since it's a plain serializable object.
    */
   icon: ReactNode;
+  /**
+   * One plain-English sentence describing what a user does on this page.
+   * Optional so existing/new nav items keep working without one, but every
+   * item should have one in practice: it's what a module's onboarding tour
+   * (src/lib/tours/definitions.ts's buildModuleTourSteps) shows for that
+   * page's own step, so the tour actually teaches the module's real
+   * capability instead of just listing labels.
+   */
+  description?: string;
 }
 
 export interface ModuleDefinition {
