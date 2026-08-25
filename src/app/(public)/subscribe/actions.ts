@@ -10,7 +10,7 @@ import { isBotProtectionConfigured, verifyBotProtection } from "@/lib/bot-protec
 import { isContactHoneypotClear, verifyContactFormProof } from "@/lib/contact-form-protection";
 import { sendEmail } from "@/lib/email";
 import { invitationEmail } from "@/lib/email-templates";
-import { MODULE_PRICE_BY_KEY, PRICING_BUNDLE_BY_KEY, type PricingBundleKey } from "@/lib/pricing";
+import { getModulePriceMap, getPricingBundleMap, type PricingBundleKey } from "@/lib/pricing";
 import { createSelfServiceBundleSubscription, createSelfServiceSubscription } from "@/platform/subscriptions/service";
 import type { BusinessModuleKey } from "@/platform/modules/registry";
 
@@ -47,8 +47,9 @@ export async function startPublicSubscription(formData: FormData): Promise<void>
   const parsed = schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect("/subscribe?error=invalid");
   const input = parsed.data;
-  const selectedModule = MODULE_PRICE_BY_KEY.has(input.productKey as BusinessModuleKey);
-  const selectedBundle = PRICING_BUNDLE_BY_KEY.has(input.productKey as PricingBundleKey);
+  const [modulePriceMap, bundleMap] = await Promise.all([getModulePriceMap(), getPricingBundleMap()]);
+  const selectedModule = modulePriceMap.has(input.productKey as BusinessModuleKey);
+  const selectedBundle = bundleMap.has(input.productKey as PricingBundleKey);
   if (!selectedModule && !selectedBundle) redirect("/subscribe?error=product");
 
   const existingUser = await db.user.findUnique({ where: { email: input.email }, select: { id: true } });

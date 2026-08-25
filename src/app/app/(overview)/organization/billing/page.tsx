@@ -12,7 +12,7 @@ import { configuredGatewayProviders } from "@/lib/payments";
 import { cancelPaystackRenewal, managePaystackSubscription, startGatewayPayment, startSelfServiceCheckout } from "./actions";
 import { ModuleCart } from "./module-cart";
 import { getOrganizationSeatUsage } from "@/platform/subscriptions/seats";
-import { formatGhs, MODULE_PRICES, PRICING_BUNDLES } from "@/lib/pricing";
+import { formatGhs, listModulePrices, listPricingBundles } from "@/lib/pricing";
 import { getModule } from "@/platform/modules/registry";
 import { primaryProductKey } from "@/platform/modules/product-groups";
 
@@ -48,17 +48,19 @@ export default async function OrganizationBillingPage({
   }
 
   const { error, "renewal-cancelled": renewalCancelled, product, type } = await searchParams;
-  const [subscriptions, seatUsage] = await Promise.all([
+  const [subscriptions, seatUsage, modulePrices, pricingBundles] = await Promise.all([
     db.subscription.findMany({
       where: { organizationId: tenant.organizationId },
       include: { module: true, payments: { orderBy: { createdAt: "desc" }, take: 5 } },
       orderBy: { createdAt: "desc" },
     }),
     getOrganizationSeatUsage(tenant.organizationId),
+    listModulePrices(),
+    listPricingBundles(),
   ]);
   const availableProviders = configuredGatewayProviders();
   const subscribedProducts = new Set(subscriptions.flatMap((subscription) => subscription.entitledModuleKeys.length ? subscription.entitledModuleKeys.map(primaryProductKey) : [primaryProductKey(subscription.module.code)]));
-  const selfServiceProducts = MODULE_PRICES.filter((price) => !subscribedProducts.has(price.moduleKey));
+  const selfServiceProducts = modulePrices.filter((price) => !subscribedProducts.has(price.moduleKey));
   const paystackAvailable = availableProviders.includes("PAYSTACK");
 
   return (
@@ -101,7 +103,7 @@ export default async function OrganizationBillingPage({
           <p className="text-sm text-muted-foreground">One payment activates every product listed in the suite.</p>
         </div>
         <div className="grid gap-3 lg:grid-cols-2">
-          {PRICING_BUNDLES.map((bundle) => (
+          {pricingBundles.map((bundle) => (
             <Card key={bundle.key} className={type === "bundle" && product === bundle.key ? "border-primary" : undefined}>
               <CardHeader><CardTitle>{bundle.name}</CardTitle><CardDescription>{bundle.modules.join(", ")}</CardDescription></CardHeader>
               <CardContent>

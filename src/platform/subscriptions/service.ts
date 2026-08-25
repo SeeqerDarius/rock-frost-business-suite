@@ -7,7 +7,7 @@ import { logAuditEvent } from "@/lib/audit";
 import { initializeTransaction, type GatewayProvider } from "@/lib/payments";
 import { createPlan as createPaystackPlan, disableSubscription as disablePaystackSubscription, getSubscriptionManagementLink } from "@/lib/payments/paystack";
 import { ensureRevenueAccountsForOrg } from "@/lib/accounting-integration";
-import { MODULE_PRICE_BY_KEY, PRICING_BUNDLE_BY_KEY, type PricingBundleKey } from "@/lib/pricing";
+import { getModulePriceMap, getPricingBundleMap, type PricingBundleKey } from "@/lib/pricing";
 import { getModule, type BusinessModuleKey } from "@/platform/modules/registry";
 import { expandProductModuleKeys, productGroupKeys } from "@/platform/modules/product-groups";
 
@@ -47,7 +47,7 @@ export async function createSelfServiceSubscription(input: {
   autoRenew: boolean;
   actorId: string;
 }) {
-  const price = MODULE_PRICE_BY_KEY.get(input.moduleKey);
+  const price = (await getModulePriceMap()).get(input.moduleKey);
   const definition = getModule(input.moduleKey);
   if (!price || !definition || definition.catalogueVisible === false) {
     throw new Error("This module is not available for self-service purchase.");
@@ -115,7 +115,8 @@ export async function createSelfServiceBundleSubscription(input: {
   autoRenew: boolean;
   actorId: string;
 }) {
-  const bundle = PRICING_BUNDLE_BY_KEY.get(input.bundleKey);
+  const [modulePriceMap, bundleMap] = await Promise.all([getModulePriceMap(), getPricingBundleMap()]);
+  const bundle = bundleMap.get(input.bundleKey);
   if (!bundle) throw new Error("This suite is not available for self-service purchase.");
   const durationMonths = input.billingCycle === "ANNUAL" ? 12 : 1;
   const amount = input.billingCycle === "ANNUAL" ? bundle.monthlyGhs * 10 : bundle.monthlyGhs;
@@ -142,7 +143,7 @@ export async function createSelfServiceBundleSubscription(input: {
     if (existing) throw new SelfServiceSubscriptionExistsError("A product in this suite already has an active or pending subscription.");
     const primaryModule = modules.find((entry) => entry.code === bundle.moduleKeys[0]);
     if (!primaryModule) throw new Error("The suite's primary module is unavailable.");
-    const includedSeats = Math.max(...bundle.moduleKeys.map((key) => MODULE_PRICE_BY_KEY.get(key as BusinessModuleKey)?.includedSeats ?? 1));
+    const includedSeats = Math.max(...bundle.moduleKeys.map((key) => modulePriceMap.get(key as BusinessModuleKey)?.includedSeats ?? 1));
     const subscription = await tx.subscription.create({
       data: {
         organizationId: input.organizationId,
@@ -176,7 +177,7 @@ export async function createSelfServiceBundleSubscription(input: {
 /**
  * A self-service "cart" checkout: an ad-hoc set of modules the tenant picked
  * themselves (unlike createSelfServiceBundleSubscription's fixed, discounted
- * PRICING_BUNDLES catalogue), priced as the plain sum of each selected
+ * PricingBundle catalogue), priced as the plain sum of each selected
  * module's own price and paid for in one Paystack checkout instead of one
  * per module. Reuses the exact same entitledModuleKeys mechanism a real
  * bundle uses — activation, notifications, and renewal all already key off
@@ -193,8 +194,9 @@ export async function createSelfServiceCartSubscription(input: {
 }) {
   const uniqueKeys = [...new Set(input.moduleKeys)];
   if (!uniqueKeys.length) throw new Error("Select at least one product.");
+  const modulePriceMap = await getModulePriceMap();
   for (const key of uniqueKeys) {
-    const price = MODULE_PRICE_BY_KEY.get(key);
+    const price = modulePriceMap.get(key);
     const definition = getModule(key);
     if (!price || !definition || definition.catalogueVisible === false) {
       throw new Error("One or more selected products are not available for self-service purchase.");
@@ -203,13 +205,13 @@ export async function createSelfServiceCartSubscription(input: {
 
   const durationMonths = input.billingCycle === "ANNUAL" ? 12 : 1;
   // Priced on the plain sum of each selected module's own price — an ad-hoc
-  // cart is not a curated PRICING_BUNDLES discount, so no bundle rate applies.
+  // cart is not a curated PricingBundle discount, so no bundle rate applies.
   const amount = uniqueKeys.reduce((sum, key) => {
-    const price = MODULE_PRICE_BY_KEY.get(key)!;
+    const price = modulePriceMap.get(key)!;
     return sum + (input.billingCycle === "ANNUAL" ? price.annualGhs : price.monthlyGhs);
   }, 0);
   const entitledModuleKeys = expandProductModuleKeys(uniqueKeys);
-  const includedSeats = Math.max(...uniqueKeys.map((key) => MODULE_PRICE_BY_KEY.get(key)!.includedSeats));
+  const includedSeats = Math.max(...uniqueKeys.map((key) => modulePriceMap.get(key)!.includedSeats));
 
   return db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`self-service-cart:${input.organizationId}`}))`;

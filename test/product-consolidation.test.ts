@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MODULE_PRICE_BY_KEY } from "@/lib/pricing";
+import { MODULE_PRICING_SEED } from "../prisma/seed-data";
 import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry";
 import { expandProductModuleKeys, primaryProductKey, productGroupKeys } from "@/platform/modules/product-groups";
 
@@ -27,9 +27,10 @@ describe("consolidated module products", () => {
   });
 
   it("keeps prices only on customer-facing products", () => {
-    expect(MODULE_PRICE_BY_KEY.has("hr")).toBe(true);
-    expect(MODULE_PRICE_BY_KEY.has("inventory")).toBe(true);
-    expect(MODULE_PRICE_BY_KEY.has("payroll")).toBe(false);
-    expect(MODULE_PRICE_BY_KEY.has("procurement")).toBe(false);
+    const pricedKeys = new Set(MODULE_PRICING_SEED.map((price) => price.moduleKey));
+    expect(pricedKeys.has("hr")).toBe(true);
+    expect(pricedKeys.has("inventory")).toBe(true);
+    expect(pricedKeys.has("payroll")).toBe(false);
+    expect(pricedKeys.has("procurement")).toBe(false);
   });
 });

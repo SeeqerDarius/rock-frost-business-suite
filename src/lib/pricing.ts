@@ -1,53 +1,62 @@
-import type { BusinessModuleKey } from "@/platform/modules/registry";
+import "server-only";
 
-export type ModulePrice = {
-  moduleKey: BusinessModuleKey;
-  monthlyGhs: number;
-  annualGhs: number;
-  includedSeats: number;
-  additionalSeatGhs: number;
-};
+import { db } from "@/lib/db";
+import { computeRecommendedQuote, type ModulePrice, type PricingBundle } from "@/lib/pricing-shared";
+import { getModule, type BusinessModuleKey } from "@/platform/modules/registry";
 
-export const MODULE_PRICES: readonly ModulePrice[] = [
-  { moduleKey: "crm", monthlyGhs: 249, annualGhs: 2490, includedSeats: 5, additionalSeatGhs: 25 },
-  { moduleKey: "inventory", monthlyGhs: 799, annualGhs: 7990, includedSeats: 12, additionalSeatGhs: 35 },
-  { moduleKey: "accounting", monthlyGhs: 849, annualGhs: 8490, includedSeats: 8, additionalSeatGhs: 35 },
-  { moduleKey: "hr", monthlyGhs: 549, annualGhs: 5490, includedSeats: 15, additionalSeatGhs: 25 },
-  { moduleKey: "projects", monthlyGhs: 249, annualGhs: 2490, includedSeats: 10, additionalSeatGhs: 25 },
-  { moduleKey: "pos", monthlyGhs: 599, annualGhs: 5990, includedSeats: 8, additionalSeatGhs: 35 },
-  { moduleKey: "analytics", monthlyGhs: 199, annualGhs: 1990, includedSeats: 5, additionalSeatGhs: 25 },
-  { moduleKey: "fleet", monthlyGhs: 499, annualGhs: 4990, includedSeats: 10, additionalSeatGhs: 30 },
-  { moduleKey: "installment", monthlyGhs: 599, annualGhs: 5990, includedSeats: 10, additionalSeatGhs: 30 },
-  { moduleKey: "hotel", monthlyGhs: 799, annualGhs: 7990, includedSeats: 15, additionalSeatGhs: 40 },
-  { moduleKey: "school", monthlyGhs: 599, annualGhs: 5990, includedSeats: 20, additionalSeatGhs: 30 },
-  { moduleKey: "hostel", monthlyGhs: 449, annualGhs: 4490, includedSeats: 8, additionalSeatGhs: 25 },
-  { moduleKey: "pharmacy", monthlyGhs: 999, annualGhs: 9990, includedSeats: 15, additionalSeatGhs: 45 },
-  { moduleKey: "hospital", monthlyGhs: 2499, annualGhs: 24990, includedSeats: 30, additionalSeatGhs: 60 },
-] as const;
+export type { ModulePrice, PricingBundle, PricingBundleKey } from "@/lib/pricing-shared";
+export { computeRecommendedQuote, formatGhs } from "@/lib/pricing-shared";
 
-export const MODULE_PRICE_BY_KEY = new Map(MODULE_PRICES.map((price) => [price.moduleKey, price]));
-
-export const PRICING_BUNDLES = [
-  { key: "business-starter", name: "Business Starter", monthlyGhs: 1699, moduleKeys: ["crm", "inventory", "accounting"], modules: ["CRM", "Inventory & Procurement", "Accounting"] },
-  { key: "retail-suite", name: "Retail Suite", monthlyGhs: 2299, moduleKeys: ["pos", "inventory", "accounting", "crm"], modules: ["POS", "Inventory & Procurement", "Accounting", "CRM"] },
-  { key: "operations-suite", name: "Operations Suite", monthlyGhs: 1999, moduleKeys: ["hr", "inventory", "projects"], modules: ["Human Resources & Payroll", "Inventory & Procurement", "Projects"] },
-  { key: "business-complete", name: "Business Complete", monthlyGhs: 3499, moduleKeys: ["crm", "inventory", "accounting", "hr", "projects", "analytics"], modules: ["CRM", "Inventory & Procurement", "Accounting", "Human Resources & Payroll", "Projects", "Analytics"] },
-  { key: "school-complete", name: "School Complete", monthlyGhs: 3199, moduleKeys: ["school", "accounting", "hr", "inventory"], modules: ["School", "Accounting", "Human Resources & Payroll", "Inventory & Procurement"] },
-  { key: "school-hostel-complete", name: "School & Hostel Complete", monthlyGhs: 3499, moduleKeys: ["school", "hostel", "accounting", "hr"], modules: ["School", "Hostel", "Accounting", "Human Resources & Payroll"] },
-  { key: "pharmacy-complete", name: "Pharmacy Complete", monthlyGhs: 2899, moduleKeys: ["pharmacy", "inventory", "pos", "accounting"], modules: ["Pharmacy", "Inventory & Procurement", "POS", "Accounting"] },
-  { key: "hospital-complete", name: "Hospital Complete", monthlyGhs: 5199, moduleKeys: ["hospital", "pharmacy", "inventory", "accounting", "hr"], modules: ["Hospital", "Pharmacy", "Inventory & Procurement", "Accounting", "Human Resources & Payroll"] },
-] as const;
-
-export type PricingBundleKey = (typeof PRICING_BUNDLES)[number]["key"];
-export const PRICING_BUNDLE_BY_KEY = new Map(PRICING_BUNDLES.map((bundle) => [bundle.key, bundle]));
-
-export function recommendedSubscriptionQuote(moduleKey: string, durationMonths: number) {
-  const price = MODULE_PRICE_BY_KEY.get(moduleKey as BusinessModuleKey);
-  if (!price) return null;
-  if (durationMonths === 12) return { amountGhs: price.annualGhs, seatLimit: price.includedSeats };
-  return { amountGhs: price.monthlyGhs * durationMonths, seatLimit: price.includedSeats };
+/**
+ * Deliberately NOT wrapped in unstable_cache: this catalogue is also read
+ * from platform/subscriptions/service.ts's self-service checkout functions,
+ * which the real-Postgres integration suite (and any future one-off script)
+ * calls directly rather than through a live Next.js request — unstable_cache
+ * throws ("incrementalCache missing") outside that request context. The
+ * catalogue is 14 module rows + a handful of bundles, cheap enough on every
+ * read that caching isn't worth trading away that call compatibility.
+ */
+export async function getPricingCatalogue(): Promise<{ modulePrices: ModulePrice[]; bundles: PricingBundle[] }> {
+  const [plans, bundleRows] = await Promise.all([
+    db.modulePricingPlan.findMany({ orderBy: { moduleKey: "asc" } }),
+    db.pricingBundle.findMany({ orderBy: { key: "asc" } }),
+  ]);
+  const modulePrices = plans.map((plan) => ({
+    moduleKey: plan.moduleKey as BusinessModuleKey,
+    monthlyGhs: Number(plan.monthlyGhs),
+    annualGhs: Number(plan.annualGhs),
+    includedSeats: plan.includedSeats,
+    additionalSeatGhs: Number(plan.additionalSeatGhs),
+  }));
+  const bundles = bundleRows.map((bundle) => ({
+    key: bundle.key,
+    name: bundle.name,
+    monthlyGhs: Number(bundle.monthlyGhs),
+    moduleKeys: bundle.moduleKeys as BusinessModuleKey[],
+    modules: bundle.moduleKeys.flatMap((key) => {
+      const definition = getModule(key);
+      return definition ? [definition.name] : [];
+    }),
+  }));
+  return { modulePrices, bundles };
 }
 
-export function formatGhs(amount: number) {
-  return new Intl.NumberFormat("en-GH", { style: "currency", currency: "GHS", maximumFractionDigits: 0 }).format(amount);
+export async function listModulePrices(): Promise<ModulePrice[]> {
+  return (await getPricingCatalogue()).modulePrices;
+}
+
+export async function listPricingBundles(): Promise<PricingBundle[]> {
+  return (await getPricingCatalogue()).bundles;
+}
+
+export async function getModulePriceMap(): Promise<Map<BusinessModuleKey, ModulePrice>> {
+  return new Map((await listModulePrices()).map((price) => [price.moduleKey, price]));
+}
+
+export async function getPricingBundleMap(): Promise<Map<string, PricingBundle>> {
+  return new Map((await listPricingBundles()).map((bundle) => [bundle.key, bundle]));
+}
+
+export async function recommendedSubscriptionQuote(moduleKey: string, durationMonths: number) {
+  return computeRecommendedQuote(await getModulePriceMap(), moduleKey, durationMonths);
 }
