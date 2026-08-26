@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-26: Dispensing's Prescription picker could list a prescription that would then fail (no schema change)
+
+- **Live production report**: a dispense with a real, selected Patient ("Quynn Hansen"), Prescription, and Prescription line still failed with "An active prescription is required." - the exact error the earlier `runOrRedirect` fix made visible instead of crashing, but the underlying cause was new.
+- **Root cause**: `dispense()`'s own eligibility query (`src/modules/pharmacy/service.ts`) requires a prescription's status to be `ACTIVE`/`PARTIALLY_DISPENSED` *and* not expired (`OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }]`). The Dispensing page's dropdown filter (`src/app/app/pharmacy/dispensing/page.tsx`) only checked status, not `expiresAt` - so a prescription that stayed `ACTIVE` in the database past its own expiry date still showed up as pickable in both the Prescription and Prescription line selects. Picking one then failed at submit with a message that read like nothing had been selected, even though it clearly had been.
+- **Fixed by making the picker's eligibility filter match the service layer's exactly**: `open = rx.filter((x) => ["ACTIVE", "PARTIALLY_DISPENSED"].includes(x.status) && (!x.expiresAt || x.expiresAt > new Date()))`. An expired prescription can no longer be selected for dispensing in the first place, so the mismatch can't recur for this specific pair of checks.
+- **Important files**: `src/app/app/pharmacy/dispensing/page.tsx`.
+- **Validation**: `npx tsc --noEmit` — passed. `npm run lint` — passed, zero warnings. `npm run test` — passed: 95 files, 667 tests (up from 666, +1: asserts the page filter and the service query both carry the expiry check, so they can't drift apart again). `npm run build` — passed. No schema change.
+
 ## 2026-08-25: Prescriber management, inline walk-in registration, dispensing receipts (no schema change)
 
 - **Live follow-up on the same Pharmacy session**: three more gaps reported while reviewing the New Medicine form. Confirmed each, then asked the user two scoping questions (`AskUserQuestion`) before building, since both touch real design tradeoffs rather than obvious bugs: (1) how a walk-in with a paper prescription from an unregistered patient/prescriber should be handled on the Prescriptions form, and (2) what "receipt" should actually produce. User chose "quick-add inline" and "browser print view" respectively.

@@ -6,6 +6,7 @@ const service = readFileSync("src/modules/pharmacy/service.ts", "utf8");
 const registry = readFileSync("src/platform/modules/registry.ts", "utf8");
 const backup = readFileSync("src/lib/backup/tenant-backup.ts", "utf8");
 const actions = readFileSync("src/app/app/pharmacy/actions.ts", "utf8");
+const dispensingPage = readFileSync("src/app/app/pharmacy/dispensing/page.tsx", "utf8");
 
 describe("Pharmacy production boundary", () => {
   it("registers Pharmacy as an isolated module with seats and backup discovery", () => {
@@ -97,5 +98,16 @@ describe("Pharmacy production boundary", () => {
   it("createPatient/createPrescriber convert a duplicate-number unique-constraint violation to a safe, user-facing message instead of a raw Prisma error", () => {
     expect(service).toContain('throw new PharmacyStockError("A patient with this patient number already exists.");');
     expect(service).toContain('throw new PharmacyStockError("A prescriber with this registration number already exists.");');
+  });
+
+  it("the Dispensing form's prescription picker only lists prescriptions dispense() will actually accept, so picking one never fails with \"prescription is required\"", () => {
+    // Regression coverage for a live production bug: dispense()'s own
+    // eligibility query (service.ts) requires status ACTIVE/PARTIALLY_DISPENSED
+    // *and* not expired, but the page's dropdown filter only checked status -
+    // an expired-but-still-ACTIVE-in-the-database prescription showed up as
+    // selectable, then failed at submit with a confusing "An active
+    // prescription is required." even though the user clearly picked one.
+    expect(service).toContain('OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }]');
+    expect(dispensingPage).toContain('const open = rx.filter((x) => ["ACTIVE", "PARTIALLY_DISPENSED"].includes(x.status) && (!x.expiresAt || x.expiresAt > new Date()));');
   });
 });

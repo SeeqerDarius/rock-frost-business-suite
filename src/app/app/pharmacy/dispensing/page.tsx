@@ -31,7 +31,12 @@ export default async function Page({
     listPrescriptions(t.organizationId),
     listPendingControlledDispenses(t.organizationId),
   ]);
-  const open = rx.filter((x) => ["ACTIVE", "PARTIALLY_DISPENSED"].includes(x.status));
+  // Matches dispense()'s own eligibility query exactly: status alone isn't
+  // enough, since a prescription can stay ACTIVE/PARTIALLY_DISPENSED in the
+  // database past its own expiry date. Listing it here anyway would let staff
+  // pick one that then fails with a confusing "prescription is required"
+  // error, even though they clearly selected one.
+  const open = rx.filter((x) => ["ACTIVE", "PARTIALLY_DISPENSED"].includes(x.status) && (!x.expiresAt || x.expiresAt > new Date()));
   const patientItems: Record<string, string> = Object.fromEntries(patients.map((x) => [x.id, x.fullName]));
   const medicineItems: Record<string, string> = Object.fromEntries(meds.map((x) => [x.id, x.name]));
   const prescriptionItems: Record<string, string> = Object.fromEntries(open.map((x) => [x.id, x.prescriptionNumber]));
