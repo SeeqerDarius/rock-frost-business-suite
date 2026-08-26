@@ -1,5 +1,17 @@
 # Architecture & Tooling Decisions
 
+## 2026-08-26 — SMS delivery gets its own audit-log model, not the existing Notification model
+
+**Decision:** `SmsMessage` is a new, dedicated model for every SMS this app sends (`src/lib/sms.ts`'s `sendSms()` writes one row per attempt, success or failure). `NotificationChannel.SMS` - an enum value that has existed since the schema's early design but was never read or written anywhere - stays permanently unused.
+
+**Why:** `Notification` (`src/app/app/(overview)/notifications/page.tsx`) is queried with no `channel` filter at all - every row, regardless of channel, renders in the tenant's in-app bell. SMS recipients (a `PharmacyPatient`, `HotelGuest`, `HrEmployee`, or a future marketing-blast contact) have no `userId`, so an SMS-audit `Notification` row would have to be `userId: null`, which means it would show up as an org-wide bell entry visible to every staff member - one entry per prescription-ready text, per appointment reminder, per marketing-blast recipient. A 50-recipient send would flood the bell with 50 entries nobody asked to see. `NotificationStatus` also includes `READ`, which doesn't map onto an SMS with no read receipt.
+
+**How the boundary is preserved:** `SmsMessage` carries its own `SmsMessageStatus` (`SENT | FAILED`), a `purpose` string (e.g. `PHARMACY_PICKUP_READY`), and an optional `relatedType`/`relatedId` pair. The pair exists specifically so a schedule-based sender (the planned Hospital appointment-reminder cron) can ask "has a reminder already gone out for this appointment" by querying the log, instead of adding a `reminderSentAt` column to `HospitalAppointment` itself - the same dedup idea already used elsewhere (Fleet's document-renewal notifications compare a `renewalStatus` value), just applied against a log instead of a source-row column.
+
+**Not done (and deliberately so):** No delivery-status polling against mNotify's own `/status/<id>`/`/campaign/<id>/<status>` endpoints - `SmsMessage.status` reflects only whether the initial API call succeeded, not whether the carrier actually delivered the message. `providerResponse` keeps mNotify's raw response (including its campaign `_id`) for future use if delivery-status polling is ever built, but nothing polls it today.
+
+---
+
 ## 2026-08-24 — Inventory items read Accounting's tax codes for their default sales tax
 
 **Decision:** `InventoryItem` gained an optional `taxCodeId` pointing at Accounting's `AccountingTaxCode`. Inventory's `createItem`/`updateItem` validate it with a new `requireTaxCode()` that calls Accounting's already-public `listTaxCodes(organizationId)` — never a direct `db.accountingTaxCode` query from Inventory's service layer.

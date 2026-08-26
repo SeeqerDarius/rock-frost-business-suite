@@ -40,6 +40,7 @@ enum ModuleStatus {
   COMING_SOON
 }
 
+/** `SMS` is intentionally unused - see SmsMessage below, which is the actual SMS delivery record. Reusing Notification for SMS would render every send as an org-wide in-app bell entry (no userId to scope it to), which is wrong for a patient/guest/employee recipient. */
 enum NotificationChannel {
   EMAIL
   IN_APP
@@ -425,6 +426,7 @@ model Organization {
   organizationModules             OrganizationModule[]
   auditLogs                       AuditLog[]
   notifications                   Notification[]
+  smsMessages                     SmsMessage[]
   fileAssets                      FileAsset[]
   offlineDevices                  OfflineDevice[]
   offlineMutations                OfflineMutation[]
@@ -1209,6 +1211,31 @@ model Notification {
 
   @@index([organizationId, status])
   @@index([userId, readAt])
+}
+
+enum SmsMessageStatus {
+  SENT
+  FAILED
+}
+
+/** Every SMS this app sends, across every purpose (2FA, per-module notifications, support alerts, marketing) - the audit/delivery record and the dedup source (see relatedType/relatedId) for schedule-based senders like the Hospital appointment-reminder cron. */
+model SmsMessage {
+  id               String           @id @default(cuid())
+  organizationId   String
+  to               String
+  body             String           @db.Text
+  purpose          String
+  relatedType      String?
+  relatedId        String?
+  status           SmsMessageStatus
+  providerResponse Json?
+  error            String?
+  createdAt        DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, purpose, createdAt])
+  @@index([relatedType, relatedId])
 }
 
 model FileAsset {
