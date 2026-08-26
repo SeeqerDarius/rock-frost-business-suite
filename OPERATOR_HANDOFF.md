@@ -7,6 +7,7 @@
 - **Fixed by making the picker's eligibility filter match the service layer's exactly**: `open = rx.filter((x) => ["ACTIVE", "PARTIALLY_DISPENSED"].includes(x.status) && (!x.expiresAt || x.expiresAt > new Date()))`. An expired prescription can no longer be selected for dispensing in the first place, so the mismatch can't recur for this specific pair of checks.
 - **Important files**: `src/app/app/pharmacy/dispensing/page.tsx`.
 - **Validation**: `npx tsc --noEmit` — passed. `npm run lint` — passed, zero warnings. `npm run test` — passed: 95 files, 667 tests (up from 666, +1: asserts the page filter and the service query both carry the expiry check, so they can't drift apart again). `npm run build` — passed. No schema change.
+- **Production deploy verified**: commit `95626bd` reached Vercel production deployment `dpl_4gCow561GrtEiSku5tZ38ZFqJQuV` (`READY`, all production aliases attached). `/api/health` returned `{"ok":true,"database":"reachable"}`. `get_runtime_errors` (5m window, post-deploy) returned none.
 
 ## 2026-08-25: Prescriber management, inline walk-in registration, dispensing receipts (no schema change)
 
