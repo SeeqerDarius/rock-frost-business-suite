@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createWarehouse, updateWarehouse } from "@/modules/inventory/service";
+import { createWarehouse, updateWarehouse, WarehouseNameTakenError } from "@/modules/inventory/service";
 import { shortText, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
@@ -40,10 +40,15 @@ export async function upsertWarehouse(formData: FormData): Promise<void> {
     active: formData.get("active") === "on",
   };
 
-  if (id) {
-    await updateWarehouse(tenant.organizationId, id, data);
-  } else {
-    await createWarehouse(tenant.organizationId, data);
+  try {
+    if (id) {
+      await updateWarehouse(tenant.organizationId, id, data);
+    } else {
+      await createWarehouse(tenant.organizationId, data);
+    }
+  } catch (error) {
+    if (error instanceof WarehouseNameTakenError) redirect("/app/inventory/warehouses?error=duplicate");
+    throw error;
   }
 
   revalidatePath("/app/inventory/warehouses");

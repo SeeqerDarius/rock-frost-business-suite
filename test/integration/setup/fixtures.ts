@@ -9,13 +9,23 @@ import bcrypt from "bcryptjs";
 import { testDb } from "./db";
 import { seedPlatform } from "../../../prisma/seed-data";
 
-let platformSeeded = false;
+let platformSeedPromise: Promise<void> | null = null;
 
-/** Idempotent — seeds permissions/system roles/modules into the test database exactly once per test process. */
+/**
+ * Idempotent — seeds permissions/system roles/modules into the test database
+ * exactly once per test process. Concurrent callers (e.g. a beforeAll that
+ * creates two orgs via Promise.all) must await the same in-flight seed
+ * rather than each independently checking a boolean flag and racing to seed
+ * twice — a plain `if (seeded) return; ...; seeded = true` guard has a
+ * check-then-act gap wide enough for both to see "not seeded yet" and both
+ * call seedPlatform() concurrently, which then throws a real unique-
+ * constraint violation on its own upserts.
+ */
 export async function ensurePlatformSeeded() {
-  if (platformSeeded) return;
-  await seedPlatform(testDb, { log: false });
-  platformSeeded = true;
+  if (!platformSeedPromise) {
+    platformSeedPromise = seedPlatform(testDb, { log: false });
+  }
+  await platformSeedPromise;
 }
 
 export interface TestOrg {

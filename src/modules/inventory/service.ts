@@ -56,14 +56,32 @@ async function clearOtherDefaults(organizationId: string, exceptId?: string) {
   });
 }
 
+export class WarehouseNameTakenError extends Error {}
+
 export async function createWarehouse(organizationId: string, data: WarehouseInput) {
-  const warehouse = await db.inventoryWarehouse.create({ data: { organizationId, ...data } });
+  let warehouse;
+  try {
+    warehouse = await db.inventoryWarehouse.create({ data: { organizationId, ...data } });
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "P2002") {
+      throw new WarehouseNameTakenError(`Warehouse name "${data.name}" is already in use.`);
+    }
+    throw error;
+  }
   if (warehouse.isDefault) await clearOtherDefaults(organizationId, warehouse.id);
   return warehouse;
 }
 
 export async function updateWarehouse(organizationId: string, id: string, data: WarehouseInput) {
-  const warehouse = await db.inventoryWarehouse.update({ where: { id, organizationId }, data });
+  let warehouse;
+  try {
+    warehouse = await db.inventoryWarehouse.update({ where: { id, organizationId }, data });
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "P2002") {
+      throw new WarehouseNameTakenError(`Warehouse name "${data.name}" is already in use.`);
+    }
+    throw error;
+  }
   if (warehouse.isDefault) await clearOtherDefaults(organizationId, warehouse.id);
   return warehouse;
 }
