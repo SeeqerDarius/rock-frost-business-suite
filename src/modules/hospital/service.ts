@@ -211,7 +211,7 @@ export async function addHospitalClinicalNote(organizationId: string, encounterI
 export async function signHospitalClinicalNote(organizationId: string, noteId: string) {
   const note = await db.hospitalClinicalNote.findFirst({ where: { id: noteId, organizationId } });
   if (!note) throw new HospitalNotFoundError("Note not found.");
-  if (note.signedAt) throw new HospitalStateError("This note is already signed and cannot be modified — add an addendum instead.");
+  if (note.signedAt) throw new HospitalStateError("This note is already signed and cannot be modified. Add an addendum instead.");
   return db.hospitalClinicalNote.update({ where: { id: noteId }, data: { signedAt: new Date() } });
 }
 
@@ -330,7 +330,7 @@ export async function collectHospitalLabSpecimen(organizationId: string, itemId:
 export async function enterHospitalLabResult(organizationId: string, itemId: string, data: { value: string; unit?: string | null; referenceRange?: string | null; abnormalFlag?: HospitalAbnormalFlag; enteredById?: string | null }) {
   const item = await db.hospitalLabOrderItem.findFirst({ where: { id: itemId, organizationId } });
   if (!item) throw new HospitalNotFoundError("Lab order item not found.");
-  if (item.status === "VERIFIED") throw new HospitalStateError("This result is already verified — enter a correction instead.");
+  if (item.status === "VERIFIED") throw new HospitalStateError("This result is already verified. Enter a correction instead.");
   return db.$transaction(async (tx) => {
     const result = await tx.hospitalLabResult.create({ data: { organizationId, labOrderItemId: itemId, ...data } });
     await tx.hospitalLabOrderItem.update({ where: { id: itemId }, data: { status: "RESULTED" } });
@@ -378,7 +378,7 @@ export async function rejectHospitalLabResult(organizationId: string, resultId: 
 export async function correctHospitalLabResult(organizationId: string, priorResultId: string, data: { value: string; unit?: string | null; referenceRange?: string | null; abnormalFlag?: HospitalAbnormalFlag; enteredById?: string | null; correctionReason: string }) {
   const prior = await db.hospitalLabResult.findFirst({ where: { id: priorResultId, organizationId } });
   if (!prior) throw new HospitalNotFoundError("Result not found.");
-  if (!prior.verifiedAt) throw new HospitalStateError("Only a verified result can be corrected — edit the unverified result directly instead.");
+  if (!prior.verifiedAt) throw new HospitalStateError("Only a verified result can be corrected. Edit the unverified result directly instead.");
   return db.$transaction(async (tx) => {
     const corrected = await tx.hospitalLabResult.create({ data: { organizationId, labOrderItemId: prior.labOrderItemId, supersedesResultId: prior.id, ...data } });
     await logAuditEvent({ organizationId, userId: data.enteredById, module: "hospital", action: "lab_result.corrected", entityName: "HospitalLabResult", entityId: corrected.id, metadata: { supersedesResultId: prior.id, correctionReason: data.correctionReason } }, tx);
@@ -469,7 +469,7 @@ export async function rejectHospitalImagingFinding(organizationId: string, findi
 export async function correctHospitalImagingFinding(organizationId: string, priorFindingId: string, data: { findings: string; impression?: string | null; enteredById?: string | null; correctionReason: string }) {
   const prior = await db.hospitalImagingFinding.findFirst({ where: { id: priorFindingId, organizationId } });
   if (!prior) throw new HospitalNotFoundError("Finding not found.");
-  if (!prior.verifiedAt) throw new HospitalStateError("Only a verified finding can be corrected — edit the unverified finding directly instead.");
+  if (!prior.verifiedAt) throw new HospitalStateError("Only a verified finding can be corrected. Edit the unverified finding directly instead.");
   return db.$transaction(async (tx) => {
     const corrected = await tx.hospitalImagingFinding.create({ data: { organizationId, imagingOrderId: prior.imagingOrderId, supersedesFindingId: prior.id, ...data } });
     await logAuditEvent({ organizationId, userId: data.enteredById, module: "hospital", action: "imaging_finding.corrected", entityName: "HospitalImagingFinding", entityId: corrected.id, metadata: { supersedesFindingId: prior.id, correctionReason: data.correctionReason } }, tx);

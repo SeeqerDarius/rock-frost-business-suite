@@ -60,7 +60,7 @@ export default async function FlutterwaveCallbackPage({
         <Alert variant="destructive">
           <AlertTitle>Payment not confirmed</AlertTitle>
           <AlertDescription>
-            We couldn&apos;t confirm this payment. If you were charged, it may still complete shortly — check back, or
+            We couldn&apos;t confirm this payment. If you were charged, it may still complete shortly. Check back, or
             contact Rock Frost support.
           </AlertDescription>
         </Alert>

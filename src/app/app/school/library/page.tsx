@@ -69,7 +69,7 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
         name="bookId"
         label="Book"
         required
-        options={availableBooks.map((book) => ({ value: book.id, label: `${book.title} — ${book.availableCopies} available` }))}
+        options={availableBooks.map((book) => ({ value: book.id, label: `${book.title} (${book.availableCopies} available)` }))}
         emptyHint="No copies are currently available."
       />
       <SelectField
@@ -200,8 +200,8 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
                           <span className="font-medium">{book.title}</span>
                           <span className="block text-xs text-muted-foreground md:hidden">{book.author ?? "Unknown author"}</span>
                         </TableCell>
-                        <TableCell className="hidden text-muted-foreground md:table-cell">{book.author ?? "—"}</TableCell>
-                        <TableCell className="hidden text-muted-foreground lg:table-cell">{book.category ?? "—"}</TableCell>
+                        <TableCell className="hidden text-muted-foreground md:table-cell">{book.author ?? "-"}</TableCell>
+                        <TableCell className="hidden text-muted-foreground lg:table-cell">{book.category ?? "-"}</TableCell>
                         <TableCell>
                           <span className="tabular-nums">{book.availableCopies} / {book.totalCopies}</span>
                           {book.availableCopies === 0 ? <Badge variant="outline" className="ml-2">All on loan</Badge> : null}

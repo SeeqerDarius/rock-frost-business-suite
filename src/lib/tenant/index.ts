@@ -125,8 +125,15 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
       where: { organizationId: membership.organizationId, enabled: true, module: { status: "ACTIVE" } },
       include: { module: true },
     }),
+    // A CANCELLED subscription is deliberately excluded from gating: once an
+    // agreement is cancelled, an operator re-enabling the module directly
+    // (OrganizationModule.enabled) is a real, current decision that must not
+    // be permanently overridden by a defunct record. PENDING_PAYMENT,
+    // PAST_DUE, DRAFT, and EXPIRED still gate access - those represent an
+    // agreement that is unpaid, lapsed, or still awaiting action, not one
+    // the platform has closed out.
     db.subscription.findMany({
-      where: { organizationId: membership.organizationId },
+      where: { organizationId: membership.organizationId, status: { not: "CANCELLED" } },
       select: { moduleId: true, entitledModuleKeys: true, module: { select: { code: true } } },
       distinct: ["moduleId"],
     }),

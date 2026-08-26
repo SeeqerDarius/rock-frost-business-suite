@@ -250,7 +250,7 @@ export function SaleCart({ items: initialItems, categories: initialCategories, o
       <input type="hidden" name="mode" value={suspended ? "SUSPENDED" : "COMPLETED"} />
       {!isOnline || pendingCount > 0 ? (
         <div className="lg:col-span-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
-          <span className="flex items-center gap-2"><WifiOff className="size-4" />{!isOnline ? "You're offline — sales are saved locally and will sync automatically." : `${pendingCount} sale${pendingCount === 1 ? "" : "s"} pending sync.`}</span>
+          <span className="flex items-center gap-2"><WifiOff className="size-4" />{!isOnline ? "You're offline. Sales are saved locally and will sync automatically." : `${pendingCount} sale${pendingCount === 1 ? "" : "s"} pending sync.`}</span>
           {pendingCount > 0 ? <Button type="button" size="sm" variant="outline" onClick={() => void syncQueuedSales()}>Sync now</Button> : null}
         </div>
       ) : null}

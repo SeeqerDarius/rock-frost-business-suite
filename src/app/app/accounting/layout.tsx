@@ -23,6 +23,7 @@ export default async function AccountingLayout({ children }: { children: React.R
   return (
     <AppShell
       sectionLabel="Accounting"
+      moduleKey="accounting"
       navigation={accountingNavigation}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}

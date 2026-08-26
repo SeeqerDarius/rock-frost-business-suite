@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { TurnstileWidget } from "@/components/security/turnstile-widget";
 import { isBotProtectionConfigured } from "@/lib/bot-protection";
 import { createContactFormProof } from "@/lib/contact-form-protection";
-import { formatGhs, MODULE_PRICES, PRICING_BUNDLES } from "@/lib/pricing";
+import { formatGhs, listModulePrices, listPricingBundles } from "@/lib/pricing";
 import { createPublicMetadata } from "@/lib/seo";
 import { getModule } from "@/platform/modules/registry";
 import { startPublicSubscription } from "./actions";
@@ -22,10 +22,11 @@ const errors: Record<string, string> = { verification: "We could not verify this
 
 export default async function SubscribePage({ searchParams }: { searchParams: Promise<{ type?: string; product?: string; cycle?: string; error?: string }> }) {
   const params = await searchParams;
+  const [modulePrices, pricingBundles] = await Promise.all([listModulePrices(), listPricingBundles()]);
   const productType = params.type === "bundle" ? "BUNDLE" : "MODULE";
-  const modulePrice = MODULE_PRICES.find((entry) => entry.moduleKey === params.product);
-  const bundle = PRICING_BUNDLES.find((entry) => entry.key === params.product);
-  const defaultProduct = productType === "BUNDLE" ? bundle?.key ?? PRICING_BUNDLES[0].key : modulePrice?.moduleKey ?? MODULE_PRICES[0].moduleKey;
+  const modulePrice = modulePrices.find((entry) => entry.moduleKey === params.product);
+  const bundle = pricingBundles.find((entry) => entry.key === params.product);
+  const defaultProduct = productType === "BUNDLE" ? bundle?.key ?? pricingBundles[0]?.key ?? "" : modulePrice?.moduleKey ?? modulePrices[0]?.moduleKey ?? "";
   const turnstile = isBotProtectionConfigured();
   const proof = turnstile ? null : createContactFormProof(process.env.NEXTAUTH_SECRET ?? "");
   return <section className="mx-auto grid max-w-6xl gap-8 px-6 py-16 lg:grid-cols-[0.8fr_1.2fr]">
@@ -37,7 +38,7 @@ export default async function SubscribePage({ searchParams }: { searchParams: Pr
         <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="fullName">Your full name</Label><Input id="fullName" name="fullName" required /></div><div className="space-y-2"><Label htmlFor="organizationName">Organization name</Label><Input id="organizationName" name="organizationName" required /></div></div>
         <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="email">Work email</Label><Input id="email" name="email" type="email" required /></div><div className="space-y-2"><Label htmlFor="phone">Phone or WhatsApp</Label><Input id="phone" name="phone" type="tel" /></div></div>
         <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="productType">Product type</Label><select id="productType" name="productType" defaultValue={productType} className="h-10 w-full rounded-md border bg-background px-3"><option value="MODULE">Individual module</option><option value="BUNDLE">Combined suite</option></select></div><div className="space-y-2"><Label htmlFor="billingCycle">Billing period</Label><select id="billingCycle" name="billingCycle" defaultValue={params.cycle === "monthly" ? "MONTHLY" : "ANNUAL"} className="h-10 w-full rounded-md border bg-background px-3"><option value="MONTHLY">Monthly</option><option value="ANNUAL">Annual</option></select></div></div>
-        <div className="space-y-2"><Label htmlFor="productKey">Product</Label><select id="productKey" name="productKey" defaultValue={defaultProduct} className="h-10 w-full rounded-md border bg-background px-3">{MODULE_PRICES.map((entry) => <option key={entry.moduleKey} value={entry.moduleKey}>{getModule(entry.moduleKey)?.name} ({formatGhs(entry.monthlyGhs)}/month)</option>)}{PRICING_BUNDLES.map((entry) => <option key={entry.key} value={entry.key}>{entry.name} suite ({formatGhs(entry.monthlyGhs)}/month)</option>)}</select><p className="text-xs text-muted-foreground">Choose a module when Product type is Individual module, or a suite when Product type is Combined suite.</p></div>
+        <div className="space-y-2"><Label htmlFor="productKey">Product</Label><select id="productKey" name="productKey" defaultValue={defaultProduct} className="h-10 w-full rounded-md border bg-background px-3">{modulePrices.map((entry) => <option key={entry.moduleKey} value={entry.moduleKey}>{getModule(entry.moduleKey)?.name} ({formatGhs(entry.monthlyGhs)}/month)</option>)}{pricingBundles.map((entry) => <option key={entry.key} value={entry.key}>{entry.name} suite ({formatGhs(entry.monthlyGhs)}/month)</option>)}</select><p className="text-xs text-muted-foreground">Choose a module when Product type is Individual module, or a suite when Product type is Combined suite.</p></div>
         {turnstile ? <TurnstileWidget action="subscribe" /> : null}<Button className="w-full" type="submit">Verify email and prepare subscription</Button>
       </form>
     </CardContent></Card>

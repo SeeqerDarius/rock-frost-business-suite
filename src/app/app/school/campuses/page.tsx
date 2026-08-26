@@ -56,7 +56,7 @@ export default async function SchoolCampusesPage({ searchParams }: { searchParam
         <EmptyState
           icon={School}
           title="No campuses yet"
-          description="A campus is the first record a school needs — students, classes, and fees cannot be created without one."
+          description="A campus is the first record a school needs: students, classes, and fees cannot be created without one."
           action={canManage ? newCampusDialog : undefined}
         />
       ) : (

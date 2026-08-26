@@ -67,7 +67,7 @@ export default async function SchoolTimetablesPage({ searchParams }: { searchPar
         saved={query.saved}
         error={query.error}
         savedMessage="The timetable period has been added."
-        stateMessage="This period clashes with an existing booking for the same class, teacher, or room — or the end time is not after the start time."
+        stateMessage="This period clashes with an existing booking for the same class, teacher, or room, or the end time is not after the start time."
       />
       {!canManage ? <ReadOnlyNotice>Your role can review timetables but cannot change them.</ReadOnlyNotice> : null}
       <PrerequisiteNotice
@@ -113,7 +113,7 @@ export default async function SchoolTimetablesPage({ searchParams }: { searchPar
                       <span className="block text-xs text-muted-foreground md:hidden">{entry.teacherName}</span>
                     </TableCell>
                     <TableCell className="hidden text-muted-foreground md:table-cell">{entry.teacherName}</TableCell>
-                    <TableCell className="hidden text-muted-foreground lg:table-cell">{entry.room ?? "—"}</TableCell>
+                    <TableCell className="hidden text-muted-foreground lg:table-cell">{entry.room ?? "-"}</TableCell>
                     <TableCell className="hidden text-muted-foreground lg:table-cell">{entry.term.name}</TableCell>
                   </TableRow>
                 ))}

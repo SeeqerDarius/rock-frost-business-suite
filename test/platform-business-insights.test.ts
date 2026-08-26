@@ -219,4 +219,11 @@ describe("Platform dashboard business activity section", () => {
     expect(source).toContain("Platform revenue");
     expect(source).toContain("Rock Frost&apos;s own business");
   });
+
+  it("hides other organizations' figures behind a collapsed-by-default toggle, not shown on load", () => {
+    const source = readFileSync("src/app/app/platform/dashboard/page.tsx", "utf8");
+    expect(source).toContain("CollapsibleSection");
+    const collapsibleSource = readFileSync("src/app/app/platform/dashboard/collapsible-section.tsx", "utf8");
+    expect(collapsibleSource).toContain("useState(false)");
+  });
 });

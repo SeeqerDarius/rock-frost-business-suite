@@ -11,9 +11,18 @@ interface SidebarNavProps {
   items: ModuleNavItem[];
   collapsed?: boolean;
   onNavigate?: () => void;
+  /**
+   * Stamps each link with a stable data-tour-nav target for the onboarding
+   * tour to spotlight one step per nav item. Only ever true for AppShell's
+   * desktop <aside> instance - the mobile Sheet renders this same component
+   * with the same items but no tour targets, since onboarding tours don't
+   * run on mobile (see docs/ONBOARDING_TOURS.md) and having the same
+   * selector exist twice in the DOM would risk targeting a hidden element.
+   */
+  tourTargets?: boolean;
 }
 
-export function SidebarNav({ items, collapsed = false, onNavigate }: SidebarNavProps) {
+export function SidebarNav({ items, collapsed = false, onNavigate, tourTargets = false }: SidebarNavProps) {
   const pathname = usePathname();
   const activeHref = getActiveNavigationHref(pathname, items);
 
@@ -27,6 +36,7 @@ export function SidebarNav({ items, collapsed = false, onNavigate }: SidebarNavP
             href={item.href as never}
             aria-current={isActive ? "page" : undefined}
             aria-label={collapsed ? item.label : undefined}
+            data-tour-nav={tourTargets ? item.href : undefined}
             onClick={onNavigate}
             className={cn(
               "relative flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-sidebar-ring",

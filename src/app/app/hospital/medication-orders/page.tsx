@@ -24,7 +24,7 @@ export default async function HospitalMedicationOrdersPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
-        <PageHeader title="Medication Orders" description="Prescriptions on the Hospital-owned medication-order contract — dispensing happens in Pharmacy." />
+        <PageHeader title="Medication Orders" description="Prescriptions on the Hospital-owned medication-order contract. Dispensing happens in Pharmacy." />
         {canManage ? (
           <EntityDialog trigger={<Button size="sm"><Plus />New order</Button>} title="Order medication" action={createMedicationOrderAction}>
             {select("encounterId", "Encounter", encounters.filter((e) => e.status === "OPEN").map((e) => [e.id, `${e.encounterNumber} · ${e.patient.firstName} ${e.patient.lastName}`]))}

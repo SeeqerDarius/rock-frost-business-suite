@@ -203,7 +203,7 @@ export async function createOrganization(formData: FormData): Promise<void> {
       contactSubmissionId: contactSubmission.id,
       moduleId: contactSubmission.moduleId,
       type: contactSubmission.intent === "CUSTOM_MODULE" ? "CUSTOM_MODULE" : contactSubmission.intent === "DEMO" ? "DEMO" : "ENABLE_EXISTING",
-      title: `${contactSubmission.intent === "DEMO" ? "Demo" : "Module"} request — ${contactSubmission.company}`,
+      title: `${contactSubmission.intent === "DEMO" ? "Demo" : "Module"} request: ${contactSubmission.company}`,
       businessJustification: contactSubmission.message || `${contactSubmission.name} requested ${contactSubmission.module?.name ?? "a module"}.`,
       expectedUsers: contactSubmission.expectedUsers,
     });

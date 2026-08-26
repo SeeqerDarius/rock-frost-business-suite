@@ -39,7 +39,7 @@ export default async function HospitalEncounterDetailPage({ params }: { params: 
             <div className="space-y-2">
               {encounter.vitals.map((v) => (
                 <div key={v.id} className="rounded-md border p-2 text-xs text-muted-foreground">
-                  {v.recordedAt.toLocaleString()} — Temp {v.temperatureC?.toString() ?? "—"}°C · Pulse {v.pulseBpm ?? "—"} · RR {v.respiratoryRate ?? "—"} · BP {v.bloodPressureSystolic ?? "—"}/{v.bloodPressureDiastolic ?? "—"} · SpO2 {v.spo2 ?? "—"}%
+                  {v.recordedAt.toLocaleString()}: Temp {v.temperatureC?.toString() ?? "N/A"}°C · Pulse {v.pulseBpm ?? "N/A"} · RR {v.respiratoryRate ?? "N/A"} · BP {v.bloodPressureSystolic ?? "N/A"}/{v.bloodPressureDiastolic ?? "N/A"} · SpO2 {v.spo2 ?? "N/A"}%
                 </div>
               ))}
             </div>
@@ -134,7 +134,7 @@ export default async function HospitalEncounterDetailPage({ params }: { params: 
             <div className="space-y-2">
               {referrals.map((r) => (
                 <div key={r.id} className="flex items-center justify-between rounded-md border p-2 text-xs">
-                  <span>{r.referredToFacility} — {r.reason} ({r.status})</span>
+                  <span>{r.referredToFacility}: {r.reason} ({r.status})</span>
                   {canManage && r.status === "PENDING" ? (
                     <form action={updateReferralStatusAction}><input type="hidden" name="encounterId" value={encounter.id} /><input type="hidden" name="referralId" value={r.id} /><input type="hidden" name="status" value="ACCEPTED" /><Button size="sm" variant="outline" type="submit">Mark accepted</Button></form>
                   ) : null}

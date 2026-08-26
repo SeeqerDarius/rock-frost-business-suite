@@ -23,29 +23,29 @@ import type { ModuleNavItem } from "@/types/module";
  * itself and passes the result in.
  */
 
-const OVERVIEW_ITEM: ModuleNavItem = { label: "Overview", href: "/app/inventory", icon: <LayoutGrid className="size-4" /> };
+const OVERVIEW_ITEM: ModuleNavItem = { label: "Overview", href: "/app/inventory", icon: <LayoutGrid className="size-4" />, description: "See setup progress, low-stock alerts, and quick links across both Inventory and Procurement." };
 
 /** Used only when a tenant has Procurement but not Inventory — points at Procurement's own, unchanged overview page rather than the combined one, which that tenant cannot reach. */
-const PROCUREMENT_ONLY_OVERVIEW_ITEM: ModuleNavItem = { label: "Overview", href: "/app/procurement", icon: <LayoutGrid className="size-4" /> };
+const PROCUREMENT_ONLY_OVERVIEW_ITEM: ModuleNavItem = { label: "Overview", href: "/app/procurement", icon: <LayoutGrid className="size-4" />, description: "See pending requests, open orders and their value, and received orders at a glance." };
 
 const INVENTORY_ITEMS: ModuleNavItem[] = [
-  { label: "Items", group: "Inventory", href: "/app/inventory/items", icon: <Package className="size-4" /> },
-  { label: "Warehouses", group: "Inventory", href: "/app/inventory/warehouses", icon: <Warehouse className="size-4" /> },
-  { label: "Stock", group: "Inventory", href: "/app/inventory/stock", icon: <Layers className="size-4" /> },
-  { label: "Stock Counts", group: "Inventory", href: "/app/inventory/counts", icon: <ClipboardCheck className="size-4" /> },
-  { label: "Movements", group: "Inventory", href: "/app/inventory/movements", icon: <ArrowLeftRight className="size-4" /> },
-  { label: "Inventory Reports", group: "Inventory", href: "/app/inventory/reports", icon: <BarChart3 className="size-4" /> },
-  { label: "Inventory Settings", group: "Inventory", href: "/app/inventory/settings", icon: <Settings className="size-4" /> },
+  { label: "Items", group: "Inventory", href: "/app/inventory/items", icon: <Package className="size-4" />, description: "Add items to your catalog with SKU, pricing, tax code, category, and stock tracking options." },
+  { label: "Warehouses", group: "Inventory", href: "/app/inventory/warehouses", icon: <Warehouse className="size-4" />, description: "Create and manage the physical or logical locations where you hold stock." },
+  { label: "Stock", group: "Inventory", href: "/app/inventory/stock", icon: <Layers className="size-4" />, description: "View the quantity on hand for every item broken down by warehouse." },
+  { label: "Stock Counts", group: "Inventory", href: "/app/inventory/counts", icon: <ClipboardCheck className="size-4" />, description: "Record physical counts, review variances, and post approved stock adjustments." },
+  { label: "Movements", group: "Inventory", href: "/app/inventory/movements", icon: <ArrowLeftRight className="size-4" />, description: "Record stock receipts, issues, adjustments, and transfers between warehouses." },
+  { label: "Inventory Reports", group: "Inventory", href: "/app/inventory/reports", icon: <BarChart3 className="size-4" />, description: "View total stock value, active item counts, and items that are low on stock." },
+  { label: "Inventory Settings", group: "Inventory", href: "/app/inventory/settings", icon: <Settings className="size-4" />, description: "Set the default reorder point used to flag items as low stock, and manage categories." },
 ];
 
 const PROCUREMENT_ITEMS: ModuleNavItem[] = [
-  { label: "Vendors", group: "Procurement", href: "/app/procurement/vendors", icon: <Building2 className="size-4" /> },
-  { label: "Requests", group: "Procurement", href: "/app/procurement/requests", icon: <FileText className="size-4" /> },
-  { label: "Orders", group: "Procurement", href: "/app/procurement/orders", icon: <PackageCheck className="size-4" /> },
-  { label: "Goods Receipts", group: "Procurement", href: "/app/procurement/receipts", icon: <ReceiptText className="size-4" /> },
-  { label: "Supplier Invoices", group: "Procurement", href: "/app/procurement/invoices", icon: <FileCheck2 className="size-4" /> },
-  { label: "Procurement Reports", group: "Procurement", href: "/app/procurement/reports", icon: <BarChart3 className="size-4" /> },
-  { label: "Procurement Settings", group: "Procurement", href: "/app/procurement/settings", icon: <Settings className="size-4" /> },
+  { label: "Vendors", group: "Procurement", href: "/app/procurement/vendors", icon: <Building2 className="size-4" />, description: "Add and manage the suppliers your organization purchases from." },
+  { label: "Requests", group: "Procurement", href: "/app/procurement/requests", icon: <FileText className="size-4" />, description: "Submit purchase requests with item lines and approve or reject them." },
+  { label: "Orders", group: "Procurement", href: "/app/procurement/orders", icon: <PackageCheck className="size-4" />, description: "Create purchase orders for a vendor, send them, and receive items against them into stock." },
+  { label: "Goods Receipts", group: "Procurement", href: "/app/procurement/receipts", icon: <ReceiptText className="size-4" />, description: "View the immutable record of quantities received against each purchase order." },
+  { label: "Supplier Invoices", group: "Procurement", href: "/app/procurement/invoices", icon: <FileCheck2 className="size-4" />, description: "Create invoices from received order lines, approve or reject them, and record supplier payments." },
+  { label: "Procurement Reports", group: "Procurement", href: "/app/procurement/reports", icon: <BarChart3 className="size-4" />, description: "View request and order activity, including open order value, and export the summaries." },
+  { label: "Procurement Settings", group: "Procurement", href: "/app/procurement/settings", icon: <Settings className="size-4" />, description: "Set the purchase order numbering prefix and default receiving warehouse." },
 ];
 
 /**

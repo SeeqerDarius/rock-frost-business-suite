@@ -13,8 +13,8 @@ export const TENANT_SUPPORT_TEMPLATES: SupportMessageTemplate[] = [
 
 /** Optional quick-reply starters for platform operators — never sent as-is without the operator choosing them. */
 export const PLATFORM_SUPPORT_TEMPLATES: SupportMessageTemplate[] = [
-  { label: "Acknowledge", content: "Thanks for reaching out — we're looking into this now and will follow up shortly." },
+  { label: "Acknowledge", content: "Thanks for reaching out. We're looking into this now and will follow up shortly." },
   { label: "Need more info", content: "Could you share a bit more detail (e.g. steps to reproduce or a screenshot) so we can help faster?" },
-  { label: "Resolved", content: "This should be resolved now — please let us know if you're still seeing the issue." },
-  { label: "Following up", content: "Just following up on this — let us know if you still need anything." },
+  { label: "Resolved", content: "This should be resolved now. Please let us know if you're still seeing the issue." },
+  { label: "Following up", content: "Just following up on this. Let us know if you still need anything." },
 ];

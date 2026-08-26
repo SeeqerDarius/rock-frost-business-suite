@@ -77,7 +77,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
           </div>
           <CardDescription>
             Replaces the Rock Frost mark in this workspace&apos;s sidebar for everyone in your organization. JPG, PNG, or
-            WebP, up to 1 MB — a square or wide logo with a transparent background works best.
+            WebP, up to 1 MB. A square or wide logo with a transparent background works best.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -90,7 +90,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
               )}
             </div>
             <p className="text-sm text-muted-foreground">
-              {organization.logoUrl ? "Currently shown in your sidebar." : "No logo uploaded yet — the Rock Frost mark is shown by default."}
+              {organization.logoUrl ? "Currently shown in your sidebar." : "No logo uploaded yet. The Rock Frost mark is shown by default."}
             </p>
           </div>
           <form action={uploadCompanyLogo} className="flex flex-wrap items-end gap-2">
@@ -119,7 +119,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
             {settings.dataRecoveryEnabled ?? true ? <input type="hidden" name="dataRecoveryEnabled" value="on" /> : null}
             <div className="max-w-xs space-y-2">
               <Label>Theme</Label>
-              <Select name="theme" defaultValue={settings.theme ?? "system"}>
+              <Select name="theme" defaultValue={settings.theme ?? "system"} items={{ system: "Follow device", light: "Light", dark: "Dark" }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="system">Follow device</SelectItem>
@@ -143,7 +143,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
             <input type="hidden" name="theme" value={settings.theme ?? "system"} />
             <div className="max-w-xs space-y-2">
               <Label>Backup frequency</Label>
-              <Select name="backupFrequency" defaultValue={settings.backupFrequency ?? "daily"}>
+              <Select name="backupFrequency" defaultValue={settings.backupFrequency ?? "daily"} items={{ daily: "Daily", weekly: "Weekly", monthly: "Monthly" }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="daily">Daily</SelectItem>

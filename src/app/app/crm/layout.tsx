@@ -23,6 +23,7 @@ export default async function CrmLayout({ children }: { children: React.ReactNod
   return (
     <AppShell
       sectionLabel="Customer Relationship Management"
+      moduleKey="crm"
       navigation={crmNavigation}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}

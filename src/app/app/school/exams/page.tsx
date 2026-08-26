@@ -174,8 +174,8 @@ export default async function SchoolExamsPage({ searchParams }: { searchParams: 
                           </TableCell>
                           <TableCell className="hidden text-muted-foreground md:table-cell">{result.class.name}</TableCell>
                           <TableCell className="tabular-nums">{Number(result.marks)} / {Number(exam.totalMarks)}</TableCell>
-                          <TableCell className="hidden sm:table-cell">{result.grade ?? "—"}</TableCell>
-                          <TableCell className="hidden text-muted-foreground lg:table-cell">{result.remark ?? "—"}</TableCell>
+                          <TableCell className="hidden sm:table-cell">{result.grade ?? "-"}</TableCell>
+                          <TableCell className="hidden text-muted-foreground lg:table-cell">{result.remark ?? "-"}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

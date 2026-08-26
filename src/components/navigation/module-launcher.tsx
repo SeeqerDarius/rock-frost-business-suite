@@ -15,7 +15,7 @@ export function ModuleLauncher({ enabledModuleKeys = [] }: { enabledModuleKeys?:
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="ghost" size="icon" aria-label="Open module launcher" />}>
+      <DialogTrigger render={<Button variant="ghost" size="icon" aria-label="Open module launcher" data-tour="module-switcher" />}>
         <Grid3x3 className="size-4" />
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">

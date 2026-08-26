@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
-import { LogOut, Settings } from "lucide-react";
+import { Compass, LogOut, Settings } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,7 +52,7 @@ export function UserMenu() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="ghost" className="gap-2 px-2" aria-label="Open account menu" />}>
+      <DropdownMenuTrigger render={<Button variant="ghost" className="gap-2 px-2" aria-label="Open account menu" data-tour="user-menu" />}>
         <Avatar className="size-6">
           {image ? <AvatarImage src={image} alt={name ? `${name} profile picture` : "Profile picture"} /> : null}
           <AvatarFallback className="text-xs">{initialsFor(name, email)}</AvatarFallback>
@@ -70,6 +70,12 @@ export function UserMenu() {
           <Settings />
           Profile settings
         </DropdownMenuItem>
+        {isPlatformOwner ? null : (
+          <DropdownMenuItem onClick={() => window.dispatchEvent(new Event("rf-tour-replay"))}>
+            <Compass />
+            Replay the tour
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           variant="destructive"

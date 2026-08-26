@@ -10,6 +10,10 @@ import {
   dateInput,
   escapeHtml,
   parseWithSchema,
+  optionalShortText,
+  optionalLongText,
+  optionalEmail,
+  optionalCoercedDate,
 } from "@/lib/validation";
 import { z } from "zod";
 
@@ -73,6 +77,37 @@ describe("validation primitives", () => {
     const escaped = escapeHtml(malicious);
     expect(escaped).not.toContain("<script>");
     expect(escaped).toContain("&lt;script&gt;");
+  });
+
+  it("optionalShortText tolerates a blank form field inside a combined schema (plain .optional() rejects the whole submission)", () => {
+    // A blank HTML <input> submits "" via FormData/Object.fromEntries, not
+    // undefined — shortText.optional() still runs "" through .min(1) and
+    // fails the whole z.object(...), not just that one field.
+    const broken = z.object({ name: shortText, nickname: shortText.optional() });
+    expect(broken.safeParse({ name: "Alice", nickname: "" }).success).toBe(false);
+
+    const fixed = z.object({ name: shortText, nickname: optionalShortText });
+    const result = fixed.safeParse({ name: "Alice", nickname: "" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.nickname).toBeUndefined();
+    expect(fixed.safeParse({ name: "Alice", nickname: "Ally" }).success).toBe(true);
+  });
+
+  it("optionalLongText, optionalEmail and optionalCoercedDate treat a blank string as absent the same way", () => {
+    expect(optionalLongText.safeParse("").success).toBe(true);
+    expect(optionalLongText.safeParse("   ").success).toBe(true);
+    expect(optionalLongText.safeParse("notes").success).toBe(true);
+
+    expect(optionalEmail.safeParse("").success).toBe(true);
+    expect(optionalEmail.safeParse("not-an-email").success).toBe(false);
+    expect(optionalEmail.safeParse("person@example.com").success).toBe(true);
+
+    const blankDate = optionalCoercedDate.safeParse("");
+    expect(blankDate.success).toBe(true);
+    if (blankDate.success) expect(blankDate.data).toBeUndefined();
+    const realDate = optionalCoercedDate.safeParse("2026-01-15");
+    expect(realDate.success).toBe(true);
+    if (realDate.success) expect(realDate.data).toBeInstanceOf(Date);
   });
 
   it("parseWithSchema returns a typed success or a single readable error message", () => {

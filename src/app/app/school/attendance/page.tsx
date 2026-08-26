@@ -62,7 +62,7 @@ export default async function SchoolAttendancePage({
   }
 
   const savedMessage = query.count
-    ? `Attendance saved for ${query.count} student${query.count === "1" ? "" : "s"}.${query.skipped ? ` ${query.skipped} skipped — no longer actively enrolled in this class.` : ""}`
+    ? `Attendance saved for ${query.count} student${query.count === "1" ? "" : "s"}.${query.skipped ? ` ${query.skipped} skipped: no longer actively enrolled in this class.` : ""}`
     : "Attendance has been recorded.";
 
   // listSchoolAttendance returns the 250 most recent records; search and the
@@ -115,7 +115,7 @@ export default async function SchoolAttendancePage({
       />
 
       {canManage && termOptions.length > 0 && classes.length > 0 ? (
-        <SectionCard title="Take attendance" description="Pick a class and date to mark every actively enrolled student in one pass — everyone defaults to Present, so you only touch the exceptions.">
+        <SectionCard title="Take attendance" description="Pick a class and date to mark every actively enrolled student in one pass. Everyone defaults to Present, so you only touch the exceptions.">
           <div className="space-y-4">
             {rosterFilterForm}
 
@@ -230,7 +230,7 @@ export default async function SchoolAttendancePage({
                       <TableCell className="hidden text-muted-foreground md:table-cell">{record.class.name}</TableCell>
                       <TableCell className="hidden text-muted-foreground lg:table-cell">{record.term.name}</TableCell>
                       <TableCell><StatusBadge status={record.status} /></TableCell>
-                      <TableCell className="hidden text-muted-foreground lg:table-cell">{record.reason ?? "—"}</TableCell>
+                      <TableCell className="hidden text-muted-foreground lg:table-cell">{record.reason ?? "-"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

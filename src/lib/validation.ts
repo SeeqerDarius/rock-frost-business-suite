@@ -46,6 +46,38 @@ export const shortText = z.string().trim().min(1).max(200);
 /** A free-text note/description/message field. */
 export const longText = z.string().trim().max(5000);
 
+/**
+ * `shortText.optional()` alone does not correctly handle an optional form
+ * field: `.optional()` only bypasses validation when the key is truly
+ * absent (`undefined`), but a blank HTML `<input>` still submits an empty
+ * string via FormData, which then fails `shortText`'s `.min(1)` and rejects
+ * the *entire* form submission - not just that one field. This preprocesses
+ * a blank/whitespace-only string to `undefined` first, so leaving an
+ * optional field empty behaves the way a form actually needs it to.
+ */
+export const optionalShortText = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  shortText.optional(),
+);
+
+/** Same fix as `optionalShortText`, for an optional free-text note/description field. */
+export const optionalLongText = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  longText.optional(),
+);
+
+/** Same fix as `optionalShortText`, for an optional email field. */
+export const optionalEmail = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  email.optional(),
+);
+
+/** Same fix as `optionalShortText`, for an optional `z.coerce.date()` field - an empty HTML date input submits `""`, which `z.coerce.date()` turns into an Invalid Date rather than something `.optional()` bypasses. */
+export const optionalCoercedDate = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.coerce.date().optional(),
+);
+
 export const cuid = z.string().trim().min(1).max(50);
 
 /** An HTML date input's value ("YYYY-MM-DD"), parsed to a real Date at local midnight. */

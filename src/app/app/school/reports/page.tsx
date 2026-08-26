@@ -36,9 +36,9 @@ export default async function SchoolReportsPage() {
   const summary = await getSchoolSummary(tenant.organizationId);
   const marked = Object.values(summary.attendance).reduce((total, count) => total + count, 0);
   const present = (summary.attendance.PRESENT ?? 0) + (summary.attendance.LATE ?? 0);
-  const attendanceRate = marked > 0 ? `${Math.round((present / marked) * 100)}%` : "—";
+  const attendanceRate = marked > 0 ? `${Math.round((present / marked) * 100)}%` : "-";
   const billed = summary.collections.plus(summary.outstanding);
-  const collectionRate = billed.gt(0) ? `${Math.round((Number(summary.collections) / Number(billed)) * 100)}%` : "—";
+  const collectionRate = billed.gt(0) ? `${Math.round((Number(summary.collections) / Number(billed)) * 100)}%` : "-";
 
   return (
     <div className="mx-auto max-w-screen-2xl space-y-6">

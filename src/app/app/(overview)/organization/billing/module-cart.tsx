@@ -5,7 +5,7 @@ import { ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { formatGhs, type ModulePrice } from "@/lib/pricing";
+import { formatGhs, type ModulePrice } from "@/lib/pricing-shared";
 import { startCartCheckout } from "./actions";
 
 type CartProduct = ModulePrice & { name: string; description: string };

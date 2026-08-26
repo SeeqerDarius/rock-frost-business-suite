@@ -174,7 +174,7 @@ export default async function SchoolClassesPage({ searchParams }: { searchParams
                       <span className="block text-xs text-muted-foreground md:hidden">{schoolClass.campus.name}</span>
                     </TableCell>
                     <TableCell className="hidden text-muted-foreground md:table-cell">{schoolClass.campus.name}</TableCell>
-                    <TableCell className="hidden text-muted-foreground lg:table-cell">{schoolClass.gradeLevel ?? "—"}</TableCell>
+                    <TableCell className="hidden text-muted-foreground lg:table-cell">{schoolClass.gradeLevel ?? "-"}</TableCell>
                     <TableCell>
                       <span className="tabular-nums">{enrolled}{schoolClass.capacity ? ` / ${schoolClass.capacity}` : ""}</span>
                       {isFull ? <Badge variant="destructive" className="ml-2">Full</Badge> : null}
@@ -266,7 +266,7 @@ export default async function SchoolClassesPage({ searchParams }: { searchParams
                 <TableRow key={subject.id}>
                   <TableCell className="font-mono text-xs">{subject.code}</TableCell>
                   <TableCell className="font-medium">{subject.name}</TableCell>
-                  <TableCell className="hidden text-muted-foreground md:table-cell">{subject.description ?? "—"}</TableCell>
+                  <TableCell className="hidden text-muted-foreground md:table-cell">{subject.description ?? "-"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

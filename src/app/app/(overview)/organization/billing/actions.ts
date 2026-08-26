@@ -7,7 +7,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { cuid, parseWithSchema } from "@/lib/validation";
 import { buildTenantAppUrl } from "@/lib/app-url";
 import { cancelPaystackAutomaticRenewal, createSelfServiceBundleSubscription, createSelfServiceCartSubscription, createSelfServiceSubscription, getPaystackManagementLinkForOrganization, initiateGatewayPayment, SelfServiceSubscriptionExistsError } from "@/platform/subscriptions/service";
-import { MODULE_PRICE_BY_KEY, PRICING_BUNDLE_BY_KEY, type PricingBundleKey } from "@/lib/pricing";
+import { getModulePriceMap, getPricingBundleMap, type PricingBundleKey } from "@/lib/pricing";
 import type { BusinessModuleKey } from "@/platform/modules/registry";
 
 const startSchema = z.object({
@@ -62,11 +62,11 @@ export async function startSelfServiceCheckout(formData: FormData): Promise<void
     productType: String(formData.get("productType") ?? "MODULE"),
     billingCycle: String(formData.get("billingCycle") ?? ""),
   });
-  if (!parsed.success || (parsed.data.productType === "MODULE"
-    ? !MODULE_PRICE_BY_KEY.has(parsed.data.productKey as BusinessModuleKey)
-    : !PRICING_BUNDLE_BY_KEY.has(parsed.data.productKey as PricingBundleKey))) {
-    redirect("/app/organization/billing?error=invalid-selection");
-  }
+  if (!parsed.success) redirect("/app/organization/billing?error=invalid-selection");
+  const validProduct = parsed.data.productType === "MODULE"
+    ? (await getModulePriceMap()).has(parsed.data.productKey as BusinessModuleKey)
+    : (await getPricingBundleMap()).has(parsed.data.productKey as PricingBundleKey);
+  if (!validProduct) redirect("/app/organization/billing?error=invalid-selection");
 
   let checkoutUrl: string;
   try {
@@ -106,7 +106,9 @@ export async function startCartCheckout(formData: FormData): Promise<void> {
     moduleKeys,
     billingCycle: String(formData.get("billingCycle") ?? ""),
   });
-  if (!parsed.success || parsed.data.moduleKeys.some((key) => !MODULE_PRICE_BY_KEY.has(key as BusinessModuleKey))) {
+  if (!parsed.success) redirect("/app/organization/billing?error=invalid-selection");
+  const modulePriceMap = await getModulePriceMap();
+  if (parsed.data.moduleKeys.some((key) => !modulePriceMap.has(key as BusinessModuleKey))) {
     redirect("/app/organization/billing?error=invalid-selection");
   }
 

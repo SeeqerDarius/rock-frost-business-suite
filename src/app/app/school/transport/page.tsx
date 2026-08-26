@@ -86,7 +86,7 @@ export default async function SchoolTransportPage({ searchParams }: { searchPara
         saved={query.saved}
         error={query.error}
         savedMessage="The transport record is up to date."
-        stateMessage="The route or student could not be used — the route must be active and the student must be active."
+        stateMessage="The route or student could not be used: the route must be active and the student must be active."
       />
       {!canManage ? <ReadOnlyNotice>Your role can review transport routes but cannot change them or assign students.</ReadOnlyNotice> : null}
       <PrerequisiteNotice items={[{ satisfied: campuses.length > 0, label: "Create a campus", href: "/app/school/campuses" }]} />

@@ -40,7 +40,7 @@ export default async function PlatformSupportPage({ searchParams }: { searchPara
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Support" description="Conversations with your tenant organizations. Nothing here is emailed — replies show up in-app for the tenant." />
+      <PageHeader title="Support" description="Conversations with your tenant organizations. Nothing here is emailed. Replies show up in-app for the tenant." />
 
       {conversations.length === 0 ? (
         <EmptyState icon={LifeBuoy} title="No support conversations yet" description="When a tenant sends a message, it will appear here." />

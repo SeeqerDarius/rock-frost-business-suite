@@ -111,6 +111,37 @@ describe("getCurrentTenant — central active-tenant guard", () => {
     expect(tenant?.accessibleModuleKeys).not.toContain("fleet");
   });
 
+  it("does not let a CANCELLED subscription permanently block a module an operator has directly re-enabled", async () => {
+    // Regression test: an abandoned, never-paid self-service checkout left a CANCELLED
+    // subscription behind. A platform operator later re-enabled the module directly via
+    // OrganizationModule.enabled, expecting it to work like any module with no subscription
+    // history - but the subscription row (regardless of status) was still being treated as
+    // "subscription-controlled," permanently requiring an ACTIVE subscription that no longer
+    // existed. Cancelling the subscription is not enough on its own; the gating query itself
+    // must exclude CANCELLED.
+    mockGetServerAuthSession.mockResolvedValue({ user: { id: "user-1", organizationId: ORG_ACTIVE.id } });
+    const row = membershipRow();
+    mockDb.organizationMember.findMany.mockResolvedValue([row]);
+    mockDb.organizationMember.findFirst.mockResolvedValue({
+      ...row,
+      branch: null,
+      role: { name: "Organization Owner", isSystem: true, organizationId: null, rolePermissions: [{ permission: { key: "analytics.view" } }] },
+    });
+    mockDb.organizationModule.findMany.mockResolvedValue([{ moduleId: "module-analytics", module: { code: "analytics" } }]);
+    // The service layer's own query already filters status !== CANCELLED, so a mocked
+    // findMany simulating that filter correctly returns nothing for a fully-cancelled module.
+    mockDb.subscription.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const tenant = await getCurrentTenant();
+    expect(tenant?.enabledModuleKeys).toContain("analytics");
+    expect(tenant?.accessibleModuleKeys).toContain("analytics");
+    expect(mockDb.subscription.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ status: { not: "CANCELLED" } }) }),
+    );
+  });
+
   it("never selects an invalid membership as an implicit fallback, even when it sorts first", async () => {
     // The invalid (SUSPENDED) membership is first in creation order; the valid one is second.
     // The fix must not fall back to allMemberships[0] blindly — only the valid pool participates in fallback selection.

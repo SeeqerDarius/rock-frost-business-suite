@@ -444,6 +444,55 @@ export const MODULES: { code: string; name: string }[] = [
   { code: "hospital", name: "Hospital Management" },
 ];
 
+export type ModulePricingSeed = {
+  moduleKey: string;
+  monthlyGhs: number;
+  annualGhs: number;
+  includedSeats: number;
+  additionalSeatGhs: number;
+};
+
+/** Initial catalogue prices, seeded once per moduleKey and never overwritten
+ * on subsequent deploys (see the create-only upsert in seedPlatform below) —
+ * once a platform operator edits a price from /app/platform/subscriptions,
+ * that edit is the new source of truth, not this array. */
+export const MODULE_PRICING_SEED: ModulePricingSeed[] = [
+  { moduleKey: "crm", monthlyGhs: 249, annualGhs: 2490, includedSeats: 5, additionalSeatGhs: 25 },
+  { moduleKey: "inventory", monthlyGhs: 799, annualGhs: 7990, includedSeats: 12, additionalSeatGhs: 35 },
+  { moduleKey: "accounting", monthlyGhs: 849, annualGhs: 8490, includedSeats: 8, additionalSeatGhs: 35 },
+  { moduleKey: "hr", monthlyGhs: 549, annualGhs: 5490, includedSeats: 15, additionalSeatGhs: 25 },
+  { moduleKey: "projects", monthlyGhs: 249, annualGhs: 2490, includedSeats: 10, additionalSeatGhs: 25 },
+  { moduleKey: "pos", monthlyGhs: 599, annualGhs: 5990, includedSeats: 8, additionalSeatGhs: 35 },
+  { moduleKey: "analytics", monthlyGhs: 199, annualGhs: 1990, includedSeats: 5, additionalSeatGhs: 25 },
+  { moduleKey: "fleet", monthlyGhs: 499, annualGhs: 4990, includedSeats: 10, additionalSeatGhs: 30 },
+  { moduleKey: "installment", monthlyGhs: 599, annualGhs: 5990, includedSeats: 10, additionalSeatGhs: 30 },
+  { moduleKey: "hotel", monthlyGhs: 799, annualGhs: 7990, includedSeats: 15, additionalSeatGhs: 40 },
+  { moduleKey: "school", monthlyGhs: 599, annualGhs: 5990, includedSeats: 20, additionalSeatGhs: 30 },
+  { moduleKey: "hostel", monthlyGhs: 449, annualGhs: 4490, includedSeats: 8, additionalSeatGhs: 25 },
+  { moduleKey: "pharmacy", monthlyGhs: 999, annualGhs: 9990, includedSeats: 15, additionalSeatGhs: 45 },
+  { moduleKey: "hospital", monthlyGhs: 2499, annualGhs: 24990, includedSeats: 30, additionalSeatGhs: 60 },
+];
+
+export type PricingBundleSeed = {
+  key: string;
+  name: string;
+  monthlyGhs: number;
+  moduleKeys: string[];
+};
+
+/** Initial combined-suite prices, same create-once-never-overwrite semantics
+ * as MODULE_PRICING_SEED. */
+export const PRICING_BUNDLE_SEED: PricingBundleSeed[] = [
+  { key: "business-starter", name: "Business Starter", monthlyGhs: 1699, moduleKeys: ["crm", "inventory", "accounting"] },
+  { key: "retail-suite", name: "Retail Suite", monthlyGhs: 2299, moduleKeys: ["pos", "inventory", "accounting", "crm"] },
+  { key: "operations-suite", name: "Operations Suite", monthlyGhs: 1999, moduleKeys: ["hr", "inventory", "projects"] },
+  { key: "business-complete", name: "Business Complete", monthlyGhs: 3499, moduleKeys: ["crm", "inventory", "accounting", "hr", "projects", "analytics"] },
+  { key: "school-complete", name: "School Complete", monthlyGhs: 3199, moduleKeys: ["school", "accounting", "hr", "inventory"] },
+  { key: "school-hostel-complete", name: "School & Hostel Complete", monthlyGhs: 3499, moduleKeys: ["school", "hostel", "accounting", "hr"] },
+  { key: "pharmacy-complete", name: "Pharmacy Complete", monthlyGhs: 2899, moduleKeys: ["pharmacy", "inventory", "pos", "accounting"] },
+  { key: "hospital-complete", name: "Hospital Complete", monthlyGhs: 5199, moduleKeys: ["hospital", "pharmacy", "inventory", "accounting", "hr"] },
+];
+
 /**
  * Seeds every Permission row, every system Role with its permission grants,
  * and every Module row (marked ACTIVE). Idempotent — safe to call
@@ -526,4 +575,21 @@ export async function seedPlatform(db: PrismaClient, options: { log?: boolean } 
     create: { code: mod.code, name: mod.name, status: "ACTIVE", isCore: false },
   })));
   if (log) console.log(`Upserted ${MODULES.length} modules (all ACTIVE).`);
+
+  // Create-only: an empty `update` means a platform operator's price edit
+  // (see /app/platform/subscriptions) is never clobbered by a later deploy
+  // re-running this seed, unlike the Module upsert above.
+  await Promise.all(MODULE_PRICING_SEED.map((price) => db.modulePricingPlan.upsert({
+    where: { moduleKey: price.moduleKey },
+    update: {},
+    create: price,
+  })));
+  if (log) console.log(`Seeded ${MODULE_PRICING_SEED.length} module pricing plans (existing rows left untouched).`);
+
+  await Promise.all(PRICING_BUNDLE_SEED.map((bundle) => db.pricingBundle.upsert({
+    where: { key: bundle.key },
+    update: {},
+    create: bundle,
+  })));
+  if (log) console.log(`Seeded ${PRICING_BUNDLE_SEED.length} pricing bundles (existing rows left untouched).`);
 }

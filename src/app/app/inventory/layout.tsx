@@ -25,6 +25,7 @@ export default async function InventoryLayout({ children }: { children: React.Re
   return (
     <AppShell
       sectionLabel={getInventoryProcurementSectionLabel(access)}
+      moduleKey="inventory"
       navigation={getInventoryProcurementNavigation(access)}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}

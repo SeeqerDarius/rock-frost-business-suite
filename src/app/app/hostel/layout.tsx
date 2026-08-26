@@ -23,6 +23,7 @@ export default async function HostelLayout({ children }: { children: React.React
   return (
     <AppShell
       sectionLabel="Hostel Management"
+      moduleKey="hostel"
       navigation={hostelNavigation}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}

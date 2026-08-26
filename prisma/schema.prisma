@@ -330,6 +330,25 @@ model User {
   offlineMutations                OfflineMutation[]
   offlineConflictsResolved        OfflineConflict[]
   offlineActivationCodes          OfflineActivationCode[]
+  tourProgress                    UserTourProgress[]
+}
+
+/// Tracks which onboarding walkthroughs a user has completed or dismissed.
+/// User-scoped rather than organization-scoped: whether someone has already
+/// seen the general app tour or a given module's tour is a property of the
+/// person, not of any one workspace they belong to. tourKey is "general" for
+/// the whole-app tour, or a BusinessModuleKey (e.g. "fleet") for a
+/// module-specific one - see src/lib/tours/definitions.ts.
+model UserTourProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  tourKey     String
+  completedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tourKey])
+  @@index([userId])
 }
 
 model Account {
@@ -764,6 +783,35 @@ model Module {
   moduleRequests      ModuleRequest[]
   contactSubmissions  ContactSubmission[]
   subscriptions       Subscription[]
+}
+
+/// Operator-editable catalogue prices, keyed by the customer-facing product
+/// key (matches BusinessModuleKey in platform/modules/registry.ts), not a
+/// relation to Module.id — the catalogue is a pricing concept distinct from
+/// the internal Module rows a Subscription actually links to.
+model ModulePricingPlan {
+  id                String   @id @default(cuid())
+  moduleKey         String   @unique
+  monthlyGhs        Decimal  @db.Decimal(18, 2)
+  annualGhs         Decimal  @db.Decimal(18, 2)
+  includedSeats     Int
+  additionalSeatGhs Decimal  @db.Decimal(18, 2)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+/// Operator-editable combined-suite prices. moduleKeys stores un-expanded
+/// product keys (e.g. "hr", not "hr"+"payroll") — the same convention as
+/// Subscription.entitledModuleKeys; display names are derived from the
+/// module registry at read time rather than stored redundantly here.
+model PricingBundle {
+  id         String   @id @default(cuid())
+  key        String   @unique
+  name       String
+  monthlyGhs Decimal  @db.Decimal(18, 2)
+  moduleKeys String[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model OrganizationModule {
