@@ -9,6 +9,7 @@
 - **Important files**: `src/app/app/pharmacy/dispensing/page.tsx`, `test/pharmacy-module.test.ts` (new regression test asserting the page's check stays textually identical to the service's).
 - **Validation**: `npx tsc --noEmit` — passed. `npm run lint` — passed, zero warnings. `npm run test` — passed: 104 files, 720 tests (+1 from this fix's new test). `npm run build` — passed. No schema change, so no integration-test requirement.
 - **Not yet verified against the reporting tenant's actual data**: couldn't query production directly to confirm exactly which medicine and classification triggered this (see above); relied on the user's description and the service layer's own logic instead. Worth a quick manual check post-deploy that the newly-labeled Medicine dropdown correctly marks the specific medicine involved.
+- **Production deploy verified**: commit `fae75ff` reached Vercel production deployment `dpl_3iXoB22QyRy5YZfy8JwYo848dnmJ` (`READY`, all production aliases attached, `aliasError: null`). `/api/health` returned `{"ok":true,"database":"reachable"}`. `get_runtime_errors` (15m window, post-deploy) returned none.
 
 ## 2026-08-27: System-wide currency-indication audit (no schema change)
 
