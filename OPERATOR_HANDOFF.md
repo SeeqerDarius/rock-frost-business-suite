@@ -10,6 +10,7 @@
 - **Validation**: `npx tsc --noEmit` — passed. `npm run lint` — passed, zero warnings. `npm run test` — passed: 104 files, 721 tests. `npm run build` — passed. No schema change, so no integration-test requirement.
 - **Not manually browser-tested against a real tenant**: no test tenant credentials in this environment, consistent with every other change this session - verified via the full type/lint/test/build gate instead. This one in particular would benefit from a real click-through post-deploy: submit with Medicine left blank and confirm the red border/inline message appear and the rest of the form survives; submit a real prescription-required medicine with no prescription selected and confirm the same.
 - **Scope boundary, stated plainly**: this fixes the two concrete, reported failures (data loss, meaningless error message) and gives Medicine a real required check. It does not address the user's broader "make dispensing quicker" ask - a cart-style or barcode-first redesign is a legitimate, larger idea worth pursuing separately if wanted, not something to half-build inside a bug-fix pass.
+- **Production deploy verified**: commit `7a15b54` reached Vercel production deployment `dpl_D4quM1qEUTAudHoLDzNcsk8uUUo5` (`READY`, all production aliases attached, `aliasError: null`). `/api/health` returned `{"ok":true,"database":"reachable"}`. `get_runtime_errors` (10m window, post-deploy) returned none.
 
 ## 2026-08-27: Dispensing's Medicine picker gave no warning before rejecting a prescription-required item (no schema change)
 
