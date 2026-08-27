@@ -10,7 +10,7 @@
 - **Validation**: `npx tsc --noEmit` — passed. `npm run lint` — passed, zero warnings. `npm run test` — passed: 104 files, 719 tests (no count change - this was a display-only fix, no new test files needed; existing tests already cover the affected pages' rendering). `npm run build` — passed. No schema change, so no integration-test/Neon-branch requirement.
 - **Not done (and deliberately so)**: no currency-conversion logic was added: `formatMoney` only renders a number in whatever currency code it's given; multi-currency conversion remains out of scope. Prisma-write `.toFixed(2)` calls (Decimal-to-string serialization for `data: {...}` payloads) and `<input>` `defaultValue`/`type="number"` bindings were deliberately left untouched throughout, since a currency symbol in either would break the value that gets written or parsed back.
 - **Not yet manually verified in a browser**: no test tenant credentials in this environment, consistent with every other change this session. Worth a manual pass through the Pharmacy dispensing receipt and a POS sale once deployed, to see the new currency-labeled figures render as intended.
-- **Production deploy verified**: pending - awaiting this entry's own deploy step.
+- **Production deploy verified**: commit `c6f4859` reached Vercel production deployment `dpl_7ogw4b8zVeDHe8GPAGMbjYXVtSb4` (`READY`, all production aliases attached: `app`/`www`/`admin.rockfrostgroup.com`/`rockfrostgroup.com`, `aliasError: null`). `/api/health` returned `{"ok":true,"database":"reachable"}`. `get_runtime_errors` (1h window, post-deploy) returned none.
 
 ## 2026-08-27: SMS integration Phase 3 - per-module transactional notifications (schema migration)
 
