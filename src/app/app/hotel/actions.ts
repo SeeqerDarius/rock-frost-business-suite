@@ -79,6 +79,7 @@ export async function upsertHotelSettingsAction(formData: FormData) {
     autoCreateCheckoutTask: z.boolean(),
     housekeepingDueHours: z.coerce.number().int().min(1).max(168),
     requireHousekeepingInspection: z.boolean(),
+    smsNotificationsEnabled: z.boolean(),
   }).safeParse({
     propertyId: clean(formData.get("propertyId")),
     timezone: clean(formData.get("timezone")),
@@ -95,6 +96,7 @@ export async function upsertHotelSettingsAction(formData: FormData) {
     autoCreateCheckoutTask: formData.get("autoCreateCheckoutTask") === "on",
     housekeepingDueHours: clean(formData.get("housekeepingDueHours")),
     requireHousekeepingInspection: formData.get("requireHousekeepingInspection") === "on",
+    smsNotificationsEnabled: formData.get("smsNotificationsEnabled") === "on",
   });
   if (!parsed.success) redirect(`${path}?error=invalid`);
   try { await upsertHotelSettings(tenant.organizationId, parsed.data); }

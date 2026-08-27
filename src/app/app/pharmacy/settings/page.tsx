@@ -64,6 +64,10 @@ export default async function Page({
               <Switch name="allowNegativeStock" defaultChecked={s.allowNegativeStock} />
               Allow stock adjustments/write-offs/returns to take a batch below zero
             </label>
+            <label className="flex items-center gap-2">
+              <Switch name="smsNotificationsEnabled" defaultChecked={s.smsNotificationsEnabled} />
+              Text patients when their order is ready for pickup
+            </label>
             <Button type="submit">Save settings</Button>
           </form>
         </CardContent>

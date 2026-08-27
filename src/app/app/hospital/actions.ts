@@ -550,11 +550,12 @@ export async function upsertHospitalSettingsAction(formData: FormData) {
   const parsed = z.object({
     facilityId: cuid, timezone: shortText, currency: z.string().trim().toUpperCase().length(3),
     mrnPrefix: prefix, encounterPrefix: prefix, appointmentPrefix: prefix, admissionPrefix: prefix, invoicePrefix: prefix, receiptPrefix: prefix,
-    resultVerificationRequired: z.boolean(), labImagingMakerCheckerEnforced: z.boolean(), bedTransferRequiresReason: z.boolean(), retentionYears: int(1, 100),
+    resultVerificationRequired: z.boolean(), labImagingMakerCheckerEnforced: z.boolean(), bedTransferRequiresReason: z.boolean(), retentionYears: int(1, 100), smsNotificationsEnabled: z.boolean(),
   }).safeParse({
     facilityId: clean(formData.get("facilityId")), timezone: clean(formData.get("timezone")), currency: clean(formData.get("currency")),
     mrnPrefix: clean(formData.get("mrnPrefix")), encounterPrefix: clean(formData.get("encounterPrefix")), appointmentPrefix: clean(formData.get("appointmentPrefix")), admissionPrefix: clean(formData.get("admissionPrefix")), invoicePrefix: clean(formData.get("invoicePrefix")), receiptPrefix: clean(formData.get("receiptPrefix")),
     resultVerificationRequired: formData.get("resultVerificationRequired") === "on", labImagingMakerCheckerEnforced: formData.get("labImagingMakerCheckerEnforced") === "on", bedTransferRequiresReason: formData.get("bedTransferRequiresReason") === "on", retentionYears: clean(formData.get("retentionYears")) ?? "7",
+    smsNotificationsEnabled: formData.get("smsNotificationsEnabled") === "on",
   });
   if (!parsed.success) redirect(`${path}?error=invalid`);
   try { await hospital.upsertHospitalSettings(tenant.organizationId, parsed.data); } catch (error) { handleServiceError(error, path); }

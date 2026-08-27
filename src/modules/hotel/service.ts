@@ -3,6 +3,8 @@ import "server-only";
 import { Prisma, type HotelHousekeepingStatus, type HotelPaymentMethod } from "@prisma/client";
 import { db } from "@/lib/db";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
+import { sendSms } from "@/lib/sms";
+import { hotelBookingConfirmedSms } from "@/lib/sms-templates";
 
 export class HotelStateError extends Error {}
 export class HotelNotFoundError extends Error {}
@@ -63,7 +65,24 @@ export async function createHotelReservation(organizationId: string, data: { pro
   if (!property || !roomType || !guest) throw new HotelNotFoundError("Property, room type, or guest not found.");
   if (data.adults + (data.children ?? 0) > roomType.capacity) throw new HotelStateError("Guest count exceeds room capacity.");
   if (data.roomId) await assertRoomAvailable(organizationId, data.roomId, data.arrivalDate, data.departureDate);
-  return createWithUniqueRetry(async () => db.hotelReservation.create({ data: { organizationId, confirmationCode: await nextCode(organizationId, property.settings?.reservationPrefix ?? "RSV", () => db.hotelReservation.count({ where: { organizationId } })), ...data, nightlyRate: money(data.nightlyRate), status: "CONFIRMED" } }));
+  const reservation = await createWithUniqueRetry(async () => db.hotelReservation.create({ data: { organizationId, confirmationCode: await nextCode(organizationId, property.settings?.reservationPrefix ?? "RSV", () => db.hotelReservation.count({ where: { organizationId } })), ...data, nightlyRate: money(data.nightlyRate), status: "CONFIRMED" } }));
+  if (property.settings?.smsNotificationsEnabled && guest.phone) {
+    await sendSms({
+      to: guest.phone,
+      ...hotelBookingConfirmedSms({
+        guestName: `${guest.firstName} ${guest.lastName}`,
+        propertyName: property.name,
+        confirmationCode: reservation.confirmationCode,
+        arrivalDate: reservation.arrivalDate,
+        departureDate: reservation.departureDate,
+      }),
+      purpose: "HOTEL_BOOKING_CONFIRMED",
+      organizationId,
+      relatedType: "HotelReservation",
+      relatedId: reservation.id,
+    });
+  }
+  return reservation;
 }
 
 async function assertRoomAvailable(organizationId: string, roomId: string, arrivalDate: Date, departureDate: Date, excludeReservationId?: string) {
@@ -216,7 +235,7 @@ export function listHotelSettings(organizationId: string) {
   return db.hotelProperty.findMany({ where: { organizationId }, include: { settings: true }, orderBy: { name: "asc" } });
 }
 
-export async function upsertHotelSettings(organizationId: string, data: { propertyId: string; timezone: string; currency: string; checkInTime: string; checkOutTime: string; taxRate: Prisma.Decimal.Value; serviceChargeRate: Prisma.Decimal.Value; allowOutstandingCheckout: boolean; reservationPrefix: string; folioPrefix: string; receiptPrefix: string; orderPrefix: string; autoCreateCheckoutTask: boolean; housekeepingDueHours: number; requireHousekeepingInspection: boolean }) {
+export async function upsertHotelSettings(organizationId: string, data: { propertyId: string; timezone: string; currency: string; checkInTime: string; checkOutTime: string; taxRate: Prisma.Decimal.Value; serviceChargeRate: Prisma.Decimal.Value; allowOutstandingCheckout: boolean; reservationPrefix: string; folioPrefix: string; receiptPrefix: string; orderPrefix: string; autoCreateCheckoutTask: boolean; housekeepingDueHours: number; requireHousekeepingInspection: boolean; smsNotificationsEnabled: boolean }) {
   const property = await db.hotelProperty.findFirst({ where: { id: data.propertyId, organizationId } });
   if (!property) throw new HotelNotFoundError("Property not found.");
   const { propertyId, timezone, currency, ...settings } = data;

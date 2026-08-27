@@ -30,7 +30,7 @@ export async function saveDefaultTaxRate(formData: FormData): Promise<void> {
 
   const rate = (parsed.data.defaultTaxRatePercent / 100).toFixed(4);
   try {
-    await updateSettings(tenant.organizationId, rate);
+    await updateSettings(tenant.organizationId, rate, formData.get("smsNotificationsEnabled") === "on");
   } catch (error) {
     if (error instanceof InvalidCompensationError) redirect("/app/payroll/settings?error=invalid-rate");
     throw error;

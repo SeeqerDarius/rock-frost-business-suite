@@ -302,6 +302,6 @@ export async function saveSettings(formData: FormData) {
   const tenant = await requirePermission(PERMISSIONS.PHARMACY_SETTINGS_MANAGE, "/app/pharmacy/settings");
   const parsed = parseWithSchema(z.object({ licenceNumber: optionalShortText, superintendentPharmacist: optionalShortText, superintendentRegistration: optionalShortText, receiptPrefix: shortText, prescriptionValidityDays: positiveInt, expiryAlertDays: positiveInt }), Object.fromEntries(formData));
   if (!parsed.success) redirect("/app/pharmacy/settings?error=invalid");
-  await updatePharmacySettings(tenant.organizationId, { ...parsed.data, requirePatientForControlled: formData.get("requirePatientForControlled") === "on", controlledDispenseMakerCheckerEnabled: formData.get("controlledDispenseMakerCheckerEnabled") === "on", allowNegativeStock: formData.get("allowNegativeStock") === "on" });
+  await updatePharmacySettings(tenant.organizationId, { ...parsed.data, requirePatientForControlled: formData.get("requirePatientForControlled") === "on", controlledDispenseMakerCheckerEnabled: formData.get("controlledDispenseMakerCheckerEnabled") === "on", allowNegativeStock: formData.get("allowNegativeStock") === "on", smsNotificationsEnabled: formData.get("smsNotificationsEnabled") === "on" });
   revalidatePath("/app/pharmacy/settings"); redirect("/app/pharmacy/settings?saved=1");
 }

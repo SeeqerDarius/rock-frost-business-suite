@@ -3463,6 +3463,8 @@ model PayrollSettings {
   id             String   @id @default(cuid())
   organizationId String   @unique
   defaultTaxRate Decimal  @default(0) @db.Decimal(5, 4)
+  /** Sends each employee an SMS (via mNotify, see src/lib/sms.ts) when their payslip is issued - see docs/SMS_INTEGRATION.md. */
+  smsNotificationsEnabled Boolean @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -4153,6 +4155,8 @@ model HotelSettings {
   autoCreateCheckoutTask        Boolean  @default(true)
   housekeepingDueHours          Int      @default(4)
   requireHousekeepingInspection Boolean  @default(false)
+  /** Sends the guest an SMS (via mNotify, see src/lib/sms.ts) when a reservation is confirmed - see docs/SMS_INTEGRATION.md. */
+  smsNotificationsEnabled       Boolean  @default(false)
   createdAt                     DateTime @default(now())
   updatedAt                     DateTime @updatedAt
 
@@ -5249,6 +5253,8 @@ model PharmacySettings {
    * Snapshotted onto each PharmacyDispensing at request time — see PharmacyDispensing.makerCheckerEnabled.
    */
   controlledDispenseMakerCheckerEnabled Boolean  @default(true)
+  /** Sends the patient an SMS (via mNotify, see src/lib/sms.ts) when a dispense completes - see docs/SMS_INTEGRATION.md. */
+  smsNotificationsEnabled               Boolean  @default(false)
   createdAt                             DateTime @default(now())
   updatedAt                             DateTime @updatedAt
 
@@ -6276,6 +6282,8 @@ model HospitalSettings {
   retentionYears                 Int      @default(7)
   currency                       String   @default("USD")
   timezone                       String   @default("UTC")
+  /** Sends the patient an SMS reminder (via mNotify, see src/lib/sms.ts) the day before a scheduled appointment - see docs/SMS_INTEGRATION.md. */
+  smsNotificationsEnabled        Boolean  @default(false)
   createdAt                      DateTime @default(now())
   updatedAt                      DateTime @updatedAt
 

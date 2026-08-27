@@ -64,6 +64,7 @@ export default async function HospitalSettingsPage() {
                   <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="resultVerificationRequired" className="size-4" defaultChecked={s?.resultVerificationRequired ?? true} />Require explicit verification before a lab/imaging result is final</label>
                   <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="labImagingMakerCheckerEnforced" className="size-4" defaultChecked={s?.labImagingMakerCheckerEnforced ?? true} />Block the person who entered a lab/imaging result from also verifying it (maker-checker)</label>
                   <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="bedTransferRequiresReason" className="size-4" defaultChecked={s?.bedTransferRequiresReason ?? true} />Encourage a reason on every bed transfer</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="smsNotificationsEnabled" className="size-4" defaultChecked={s?.smsNotificationsEnabled ?? false} />Text patients a reminder the day before a scheduled appointment</label>
                 </div>
                 <Button type="submit">Save settings</Button>
               </form>

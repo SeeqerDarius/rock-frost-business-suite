@@ -63,7 +63,7 @@ describe("Hospital lab result maker-checker (real Postgres)", () => {
   });
 
   it("allows same-actor verification once the facility disables enforcement, and re-blocks it once re-enabled", async () => {
-    const disabled = { facilityId: facilityA.id, timezone: "UTC", currency: "USD", mrnPrefix: "MRN", encounterPrefix: "ENC", appointmentPrefix: "APT", admissionPrefix: "ADM", invoicePrefix: "INV", receiptPrefix: "RCT", resultVerificationRequired: true, bedTransferRequiresReason: true, retentionYears: 7 };
+    const disabled = { facilityId: facilityA.id, timezone: "UTC", currency: "USD", mrnPrefix: "MRN", encounterPrefix: "ENC", appointmentPrefix: "APT", admissionPrefix: "ADM", invoicePrefix: "INV", receiptPrefix: "RCT", resultVerificationRequired: true, bedTransferRequiresReason: true, retentionYears: 7, smsNotificationsEnabled: false };
     await hospital.upsertHospitalSettings(orgA.organizationId, { ...disabled, labImagingMakerCheckerEnforced: false });
     const itemId = await newLabItem();
     const result = await hospital.enterHospitalLabResult(orgA.organizationId, itemId, { value: "5", enteredById: orgA.userId });

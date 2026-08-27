@@ -6,7 +6,9 @@ Rock Frost sends SMS through mNotify's Quick Bulk SMS API (`https://api.mnotify.
 
 **Phase 1: core sending capability.** `sendSms()`, fully tested (unit + real-Postgres integration).
 
-**Phase 2 (this doc's current scope): SMS as an additional 2FA method, alongside TOTP.** See "SMS one-time codes" below. Per-module notifications, the Support alert, and the marketing tool are separate, later phases; update this doc as each one ships.
+**Phase 2: SMS as an additional 2FA method, alongside TOTP.** See "SMS one-time codes" below.
+
+**Phase 3 (this doc's current scope): per-module transactional notifications** for Pharmacy, Hotel, Payroll, and Hospital. See "Per-module transactional notifications" below. The Support alert and the marketing tool are separate, later phases; update this doc as each one ships.
 
 **Until `MNOTIFY_SENDER_ID` is registered and set, every send - including 2FA codes - degrades to a `console.warn` instead of reaching a phone.** SMS 2FA enrollment and login will complete the request/response flow correctly in this state, but no code actually arrives; treat this as inert until the sender ID is configured (see Configuration below).
 
@@ -39,9 +41,21 @@ mNotify charges an additional per-campaign fee when `sms_type: "otp"` is include
 - **Consuming** (`consumeSmsOtpChallenge`) looks up the newest unconsumed, unexpired challenge for that user/purpose, fails closed once `attempts` reaches 5 (tracked on the challenge row itself, separate from the account-wide login lockout), and marks it `consumedAt` on success so it can never be reused - a wrong login code additionally increments the account's existing `failedLoginAttempts`/`lockedUntil` counters, exactly like a wrong TOTP code does.
 - `User.twoFactorPhone` (the number 2FA codes are actually sent to) is set only once a code sent to it has been verified, and is deliberately independent of the general contact `phone` field - see `docs/DECISIONS.md`'s entry on this for why reusing `phone` would have been a real vulnerability, not just an inconsistency.
 
+## Per-module transactional notifications
+
+Four modules can text a party outside the organization when something completes, each gated by its own `smsNotificationsEnabled` flag on that module's settings (off by default) and its own template in `src/lib/sms-templates.ts`. None of these ever throw or block their surrounding operation - each fires only after its transaction has already committed, so a slow or failing SMS send can never roll back or delay real state (dispensing, a reservation, payroll, an appointment).
+
+- **Pharmacy** (`PHARMACY_PICKUP_READY`): `dispense()`'s immediate-completion path and `approveControlledDispense()`'s completion path both call a shared `notifyPharmacyPickupReady()` after their transaction resolves. No-ops for a walk-in with no registered patient, since there's nowhere to send it.
+- **Hotel** (`HOTEL_BOOKING_CONFIRMED`): `createHotelReservation()`, after the reservation is created. `HotelSettings` is scoped **per property**, not per organization (`propertyId @unique`) - a multi-property organization can turn this on for one property and off for another, and the check reads the specific property's own settings.
+- **Payroll** (`PAYROLL_PAYSLIP_ISSUED`): `processRun()`, after the run's transaction commits - looping every payslip just created and preferring `HrEmployee.mobilePhone` over `phone` when both are set.
+- **Hospital** (`HOSPITAL_APPT_REMINDER`): the only schedule-based trigger in this phase, not action-triggered - a new daily cron (`src/app/api/cron/appointment-reminders/route.ts`, `vercel.json`, `0 8 * * *`) calls `sendDueAppointmentReminders()`, which finds every `SCHEDULED` `HospitalAppointment` whose `scheduledStart` falls on the calendar day after the cron runs, at a facility with the setting on. `HospitalSettings` is scoped **per facility**, not per organization (`facilityId @unique`), same reasoning as Hotel. Deduped against the `SmsMessage` log (`relatedType: "HospitalAppointment"`) before each send, so a second sweep - deliberate re-run or an accidental double-fire - never double-texts the same appointment.
+
 ## Testing
 
 - `test/phone.test.ts` - pure normalization table tests.
+- `test/sms-templates.test.ts` - pure template-content tests for the four Phase 3 notification bodies.
+- `test/appointment-reminders-cron.test.ts` - the same auth-check/success/failure shape as `test/trial-expiry-cron.test.ts`, mocked against `sendDueAppointmentReminders()`.
+- `test/integration/sms/pharmacy-pickup-ready-sms.test.ts`, `hotel-booking-confirmed-sms.test.ts`, `payroll-payslip-issued-sms.test.ts`, `hospital-appointment-reminder-sms.test.ts` - real-Postgres suites proving each trigger fires exactly when it should (setting on + phone present), never fires when the setting is off or the phone is missing, and - for the Hospital cron - never double-texts on a second sweep.
 - `test/sms.test.ts` - mocked-db suite (`npm run test`), mocks `fetch` and `@/lib/db`, covers the unconfigured/invalid-phone/success/provider-error/network-error branches and confirms the API key is sent as a query param (never in the body).
 - `test/sms-otp.test.ts` - mocked-db suite covering issue/consume/attempt-limit/expiry/hashing for `TwoFactorOtpChallenge`.
 - `test/nextauth-sms-2fa.test.ts` - exercises `authorize()`'s SMS branch directly. Note: this installed next-auth version's `CredentialsProvider()` factory doesn't preserve the app's `authorize()` as the provider's own `.authorize` property (that's hardcoded to a `() => null` stub) - the real function only survives under `.options.authorize`, confirmed by reading `node_modules/next-auth/providers/credentials.js`. Any future test that needs to call `authorize()` directly must go through `.options.authorize`, not `.authorize`.

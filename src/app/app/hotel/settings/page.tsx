@@ -63,6 +63,7 @@ export default async function HotelSettingsPage({ searchParams }: { searchParams
                     <div className="space-y-1.5"><Label htmlFor={`${property.id}-check-out`}>Standard check-out</Label><Input id={`${property.id}-check-out`} name="checkOutTime" type="time" defaultValue={settings?.checkOutTime ?? "11:00"} disabled={!canManage} required /></div>
                   </div>
                   <ToggleField name="allowOutstandingCheckout" title="Allow checkout with an outstanding balance" description="Permits a folio to close before the remaining balance is fully settled." defaultChecked={settings?.allowOutstandingCheckout} disabled={!canManage} />
+                  <ToggleField name="smsNotificationsEnabled" title="Text guests when a reservation is confirmed" description="Sends a confirmation SMS to the guest's phone number on file, if one exists." defaultChecked={settings?.smsNotificationsEnabled} disabled={!canManage} />
                 </section>
 
                 <section className="space-y-4">

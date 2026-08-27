@@ -295,7 +295,7 @@ describe("Payroll — duplicate run processing guard, compensation/tax validatio
   });
 
   it("updateSettings rejects a tax rate outside 0-1", async () => {
-    expect(() => payroll.updateSettings(ORG, "1.5")).toThrow(payroll.InvalidCompensationError);
+    expect(() => payroll.updateSettings(ORG, "1.5", false)).toThrow(payroll.InvalidCompensationError);
   });
 });
 

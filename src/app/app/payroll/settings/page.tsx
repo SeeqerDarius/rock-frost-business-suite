@@ -60,11 +60,15 @@ export default async function PayrollSettingsPage({
           <CardDescription>Applied as a flat deduction against gross pay when a run is processed.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form action={saveDefaultTaxRate} className="flex flex-wrap items-end gap-2">
+          <form action={saveDefaultTaxRate} className="flex flex-wrap items-end gap-4">
             <div className="space-y-2">
               <Label htmlFor="defaultTaxRatePercent">Tax rate (%)</Label>
               <Input id="defaultTaxRatePercent" name="defaultTaxRatePercent" type="number" step="0.01" defaultValue={currentPercent} className="w-32" />
             </div>
+            <label className="flex items-center gap-2 pb-2 text-sm">
+              <input type="checkbox" name="smsNotificationsEnabled" className="size-4" defaultChecked={settings.smsNotificationsEnabled} />
+              Text employees when their payslip is issued
+            </label>
             <Button type="submit" size="sm" variant="outline">
               Save
             </Button>

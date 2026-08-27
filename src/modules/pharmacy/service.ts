@@ -3,6 +3,8 @@ import "server-only";
 import { Prisma, PharmacyBatchStatus, PharmacyMedicineClass, PharmacyStockMovementType } from "@prisma/client";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
+import { sendSms } from "@/lib/sms";
+import { pharmacyPickupReadySms } from "@/lib/sms-templates";
 
 type Tx = Prisma.TransactionClient;
 export class PharmacyNotFoundError extends Error {}
@@ -299,7 +301,7 @@ export function getPharmacySettings(organizationId: string) {
   return db.pharmacySettings.upsert({ where: { organizationId }, update: {}, create: { organizationId } });
 }
 
-export function updatePharmacySettings(organizationId: string, data: { licenceNumber?: string | null; superintendentPharmacist?: string | null; superintendentRegistration?: string | null; receiptPrefix: string; prescriptionValidityDays: number; expiryAlertDays: number; requirePatientForControlled: boolean; controlledDispenseMakerCheckerEnabled: boolean; allowNegativeStock: boolean }) {
+export function updatePharmacySettings(organizationId: string, data: { licenceNumber?: string | null; superintendentPharmacist?: string | null; superintendentRegistration?: string | null; receiptPrefix: string; prescriptionValidityDays: number; expiryAlertDays: number; requirePatientForControlled: boolean; controlledDispenseMakerCheckerEnabled: boolean; allowNegativeStock: boolean; smsNotificationsEnabled: boolean }) {
   return db.pharmacySettings.upsert({ where: { organizationId }, update: data, create: { organizationId, ...data } });
 }
 
@@ -356,12 +358,36 @@ async function completeDispensingLines(tx: Tx, organizationId: string, actorId: 
   }
 }
 
+/**
+ * Fires after the dispense/approval transaction has already committed - a
+ * failed or unconfigured SMS send must never roll back or block stock
+ * movement, matching the same after-commit placement used for Payroll's
+ * payslip notification. Silently no-ops for a walk-in with no registered
+ * patient, an org with the setting off, or a patient with no phone on file.
+ */
+async function notifyPharmacyPickupReady(organizationId: string, dispensingId: string, patientId: string | null) {
+  if (!patientId) return;
+  const [settings, patient] = await Promise.all([
+    db.pharmacySettings.findUnique({ where: { organizationId } }),
+    db.pharmacyPatient.findUnique({ where: { id: patientId } }),
+  ]);
+  if (!settings?.smsNotificationsEnabled || !patient?.phone) return;
+  await sendSms({
+    to: patient.phone,
+    ...pharmacyPickupReadySms(patient.fullName),
+    purpose: "PHARMACY_PICKUP_READY",
+    organizationId,
+    relatedType: "PharmacyDispensing",
+    relatedId: dispensingId,
+  });
+}
+
 export async function dispense(organizationId: string, actorId: string, data: {
   dispensingNumber: string; patientId?: string | null; prescriptionId?: string | null; discount: string;
   paymentMethod?: string | null; paymentReference?: string | null; lines: { medicineId: string; quantity: number; prescriptionLineId?: string | null }[];
 }) {
   if (!data.lines.length || data.lines.some((line) => !Number.isInteger(line.quantity) || line.quantity <= 0)) throw new PharmacyStockError("Dispensing lines are invalid.");
-  return db.$transaction(async (tx) => {
+  const dispensing = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pharmacy-dispense:${organizationId}`}))`;
     const medicineIds = [...new Set(data.lines.map((line) => line.medicineId))];
     const medicines = await tx.pharmacyMedicine.findMany({ where: { organizationId, id: { in: medicineIds }, active: true } });
@@ -398,6 +424,8 @@ export async function dispense(organizationId: string, actorId: string, data: {
     await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "dispensing.completed", entityName: "PharmacyDispensing", entityId: dispensing.id, metadata: { dispensingNumber: dispensing.dispensingNumber, total: dispensing.total.toString() } }, tx);
     return dispensing;
   }, { timeout: 15_000 });
+  if (dispensing.status === "COMPLETED") await notifyPharmacyPickupReady(organizationId, dispensing.id, dispensing.patientId);
+  return dispensing;
 }
 
 /**
@@ -408,7 +436,7 @@ export async function dispense(organizationId: string, actorId: string, data: {
  * stock. The same-actor guard mirrors HrTerminationRequest.reviewTermination.
  */
 export async function approveControlledDispense(organizationId: string, actorId: string, dispensingId: string) {
-  return db.$transaction(async (tx) => {
+  const approved = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pharmacy-dispense:${organizationId}`}))`;
     const dispensing = await tx.pharmacyDispensing.findFirst({ where: { id: dispensingId, organizationId, status: "PENDING_APPROVAL" }, include: { prescription: { include: { patient: true, prescriber: true } } } });
     if (!dispensing) throw new PharmacyNotFoundError("Pending controlled dispense not found.");
@@ -424,6 +452,8 @@ export async function approveControlledDispense(organizationId: string, actorId:
     await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "dispensing.approved", entityName: "PharmacyDispensing", entityId: dispensing.id, metadata: { dispensingNumber: dispensing.dispensingNumber } }, tx);
     return approved;
   }, { timeout: 15_000 });
+  await notifyPharmacyPickupReady(organizationId, approved.id, approved.patientId);
+  return approved;
 }
 
 export async function rejectControlledDispense(organizationId: string, actorId: string, dispensingId: string, reason: string) {

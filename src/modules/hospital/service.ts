@@ -4,6 +4,8 @@ import { Prisma, type HospitalAbnormalFlag, type HospitalAppointmentStatus, type
 import { db } from "@/lib/db";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { logAuditEvent } from "@/lib/audit";
+import { sendSms } from "@/lib/sms";
+import { hospitalAppointmentReminderSms } from "@/lib/sms-templates";
 
 type Tx = Prisma.TransactionClient;
 
@@ -164,6 +166,61 @@ export function cancelHospitalAppointment(organizationId: string, appointmentId:
 
 export function markHospitalAppointmentNoShow(organizationId: string, appointmentId: string) {
   return endAppointment(organizationId, appointmentId, "NO_SHOW");
+}
+
+/**
+ * Cron-driven, cross-organization sweep (see src/app/api/cron/appointment-reminders/route.ts) -
+ * unlike every other trigger in this SMS phase, this one is schedule-based
+ * rather than action-triggered, so it has to find its own candidates rather
+ * than being called from a Server Action. Targets appointments scheduled
+ * for the calendar day after `now` (a full-day window, robust to the cron
+ * firing a few minutes early or late) at a facility with SMS notifications
+ * on, gated per-facility since HospitalSettings is keyed by facility, not
+ * by organization. Deduped by checking the SmsMessage log first, so
+ * re-running the cron (or a rare double-fire) never double-texts a patient
+ * for the same appointment.
+ */
+export async function sendDueAppointmentReminders(now = new Date()): Promise<{ candidates: number; sent: number }> {
+  const windowStart = new Date(now);
+  windowStart.setUTCHours(0, 0, 0, 0);
+  windowStart.setUTCDate(windowStart.getUTCDate() + 1);
+  const windowEnd = new Date(windowStart);
+  windowEnd.setUTCDate(windowEnd.getUTCDate() + 1);
+
+  const appointments = await db.hospitalAppointment.findMany({
+    where: {
+      status: "SCHEDULED",
+      scheduledStart: { gte: windowStart, lt: windowEnd },
+      facility: { settings: { smsNotificationsEnabled: true } },
+    },
+    include: { patient: true, provider: true, facility: true },
+  });
+
+  let sent = 0;
+  for (const appointment of appointments) {
+    if (!appointment.patient.phone) continue;
+    const alreadySent = await db.smsMessage.findFirst({
+      where: { organizationId: appointment.organizationId, purpose: "HOSPITAL_APPT_REMINDER", relatedType: "HospitalAppointment", relatedId: appointment.id },
+    });
+    if (alreadySent) continue;
+
+    const result = await sendSms({
+      to: appointment.patient.phone,
+      ...hospitalAppointmentReminderSms({
+        patientName: `${appointment.patient.firstName} ${appointment.patient.lastName}`,
+        facilityName: appointment.facility.name,
+        providerName: appointment.provider.name,
+        scheduledStart: appointment.scheduledStart,
+      }),
+      purpose: "HOSPITAL_APPT_REMINDER",
+      organizationId: appointment.organizationId,
+      relatedType: "HospitalAppointment",
+      relatedId: appointment.id,
+    });
+    if (result.ok) sent += 1;
+  }
+
+  return { candidates: appointments.length, sent };
 }
 
 // ---------------------------------------------------------------------
@@ -672,6 +729,7 @@ export interface HospitalSettingsInput {
   facilityId: string; timezone: string; currency: string;
   mrnPrefix: string; encounterPrefix: string; appointmentPrefix: string; admissionPrefix: string; invoicePrefix: string; receiptPrefix: string;
   resultVerificationRequired: boolean; labImagingMakerCheckerEnforced: boolean; bedTransferRequiresReason: boolean; retentionYears: number;
+  smsNotificationsEnabled: boolean;
 }
 
 export async function upsertHospitalSettings(organizationId: string, data: HospitalSettingsInput) {

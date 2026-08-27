@@ -3,6 +3,8 @@ import "server-only";
 import { db } from "@/lib/db";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { Prisma } from "@prisma/client";
+import { sendSms } from "@/lib/sms";
+import { payrollPayslipIssuedSms } from "@/lib/sms-templates";
 
 /**
  * Fresh module (no reference implementation to migrate from). Every function
@@ -76,7 +78,7 @@ export async function getSettings(organizationId: string) {
   );
 }
 
-export function updateSettings(organizationId: string, defaultTaxRate: string) {
+export function updateSettings(organizationId: string, defaultTaxRate: string, smsNotificationsEnabled: boolean) {
   const rate = Number(defaultTaxRate);
   if (!Number.isFinite(rate) || rate < 0 || rate > 1) {
     throw new InvalidCompensationError("Default tax rate must be between 0% and 100%.");
@@ -84,8 +86,8 @@ export function updateSettings(organizationId: string, defaultTaxRate: string) {
   return createWithUniqueRetry(() =>
     db.payrollSettings.upsert({
       where: { organizationId },
-      update: { defaultTaxRate },
-      create: { organizationId, defaultTaxRate },
+      update: { defaultTaxRate, smsNotificationsEnabled },
+      create: { organizationId, defaultTaxRate, smsNotificationsEnabled },
     }),
   );
 }
@@ -125,8 +127,8 @@ export class NoCompensationError extends Error {}
  * with only some employees paid.
  */
 export async function processRun(organizationId: string, runId: string) {
-  const run = await db.payrollRun.findFirst({ where: { id: runId, organizationId } });
-  if (!run) throw new NotFoundError("Payroll run not found.");
+  const existingRun = await db.payrollRun.findFirst({ where: { id: runId, organizationId } });
+  if (!existingRun) throw new NotFoundError("Payroll run not found.");
 
   const [settings, compensations] = await Promise.all([
     getSettings(organizationId),
@@ -145,7 +147,7 @@ export async function processRun(organizationId: string, runId: string) {
   // discrepancy rather than a transient display artifact.
   const taxRate = new Prisma.Decimal(settings.defaultTaxRate);
 
-  return db.$transaction(async (tx) => {
+  const run = await db.$transaction(async (tx) => {
     const claimed = await tx.payrollRun.updateMany({ where: { id: runId, status: "DRAFT" }, data: { status: "COMPLETED" } });
     if (claimed.count === 0) throw new RunStateError("Only draft runs can be processed.");
 
@@ -166,6 +168,27 @@ export async function processRun(organizationId: string, runId: string) {
     }
     return tx.payrollRun.findUniqueOrThrow({ where: { id: runId } });
   });
+
+  // After the transaction commits, never inside it - an SMS failure (or a
+  // slow network call held across every payslip) must never roll back or
+  // stall a payroll run that has already succeeded.
+  if (settings.smsNotificationsEnabled) {
+    const payslips = await db.payrollPayslip.findMany({ where: { payrollRunId: runId }, include: { employee: true } });
+    await Promise.all(payslips.map((payslip) => {
+      const phone = payslip.employee.mobilePhone || payslip.employee.phone;
+      if (!phone) return undefined;
+      return sendSms({
+        to: phone,
+        ...payrollPayslipIssuedSms({ employeeName: payslip.employee.fullName, netPay: payslip.netPay.toFixed(2), payDate: run.payDate }),
+        purpose: "PAYROLL_PAYSLIP_ISSUED",
+        organizationId,
+        relatedType: "PayrollPayslip",
+        relatedId: payslip.id,
+      });
+    }));
+  }
+
+  return run;
 }
 
 export async function cancelRun(organizationId: string, runId: string) {

@@ -1,5 +1,17 @@
 # Architecture & Tooling Decisions
 
+## 2026-08-27 — Per-module SMS notifications fire after the transaction commits, and read module-level settings scoped to the same entity the settings already belong to
+
+**Decision:** Every Phase 3 SMS trigger (Pharmacy's dispense-ready text, Hotel's booking confirmation, Payroll's payslip notice, Hospital's appointment reminder) sends its SMS as a separate step after the write it's reporting on has already committed - never inside the `db.$transaction` that creates the record. Each trigger also reads its module's existing settings model at whatever granularity that model already uses: `HotelSettings`/`HospitalSettings` are per-property/per-facility (`propertyId`/`facilityId @unique`), so the SMS check reads the specific property/facility's settings, not an organization-wide one; `PharmacySettings`/`PayrollSettings` are per-organization, so those checks are a plain per-org lookup.
+
+**Why:** `sendSms()` makes a real network call to mNotify and then a further database write of its own (`SmsMessage`) - holding either of those inside an already-open transaction would extend a lock/connection for the duration of an external HTTP round trip, and a transient mNotify failure would roll back a dispense, reservation, or payroll run that had otherwise fully succeeded. Notifying a customer is not a condition of the underlying operation succeeding. Separately, `HotelSettings`/`HospitalSettings` were already modeled per-property/per-facility before this phase (a hotel chain's or hospital group's individual locations can already run different check-in times, numbering prefixes, and verification policies) - introducing an organization-wide SMS toggle for those two modules specifically would have been a new, inconsistent granularity alongside every other setting on the same model.
+
+**How the boundary is preserved:** Each trigger function captures its transaction's result first, then performs the settings/phone lookup and `sendSms()` call as plain awaited statements afterward - `sendSms()` itself never throws (Phase 1's contract), so no additional try/catch is needed to protect the caller. Hotel's `createHotelReservation()` and Payroll's `processRun()` already had the relevant settings object in hand from an existing query (`property.settings`, the top-of-function `settings` fetch) with no extra read; Pharmacy's `dispense()`/`approveControlledDispense()` do one small extra post-commit read (settings + patient) since a controlled-drug approval and an immediate OTC completion don't already have a patient object in scope at that point.
+
+**Not done (and deliberately so):** No retry or dead-letter queue for a failed SMS - a `FAILED` `SmsMessage` row is the entire failure record, exactly like Phase 1's original design. No batching (mNotify's `recipient` field accepts an array, but each notification here logs against one specific record via `relatedId`, which the codebase's existing dedup/audit convention keeps to one row per send).
+
+---
+
 ## 2026-08-26 — SMS 2FA gets its own verified phone field, separate from the general contact phone
 
 **Decision:** `User.twoFactorPhone` is a new field, distinct from the existing `User.phone`. SMS 2FA codes - at login, and when confirming enrollment or disablement - are only ever sent to `twoFactorPhone`, and it is only ever set by `confirmSmsTwoFactorSetup` after a code sent to that exact number has been verified. Editing the general `phone` field (on the account page) never touches it.
