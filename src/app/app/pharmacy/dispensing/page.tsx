@@ -40,7 +40,12 @@ export default async function Page({
   // error, even though they clearly selected one.
   const open = rx.filter((x) => ["ACTIVE", "PARTIALLY_DISPENSED"].includes(x.status) && (!x.expiresAt || x.expiresAt > new Date()));
   const patientItems: Record<string, string> = Object.fromEntries(patients.map((x) => [x.id, x.fullName]));
-  const medicineItems: Record<string, string> = Object.fromEntries(meds.map((x) => [x.id, x.name]));
+  // Matches dispense()'s own needsPrescription condition exactly, so a
+  // medicine that will actually be rejected without a prescription selected
+  // is visibly marked here instead of only failing after Dispense is clicked.
+  const needsPrescription = (m: (typeof meds)[number]) => m.requiresPrescription || m.medicineClass === "PRESCRIPTION_ONLY" || m.medicineClass === "CONTROLLED";
+  const medicineLabel = (m: (typeof meds)[number]) => needsPrescription(m) ? `${m.name} (prescription required)` : m.name;
+  const medicineItems: Record<string, string> = Object.fromEntries(meds.map((x) => [x.id, medicineLabel(x)]));
   const prescriptionItems: Record<string, string> = Object.fromEntries(open.map((x) => [x.id, x.prescriptionNumber]));
   const prescriptionLineItems: Record<string, string> = Object.fromEntries(
     open.flatMap((x) => x.lines).map((x) => [x.id, `${x.medicine.name} (${x.quantityPrescribed - x.quantityDispensed} remaining)`]),
@@ -112,7 +117,7 @@ export default async function Page({
               <Label htmlFor="dispensing-medicineId" required>Medicine</Label>
               <Select name="medicineId" items={medicineItems}>
                 <SelectTrigger id="dispensing-medicineId" className="w-full"><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{meds.map((x) => <SelectItem key={x.id} value={x.id}>{x.name}</SelectItem>)}</SelectContent>
+                <SelectContent>{meds.map((x) => <SelectItem key={x.id} value={x.id}>{medicineLabel(x)}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
@@ -151,7 +156,8 @@ export default async function Page({
             </div>
             <Button type="submit">Dispense</Button>
           </form>
-          <p className="mt-2 text-xs text-muted-foreground">A dispense containing a controlled medicine goes to pending approval instead of completing immediately when the pharmacy maker-checker setting is on.</p>
+          <p className="mt-2 text-xs text-muted-foreground">A medicine marked &quot;(prescription required)&quot; needs an active, unexpired prescription and prescription line selected above, or the dispense will be rejected. Create one from Prescriptions first if none is listed yet.</p>
+          <p className="mt-1 text-xs text-muted-foreground">A dispense containing a controlled medicine goes to pending approval instead of completing immediately when the pharmacy maker-checker setting is on.</p>
         </CardContent>
       </Card>
 

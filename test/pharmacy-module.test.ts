@@ -110,4 +110,19 @@ describe("Pharmacy production boundary", () => {
     expect(service).toContain('OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }]');
     expect(dispensingPage).toContain('const open = rx.filter((x) => ["ACTIVE", "PARTIALLY_DISPENSED"].includes(x.status) && (!x.expiresAt || x.expiresAt > new Date()));');
   });
+
+  it("the Medicine picker marks which items dispense() will actually reject without a prescription selected", () => {
+    // Regression coverage for a live production report: a medicine requiring
+    // a prescription (medicineClass PRESCRIPTION_ONLY/CONTROLLED, or
+    // requiresPrescription) gave no visible signal on the Dispensing form
+    // before submit - staff picked "None (over-the-counter sale)" for
+    // Prescription, then hit "An active prescription is required." with no
+    // indication of why, and the whole form reset (losing every other
+    // entered field). The picker's needsPrescription check must mirror
+    // dispense()'s own condition exactly, or a medicine could be marked as
+    // safe here while still being rejected by the service (or vice versa).
+    expect(service).toContain('medicine.requiresPrescription || medicine.medicineClass === "PRESCRIPTION_ONLY" || medicine.medicineClass === "CONTROLLED"');
+    expect(dispensingPage).toContain('m.requiresPrescription || m.medicineClass === "PRESCRIPTION_ONLY" || m.medicineClass === "CONTROLLED"');
+    expect(dispensingPage).toContain("(prescription required)");
+  });
 });
