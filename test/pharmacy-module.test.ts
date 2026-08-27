@@ -7,6 +7,7 @@ const registry = readFileSync("src/platform/modules/registry.ts", "utf8");
 const backup = readFileSync("src/lib/backup/tenant-backup.ts", "utf8");
 const actions = readFileSync("src/app/app/pharmacy/actions.ts", "utf8");
 const dispensingPage = readFileSync("src/app/app/pharmacy/dispensing/page.tsx", "utf8");
+const dispensingForm = readFileSync("src/app/app/pharmacy/dispensing/dispensing-form.tsx", "utf8");
 
 describe("Pharmacy production boundary", () => {
   it("registers Pharmacy as an isolated module with seats and backup discovery", () => {
@@ -86,13 +87,19 @@ describe("Pharmacy production boundary", () => {
       "runOrRedirect(() => recordPatientReturn(",
       "runOrRedirect(() => updateBatchStatus(",
       "() => createPrescription(tenant.organizationId, {",
-      "runOrRedirect(() => dispense(",
       "runOrRedirect(() => approveControlledDispense(",
       "runOrRedirect(() => rejectControlledDispense(",
       "runOrRedirect(() => reverseDispensing(",
     ]) {
       expect(actions).toContain(call);
     }
+
+    // completeDispensing catches the same error classes directly (not via
+    // runOrRedirect) since it returns state for useActionState rather than
+    // redirecting - see the dispensing-form.tsx entry below for why.
+    const completeDispensingBlock = actions.slice(actions.indexOf("export async function completeDispensing"), actions.indexOf("export async function approveControlledDispenseAction"));
+    expect(completeDispensingBlock).toContain("error instanceof PharmacyNotFoundError || error instanceof PharmacyStockError || error instanceof PharmacyPrescriptionRequiredError || error instanceof PharmacyWorkflowError");
+    expect(completeDispensingBlock).toContain("return { error: error.message };");
   });
 
   it("createPatient/createPrescriber convert a duplicate-number unique-constraint violation to a safe, user-facing message instead of a raw Prisma error", () => {
@@ -123,6 +130,21 @@ describe("Pharmacy production boundary", () => {
     // safe here while still being rejected by the service (or vice versa).
     expect(service).toContain('medicine.requiresPrescription || medicine.medicineClass === "PRESCRIPTION_ONLY" || medicine.medicineClass === "CONTROLLED"');
     expect(dispensingPage).toContain('m.requiresPrescription || m.medicineClass === "PRESCRIPTION_ONLY" || m.medicineClass === "CONTROLLED"');
-    expect(dispensingPage).toContain("(prescription required)");
+    expect(dispensingForm).toContain("(prescription required)");
+  });
+
+  it("the Complete dispensing form preserves entered values and shows a specific error instead of resetting on failure", () => {
+    // Regression coverage for a live production report: completeDispensing
+    // used to redirect to ?error=... on any failure, which remounted the
+    // whole server-rendered form and silently discarded every field the
+    // user had typed - on top of a generic "check the highlighted fields"
+    // banner that never actually highlighted anything, since medicineId had
+    // no real required validation wired to it. useActionState keeps the
+    // form mounted across a failed submit instead of navigating away.
+    expect(actions).toContain("export async function completeDispensing(_previousState: CompleteDispensingState, formData: FormData): Promise<CompleteDispensingState> {");
+    const completeDispensingBlockForRedirectCheck = actions.slice(actions.indexOf("export async function completeDispensing"), actions.indexOf("export async function approveControlledDispenseAction"));
+    expect(completeDispensingBlockForRedirectCheck).not.toContain("?error=invalid");
+    expect(dispensingForm).toContain("useActionState(completeDispensing, initialState)");
+    expect(dispensingForm).toContain("fieldErrors.medicineId");
   });
 });

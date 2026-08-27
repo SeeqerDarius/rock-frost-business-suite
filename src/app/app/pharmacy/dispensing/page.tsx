@@ -4,8 +4,6 @@ import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -13,9 +11,9 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { formatMoney } from "@/lib/currency";
 import { listDispensings, listMedicines, listPatients, listPendingControlledDispenses, listPrescriptions } from "@/modules/pharmacy/service";
-import { approveControlledDispenseAction, completeDispensing, rejectControlledDispenseAction, reverseCompletedDispensing } from "../actions";
+import { approveControlledDispenseAction, rejectControlledDispenseAction, reverseCompletedDispensing } from "../actions";
 import { PharmacyStatusBanner } from "../status-banner";
-import { PAYMENT_METHOD_ITEMS } from "../payment-methods";
+import { DispensingForm } from "./dispensing-form";
 
 export default async function Page({
   searchParams,
@@ -39,17 +37,18 @@ export default async function Page({
   // pick one that then fails with a confusing "prescription is required"
   // error, even though they clearly selected one.
   const open = rx.filter((x) => ["ACTIVE", "PARTIALLY_DISPENSED"].includes(x.status) && (!x.expiresAt || x.expiresAt > new Date()));
-  const patientItems: Record<string, string> = Object.fromEntries(patients.map((x) => [x.id, x.fullName]));
   // Matches dispense()'s own needsPrescription condition exactly, so a
   // medicine that will actually be rejected without a prescription selected
   // is visibly marked here instead of only failing after Dispense is clicked.
-  const needsPrescription = (m: (typeof meds)[number]) => m.requiresPrescription || m.medicineClass === "PRESCRIPTION_ONLY" || m.medicineClass === "CONTROLLED";
-  const medicineLabel = (m: (typeof meds)[number]) => needsPrescription(m) ? `${m.name} (prescription required)` : m.name;
-  const medicineItems: Record<string, string> = Object.fromEntries(meds.map((x) => [x.id, medicineLabel(x)]));
-  const prescriptionItems: Record<string, string> = Object.fromEntries(open.map((x) => [x.id, x.prescriptionNumber]));
-  const prescriptionLineItems: Record<string, string> = Object.fromEntries(
-    open.flatMap((x) => x.lines).map((x) => [x.id, `${x.medicine.name} (${x.quantityPrescribed - x.quantityDispensed} remaining)`]),
-  );
+  const medicines = meds.map((m) => ({
+    id: m.id,
+    name: m.name,
+    needsPrescription: m.requiresPrescription || m.medicineClass === "PRESCRIPTION_ONLY" || m.medicineClass === "CONTROLLED",
+  }));
+  const prescriptionLines = open.flatMap((x) => x.lines).map((x) => ({
+    id: x.id,
+    label: `${x.medicine.name} (${x.quantityPrescribed - x.quantityDispensed} remaining)`,
+  }));
 
   return (
     <div className="space-y-6">
@@ -88,74 +87,7 @@ export default async function Page({
       <Card>
         <CardHeader><CardTitle>Complete dispensing</CardTitle></CardHeader>
         <CardContent>
-          <form action={completeDispensing} className="grid gap-3 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="dispensing-number" required>Dispensing number</Label>
-              <Input id="dispensing-number" name="dispensingNumber" required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="dispensing-patientId">Patient</Label>
-              <Select name="patientId" defaultValue="" items={{ "": "Walk-in (no patient on file)", ...patientItems }}>
-                <SelectTrigger id="dispensing-patientId" className="w-full"><SelectValue placeholder="Walk-in (no patient on file)" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Walk-in (no patient on file)</SelectItem>
-                  {patients.map((x) => <SelectItem key={x.id} value={x.id}>{x.fullName}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="dispensing-prescriptionId">Prescription</Label>
-              <Select name="prescriptionId" defaultValue="" items={{ "": "None (over-the-counter sale)", ...prescriptionItems }}>
-                <SelectTrigger id="dispensing-prescriptionId" className="w-full"><SelectValue placeholder="None (over-the-counter sale)" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">None (over-the-counter sale)</SelectItem>
-                  {open.map((x) => <SelectItem key={x.id} value={x.id}>{x.prescriptionNumber}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="dispensing-medicineId" required>Medicine</Label>
-              <Select name="medicineId" items={medicineItems}>
-                <SelectTrigger id="dispensing-medicineId" className="w-full"><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{meds.map((x) => <SelectItem key={x.id} value={x.id}>{medicineLabel(x)}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="dispensing-prescriptionLineId">Prescription line</Label>
-              <Select name="prescriptionLineId" defaultValue="" items={{ "": "None (over-the-counter sale)", ...prescriptionLineItems }}>
-                <SelectTrigger id="dispensing-prescriptionLineId" className="w-full"><SelectValue placeholder="None (over-the-counter sale)" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">None (over-the-counter sale)</SelectItem>
-                  {open.flatMap((x) => x.lines).map((x) => (
-                    <SelectItem key={x.id} value={x.id}>{x.medicine.name} ({x.quantityPrescribed - x.quantityDispensed} remaining)</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="dispensing-quantity" required>Quantity</Label>
-              <Input id="dispensing-quantity" name="quantity" type="number" min="1" required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="dispensing-discount">Discount</Label>
-              <Input id="dispensing-discount" name="discount" type="number" step="0.01" defaultValue="0" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="dispensing-paymentMethod">Payment method</Label>
-              <Select name="paymentMethod" defaultValue="" items={{ "": "Not specified", ...PAYMENT_METHOD_ITEMS }}>
-                <SelectTrigger id="dispensing-paymentMethod" className="w-full"><SelectValue placeholder="Not specified" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Not specified</SelectItem>
-                  {Object.entries(PAYMENT_METHOD_ITEMS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="dispensing-paymentReference">Payment reference</Label>
-              <Input id="dispensing-paymentReference" name="paymentReference" />
-            </div>
-            <Button type="submit">Dispense</Button>
-          </form>
+          <DispensingForm patients={patients} openPrescriptions={open} medicines={medicines} prescriptionLines={prescriptionLines} />
           <p className="mt-2 text-xs text-muted-foreground">A medicine marked &quot;(prescription required)&quot; needs an active, unexpired prescription and prescription line selected above, or the dispense will be rejected. Create one from Prescriptions first if none is listed yet.</p>
           <p className="mt-1 text-xs text-muted-foreground">A dispense containing a controlled medicine goes to pending approval instead of completing immediately when the pharmacy maker-checker setting is on.</p>
         </CardContent>

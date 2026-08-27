@@ -239,11 +239,63 @@ export async function addPrescription(formData: FormData) {
   redirect("/app/pharmacy/prescriptions?saved=1");
 }
 
-export async function completeDispensing(formData: FormData) {
+export interface CompleteDispensingState {
+  error?: string;
+  fieldErrors?: Record<string, boolean>;
+}
+
+const completeDispensingSchema = z.object({
+  dispensingNumber: shortText,
+  patientId: z.union([cuid, z.literal("")]).optional(),
+  prescriptionId: z.union([cuid, z.literal("")]).optional(),
+  medicineId: cuid,
+  prescriptionLineId: z.union([cuid, z.literal("")]).optional(),
+  quantity: positiveInt,
+  discount: moneyAmount,
+  paymentMethod: optionalEnum(["CASH", "CARD", "MOBILE_MONEY", "INSURANCE", "OTHER"]),
+  paymentReference: optionalShortText,
+});
+
+/**
+ * Returns state instead of redirecting on failure (the shared runOrRedirect/
+ * `?error=` pattern every other Pharmacy action uses) - a hard redirect
+ * remounts the whole server-rendered form from scratch, silently discarding
+ * everything the user typed, which is exactly the "lost all my inputs"
+ * complaint this form got reported for. The client component
+ * (dispensing-form.tsx) drives this via useActionState, so a failure just
+ * re-renders in place with the same field values still in the DOM.
+ */
+export async function completeDispensing(_previousState: CompleteDispensingState, formData: FormData): Promise<CompleteDispensingState> {
   const tenant = await requirePermission(PERMISSIONS.PHARMACY_DISPENSING_MANAGE, "/app/pharmacy/dispensing");
-  const parsed = parseWithSchema(z.object({ dispensingNumber: shortText, patientId: z.union([cuid, z.literal("")]).optional(), prescriptionId: z.union([cuid, z.literal("")]).optional(), medicineId: cuid, prescriptionLineId: z.union([cuid, z.literal("")]).optional(), quantity: positiveInt, discount: moneyAmount, paymentMethod: optionalEnum(["CASH", "CARD", "MOBILE_MONEY", "INSURANCE", "OTHER"]), paymentReference: optionalShortText }), Object.fromEntries(formData));
-  if (!parsed.success) redirect("/app/pharmacy/dispensing?error=invalid");
-  const dispensing = await runOrRedirect(() => dispense(tenant.organizationId, tenant.userId, { dispensingNumber: parsed.data.dispensingNumber, patientId: parsed.data.patientId || null, prescriptionId: parsed.data.prescriptionId || null, discount: parsed.data.discount, paymentMethod: parsed.data.paymentMethod, paymentReference: parsed.data.paymentReference, lines: [{ medicineId: parsed.data.medicineId, prescriptionLineId: parsed.data.prescriptionLineId || null, quantity: parsed.data.quantity }] }), "/app/pharmacy/dispensing");
+  const result = completeDispensingSchema.safeParse(Object.fromEntries(formData));
+  if (!result.success) {
+    const fieldErrors: Record<string, boolean> = {};
+    for (const issue of result.error.issues) {
+      const key = String(issue.path[0] ?? "");
+      if (key) fieldErrors[key] = true;
+    }
+    return { error: "Check the highlighted fields and try again.", fieldErrors };
+  }
+  const parsed = result.data;
+
+  let dispensing;
+  try {
+    dispensing = await dispense(tenant.organizationId, tenant.userId, {
+      dispensingNumber: parsed.dispensingNumber,
+      patientId: parsed.patientId || null,
+      prescriptionId: parsed.prescriptionId || null,
+      discount: parsed.discount,
+      paymentMethod: parsed.paymentMethod,
+      paymentReference: parsed.paymentReference,
+      lines: [{ medicineId: parsed.medicineId, prescriptionLineId: parsed.prescriptionLineId || null, quantity: parsed.quantity }],
+    });
+  } catch (error) {
+    if (error instanceof PharmacyNotFoundError || error instanceof PharmacyStockError || error instanceof PharmacyPrescriptionRequiredError || error instanceof PharmacyWorkflowError) {
+      return { error: error.message };
+    }
+    throw error;
+  }
+
   // A controlled-drug dispense with maker-checker enabled comes back
   // PENDING_APPROVAL: nothing was actually dispensed yet (see dispense()'s
   // own doc comment), so revenue posts only once approveControlledDispense()
