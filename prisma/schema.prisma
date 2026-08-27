@@ -268,9 +268,21 @@ model User {
   lockedUntil          DateTime?
   sessionVersion       Int        @default(0)
   twoFactorSecret      String?
-  twoFactorEnabled     Boolean    @default(false)
+  twoFactorEnabled     Boolean         @default(false)
   twoFactorConfirmedAt DateTime?
-  createdAt            DateTime   @default(now())
+  /// Which method is currently active. Only ever one at a time - enabling
+  /// SMS requires disabling TOTP first (and vice versa) via the existing
+  /// disableTwoFactor flow, since twoFactorEnabled is a single account-wide
+  /// flag. Null when 2FA has never been set up.
+  twoFactorMethod      TwoFactorMethod?
+  /// The phone number SMS 2FA codes are sent to, captured and verified at
+  /// enrollment time. Deliberately separate from the general contact `phone`
+  /// field above: if they were the same field, editing your profile phone
+  /// (e.g. during an account takeover) would silently redirect where login
+  /// codes get sent, defeating the point of 2FA.
+  twoFactorPhone       String?
+  phoneVerifiedAt      DateTime?
+  createdAt            DateTime        @default(now())
   updatedAt            DateTime   @updatedAt
 
   accounts                        Account[]
@@ -332,6 +344,12 @@ model User {
   offlineConflictsResolved        OfflineConflict[]
   offlineActivationCodes          OfflineActivationCode[]
   tourProgress                    UserTourProgress[]
+  twoFactorOtpChallenges          TwoFactorOtpChallenge[]
+}
+
+enum TwoFactorMethod {
+  TOTP
+  SMS
 }
 
 /// Tracks which onboarding walkthroughs a user has completed or dismissed.
@@ -1236,6 +1254,29 @@ model SmsMessage {
 
   @@index([organizationId, purpose, createdAt])
   @@index([relatedType, relatedId])
+}
+
+enum TwoFactorOtpPurpose {
+  LOGIN
+  ENROLL_VERIFY_PHONE
+  DISABLE
+}
+
+/** A short-lived, hashed one-time code for SMS-based 2FA - login verification, phone-number enrollment, and disable confirmation each get their own purpose so a code issued for one can't be replayed against another. Login-purpose wrong codes count toward the account's existing failedLoginAttempts/lockedUntil lockout; enrollment/disable attempts are bounded by the `attempts` counter on this row instead. */
+model TwoFactorOtpChallenge {
+  id         String              @id @default(cuid())
+  userId     String
+  purpose    TwoFactorOtpPurpose
+  phone      String
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int                 @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, consumedAt, createdAt])
 }
 
 model FileAsset {

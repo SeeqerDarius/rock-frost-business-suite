@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useSyncExternalStore } from "react";
+import { Suspense, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/auth/password-input";
-import { getAccountLockStatus } from "@/lib/auth/actions";
+import { getAccountLockStatus, requestLoginSmsCode } from "@/lib/auth/actions";
 import { buildSurfaceUrl, classifyAppSurface, type AppSurface } from "@/lib/app-surfaces";
 import { TurnstileWidget } from "@/components/security/turnstile-widget";
 import { verifyLoginBotProtection } from "@/lib/auth/actions";
@@ -32,6 +32,9 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSendingSmsCode, setIsSendingSmsCode] = useState(false);
+  const [smsCodeStatus, setSmsCodeStatus] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const surface = useSyncExternalStore<AppSurface>(
     subscribeToHostname,
     () => classifyAppSurface(window.location.hostname),
@@ -92,8 +95,31 @@ function LoginForm() {
     window.location.href = result?.url ?? callbackPath;
   }
 
+  async function handleSendSmsCode() {
+    const formEl = formRef.current;
+    if (!formEl) return;
+    const formData = new FormData(formEl);
+    const emailValue = String(formData.get("email") ?? "").trim().toLowerCase();
+    const passwordValue = String(formData.get("password") ?? "");
+    if (!emailValue || !passwordValue) {
+      setSmsCodeStatus("Enter your email and password first.");
+      return;
+    }
+
+    setIsSendingSmsCode(true);
+    setSmsCodeStatus(null);
+    const status = await requestLoginSmsCode(emailValue, passwordValue);
+    setIsSendingSmsCode(false);
+
+    if (status.locked) {
+      setError(`Too many failed attempts. Try again in ${status.minutesLeft} minute${status.minutesLeft === 1 ? "" : "s"}.`);
+      return;
+    }
+    setSmsCodeStatus("If this account uses SMS two-factor authentication, a code was just sent.");
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
       {notice ? (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
           {notice}
@@ -134,8 +160,19 @@ function LoginForm() {
         <PasswordInput id="password" name="password" autoComplete="current-password" required />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="twoFactorCode">Authenticator code</Label>
-        <Input id="twoFactorCode" name="twoFactorCode" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" placeholder="Required only when 2FA is enabled" />
+        <div className="flex items-center justify-between">
+          <Label htmlFor="twoFactorCode">Two-factor code</Label>
+          <button
+            type="button"
+            onClick={handleSendSmsCode}
+            disabled={isSendingSmsCode}
+            className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+          >
+            {isSendingSmsCode ? "Sending..." : "Send code by SMS"}
+          </button>
+        </div>
+        <Input id="twoFactorCode" name="twoFactorCode" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" placeholder="Authenticator app or SMS code, if 2FA is enabled" />
+        {smsCodeStatus ? <p className="text-xs text-muted-foreground">{smsCodeStatus}</p> : null}
       </div>
       <TurnstileWidget action="login" />
       <Button type="submit" disabled={isSubmitting} className="w-full">

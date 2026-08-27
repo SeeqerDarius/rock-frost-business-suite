@@ -4,7 +4,11 @@ Rock Frost sends SMS through mNotify's Quick Bulk SMS API (`https://api.mnotify.
 
 ## Status
 
-**Phase 1 (this doc's current scope): core sending capability only.** `sendSms()` exists and is fully tested (unit + real-Postgres integration), but nothing calls it yet - no 2FA, no per-module notifications, no Support alert, no marketing tool. Those are separate, later phases; update this doc as each one ships.
+**Phase 1: core sending capability.** `sendSms()`, fully tested (unit + real-Postgres integration).
+
+**Phase 2 (this doc's current scope): SMS as an additional 2FA method, alongside TOTP.** See "SMS one-time codes" below. Per-module notifications, the Support alert, and the marketing tool are separate, later phases; update this doc as each one ships.
+
+**Until `MNOTIFY_SENDER_ID` is registered and set, every send - including 2FA codes - degrades to a `console.warn` instead of reaching a phone.** SMS 2FA enrollment and login will complete the request/response flow correctly in this state, but no code actually arrives; treat this as inert until the sender ID is configured (see Configuration below).
 
 ## Configuration
 
@@ -27,8 +31,21 @@ Every send (successful or failed) writes a row to `SmsMessage` - a purpose-built
 
 mNotify charges an additional per-campaign fee when `sms_type: "otp"` is included in the request, and explicitly warns against sending it for anything else: *"Do not include the sms_otp field in the payload unless the message blast is specifically for OTP purposes."* `sendSms()`'s `isOtp` argument controls this - it must only be `true` for 2FA-code sends, never for notifications or marketing.
 
+## SMS one-time codes (2FA)
+
+`src/lib/auth/sms-otp.ts` issues and consumes short-lived, hashed one-time codes backed by the `TwoFactorOtpChallenge` model, for three distinct purposes (`TwoFactorOtpPurpose`: `LOGIN`, `ENROLL_VERIFY_PHONE`, `DISABLE`) so a code issued for one can never be replayed against another:
+
+- **Issuing** (`issueSmsOtpChallenge`) normalizes the phone, generates a random 6-digit code, stores only its bcrypt hash with a 5-minute `expiresAt`, and sends it via `sendSms()` with `isOtp: true` and `purpose: "2FA_<PURPOSE>"` (so it lands in the `SmsMessage` audit log too, alongside every other kind of SMS).
+- **Consuming** (`consumeSmsOtpChallenge`) looks up the newest unconsumed, unexpired challenge for that user/purpose, fails closed once `attempts` reaches 5 (tracked on the challenge row itself, separate from the account-wide login lockout), and marks it `consumedAt` on success so it can never be reused - a wrong login code additionally increments the account's existing `failedLoginAttempts`/`lockedUntil` counters, exactly like a wrong TOTP code does.
+- `User.twoFactorPhone` (the number 2FA codes are actually sent to) is set only once a code sent to it has been verified, and is deliberately independent of the general contact `phone` field - see `docs/DECISIONS.md`'s entry on this for why reusing `phone` would have been a real vulnerability, not just an inconsistency.
+
 ## Testing
 
 - `test/phone.test.ts` - pure normalization table tests.
 - `test/sms.test.ts` - mocked-db suite (`npm run test`), mocks `fetch` and `@/lib/db`, covers the unconfigured/invalid-phone/success/provider-error/network-error branches and confirms the API key is sent as a query param (never in the body).
+- `test/sms-otp.test.ts` - mocked-db suite covering issue/consume/attempt-limit/expiry/hashing for `TwoFactorOtpChallenge`.
+- `test/nextauth-sms-2fa.test.ts` - exercises `authorize()`'s SMS branch directly. Note: this installed next-auth version's `CredentialsProvider()` factory doesn't preserve the app's `authorize()` as the provider's own `.authorize` property (that's hardcoded to a `() => null` stub) - the real function only survives under `.options.authorize`, confirmed by reading `node_modules/next-auth/providers/credentials.js`. Any future test that needs to call `authorize()` directly must go through `.options.authorize`, not `.authorize`.
+- `test/auth-request-login-sms-code.test.ts` - covers `requestLoginSmsCode()`'s generic-response/lockout/leak-prevention behavior.
+- `test/account-security-sms-2fa.test.ts` - covers the enrollment, disable-request, and disable actions in `account/security/actions.ts`.
 - `test/integration/sms/sms-message.test.ts` - real-Postgres suite (`npm run test:integration`), proves `SmsMessage` rows persist correctly scoped to the sending organization, stay invisible cross-tenant, and cascade-delete with their organization. Only the network call to mNotify is mocked here; the database write is real.
+- `test/integration/sms/two-factor-otp-challenge.test.ts` - real-Postgres suite proving the same for `TwoFactorOtpChallenge`: issue/consume, replay rejection, attempt-limit lockout, and cascade-delete on user removal.

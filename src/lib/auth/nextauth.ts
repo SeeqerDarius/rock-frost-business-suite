@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 import { hasPlatformRole } from "@/lib/auth/platform-identity";
 import { decryptTotpSecret, verifyTotpCode } from "@/lib/auth/totp";
+import { consumeSmsOtpChallenge } from "@/lib/auth/sms-otp";
 import {
   classifyAppSurface,
   isIdentityAllowedOnSurface,
@@ -104,13 +105,17 @@ export const authOptions: NextAuthOptions = {
 
         if (user.twoFactorEnabled) {
           let isValidTwoFactorCode = false;
-          try {
-            isValidTwoFactorCode = !!user.twoFactorSecret && verifyTotpCode(
-              decryptTotpSecret(user.twoFactorSecret),
-              credentials.twoFactorCode ?? "",
-            );
-          } catch {
-            isValidTwoFactorCode = false;
+          if (user.twoFactorMethod === "SMS") {
+            isValidTwoFactorCode = (await consumeSmsOtpChallenge(user.id, "LOGIN", credentials.twoFactorCode ?? "")).ok;
+          } else {
+            try {
+              isValidTwoFactorCode = !!user.twoFactorSecret && verifyTotpCode(
+                decryptTotpSecret(user.twoFactorSecret),
+                credentials.twoFactorCode ?? "",
+              );
+            } catch {
+              isValidTwoFactorCode = false;
+            }
           }
           if (!isValidTwoFactorCode) {
             const attempts = user.failedLoginAttempts + 1;

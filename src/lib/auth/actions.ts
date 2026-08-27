@@ -14,6 +14,8 @@ import { logAuditEvent } from "@/lib/audit";
 import { headers } from "next/headers";
 import { buildSurfaceUrl, classifyAppSurface } from "@/lib/app-surfaces";
 import { isBotProtectionConfigured, verifyBotProtection } from "@/lib/bot-protection";
+import { MAX_FAILED_ATTEMPTS, LOCKOUT_DURATION_MS } from "@/lib/auth/nextauth";
+import { issueSmsOtpChallenge } from "@/lib/auth/sms-otp";
 
 function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
@@ -42,6 +44,70 @@ export async function getAccountLockStatus(email: string): Promise<{ locked: boo
     return { locked: false, minutesLeft: 0 };
   }
   return { locked: true, minutesLeft: Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000) };
+}
+
+/**
+ * Pre-flight for SMS-based 2FA, called from the login page alongside
+ * getAccountLockStatus - unlike TOTP (computed client-side, submitted in the
+ * same request as the password), an SMS code has to be sent by the server
+ * before the user can type it in. Re-verifies password and lockout exactly
+ * like authorize() does (a wrong password here counts toward the same
+ * failedLoginAttempts/lockedUntil counters), but always returns the same
+ * generic shape regardless of whether the account exists, is locked out for
+ * a reason unrelated to this call, or doesn't actually use SMS 2FA - so this
+ * can never be used to probe whether an email is registered or which 2FA
+ * method an account uses. Only a real password match against an SMS-2FA
+ * account actually sends a code.
+ */
+export async function requestLoginSmsCode(email: string, password: string): Promise<{ locked: boolean; minutesLeft: number }> {
+  const parsedEmail = emailSchema.safeParse(email.trim().toLowerCase());
+  if (!parsedEmail.success) return { locked: false, minutesLeft: 0 };
+
+  const user = await db.user.findUnique({
+    where: { email: parsedEmail.data },
+    include: { organizationMemberships: { orderBy: { createdAt: "asc" } } },
+  });
+
+  if (!user || !user.passwordHash || user.status !== "ACTIVE") {
+    return { locked: false, minutesLeft: 0 };
+  }
+
+  if (user.lockedUntil && user.lockedUntil > new Date()) {
+    return { locked: true, minutesLeft: Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000) };
+  }
+
+  const isValidPassword = await bcrypt.compare(password, user.passwordHash);
+  if (!isValidPassword) {
+    const attempts = user.failedLoginAttempts + 1;
+    const lockingOut = attempts >= MAX_FAILED_ATTEMPTS;
+    await db.user.update({
+      where: { id: user.id },
+      data: {
+        failedLoginAttempts: lockingOut ? 0 : attempts,
+        lockedUntil: lockingOut ? new Date(Date.now() + LOCKOUT_DURATION_MS) : null,
+      },
+    });
+    await logAuditEvent({
+      organizationId: user.organizationMemberships[0]?.organizationId ?? null,
+      userId: user.id,
+      module: "auth",
+      action: "login.failed",
+      entityName: "User",
+      entityId: user.id,
+      status: "FAILURE",
+      metadata: { email: parsedEmail.data, reason: "wrong_password", context: "sms_code_request", lockedOut: lockingOut },
+    });
+    return { locked: false, minutesLeft: 0 };
+  }
+
+  if (user.twoFactorEnabled && user.twoFactorMethod === "SMS" && user.twoFactorPhone) {
+    const organizationId = user.organizationMemberships[0]?.organizationId;
+    if (organizationId) {
+      await issueSmsOtpChallenge({ userId: user.id, organizationId, purpose: "LOGIN", phone: user.twoFactorPhone });
+    }
+  }
+
+  return { locked: false, minutesLeft: 0 };
 }
 
 /**

@@ -1,5 +1,17 @@
 # Architecture & Tooling Decisions
 
+## 2026-08-26 — SMS 2FA gets its own verified phone field, separate from the general contact phone
+
+**Decision:** `User.twoFactorPhone` is a new field, distinct from the existing `User.phone`. SMS 2FA codes - at login, and when confirming enrollment or disablement - are only ever sent to `twoFactorPhone`, and it is only ever set by `confirmSmsTwoFactorSetup` after a code sent to that exact number has been verified. Editing the general `phone` field (on the account page) never touches it.
+
+**Why:** `User.phone` is free text with no verification, editable any time from the account page. If SMS 2FA codes were sent to `phone` directly, editing that field - including by an attacker who has already obtained the account's password and is trying to defeat 2FA before it locks them out - would silently redirect where the next login code goes, to a number the legitimate owner never saw or approved. That would make SMS 2FA strictly worse than no 2FA at all in exactly the scenario 2FA exists to stop.
+
+**How the boundary is preserved:** Enrollment (`beginSmsTwoFactorSetup`) takes a phone number from its own form field (defaulting to, but not silently trusting, the profile's current `phone`), sends a verification code to it via `issueSmsOtpChallenge`, and only writes it to `twoFactorPhone` once `confirmSmsTwoFactorSetup` confirms the matching code - and it reads the number back from the challenge row itself (`consumeSmsOtpChallenge`'s return value), never from the form, so there's no path where an unverified number reaches the field. `twoFactorMethod` (`TOTP | SMS`) is single-valued per account - switching methods requires disabling the current one first via the existing `disableTwoFactor` flow, which itself requires a fresh code (a `DISABLE`-purpose challenge, via `requestDisableSmsCode`) rather than trusting a stale one.
+
+**Not done (and deliberately so):** No re-verification is required periodically after enrollment - `twoFactorPhone` is trusted indefinitely once verified, same as how a TOTP secret is trusted indefinitely once its setup code is confirmed. `phoneVerifiedAt` is not cleared on disable (it's a historical "was this number ever verified" marker, not a live gate), but `twoFactorPhone`/`twoFactorMethod` are, so a fresh enrollment always re-verifies from scratch regardless.
+
+---
+
 ## 2026-08-26 — SMS delivery gets its own audit-log model, not the existing Notification model
 
 **Decision:** `SmsMessage` is a new, dedicated model for every SMS this app sends (`src/lib/sms.ts`'s `sendSms()` writes one row per attempt, success or failure). `NotificationChannel.SMS` - an enum value that has existed since the schema's early design but was never read or written anywhere - stays permanently unused.
