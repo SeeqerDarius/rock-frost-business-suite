@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { resolveInstallmentAccessScope } from "@/modules/installment/access";
 import { getActivityReport } from "@/modules/installment/service";
 
@@ -39,6 +40,7 @@ export default async function InstallmentCollectionsPage() {
 
   const weekExpected = days.reduce((sum, d) => sum + d.expectedAmount, 0);
   const weekActual = days.reduce((sum, d) => sum + d.actualAmount, 0);
+  const currency = tenant.organization.currency;
 
   return (
     <div className="space-y-6">
@@ -48,13 +50,13 @@ export default async function InstallmentCollectionsPage() {
         <Card>
           <CardHeader>
             <CardDescription>Expected this week</CardDescription>
-            <CardTitle className="text-3xl">{weekExpected.toFixed(2)}</CardTitle>
+            <CardTitle className="text-3xl">{formatMoney(weekExpected, currency)}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader>
             <CardDescription>Collected this week</CardDescription>
-            <CardTitle className="text-3xl">{weekActual.toFixed(2)}</CardTitle>
+            <CardTitle className="text-3xl">{formatMoney(weekActual, currency)}</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -77,7 +79,7 @@ export default async function InstallmentCollectionsPage() {
                     {WEEKDAY_LABELS[index]} · {day.date.toLocaleDateString()}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Expected {day.expectedAmount.toFixed(2)} · Collected {day.actualAmount.toFixed(2)}
+                    Expected {formatMoney(day.expectedAmount, currency)} · Collected {formatMoney(day.actualAmount, currency)}
                   </p>
                 </div>
                 {day.expectedAmount > 0 ? <Badge variant={met ? "default" : "outline"}>{met ? "Met" : "Behind"}</Badge> : null}

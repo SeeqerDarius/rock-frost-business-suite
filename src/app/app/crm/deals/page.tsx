@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { listDeals, listContacts, listAssignableUsers } from "@/modules/crm/service";
 import { upsertDeal, changeDealStage } from "./actions";
 
@@ -50,9 +51,10 @@ interface DealFieldsProps {
   deal?: { title: string; contactId: string | null; value: string; expectedCloseDate: Date | null; ownerId: string | null; notes: string | null };
   contactItems: Record<string, string>;
   ownerItems: Record<string, string>;
+  currency: string;
 }
 
-function DealFields({ deal, contactItems, ownerItems }: DealFieldsProps) {
+function DealFields({ deal, contactItems, ownerItems, currency }: DealFieldsProps) {
   const idSuffix = deal ? "-edit" : "";
   return (
     <>
@@ -62,7 +64,7 @@ function DealFields({ deal, contactItems, ownerItems }: DealFieldsProps) {
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor={`value${idSuffix}`}>Value</Label>
+          <Label htmlFor={`value${idSuffix}`}>Value ({currency})</Label>
           <Input id={`value${idSuffix}`} name="value" type="number" step="0.01" defaultValue={deal?.value ?? "0"} required />
         </div>
         <div className="space-y-2">
@@ -142,7 +144,7 @@ export default async function CrmDealsPage({
             title="New deal"
             action={upsertDeal}
           >
-            <DealFields contactItems={contactItems} ownerItems={ownerItems} />
+            <DealFields contactItems={contactItems} ownerItems={ownerItems} currency={tenant.organization.currency ?? "GHS"} />
           </EntityDialog>
         ) : null}
       </div>
@@ -166,7 +168,7 @@ export default async function CrmDealsPage({
             <TableRow>
               <TableHead>Title</TableHead>
               <TableHead>Contact</TableHead>
-              <TableHead>Value</TableHead>
+              <TableHead>Value ({tenant.organization.currency})</TableHead>
               <TableHead>Stage</TableHead>
               {canManage ? <TableHead /> : null}
             </TableRow>
@@ -179,7 +181,7 @@ export default async function CrmDealsPage({
                 <TableRow key={deal.id}>
                   <TableCell className="font-medium">{deal.title}</TableCell>
                   <TableCell className="text-muted-foreground">{deal.contact?.fullName ?? "-"}</TableCell>
-                  <TableCell className="text-muted-foreground">{Number(deal.value).toFixed(2)}</TableCell>
+                  <TableCell className="text-muted-foreground">{formatMoney(deal.value, tenant.organization.currency)}</TableCell>
                   <TableCell>
                     <Badge variant={STAGE_BADGE[deal.stage]}>{STAGE_LABELS[deal.stage]}</Badge>
                   </TableCell>
@@ -215,7 +217,7 @@ export default async function CrmDealsPage({
                           submitLabel="Save changes"
                         >
                           <input type="hidden" name="id" value={deal.id} />
-                          <DealFields deal={{ ...deal, value: deal.value.toString() }} contactItems={contactItems} ownerItems={ownerItems} />
+                          <DealFields deal={{ ...deal, value: deal.value.toString() }} contactItems={contactItems} ownerItems={ownerItems} currency={tenant.organization.currency ?? "GHS"} />
                         </EntityDialog>
                       </div>
                     </TableCell>

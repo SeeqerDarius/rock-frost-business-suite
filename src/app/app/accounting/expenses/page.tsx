@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { listExpenses, listExpenseCategories } from "@/modules/accounting/service";
 import { createNewExpense, approveExistingExpense, rejectExistingExpense, payExistingExpense } from "./actions";
 
@@ -72,7 +73,7 @@ export default async function AccountingExpensesPage({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="amount">Amount</Label>
+                <Label htmlFor="amount">Amount ({tenant.organization.currency})</Label>
                 <Input id="amount" name="amount" type="number" step="0.01" required />
               </div>
             </div>
@@ -108,7 +109,7 @@ export default async function AccountingExpensesPage({
               <TableHead>Number</TableHead>
               <TableHead>Vendor</TableHead>
               <TableHead>Category</TableHead>
-              <TableHead>Amount</TableHead>
+              <TableHead>Amount ({tenant.organization.currency})</TableHead>
               <TableHead>Status</TableHead>
               {canManage ? <TableHead /> : null}
             </TableRow>
@@ -119,7 +120,7 @@ export default async function AccountingExpensesPage({
                 <TableCell className="font-mono text-xs">{expense.expenseNumber}</TableCell>
                 <TableCell className="font-medium">{expense.vendorName}</TableCell>
                 <TableCell className="text-muted-foreground">{expense.category?.name ?? "-"}</TableCell>
-                <TableCell className="text-muted-foreground">{Number(expense.amount).toFixed(2)}</TableCell>
+                <TableCell className="text-muted-foreground">{formatMoney(expense.amount, tenant.organization.currency)}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[expense.status]}>{expense.status}</Badge>
                 </TableCell>

@@ -33,6 +33,7 @@ export default async function FleetReportsPage() {
 
   const report = await getFleetManagementReport(tenant.organizationId);
   const summary = report.summary;
+  const currency = tenant.organization.currency ?? "GHS";
 
   const stats = [
     { label: "Total vehicles", value: summary.vehicleCount },
@@ -41,12 +42,12 @@ export default async function FleetReportsPage() {
     { label: "Vehicles under maintenance", value: summary.maintenanceVehicleCount },
     { label: "Pending maintenance", value: summary.pendingMaintenanceCount },
     { label: "Active work & pay contracts", value: summary.activeContractCount },
-    { label: "Weekly remittances", value: report.weeklyCollections.toFixed(2) },
+    { label: "Weekly remittances", value: `${currency} ${report.weeklyCollections.toFixed(2)}` },
     { label: "Pending payments", value: report.pendingPaymentCount },
     { label: "Documents due", value: report.expiringDocumentCount },
     { label: "Repairs awaiting verification", value: report.unverifiedRepairCount },
-    { label: "Outstanding Work & Pay", value: `${tenant.organization.currency ?? "GHS"} ${summary.outstandingBalance.toFixed(2)}` },
-    { label: "Monthly verified revenue", value: `${tenant.organization.currency ?? "GHS"} ${summary.monthlyRevenue.toFixed(2)}` },
+    { label: "Outstanding Work & Pay", value: `${currency} ${summary.outstandingBalance.toFixed(2)}` },
+    { label: "Monthly verified revenue", value: `${currency} ${summary.monthlyRevenue.toFixed(2)}` },
   ];
 
   return (
@@ -96,10 +97,10 @@ export default async function FleetReportsPage() {
             <div key={row.owner.id} className="grid gap-2 rounded-lg border p-3 text-sm sm:grid-cols-6">
               <div><p className="text-muted-foreground">Owner</p><p className="font-medium">{row.owner.name}</p></div>
               <div><p className="text-muted-foreground">Vehicles</p><p className="font-medium">{row.vehicleCount}</p></div>
-              <div><p className="text-muted-foreground">Collected</p><p className="font-medium">{row.amountCollected.toFixed(2)}</p></div>
-              <div><p className="text-muted-foreground">Outstanding</p><p className="font-medium">{row.outstanding.toFixed(2)}</p></div>
-              <div><p className="text-muted-foreground">Maintenance</p><p className="font-medium">{row.maintenanceCost.toFixed(2)}</p></div>
-              <div><p className="text-muted-foreground">Net cash</p><p className="font-medium">{row.netCashPosition.toFixed(2)}</p></div>
+              <div><p className="text-muted-foreground">Collected</p><p className="font-medium">{currency} {row.amountCollected.toFixed(2)}</p></div>
+              <div><p className="text-muted-foreground">Outstanding</p><p className="font-medium">{currency} {row.outstanding.toFixed(2)}</p></div>
+              <div><p className="text-muted-foreground">Maintenance</p><p className="font-medium">{currency} {row.maintenanceCost.toFixed(2)}</p></div>
+              <div><p className="text-muted-foreground">Net cash</p><p className="font-medium">{currency} {row.netCashPosition.toFixed(2)}</p></div>
             </div>
           ))}
         </CardContent>
@@ -111,7 +112,7 @@ export default async function FleetReportsPage() {
           <CardDescription>Total recorded fleet payments so far this calendar month.</CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-3xl font-semibold">{summary.paymentsThisMonthTotal.toFixed(2)}</p>
+          <p className="text-3xl font-semibold">{currency} {summary.paymentsThisMonthTotal.toFixed(2)}</p>
         </CardContent>
       </Card>
     </div>

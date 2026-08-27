@@ -5,6 +5,7 @@ import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { Prisma } from "@prisma/client";
 import { sendSms } from "@/lib/sms";
 import { payrollPayslipIssuedSms } from "@/lib/sms-templates";
+import { formatMoney } from "@/lib/currency";
 
 /**
  * Fresh module (no reference implementation to migrate from). Every function
@@ -173,13 +174,16 @@ export async function processRun(organizationId: string, runId: string) {
   // slow network call held across every payslip) must never roll back or
   // stall a payroll run that has already succeeded.
   if (settings.smsNotificationsEnabled) {
-    const payslips = await db.payrollPayslip.findMany({ where: { payrollRunId: runId }, include: { employee: true } });
+    const [payslips, organization] = await Promise.all([
+      db.payrollPayslip.findMany({ where: { payrollRunId: runId }, include: { employee: true } }),
+      db.organization.findUnique({ where: { id: organizationId }, select: { currency: true } }),
+    ]);
     await Promise.all(payslips.map((payslip) => {
       const phone = payslip.employee.mobilePhone || payslip.employee.phone;
       if (!phone) return undefined;
       return sendSms({
         to: phone,
-        ...payrollPayslipIssuedSms({ employeeName: payslip.employee.fullName, netPay: payslip.netPay.toFixed(2), payDate: run.payDate }),
+        ...payrollPayslipIssuedSms({ employeeName: payslip.employee.fullName, netPay: formatMoney(payslip.netPay, organization?.currency), payDate: run.payDate }),
         purpose: "PAYROLL_PAYSLIP_ISSUED",
         organizationId,
         relatedType: "PayrollPayslip",

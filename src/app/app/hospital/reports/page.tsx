@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { getHospitalSummary, listHospitalAppointments, listHospitalLabOrders, listHospitalAdmissions } from "@/modules/hospital/service";
 import { ReportExportLinks } from "@/components/reports/report-export-links";
 
@@ -63,7 +64,7 @@ export default async function HospitalReportsPage() {
         <Card>
           <CardHeader><CardTitle>Billing</CardTitle><CardDescription>Outstanding balance across open invoices.</CardDescription></CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
-            <div><p className="text-xs text-muted-foreground">Outstanding total</p><p className="text-lg font-medium">{summary.outstandingTotal.toFixed(2)}</p></div>
+            <div><p className="text-xs text-muted-foreground">Outstanding total</p><p className="text-lg font-medium">{formatMoney(summary.outstandingTotal, tenant.organization.currency)}</p></div>
             <div><p className="text-xs text-muted-foreground">Active clinical alerts</p><p className="text-lg font-medium">{summary.activeAlerts}</p></div>
           </CardContent>
         </Card>

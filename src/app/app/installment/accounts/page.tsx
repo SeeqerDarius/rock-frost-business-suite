@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { resolveInstallmentAccessScope } from "@/modules/installment/access";
 import {
   listAccounts,
@@ -87,7 +88,8 @@ export default async function InstallmentAccountsPage({
 
   const customerItems: Record<string, string> = Object.fromEntries(customers.map((c) => [c.id, `${c.fullName} (${c.customerCode})`]));
   const activeProducts = products.filter((p) => p.active);
-  const productItems: Record<string, string> = Object.fromEntries(activeProducts.map((p) => [p.id, `${p.name} - ${Number(p.price).toFixed(2)}`]));
+  const currency = tenant.organization.currency;
+  const productItems: Record<string, string> = Object.fromEntries(activeProducts.map((p) => [p.id, `${p.name} - ${formatMoney(p.price, currency)}`]));
 
   const now = new Date();
 
@@ -142,10 +144,10 @@ export default async function InstallmentAccountsPage({
               <Input id="startDate" name="startDate" type="date" defaultValue={now.toISOString().slice(0, 10)} max={now.toISOString().slice(0, 10)} required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="initialDeposit">Initial deposit (optional)</Label>
+              <Label htmlFor="initialDeposit">Initial deposit (optional, {currency})</Label>
               <Input id="initialDeposit" name="initialDeposit" type="number" step="0.01" />
               {Number(settings.minimumDeposit) > 0 ? (
-                <p className="text-xs text-muted-foreground">Minimum required: {Number(settings.minimumDeposit).toFixed(2)}.</p>
+                <p className="text-xs text-muted-foreground">Minimum required: {formatMoney(settings.minimumDeposit, currency)}.</p>
               ) : null}
               {Number(settings.administrationFeePercent) > 0 ? (
                 <p className="text-xs text-muted-foreground">
@@ -176,7 +178,7 @@ export default async function InstallmentAccountsPage({
             <TableRow>
               <TableHead>Customer</TableHead>
               <TableHead>Product</TableHead>
-              <TableHead>Balance</TableHead>
+              <TableHead>Balance ({currency})</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Delivery</TableHead>
               <TableHead />
@@ -196,7 +198,7 @@ export default async function InstallmentAccountsPage({
                   <TableCell className="font-medium">{account.customer.fullName}</TableCell>
                   <TableCell className="text-muted-foreground">{account.product.name}</TableCell>
                   <TableCell className="text-muted-foreground">
-                    {Number(account.balance).toFixed(2)} / {Number(account.targetAmount).toFixed(2)}
+                    {formatMoney(account.balance, currency)} / {formatMoney(account.targetAmount, currency)}
                   </TableCell>
                   <TableCell>
                     <Badge variant={STATUS_BADGE[effectiveStatus]}>{effectiveStatus}</Badge>

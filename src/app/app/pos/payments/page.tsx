@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { listPayments } from "@/modules/pos/service";
 
 const METHOD_LABEL: Record<string, string> = {
@@ -30,6 +31,7 @@ export default async function PosPaymentsPage() {
     totals[payment.method] = (totals[payment.method] ?? 0) + Number(payment.amount);
     return totals;
   }, {});
+  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
 
   return (
     <div className="space-y-6">
@@ -43,7 +45,7 @@ export default async function PosPaymentsPage() {
             {Object.entries(totalByMethod).map(([method, total]) => (
               <div key={method} className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">{METHOD_LABEL[method] ?? method}</p>
-                <p className="text-lg font-semibold">{total.toFixed(2)}</p>
+                <p className="text-lg font-semibold">{money(total)}</p>
               </div>
             ))}
           </div>
@@ -55,7 +57,7 @@ export default async function PosPaymentsPage() {
                 <TableHead>Register</TableHead>
                 <TableHead>Method</TableHead>
                 <TableHead>Reference</TableHead>
-                <TableHead>Amount</TableHead>
+                <TableHead>Amount ({tenant.organization.currency})</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -66,7 +68,7 @@ export default async function PosPaymentsPage() {
                   <TableCell className="text-muted-foreground">{payment.sale.register.name}</TableCell>
                   <TableCell>{METHOD_LABEL[payment.method] ?? payment.method}</TableCell>
                   <TableCell className="text-muted-foreground">{payment.reference ?? "-"}</TableCell>
-                  <TableCell className="font-medium">{Number(payment.amount).toFixed(2)}</TableCell>
+                  <TableCell className="font-medium">{money(payment.amount)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

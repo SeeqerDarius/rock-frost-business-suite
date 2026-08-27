@@ -2,6 +2,7 @@ import { Users, CalendarDays, Stethoscope, BedDouble, FlaskConical, Receipt, Ale
 import { PageHeader } from "@/components/layout/page-header";
 import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
+import { formatMoney } from "@/lib/currency";
 import { getHospitalSummary } from "@/modules/hospital/service";
 
 export default async function HospitalOverviewPage() {
@@ -14,7 +15,7 @@ export default async function HospitalOverviewPage() {
     { label: "Open encounters", value: summary.openEncounters, description: "Visits not yet closed", icon: <Stethoscope className="size-4" />, href: "/app/hospital/encounters" },
     { label: "Beds occupied", value: `${summary.occupiedBeds}/${summary.totalBeds}`, description: "Occupied of total active beds", icon: <BedDouble className="size-4" />, href: "/app/hospital/admissions" },
     { label: "Pending lab items", value: summary.pendingLabItems, description: "Ordered tests not yet verified", icon: <FlaskConical className="size-4" />, href: "/app/hospital/laboratory" },
-    { label: "Outstanding balance", value: summary.outstandingTotal.toFixed(2), description: "Unpaid across open invoices", icon: <Receipt className="size-4" />, href: "/app/hospital/billing" },
+    { label: "Outstanding balance", value: formatMoney(summary.outstandingTotal, tenant.organization.currency), description: "Unpaid across open invoices", icon: <Receipt className="size-4" />, href: "/app/hospital/billing" },
     { label: "Active clinical alerts", value: summary.activeAlerts, description: "Unresolved patient alerts", icon: <AlertTriangle className="size-4" />, href: "/app/hospital/patients" },
   ];
 

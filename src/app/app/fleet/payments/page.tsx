@@ -145,7 +145,7 @@ export default async function FleetPaymentsPage({
               <TableHead>Reference</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Type</TableHead>
-              <TableHead>Amount</TableHead>
+              <TableHead>Amount ({tenant.organization.currency ?? "GHS"})</TableHead>
               <TableHead>Status</TableHead>
               {canManage ? <TableHead /> : null}
             </TableRow>
@@ -156,7 +156,7 @@ export default async function FleetPaymentsPage({
                 <TableCell className="font-medium">{payment.reference}</TableCell>
                 <TableCell className="text-muted-foreground">{payment.date.toLocaleDateString()}</TableCell>
                 <TableCell className="text-muted-foreground">{TYPE_LABELS[payment.type]}</TableCell>
-                <TableCell className="text-muted-foreground">{Number(payment.amount).toFixed(2)}</TableCell>
+                <TableCell className="text-muted-foreground">{tenant.organization.currency ?? "GHS"} {Number(payment.amount).toFixed(2)}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[payment.status]}>{payment.status}</Badge>
                 </TableCell>

@@ -5,6 +5,7 @@ import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { getAnalyticsOverview } from "@/modules/analytics/service";
 
 export default async function AnalyticsOverviewPage() {
@@ -20,11 +21,12 @@ export default async function AnalyticsOverviewPage() {
   }
 
   const summary = await getAnalyticsOverview(tenant.organizationId, tenant.enabledModuleKeys);
+  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
 
   const stats = [
-    { label: "Total revenue", value: summary.totalRevenue.toFixed(2), description: "Combined revenue across enabled modules", icon: <Wallet className="size-4" />, href: "/app/analytics/financial" },
-    { label: "Pipeline value", value: summary.pipelineValue.toFixed(2), description: "Open CRM deal value in the pipeline", icon: <Handshake className="size-4" />, href: "/app/analytics/sales" },
-    { label: "Vehicles / stock value", value: `${summary.vehicleCount} / ${summary.stockValue.toFixed(2)}`, description: "Fleet size and inventory value on hand", icon: <Truck className="size-4" />, href: "/app/analytics/operations" },
+    { label: "Total revenue", value: money(summary.totalRevenue), description: "Combined revenue across enabled modules", icon: <Wallet className="size-4" />, href: "/app/analytics/financial" },
+    { label: "Pipeline value", value: money(summary.pipelineValue), description: "Open CRM deal value in the pipeline", icon: <Handshake className="size-4" />, href: "/app/analytics/sales" },
+    { label: "Vehicles / stock value", value: `${summary.vehicleCount} / ${money(summary.stockValue)}`, description: "Fleet size and inventory value on hand", icon: <Truck className="size-4" />, href: "/app/analytics/operations" },
     { label: "Active employees", value: summary.activeEmployees, description: "Employees currently on record", icon: <UsersRound className="size-4" />, href: "/app/analytics/people" },
   ];
 
@@ -46,19 +48,19 @@ export default async function AnalyticsOverviewPage() {
         <CardContent className="grid gap-3 sm:grid-cols-3">
           <div>
             <p className="text-xs text-muted-foreground">Cash balance</p>
-            <p className="text-lg font-medium">{summary.cashBalance.toFixed(2)}</p>
+            <p className="text-lg font-medium">{money(summary.cashBalance)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Net income</p>
-            <p className="text-lg font-medium">{summary.netIncome.toFixed(2)}</p>
+            <p className="text-lg font-medium">{money(summary.netIncome)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Open procurement orders</p>
-            <p className="text-lg font-medium">{summary.openOrderValue.toFixed(2)}</p>
+            <p className="text-lg font-medium">{money(summary.openOrderValue)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Last payroll run (net)</p>
-            <p className="text-lg font-medium">{summary.lastPayrollNet.toFixed(2)}</p>
+            <p className="text-lg font-medium">{money(summary.lastPayrollNet)}</p>
           </div>
         </CardContent>
       </Card>

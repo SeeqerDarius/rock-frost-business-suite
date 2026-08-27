@@ -35,6 +35,7 @@ export default async function FleetInvestorPage() {
     }),
     { vehicles: 0, collected: 0, outstanding: 0, maintenance: 0, net: 0 },
   );
+  const currency = tenant.organization.currency ?? "GHS";
 
   return (
     <div className="space-y-6">
@@ -42,10 +43,10 @@ export default async function FleetInvestorPage() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {[
           ["Vehicles", totals.vehicles.toString()],
-          ["Collected", totals.collected.toFixed(2)],
-          ["Outstanding", totals.outstanding.toFixed(2)],
-          ["Maintenance", totals.maintenance.toFixed(2)],
-          ["Net cash", totals.net.toFixed(2)],
+          ["Collected", `${currency} ${totals.collected.toFixed(2)}`],
+          ["Outstanding", `${currency} ${totals.outstanding.toFixed(2)}`],
+          ["Maintenance", `${currency} ${totals.maintenance.toFixed(2)}`],
+          ["Net cash", `${currency} ${totals.net.toFixed(2)}`],
         ].map(([label, value]) => (
           <Card key={label}><CardHeader className="pb-2"><CardDescription>{label}</CardDescription><CardTitle>{value}</CardTitle></CardHeader></Card>
         ))}
@@ -65,10 +66,10 @@ export default async function FleetInvestorPage() {
               <CardContent className="grid grid-cols-2 gap-3 text-sm">
                 <div><p className="text-muted-foreground">Vehicles active</p><p className="font-medium">{row.activeVehicleCount} / {row.vehicleCount}</p></div>
                 <div><p className="text-muted-foreground">Active agreements</p><p className="font-medium">{row.activeContractCount}</p></div>
-                <div><p className="text-muted-foreground">Contract value</p><p className="font-medium">{row.contractValue.toFixed(2)}</p></div>
-                <div><p className="text-muted-foreground">Collections</p><p className="font-medium">{row.amountCollected.toFixed(2)}</p></div>
-                <div><p className="text-muted-foreground">Outstanding</p><p className="font-medium">{row.outstanding.toFixed(2)}</p></div>
-                <div><p className="text-muted-foreground">Net cash</p><p className="font-medium">{row.netCashPosition.toFixed(2)}</p></div>
+                <div><p className="text-muted-foreground">Contract value</p><p className="font-medium">{currency} {row.contractValue.toFixed(2)}</p></div>
+                <div><p className="text-muted-foreground">Collections</p><p className="font-medium">{currency} {row.amountCollected.toFixed(2)}</p></div>
+                <div><p className="text-muted-foreground">Outstanding</p><p className="font-medium">{currency} {row.outstanding.toFixed(2)}</p></div>
+                <div><p className="text-muted-foreground">Net cash</p><p className="font-medium">{currency} {row.netCashPosition.toFixed(2)}</p></div>
               </CardContent>
             </Card>
           ))}

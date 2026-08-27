@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { getProcurementSummary } from "@/modules/procurement/service";
 import { ReportExportLinks } from "@/components/reports/report-export-links";
 
@@ -25,7 +26,7 @@ export default async function ProcurementReportsPage() {
     { label: "Pending requests", value: summary.pendingRequestCount },
     { label: "Total requests", value: summary.totalRequestCount },
     { label: "Open orders", value: summary.openOrderCount },
-    { label: "Open order value", value: summary.openOrderValue.toFixed(2) },
+    { label: "Open order value", value: formatMoney(summary.openOrderValue, tenant.organization.currency) },
     { label: "Received orders", value: summary.receivedOrderCount },
     { label: "Total orders", value: summary.totalOrderCount },
   ];

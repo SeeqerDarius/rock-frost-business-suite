@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { listMedicines } from "@/modules/pharmacy/service";
 import { addMedicine } from "../actions";
 import { PharmacyStatusBanner } from "../status-banner";
@@ -32,6 +33,7 @@ export default async function Page({
   const t = await requireModuleAccess("pharmacy");
   const items = await listMedicines(t.organizationId);
   const can = hasPermission(t, PERMISSIONS.PHARMACY_MEDICINES_MANAGE);
+  const currency = t.organization.currency;
 
   return (
     <div className="space-y-6">
@@ -82,7 +84,7 @@ export default async function Page({
                 <Input id="medicine-barcode" name="barcode" />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="medicine-sellingPrice" required>Selling price</Label>
+                <Label htmlFor="medicine-sellingPrice" required>Selling price ({t.organization.currency})</Label>
                 <Input id="medicine-sellingPrice" name="sellingPrice" type="number" step="0.01" required />
               </div>
               <div className="space-y-2">
@@ -111,7 +113,7 @@ export default async function Page({
               <TableHead>SKU</TableHead>
               <TableHead>Medicine</TableHead>
               <TableHead>Class</TableHead>
-              <TableHead>Price</TableHead>
+              <TableHead>Price ({currency})</TableHead>
               <TableHead>Eligible stock</TableHead>
             </TableRow>
           </TableHeader>
@@ -124,7 +126,7 @@ export default async function Page({
                   <div className="text-xs text-muted-foreground">{[i.genericName, i.strength, i.dosageForm].filter(Boolean).join(" · ")}</div>
                 </TableCell>
                 <TableCell><Badge variant={i.medicineClass === "CONTROLLED" ? "destructive" : "outline"}>{i.medicineClass.replaceAll("_", " ")}</Badge></TableCell>
-                <TableCell>{i.sellingPrice.toFixed(2)}</TableCell>
+                <TableCell>{formatMoney(i.sellingPrice, currency)}</TableCell>
                 <TableCell>{i.batches.filter((b) => b.status === "AVAILABLE" && b.expiryDate > new Date()).reduce((s, b) => s + b.quantity, 0)} {i.unit}</TableCell>
               </TableRow>
             ))}

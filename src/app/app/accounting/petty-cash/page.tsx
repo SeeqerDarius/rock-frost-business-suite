@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { listPettyCashFunds, listExpenseCategories } from "@/modules/accounting/service";
 import { createFundAction, recordExpenseAction, replenishFundAction, closeFundAction } from "./actions";
 
@@ -31,6 +32,7 @@ export default async function PettyCashPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("accounting");
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_CASHBOOK_MANAGE);
+  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
   const [funds, categories] = await Promise.all([
     listPettyCashFunds(tenant.organizationId),
     listExpenseCategories(tenant.organizationId),
@@ -53,7 +55,7 @@ export default async function PettyCashPage({
               <Input id="custodianName" name="custodianName" placeholder="Who holds this float" required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="floatAmount">Float amount</Label>
+              <Label htmlFor="floatAmount">Float amount ({tenant.organization.currency})</Label>
               <Input id="floatAmount" name="floatAmount" type="number" step="0.01" required />
               <p className="text-xs text-muted-foreground">Issued from the main Cash account and posted as a journal entry.</p>
             </div>
@@ -88,7 +90,7 @@ export default async function PettyCashPage({
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-muted-foreground">Current balance / float</p>
-                  <p className="text-2xl font-semibold">{fund.balance.toFixed(2)} <span className="text-sm font-normal text-muted-foreground">/ {Number(fund.floatAmount).toFixed(2)}</span></p>
+                  <p className="text-2xl font-semibold">{money(fund.balance)} <span className="text-sm font-normal text-muted-foreground">/ {money(fund.floatAmount)}</span></p>
                 </div>
               </div>
 
@@ -112,7 +114,7 @@ export default async function PettyCashPage({
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor={`expense-amount-${fund.id}`}>Amount</Label>
+                        <Label htmlFor={`expense-amount-${fund.id}`}>Amount ({tenant.organization.currency})</Label>
                         <Input id={`expense-amount-${fund.id}`} name="amount" type="number" step="0.01" required />
                       </div>
                     </div>
@@ -129,8 +131,8 @@ export default async function PettyCashPage({
                   <EntityDialog trigger={<Button size="sm" variant="outline">Replenish</Button>} title={`Replenish ${fund.name}`} description="Leave the amount blank to top the fund back up to its full float automatically." action={replenishFundAction} submitLabel="Replenish">
                     <input type="hidden" name="fundId" value={fund.id} />
                     <div className="space-y-2">
-                      <Label htmlFor={`replenish-amount-${fund.id}`}>Amount</Label>
-                      <Input id={`replenish-amount-${fund.id}`} name="amount" type="number" step="0.01" placeholder={`Auto: ${(Number(fund.floatAmount) - fund.balance).toFixed(2)}`} />
+                      <Label htmlFor={`replenish-amount-${fund.id}`}>Amount ({tenant.organization.currency})</Label>
+                      <Input id={`replenish-amount-${fund.id}`} name="amount" type="number" step="0.01" placeholder={`Auto: ${money(Number(fund.floatAmount) - fund.balance)}`} />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor={`replenish-notes-${fund.id}`}>Notes</Label>
@@ -151,7 +153,7 @@ export default async function PettyCashPage({
                       <TableHead>Date</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Description</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead className="text-right">Amount ({tenant.organization.currency})</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -160,7 +162,7 @@ export default async function PettyCashPage({
                         <TableCell className="text-muted-foreground">{txn.createdAt.toLocaleDateString()}</TableCell>
                         <TableCell><Badge variant="outline">{txn.type}</Badge></TableCell>
                         <TableCell>{txn.description}{txn.expenseCategory ? <span className="block text-xs text-muted-foreground">{txn.expenseCategory.name}</span> : null}</TableCell>
-                        <TableCell className="text-right font-mono text-xs">{Number(txn.amount).toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-mono text-xs">{money(txn.amount)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

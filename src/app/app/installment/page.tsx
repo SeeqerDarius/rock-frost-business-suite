@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
+import { formatMoney } from "@/lib/currency";
 import {
   listCustomers,
   listAccounts,
@@ -55,7 +56,7 @@ export default async function InstallmentOverviewPage() {
     ...(canManageProducts
       ? [{ label: "Products", value: products.length, description: "Products available for installment sale", icon: <Package className="size-4" />, href: "/app/installment/products" }]
       : []),
-    { label: "Outstanding balance", value: outstandingBalance.toFixed(2), description: "Total balance still owed across accounts", icon: <Wallet className="size-4" />, href: "/app/installment/accounts" },
+    { label: "Outstanding balance", value: formatMoney(outstandingBalance, tenant.organization.currency), description: "Total balance still owed across accounts", icon: <Wallet className="size-4" />, href: "/app/installment/accounts" },
   ];
 
   return (

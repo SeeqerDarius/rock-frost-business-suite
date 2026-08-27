@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/layout/page-header";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { getTaxReturnWorkingReport, listTaxCodes, listTaxPeriods } from "@/modules/accounting/tax-service";
 import { changeTaxPeriodAction, createTaxCodeAction, createTaxPeriodAction } from "./actions";
 
@@ -18,7 +19,7 @@ export default async function AccountingTaxPage({ searchParams }: { searchParams
   const canConfigure = hasPermission(tenant, PERMISSIONS.ACCOUNTING_SETTINGS_MANAGE);
   const canManagePeriods = hasPermission(tenant, PERMISSIONS.ACCOUNTING_PERIODS_MANAGE);
   const [codes, periods, report] = await Promise.all([listTaxCodes(tenant.organizationId), listTaxPeriods(tenant.organizationId), getTaxReturnWorkingReport(tenant.organizationId, params.period)]);
-  const money = (value: { toFixed(digits: number): string }) => value.toFixed(2);
+  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
   return <div className="space-y-6">
     <div className="flex flex-wrap items-start justify-between gap-3"><PageHeader title="Tax and VAT" description="Effective-dated tax codes, monthly control periods, and a working VAT return supported by transaction evidence." /><div className="flex gap-2">
       {canConfigure ? <EntityDialog trigger={<Button size="sm" variant="outline"><Plus />Tax code</Button>} title="Create tax code" action={createTaxCodeAction}><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Code</Label><Input name="code" placeholder="GH-STD-2027" required /></div><div className="space-y-2"><Label>Jurisdiction</Label><Input name="jurisdiction" defaultValue="GH" required /></div></div><div className="space-y-2"><Label>Name</Label><Input name="name" required /></div><div className="space-y-2"><Label>Treatment</Label><select name="treatment" className="h-10 w-full rounded-md border bg-background px-3"><option value="STANDARD">Standard</option><option value="ZERO_RATED">Zero-rated</option><option value="EXEMPT">Exempt</option><option value="RELIEVED">Relieved</option><option value="OUT_OF_SCOPE">Out of scope</option></select></div><div className="grid gap-4 sm:grid-cols-3"><div><Label>VAT %</Label><Input name="vatRate" type="number" step="0.0001" defaultValue="15" required /></div><div><Label>NHIL %</Label><Input name="nhilRate" type="number" step="0.0001" defaultValue="2.5" required /></div><div><Label>GETFund %</Label><Input name="getfundRate" type="number" step="0.0001" defaultValue="2.5" required /></div></div><div className="grid gap-4 sm:grid-cols-2"><div><Label>Effective from</Label><Input name="effectiveFrom" type="date" required /></div><div><Label>Effective to</Label><Input name="effectiveTo" type="date" /></div></div></EntityDialog> : null}

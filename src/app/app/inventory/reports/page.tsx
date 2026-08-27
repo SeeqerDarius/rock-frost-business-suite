@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { getInventorySummary } from "@/modules/inventory/service";
 import { ReportExportLinks } from "@/components/reports/report-export-links";
 
@@ -23,7 +24,7 @@ export default async function InventoryReportsPage() {
   const summary = await getInventorySummary(tenant.organizationId);
 
   const stats = [
-    { label: "Total stock value", value: summary.totalStockValue.toFixed(2) },
+    { label: "Total stock value", value: formatMoney(summary.totalStockValue, tenant.organization.currency) },
     { label: "Active items", value: `${summary.activeItemCount} / ${summary.itemCount}` },
     { label: "Warehouses", value: summary.warehouseCount },
     { label: "Movements this month", value: summary.movementsThisMonth },

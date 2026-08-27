@@ -39,6 +39,7 @@ export default async function FleetWorkAndPayPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_WORKANDPAY_MANAGE);
+  const currency = tenant.organization.currency ?? "GHS";
   const [contracts, vehicles] = await Promise.all([
     listFleetWorkAndPayContracts(tenant.organizationId),
     listFleetVehicles(tenant.organizationId),
@@ -88,11 +89,11 @@ export default async function FleetWorkAndPayPage({
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="contractAmount">Contract amount</Label>
+                <Label htmlFor="contractAmount">Contract amount ({currency})</Label>
                 <Input id="contractAmount" name="contractAmount" type="number" step="0.01" required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="depositAmount">Deposit</Label>
+                <Label htmlFor="depositAmount">Deposit ({currency})</Label>
                 <Input id="depositAmount" name="depositAmount" type="number" step="0.01" defaultValue="0" />
               </div>
             </div>
@@ -105,7 +106,7 @@ export default async function FleetWorkAndPayPage({
                 </select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="scheduledPaymentAmount">Required instalment amount</Label>
+                <Label htmlFor="scheduledPaymentAmount">Required instalment amount ({currency})</Label>
                 <Input id="scheduledPaymentAmount" name="scheduledPaymentAmount" type="number" min="0.01" step="0.01" required />
               </div>
             </div>
@@ -161,8 +162,8 @@ export default async function FleetWorkAndPayPage({
                 <TableCell className="text-muted-foreground">{contract.vehicle.assetTag}</TableCell>
                 <TableCell className="text-muted-foreground">{contract.driver?.name ?? contract.clientName}</TableCell>
                 <TableCell className="text-muted-foreground">
-                  {Number(contract.amountPaid).toFixed(2)} / {Number(contract.contractAmount).toFixed(2)} (
-                  {Number(contract.completionPercentage).toFixed(0)}%). {Number(contract.scheduledPaymentAmount ?? contract.weeklyPaymentAmount).toFixed(2)} per {contract.paymentSchedule === "DAILY" ? "day" : "week"}
+                  {currency} {Number(contract.amountPaid).toFixed(2)} / {currency} {Number(contract.contractAmount).toFixed(2)} (
+                  {Number(contract.completionPercentage).toFixed(0)}%). {currency} {Number(contract.scheduledPaymentAmount ?? contract.weeklyPaymentAmount).toFixed(2)} per {contract.paymentSchedule === "DAILY" ? "day" : "week"}
                 </TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[contract.contractStatus]}>{contract.contractStatus}</Badge>
@@ -183,7 +184,7 @@ export default async function FleetWorkAndPayPage({
                         >
                           <input type="hidden" name="id" value={contract.id} />
                           <div className="space-y-2">
-                            <Label htmlFor={`amount-${contract.id}`}>Amount</Label>
+                            <Label htmlFor={`amount-${contract.id}`}>Amount ({currency})</Label>
                             <Input
                               id={`amount-${contract.id}`}
                               name="amount"

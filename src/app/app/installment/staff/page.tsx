@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import {
   listAssignableStaffUsers,
   listStaff,
@@ -132,6 +133,7 @@ export default async function InstallmentStaffPage({
       </div>
     );
   }
+  const currency = tenant.organization.currency;
 
   const [staffList, settings, assignableUsers, salaryPayments] = await Promise.all([
     listStaff(tenant.organizationId),
@@ -202,7 +204,7 @@ export default async function InstallmentStaffPage({
               <TableHead>Code</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Phone</TableHead>
-              <TableHead>Monthly salary</TableHead>
+              <TableHead>Monthly salary ({currency})</TableHead>
               <TableHead>Login</TableHead>
               <TableHead>Status</TableHead>
               {canManage ? <TableHead /> : null}
@@ -214,7 +216,7 @@ export default async function InstallmentStaffPage({
                 <TableCell className="font-medium">{staff.code}</TableCell>
                 <TableCell>{staff.fullName}</TableCell>
                 <TableCell className="text-muted-foreground">{staff.phone ?? "-"}</TableCell>
-                <TableCell className="text-muted-foreground">{effectiveSalaries[index].toFixed(2)}</TableCell>
+                <TableCell className="text-muted-foreground">{formatMoney(effectiveSalaries[index], currency)}</TableCell>
                 <TableCell className="text-muted-foreground">
                   {staff.userId ? loginLabels.get(staff.userId) ?? "Inactive or unavailable login" : "Not linked"}
                 </TableCell>
@@ -237,7 +239,7 @@ export default async function InstallmentStaffPage({
                         <input type="hidden" name="staffId" value={staff.id} />
                         <div className="grid gap-4 sm:grid-cols-2">
                           <div className="space-y-2">
-                            <Label htmlFor={`amount-${staff.id}`}>Amount</Label>
+                            <Label htmlFor={`amount-${staff.id}`}>Amount ({currency})</Label>
                             <Input id={`amount-${staff.id}`} name="amount" type="number" step="0.01" defaultValue={effectiveSalaries[index].toFixed(2)} required />
                           </div>
                           <div className="space-y-2">
@@ -309,14 +311,14 @@ export default async function InstallmentStaffPage({
         <div className="space-y-3">
           <h2 className="text-lg font-semibold">Salary payment history</h2>
           <Table>
-            <TableHeader><TableRow><TableHead>Staff</TableHead><TableHead>Salary month</TableHead><TableHead>Paid on</TableHead><TableHead>Amount</TableHead><TableHead /></TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>Staff</TableHead><TableHead>Salary month</TableHead><TableHead>Paid on</TableHead><TableHead>Amount ({currency})</TableHead><TableHead /></TableRow></TableHeader>
             <TableBody>
               {salaryPayments.map((payment) => (
                 <TableRow key={payment.id}>
                   <TableCell>{staffList.find((staff) => staff.id === payment.staffId)?.fullName ?? "Former staff"}</TableCell>
                   <TableCell>{payment.salaryMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</TableCell>
                   <TableCell>{payment.paymentDate.toLocaleDateString()}</TableCell>
-                  <TableCell>{Number(payment.amount).toFixed(2)}</TableCell>
+                  <TableCell>{formatMoney(payment.amount, currency)}</TableCell>
                   <TableCell className="text-right">
                     <form action={removeSalaryPayment}>
                       <input type="hidden" name="id" value={payment.id} />

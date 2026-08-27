@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { getAccountingSummary, getStatementOfFinancialPosition, listAccounts, listJournalEntries } from "@/modules/accounting/service";
 import { ReportExportLinks } from "@/components/reports/report-export-links";
 
@@ -38,21 +39,24 @@ export default async function AccountingReportsPage() {
     listJournalEntries(tenant.organizationId),
   ]);
 
+  const currency = tenant.organization.currency;
+  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, currency);
+
   const revenueAccounts = accounts.filter((account) => account.type === "REVENUE").sort((a, b) => a.code.localeCompare(b.code));
   const revenueEntries = journalEntries
     .filter((entry) => entry.lines.some((line) => line.account.type === "REVENUE" && Number(line.credit) > 0))
     .slice(0, 25);
 
   const plStats = [
-    { label: "Total revenue", value: summary.totalRevenue.toFixed(2) },
-    { label: "Total expenses", value: summary.totalExpenses.toFixed(2) },
-    { label: "Net income", value: summary.netIncome.toFixed(2) },
+    { label: "Total revenue", value: money(summary.totalRevenue) },
+    { label: "Total expenses", value: money(summary.totalExpenses) },
+    { label: "Net income", value: money(summary.netIncome) },
   ];
 
   const balanceStats = [
-    { label: "Cash balance", value: summary.cashBalance.toFixed(2) },
-    { label: "Accounts receivable", value: summary.accountsReceivableBalance.toFixed(2) },
-    { label: "Petty cash (active funds)", value: `${summary.pettyCashBalance.toFixed(2)} (${summary.pettyCashFundCount})` },
+    { label: "Cash balance", value: money(summary.cashBalance) },
+    { label: "Accounts receivable", value: money(summary.accountsReceivableBalance) },
+    { label: "Petty cash (active funds)", value: `${money(summary.pettyCashBalance)} (${summary.pettyCashFundCount})` },
   ];
 
   return (
@@ -91,12 +95,12 @@ export default async function AccountingReportsPage() {
               {revenueAccounts.map((account) => (
                 <div key={account.id} className="flex items-center justify-between text-sm">
                   <span>{account.name} <span className="text-xs text-muted-foreground">({account.code})</span></span>
-                  <span className="font-mono text-xs">{account.balance.toFixed(2)}</span>
+                  <span className="font-mono text-xs">{money(account.balance)}</span>
                 </div>
               ))}
               <div className="mt-2 flex items-center justify-between border-t pt-2 text-sm font-medium">
                 <span>Total revenue</span>
-                <span>{summary.totalRevenue.toFixed(2)}</span>
+                <span>{money(summary.totalRevenue)}</span>
               </div>
             </div>
           )}
@@ -109,7 +113,7 @@ export default async function AccountingReportsPage() {
                     <th className="px-3 py-2 font-medium">Source</th>
                     <th className="px-3 py-2 font-medium">Description</th>
                     <th className="px-3 py-2 font-medium">Posting #</th>
-                    <th className="px-3 py-2 text-right font-medium">Amount</th>
+                    <th className="px-3 py-2 text-right font-medium">Amount ({currency})</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -121,7 +125,7 @@ export default async function AccountingReportsPage() {
                         <td className="px-3 py-2">{SOURCE_TYPE_LABELS[entry.sourceType ?? ""] ?? entry.sourceType ?? "Manual"}</td>
                         <td className="px-3 py-2 text-muted-foreground">{entry.description}</td>
                         <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{entry.postingNumber}</td>
-                        <td className="px-3 py-2 text-right font-mono text-xs">{revenueLine ? Number(revenueLine.credit).toFixed(2) : "-"}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs">{revenueLine ? money(revenueLine.credit) : "-"}</td>
                       </tr>
                     );
                   })}
@@ -154,7 +158,7 @@ export default async function AccountingReportsPage() {
           <div>
             <p className="text-xs text-muted-foreground">Outstanding invoices</p>
             <p className="text-lg font-medium">
-              {summary.outstandingInvoiceCount} ({summary.outstandingInvoiceTotal.toFixed(2)})
+              {summary.outstandingInvoiceCount} ({money(summary.outstandingInvoiceTotal)})
             </p>
             {summary.overdueInvoiceCount > 0 ? (
               <p className="text-xs text-destructive">{summary.overdueInvoiceCount} overdue</p>
@@ -163,7 +167,7 @@ export default async function AccountingReportsPage() {
           <div>
             <p className="text-xs text-muted-foreground">Pending expenses</p>
             <p className="text-lg font-medium">
-              {summary.pendingExpenseCount} ({summary.pendingExpenseTotal.toFixed(2)})
+              {summary.pendingExpenseCount} ({money(summary.pendingExpenseTotal)})
             </p>
           </div>
         </CardContent>
@@ -181,13 +185,13 @@ export default async function AccountingReportsPage() {
                 {position.assets.map((account) => (
                   <div key={account.id} className="flex items-center justify-between text-sm text-muted-foreground">
                     <span>{account.name}</span>
-                    <span className="font-mono text-xs">{account.balance.toFixed(2)}</span>
+                    <span className="font-mono text-xs">{money(account.balance)}</span>
                   </div>
                 ))}
               </div>
               <div className="mt-3 flex items-center justify-between border-t pt-2 text-sm font-medium">
                 <span>Total assets</span>
-                <span>{position.totalAssets.toFixed(2)}</span>
+                <span>{money(position.totalAssets)}</span>
               </div>
             </div>
             <div>
@@ -197,13 +201,13 @@ export default async function AccountingReportsPage() {
                 {position.liabilities.map((account) => (
                   <div key={account.id} className="flex items-center justify-between text-sm text-muted-foreground">
                     <span>{account.name}</span>
-                    <span className="font-mono text-xs">{account.balance.toFixed(2)}</span>
+                    <span className="font-mono text-xs">{money(account.balance)}</span>
                   </div>
                 ))}
               </div>
               <div className="mt-3 flex items-center justify-between border-t pt-2 text-sm font-medium">
                 <span>Total liabilities</span>
-                <span>{position.totalLiabilities.toFixed(2)}</span>
+                <span>{money(position.totalLiabilities)}</span>
               </div>
             </div>
             <div>
@@ -212,24 +216,24 @@ export default async function AccountingReportsPage() {
                 {position.equity.map((account) => (
                   <div key={account.id} className="flex items-center justify-between text-sm text-muted-foreground">
                     <span>{account.name}</span>
-                    <span className="font-mono text-xs">{account.balance.toFixed(2)}</span>
+                    <span className="font-mono text-xs">{money(account.balance)}</span>
                   </div>
                 ))}
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span>Retained earnings (current period)</span>
-                  <span className="font-mono text-xs">{position.netIncome.toFixed(2)}</span>
+                  <span className="font-mono text-xs">{money(position.netIncome)}</span>
                 </div>
               </div>
               <div className="mt-3 flex items-center justify-between border-t pt-2 text-sm font-medium">
                 <span>Total equity</span>
-                <span>{position.totalEquity.toFixed(2)}</span>
+                <span>{money(position.totalEquity)}</span>
               </div>
             </div>
           </div>
           <div className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
             <span>Assets = Liabilities + Equity</span>
             <span className={position.isBalanced ? "font-medium text-emerald-600 dark:text-emerald-400" : "font-medium text-destructive"}>
-              {position.isBalanced ? "Balanced" : `Off by ${position.difference.toFixed(2)}`}
+              {position.isBalanced ? "Balanced" : `Off by ${money(position.difference)}`}
             </span>
           </div>
         </CardContent>

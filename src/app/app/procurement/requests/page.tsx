@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { listRequests } from "@/modules/procurement/service";
 import { listItems } from "@/modules/inventory/service";
 import { createNewRequest, approveExistingRequest, rejectExistingRequest } from "./actions";
@@ -47,7 +48,7 @@ export default async function ProcurementRequestsPage({
         <PageHeader title="Requests" description="Purchase requests awaiting approval." />
         {canManage ? (
           <EntityDialog trigger={<Button size="sm"><Plus />New request</Button>} title="New purchase request" action={createNewRequest}>
-            <RequestLinesField items={itemOptions} />
+            <RequestLinesField items={itemOptions} currency={tenant.organization.currency ?? "GHS"} />
             <div className="space-y-2">
               <Label htmlFor="notes">Notes</Label>
               <Textarea id="notes" name="notes" rows={3} />
@@ -76,7 +77,7 @@ export default async function ProcurementRequestsPage({
               <TableHead>Number</TableHead>
               <TableHead>Description</TableHead>
               <TableHead>Quantity</TableHead>
-              <TableHead>Est. cost</TableHead>
+              <TableHead>Est. cost ({tenant.organization.currency})</TableHead>
               <TableHead>Status</TableHead>
               {canApprove ? <TableHead /> : null}
             </TableRow>
@@ -87,7 +88,7 @@ export default async function ProcurementRequestsPage({
                 <TableCell className="font-mono text-xs">{request.requestNumber}</TableCell>
                 <TableCell className="font-medium">{request.lines.length > 1 ? `${request.lines.length} requested items` : request.description}</TableCell>
                 <TableCell className="text-muted-foreground">{request.lines.reduce((sum, line) => sum + line.quantity, 0)}</TableCell>
-                <TableCell className="text-muted-foreground">{request.lines.some((line) => line.estimatedCost) ? request.lines.reduce((sum, line) => sum + Number(line.estimatedCost ?? 0), 0).toFixed(2) : "-"}</TableCell>
+                <TableCell className="text-muted-foreground">{request.lines.some((line) => line.estimatedCost) ? formatMoney(request.lines.reduce((sum, line) => sum + Number(line.estimatedCost ?? 0), 0), tenant.organization.currency) : "-"}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[request.status]}>{request.status}</Badge>
                 </TableCell>

@@ -5,6 +5,7 @@ import { Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { formatMoney } from "@/lib/currency";
 import {
   Dialog,
   DialogTrigger,
@@ -43,6 +44,7 @@ export function ProductPicker({
   onAddItem,
   onItemCreated,
   isOnline = true,
+  currency,
 }: {
   items: PickerItem[];
   categories: PickerCategory[];
@@ -53,6 +55,7 @@ export function ProductPicker({
    * conflict resolution would be needed for that, which is out of scope. Selling
    * already-catalogued items stays available offline; adding a new one waits. */
   isOnline?: boolean;
+  currency: string;
 }) {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("all");
@@ -110,7 +113,7 @@ export function ProductPicker({
                 <Input id="qi-barcode" name="barcode" placeholder="Scan or type" />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="qi-price">Sales price</Label>
+                <Label htmlFor="qi-price">Sales price ({currency})</Label>
                 <Input id="qi-price" name="price" type="number" min="0" step="0.01" required />
               </div>
               <div className="space-y-1.5">
@@ -170,7 +173,7 @@ export function ProductPicker({
               </span>
             )}
             <span className="line-clamp-2 text-xs leading-tight font-medium">{item.name}</span>
-            <span className="text-xs text-muted-foreground">{item.price}</span>
+            <span className="text-xs text-muted-foreground">{formatMoney(item.price, currency)}</span>
           </button>
         ))}
       </div>

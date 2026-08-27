@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { getPosSummary } from "@/modules/pos/service";
 import { ReportExportLinks } from "@/components/reports/report-export-links";
 
@@ -25,9 +26,9 @@ export default async function PosReportsPage() {
     { label: "Registers", value: summary.registerCount },
     { label: "Open sessions", value: summary.openSessionCount },
     { label: "Today's sales", value: summary.todaysSalesCount },
-    { label: "Today's sales total", value: summary.todaysSalesTotal.toFixed(2) },
+    { label: "Today's sales total", value: formatMoney(summary.todaysSalesTotal, tenant.organization.currency) },
     { label: "All-time sales", value: summary.allTimeSalesCount },
-    { label: "All-time sales total", value: summary.allTimeSalesTotal.toFixed(2) },
+    { label: "All-time sales total", value: formatMoney(summary.allTimeSalesTotal, tenant.organization.currency) },
     { label: "Refunded sales", value: summary.refundedCount },
   ];
 

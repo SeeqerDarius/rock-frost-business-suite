@@ -11,6 +11,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { resolveInstallmentAccessScope } from "@/modules/installment/access";
 import {
   listPayments,
@@ -82,9 +83,10 @@ export default async function InstallmentPaymentsPage({
     canManagePayments ? getInstallmentSettings(tenant.organizationId) : Promise.resolve(null),
   ]);
 
+  const currency = tenant.organization.currency;
   const payableAccounts = accounts.filter((a) => a.status !== "CANCELLED" && a.status !== "SUSPENDED" && a.status !== "CLOSED" && a.status !== "ARCHIVED" && Number(a.balance) > 0);
   const accountItems: Record<string, string> = Object.fromEntries(
-    payableAccounts.map((a) => [a.id, `${a.customer.fullName} - ${a.product.name} (bal. ${Number(a.balance).toFixed(2)})`])
+    payableAccounts.map((a) => [a.id, `${a.customer.fullName} - ${a.product.name} (bal. ${formatMoney(a.balance, currency)})`])
   );
 
   return (
@@ -119,7 +121,7 @@ export default async function InstallmentPaymentsPage({
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="amount">Amount</Label>
+                <Label htmlFor="amount">Amount ({currency})</Label>
                 <Input id="amount" name="amount" type="number" step="0.01" required />
               </div>
               <div className="space-y-2">
@@ -161,7 +163,7 @@ export default async function InstallmentPaymentsPage({
               <TableHead>Customer</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Method</TableHead>
-              <TableHead>Amount</TableHead>
+              <TableHead>Amount ({currency})</TableHead>
               {canManagePayments ? <TableHead /> : null}
             </TableRow>
           </TableHeader>
@@ -174,7 +176,7 @@ export default async function InstallmentPaymentsPage({
                   <TableCell className="text-muted-foreground">{payment.account.customer.fullName}</TableCell>
                   <TableCell className="text-muted-foreground">{payment.paymentDate.toLocaleDateString()}</TableCell>
                   <TableCell className="text-muted-foreground">{payment.method}</TableCell>
-                  <TableCell className="text-muted-foreground">{Number(payment.amount).toFixed(2)}</TableCell>
+                  <TableCell className="text-muted-foreground">{formatMoney(payment.amount, currency)}</TableCell>
                   {canManagePayments ? (
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
@@ -193,7 +195,7 @@ export default async function InstallmentPaymentsPage({
                           <input type="hidden" name="id" value={payment.id} />
                           <div className="grid gap-4 sm:grid-cols-2">
                             <div className="space-y-2">
-                              <Label htmlFor={`amount-${payment.id}`}>Amount</Label>
+                              <Label htmlFor={`amount-${payment.id}`}>Amount ({currency})</Label>
                               <Input id={`amount-${payment.id}`} name="amount" type="number" step="0.01" defaultValue={payment.amount.toString()} required />
                             </div>
                             <div className="space-y-2">
@@ -251,14 +253,14 @@ export default async function InstallmentPaymentsPage({
               {credits.map((credit) => {
                 const applicableAccounts = accounts.filter((a) => a.customerId === credit.customerId && Number(a.balance) > 0);
                 const applicableAccountItems: Record<string, string> = Object.fromEntries(
-                  applicableAccounts.map((a) => [a.id, `${a.product.name} (bal. ${Number(a.balance).toFixed(2)})`])
+                  applicableAccounts.map((a) => [a.id, `${a.product.name} (bal. ${formatMoney(a.balance, currency)})`])
                 );
 
                 return (
                   <div key={credit.id} className="flex items-center justify-between rounded-lg border p-3">
                     <div>
                       <p className="text-sm font-medium">
-                        {credit.customer.fullName} - {Number(credit.remainingAmount).toFixed(2)}
+                        {credit.customer.fullName} - {formatMoney(credit.remainingAmount, currency)}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {credit.source.replaceAll("_", " ")} · {credit.notes}
@@ -276,7 +278,7 @@ export default async function InstallmentPaymentsPage({
                                 </Button>
                               }
                               title="Apply credit to an account"
-                              description={`Apply up to ${Number(credit.remainingAmount).toFixed(2)} toward another account for this customer.`}
+                              description={`Apply up to ${formatMoney(credit.remainingAmount, currency)} toward another account for this customer.`}
                               action={applyCredit}
                               submitLabel="Apply"
                             >

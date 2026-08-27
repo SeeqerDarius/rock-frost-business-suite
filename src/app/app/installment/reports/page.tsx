@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { getInstallmentSummary, getStaffPerformanceReport } from "@/modules/installment/service";
 import { ReportExportLinks } from "@/components/reports/report-export-links";
 
@@ -25,12 +26,14 @@ export default async function InstallmentReportsPage() {
   // not race each other.
   const summary = await getInstallmentSummary(tenant.organizationId);
   const staffPerformance = await getStaffPerformanceReport(tenant.organizationId);
+  const currency = tenant.organization.currency;
+  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, currency);
 
   const stats = [
-    { label: "Expected receivables", value: summary.expectedReceivables },
-    { label: "Total collected", value: summary.totalCollected },
-    { label: "Net profit so far", value: summary.netProfitSoFar },
-    { label: "Projected net profit", value: summary.projectedNetProfit },
+    { label: "Expected receivables", value: money(summary.expectedReceivables) },
+    { label: "Total collected", value: money(summary.totalCollected) },
+    { label: "Net profit so far", value: money(summary.netProfitSoFar) },
+    { label: "Projected net profit", value: money(summary.projectedNetProfit) },
   ];
 
   return (
@@ -42,7 +45,7 @@ export default async function InstallmentReportsPage() {
           <Card key={stat.label}>
             <CardHeader>
               <CardDescription>{stat.label}</CardDescription>
-              <CardTitle className="text-2xl">{stat.value.toFixed(2)}</CardTitle>
+              <CardTitle className="text-2xl">{stat.value}</CardTitle>
             </CardHeader>
           </Card>
         ))}
@@ -56,15 +59,15 @@ export default async function InstallmentReportsPage() {
         <CardContent className="grid gap-3 sm:grid-cols-3">
           <div>
             <p className="text-xs text-muted-foreground">Salary paid (last month)</p>
-            <p className="text-lg font-medium">{summary.totalSalaryPaid.toFixed(2)}</p>
+            <p className="text-lg font-medium">{money(summary.totalSalaryPaid)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Due (last month)</p>
-            <p className="text-lg font-medium">{summary.dueMonthPayroll.toFixed(2)}</p>
+            <p className="text-lg font-medium">{money(summary.dueMonthPayroll)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Outstanding</p>
-            <p className="text-lg font-medium">{summary.outstandingSalaries.toFixed(2)}</p>
+            <p className="text-lg font-medium">{money(summary.outstandingSalaries)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Next payroll due</p>
@@ -83,7 +86,7 @@ export default async function InstallmentReportsPage() {
         <CardContent className="grid gap-3 sm:grid-cols-2">
           <div>
             <p className="text-xs text-muted-foreground">Open credits</p>
-            <p className="text-lg font-medium">{summary.openCreditsCount} ({summary.openCreditsTotal.toFixed(2)})</p>
+            <p className="text-lg font-medium">{summary.openCreditsCount} ({money(summary.openCreditsTotal)})</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Pending closure refunds</p>
@@ -106,10 +109,10 @@ export default async function InstallmentReportsPage() {
               <TableRow>
                 <TableHead>Staff</TableHead>
                 <TableHead>Customers</TableHead>
-                <TableHead>Weekly collection</TableHead>
-                <TableHead>Outstanding balance</TableHead>
-                <TableHead>Commission</TableHead>
-                <TableHead>Net position</TableHead>
+                <TableHead>Weekly collection ({currency})</TableHead>
+                <TableHead>Outstanding balance ({currency})</TableHead>
+                <TableHead>Commission ({currency})</TableHead>
+                <TableHead>Net position ({currency})</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -117,10 +120,10 @@ export default async function InstallmentReportsPage() {
                 <TableRow key={row.staffId}>
                   <TableCell className="font-medium">{row.staffName}</TableCell>
                   <TableCell className="text-muted-foreground">{row.customerCount}</TableCell>
-                  <TableCell className="text-muted-foreground">{row.weeklyCollection.toFixed(2)}</TableCell>
-                  <TableCell className="text-muted-foreground">{row.outstandingBalance.toFixed(2)}</TableCell>
-                  <TableCell className="text-muted-foreground">{row.commissionEarned.toFixed(2)}</TableCell>
-                  <TableCell className="text-muted-foreground">{row.netPosition.toFixed(2)}</TableCell>
+                  <TableCell className="text-muted-foreground">{money(row.weeklyCollection)}</TableCell>
+                  <TableCell className="text-muted-foreground">{money(row.outstandingBalance)}</TableCell>
+                  <TableCell className="text-muted-foreground">{money(row.commissionEarned)}</TableCell>
+                  <TableCell className="text-muted-foreground">{money(row.netPosition)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

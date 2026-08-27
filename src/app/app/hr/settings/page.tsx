@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { requireModuleAccess } from "@/lib/auth/module-access";
+import { formatMoney } from "@/lib/currency";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import {
   getHrSettings, listLeaveTypes, listPlanTemplates,
@@ -363,7 +364,7 @@ export default async function HrSettingsPage({
                       <div>
                         <p className="text-sm font-medium">{template.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {template.jobPosition?.name ?? "No job"} · {template.department ?? "No department"} · {PAY_FREQUENCY_LABEL[template.payFrequency] ?? template.payFrequency} {WAGE_TYPE_LABEL[template.wageType] ?? template.wageType} {Number(template.wage).toFixed(2)}
+                          {template.jobPosition?.name ?? "No job"} · {template.department ?? "No department"} · {PAY_FREQUENCY_LABEL[template.payFrequency] ?? template.payFrequency} {WAGE_TYPE_LABEL[template.wageType] ?? template.wageType} {formatMoney(template.wage, tenant.organization.currency)}
                         </p>
                       </div>
                       <div className="flex gap-1">

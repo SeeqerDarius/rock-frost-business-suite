@@ -126,7 +126,7 @@ export default async function PosRegistersPage({
                         >
                           <input type="hidden" name="sessionId" value={openSession.id} />
                           <div className="space-y-2">
-                            <Label htmlFor={`closingCash-${register.id}`}>Closing cash count</Label>
+                            <Label htmlFor={`closingCash-${register.id}`}>Closing cash count ({tenant.organization.currency})</Label>
                             <Input id={`closingCash-${register.id}`} name="closingCash" type="number" step="0.01" required />
                           </div>
                           <div className="space-y-2">
@@ -146,7 +146,7 @@ export default async function PosRegistersPage({
                       >
                         <input type="hidden" name="registerId" value={register.id} />
                         <div className="space-y-2">
-                          <Label htmlFor={`openingFloat-${register.id}`}>Opening float</Label>
+                          <Label htmlFor={`openingFloat-${register.id}`}>Opening float ({tenant.organization.currency})</Label>
                           <Input id={`openingFloat-${register.id}`} name="openingFloat" type="number" step="0.01" defaultValue="0" required />
                         </div>
                       </EntityDialog>

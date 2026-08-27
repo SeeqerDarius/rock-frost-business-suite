@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/button";
 import { IconBadge } from "@/components/ui/icon-badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
+import { formatMoney } from "@/lib/currency";
 import { getInventorySummary } from "@/modules/inventory/service";
 
 export async function InventoryDashboardWidget({ linkable = true }: { linkable?: boolean } = {}) {
@@ -16,7 +17,7 @@ export async function InventoryDashboardWidget({ linkable = true }: { linkable?:
         <IconBadge size="lg"><Boxes className="size-5" /></IconBadge>
         <CardTitle className="mt-3">Inventory Management</CardTitle>
         <CardDescription>
-          {summary.activeItemCount} active item{summary.activeItemCount === 1 ? "" : "s"} · {summary.lowStockItems.length} low stock · {summary.totalStockValue.toFixed(2)} on hand
+          {summary.activeItemCount} active item{summary.activeItemCount === 1 ? "" : "s"} · {summary.lowStockItems.length} low stock · {formatMoney(summary.totalStockValue, tenant.organization.currency)} on hand
         </CardDescription>
       </CardHeader>
       {linkable ? (

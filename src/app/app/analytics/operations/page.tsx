@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { getOperationsOverview } from "@/modules/analytics/service";
 
 export default async function AnalyticsOperationsPage() {
@@ -19,6 +20,7 @@ export default async function AnalyticsOperationsPage() {
   }
 
   const { fleet, inventory, procurement } = await getOperationsOverview(tenant.organizationId, tenant.enabledModuleKeys);
+  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
 
   if (!fleet && !inventory && !procurement) {
     return (
@@ -57,7 +59,7 @@ export default async function AnalyticsOperationsPage() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Payments this month</p>
-              <p className="text-lg font-medium">{fleet.paymentsThisMonthTotal.toFixed(2)}</p>
+              <p className="text-lg font-medium">{money(fleet.paymentsThisMonthTotal)}</p>
             </div>
           </CardContent>
         </Card>
@@ -79,7 +81,7 @@ export default async function AnalyticsOperationsPage() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total stock value</p>
-              <p className="text-lg font-medium">{inventory.totalStockValue.toFixed(2)}</p>
+              <p className="text-lg font-medium">{money(inventory.totalStockValue)}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Low stock items</p>
@@ -105,7 +107,7 @@ export default async function AnalyticsOperationsPage() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Open order value</p>
-              <p className="text-lg font-medium">{procurement.openOrderValue.toFixed(2)}</p>
+              <p className="text-lg font-medium">{money(procurement.openOrderValue)}</p>
             </div>
           </CardContent>
         </Card>

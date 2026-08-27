@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import type { AccountingAccountType, AccountingInvoiceStatus, AccountingLiquidityType } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
+import { formatMoney } from "@/lib/currency";
 import {
   getOrganizationModuleConfiguration,
   updateOrganizationModuleConfigurationValues,
@@ -609,7 +610,7 @@ export async function recordInvoicePayment(organizationId: string, id: string, i
 
     const remaining = new Prisma.Decimal(locked.amount).minus(locked.amountPaid);
     if (paymentAmount.greaterThan(remaining)) {
-      throw new InvalidPaymentError(`Payment of ${paymentAmount.toFixed(2)} exceeds the remaining balance of ${remaining.toFixed(2)}.`);
+      throw new InvalidPaymentError(`Payment of ${formatMoney(paymentAmount)} exceeds the remaining balance of ${formatMoney(remaining)}.`);
     }
 
     // Only fetched once the payment is actually valid — no point creating
@@ -907,7 +908,7 @@ export async function recordPettyCashExpense(
     const lines = await tx.accountingJournalLine.findMany({ where: { accountId: fund.accountId } });
     const balance = new Prisma.Decimal(computeBalance("ASSET", lines));
     if (amount.greaterThan(balance)) {
-      throw new InvalidPaymentError(`Expense of ${amount.toFixed(2)} exceeds the fund's available balance of ${balance.toFixed(2)}.`);
+      throw new InvalidPaymentError(`Expense of ${formatMoney(amount)} exceeds the fund's available balance of ${formatMoney(balance)}.`);
     }
 
     const entry = await postJournalEntry(tx, organizationId, {

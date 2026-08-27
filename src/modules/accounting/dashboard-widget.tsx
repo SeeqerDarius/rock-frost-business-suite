@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/button";
 import { IconBadge } from "@/components/ui/icon-badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
+import { formatMoney } from "@/lib/currency";
 import { getAccountingSummary } from "@/modules/accounting/service";
 
 export async function AccountingDashboardWidget({ linkable = true }: { linkable?: boolean } = {}) {
@@ -16,7 +17,7 @@ export async function AccountingDashboardWidget({ linkable = true }: { linkable?
         <IconBadge size="lg"><Calculator className="size-5" /></IconBadge>
         <CardTitle className="mt-3">Accounting</CardTitle>
         <CardDescription>
-          {summary.cashBalance.toFixed(2)} cash · {summary.outstandingInvoiceCount} outstanding invoice{summary.outstandingInvoiceCount === 1 ? "" : "s"} · {summary.netIncome.toFixed(2)} net income
+          {formatMoney(summary.cashBalance, tenant.organization.currency)} cash · {summary.outstandingInvoiceCount} outstanding invoice{summary.outstandingInvoiceCount === 1 ? "" : "s"} · {formatMoney(summary.netIncome, tenant.organization.currency)} net income
         </CardDescription>
       </CardHeader>
       {linkable ? (

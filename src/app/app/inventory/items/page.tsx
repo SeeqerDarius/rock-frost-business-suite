@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { listItems, listCategories, getInventorySettings } from "@/modules/inventory/service";
 import { listTaxCodes } from "@/modules/accounting/tax-service";
 import { upsertItem } from "./actions";
@@ -62,9 +63,10 @@ interface ItemFieldsProps {
   taxCodeItems: Record<string, string>;
   /** Only applied for a brand-new item — set on Inventory Settings ("Default reorder point for new items"). */
   defaultReorderPoint?: number;
+  currency: string;
 }
 
-function ItemFields({ item, categoryItems, taxCodeItems, defaultReorderPoint = 0 }: ItemFieldsProps) {
+function ItemFields({ item, categoryItems, taxCodeItems, defaultReorderPoint = 0, currency }: ItemFieldsProps) {
   const idSuffix = item ? "-edit" : "";
   const trackInventory = item?.trackInventory ?? true;
   return (
@@ -140,12 +142,12 @@ function ItemFields({ item, categoryItems, taxCodeItems, defaultReorderPoint = 0
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor={`costPrice${idSuffix}`}>Cost price</Label>
+            <Label htmlFor={`costPrice${idSuffix}`}>Cost price ({currency})</Label>
             <Input id={`costPrice${idSuffix}`} name="costPrice" type="number" step="0.01" defaultValue={item?.costPrice ?? "0"} required />
             <p className="text-xs text-muted-foreground">What you pay to acquire it.</p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`salesPrice${idSuffix}`}>Sales price</Label>
+            <Label htmlFor={`salesPrice${idSuffix}`}>Sales price ({currency})</Label>
             <Input id={`salesPrice${idSuffix}`} name="salesPrice" type="number" step="0.01" defaultValue={item?.salesPrice ?? "0"} />
             <p className="text-xs text-muted-foreground">What POS sells it for.</p>
           </div>
@@ -202,7 +204,7 @@ export default async function InventoryItemsPage({
         <PageHeader title="Items" description="The catalog of stock-keeping units your organization tracks." />
         {canManage ? (
           <EntityDialog trigger={<Button size="sm"><Plus />New item</Button>} title="New item" action={upsertItem} contentClassName="sm:max-w-xl">
-            <ItemFields categoryItems={categoryItems} taxCodeItems={taxCodeItems} defaultReorderPoint={settings.defaultReorderPoint} />
+            <ItemFields categoryItems={categoryItems} taxCodeItems={taxCodeItems} defaultReorderPoint={settings.defaultReorderPoint} currency={tenant.organization.currency ?? "GHS"} />
           </EntityDialog>
         ) : null}
       </div>
@@ -228,7 +230,7 @@ export default async function InventoryItemsPage({
               <TableHead>SKU</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Category</TableHead>
-              <TableHead>Cost price</TableHead>
+              <TableHead>Cost price ({tenant.organization.currency})</TableHead>
               <TableHead>On hand</TableHead>
               <TableHead>Status</TableHead>
               {canManage ? <TableHead /> : null}
@@ -244,7 +246,7 @@ export default async function InventoryItemsPage({
                   <TableCell className="font-mono text-xs">{item.sku}</TableCell>
                   <TableCell className="font-medium">{item.name}</TableCell>
                   <TableCell className="text-muted-foreground">{item.category?.name ?? "-"}</TableCell>
-                  <TableCell className="text-muted-foreground">{Number(item.costPrice).toFixed(2)}</TableCell>
+                  <TableCell className="text-muted-foreground">{formatMoney(item.costPrice, tenant.organization.currency)}</TableCell>
                   <TableCell>
                     {item.trackInventory ? (
                       <Badge variant={lowStock ? "destructive" : "outline"}>
@@ -271,6 +273,7 @@ export default async function InventoryItemsPage({
                           item={{ ...item, costPrice: item.costPrice.toString(), salesPrice: item.salesPrice.toString(), onHand: totalQuantity }}
                           categoryItems={categoryItems}
                           taxCodeItems={taxCodeItems}
+                          currency={tenant.organization.currency ?? "GHS"}
                         />
                       </EntityDialog>
                     </TableCell>

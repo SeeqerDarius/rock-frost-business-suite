@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/button";
 import { IconBadge } from "@/components/ui/icon-badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
+import { formatMoney } from "@/lib/currency";
 import { getPosSummary } from "@/modules/pos/service";
 
 export async function PosDashboardWidget({ linkable = true }: { linkable?: boolean } = {}) {
@@ -16,7 +17,7 @@ export async function PosDashboardWidget({ linkable = true }: { linkable?: boole
         <IconBadge size="lg"><Store className="size-5" /></IconBadge>
         <CardTitle className="mt-3">Point of Sale</CardTitle>
         <CardDescription>
-          {summary.openSessionCount} open session{summary.openSessionCount === 1 ? "" : "s"} · {summary.todaysSalesCount} sale{summary.todaysSalesCount === 1 ? "" : "s"} today · {summary.todaysSalesTotal.toFixed(2)}
+          {summary.openSessionCount} open session{summary.openSessionCount === 1 ? "" : "s"} · {summary.todaysSalesCount} sale{summary.todaysSalesCount === 1 ? "" : "s"} today · {formatMoney(summary.todaysSalesTotal, tenant.organization.currency)}
         </CardDescription>
       </CardHeader>
       {linkable ? (

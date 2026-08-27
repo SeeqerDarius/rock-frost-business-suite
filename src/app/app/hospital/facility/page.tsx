@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { listHospitalFacilities, listHospitalDepartments, listHospitalServiceItems, listHospitalProviders, listHospitalWards, listHospitalBeds } from "@/modules/hospital/service";
 import { createFacilityAction, createDepartmentAction, createServiceItemAction, createProviderAction, createWardAction, createBedAction } from "../actions";
 
@@ -78,10 +79,10 @@ export default async function HospitalFacilityPage() {
                 <div><Label htmlFor="code">Code</Label><Input id="code" name="code" required /></div>
                 <div><Label htmlFor="name">Name</Label><Input id="name" name="name" required /></div>
                 <div><Label htmlFor="category">Category</Label><Input id="category" name="category" /></div>
-                <div><Label htmlFor="price">Price</Label><Input id="price" name="price" type="number" step="0.01" required /></div>
+                <div><Label htmlFor="price">Price ({tenant.organization.currency ?? "GHS"})</Label><Input id="price" name="price" type="number" step="0.01" required /></div>
               </EntityDialog>
             </CardHeader>
-            <CardContent className="space-y-2">{serviceItems.length === 0 ? <p className="text-sm text-muted-foreground">None yet.</p> : serviceItems.map((s) => <div key={s.id} className="rounded-md border p-2 text-sm">{s.name} · {Number(s.price).toFixed(2)}</div>)}</CardContent>
+            <CardContent className="space-y-2">{serviceItems.length === 0 ? <p className="text-sm text-muted-foreground">None yet.</p> : serviceItems.map((s) => <div key={s.id} className="rounded-md border p-2 text-sm">{s.name} · {formatMoney(s.price, tenant.organization.currency)}</div>)}</CardContent>
           </Card>
 
           <Card>

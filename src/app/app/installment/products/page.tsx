@@ -12,6 +12,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { listProducts, listProductCategories, getInstallmentSettings, getProcurementList } from "@/modules/installment/service";
 import { upsertProduct, addProductCategory, manageProductCategory, manageProductLifecycle } from "./actions";
 
@@ -38,9 +39,10 @@ interface ProductFieldsProps {
   categoryItems: Record<string, string>;
   defaultDuration: number;
   defaultDailyAmount: string;
+  currency: string;
 }
 
-function ProductFields({ product, categoryItems, defaultDuration, defaultDailyAmount }: ProductFieldsProps) {
+function ProductFields({ product, categoryItems, defaultDuration, defaultDailyAmount, currency }: ProductFieldsProps) {
   const idSuffix = product ? "-edit" : "";
   return (
     <>
@@ -65,17 +67,17 @@ function ProductFields({ product, categoryItems, defaultDuration, defaultDailyAm
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor={`costPrice${idSuffix}`}>Cost price</Label>
+          <Label htmlFor={`costPrice${idSuffix}`}>Cost price ({currency})</Label>
           <Input id={`costPrice${idSuffix}`} name="costPrice" type="number" step="0.01" defaultValue={product?.costPrice} required />
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`transportCost${idSuffix}`}>Transport cost</Label>
+          <Label htmlFor={`transportCost${idSuffix}`}>Transport cost ({currency})</Label>
           <Input id={`transportCost${idSuffix}`} name="transportCost" type="number" step="0.01" defaultValue={product?.transportCost ?? "0"} />
         </div>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor={`dailyAmount${idSuffix}`}>Daily amount</Label>
+          <Label htmlFor={`dailyAmount${idSuffix}`}>Daily amount ({currency})</Label>
           <Input id={`dailyAmount${idSuffix}`} name="dailyAmount" type="number" step="0.01" defaultValue={product?.dailyAmount ?? defaultDailyAmount} required />
         </div>
         <div className="space-y-2">
@@ -119,6 +121,7 @@ export default async function InstallmentProductsPage({
       </div>
     );
   }
+  const currency = tenant.organization.currency ?? "GHS";
   const [products, categories, settings, procurementList] = await Promise.all([
     listProducts(tenant.organizationId),
     listProductCategories(tenant.organizationId),
@@ -142,7 +145,7 @@ export default async function InstallmentProductsPage({
             title="New product"
             action={upsertProduct}
           >
-            <ProductFields categoryItems={categoryItems} defaultDuration={settings.installmentDurationDays} defaultDailyAmount={settings.defaultDailyCollection.toString()} />
+            <ProductFields categoryItems={categoryItems} defaultDuration={settings.installmentDurationDays} defaultDailyAmount={settings.defaultDailyCollection.toString()} currency={currency} />
           </EntityDialog>
         ) : null}
       </div>
@@ -211,7 +214,7 @@ export default async function InstallmentProductsPage({
                     <div>
                       <p className="text-sm font-medium">{item.productName}</p>
                       <p className="text-xs text-muted-foreground">
-                        {item.quantity} unit{item.quantity === 1 ? "" : "s"} · avg {(item.averageProgress * 100).toFixed(0)}% paid · est. cost {item.totalCost.toFixed(2)}
+                        {item.quantity} unit{item.quantity === 1 ? "" : "s"} · avg {(item.averageProgress * 100).toFixed(0)}% paid · est. cost {formatMoney(item.totalCost, currency)}
                       </p>
                     </div>
                   </div>
@@ -230,8 +233,8 @@ export default async function InstallmentProductsPage({
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Category</TableHead>
-              <TableHead>Price</TableHead>
-              <TableHead>Daily / Duration</TableHead>
+              <TableHead>Price ({currency})</TableHead>
+              <TableHead>Daily ({currency}) / Duration</TableHead>
               <TableHead>Status</TableHead>
               {canManage ? <TableHead /> : null}
             </TableRow>
@@ -241,9 +244,9 @@ export default async function InstallmentProductsPage({
               <TableRow key={product.id}>
                 <TableCell className="font-medium">{product.name}</TableCell>
                 <TableCell className="text-muted-foreground">{product.category}</TableCell>
-                <TableCell className="text-muted-foreground">{Number(product.price).toFixed(2)}</TableCell>
+                <TableCell className="text-muted-foreground">{formatMoney(product.price, currency)}</TableCell>
                 <TableCell className="text-muted-foreground">
-                  {Number(product.dailyAmount).toFixed(2)} × {product.duration}d
+                  {formatMoney(product.dailyAmount, currency)} × {product.duration}d
                 </TableCell>
                 <TableCell>
                   <Badge variant={product.active ? "default" : "outline"}>{product.active ? "Active" : "Inactive"}</Badge>
@@ -272,6 +275,7 @@ export default async function InstallmentProductsPage({
                         categoryItems={categoryItems}
                         defaultDuration={settings.installmentDurationDays}
                         defaultDailyAmount={settings.defaultDailyCollection.toString()}
+                        currency={currency}
                       />
                     </EntityDialog>
                     <form action={manageProductLifecycle}>

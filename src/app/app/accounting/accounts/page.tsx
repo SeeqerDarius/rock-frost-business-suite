@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { listAccounts } from "@/modules/accounting/service";
 import { upsertAccount } from "./actions";
 
@@ -108,7 +109,7 @@ export default async function AccountingAccountsPage({
             <TableHead>Code</TableHead>
             <TableHead>Name</TableHead>
             <TableHead>Type</TableHead>
-            <TableHead>Balance</TableHead>
+            <TableHead>Balance ({tenant.organization.currency})</TableHead>
             <TableHead>Status</TableHead>
             {canManage ? <TableHead /> : null}
           </TableRow>
@@ -122,7 +123,7 @@ export default async function AccountingAccountsPage({
                 {account.isSystem ? <Badge variant="outline" className="ml-2">System</Badge> : null}
               </TableCell>
               <TableCell className="text-muted-foreground">{TYPE_LABELS[account.type]}</TableCell>
-              <TableCell className="text-muted-foreground">{account.balance.toFixed(2)}</TableCell>
+              <TableCell className="text-muted-foreground">{formatMoney(account.balance, tenant.organization.currency)}</TableCell>
               <TableCell>
                 <Badge variant={account.active ? "default" : "outline"}>{account.active ? "Active" : "Inactive"}</Badge>
               </TableCell>

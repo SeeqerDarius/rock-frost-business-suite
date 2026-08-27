@@ -5,6 +5,7 @@ import { Delete, Plus, Trash2, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { formatMoney } from "@/lib/currency";
 import { ProductPicker, type PickerItem, type PickerCategory } from "./product-picker";
 import { completeSale } from "./actions";
 import {
@@ -50,7 +51,7 @@ function appendPriceDigit(field: string, digit: string): string {
   return field + digit;
 }
 
-export function SaleCart({ items: initialItems, categories: initialCategories, organizationId }: { items: PickerItem[]; categories: PickerCategory[]; organizationId: string }) {
+export function SaleCart({ items: initialItems, categories: initialCategories, organizationId, currency }: { items: PickerItem[]; categories: PickerCategory[]; organizationId: string; currency: string }) {
   const [items, setItems] = useState(initialItems);
   const [categories, setCategories] = useState(initialCategories);
   const [nextKey, setNextKey] = useState(2);
@@ -288,9 +289,9 @@ export function SaleCart({ items: initialItems, categories: initialCategories, o
                     className="h-7"
                   />
                 )}
-                <p className="text-xs text-muted-foreground">{line.quantity} x {line.unitPrice}</p>
+                <p className="text-xs text-muted-foreground">{line.quantity} x {formatMoney(line.unitPrice, currency)}</p>
               </div>
-              <p className="w-20 shrink-0 text-right font-medium">{lineTotal(line).toFixed(2)}</p>
+              <p className="w-20 shrink-0 text-right font-medium">{formatMoney(lineTotal(line), currency)}</p>
               <Button type="button" variant="ghost" size="icon" aria-label="Remove line" onClick={(event) => { event.stopPropagation(); removeLine(line.key); }}>
                 <Trash2 />
               </Button>
@@ -315,7 +316,7 @@ export function SaleCart({ items: initialItems, categories: initialCategories, o
         </div>
 
         <div className="rounded-lg border p-3">
-          <div className="mb-3 flex items-center justify-between"><p className="font-medium">Payments</p><p className="text-lg font-semibold">Total {total.toFixed(2)}</p></div>
+          <div className="mb-3 flex items-center justify-between"><p className="font-medium">Payments</p><p className="text-lg font-semibold">Total {formatMoney(total, currency)}</p></div>
           {!suspended ? payments.map((payment, index) => (
             <div key={payment.key} className="mb-2 grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
               <select className="h-8 rounded-lg border bg-background px-2 text-sm" value={payment.method} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === payment.key ? { ...entry, method: event.target.value } : entry))}>
@@ -324,7 +325,7 @@ export function SaleCart({ items: initialItems, categories: initialCategories, o
                 <option value="MOBILE_MONEY">Mobile money</option>
                 <option value="OTHER">Other</option>
               </select>
-              <Input aria-label={`Payment ${index + 1} amount`} type="number" min="0.01" step="0.01" value={payment.amount} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === payment.key ? { ...entry, amount: event.target.value } : entry))} />
+              <Input aria-label={`Payment ${index + 1} amount (${currency})`} type="number" min="0.01" step="0.01" value={payment.amount} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === payment.key ? { ...entry, amount: event.target.value } : entry))} />
               <Input aria-label={`Payment ${index + 1} reference`} placeholder="Reference (optional)" value={payment.reference} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === payment.key ? { ...entry, reference: event.target.value } : entry))} />
               <Button type="button" variant="ghost" size="icon" disabled={payments.length === 1} onClick={() => setPayments((current) => current.filter((entry) => entry.key !== payment.key))}><Trash2 /></Button>
             </div>
@@ -342,7 +343,7 @@ export function SaleCart({ items: initialItems, categories: initialCategories, o
 
       <div>
         <Label className="mb-2 block">Products</Label>
-        <ProductPicker items={items} categories={categories} onAddItem={addToCart} onItemCreated={onItemCreated} isOnline={isOnline} />
+        <ProductPicker items={items} categories={categories} onAddItem={addToCart} onItemCreated={onItemCreated} isOnline={isOnline} currency={currency} />
       </div>
     </div>
   );

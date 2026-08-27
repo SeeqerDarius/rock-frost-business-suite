@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { listJournalEntries, listAccounts } from "@/modules/accounting/service";
 import { createJournalEntry, reverseJournalEntryAction } from "./actions";
 
@@ -50,7 +51,7 @@ export default async function AccountingJournalPage({
                 <Input id="entryDate" name="entryDate" type="date" defaultValue={today} required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="amount">Amount</Label>
+                <Label htmlFor="amount">Amount ({tenant.organization.currency})</Label>
                 <Input id="amount" name="amount" type="number" step="0.01" required />
               </div>
             </div>
@@ -122,7 +123,7 @@ export default async function AccountingJournalPage({
                   <div key={line.id} className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>{line.account.code} - {line.account.name}</span>
                     <span>
-                      {Number(line.debit) > 0 ? `Dr ${Number(line.debit).toFixed(2)}` : `Cr ${Number(line.credit).toFixed(2)}`}
+                      {Number(line.debit) > 0 ? `Dr ${formatMoney(line.debit, tenant.organization.currency)}` : `Cr ${formatMoney(line.credit, tenant.organization.currency)}`}
                     </span>
                   </div>
                 ))}

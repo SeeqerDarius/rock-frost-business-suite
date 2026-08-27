@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { listOrders, listVendors, listRequests, getSettings } from "@/modules/procurement/service";
 import { listItems, listWarehouses } from "@/modules/inventory/service";
 import { createNewOrder, sendExistingOrder, cancelExistingOrder, receiveExistingOrderLine } from "./actions";
@@ -42,6 +43,7 @@ export default async function ProcurementOrdersPage({
   const tenant = await requireModuleAccess("procurement");
   const canManage = hasPermission(tenant, PERMISSIONS.PROCUREMENT_ORDERS_MANAGE);
   const canReceive = hasPermission(tenant, PERMISSIONS.PROCUREMENT_RECEIPTS_MANAGE);
+  const currency = tenant.organization.currency;
   const [orders, vendors, requests, items, warehouses, settings] = await Promise.all([
     listOrders(tenant.organizationId),
     listVendors(tenant.organizationId),
@@ -126,7 +128,7 @@ export default async function ProcurementOrdersPage({
                 <Input id="quantity" name="quantity" type="number" required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="unitCost">Unit cost</Label>
+                <Label htmlFor="unitCost">Unit cost ({currency})</Label>
                 <Input id="unitCost" name="unitCost" type="number" step="0.01" required />
               </div>
             </div>
@@ -186,7 +188,7 @@ export default async function ProcurementOrdersPage({
                       <div>
                         <p>{line.description}</p>
                         <p className="text-xs text-muted-foreground">
-                          {line.receivedQuantity} / {line.quantity} received · {Number(line.unitCost).toFixed(2)} each
+                          {line.receivedQuantity} / {line.quantity} received · {formatMoney(line.unitCost, currency)} each
                         </p>
                       </div>
                       {canReceiveLine ? (

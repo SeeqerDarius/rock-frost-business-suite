@@ -5,6 +5,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Badge } from "@/components/ui/badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { listSessions } from "@/modules/pos/service";
 
 function formatDateTime(value: Date | null) {
@@ -24,6 +25,7 @@ export default async function PosSessionsPage() {
   }
 
   const sessions = await listSessions(tenant.organizationId);
+  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
 
   return (
     <div className="space-y-6">
@@ -39,9 +41,9 @@ export default async function PosSessionsPage() {
               <TableHead>Opened</TableHead>
               <TableHead>Opened by</TableHead>
               <TableHead>Closed</TableHead>
-              <TableHead>Opening float</TableHead>
-              <TableHead>Closing cash</TableHead>
-              <TableHead>Variance</TableHead>
+              <TableHead>Opening float ({tenant.organization.currency})</TableHead>
+              <TableHead>Closing cash ({tenant.organization.currency})</TableHead>
+              <TableHead>Variance ({tenant.organization.currency})</TableHead>
               <TableHead>Sales</TableHead>
               <TableHead>Status</TableHead>
             </TableRow>
@@ -53,10 +55,10 @@ export default async function PosSessionsPage() {
                 <TableCell className="text-muted-foreground">{formatDateTime(session.openedAt)}</TableCell>
                 <TableCell className="text-muted-foreground">{session.openedBy?.name ?? "-"}</TableCell>
                 <TableCell className="text-muted-foreground">{formatDateTime(session.closedAt)}</TableCell>
-                <TableCell>{Number(session.openingFloat).toFixed(2)}</TableCell>
-                <TableCell>{session.closingCash !== null ? Number(session.closingCash).toFixed(2) : "-"}</TableCell>
+                <TableCell>{money(session.openingFloat)}</TableCell>
+                <TableCell>{session.closingCash !== null ? money(session.closingCash) : "-"}</TableCell>
                 <TableCell className={session.cashVariance !== null && Number(session.cashVariance) !== 0 ? "text-destructive" : "text-muted-foreground"}>
-                  {session.cashVariance !== null ? Number(session.cashVariance).toFixed(2) : "-"}
+                  {session.cashVariance !== null ? money(session.cashVariance) : "-"}
                 </TableCell>
                 <TableCell className="text-muted-foreground">{session.sales.length}</TableCell>
                 <TableCell>

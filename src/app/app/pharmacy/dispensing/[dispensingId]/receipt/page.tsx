@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireModuleAccess } from "@/lib/auth/module-access";
+import { formatMoney } from "@/lib/currency";
 import { getDispensingReceipt, getPharmacySettings } from "@/modules/pharmacy/service";
 import { PAYMENT_METHOD_ITEMS } from "../../../payment-methods";
 import { PrintReceiptButton } from "./print-button";
@@ -16,6 +17,7 @@ export default async function DispensingReceiptPage({
     getPharmacySettings(tenant.organizationId),
   ]);
   if (!dispensing) notFound();
+  const currency = tenant.organization.currency;
 
   return (
     <div className="mx-auto max-w-xl space-y-6 print:max-w-none">
@@ -70,17 +72,17 @@ export default async function DispensingReceiptPage({
                 <td className="py-2">{line.medicine.name}</td>
                 <td className="py-2 text-muted-foreground">{line.batch.batchNumber}</td>
                 <td className="py-2 text-right">{line.quantity}</td>
-                <td className="py-2 text-right">{line.unitPrice.toFixed(2)}</td>
-                <td className="py-2 text-right">{line.lineTotal.toFixed(2)}</td>
+                <td className="py-2 text-right">{formatMoney(line.unitPrice, currency)}</td>
+                <td className="py-2 text-right">{formatMoney(line.lineTotal, currency)}</td>
               </tr>
             ))}
           </tbody>
         </table>
 
         <div className="ml-auto w-full max-w-48 space-y-1 text-sm">
-          <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{dispensing.subtotal.toFixed(2)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Discount</span><span>{dispensing.discount.toFixed(2)}</span></div>
-          <div className="flex justify-between border-t pt-1 font-semibold"><span>Total</span><span>{dispensing.total.toFixed(2)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatMoney(dispensing.subtotal, currency)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Discount</span><span>{formatMoney(dispensing.discount, currency)}</span></div>
+          <div className="flex justify-between border-t pt-1 font-semibold"><span>Total</span><span>{formatMoney(dispensing.total, currency)}</span></div>
         </div>
 
         <p className="text-center text-xs text-muted-foreground">This receipt is a record of dispensing and does not certify regulatory compliance.</p>

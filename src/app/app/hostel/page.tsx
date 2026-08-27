@@ -3,6 +3,7 @@ import { Building2, Users, ShieldCheck, Receipt, DoorOpen } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
+import { formatMoney } from "@/lib/currency";
 import { getHostelSummary } from "@/modules/hostel/service";
 
 export default async function HostelOverviewPage() {
@@ -15,7 +16,7 @@ export default async function HostelOverviewPage() {
     { label: "Beds occupied", value: `${summary.occupiedBeds} / ${summary.totalBeds}`, href: "/app/hostel/buildings", icon: Users },
     { label: "Active allocations", value: summary.activeAllocationCount, href: "/app/hostel/allocations", icon: Users },
     { label: "Wardens", value: summary.wardenCount, href: "/app/hostel/wardens", icon: ShieldCheck },
-    { label: "Outstanding invoices", value: `${summary.outstandingInvoiceCount} (${summary.outstandingInvoiceTotal.toFixed(2)})`, href: "/app/hostel/fees", icon: Receipt },
+    { label: "Outstanding invoices", value: `${summary.outstandingInvoiceCount} (${formatMoney(summary.outstandingInvoiceTotal, tenant.organization.currency)})`, href: "/app/hostel/fees", icon: Receipt },
   ];
 
   return (

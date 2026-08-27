@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { requireModuleAccess } from "@/lib/auth/module-access";
+import { formatMoney } from "@/lib/currency";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listHospitalInvoices, listHospitalFacilities, listHospitalPatients } from "@/modules/hospital/service";
 import { createInvoiceAction, recordPaymentAction, voidInvoiceAction, createInsuranceClaimAction } from "../actions";
@@ -55,7 +56,7 @@ export default async function HospitalBillingPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="font-medium">{invoice.invoiceNumber} · {invoice.patient.firstName} {invoice.patient.lastName}</p>
-                    <p className="text-sm text-muted-foreground">Total {Number(invoice.total).toFixed(2)} · Paid {paid.toFixed(2)} · Balance {balance.toFixed(2)} · issued {invoice.issuedAt.toLocaleDateString()}</p>
+                    <p className="text-sm text-muted-foreground">Total {formatMoney(invoice.total, tenant.organization.currency)} · Paid {formatMoney(paid, tenant.organization.currency)} · Balance {formatMoney(balance, tenant.organization.currency)} · issued {invoice.issuedAt.toLocaleDateString()}</p>
                   </div>
                   <Badge variant="outline">{invoice.status.replaceAll("_", " ")}</Badge>
                 </div>
@@ -69,7 +70,7 @@ export default async function HospitalBillingPage() {
                     {balance > 0 ? (
                       <form action={recordPaymentAction} className="flex flex-wrap items-end gap-2">
                         <input type="hidden" name="invoiceId" value={invoice.id} />
-                        <Input name="amount" type="number" step="0.01" placeholder="Amount" required className="h-8 w-24 text-xs" />
+                        <Input name="amount" type="number" step="0.01" placeholder={`Amount (${tenant.organization.currency ?? "GHS"})`} required className="h-8 w-24 text-xs" />
                         <select name="method" className="h-8 rounded-md border bg-transparent px-2 text-xs"><option value="CASH">Cash</option><option value="CARD">Card</option><option value="MOBILE_MONEY">Mobile money</option><option value="BANK_TRANSFER">Bank transfer</option><option value="INSURANCE">Insurance</option><option value="OTHER">Other</option></select>
                         <Input name="reference" placeholder="Reference" className="h-8 w-24 text-xs" />
                         <Button size="sm" type="submit">Record payment</Button>

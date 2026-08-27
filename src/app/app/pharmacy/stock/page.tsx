@@ -95,7 +95,7 @@ export default async function Page({
               <Input id="batch-quantity" name="quantity" type="number" min="1" required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="batch-costPrice" required>Cost price</Label>
+              <Label htmlFor="batch-costPrice" required>Cost price ({t.organization.currency})</Label>
               <Input id="batch-costPrice" name="costPrice" type="number" step="0.01" required />
             </div>
             <div className="space-y-2">

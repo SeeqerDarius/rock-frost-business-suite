@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { listCompensation, listEmployeesWithoutCompensation } from "@/modules/payroll/service";
 import { createPayrollEmployee, saveCompensation } from "./actions";
 
@@ -17,7 +18,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage compensation.",
   "missing-fields": "Employee, base salary, and effective date are required.",
   "not-found": "That employee could not be found.",
-  "invalid-salary": "Base salary must be a positive number.",
+  "invalid-salary": "Base salary ({tenant.organization.currency}) must be a positive number.",
   "invalid-employee": "Enter a valid employee name, hire date, and optional contact details.",
 };
 
@@ -41,7 +42,7 @@ export default async function PayrollCompensationPage({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <PageHeader title="Compensation" description="Base salary on record for each employee." />
+        <PageHeader title="Compensation" description="Base salary ({tenant.organization.currency}) on record for each employee." />
         {canManage ? <div className="flex flex-wrap gap-2">
           <EntityDialog trigger={<Button size="sm" variant="outline"><Plus />New employee</Button>} title="Add employee for payroll" action={createPayrollEmployee} submitLabel="Add employee">
             <div className="space-y-2">
@@ -75,7 +76,7 @@ export default async function PayrollCompensationPage({
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="baseSalary">Base salary</Label>
+                <Label htmlFor="baseSalary">Base salary ({tenant.organization.currency})</Label>
                 <Input id="baseSalary" name="baseSalary" type="number" step="0.01" required />
               </div>
               <div className="space-y-2">
@@ -131,7 +132,7 @@ export default async function PayrollCompensationPage({
           <TableHeader>
             <TableRow>
               <TableHead>Employee</TableHead>
-              <TableHead>Base salary</TableHead>
+              <TableHead>Base salary ({tenant.organization.currency})</TableHead>
               <TableHead>Frequency</TableHead>
               <TableHead>Effective</TableHead>
               {canManage ? <TableHead /> : null}
@@ -141,7 +142,7 @@ export default async function PayrollCompensationPage({
             {compensations.map((comp) => (
               <TableRow key={comp.id}>
                 <TableCell className="font-medium">{comp.employee.fullName}</TableCell>
-                <TableCell className="text-muted-foreground">{Number(comp.baseSalary).toFixed(2)}</TableCell>
+                <TableCell className="text-muted-foreground">{formatMoney(comp.baseSalary, tenant.organization.currency)}</TableCell>
                 <TableCell>
                   <Badge variant="outline">{FREQUENCY_ITEMS[comp.payFrequency] ?? comp.payFrequency}</Badge>
                 </TableCell>
@@ -157,7 +158,7 @@ export default async function PayrollCompensationPage({
                       <input type="hidden" name="employeeId" value={comp.employeeId} />
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div className="space-y-2">
-                          <Label htmlFor={`baseSalary-${comp.id}`}>Base salary</Label>
+                          <Label htmlFor={`baseSalary-${comp.id}`}>Base salary ({tenant.organization.currency})</Label>
                           <Input id={`baseSalary-${comp.id}`} name="baseSalary" type="number" step="0.01" defaultValue={comp.baseSalary.toString()} required />
                         </div>
                         <div className="space-y-2">

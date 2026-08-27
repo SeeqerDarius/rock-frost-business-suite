@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { listPayslips } from "@/modules/payroll/service";
 
 export default async function PayrollPayslipsPage() {
@@ -19,6 +20,7 @@ export default async function PayrollPayslipsPage() {
   }
 
   const payslips = await listPayslips(tenant.organizationId);
+  const currency = tenant.organization.currency;
 
   return (
     <div className="space-y-6">
@@ -32,10 +34,10 @@ export default async function PayrollPayslipsPage() {
             <TableRow>
               <TableHead>Employee</TableHead>
               <TableHead>Pay period</TableHead>
-              <TableHead>Gross pay</TableHead>
-              <TableHead>Tax deduction</TableHead>
-              <TableHead>Other deductions</TableHead>
-              <TableHead>Net pay</TableHead>
+              <TableHead>Gross pay ({currency})</TableHead>
+              <TableHead>Tax deduction ({currency})</TableHead>
+              <TableHead>Other deductions ({currency})</TableHead>
+              <TableHead>Net pay ({currency})</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -45,10 +47,10 @@ export default async function PayrollPayslipsPage() {
                 <TableCell className="text-muted-foreground">
                   {slip.payrollRun.periodStart.toLocaleDateString()} – {slip.payrollRun.periodEnd.toLocaleDateString()}
                 </TableCell>
-                <TableCell className="text-muted-foreground">{Number(slip.grossPay).toFixed(2)}</TableCell>
-                <TableCell className="text-muted-foreground">{Number(slip.taxDeduction).toFixed(2)}</TableCell>
-                <TableCell className="text-muted-foreground">{Number(slip.otherDeductions).toFixed(2)}</TableCell>
-                <TableCell className="font-medium">{Number(slip.netPay).toFixed(2)}</TableCell>
+                <TableCell className="text-muted-foreground">{formatMoney(slip.grossPay, currency)}</TableCell>
+                <TableCell className="text-muted-foreground">{formatMoney(slip.taxDeduction, currency)}</TableCell>
+                <TableCell className="text-muted-foreground">{formatMoney(slip.otherDeductions, currency)}</TableCell>
+                <TableCell className="font-medium">{formatMoney(slip.netPay, currency)}</TableCell>
               </TableRow>
             ))}
           </TableBody>

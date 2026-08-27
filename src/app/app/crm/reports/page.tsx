@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { getCrmSummary } from "@/modules/crm/service";
 import { ReportExportLinks } from "@/components/reports/report-export-links";
 
@@ -29,10 +30,10 @@ export default async function CrmReportsPage() {
   const summary = await getCrmSummary(tenant.organizationId);
 
   const stats = [
-    { label: "Open pipeline value", value: summary.pipelineValue.toFixed(2) },
-    { label: "Won value (all time)", value: summary.wonValue.toFixed(2) },
+    { label: "Open pipeline value", value: formatMoney(summary.pipelineValue, tenant.organization.currency) },
+    { label: "Won value (all time)", value: formatMoney(summary.wonValue, tenant.organization.currency) },
     { label: "Win rate", value: `${summary.winRate.toFixed(0)}%` },
-    { label: "Won this month", value: `${summary.wonThisMonthCount} (${summary.wonThisMonthValue.toFixed(2)})` },
+    { label: "Won this month", value: `${summary.wonThisMonthCount} (${formatMoney(summary.wonThisMonthValue, tenant.organization.currency)})` },
   ];
 
   return (

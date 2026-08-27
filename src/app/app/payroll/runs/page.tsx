@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { listRuns } from "@/modules/payroll/service";
 import { createNewRun, processExistingRun, cancelExistingRun } from "./actions";
 
@@ -86,7 +87,7 @@ export default async function PayrollRunsPage({
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Pay date {run.payDate.toLocaleDateString()}
-                    {run.payslips.length > 0 ? ` · ${run.payslips.length} payslip${run.payslips.length === 1 ? "" : "s"} · ${totalNet.toFixed(2)} net` : ""}
+                    {run.payslips.length > 0 ? ` · ${run.payslips.length} payslip${run.payslips.length === 1 ? "" : "s"} · ${formatMoney(totalNet, tenant.organization.currency)} net` : ""}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">

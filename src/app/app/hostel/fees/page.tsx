@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { SectionCard } from "@/components/school/section-card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
+import { formatMoney } from "@/lib/currency";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listHostelFeeStructures, listHostelFeeInvoices, listHostelBuildings } from "@/modules/hostel/service";
 import { listSchoolStudents, getSchoolAcademicSetup } from "@/modules/school/service";
@@ -65,7 +66,7 @@ export default async function HostelFeesPage({ searchParams }: { searchParams: P
                   {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </div>
-              <div className="space-y-2"><Label htmlFor="amount">Amount</Label><Input id="amount" name="amount" type="number" step="0.01" required /></div>
+              <div className="space-y-2"><Label htmlFor="amount">Amount ({tenant.organization.currency ?? "GHS"})</Label><Input id="amount" name="amount" type="number" step="0.01" required /></div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -99,7 +100,7 @@ export default async function HostelFeesPage({ searchParams }: { searchParams: P
                 <TableRow key={structure.id}>
                   <TableCell className="font-medium">{structure.name}</TableCell>
                   <TableCell className="text-muted-foreground">{structure.building?.name ?? "All buildings"} · {structure.academicYear.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{Number(structure.amount).toFixed(2)}</TableCell>
+                  <TableCell className="text-muted-foreground">{formatMoney(structure.amount, tenant.organization.currency)}</TableCell>
                   <TableCell className="text-muted-foreground">{structure._count.invoices}</TableCell>
                   {canManage ? (
                     <TableCell className="text-right">
@@ -137,7 +138,7 @@ export default async function HostelFeesPage({ searchParams }: { searchParams: P
             </div>
             <div className="space-y-2"><Label htmlFor="description">Description</Label><Input id="description" name="description" required /></div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2"><Label htmlFor="amount">Amount</Label><Input id="amount" name="amount" type="number" step="0.01" required /></div>
+              <div className="space-y-2"><Label htmlFor="amount">Amount ({tenant.organization.currency ?? "GHS"})</Label><Input id="amount" name="amount" type="number" step="0.01" required /></div>
               <div className="space-y-2"><Label htmlFor="discount">Discount</Label><Input id="discount" name="discount" type="number" step="0.01" defaultValue="0" /></div>
             </div>
             <div className="space-y-2"><Label htmlFor="dueDate">Due date</Label><Input id="dueDate" name="dueDate" type="date" /></div>
@@ -165,14 +166,14 @@ export default async function HostelFeesPage({ searchParams }: { searchParams: P
                   <TableRow key={invoice.id}>
                     <TableCell className="font-mono text-xs">{invoice.invoiceNumber}</TableCell>
                     <TableCell className="font-medium">{invoice.student.firstName} {invoice.student.lastName}</TableCell>
-                    <TableCell className="text-muted-foreground">{Number(invoice.amount).toFixed(2)}{due > 0 ? <span className="block text-xs">Due {due.toFixed(2)}</span> : null}</TableCell>
+                    <TableCell className="text-muted-foreground">{formatMoney(invoice.amount, tenant.organization.currency)}{due > 0 ? <span className="block text-xs">Due {formatMoney(due, tenant.organization.currency)}</span> : null}</TableCell>
                     <TableCell><Badge variant={STATUS_BADGE[invoice.status]}>{invoice.status}</Badge></TableCell>
                     {canManage ? (
                       <TableCell className="text-right">
                         {invoice.status === "ISSUED" || invoice.status === "PART_PAID" ? (
                           <EntityDialog trigger={<Button size="sm" variant="ghost">Record payment</Button>} title={`Record payment for ${invoice.invoiceNumber}`} action={recordFeePaymentAction} submitLabel="Record payment">
                             <input type="hidden" name="invoiceId" value={invoice.id} />
-                            <div className="space-y-2"><Label htmlFor={`amount-${invoice.id}`}>Amount</Label><Input id={`amount-${invoice.id}`} name="amount" type="number" step="0.01" defaultValue={due.toFixed(2)} required /></div>
+                            <div className="space-y-2"><Label htmlFor={`amount-${invoice.id}`}>Amount ({tenant.organization.currency ?? "GHS"})</Label><Input id={`amount-${invoice.id}`} name="amount" type="number" step="0.01" defaultValue={due.toFixed(2)} required /></div>
                             <div className="space-y-2">
                               <Label htmlFor={`method-${invoice.id}`}>Method</Label>
                               <select id={`method-${invoice.id}`} name="method" className="h-9 w-full rounded-md border bg-transparent px-3 text-sm" defaultValue="CASH">

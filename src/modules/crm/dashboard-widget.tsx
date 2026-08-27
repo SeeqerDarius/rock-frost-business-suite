@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/button";
 import { IconBadge } from "@/components/ui/icon-badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
+import { formatMoney } from "@/lib/currency";
 import { getCrmSummary } from "@/modules/crm/service";
 
 export async function CrmDashboardWidget({ linkable = true }: { linkable?: boolean } = {}) {
@@ -16,7 +17,7 @@ export async function CrmDashboardWidget({ linkable = true }: { linkable?: boole
         <IconBadge size="lg"><Contact className="size-5" /></IconBadge>
         <CardTitle className="mt-3">Customer Relationship Management</CardTitle>
         <CardDescription>
-          {summary.contactCount} contact{summary.contactCount === 1 ? "" : "s"} · {summary.openDealCount} open deal{summary.openDealCount === 1 ? "" : "s"} · {summary.pipelineValue.toFixed(2)} pipeline
+          {summary.contactCount} contact{summary.contactCount === 1 ? "" : "s"} · {summary.openDealCount} open deal{summary.openDealCount === 1 ? "" : "s"} · {formatMoney(summary.pipelineValue, tenant.organization.currency)} pipeline
         </CardDescription>
       </CardHeader>
       {linkable ? (

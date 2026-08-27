@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { getFinancialOverview } from "@/modules/analytics/service";
 
 export default async function AnalyticsFinancialPage() {
@@ -19,6 +20,7 @@ export default async function AnalyticsFinancialPage() {
   }
 
   const { accounting, payroll } = await getFinancialOverview(tenant.organizationId, tenant.enabledModuleKeys);
+  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
 
   if (!accounting && !payroll) {
     return (
@@ -41,27 +43,27 @@ export default async function AnalyticsFinancialPage() {
           <CardContent className="grid gap-3 sm:grid-cols-3">
             <div>
               <p className="text-xs text-muted-foreground">Cash balance</p>
-              <p className="text-lg font-medium">{accounting.cashBalance.toFixed(2)}</p>
+              <p className="text-lg font-medium">{money(accounting.cashBalance)}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total revenue</p>
-              <p className="text-lg font-medium">{accounting.totalRevenue.toFixed(2)}</p>
+              <p className="text-lg font-medium">{money(accounting.totalRevenue)}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total expenses</p>
-              <p className="text-lg font-medium">{accounting.totalExpenses.toFixed(2)}</p>
+              <p className="text-lg font-medium">{money(accounting.totalExpenses)}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Net income</p>
-              <p className="text-lg font-medium">{accounting.netIncome.toFixed(2)}</p>
+              <p className="text-lg font-medium">{money(accounting.netIncome)}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Outstanding invoices</p>
-              <p className="text-lg font-medium">{accounting.outstandingInvoiceCount} ({accounting.outstandingInvoiceTotal.toFixed(2)})</p>
+              <p className="text-lg font-medium">{accounting.outstandingInvoiceCount} ({money(accounting.outstandingInvoiceTotal)})</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Pending expenses</p>
-              <p className="text-lg font-medium">{accounting.pendingExpenseCount} ({accounting.pendingExpenseTotal.toFixed(2)})</p>
+              <p className="text-lg font-medium">{accounting.pendingExpenseCount} ({money(accounting.pendingExpenseTotal)})</p>
             </div>
           </CardContent>
         </Card>
@@ -83,7 +85,7 @@ export default async function AnalyticsFinancialPage() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Last run net pay</p>
-              <p className="text-lg font-medium">{payroll.lastRunTotalNet.toFixed(2)}</p>
+              <p className="text-lg font-medium">{money(payroll.lastRunTotalNet)}</p>
             </div>
           </CardContent>
         </Card>
