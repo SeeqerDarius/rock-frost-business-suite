@@ -4,7 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { useOrganizationBranding } from "@/components/theme/organization-branding-context";
 import { SidebarNav } from "@/components/navigation/sidebar-nav";
@@ -130,8 +130,19 @@ export function AppShell({
           sidebarCollapsed ? "w-18" : "w-64",
         )}
       >
-        <div data-tour="home-logo" className={cn("flex h-16 items-center border-b px-4", sidebarCollapsed && "justify-center px-2")}>
-          <WorkspaceLogo homeHref={homeHref} compact={sidebarCollapsed} hasOrganization={Boolean(organization)} />
+        <div data-tour="home-logo" className={cn("flex h-16 items-center gap-2 border-b px-4", sidebarCollapsed && "justify-center px-2")}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="shrink-0 text-muted-foreground"
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!sidebarCollapsed}
+            onClick={toggleSidebar}
+          >
+            <Menu className="size-4" />
+          </Button>
+          {!sidebarCollapsed ? <WorkspaceLogo homeHref={homeHref} hasOrganization={Boolean(organization)} /> : null}
         </div>
         {organization && !sidebarCollapsed ? (
           <OrganizationSwitcher currentOrganizationId={organization.organizationId} memberships={organization.memberships} />
@@ -150,20 +161,6 @@ export function AppShell({
             <SidebarNav items={footerNavigation} collapsed={sidebarCollapsed} />
           </div>
         ) : null}
-        <div className="border-t p-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size={sidebarCollapsed ? "icon" : "default"}
-            className={cn("w-full text-muted-foreground", !sidebarCollapsed && "justify-start")}
-            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-expanded={!sidebarCollapsed}
-            onClick={toggleSidebar}
-          >
-            {sidebarCollapsed ? <ChevronRight /> : <ChevronLeft />}
-            {!sidebarCollapsed ? <span>Collapse sidebar</span> : null}
-          </Button>
-        </div>
       </aside>
 
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
