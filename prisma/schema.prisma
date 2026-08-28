@@ -321,6 +321,8 @@ model User {
   procurementInvoicesApproved     ProcurementSupplierInvoice[]     @relation("ProcurementInvoicesApproved")
   procurementSupplierPayments     ProcurementSupplierPayment[]
   accountingReceivablePayments    AccountingReceivablePayment[]
+  accountingPlansCreated          AccountingPlan[]                 @relation("AccountingPlansCreated")
+  accountingPlanDecisions         AccountingPlanDecision[]
   payrollRunsCreated              PayrollRun[]
   posSessionsOpened               PosSession[]                     @relation("PosSessionsOpened")
   posSessionsClosed               PosSession[]                     @relation("PosSessionsClosed")
@@ -493,6 +495,9 @@ model Organization {
   accountingTaxCodes              AccountingTaxCode[]
   accountingTaxTransactions       AccountingTaxTransaction[]
   accountingTaxPeriods            AccountingTaxPeriod[]
+  accountingPlans                 AccountingPlan[]
+  accountingPlanLines             AccountingPlanLine[]
+  accountingPlanDecisions         AccountingPlanDecision[]
   hrEmployees                     HrEmployee[]
   hrTerminationRequests           HrTerminationRequest[]
   hrEmployeeStatusHistory         HrEmployeeStatusHistory[]
@@ -736,6 +741,7 @@ model Branch {
   accountingInvoices       AccountingInvoice[]
   accountingExpenses       AccountingExpense[]
   accountingJournalEntries AccountingJournalEntry[]
+  accountingPlanLines      AccountingPlanLine[]
   hrEmployees              HrEmployee[]
   posRegisters             PosRegister[]
   projects                 Project[]
@@ -2216,6 +2222,30 @@ enum AccountingTaxPeriodStatus {
   FILED
 }
 
+enum AccountingPlanKind {
+  BUDGET
+  FORECAST
+}
+
+enum AccountingPlanStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  LOCKED
+  ARCHIVED
+}
+
+enum AccountingPlanDecisionAction {
+  CREATED
+  SUBMITTED
+  APPROVED
+  REJECTED
+  LOCKED
+  ARCHIVED
+  REVISION_CREATED
+}
+
 model AccountingAccount {
   id                     String                  @id @default(cuid())
   organizationId         String
@@ -2237,9 +2267,94 @@ model AccountingAccount {
   pettyCashFund      AccountingPettyCashFund?
   supplierPayments   ProcurementSupplierPayment[]
   receivablePayments AccountingReceivablePayment[]
+  planLines          AccountingPlanLine[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
+}
+
+model AccountingPlan {
+  id                String               @id @default(cuid())
+  organizationId    String
+  name              String
+  kind              AccountingPlanKind
+  status            AccountingPlanStatus @default(DRAFT)
+  startDate         DateTime
+  endDate           DateTime
+  currencyCode      String
+  revision          Int                  @default(1)
+  parentPlanId      String?
+  actualThroughDate DateTime?
+  notes             String?              @db.Text
+  createdById       String?
+  submittedById     String?
+  submittedAt       DateTime?
+  approvedById      String?
+  approvedAt        DateTime?
+  rejectedById      String?
+  rejectedAt        DateTime?
+  rejectionReason   String?              @db.Text
+  lockedById        String?
+  lockedAt          DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?                    @relation("AccountingPlansCreated", fields: [createdById], references: [id], onDelete: SetNull)
+  parentPlan   AccountingPlan?          @relation("AccountingPlanRevisions", fields: [parentPlanId], references: [id], onDelete: Restrict)
+  revisions    AccountingPlan[]         @relation("AccountingPlanRevisions")
+  lines        AccountingPlanLine[]
+  decisions    AccountingPlanDecision[]
+
+  @@unique([organizationId, name, revision])
+  @@index([organizationId, kind, status, startDate])
+  @@index([parentPlanId])
+}
+
+model AccountingPlanLine {
+  id             String   @id @default(cuid())
+  organizationId String
+  planId         String
+  accountId      String
+  branchId       String?
+  sourceModule   String?
+  dimensionKey   String
+  periodStart    DateTime
+  periodEnd      DateTime
+  amount         Decimal  @db.Decimal(16, 2)
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan         AccountingPlan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  account      AccountingAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  branch       Branch?           @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  @@unique([planId, accountId, periodStart, dimensionKey])
+  @@index([organizationId, periodStart])
+  @@index([accountId, periodStart])
+  @@index([branchId])
+  @@index([sourceModule])
+}
+
+model AccountingPlanDecision {
+  id             String                       @id @default(cuid())
+  organizationId String
+  planId         String
+  action         AccountingPlanDecisionAction
+  fromStatus     AccountingPlanStatus?
+  toStatus       AccountingPlanStatus
+  actorId        String?
+  reason         String?                      @db.Text
+  createdAt      DateTime                     @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan         AccountingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  actor        User?          @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([planId, createdAt])
 }
 
 model AccountingExpenseCategory {

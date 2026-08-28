@@ -163,7 +163,8 @@ describe("module authorization source coverage", () => {
     // hierarchy page, both requireModuleAccess("hr").
     // 115, up from 114: HR gains a Directory page, requireModuleAccess("hr").
     // 116, up from 115: HR gains a Configuration page, requireModuleAccess("hr").
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(116);
+    // 118, up from 116: Accounting planning adds list and plan-detail pages.
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(118);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
     // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
     // all Hostel Server Actions, same shape as School's) joins the sweep
@@ -177,7 +178,8 @@ describe("module authorization source coverage", () => {
     // is a new guarded actions file, requireModuleAccess("hr").
     // 60, up from 59: HR's configuration/actions.ts (Skill Types, Skills) is a new
     // guarded actions file, requireModuleAccess("hr").
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(60);
+    // 61, up from 60: Accounting planning adds one separately guarded action file.
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(61);
 
     for (const { moduleKey, filePath } of guardedFiles) {
       const source = readFileSync(filePath, "utf8");

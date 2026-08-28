@@ -1,4 +1,4 @@
-import { LayoutGrid, BookOpen, FileText, Receipt, ScrollText, BarChart3, Settings, Landmark, Wallet, CalendarRange, Sparkles, UsersRound, BadgePercent } from "lucide-react";
+import { LayoutGrid, BookOpen, FileText, Receipt, ScrollText, BarChart3, Settings, Landmark, Wallet, CalendarRange, Sparkles, UsersRound, BadgePercent, ChartNoAxesCombined } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const accountingNavigation: ModuleNavItem[] = [
@@ -13,6 +13,7 @@ export const accountingNavigation: ModuleNavItem[] = [
   { label: "Cash and Bank", href: "/app/accounting/cashbook", icon: <Landmark className="size-4" />, description: "Post opening balances, view cashbook movements, and reconcile cash and bank accounts to statements." },
   { label: "Accounting Periods", href: "/app/accounting/periods", icon: <CalendarRange className="size-4" />, description: "Create accounting periods and close or reopen them to control when transactions can post." },
   { label: "Tax and VAT", href: "/app/accounting/tax", icon: <BadgePercent className="size-4" />, description: "Configure tax codes and periods, then generate a working VAT return backed by transaction evidence." },
+  { label: "Budgets and Forecasts", href: "/app/accounting/planning", icon: <ChartNoAxesCombined className="size-4" />, description: "Create budgets and forecasts, manage approvals and revisions, and compare plans with posted actuals." },
   { label: "Reports", href: "/app/accounting/reports", icon: <BarChart3 className="size-4" />, description: "View profit and loss, revenue by source, and balance sheet figures, and export them." },
   { label: "Accounting Settings", href: "/app/accounting/settings", icon: <Settings className="size-4" />, description: "Set your invoice numbering prefix and manage expense categories." },
 ];
