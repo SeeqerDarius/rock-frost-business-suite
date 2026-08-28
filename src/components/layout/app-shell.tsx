@@ -17,6 +17,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { TourRunner } from "@/components/onboarding/tour-runner";
 import { cn } from "@/lib/utils";
 import { getModule } from "@/platform/modules/registry";
+import { getEnabledModuleTiles } from "@/platform/modules/enabled-module-tiles";
 import type { ModuleNavItem } from "@/types/module";
 
 interface AppShellProps {
@@ -97,6 +98,23 @@ export function AppShell({
   const activeHref = getActiveNavigationHref(pathname, navigation);
   const currentItem = navigation.find((item) => item.href === activeHref);
 
+  /**
+   * Every other enabled module, shown as a single collapsed row beneath this
+   * module's own (already permission-filtered) page list - so the sidebar
+   * shows every activated module at once, and clicking one navigates into it
+   * where its own layout takes over and expands its real pages. Only that
+   * module's own layout knows which of its pages the current role can see,
+   * so a collapsed row (not that module's sub-items) is all this shell can
+   * show safely for a module it isn't currently rendering. Suppressed by
+   * the same showModuleLauncher flag that already hides the header launcher
+   * for locked-down roles (e.g. the Driver role - see docs/FLEET_MODULE_IMPLEMENTATION.md).
+   */
+  const otherModuleNavItems: ModuleNavItem[] = showModuleLauncher
+    ? getEnabledModuleTiles(enabledModuleKeys)
+        .filter((tile) => tile.key !== moduleKey)
+        .map((tile) => ({ label: tile.name, href: tile.routePrefix, icon: <tile.icon className="size-4" />, group: "Other modules" }))
+    : [];
+
   function toggleSidebar() {
     window.localStorage.setItem("rf-sidebar-collapsed", String(!sidebarCollapsed));
     window.dispatchEvent(new Event("rf-sidebar-change"));
@@ -121,6 +139,11 @@ export function AppShell({
         {!sidebarCollapsed ? <p className="px-5 pb-2 pt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">{sectionLabel}</p> : null}
         <div data-tour="sidebar-nav" className="min-h-0 flex-1 overflow-y-auto py-1">
           <SidebarNav items={navigation} collapsed={sidebarCollapsed} tourTargets />
+          {otherModuleNavItems.length > 0 ? (
+            <div className={!sidebarCollapsed ? "mt-2 border-t pt-2" : undefined}>
+              <SidebarNav items={otherModuleNavItems} collapsed={sidebarCollapsed} />
+            </div>
+          ) : null}
         </div>
         {footerNavigation.length > 0 ? (
           <div className="border-t py-2">
@@ -155,6 +178,11 @@ export function AppShell({
           <p className="px-5 pt-4 pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{sectionLabel}</p>
           <div className="min-h-0 flex-1 overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))] pt-1">
             <SidebarNav items={navigation} onNavigate={() => setMobileNavOpen(false)} />
+            {otherModuleNavItems.length > 0 ? (
+              <div className="mt-2 border-t pt-2">
+                <SidebarNav items={otherModuleNavItems} onNavigate={() => setMobileNavOpen(false)} />
+              </div>
+            ) : null}
           </div>
           {footerNavigation.length > 0 ? (
             <div className="border-t py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
