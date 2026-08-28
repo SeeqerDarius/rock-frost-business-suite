@@ -7,6 +7,21 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { getActiveNavigationHref } from "@/components/navigation/active-navigation";
 import type { ModuleNavItem } from "@/types/module";
 
+/** Icon chip for a nav item - same treatment IconBadge uses everywhere else, sized down for an inline row. Kept as one consistent accent color rather than a distinct color per item, per IconBadge's own "never hardcode a color inline" rule. */
+function NavIcon({ children, active }: { children: React.ReactNode; active: boolean }) {
+  return (
+    <span
+      className={cn(
+        "flex size-7 shrink-0 items-center justify-center rounded-md [&_svg]:size-4",
+        active ? "bg-sidebar-primary/15 text-sidebar-primary" : "bg-sidebar-accent/60 text-muted-foreground",
+      )}
+      aria-hidden="true"
+    >
+      {children}
+    </span>
+  );
+}
+
 interface SidebarNavProps {
   items: ModuleNavItem[];
   collapsed?: boolean;
@@ -46,7 +61,7 @@ export function SidebarNav({ items, collapsed = false, onNavigate, tourTargets =
                 : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
             )}
           >
-            <span className="shrink-0 [&_svg]:size-4" aria-hidden="true">{item.icon}</span>
+            <NavIcon active={isActive}>{item.icon}</NavIcon>
             {!collapsed ? <span className="truncate">{item.label}</span> : null}
           </Link>
         );

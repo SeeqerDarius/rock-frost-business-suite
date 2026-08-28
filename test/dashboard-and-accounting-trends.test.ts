@@ -1,0 +1,50 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+/**
+ * User request: reskin the app's dashboards to include tabbed chart widgets
+ * (like a competitor's Sales/Payments panel), after seeing that competitor's
+ * live app. Built with real Rock Frost data (posted revenue, real invoices),
+ * a small charting library (recharts, the user's own explicit choice over
+ * hand-built SVG charts), and the existing Tabs component for the tab style.
+ */
+describe("dashboard and Accounting overview trend widgets", () => {
+  const dashboard = readFileSync("src/app/app/(overview)/dashboard/page.tsx", "utf8");
+  const accountingPage = readFileSync("src/app/app/accounting/page.tsx", "utf8");
+  const accountingService = readFileSync("src/modules/accounting/service.ts", "utf8");
+  const accountingIntegration = readFileSync("src/lib/accounting-integration.ts", "utf8");
+  const sidebarNav = readFileSync("src/components/navigation/sidebar-nav.tsx", "utf8");
+
+  it("names the new Accounting overview data function distinctly from the existing, unrelated Accounting Insights page", () => {
+    // src/modules/accounting/insights.ts already exports getAccountingInsights
+    // for the separate, AI-assistant-backed /app/accounting/insights page -
+    // reusing that name here would be a real collision risk for future edits.
+    expect(accountingService).toContain("export async function getAccountingOverviewTrends(");
+    expect(accountingService).not.toContain("export async function getAccountingInsights(");
+    expect(accountingPage).toContain("getAccountingOverviewTrends");
+    expect(accountingPage).not.toContain("<CardTitle>Insights</CardTitle>");
+  });
+
+  it("gives the Accounting overview page a tabbed Trends card matching the requested tab set", () => {
+    for (const tab of ["Invoices", "Profit &amp; Loss", "Recent Invoices", "Overdue Invoices"]) {
+      expect(accountingPage).toContain(tab);
+    }
+    expect(accountingPage).toContain("TrendAreaChart");
+    expect(accountingPage).toContain("BreakdownDonutChart");
+  });
+
+  it("gives the main Dashboard a cross-module revenue widget, only shown when Accounting is actually active", () => {
+    expect(dashboard).toContain("getRevenueInsights(tenant.organizationId)");
+    expect(dashboard).toContain("revenueInsights ?");
+    expect(accountingIntegration).toContain("export async function getRevenueInsights(organizationId: string): Promise<RevenueInsights | null> {");
+    expect(accountingIntegration).toContain('if (!(await isModuleActiveForOrg(db, organizationId, "accounting"))) return null;');
+  });
+
+  it("keeps the sidebar's icon treatment to one consistent accent color rather than a distinct color per item", () => {
+    // Matching IconBadge's own stated rule elsewhere in this codebase: one
+    // RF-blue treatment everywhere an icon represents something, not a
+    // different color per item the way the reference competitor's menu does.
+    expect(sidebarNav).toContain("function NavIcon(");
+    expect(sidebarNav).not.toMatch(/bg-(red|green|orange|pink|purple|yellow)-/);
+  });
+});

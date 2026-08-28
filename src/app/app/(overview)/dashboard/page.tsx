@@ -2,13 +2,17 @@ import Link from "next/link";
 import { LayoutGrid } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { IconBadge } from "@/components/ui/icon-badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { TrendAreaChart, BreakdownDonutChart } from "@/components/dashboard/charts";
 import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry";
 import { productGroupKeys } from "@/platform/modules/product-groups";
 import { dashboardWidgets } from "@/platform/modules/dashboard-widgets";
 import { requireCurrentTenant } from "@/lib/tenant";
+import { formatMoney } from "@/lib/currency";
+import { getRevenueInsights } from "@/lib/accounting-integration";
 
 export default async function OrganizationDashboardPage() {
   const tenant = await requireCurrentTenant();
@@ -17,6 +21,8 @@ export default async function OrganizationDashboardPage() {
     const accessibleModule = accessibleKey ? getModule(accessibleKey) : null;
     return accessibleModule ? [{ definition: mod, accessibleModule }] : [];
   });
+  const revenueInsights = await getRevenueInsights(tenant.organizationId);
+  const money = (value: number) => formatMoney(value, tenant.organization.currency);
 
   return (
     <div className="space-y-6">
@@ -24,6 +30,27 @@ export default async function OrganizationDashboardPage() {
         title="Overview"
         description={`A summary of the modules enabled for ${tenant.organization.name}.`}
       />
+      {revenueInsights ? (
+        <Card>
+          <CardHeader><CardTitle>Revenue insights</CardTitle></CardHeader>
+          <CardContent>
+            <Tabs defaultValue="trend">
+              <TabsList variant="line">
+                <TabsTrigger value="trend">Revenue trend</TabsTrigger>
+                <TabsTrigger value="by-module">By module</TabsTrigger>
+              </TabsList>
+              <TabsContent value="trend" className="mt-6">
+                <p className="mb-2 text-xs font-medium text-muted-foreground">Posted revenue across every module, last 6 months</p>
+                <TrendAreaChart data={revenueInsights.monthly} series={[{ key: "revenue", label: "Revenue" }]} valueFormatter={money} />
+              </TabsContent>
+              <TabsContent value="by-module" className="mt-6">
+                <p className="mb-2 text-xs font-medium text-muted-foreground">Lifetime revenue by module</p>
+                <BreakdownDonutChart data={revenueInsights.byModule} valueFormatter={money} />
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      ) : null}
       {enabledModules.length === 0 ? (
         <EmptyState
           icon={LayoutGrid}

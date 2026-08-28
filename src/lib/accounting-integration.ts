@@ -3,7 +3,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { primaryProductKey } from "@/platform/modules/product-groups";
-import { ensureDefaultAccounts, postProcurementTaxAccrual, postSourceJournalEntry, reverseSourceJournalEntry } from "@/modules/accounting/service";
+import { ensureDefaultAccounts, listAccounts, postProcurementTaxAccrual, postSourceJournalEntry, reverseSourceJournalEntry } from "@/modules/accounting/service";
 
 /**
  * The one place every revenue-generating module posts into Accounting's
@@ -307,4 +307,59 @@ export async function reverseAllModuleRevenueForSource(organizationId: string, i
     }
   }
   return { reversedCount };
+}
+
+export interface RevenueInsights {
+  monthly: { label: string; revenue: number }[];
+  byModule: { label: string; value: number }[];
+}
+
+/**
+ * Cross-module revenue for the main Dashboard's insights widget - every
+ * revenue-generating module posts into its own dedicated Revenue account
+ * (MODULE_REVENUE_ACCOUNTS), so this is real posted-ledger data, not a
+ * per-module re-derivation. Returns null when Accounting isn't active for
+ * this organization (nothing to show) rather than an empty/misleading chart.
+ */
+export async function getRevenueInsights(organizationId: string): Promise<RevenueInsights | null> {
+  if (!(await isModuleActiveForOrg(db, organizationId, "accounting"))) return null;
+
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setHours(0, 0, 0, 0);
+  sixMonthsAgo.setDate(1);
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+
+  const [accounts, recentLines] = await Promise.all([
+    listAccounts(organizationId),
+    db.accountingJournalLine.findMany({
+      where: {
+        account: { organizationId, type: "REVENUE" },
+        journalEntry: { organizationId, entryDate: { gte: sixMonthsAgo }, status: "POSTED" },
+      },
+      select: { debit: true, credit: true, journalEntry: { select: { entryDate: true } } },
+    }),
+  ]);
+
+  const months: { year: number; month: number; label: string }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - i);
+    months.push({ year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleDateString("en-US", { month: "short" }) });
+  }
+
+  const monthly = months.map(({ year, month, label }) => {
+    const revenue = recentLines
+      .filter((line) => line.journalEntry.entryDate.getFullYear() === year && line.journalEntry.entryDate.getMonth() === month)
+      .reduce((sum, line) => sum + (Number(line.credit) - Number(line.debit)), 0);
+    return { label, revenue };
+  });
+
+  const byModule = accounts
+    .filter((account) => account.type === "REVENUE")
+    .map((account) => ({ label: account.name, value: account.balance }))
+    .filter((entry) => entry.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  return { monthly, byModule };
 }

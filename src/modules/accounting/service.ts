@@ -1057,6 +1057,67 @@ export async function getAccountingSummary(organizationId: string) {
   };
 }
 
+export interface AccountingOverviewTrends {
+  monthly: { label: string; invoiced: number; expenses: number; netIncome: number }[];
+  invoiceStatusBreakdown: { label: string; value: number }[];
+  recentInvoices: { id: string; invoiceNumber: string; customerName: string; amount: number; status: string; issueDate: Date }[];
+  overdueInvoices: { id: string; invoiceNumber: string; customerName: string; amountDue: number; dueDate: Date }[];
+}
+
+/**
+ * Backs the Accounting overview page's tabbed trends card - real invoice/
+ * expense data, not sample figures. Deliberately not named
+ * "getAccountingInsights" - that name already belongs to
+ * src/modules/accounting/insights.ts's period-driven, AI-assistant-backed
+ * Accounting Insights page (/app/accounting/insights), a separate, richer
+ * surface this function has no relation to.
+ */
+export async function getAccountingOverviewTrends(organizationId: string): Promise<AccountingOverviewTrends> {
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setHours(0, 0, 0, 0);
+  sixMonthsAgo.setDate(1);
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+
+  const [recentInvoiceRows, recentExpenseRows, statusGroups, recentInvoices, overdueInvoiceRows] = await Promise.all([
+    db.accountingInvoice.findMany({ where: { organizationId, issueDate: { gte: sixMonthsAgo } }, select: { issueDate: true, amount: true } }),
+    db.accountingExpense.findMany({ where: { organizationId, expenseDate: { gte: sixMonthsAgo } }, select: { expenseDate: true, amount: true } }),
+    db.accountingInvoice.groupBy({ by: ["status"], where: { organizationId }, _count: { _all: true } }),
+    db.accountingInvoice.findMany({ where: { organizationId }, orderBy: { issueDate: "desc" }, take: 5, select: { id: true, invoiceNumber: true, customerName: true, amount: true, status: true, issueDate: true } }),
+    db.accountingInvoice.findMany({ where: { organizationId, status: "OVERDUE" }, orderBy: { dueDate: "asc" }, take: 5, select: { id: true, invoiceNumber: true, customerName: true, amount: true, amountPaid: true, dueDate: true } }),
+  ]);
+
+  const months: { year: number; month: number; label: string }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - i);
+    months.push({ year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleDateString("en-US", { month: "short" }) });
+  }
+
+  const monthly = months.map(({ year, month, label }) => {
+    const invoiced = recentInvoiceRows.filter((i) => i.issueDate.getFullYear() === year && i.issueDate.getMonth() === month).reduce((sum, i) => sum + Number(i.amount), 0);
+    const expenses = recentExpenseRows.filter((e) => e.expenseDate.getFullYear() === year && e.expenseDate.getMonth() === month).reduce((sum, e) => sum + Number(e.amount), 0);
+    return { label, invoiced, expenses, netIncome: invoiced - expenses };
+  });
+
+  const invoiceStatusBreakdown = statusGroups
+    .map((group) => ({ label: group.status, value: group._count._all }))
+    .filter((entry) => entry.value > 0);
+
+  return {
+    monthly,
+    invoiceStatusBreakdown,
+    recentInvoices: recentInvoices.map((invoice) => ({ ...invoice, amount: Number(invoice.amount) })),
+    overdueInvoices: overdueInvoiceRows.map((invoice) => ({
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      customerName: invoice.customerName,
+      amountDue: Number(invoice.amount) - Number(invoice.amountPaid),
+      dueDate: invoice.dueDate,
+    })),
+  };
+}
+
 /**
  * Assets = Liabilities + Equity is the fundamental accounting identity.
  * Revenue and Expense accounts have no balance-sheet home of their own, so
