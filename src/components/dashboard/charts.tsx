@@ -119,13 +119,17 @@ export function BreakdownDonutChart({
   data,
   currency,
   className,
+  valueFormat = "money",
 }: {
   data: { label: string; value: number }[];
   currency?: string | null;
   className?: string;
+  /** "count" renders the tooltip as a plain number (e.g. vehicles by status) instead of running it through formatMoney. */
+  valueFormat?: "money" | "count";
 }) {
   const total = data.reduce((sum, d) => sum + d.value, 0);
   if (total <= 0) return <NoData label="No data available yet." />;
+  const formatValue = (value: number) => (valueFormat === "count" ? new Intl.NumberFormat("en-US").format(value) : formatMoney(value, currency));
 
   return (
     <div className={cn("flex flex-col items-center gap-4 sm:flex-row", className)}>
@@ -134,7 +138,7 @@ export function BreakdownDonutChart({
           <Pie data={data} dataKey="value" nameKey="label" innerRadius={42} outerRadius={64} paddingAngle={2} stroke="none">
             {data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
           </Pie>
-          <Tooltip contentStyle={tooltipStyle} formatter={((value: number) => formatMoney(value, currency)) as (...args: unknown[]) => string} />
+          <Tooltip contentStyle={tooltipStyle} formatter={((value: number) => formatValue(value)) as (...args: unknown[]) => string} />
         </PieChart>
       </ResponsiveContainer>
       <ul className="w-full space-y-1.5 text-xs">

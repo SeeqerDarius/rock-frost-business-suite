@@ -19,6 +19,7 @@ import {
 } from "@/platform/module-requests/configuration";
 import { PERMISSIONS } from "@/lib/auth/permissions";
 import { logAuditEvent } from "@/lib/audit";
+import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@/lib/trend-buckets";
 
 const DEFAULT_RENEWAL_REMINDER_DAYS = 30;
 
@@ -1252,6 +1253,58 @@ export async function getFleetSummary(organizationId: string) {
     outstandingBalance: Number(outstandingBalances._sum.outstandingBalance ?? 0),
     recentPayments,
   };
+}
+
+export interface FleetPaymentTrends {
+  trends: Record<TrendGranularity, { label: string; revenue: number }[]>;
+}
+
+/**
+ * Verified-payment revenue bucketed for the Reports page's trend chart.
+ * Fetches once against the widest lookback window and buckets that same
+ * result three ways, matching the pattern already used for the Dashboard
+ * and Accounting overview trend widgets (src/lib/trend-buckets.ts).
+ */
+export async function getFleetPaymentTrends(organizationId: string): Promise<FleetPaymentTrends> {
+  const payments = await db.fleetPayment.findMany({
+    where: { organizationId, status: "VERIFIED", date: { gte: widestTrendLookback() } },
+    select: { amount: true, date: true },
+  });
+  const revenueBetween = (start: Date, end: Date) =>
+    payments.filter((payment) => payment.date >= start && payment.date < end).reduce((sum, payment) => sum + Number(payment.amount), 0);
+  const buildSeries = (granularity: TrendGranularity) =>
+    buildTrendBuckets(granularity).map((bucket) => ({ label: bucket.label, revenue: revenueBetween(bucket.start, bucket.end) }));
+  return { trends: { days: buildSeries("days"), weeks: buildSeries("weeks"), months: buildSeries("months") } };
+}
+
+/**
+ * Collections trend scoped the same way getFleetInvestorSummary is - all
+ * owners when userId is omitted (the Fleet-manager view), or only the
+ * portfolio linked to that userId (the Vehicle Owner's own investor view).
+ */
+export async function getFleetInvestorTrends(organizationId: string, userId?: string | null): Promise<FleetPaymentTrends> {
+  const ownerFilter = userId ? { userId } : {};
+  const owners = await db.fleetOwner.findMany({
+    where: { organizationId, ...ownerFilter },
+    include: { vehicles: { include: { workAndPayContracts: true } } },
+  });
+  const vehicleIds = new Set(owners.flatMap((owner) => owner.vehicles.map((vehicle) => vehicle.id)));
+  const contractIds = new Set(owners.flatMap((owner) => owner.vehicles.flatMap((vehicle) => vehicle.workAndPayContracts.map((contract) => contract.id))));
+
+  const payments = await db.fleetPayment.findMany({
+    where: { organizationId, status: "VERIFIED", date: { gte: widestTrendLookback() } },
+    select: { amount: true, date: true, relatedEntity: true, relatedEntityId: true },
+  });
+  const relevant = payments.filter(
+    (payment) =>
+      (payment.relatedEntity === "FleetVehicle" && payment.relatedEntityId && vehicleIds.has(payment.relatedEntityId)) ||
+      (payment.relatedEntity === "FleetWorkAndPayContract" && payment.relatedEntityId && contractIds.has(payment.relatedEntityId)),
+  );
+  const revenueBetween = (start: Date, end: Date) =>
+    relevant.filter((payment) => payment.date >= start && payment.date < end).reduce((sum, payment) => sum + Number(payment.amount), 0);
+  const buildSeries = (granularity: TrendGranularity) =>
+    buildTrendBuckets(granularity).map((bucket) => ({ label: bucket.label, revenue: revenueBetween(bucket.start, bucket.end) }));
+  return { trends: { days: buildSeries("days"), weeks: buildSeries("weeks"), months: buildSeries("months") } };
 }
 
 export async function getFleetDriverDashboardSummary(organizationId: string, userId: string) {

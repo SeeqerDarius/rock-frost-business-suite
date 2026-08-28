@@ -28,6 +28,7 @@ The responsive Next.js web application is the system of record. Its server-actio
 - Audit events and shared platform audit logging
 - Vehicle Make/Model entry uses a searchable reference list covering major global manufacturers and major Chinese manufacturers, with a colored initials badge next to the selected make and an "Other" free-text fallback for anything not listed
 - Driver and Vehicle Owner invite-by-email, reusing the platform's existing invitation/acceptance lifecycle so the roster entry links and the person's status becomes active automatically once they accept
+- Reports gets a vehicles-by-status donut chart and a verified-payments revenue trend chart (day/week/month switcher); the Investor dashboard gets a collections trend chart scoped to whichever owner portfolio is visible
 
 ## Maintenance workflow
 
@@ -82,6 +83,10 @@ Every step writes an immutable `FleetMaintenanceEvent` containing actor, event t
 ## Known gap: organization as a vehicle owner
 
 A company can own a vehicle directly, not only through an individual owner. The design for this (a `FleetOwner.isOrganizationOwner` flag, lazily provisioned per organization) is not yet implemented: it requires a schema migration, and this repository's release rule requires a schema-migration phase's integration suite to pass against the disposable test database (`TEST_DATABASE_URL`, `docs/TESTING_STRATEGY.md`) before it ships. That database's stored credentials are currently rejecting authentication (verified directly against both the test and production connection strings - production authenticates, the test branch does not), which is an external blocker, not a code issue. Once the test branch's credentials are refreshed, this is a small, well-scoped follow-up.
+
+## Known gap: mechanic self-service (part of the maintenance workflow)
+
+The maintenance state machine already covers driver report, Fleet Manager review, owner approval when required, and manager-driven mechanic assignment/repair/completion/verification (see "Maintenance workflow" above). What is missing is a mechanic acting as their own logged-in actor: today `FleetMaintenanceRequest.mechanicAssigned` is a free-text name a manager types in, not a linked `User`, so a mechanic cannot log in, see requests assigned to them, accept one, or record a scheduled repair date themselves. Building that properly needs a schema change (a `User`-linked mechanic field and a scheduled-date field, plus a new role and a self-service view mirroring the existing Driver Workspace pattern), so it carries the same disposable-test-database blocker described above and was not started this round.
 
 ## HR integration
 

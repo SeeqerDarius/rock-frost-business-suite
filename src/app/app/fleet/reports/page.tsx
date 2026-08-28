@@ -2,9 +2,10 @@ import { BarChart3, Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { PeriodicTrendChart, BreakdownDonutChart } from "@/components/dashboard/charts";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getFleetManagementReport } from "@/modules/fleet/service";
+import { getFleetManagementReport, getFleetPaymentTrends } from "@/modules/fleet/service";
 import { ReportExportLinks } from "@/components/reports/report-export-links";
 
 const VEHICLE_STATUS_LABELS: Record<string, string> = {
@@ -31,9 +32,16 @@ export default async function FleetReportsPage() {
     );
   }
 
-  const report = await getFleetManagementReport(tenant.organizationId);
+  const [report, paymentTrends] = await Promise.all([
+    getFleetManagementReport(tenant.organizationId),
+    getFleetPaymentTrends(tenant.organizationId),
+  ]);
   const summary = report.summary;
   const currency = tenant.organization.currency ?? "GHS";
+  const vehiclesByStatusChartData = summary.vehiclesByStatus.map((row) => ({
+    label: VEHICLE_STATUS_LABELS[row.status] ?? row.status,
+    value: row._count,
+  }));
 
   const stats = [
     { label: "Total vehicles", value: summary.vehicleCount },
@@ -65,27 +73,30 @@ export default async function FleetReportsPage() {
         ))}
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <BarChart3 className="size-5 text-muted-foreground" />
-            <CardTitle>Vehicles by status</CardTitle>
-          </div>
-          <CardDescription>Current fleet composition.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {summary.vehiclesByStatus.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No vehicles yet.</p>
-          ) : (
-            summary.vehiclesByStatus.map((row) => (
-              <div key={row.status} className="flex items-center justify-between rounded-lg border p-3">
-                <p className="text-sm font-medium">{VEHICLE_STATUS_LABELS[row.status] ?? row.status}</p>
-                <p className="text-sm text-muted-foreground">{row._count}</p>
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <BarChart3 className="size-5 text-muted-foreground" />
+              <CardTitle>Vehicles by status</CardTitle>
+            </div>
+            <CardDescription>Current fleet composition.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BreakdownDonutChart data={vehiclesByStatusChartData} valueFormat="count" />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Revenue trend</CardTitle>
+            <CardDescription>Verified fleet payments over time.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <PeriodicTrendChart data={paymentTrends.trends} series={[{ key: "revenue", label: "Revenue" }]} currency={currency} />
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader>
