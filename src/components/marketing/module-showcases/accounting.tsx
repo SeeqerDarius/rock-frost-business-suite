@@ -40,9 +40,9 @@ function ExpensePreview() {
   );
 }
 
-export function AccountingModuleShowcase() {
+export function AccountingModuleShowcase({ reverse }: { reverse?: boolean } = {}) {
   return (
-    <ShowcaseSection title="What day-to-day bookkeeping actually looks like">
+    <ShowcaseSection title="What day-to-day bookkeeping actually looks like" reverse={reverse}>
       <OverviewPreview />
       <div className="grid gap-4">
         <InvoicePreview />

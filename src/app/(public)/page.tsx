@@ -13,6 +13,11 @@ import { CustomerShowcase } from "@/components/marketing/customer-showcase";
 import { findPlatformOrganizationMetadata, readPlatformMarketing, PUBLIC_MARKETING_CACHE_TAG } from "@/lib/platform-marketing";
 import { buildShowcaseCustomers } from "@/lib/showcase-composition";
 import { PublicHero } from "@/components/marketing/public-hero";
+import { AccountingModuleShowcase } from "@/components/marketing/module-showcases/accounting";
+import { FleetModuleShowcase } from "@/components/marketing/module-showcases/fleet";
+import { PharmacyModuleShowcase } from "@/components/marketing/module-showcases/pharmacy";
+import { WhyRockFrost } from "@/components/marketing/why-rock-frost";
+import { HomepageFaq } from "@/components/marketing/homepage-faq";
 
 /** Tenant-side showcase opt-ins change rarely: cached for 5 minutes (Next's
  * Data Cache) rather than re-queried on every homepage view and crawl. See
@@ -125,6 +130,34 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      <div className="mx-auto max-w-6xl space-y-24 px-6 py-20">
+        <div className="space-y-3">
+          <p className="public-eyebrow">Accounting</p>
+          <AccountingModuleShowcase />
+          <Link href="/modules/accounting" className="inline-block text-sm font-medium underline underline-offset-4">
+            Explore Accounting
+          </Link>
+        </div>
+        <div className="space-y-3">
+          <p className="public-eyebrow">Fleet Management</p>
+          <FleetModuleShowcase reverse />
+          <Link href="/modules/fleet" className="inline-block text-sm font-medium underline underline-offset-4">
+            Explore Fleet Management
+          </Link>
+        </div>
+        <div className="space-y-3">
+          <p className="public-eyebrow">Pharmacy Management</p>
+          <PharmacyModuleShowcase />
+          <Link href="/modules/pharmacy" className="inline-block text-sm font-medium underline underline-offset-4">
+            Explore Pharmacy Management
+          </Link>
+        </div>
+      </div>
+
+      <WhyRockFrost />
+
+      <HomepageFaq />
 
       <section className="mx-auto max-w-6xl px-6 py-20">
         <div className="flex flex-col items-start justify-between gap-6 rounded-lg border p-8 sm:flex-row sm:items-center">

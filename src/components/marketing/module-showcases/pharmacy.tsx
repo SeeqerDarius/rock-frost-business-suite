@@ -40,9 +40,9 @@ function RestrictedRegisterPreview() {
   );
 }
 
-export function PharmacyModuleShowcase() {
+export function PharmacyModuleShowcase({ reverse }: { reverse?: boolean } = {}) {
   return (
-    <ShowcaseSection title="What day-to-day dispensing actually looks like">
+    <ShowcaseSection title="What day-to-day dispensing actually looks like" reverse={reverse}>
       <OverviewPreview />
       <div className="grid gap-4">
         <DispensingPreview />

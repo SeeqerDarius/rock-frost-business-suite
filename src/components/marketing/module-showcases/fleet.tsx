@@ -40,9 +40,9 @@ function WorkAndPayPreview() {
   );
 }
 
-export function FleetModuleShowcase() {
+export function FleetModuleShowcase({ reverse }: { reverse?: boolean } = {}) {
   return (
-    <ShowcaseSection title="What day-to-day fleet operations actually look like">
+    <ShowcaseSection title="What day-to-day fleet operations actually look like" reverse={reverse}>
       <OverviewPreview />
       <div className="grid gap-4">
         <MaintenancePreview />

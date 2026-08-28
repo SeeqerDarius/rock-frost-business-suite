@@ -64,13 +64,13 @@ export function PanelNote({ children }: { children: React.ReactNode }) {
   return <p className="mt-3 text-[11px] text-muted-foreground">{children}</p>;
 }
 
-export function ShowcaseSection({ title, children }: { title: string; children: React.ReactNode }) {
+export function ShowcaseSection({ title, reverse, children }: { title: string; reverse?: boolean; children: React.ReactNode }) {
   return (
     <section aria-labelledby="module-showcase-title">
       <h2 id="module-showcase-title" className="text-2xl font-semibold tracking-tight">
         {title}
       </h2>
-      <div className="mt-8 grid gap-4 lg:grid-cols-[1.15fr_1fr]">{children}</div>
+      <div className={cn("mt-8 grid gap-4 lg:grid-cols-[1.15fr_1fr]", reverse && "lg:grid-cols-[1fr_1.15fr] [&>*:first-child]:lg:order-2 [&>*:last-child]:lg:order-1")}>{children}</div>
       <p className="mt-4 text-xs text-muted-foreground">
         Illustrative previews built with sample data for demonstration, not a live customer record.
       </p>
