@@ -111,7 +111,7 @@ export async function upsertAccountingPlanLine(organizationId: string, planId: s
     }
     if (input.sourceModule) {
       if (!moduleRegistry.some((item) => item.key === input.sourceModule)) throw new AccountingPlanValidationError("Unknown source module.");
-      const enabled = await tx.organizationModule.findFirst({ where: { organizationId, enabled: true, module: { key: input.sourceModule } }, select: { id: true } });
+      const enabled = await tx.organizationModule.findFirst({ where: { organizationId, enabled: true, module: { code: input.sourceModule } }, select: { id: true } });
       if (!enabled) throw new AccountingPlanValidationError("Source module is not enabled.");
     }
     const key = dimensionKey(input.branchId, input.sourceModule);

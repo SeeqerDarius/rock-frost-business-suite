@@ -104,13 +104,20 @@ export async function deletePlanLineAction(formData: FormData): Promise<void> {
 async function runTransition(formData: FormData, action: "submit" | "approve" | "reject" | "lock" | "archive" | "revise") {
   const permission = action === "approve" || action === "reject" || action === "lock" ? PERMISSIONS.ACCOUNTING_PLANS_APPROVE : PERMISSIONS.ACCOUNTING_PLANS_MANAGE;
   const { tenant, actorId } = await requirePlanning(permission);
-  const parsed = action === "reject" ? parseWithSchema(rejectSchema, { planId: value(formData, "planId"), reason: value(formData, "reason") }) : parseWithSchema(idSchema, { planId: value(formData, "planId") });
+  const planId = value(formData, "planId");
+  const parsed = parseWithSchema(idSchema, { planId });
   if (!parsed.success) redirect("/app/accounting/planning?error=invalid");
+  let rejectionReason: string | undefined;
+  if (action === "reject") {
+    const rejection = parseWithSchema(rejectSchema, { planId, reason: value(formData, "reason") });
+    if (!rejection.success) redirect(`/app/accounting/planning/${parsed.data.planId}?error=invalid`);
+    rejectionReason = rejection.data.reason;
+  }
   let destinationPlanId = parsed.data.planId;
   try {
     if (action === "submit") await submitAccountingPlan(tenant.organizationId, parsed.data.planId, actorId);
     if (action === "approve") await approveAccountingPlan(tenant.organizationId, parsed.data.planId, actorId);
-    if (action === "reject") await rejectAccountingPlan(tenant.organizationId, parsed.data.planId, actorId, parsed.data.reason);
+    if (action === "reject") await rejectAccountingPlan(tenant.organizationId, parsed.data.planId, actorId, rejectionReason!);
     if (action === "lock") await lockAccountingPlan(tenant.organizationId, parsed.data.planId, actorId);
     if (action === "archive") await archiveAccountingPlan(tenant.organizationId, parsed.data.planId, actorId);
     if (action === "revise") {
@@ -126,9 +133,26 @@ async function runTransition(formData: FormData, action: "submit" | "approve" | 
   redirect(`/app/accounting/planning/${destinationPlanId}?saved=1`);
 }
 
-export const submitPlanAction = (data: FormData) => runTransition(data, "submit");
-export const approvePlanAction = (data: FormData) => runTransition(data, "approve");
-export const rejectPlanAction = (data: FormData) => runTransition(data, "reject");
-export const lockPlanAction = (data: FormData) => runTransition(data, "lock");
-export const archivePlanAction = (data: FormData) => runTransition(data, "archive");
-export const revisePlanAction = (data: FormData) => runTransition(data, "revise");
+export async function submitPlanAction(data: FormData) {
+  return runTransition(data, "submit");
+}
+
+export async function approvePlanAction(data: FormData) {
+  return runTransition(data, "approve");
+}
+
+export async function rejectPlanAction(data: FormData) {
+  return runTransition(data, "reject");
+}
+
+export async function lockPlanAction(data: FormData) {
+  return runTransition(data, "lock");
+}
+
+export async function archivePlanAction(data: FormData) {
+  return runTransition(data, "archive");
+}
+
+export async function revisePlanAction(data: FormData) {
+  return runTransition(data, "revise");
+}

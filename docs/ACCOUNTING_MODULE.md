@@ -74,6 +74,8 @@ Supplier invoice approval in Inventory and Procurement creates an idempotent acc
 
 ## Journal dimensions
 
+Source-managed journal reversals retain the original source module and branch dimensions. The reversal transaction uses a 20-second timeout so its validation, balanced posting, original-entry claim, and reversal link can complete reliably when the managed PostgreSQL region has elevated latency.
+
 Every new journal entry can carry two reporting dimensions in addition to its source identity:
 
 - `sourceModule` is the canonical module key that owns the business event. Accounting invoice, receivable, expense, opening-balance, manual, and petty-cash postings use `accounting`. Procurement supplier accruals and payments use `procurement`. Revenue integrations preserve the module key supplied by the shared `postModuleRevenue()` contract.

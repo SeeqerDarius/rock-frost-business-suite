@@ -418,7 +418,7 @@ async function reverseJournalEntryInternal(
     });
     if (claimed.count === 0) throw new JournalReversalError("This journal entry was already reversed.");
     return tx.accountingJournalEntry.update({ where: { id: reversal.id }, data: { reversalOfId: original.id } });
-  });
+  }, { timeout: 20_000 });
 }
 
 /** User-facing reversal boundary. Only a genuinely manual journal can be reversed here. */

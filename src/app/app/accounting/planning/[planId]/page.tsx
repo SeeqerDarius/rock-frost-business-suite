@@ -25,13 +25,14 @@ export default async function AccountingPlanPage({ params, searchParams }: { par
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_PLANS_MANAGE);
   const canApprove = hasPermission(tenant, PERMISSIONS.ACCOUNTING_PLANS_APPROVE);
   if (!canView && !canManage) notFound();
-  const [plan, variance, accounts, branches, activeModules] = await Promise.all([
+  const [plan, variance, accounts, branches, rawActiveModules] = await Promise.all([
     getAccountingPlan(tenant.organizationId, planId),
     getAccountingPlanVariance(tenant.organizationId, planId),
     db.accountingAccount.findMany({ where: { organizationId: tenant.organizationId, active: true }, orderBy: { code: "asc" } }),
     db.branch.findMany({ where: { organizationId: tenant.organizationId, status: "ACTIVE" }, orderBy: { name: "asc" } }),
     db.organizationModule.findMany({ where: { organizationId: tenant.organizationId, enabled: true }, include: { module: true }, orderBy: { module: { name: "asc" } } }),
   ]);
+  const activeModules = rawActiveModules.map(({ module }) => ({ module: { ...module, key: module.code } }));
   if (!plan) notFound();
   const totalPlan = plan.lines.reduce((sum, line) => sum + line.amount.toNumber(), 0);
   const totalActual = variance.reduce((sum, row) => sum + row.actual.toNumber(), 0);
