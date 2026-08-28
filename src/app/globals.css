@@ -141,29 +141,73 @@
 }
 
 /* Every lucide-react icon renders with a `lucide` class regardless of call
-   site (confirmed by inspecting its actual output), so this one rule gives
-   every icon in the app a hover animation without touching each usage.
-   Scoped to real interactive ancestors, not just any hovered container, so a
-   purely decorative icon never implies clickability it doesn't have.
-   animate-spin icons are excluded - stacking this transform on top of the
-   spin keyframes would fight over the transform property and stall the
-   spin. */
-.lucide {
-  transition: transform 160ms ease-out;
-}
+   site (confirmed by inspecting its actual output), so this is the one place
+   that gives every icon in the app a hover animation without touching each
+   usage. Scoped to real interactive ancestors, not just any hovered
+   container, so a purely decorative icon never implies clickability it
+   doesn't have. animate-spin icons are excluded throughout - stacking this
+   on a spinner's own rotation would be visual noise on an already-busy
+   loading state.
 
-:is(button, a, [role="button"], summary):not(:disabled):hover .lucide:not(.animate-spin):not(.lucide-mail):not(.lucide-chart-column) {
-  transform: scale(1.12);
+   Most icons "draw themselves in" on hover: the browser retraces each
+   icon's own real outline (a stroke-dasharray/dashoffset reveal), so the
+   motion is inherently specific to that icon's actual shape without
+   hand-authoring a bespoke animation per icon - not possible for every
+   icon this app uses (160 distinct lucide names across 267 files; see
+   the two hand-tailored exceptions below for what genuine per-icon design
+   looks like at this app's scale). 100 is a shared dasharray/dashoffset
+   constant, chosen by rendering every icon name actually imported under
+   src/ (`grep -rhoP '(?<=import\s\{)[^}]+(?=\}\s*from\s*"lucide-react")' src
+   --include="*.tsx"`) and measuring every real sub-shape's
+   `getTotalLength()` in a live browser - the longest observed was ~86.4
+   (BookPlus). Re-measure the same way, don't guess, before shrinking this:
+   a constant smaller than some icon's real path length renders that icon
+   as a broken dashed line at rest, not solid. Using one shared constant
+   for every differently-sized path is a deliberate tradeoff, not an
+   oversight: short/simple paths (Plus, X, arrows - this app's
+   highest-frequency controls) finish revealing early and read as a quick
+   flick, while longer/more detailed icons trace visibly across the full
+   animation - closer to correct than a JS-measured per-icon length would
+   be worth, since it keeps high-frequency controls feeling snappy rather
+   than replaying a lengthy animation on every hover. */
+.lucide :is(path, rect, circle, ellipse, line, polyline, polygon) {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 0;
 }
+@keyframes lucide-draw-in {
+  from { stroke-dashoffset: 100; }
+  to { stroke-dashoffset: 0; }
+}
+:is(button, a, [role="button"], summary):not(:disabled):hover
+  .lucide:not(.animate-spin):not(.lucide-mail):not(.lucide-chart-column)
+  :is(path, rect, circle, ellipse, line, polyline, polygon) {
+  animation: lucide-draw-in 420ms ease-out both;
+}
+:is(button, a, [role="button"], summary):not(:disabled):hover
+  .lucide:not(.animate-spin):not(.lucide-mail):not(.lucide-chart-column)
+  :is(path, rect, circle, ellipse, line, polyline, polygon):nth-child(2) { animation-delay: 40ms; }
+:is(button, a, [role="button"], summary):not(:disabled):hover
+  .lucide:not(.animate-spin):not(.lucide-mail):not(.lucide-chart-column)
+  :is(path, rect, circle, ellipse, line, polyline, polygon):nth-child(3) { animation-delay: 80ms; }
+:is(button, a, [role="button"], summary):not(:disabled):hover
+  .lucide:not(.animate-spin):not(.lucide-mail):not(.lucide-chart-column)
+  :is(path, rect, circle, ellipse, line, polyline, polygon):nth-child(4) { animation-delay: 120ms; }
+:is(button, a, [role="button"], summary):not(:disabled):hover
+  .lucide:not(.animate-spin):not(.lucide-mail):not(.lucide-chart-column)
+  :is(path, rect, circle, ellipse, line, polyline, polygon):nth-child(5) { animation-delay: 160ms; }
+:is(button, a, [role="button"], summary):not(:disabled):hover
+  .lucide:not(.animate-spin):not(.lucide-mail):not(.lucide-chart-column)
+  :is(path, rect, circle, ellipse, line, polyline, polygon):nth-child(6) { animation-delay: 200ms; }
 
-/* Icon-specific micro-interactions: a couple of icons get motion tailored
-   to their own shape instead of the blanket scale above (opted out of it
-   by name in the selector above), matching real per-icon animated icons
-   (e.g. Resend's) rather than one generic zoom applied everywhere. Lucide's
-   internal path order for each was confirmed by rendering the icon to
-   static markup, not guessed from the rendered shape alone - a future
-   lucide-react upgrade that reorders an icon's paths could silently break
-   these, so re-verify the same way before touching either icon again. */
+/* Icon-specific micro-interactions: two icons get motion tailored to their
+   own shape instead of the generic draw-in above (opted out of it by name
+   in that rule's selector), because their real internal structure supports
+   something even more specific than tracing the outline - Mail's flap
+   lifting, BarChart3's bars growing. Lucide's internal path order for each
+   was confirmed by rendering the icon to static markup, not guessed from
+   the rendered shape alone - a future lucide-react upgrade that reorders an
+   icon's paths could silently break these, so re-verify the same way
+   before touching either icon again. */
 
 /* Mail: the flap (its one <path>, the diagonal fold lines) lifts away from
    the envelope body (a <rect>, left untouched) on hover, then settles back. */
