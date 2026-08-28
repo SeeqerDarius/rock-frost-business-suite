@@ -47,4 +47,20 @@ describe("dashboard and Accounting overview trend widgets", () => {
     expect(sidebarNav).toContain("function NavIcon(");
     expect(sidebarNav).not.toMatch(/bg-(red|green|orange|pink|purple|yellow)-/);
   });
+
+  it("never passes a function prop from a Server Component into the client chart components", () => {
+    // Regression coverage for a real production crash: a `valueFormatter`
+    // function prop (a server-side closure) can't cross the Server-to-Client
+    // Component boundary - "Functions cannot be passed directly to Client
+    // Components." The chart components now format currency themselves from
+    // a plain, serializable `currency` string instead.
+    const charts = readFileSync("src/components/dashboard/charts.tsx", "utf8");
+    expect(charts).not.toContain("valueFormatter");
+    expect(charts).toContain("currency?: string | null");
+    expect(charts).toContain('import { formatMoney } from "@/lib/currency"');
+    expect(dashboard).not.toContain("valueFormatter");
+    expect(dashboard).toContain("currency={tenant.organization.currency}");
+    expect(accountingPage).not.toContain("valueFormatter");
+    expect(accountingPage).toContain("currency={tenant.organization.currency}");
+  });
 });

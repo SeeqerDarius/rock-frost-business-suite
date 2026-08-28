@@ -11,7 +11,6 @@ import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry"
 import { productGroupKeys } from "@/platform/modules/product-groups";
 import { dashboardWidgets } from "@/platform/modules/dashboard-widgets";
 import { requireCurrentTenant } from "@/lib/tenant";
-import { formatMoney } from "@/lib/currency";
 import { getRevenueInsights } from "@/lib/accounting-integration";
 
 export default async function OrganizationDashboardPage() {
@@ -22,7 +21,6 @@ export default async function OrganizationDashboardPage() {
     return accessibleModule ? [{ definition: mod, accessibleModule }] : [];
   });
   const revenueInsights = await getRevenueInsights(tenant.organizationId);
-  const money = (value: number) => formatMoney(value, tenant.organization.currency);
 
   return (
     <div className="space-y-6">
@@ -41,11 +39,11 @@ export default async function OrganizationDashboardPage() {
               </TabsList>
               <TabsContent value="trend" className="mt-6">
                 <p className="mb-2 text-xs font-medium text-muted-foreground">Posted revenue across every module, last 6 months</p>
-                <TrendAreaChart data={revenueInsights.monthly} series={[{ key: "revenue", label: "Revenue" }]} valueFormatter={money} />
+                <TrendAreaChart data={revenueInsights.monthly} series={[{ key: "revenue", label: "Revenue" }]} currency={tenant.organization.currency} />
               </TabsContent>
               <TabsContent value="by-module" className="mt-6">
                 <p className="mb-2 text-xs font-medium text-muted-foreground">Lifetime revenue by module</p>
-                <BreakdownDonutChart data={revenueInsights.byModule} valueFormatter={money} />
+                <BreakdownDonutChart data={revenueInsights.byModule} currency={tenant.organization.currency} />
               </TabsContent>
             </Tabs>
           </CardContent>

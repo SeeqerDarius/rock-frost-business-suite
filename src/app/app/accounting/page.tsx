@@ -48,7 +48,7 @@ export default async function AccountingOverviewPage() {
             <TabsContent value="invoices" className="mt-6 grid gap-8 lg:grid-cols-2">
               <div>
                 <p className="mb-2 text-xs font-medium text-muted-foreground">Invoiced, last 6 months</p>
-                <TrendAreaChart data={trends.monthly} series={[{ key: "invoiced", label: "Invoiced" }]} valueFormatter={money} />
+                <TrendAreaChart data={trends.monthly} series={[{ key: "invoiced", label: "Invoiced" }]} currency={tenant.organization.currency} />
               </div>
               <div>
                 <p className="mb-2 text-xs font-medium text-muted-foreground">By status</p>
@@ -61,7 +61,7 @@ export default async function AccountingOverviewPage() {
               <TrendAreaChart
                 data={trends.monthly}
                 series={[{ key: "invoiced", label: "Invoiced" }, { key: "expenses", label: "Expenses" }]}
-                valueFormatter={money}
+                currency={tenant.organization.currency}
               />
             </TabsContent>
 
