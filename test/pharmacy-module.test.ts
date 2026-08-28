@@ -118,22 +118,15 @@ describe("Pharmacy production boundary", () => {
     expect(dispensingPage).toContain('const open = rx.filter((x) => ["ACTIVE", "PARTIALLY_DISPENSED"].includes(x.status) && (!x.expiresAt || x.expiresAt > new Date()));');
   });
 
-  it("the Medicine picker marks which items dispense() will actually reject without a prescription selected", () => {
-    // Regression coverage for a live production report: a medicine requiring
-    // a prescription (medicineClass PRESCRIPTION_ONLY/CONTROLLED, or
-    // requiresPrescription) gave no visible signal on the Dispensing form
-    // before submit - staff picked "None (over-the-counter sale)" for
-    // Prescription, then hit "An active prescription is required." with no
-    // indication of why, and the whole form reset (losing every other
-    // entered field). The picker's needsPrescription check must mirror
-    // dispense()'s own condition exactly, or a medicine could be marked as
-    // safe here while still being rejected by the service (or vice versa).
+  it("separates prescription dispensing from over-the-counter sales and only exposes eligible OTC medicines", () => {
     expect(service).toContain('medicine.requiresPrescription || medicine.medicineClass === "PRESCRIPTION_ONLY" || medicine.medicineClass === "CONTROLLED"');
-    expect(dispensingPage).toContain('m.requiresPrescription || m.medicineClass === "PRESCRIPTION_ONLY" || m.medicineClass === "CONTROLLED"');
-    expect(dispensingForm).toContain("(prescription required)");
+    expect(dispensingPage).toContain('!medicine.requiresPrescription && !["PRESCRIPTION_ONLY", "CONTROLLED"].includes(medicine.medicineClass)');
+    expect(dispensingForm).toContain("From prescription");
+    expect(dispensingForm).toContain("Over the counter");
+    expect(dispensingForm).toContain('name="linesJson"');
   });
 
-  it("the Complete dispensing form preserves entered values and shows a specific error instead of resetting on failure", () => {
+  it("prefills the prescription patient and medicines, supports partial dispensing, and preserves entered values on failure", () => {
     // Regression coverage for a live production report: completeDispensing
     // used to redirect to ?error=... on any failure, which remounted the
     // whole server-rendered form and silently discarded every field the
@@ -144,7 +137,12 @@ describe("Pharmacy production boundary", () => {
     expect(actions).toContain("export async function completeDispensing(_previousState: CompleteDispensingState, formData: FormData): Promise<CompleteDispensingState> {");
     const completeDispensingBlockForRedirectCheck = actions.slice(actions.indexOf("export async function completeDispensing"), actions.indexOf("export async function approveControlledDispenseAction"));
     expect(completeDispensingBlockForRedirectCheck).not.toContain("?error=invalid");
+    expect(completeDispensingBlockForRedirectCheck).toContain("createDispensingNumber(tenant.organizationId)");
+    expect(completeDispensingBlockForRedirectCheck).toContain("dispensingLinesSchema.parse(JSON.parse(parsed.linesJson))");
     expect(dispensingForm).toContain("useActionState(completeDispensing, initialState)");
-    expect(dispensingForm).toContain("fieldErrors.medicineId");
+    expect(dispensingForm).toContain("Patient and medicines fill automatically.");
+    expect(dispensingForm).toContain("Math.min(line.remaining, line.stockAvailable)");
+    expect(service).toContain("const patientId = prescription?.patientId ?? data.patientId ?? null;");
+    expect(service).toContain("patientId, prescriptionId: prescription?.id ?? null");
   });
 });
