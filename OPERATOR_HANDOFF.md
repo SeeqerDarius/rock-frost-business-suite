@@ -8,7 +8,7 @@
 - **New regression test** (`test/sidebar-all-modules.test.ts`) asserts the reordering logic exists and that the render loop actually maps over `orderedSections`, not the original `sections` prop - guarding against the reorder being computed and then silently unused.
 - **Important files**: `src/components/navigation/module-accordion-nav.tsx`, `test/sidebar-all-modules.test.ts`, `docs/ARCHITECTURE.md` (extended the accordion's own description with this ordering behavior).
 - **Validation**: `npx tsc --noEmit` — passed. `npm run lint` — passed, zero warnings. `npm run test` — passed: 110 files, 796 tests (+1 new). `npm run build` — passed. No schema change, so no integration-test requirement.
-- **Production deploy verified**: commit `<pending>` reached Vercel production deployment `<pending>`.
+- **Production deploy verified**: commit `6133ef7` reached Vercel production deployment `dpl_913iY63CUMqTVegfqyGPZ2ftJPPN` (`READY`, all production aliases attached including `app.rockfrostgroup.com`, `aliasError: null`). `/api/health` returned `{"ok":true,"database":"reachable"}`. `get_runtime_errors` (15m window, post-deploy) returned none.
 
 ## 2026-08-28: Every module's settings page gets consistent banners, toggles, and card polish (no schema change)
 
