@@ -29,7 +29,7 @@ describe("dashboard and Accounting overview trend widgets", () => {
     for (const tab of ["Invoices", "Profit &amp; Loss", "Recent Invoices", "Overdue Invoices"]) {
       expect(accountingPage).toContain(tab);
     }
-    expect(accountingPage).toContain("TrendAreaChart");
+    expect(accountingPage).toContain("PeriodicTrendChart");
     expect(accountingPage).toContain("BreakdownDonutChart");
   });
 
@@ -62,5 +62,20 @@ describe("dashboard and Accounting overview trend widgets", () => {
     expect(dashboard).toContain("currency={tenant.organization.currency}");
     expect(accountingPage).not.toContain("valueFormatter");
     expect(accountingPage).toContain("currency={tenant.organization.currency}");
+  });
+
+  it("lets the user switch every trend chart between last 6 days, weeks, and months", () => {
+    // Follow-up user request: the trend period was hardcoded to 6 months.
+    // Both data functions now fetch once against the widest lookback window
+    // and bucket the same rows three ways, so the client-side switcher needs
+    // no extra request when the user picks a different granularity.
+    const buckets = readFileSync("src/lib/trend-buckets.ts", "utf8");
+    const charts = readFileSync("src/components/dashboard/charts.tsx", "utf8");
+    expect(buckets).toContain('export type TrendGranularity = "days" | "weeks" | "months"');
+    expect(charts).toContain("export function PeriodicTrendChart(");
+    expect(accountingIntegration).toContain("trends: { days: buildSeries(\"days\"), weeks: buildSeries(\"weeks\"), months: buildSeries(\"months\") }");
+    expect(accountingService).toContain("trends: { days: buildSeries(\"days\"), weeks: buildSeries(\"weeks\"), months: buildSeries(\"months\") }");
+    expect(dashboard).toContain("PeriodicTrendChart");
+    expect(accountingPage).toContain("PeriodicTrendChart");
   });
 });

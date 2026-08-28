@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { IconBadge } from "@/components/ui/icon-badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { TrendAreaChart, BreakdownDonutChart } from "@/components/dashboard/charts";
+import { PeriodicTrendChart, BreakdownDonutChart } from "@/components/dashboard/charts";
 import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry";
 import { productGroupKeys } from "@/platform/modules/product-groups";
 import { dashboardWidgets } from "@/platform/modules/dashboard-widgets";
@@ -38,8 +38,8 @@ export default async function OrganizationDashboardPage() {
                 <TabsTrigger value="by-module">By module</TabsTrigger>
               </TabsList>
               <TabsContent value="trend" className="mt-6">
-                <p className="mb-2 text-xs font-medium text-muted-foreground">Posted revenue across every module, last 6 months</p>
-                <TrendAreaChart data={revenueInsights.monthly} series={[{ key: "revenue", label: "Revenue" }]} currency={tenant.organization.currency} />
+                <p className="mb-2 text-xs font-medium text-muted-foreground">Posted revenue across every module</p>
+                <PeriodicTrendChart data={revenueInsights.trends} series={[{ key: "revenue", label: "Revenue" }]} currency={tenant.organization.currency} />
               </TabsContent>
               <TabsContent value="by-module" className="mt-6">
                 <p className="mb-2 text-xs font-medium text-muted-foreground">Lifetime revenue by module</p>

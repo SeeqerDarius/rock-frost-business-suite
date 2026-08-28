@@ -1,8 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import { Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/currency";
+import type { TrendGranularity } from "@/lib/trend-buckets";
+
+const PERIOD_LABELS: Record<TrendGranularity, string> = {
+  days: "Last 6 days",
+  weeks: "Last 6 weeks",
+  months: "Last 6 months",
+};
 
 /** The same five chart tokens declared in globals.css for both themes - never a hardcoded hex here, so charts stay in sync with the active theme automatically. */
 const CHART_COLORS = ["var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-4)", "var(--color-chart-5)"];
@@ -61,6 +69,49 @@ export function TrendAreaChart({
         ))}
       </AreaChart>
     </ResponsiveContainer>
+  );
+}
+
+/**
+ * Wraps TrendAreaChart with a day/week/month period switcher. All three
+ * granularities are pre-computed server-side and handed over together, so
+ * switching between them is instant - no extra request, no loading state.
+ */
+export function PeriodicTrendChart({
+  data,
+  series,
+  currency,
+  defaultPeriod = "months",
+}: {
+  data: Record<TrendGranularity, Record<string, string | number>[]>;
+  series: { key: string; label: string }[];
+  currency?: string | null;
+  defaultPeriod?: TrendGranularity;
+}) {
+  const [period, setPeriod] = useState<TrendGranularity>(defaultPeriod);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <div className="inline-flex rounded-lg bg-muted p-0.5 text-xs">
+          {(Object.keys(PERIOD_LABELS) as TrendGranularity[]).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPeriod(p)}
+              aria-pressed={period === p}
+              className={cn(
+                "rounded-md px-2.5 py-1 font-medium transition-colors",
+                period === p ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {PERIOD_LABELS[p]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <TrendAreaChart data={data[period]} series={series} currency={currency} />
+    </div>
   );
 }
 

@@ -6,7 +6,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { TrendAreaChart, BreakdownDonutChart } from "@/components/dashboard/charts";
+import { PeriodicTrendChart, BreakdownDonutChart } from "@/components/dashboard/charts";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { formatMoney } from "@/lib/currency";
 import { getAccountingSummary, getAccountingOverviewTrends } from "@/modules/accounting/service";
@@ -47,8 +47,8 @@ export default async function AccountingOverviewPage() {
 
             <TabsContent value="invoices" className="mt-6 grid gap-8 lg:grid-cols-2">
               <div>
-                <p className="mb-2 text-xs font-medium text-muted-foreground">Invoiced, last 6 months</p>
-                <TrendAreaChart data={trends.monthly} series={[{ key: "invoiced", label: "Invoiced" }]} currency={tenant.organization.currency} />
+                <p className="mb-2 text-xs font-medium text-muted-foreground">Invoiced</p>
+                <PeriodicTrendChart data={trends.trends} series={[{ key: "invoiced", label: "Invoiced" }]} currency={tenant.organization.currency} />
               </div>
               <div>
                 <p className="mb-2 text-xs font-medium text-muted-foreground">By status</p>
@@ -57,9 +57,9 @@ export default async function AccountingOverviewPage() {
             </TabsContent>
 
             <TabsContent value="profit-loss" className="mt-6">
-              <p className="mb-2 text-xs font-medium text-muted-foreground">Invoiced vs. expenses, last 6 months</p>
-              <TrendAreaChart
-                data={trends.monthly}
+              <p className="mb-2 text-xs font-medium text-muted-foreground">Invoiced vs. expenses</p>
+              <PeriodicTrendChart
+                data={trends.trends}
                 series={[{ key: "invoiced", label: "Invoiced" }, { key: "expenses", label: "Expenses" }]}
                 currency={tenant.organization.currency}
               />

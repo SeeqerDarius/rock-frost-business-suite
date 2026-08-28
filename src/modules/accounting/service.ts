@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import type { AccountingAccountType, AccountingInvoiceStatus, AccountingLiquidityType } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { formatMoney } from "@/lib/currency";
+import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@/lib/trend-buckets";
 import {
   getOrganizationModuleConfiguration,
   updateOrganizationModuleConfigurationValues,
@@ -1058,7 +1059,7 @@ export async function getAccountingSummary(organizationId: string) {
 }
 
 export interface AccountingOverviewTrends {
-  monthly: { label: string; invoiced: number; expenses: number; netIncome: number }[];
+  trends: Record<TrendGranularity, { label: string; invoiced: number; expenses: number; netIncome: number }[]>;
   invoiceStatusBreakdown: { label: string; value: number }[];
   recentInvoices: { id: string; invoiceNumber: string; customerName: string; amount: number; status: string; issueDate: Date }[];
   overdueInvoices: { id: string; invoiceNumber: string; customerName: string; amountDue: number; dueDate: Date }[];
@@ -1070,42 +1071,39 @@ export interface AccountingOverviewTrends {
  * "getAccountingInsights" - that name already belongs to
  * src/modules/accounting/insights.ts's period-driven, AI-assistant-backed
  * Accounting Insights page (/app/accounting/insights), a separate, richer
- * surface this function has no relation to.
+ * surface this function has no relation to. Fetches once against the widest
+ * lookback window, then buckets that data three ways (days/weeks/months) so
+ * switching granularity client-side needs no extra round trip.
  */
 export async function getAccountingOverviewTrends(organizationId: string): Promise<AccountingOverviewTrends> {
-  const sixMonthsAgo = new Date();
-  sixMonthsAgo.setHours(0, 0, 0, 0);
-  sixMonthsAgo.setDate(1);
-  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+  const lookback = widestTrendLookback();
 
-  const [recentInvoiceRows, recentExpenseRows, statusGroups, recentInvoices, overdueInvoiceRows] = await Promise.all([
-    db.accountingInvoice.findMany({ where: { organizationId, issueDate: { gte: sixMonthsAgo } }, select: { issueDate: true, amount: true } }),
-    db.accountingExpense.findMany({ where: { organizationId, expenseDate: { gte: sixMonthsAgo } }, select: { expenseDate: true, amount: true } }),
+  const [invoiceRows, expenseRows, statusGroups, recentInvoices, overdueInvoiceRows] = await Promise.all([
+    db.accountingInvoice.findMany({ where: { organizationId, issueDate: { gte: lookback } }, select: { issueDate: true, amount: true } }),
+    db.accountingExpense.findMany({ where: { organizationId, expenseDate: { gte: lookback } }, select: { expenseDate: true, amount: true } }),
     db.accountingInvoice.groupBy({ by: ["status"], where: { organizationId }, _count: { _all: true } }),
     db.accountingInvoice.findMany({ where: { organizationId }, orderBy: { issueDate: "desc" }, take: 5, select: { id: true, invoiceNumber: true, customerName: true, amount: true, status: true, issueDate: true } }),
     db.accountingInvoice.findMany({ where: { organizationId, status: "OVERDUE" }, orderBy: { dueDate: "asc" }, take: 5, select: { id: true, invoiceNumber: true, customerName: true, amount: true, amountPaid: true, dueDate: true } }),
   ]);
 
-  const months: { year: number; month: number; label: string }[] = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(1);
-    d.setMonth(d.getMonth() - i);
-    months.push({ year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleDateString("en-US", { month: "short" }) });
-  }
+  const invoicedBetween = (start: Date, end: Date) =>
+    invoiceRows.filter((i) => i.issueDate >= start && i.issueDate < end).reduce((sum, i) => sum + Number(i.amount), 0);
+  const expensesBetween = (start: Date, end: Date) =>
+    expenseRows.filter((e) => e.expenseDate >= start && e.expenseDate < end).reduce((sum, e) => sum + Number(e.amount), 0);
 
-  const monthly = months.map(({ year, month, label }) => {
-    const invoiced = recentInvoiceRows.filter((i) => i.issueDate.getFullYear() === year && i.issueDate.getMonth() === month).reduce((sum, i) => sum + Number(i.amount), 0);
-    const expenses = recentExpenseRows.filter((e) => e.expenseDate.getFullYear() === year && e.expenseDate.getMonth() === month).reduce((sum, e) => sum + Number(e.amount), 0);
-    return { label, invoiced, expenses, netIncome: invoiced - expenses };
-  });
+  const buildSeries = (granularity: TrendGranularity) =>
+    buildTrendBuckets(granularity).map((bucket) => {
+      const invoiced = invoicedBetween(bucket.start, bucket.end);
+      const expenses = expensesBetween(bucket.start, bucket.end);
+      return { label: bucket.label, invoiced, expenses, netIncome: invoiced - expenses };
+    });
 
   const invoiceStatusBreakdown = statusGroups
     .map((group) => ({ label: group.status, value: group._count._all }))
     .filter((entry) => entry.value > 0);
 
   return {
-    monthly,
+    trends: { days: buildSeries("days"), weeks: buildSeries("weeks"), months: buildSeries("months") },
     invoiceStatusBreakdown,
     recentInvoices: recentInvoices.map((invoice) => ({ ...invoice, amount: Number(invoice.amount) })),
     overdueInvoices: overdueInvoiceRows.map((invoice) => ({
