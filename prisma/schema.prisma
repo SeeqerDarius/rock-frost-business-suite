@@ -1304,17 +1304,18 @@ model FileAsset {
 }
 
 model FleetOwner {
-  id             String   @id @default(cuid())
-  organizationId String
-  branchId       String?
-  userId         String?
-  name           String
-  businessName   String?
-  phone          String?
-  email          String?
-  history        Json?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  organizationId      String
+  branchId            String?
+  userId              String?
+  name                String
+  businessName        String?
+  phone               String?
+  email               String?
+  isOrganizationOwner Boolean  @default(false)
+  history             Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch       Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)

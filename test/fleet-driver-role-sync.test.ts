@@ -11,7 +11,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockDb = {
   fleetDriver: { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
-  fleetOwner: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+  fleetOwner: { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
+  organization: { findUnique: vi.fn() },
   user: { findUnique: vi.fn() },
   organizationMember: { findMany: vi.fn() },
   $transaction: vi.fn(),
@@ -195,5 +196,48 @@ describe("listFleetDrivers backfill", () => {
     await fleet.listFleetDrivers(ORG);
 
     expect(mockDb.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("ensureOrganizationFleetOwner", () => {
+  it("creates a FleetOwner row named after the organization, flagged isOrganizationOwner, when none exists", async () => {
+    mockDb.organization.findUnique.mockResolvedValue({ name: "Acme Fleet Co" });
+    mockDb.fleetOwner.findFirst.mockResolvedValue(null);
+    mockDb.fleetOwner.create.mockResolvedValue({ id: "owner-org", isOrganizationOwner: true, name: "Acme Fleet Co" });
+
+    await fleet.ensureOrganizationFleetOwner(ORG);
+
+    expect(mockDb.fleetOwner.findFirst).toHaveBeenCalledWith({ where: { organizationId: ORG, isOrganizationOwner: true } });
+    expect(mockDb.fleetOwner.create).toHaveBeenCalledWith({ data: { organizationId: ORG, name: "Acme Fleet Co", isOrganizationOwner: true } });
+  });
+
+  it("does not create a duplicate when the organization's owner row already exists with the current name", async () => {
+    mockDb.organization.findUnique.mockResolvedValue({ name: "Acme Fleet Co" });
+    mockDb.fleetOwner.findFirst.mockResolvedValue({ id: "owner-org", name: "Acme Fleet Co", isOrganizationOwner: true });
+
+    await fleet.ensureOrganizationFleetOwner(ORG);
+
+    expect(mockDb.fleetOwner.create).not.toHaveBeenCalled();
+    expect(mockDb.fleetOwner.update).not.toHaveBeenCalled();
+  });
+
+  it("keeps the organization's owner row's name in sync after a rename", async () => {
+    mockDb.organization.findUnique.mockResolvedValue({ name: "New Name Inc" });
+    mockDb.fleetOwner.findFirst.mockResolvedValue({ id: "owner-org", name: "Old Name LLC", isOrganizationOwner: true });
+    mockDb.fleetOwner.update.mockResolvedValue({ id: "owner-org", name: "New Name Inc", isOrganizationOwner: true });
+
+    await fleet.ensureOrganizationFleetOwner(ORG);
+
+    expect(mockDb.fleetOwner.update).toHaveBeenCalledWith({ where: { id: "owner-org" }, data: { name: "New Name Inc" } });
+    expect(mockDb.fleetOwner.create).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when the organization itself cannot be found", async () => {
+    mockDb.organization.findUnique.mockResolvedValue(null);
+
+    const result = await fleet.ensureOrganizationFleetOwner(ORG);
+
+    expect(result).toBeNull();
+    expect(mockDb.fleetOwner.create).not.toHaveBeenCalled();
   });
 });

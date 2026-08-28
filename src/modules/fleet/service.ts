@@ -95,6 +95,24 @@ export async function ensureFleetOwnerForUser(tx: TxClient, organizationId: stri
   return tx.fleetOwner.create({ data: { organizationId, userId, name: user.name || user.email, email: user.email } });
 }
 
+/**
+ * Lazily provisions the one FleetOwner row that represents the organization
+ * itself, since a company can own a vehicle directly rather than through an
+ * individual owner. Runs on every owner-roster read (same backfill-on-read
+ * shape as backfillMissingFleetOwners) so a later organization rename stays
+ * reflected without a separate migration step.
+ */
+export async function ensureOrganizationFleetOwner(organizationId: string) {
+  const organization = await db.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
+  if (!organization) return null;
+  const existing = await db.fleetOwner.findFirst({ where: { organizationId, isOrganizationOwner: true } });
+  if (existing) {
+    if (existing.name === organization.name) return existing;
+    return db.fleetOwner.update({ where: { id: existing.id }, data: { name: organization.name } });
+  }
+  return db.fleetOwner.create({ data: { organizationId, name: organization.name, isOrganizationOwner: true } });
+}
+
 async function backfillMissingFleetOwners(organizationId: string) {
   const missing = await db.organizationMember.findMany({
     where: {
@@ -110,12 +128,12 @@ async function backfillMissingFleetOwners(organizationId: string) {
 }
 
 export async function listFleetOwners(organizationId: string) {
-  await backfillMissingFleetOwners(organizationId);
+  await Promise.all([backfillMissingFleetOwners(organizationId), ensureOrganizationFleetOwner(organizationId)]);
   return db.fleetOwner.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
 }
 
 export async function listFleetOwnersWithPortfolio(organizationId: string) {
-  await backfillMissingFleetOwners(organizationId);
+  await Promise.all([backfillMissingFleetOwners(organizationId), ensureOrganizationFleetOwner(organizationId)]);
   const [owners, payments] = await Promise.all([
     db.fleetOwner.findMany({
       where: { organizationId },

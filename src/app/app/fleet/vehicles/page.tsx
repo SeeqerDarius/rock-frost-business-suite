@@ -61,13 +61,16 @@ interface VehicleFieldsProps {
     salesTargetPeriod: string | null;
     salesTargetAmount: string | null;
   };
-  owners: { id: string; name: string }[];
+  owners: { id: string; name: string; isOrganizationOwner: boolean }[];
   drivers: { id: string; name: string }[];
 }
 
 function VehicleFields({ vehicle, owners, drivers }: VehicleFieldsProps) {
   const idSuffix = vehicle ? "-edit" : "";
-  const ownerItems: Record<string, string> = { "": "No owner", ...Object.fromEntries(owners.map((o) => [o.id, o.name])) };
+  const ownerItems: Record<string, string> = {
+    "": "No owner",
+    ...Object.fromEntries(owners.map((o) => [o.id, o.isOrganizationOwner ? `${o.name} (Organization)` : o.name])),
+  };
   const driverItems: Record<string, string> = { "": "Unassigned", ...Object.fromEntries(drivers.map((d) => [d.id, d.name])) };
 
   return (

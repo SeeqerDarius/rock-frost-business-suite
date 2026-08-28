@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -136,7 +137,10 @@ export default async function FleetOwnersPage({
           <TableBody>
             {owners.map((owner) => (
               <TableRow key={owner.id}>
-                <TableCell className="font-medium">{owner.name}</TableCell>
+                <TableCell className="font-medium">
+                  {owner.name}
+                  {owner.isOrganizationOwner ? <Badge variant="outline" className="ml-2">Organization</Badge> : null}
+                </TableCell>
                 <TableCell className="text-muted-foreground">{owner.businessName ?? "-"}</TableCell>
                 <TableCell className="text-muted-foreground">{owner.phone ?? "-"}</TableCell>
                 <TableCell className="text-muted-foreground">{owner.email ?? "-"}</TableCell>
