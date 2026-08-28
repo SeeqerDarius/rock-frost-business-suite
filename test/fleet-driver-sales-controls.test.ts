@@ -16,10 +16,16 @@ describe("Fleet driver remittance controls", () => {
   });
 
   it("exposes the driver workspace and maintenance without granting organization-wide Fleet view", () => {
+    // The route-access array moved from fleet/layout.tsx into
+    // navigation-access.ts (src/modules/fleet/navigation-access.ts) so the
+    // sidebar's cross-module accordion can reuse the same permission check
+    // Fleet's own layout uses, rather than a second copy that could drift.
     const layout = read("src/app/app/fleet/layout.tsx");
+    const navigationAccess = read("src/modules/fleet/navigation-access.ts");
     const overview = read("src/app/app/fleet/page.tsx");
-    expect(layout).toContain('["/app/fleet/driver-portal", hasPermission(tenant, PERMISSIONS.FLEET_DRIVER_SELF_SERVICE)]');
-    expect(layout).toContain("PERMISSIONS.FLEET_DRIVER_SELF_SERVICE");
+    expect(navigationAccess).toContain('["/app/fleet/driver-portal", hasPermission(tenant, PERMISSIONS.FLEET_DRIVER_SELF_SERVICE)]');
+    expect(navigationAccess).toContain("PERMISSIONS.FLEET_DRIVER_SELF_SERVICE");
+    expect(layout).toContain("getFleetNavigationForTenant");
     expect(overview).toContain('redirect("/app/fleet/driver-portal")');
   });
 

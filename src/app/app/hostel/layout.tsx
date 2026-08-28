@@ -2,6 +2,7 @@ import { Lock } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { hostelNavigation } from "@/modules/hostel/navigation";
+import { getFullModuleNavigation } from "@/platform/modules/full-navigation";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { canAccessModule } from "@/lib/auth/permissions";
 
@@ -25,6 +26,7 @@ export default async function HostelLayout({ children }: { children: React.React
       sectionLabel="Hostel Management"
       moduleKey="hostel"
       navigation={hostelNavigation}
+      moduleSections={getFullModuleNavigation(tenant)}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
     >

@@ -2,6 +2,7 @@ import { Lock } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { crmNavigation } from "@/modules/crm/navigation";
+import { getFullModuleNavigation } from "@/platform/modules/full-navigation";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { canAccessModule } from "@/lib/auth/permissions";
 
@@ -25,6 +26,7 @@ export default async function CrmLayout({ children }: { children: React.ReactNod
       sectionLabel="Customer Relationship Management"
       moduleKey="crm"
       navigation={crmNavigation}
+      moduleSections={getFullModuleNavigation(tenant)}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
     >
