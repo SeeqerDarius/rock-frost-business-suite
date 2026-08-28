@@ -1,5 +1,15 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-28: The active module always sorts to the top of the sidebar accordion (no schema change)
+
+- **User request**: "now lets design it such that the active module always stays on top in the sidebar and the rest below."
+- **`ModuleAccordionNav`** (`src/components/navigation/module-accordion-nav.tsx`) computes `orderedSections` on every render - the section matching `currentSectionKey` moved to index 0, every other section keeping its existing relative order below it - and maps over that instead of the raw `sections` prop. Not stored as state and no `useEffect`: it's recomputed straight from `sections`/`pathname` on each render, so it can never drift out of sync with the real current route, consistent with this component's existing no-effect reasoning (every module lives under its own `layout.tsx`, so a real navigation between modules always remounts this component fresh).
+- **Verified live in a browser, not just by reading the code**: no test tenant exists in this environment, so built a temporary, unauthenticated scratch route (`/dev-scratch-accordion/<module>`, removed before shipping) that rendered the real `ModuleAccordionNav` component with four fabricated sections and a real Next.js pathname. Confirmed the rendered order for two different "current" pages: at `/dev-scratch-accordion/fleet` the page read "Fleet Management, Accounting, HR, Inventory"; at `/dev-scratch-accordion/hr` it read "HR, Accounting, Fleet Management, Inventory" - the active module first both times, the remaining three always in their original relative order (Accounting, Fleet, Inventory or Accounting, HR, Inventory depending on which was pulled to the front), never shuffled.
+- **New regression test** (`test/sidebar-all-modules.test.ts`) asserts the reordering logic exists and that the render loop actually maps over `orderedSections`, not the original `sections` prop - guarding against the reorder being computed and then silently unused.
+- **Important files**: `src/components/navigation/module-accordion-nav.tsx`, `test/sidebar-all-modules.test.ts`, `docs/ARCHITECTURE.md` (extended the accordion's own description with this ordering behavior).
+- **Validation**: `npx tsc --noEmit` — passed. `npm run lint` — passed, zero warnings. `npm run test` — passed: 110 files, 796 tests (+1 new). `npm run build` — passed. No schema change, so no integration-test requirement.
+- **Production deploy verified**: commit `<pending>` reached Vercel production deployment `<pending>`.
+
 ## 2026-08-28: Every module's settings page gets consistent banners, toggles, and card polish (no schema change)
 
 - **User request, in two steps**: pasted a redesigned draft of the Pharmacy settings page and asked what I thought of it. Flagged that the layout polish was good but the draft silently dropped the saved/error status banner, the SMS-notification toggle, and `required` validation on two number inputs - the same bug class as an earlier real fix this session (Dispensing form). The user then said "improve on it and implement it across all modules."

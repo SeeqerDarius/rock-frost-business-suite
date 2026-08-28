@@ -104,6 +104,15 @@ describe("ModuleAccordionNav", () => {
     expect(accordion).toContain("<Link");
     expect(accordion).toContain("collapsed ?");
   });
+
+  it("moves the active module's section to the top of the list, keeping every other section's relative order", () => {
+    expect(accordion).toContain("const orderedSections = currentSectionKey");
+    expect(accordion).toContain("sections.find((section) => section.key === currentSectionKey)");
+    expect(accordion).toContain("sections.filter((section) => section.key !== currentSectionKey)");
+    // The render loop must map over the reordered list, not the raw prop,
+    // or the reordering above would be computed and then silently ignored.
+    expect(accordion).toContain("{orderedSections.map((section) => {");
+  });
 });
 
 describe("AppShell: moduleSections prop and accordion wiring", () => {

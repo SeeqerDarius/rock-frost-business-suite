@@ -59,9 +59,18 @@ export function ModuleAccordionNav({
 
   if (sections.length === 0) return null;
 
+  // The active module always sits first, everything else keeps its existing
+  // relative order below it. Recomputed straight from props on every render
+  // (not state) so it can never drift from currentSectionKey - and, per the
+  // remount reasoning above, is already correct on first render after a real
+  // navigation without needing an effect.
+  const orderedSections = currentSectionKey
+    ? [sections.find((section) => section.key === currentSectionKey)!, ...sections.filter((section) => section.key !== currentSectionKey)]
+    : sections;
+
   return (
     <nav aria-label="Modules" className="flex flex-col gap-0.5 px-2">
-      {sections.map((section) => {
+      {orderedSections.map((section) => {
         const isOpen = openKey === section.key;
         const isCurrent = section.key === currentSectionKey;
         const iconChip = (
