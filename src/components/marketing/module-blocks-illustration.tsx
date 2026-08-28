@@ -8,9 +8,13 @@ type Block = { cx: number; cy: number; r: number; accent?: boolean };
  * headline) rather than generic clip art. Each block is a regular hexagon
  * (the outer edges) plus three spokes from its center to alternating
  * vertices (splitting it into the classic isometric-cube top/left/right
- * faces); every edge has length exactly `r`, so the stroke-dasharray/
- * dashoffset reveal on each element can use an exact computed length
- * instead of a guessed safety constant.
+ * faces); every edge has length exactly `r`, so the stroke-dasharray reveal
+ * on each element can use an exact computed length instead of a guessed
+ * safety constant. Each element exposes that length as the `--dash-length`
+ * custom property rather than a fixed inline `stroke-dashoffset`, since the
+ * `module-block-draw` keyframes (globals.css) loop continuously - draw in,
+ * hold, erase, pause, repeat - and need a per-element value to animate
+ * between, not a one-time starting point.
  */
 const BLOCKS: Block[] = [
   { cx: 100, cy: 240, r: 38 },
@@ -56,14 +60,14 @@ export function ModuleBlocksIllustration({ className }: { className?: string }) 
           <g key={index} className={colorClass}>
             <path
               className="module-block-draw"
-              style={{ animationDelay: delay, strokeDasharray: outlineLength + 6, strokeDashoffset: outlineLength + 6 }}
+              style={{ animationDelay: delay, strokeDasharray: outlineLength + 6, "--dash-length": `${outlineLength + 6}px` } as React.CSSProperties}
               d={`M${p.top[0]},${p.top[1]} L${p.upperRight[0]},${p.upperRight[1]} L${p.lowerRight[0]},${p.lowerRight[1]} L${p.bottom[0]},${p.bottom[1]} L${p.lowerLeft[0]},${p.lowerLeft[1]} L${p.upperLeft[0]},${p.upperLeft[1]} Z`}
             />
             {([p.top, p.lowerRight, p.lowerLeft] as const).map((point, spokeIndex) => (
               <line
                 key={spokeIndex}
                 className="module-block-draw"
-                style={{ animationDelay: delay, strokeDasharray: spokeLength + 4, strokeDashoffset: spokeLength + 4 }}
+                style={{ animationDelay: delay, strokeDasharray: spokeLength + 4, "--dash-length": `${spokeLength + 4}px` } as React.CSSProperties}
                 x1={p.center[0]}
                 y1={p.center[1]}
                 x2={point[0]}

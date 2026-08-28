@@ -39,4 +39,18 @@ describe("homepage hero: module-blocks illustration", () => {
     expect(illustration).not.toContain("lucide-react");
     expect(illustration).not.toContain("import Image");
   });
+
+  it("loops continuously (draw, hold, erase, pause) rather than playing once, per direct user correction", () => {
+    expect(css).toContain("infinite");
+    expect(css).not.toContain("both;\n}\n.module-block-draw");
+    // Every element exposes its own full length as a custom property so one
+    // shared keyframe can animate differently-sized blocks correctly -
+    // there's no single hardcoded dashoffset value to animate to/from.
+    expect(illustration).toContain("--dash-length");
+    expect(css).toContain("var(--dash-length)");
+  });
+
+  it("pins to the fully-drawn static state under prefers-reduced-motion instead of freezing on the loop's erased keyframe", () => {
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*{\s*\.module-block-draw\s*{\s*animation: none;\s*stroke-dashoffset: 0;/);
+  });
 });
