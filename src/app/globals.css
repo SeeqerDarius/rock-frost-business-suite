@@ -140,6 +140,22 @@
   }
 }
 
+/* Every lucide-react icon renders with a `lucide` class regardless of call
+   site (confirmed by inspecting its actual output), so this one rule gives
+   every icon in the app a hover animation without touching each usage.
+   Scoped to real interactive ancestors, not just any hovered container, so a
+   purely decorative icon never implies clickability it doesn't have.
+   animate-spin icons are excluded - stacking this transform on top of the
+   spin keyframes would fight over the transform property and stall the
+   spin. */
+.lucide {
+  transition: transform 160ms ease-out;
+}
+
+:is(button, a, [role="button"], summary):not(:disabled):hover .lucide:not(.animate-spin) {
+  transform: scale(1.12);
+}
+
 @layer components {
   .public-site {
     background: linear-gradient(180deg, oklch(0.985 0.008 250) 0%, var(--background) 32rem);
