@@ -714,33 +714,34 @@ model Branch {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  organization          Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  members               OrganizationMember[]
-  auditLogs             AuditLog[]
-  fileAssets            FileAsset[]
-  fleetOwners           FleetOwner[]
-  fleetDrivers          FleetDriver[]
-  fleetVehicles         FleetVehicle[]
-  fleetVehicleDocuments FleetVehicleDocument[]
-  maintenanceRequests   FleetMaintenanceRequest[]
-  fleetPayments         FleetPayment[]
-  workAndPayContracts   FleetWorkAndPayContract[]
-  hirePurchaseStaff     HirePurchaseStaff[]
-  hirePurchaseCustomers HirePurchaseCustomer[]
-  hirePurchaseAccounts  HirePurchaseAccount[]
-  crmContacts           CrmContact[]
-  crmLeads              CrmLead[]
-  crmDeals              CrmDeal[]
-  crmActivities         CrmActivity[]
-  inventoryWarehouses   InventoryWarehouse[]
-  accountingInvoices    AccountingInvoice[]
-  accountingExpenses    AccountingExpense[]
-  hrEmployees           HrEmployee[]
-  posRegisters          PosRegister[]
-  projects              Project[]
-  hotelProperties       HotelProperty[]
-  schoolCampuses        SchoolCampus[]
-  hospitalFacilities    HospitalFacility[]
+  organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members                  OrganizationMember[]
+  auditLogs                AuditLog[]
+  fileAssets               FileAsset[]
+  fleetOwners              FleetOwner[]
+  fleetDrivers             FleetDriver[]
+  fleetVehicles            FleetVehicle[]
+  fleetVehicleDocuments    FleetVehicleDocument[]
+  maintenanceRequests      FleetMaintenanceRequest[]
+  fleetPayments            FleetPayment[]
+  workAndPayContracts      FleetWorkAndPayContract[]
+  hirePurchaseStaff        HirePurchaseStaff[]
+  hirePurchaseCustomers    HirePurchaseCustomer[]
+  hirePurchaseAccounts     HirePurchaseAccount[]
+  crmContacts              CrmContact[]
+  crmLeads                 CrmLead[]
+  crmDeals                 CrmDeal[]
+  crmActivities            CrmActivity[]
+  inventoryWarehouses      InventoryWarehouse[]
+  accountingInvoices       AccountingInvoice[]
+  accountingExpenses       AccountingExpense[]
+  accountingJournalEntries AccountingJournalEntry[]
+  hrEmployees              HrEmployee[]
+  posRegisters             PosRegister[]
+  projects                 Project[]
+  hotelProperties          HotelProperty[]
+  schoolCampuses           SchoolCampus[]
+  hospitalFacilities       HospitalFacility[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -2419,9 +2420,11 @@ model AccountingExpense {
 model AccountingJournalEntry {
   id             String                  @id @default(cuid())
   organizationId String
+  branchId       String?
   entryDate      DateTime
   reference      String?
   description    String
+  sourceModule   String?
   sourceType     String?
   sourceId       String?
   postingPurpose String?
@@ -2432,6 +2435,7 @@ model AccountingJournalEntry {
   createdAt      DateTime                @default(now())
 
   organization          Organization                     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch                Branch?                          @relation(fields: [branchId], references: [id], onDelete: SetNull)
   createdBy             User?                            @relation(fields: [createdById], references: [id], onDelete: SetNull)
   lines                 AccountingJournalLine[]
   pettyCashTransactions AccountingPettyCashTransaction[]
@@ -2441,6 +2445,8 @@ model AccountingJournalEntry {
   @@unique([organizationId, postingNumber])
   @@unique([organizationId, sourceType, sourceId, postingPurpose])
   @@index([organizationId, entryDate])
+  @@index([organizationId, sourceModule, entryDate])
+  @@index([branchId, entryDate])
 }
 
 model AccountingPeriod {

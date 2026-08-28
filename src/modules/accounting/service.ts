@@ -127,7 +127,7 @@ export async function postOpeningBalance(organizationId: string, accountId: stri
   return db.$transaction(async (tx) => {
     const claimed = await tx.accountingAccount.updateMany({ where: { id: account.id, organizationId, openingBalancePostedAt: null }, data: { openingBalancePostedAt: new Date() } });
     if (claimed.count === 0) throw new InvoiceStateError("An opening balance was already posted for this account.");
-    return postJournalEntry(tx, organizationId, { entryDate: asOfDate, description: `Opening balance for ${account.name}`, sourceType: "OPENING_BALANCE", sourceId: account.id, createdById, lines: [{ accountId: debitAccount, debit: absolute }, { accountId: creditAccount, credit: absolute }] });
+    return postJournalEntry(tx, organizationId, { entryDate: asOfDate, description: `Opening balance for ${account.name}`, sourceModule: "accounting", sourceType: "OPENING_BALANCE", sourceId: account.id, createdById, lines: [{ accountId: debitAccount, debit: absolute }, { accountId: creditAccount, credit: absolute }] });
   });
 }
 
@@ -221,9 +221,11 @@ async function postJournalEntry(
     entryDate: Date;
     description: string;
     reference?: string | null;
+    sourceModule?: string | null;
     sourceType?: string | null;
     sourceId?: string | null;
     postingPurpose?: string | null;
+    branchId?: string | null;
     createdById?: string | null;
     lines: { accountId: string; debit?: string | number; credit?: string | number }[];
   },
@@ -254,15 +256,26 @@ async function postJournalEntry(
     throw new NotFoundError("One or more accounts could not be found.");
   }
 
+  const sourceModule = input.sourceModule?.trim().toLowerCase() || null;
+  if (sourceModule && !/^[a-z][a-z0-9_-]{0,63}$/.test(sourceModule)) {
+    throw new Error("Source module must be a canonical module key.");
+  }
+  if (input.branchId) {
+    const ownedBranch = await tx.branch.count({ where: { id: input.branchId, organizationId } });
+    if (ownedBranch !== 1) throw new NotFoundError("The journal branch could not be found in this organization.");
+  }
+
   return tx.accountingJournalEntry.create({
     data: {
       organizationId,
       entryDate: input.entryDate,
       description: input.description,
       reference: input.reference,
+      sourceModule,
       sourceType: input.sourceType,
       sourceId: input.sourceId,
       postingPurpose: input.postingPurpose,
+      branchId: input.branchId,
       postingNumber: await nextPostingNumber(tx, organizationId),
       createdById: input.createdById,
       lines: {
@@ -281,7 +294,9 @@ export async function postSourceJournalEntry(
     entryDate: Date;
     description: string;
     reference?: string | null;
+    sourceModule?: string | null;
     createdById?: string | null;
+    branchId?: string | null;
     lines: { accountId: string; debit?: string; credit?: string }[];
   },
 ) {
@@ -385,9 +400,11 @@ async function reverseJournalEntryInternal(
       entryDate: data.entryDate,
       description: `Reversal of ${original.postingNumber}: ${data.reason}`,
       reference: original.reference,
+      sourceModule: original.sourceModule,
       sourceType: "JOURNAL_REVERSAL",
       sourceId: original.id,
       postingPurpose: "FULL_REVERSAL",
+      branchId: original.branchId,
       createdById: data.actorId,
       lines: original.lines.map((line) => ({
         accountId: line.accountId,
@@ -456,7 +473,7 @@ export async function createManualJournalEntry(
   },
 ) {
   return db.$transaction((tx) =>
-    postJournalEntry(tx, organizationId, { ...data, sourceType: "MANUAL", sourceId: null }),
+    postJournalEntry(tx, organizationId, { ...data, sourceModule: "accounting", sourceType: "MANUAL", sourceId: null }),
   );
 }
 
@@ -546,8 +563,10 @@ export async function markInvoiceSent(organizationId: string, id: string) {
     await postJournalEntry(tx, organizationId, {
       entryDate: invoice.issueDate,
       description: `Invoice ${invoice.invoiceNumber} sent to ${invoice.customerName}`,
+      sourceModule: "accounting",
       sourceType: "INVOICE",
       sourceId: invoice.id,
+      branchId: invoice.branchId,
       lines: [
         { accountId: ar.id, debit: invoice.amount.toString() },
         { accountId: revenue.id, credit: invoice.taxableAmount.toString() },
@@ -626,9 +645,11 @@ export async function recordInvoicePayment(organizationId: string, id: string, i
     await postJournalEntry(tx, organizationId, {
       entryDate: input.paymentDate,
       description: `Payment received for invoice ${invoice.invoiceNumber}`,
+      sourceModule: "accounting",
       sourceType: payment ? "ACCOUNTING_RECEIVABLE_PAYMENT" : "INVOICE",
       sourceId: payment?.id ?? invoice.id,
       postingPurpose: payment ? "RECEIVED" : undefined,
+      branchId: invoice.branchId,
       lines: [
         { accountId: receivingAccount.id, debit: input.amount },
         { accountId: ar.id, credit: input.amount },
@@ -646,7 +667,7 @@ export async function recordInvoicePayment(organizationId: string, id: string, i
   }, { timeout: 20_000 });
 }
 
-export async function postProcurementTaxAccrual(organizationId: string, input: { invoiceId: string; invoiceNumber: string; vendorName: string; invoiceDate: Date; taxCodeId?: string | null; taxableAmount: Prisma.Decimal.Value; vatAmount: Prisma.Decimal.Value; nhilAmount: Prisma.Decimal.Value; getfundAmount: Prisma.Decimal.Value; totalAmount: Prisma.Decimal.Value; actorId?: string | null }) {
+export async function postProcurementTaxAccrual(organizationId: string, input: { invoiceId: string; invoiceNumber: string; vendorName: string; invoiceDate: Date; taxCodeId?: string | null; taxableAmount: Prisma.Decimal.Value; vatAmount: Prisma.Decimal.Value; nhilAmount: Prisma.Decimal.Value; getfundAmount: Prisma.Decimal.Value; totalAmount: Prisma.Decimal.Value; actorId?: string | null; branchId?: string | null }) {
   const accounts = await ensureDefaultAccounts(organizationId);
   const findAccount = (code: string) => { const account = accounts.find((candidate) => candidate.code === code); if (!account) throw new Error(`Default account ${code} missing.`); return account; };
   const [inventory, inputVat, inputNhil, inputGetfund, payable] = [findAccount("1200"), findAccount("1300"), findAccount("1310"), findAccount("1320"), findAccount("2000")];
@@ -654,7 +675,7 @@ export async function postProcurementTaxAccrual(organizationId: string, input: {
   const nhilAmount = new Prisma.Decimal(input.nhilAmount);
   const getfundAmount = new Prisma.Decimal(input.getfundAmount);
   return db.$transaction(async (tx) => {
-    const entry = await postJournalEntry(tx, organizationId, { sourceType: "PROCUREMENT_SUPPLIER_INVOICE", sourceId: input.invoiceId, postingPurpose: "APPROVED", entryDate: input.invoiceDate, description: `Supplier invoice ${input.invoiceNumber}`, createdById: input.actorId, lines: [{ accountId: inventory.id, debit: new Prisma.Decimal(input.taxableAmount).toString() }, ...(vatAmount.isPositive() ? [{ accountId: inputVat.id, debit: vatAmount.toString() }] : []), ...(nhilAmount.isPositive() ? [{ accountId: inputNhil.id, debit: nhilAmount.toString() }] : []), ...(getfundAmount.isPositive() ? [{ accountId: inputGetfund.id, debit: getfundAmount.toString() }] : []), { accountId: payable.id, credit: new Prisma.Decimal(input.totalAmount).toString() }] });
+    const entry = await postJournalEntry(tx, organizationId, { sourceModule: "procurement", sourceType: "PROCUREMENT_SUPPLIER_INVOICE", sourceId: input.invoiceId, postingPurpose: "APPROVED", branchId: input.branchId, entryDate: input.invoiceDate, description: `Supplier invoice ${input.invoiceNumber}`, createdById: input.actorId, lines: [{ accountId: inventory.id, debit: new Prisma.Decimal(input.taxableAmount).toString() }, ...(vatAmount.isPositive() ? [{ accountId: inputVat.id, debit: vatAmount.toString() }] : []), ...(nhilAmount.isPositive() ? [{ accountId: inputNhil.id, debit: nhilAmount.toString() }] : []), ...(getfundAmount.isPositive() ? [{ accountId: inputGetfund.id, debit: getfundAmount.toString() }] : []), { accountId: payable.id, credit: new Prisma.Decimal(input.totalAmount).toString() }] });
     await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: input.taxCodeId, direction: "INPUT", transactionDate: input.invoiceDate, sourceType: "PROCUREMENT_SUPPLIER_INVOICE", sourceId: input.invoiceId, documentNumber: input.invoiceNumber, counterparty: input.vendorName, taxableAmount: input.taxableAmount, vatAmount: input.vatAmount, nhilAmount: input.nhilAmount, getfundAmount: input.getfundAmount } });
     return entry;
   });
@@ -689,8 +710,10 @@ export async function voidInvoice(organizationId: string, id: string) {
       await postJournalEntry(tx, organizationId, {
         entryDate: new Date(),
         description: `Void of invoice ${invoice.invoiceNumber} (reversal)`,
+        sourceModule: "accounting",
         sourceType: "INVOICE_VOID",
         sourceId: invoice.id,
+        branchId: invoice.branchId,
         lines: [
           { accountId: revenue.id, debit: invoice.taxableAmount.toString() },
           ...(invoice.vatAmount.isPositive() ? [{ accountId: vatPayable.id, debit: invoice.vatAmount.toString() }] : []),
@@ -775,8 +798,10 @@ export async function payExpense(organizationId: string, id: string, paymentDate
     await postJournalEntry(tx, organizationId, {
       entryDate: paymentDate,
       description: `Expense ${expense.expenseNumber} paid to ${expense.vendorName}`,
+      sourceModule: "accounting",
       sourceType: "EXPENSE",
       sourceId: expense.id,
+      branchId: expense.branchId,
       lines: [
         { accountId: expenseAccountId, debit: expense.amount.toString() },
         { accountId: cash.id, credit: expense.amount.toString() },
@@ -832,6 +857,7 @@ export async function createPettyCashFund(organizationId: string, data: PettyCas
       const entry = await postJournalEntry(tx, organizationId, {
         entryDate: new Date(),
         description: `Petty cash float issued to ${data.custodianName} (${data.name})`,
+        sourceModule: "accounting",
         sourceType: "PETTY_CASH_FUNDING",
         sourceId: fund.id,
         createdById,
@@ -915,6 +941,7 @@ export async function recordPettyCashExpense(
     const entry = await postJournalEntry(tx, organizationId, {
       entryDate: data.expenseDate ?? new Date(),
       description: `Petty cash expense: ${data.description}`,
+      sourceModule: "accounting",
       sourceType: "PETTY_CASH_EXPENSE",
       sourceId: fund.id,
       createdById,
@@ -964,6 +991,7 @@ export async function replenishPettyCashFund(
     const entry = await postJournalEntry(tx, organizationId, {
       entryDate: new Date(),
       description: `Petty cash replenishment for ${fund.name}`,
+      sourceModule: "accounting",
       sourceType: "PETTY_CASH_REPLENISHMENT",
       sourceId: fund.id,
       createdById,
@@ -1003,6 +1031,7 @@ export async function closePettyCashFund(organizationId: string, fundId: string,
       await postJournalEntry(tx, organizationId, {
         entryDate: new Date(),
         description: `Petty cash fund closed, remaining float returned (${fund.name})`,
+        sourceModule: "accounting",
         sourceType: "PETTY_CASH_CLOSE",
         sourceId: fund.id,
         createdById,

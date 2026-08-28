@@ -72,6 +72,15 @@ Bank-statement import matching, budgeting, fixed assets, forecasting, consolidat
 
 Supplier invoice approval in Inventory and Procurement creates an idempotent accrual in Accounting. Untaxed invoices debit Inventory Asset and credit Accounts Payable. Taxed invoices additionally debit the separate recoverable input VAT, NHIL, and GETFund accounts while Accounts Payable receives the gross value. A partial or final supplier payment debits Accounts Payable and credits the organization-owned cash, bank, or mobile-money account selected at payment time. Procurement owns the operational invoice and payment record. Accounting owns its immutable journal and tax evidence. Users must correct source transactions through their source workflow rather than manually reversing a source-owned journal.
 
+## Journal dimensions
+
+Every new journal entry can carry two reporting dimensions in addition to its source identity:
+
+- `sourceModule` is the canonical module key that owns the business event. Accounting invoice, receivable, expense, opening-balance, manual, and petty-cash postings use `accounting`. Procurement supplier accruals and payments use `procurement`. Revenue integrations preserve the module key supplied by the shared `postModuleRevenue()` contract.
+- `branchId` identifies the originating operational branch when the source record has an authoritative branch. Accounting invoice and expense postings copy the branch from the source record. Procurement derives a branch only when every relevant goods receipt resolves to one branch. A multi-branch or branchless procurement event remains unallocated instead of being guessed.
+
+The posting service verifies that a supplied branch belongs to the same organization before writing the journal. Reversal entries inherit both dimensions from the original entry. Historical entries are backfilled where the originating Accounting record still provides an unambiguous branch, and known source types are mapped to their canonical module keys.
+
 # Accounts receivable
 
 Customer receipts are explicit immutable allocation records rather than only an invoice-level running total. Each receipt records the invoice, amount, date, payment method, receiving cash, bank, or mobile-money account, optional reference and notes, and the user who recorded it. Invoice balances remain concurrency locked, so simultaneous receipts cannot overpay an invoice. Every new receipt has its own idempotent journal identity and posts debit to the selected liquidity account and credit to Accounts Receivable.

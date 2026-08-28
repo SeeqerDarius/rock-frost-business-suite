@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mockDb = {
   accountingPeriod: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn(), findFirstOrThrow: vi.fn() },
   accountingAccount: { count: vi.fn() },
+  branch: { count: vi.fn() },
   accountingJournalEntry: { findFirst: vi.fn(), count: vi.fn(), create: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
   $executeRaw: vi.fn(),
   $transaction: vi.fn(),
@@ -17,15 +18,18 @@ beforeEach(() => {
   mockDb.$transaction.mockImplementation(async (callback: (tx: typeof mockDb) => Promise<unknown>) => callback(mockDb));
   mockDb.accountingPeriod.findFirst.mockResolvedValue(null);
   mockDb.accountingAccount.count.mockResolvedValue(2);
+  mockDb.branch.count.mockResolvedValue(1);
   mockDb.accountingJournalEntry.count.mockResolvedValue(0);
 });
 
 const sourcePosting = {
+  sourceModule: "payroll",
   sourceType: "PAYROLL",
   sourceId: "run-1",
   postingPurpose: "NET_PAY",
   entryDate: new Date("2026-08-01"),
   description: "Payroll posting",
+  branchId: "branch-1",
   lines: [
     { accountId: "expense", debit: "100.00" },
     { accountId: "cash", credit: "100.00" },
@@ -56,8 +60,16 @@ describe("Accounting posting foundation", () => {
     await accounting.postSourceJournalEntry("org-1", sourcePosting);
 
     expect(mockDb.accountingJournalEntry.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ postingNumber: "JRN-00000042", postingPurpose: "NET_PAY" }),
+      data: expect.objectContaining({ postingNumber: "JRN-00000042", postingPurpose: "NET_PAY", sourceModule: "payroll", branchId: "branch-1" }),
     }));
+  });
+
+  it("rejects a journal dimension that points to another organization's branch", async () => {
+    mockDb.accountingJournalEntry.findFirst.mockResolvedValue(null);
+    mockDb.branch.count.mockResolvedValue(0);
+
+    await expect(accounting.postSourceJournalEntry("org-1", sourcePosting)).rejects.toBeInstanceOf(accounting.NotFoundError);
+    expect(mockDb.accountingJournalEntry.create).not.toHaveBeenCalled();
   });
 
   it("creates a compensating entry and marks the original as reversed", async () => {
@@ -73,6 +85,8 @@ describe("Accounting posting foundation", () => {
         reversal: null,
         postingNumber: "JRN-00000001",
         reference: null,
+        sourceModule: "accounting",
+        branchId: "branch-1",
         lines: [
           { accountId: "expense", debit: { toFixed: () => "100.00" }, credit: { toFixed: () => "0.00" } },
           { accountId: "cash", debit: { toFixed: () => "0.00" }, credit: { toFixed: () => "100.00" } },
@@ -85,6 +99,9 @@ describe("Accounting posting foundation", () => {
     await accounting.reverseJournalEntry("org-1", "journal-1", { entryDate: new Date("2026-08-02"), reason: "Correction" });
 
     expect(mockDb.accountingJournalEntry.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { status: "REVERSED" } }));
+    expect(mockDb.accountingJournalEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ sourceModule: "accounting", branchId: "branch-1", sourceType: "JOURNAL_REVERSAL" }),
+    }));
     expect(mockDb.accountingJournalEntry.update).toHaveBeenCalledWith({ where: { id: "journal-2" }, data: { reversalOfId: "journal-1" } });
   });
 

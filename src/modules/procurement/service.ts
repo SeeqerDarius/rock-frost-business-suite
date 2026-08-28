@@ -458,9 +458,13 @@ export async function reviewSupplierInvoice(organizationId: string, invoiceId: s
     data: decision === "APPROVE" ? { status: "APPROVED", approvedById: actorId, approvedAt: new Date() } : { status: "REJECTED", approvedById: actorId, approvedAt: new Date() },
   });
   if (claimed.count === 0) throw new InvoiceApprovalError("Invoice was already reviewed.");
-  const reviewed = await db.procurementSupplierInvoice.findFirstOrThrow({ where: { id: invoice.id, organizationId }, include: { vendor: true } });
+  const reviewed = await db.procurementSupplierInvoice.findFirstOrThrow({
+    where: { id: invoice.id, organizationId },
+    include: { vendor: true, order: { include: { receipts: { include: { warehouse: { select: { branchId: true } } } } } } },
+  });
   if (decision === "APPROVE") {
-    const posting = await postProcurementInvoiceAccrual(organizationId, { invoiceId: reviewed.id, invoiceNumber: reviewed.invoiceNumber, vendorName: reviewed.vendor.name, taxCodeId: reviewed.taxCodeId, taxableAmount: reviewed.taxableAmount.toString(), vatAmount: reviewed.vatAmount.toString(), nhilAmount: reviewed.nhilAmount.toString(), getfundAmount: reviewed.getfundAmount.toString(), totalAmount: reviewed.totalAmount.toString(), invoiceDate: reviewed.invoiceDate, description: `Supplier invoice ${reviewed.invoiceNumber}`, actorId });
+    const receiptBranchIds = [...new Set(reviewed.order.receipts.map((receipt) => receipt.warehouse?.branchId).filter((branchId): branchId is string => Boolean(branchId)))];
+    const posting = await postProcurementInvoiceAccrual(organizationId, { invoiceId: reviewed.id, invoiceNumber: reviewed.invoiceNumber, vendorName: reviewed.vendor.name, taxCodeId: reviewed.taxCodeId, taxableAmount: reviewed.taxableAmount.toString(), vatAmount: reviewed.vatAmount.toString(), nhilAmount: reviewed.nhilAmount.toString(), getfundAmount: reviewed.getfundAmount.toString(), totalAmount: reviewed.totalAmount.toString(), invoiceDate: reviewed.invoiceDate, description: `Supplier invoice ${reviewed.invoiceNumber}`, actorId, branchId: receiptBranchIds.length === 1 ? receiptBranchIds[0] : null });
     if (!posting.posted && posting.reason === "error") {
       await db.procurementSupplierInvoice.updateMany({ where: { id: reviewed.id, organizationId, status: "APPROVED", approvedById: actorId }, data: { status: "MATCHED", approvedById: null, approvedAt: null } });
       throw new InvoiceApprovalError("Accounting could not record the supplier liability. The approval was not saved.");
@@ -476,7 +480,7 @@ export async function recordSupplierPayment(organizationId: string, input: { inv
   if (accountingEnabled && !input.accountId) throw new SupplierPaymentError("Select the cash or bank account used for this payment.");
   const payment = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${organizationId}:supplier-payment:${input.invoiceId}`}))`;
-    const invoice = await tx.procurementSupplierInvoice.findFirst({ where: { id: input.invoiceId, organizationId, status: { in: ["APPROVED", "PARTIALLY_PAID"] } } });
+    const invoice = await tx.procurementSupplierInvoice.findFirst({ where: { id: input.invoiceId, organizationId, status: { in: ["APPROVED", "PARTIALLY_PAID"] } }, include: { order: { include: { receipts: { include: { warehouse: { select: { branchId: true } } } } } } } });
     if (!invoice) throw new SupplierPaymentError("Only approved unpaid invoices can be paid.");
     if (accountingEnabled) {
       const account = await tx.accountingAccount.findFirst({ where: { id: input.accountId!, organizationId, active: true, liquidityType: { in: ["CASH", "BANK", "MOBILE_MONEY"] } } });
@@ -488,10 +492,11 @@ export async function recordSupplierPayment(organizationId: string, input: { inv
     const fullyPaid = nextPaid.equals(invoice.totalAmount);
     const created = await tx.procurementSupplierPayment.create({ data: { organizationId, invoiceId: invoice.id, accountId: accountingEnabled ? input.accountId : null, paymentMethod: input.paymentMethod.trim(), amount, paymentDate: input.paymentDate, reference: input.reference?.trim() || null, notes: input.notes?.trim() || null, createdById: input.createdById } });
     await tx.procurementSupplierInvoice.update({ where: { id: invoice.id }, data: { amountPaid: nextPaid, status: fullyPaid ? "PAID" : "PARTIALLY_PAID", paidAt: fullyPaid ? input.paymentDate : null } });
-    return { ...created, invoiceNumber: invoice.invoiceNumber, previousStatus: invoice.status, previousAmountPaid: invoice.amountPaid, previousPaidAt: invoice.paidAt };
+    const receiptBranchIds = [...new Set(invoice.order.receipts.map((receipt) => receipt.warehouse?.branchId).filter((branchId): branchId is string => Boolean(branchId)))];
+    return { ...created, invoiceNumber: invoice.invoiceNumber, branchId: receiptBranchIds.length === 1 ? receiptBranchIds[0] : null, previousStatus: invoice.status, previousAmountPaid: invoice.amountPaid, previousPaidAt: invoice.paidAt };
   });
   if (accountingEnabled && payment.accountId) {
-    const posting = await postProcurementSupplierPayment(organizationId, { paymentId: payment.id, accountId: payment.accountId, amount: payment.amount.toString(), paymentDate: payment.paymentDate, description: `Payment for supplier invoice ${payment.invoiceNumber}`, actorId: input.createdById });
+    const posting = await postProcurementSupplierPayment(organizationId, { paymentId: payment.id, accountId: payment.accountId, amount: payment.amount.toString(), paymentDate: payment.paymentDate, description: `Payment for supplier invoice ${payment.invoiceNumber}`, actorId: input.createdById, branchId: payment.branchId });
     if (!posting.posted) {
       await db.$transaction(async (tx) => {
         await tx.procurementSupplierPayment.deleteMany({ where: { id: payment.id, organizationId } });

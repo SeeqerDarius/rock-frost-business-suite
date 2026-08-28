@@ -142,13 +142,15 @@ export interface PostModuleRevenueInput {
   entryDate: Date;
   description: string;
   createdById?: string | null;
+  /** Originating operational branch, when the source record is branch-scoped. */
+  branchId?: string | null;
 }
 
 export type PostModuleRevenueResult =
   | { posted: true; journalEntryId: string }
   | { posted: false; reason: "accounting-not-enabled" | "error" };
 
-export async function postProcurementInvoiceAccrual(organizationId: string, input: { invoiceId: string; invoiceNumber: string; vendorName: string; taxCodeId?: string | null; taxableAmount: string; vatAmount: string; nhilAmount: string; getfundAmount: string; totalAmount: string; invoiceDate: Date; description: string; actorId?: string | null }): Promise<PostModuleRevenueResult> {
+export async function postProcurementInvoiceAccrual(organizationId: string, input: { invoiceId: string; invoiceNumber: string; vendorName: string; taxCodeId?: string | null; taxableAmount: string; vatAmount: string; nhilAmount: string; getfundAmount: string; totalAmount: string; invoiceDate: Date; description: string; actorId?: string | null; branchId?: string | null }): Promise<PostModuleRevenueResult> {
   try {
     if (!(await isModuleActiveForOrg(db, organizationId, "accounting"))) return { posted: false, reason: "accounting-not-enabled" };
     const entry = await postProcurementTaxAccrual(organizationId, input);
@@ -159,19 +161,21 @@ export async function postProcurementInvoiceAccrual(organizationId: string, inpu
   }
 }
 
-export async function postProcurementSupplierPayment(organizationId: string, input: { paymentId: string; accountId: string; amount: string; paymentDate: Date; description: string; actorId?: string | null }): Promise<PostModuleRevenueResult> {
+export async function postProcurementSupplierPayment(organizationId: string, input: { paymentId: string; accountId: string; amount: string; paymentDate: Date; description: string; actorId?: string | null; branchId?: string | null }): Promise<PostModuleRevenueResult> {
   try {
     if (!(await isModuleActiveForOrg(db, organizationId, "accounting"))) return { posted: false, reason: "accounting-not-enabled" };
     const payable = (await ensureDefaultAccounts(organizationId)).find((account) => account.code === "2000");
     const liquidity = await db.accountingAccount.findFirst({ where: { id: input.accountId, organizationId, active: true, liquidityType: { in: ["CASH", "BANK", "MOBILE_MONEY"] } } });
     if (!payable || !liquidity) throw new Error("A valid payable and organization liquidity account are required.");
     const entry = await postSourceJournalEntry(organizationId, {
+      sourceModule: "procurement",
       sourceType: "PROCUREMENT_SUPPLIER_PAYMENT",
       sourceId: input.paymentId,
       postingPurpose: "PAID",
       entryDate: input.paymentDate,
       description: input.description,
       createdById: input.actorId,
+      branchId: input.branchId,
       lines: [{ accountId: payable.id, debit: input.amount }, { accountId: liquidity.id, credit: input.amount }],
     });
     return { posted: true, journalEntryId: entry.id };
@@ -226,12 +230,14 @@ async function postModuleRevenueEntry(organizationId: string, input: PostModuleR
       : [{ accountId: revenueAccount.id, debit: input.amount }, { accountId: cashAccount.id, credit: input.amount }];
 
     const entry = await postSourceJournalEntry(organizationId, {
+      sourceModule: input.sourceModule,
       sourceType: input.sourceType,
       sourceId: input.sourceId,
       postingPurpose: input.postingPurpose,
       entryDate: input.entryDate,
       description: input.description,
       createdById: input.createdById,
+      branchId: input.branchId,
       lines,
     });
     return { posted: true, journalEntryId: entry.id };

@@ -62,6 +62,7 @@ describe("postModuleRevenue", () => {
     entryDate: new Date("2026-08-20"),
     description: "Fleet payment verified: REF-1",
     createdById: "user-1",
+    branchId: "branch-1",
   };
 
   it("no-ops without touching Accounting when the organization hasn't activated it — never blocks the source module", async () => {
@@ -84,8 +85,10 @@ describe("postModuleRevenue", () => {
     expect(result).toEqual({ posted: true, journalEntryId: "journal-1" });
     expect(mockAccounting.postSourceJournalEntry).toHaveBeenCalledWith("org-1", expect.objectContaining({
       sourceType: "FLEET_PAYMENT",
+      sourceModule: "fleet",
       sourceId: "payment-1",
       postingPurpose: "COLLECTED",
+      branchId: "branch-1",
       lines: [
         { accountId: "acct-cash", debit: "100.00" },
         { accountId: "acct-fleet-revenue", credit: "100.00" },

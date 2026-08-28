@@ -36,6 +36,7 @@ async function verifiedFleetPayment(organizationId: string, amount: string) {
 describe("Cross-module accounting posting (real Postgres)", () => {
   it("posts a balanced Cash/Fleet Revenue journal entry when a Fleet payment is verified, with Accounting enabled by default", async () => {
     const payment = await verifiedFleetPayment(org.organizationId, "150.00");
+    const branch = await testDb.branch.create({ data: { organizationId: org.organizationId, name: "Accra Operations", code: `ACC-${Date.now()}` } });
 
     const result = await postModuleRevenue(org.organizationId, {
       sourceModule: "fleet",
@@ -46,12 +47,15 @@ describe("Cross-module accounting posting (real Postgres)", () => {
       entryDate: payment.date,
       description: "Test fleet payment",
       createdById: org.userId,
+      branchId: branch.id,
     });
     expect(result.posted).toBe(true);
     if (!result.posted) throw new Error("unreachable");
 
     const entry = await testDb.accountingJournalEntry.findUniqueOrThrow({ where: { id: result.journalEntryId }, include: { lines: { include: { account: true } } } });
     expect(entry.sourceType).toBe("FLEET_PAYMENT");
+    expect(entry.sourceModule).toBe("fleet");
+    expect(entry.branchId).toBe(branch.id);
     expect(entry.sourceId).toBe(payment.id);
     const cashLine = entry.lines.find((line) => line.account.code === "1000");
     const revenueLine = entry.lines.find((line) => line.account.code === "4100");
