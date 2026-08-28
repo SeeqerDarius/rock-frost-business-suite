@@ -1,9 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useMemo, useState } from "react";
+import { Check, ClipboardList, ShoppingBasket } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { completeDispensing, type CompleteDispensingState } from "../actions";
@@ -11,104 +11,152 @@ import { PAYMENT_METHOD_ITEMS } from "../payment-methods";
 
 const initialState: CompleteDispensingState = {};
 
-interface DispensingFormProps {
-  patients: { id: string; fullName: string }[];
-  openPrescriptions: { id: string; prescriptionNumber: string }[];
-  medicines: { id: string; name: string; needsPrescription: boolean }[];
-  prescriptionLines: { id: string; label: string }[];
+interface PrescriptionLineOption {
+  id: string; medicineId: string; medicineName: string; dosage: string; frequency: string;
+  instructions: string | null; remaining: number; stockAvailable: number; unitPrice: number; controlled: boolean;
 }
 
-/**
- * A failed submission used to redirect to `?error=...`, which remounts this
- * whole server-rendered form from scratch - every field the user had typed
- * (dispensing number, quantity, discount, payment method, all of it) was
- * silently lost, on top of a generic "check the highlighted fields" banner
- * that never actually highlighted anything. useActionState keeps this form
- * mounted across a failed submit, so uncontrolled inputs keep whatever the
- * user typed, and fieldErrors drives real per-field highlighting.
- */
-export function DispensingForm({ patients, openPrescriptions, medicines, prescriptionLines }: DispensingFormProps) {
-  const [state, action, pending] = useActionState(completeDispensing, initialState);
-  const fieldErrors = state.fieldErrors ?? {};
+interface PrescriptionOption {
+  id: string; prescriptionNumber: string; patientName: string; prescriberName: string;
+  prescribedAt: string; lines: PrescriptionLineOption[];
+}
 
-  const medicineLabel = (m: DispensingFormProps["medicines"][number]) => m.needsPrescription ? `${m.name} (prescription required)` : m.name;
-  const medicineItems: Record<string, string> = Object.fromEntries(medicines.map((m) => [m.id, medicineLabel(m)]));
-  const patientItems: Record<string, string> = { "": "Walk-in (no patient on file)", ...Object.fromEntries(patients.map((p) => [p.id, p.fullName])) };
-  const prescriptionItems: Record<string, string> = { "": "None (over-the-counter sale)", ...Object.fromEntries(openPrescriptions.map((p) => [p.id, p.prescriptionNumber])) };
-  const prescriptionLineItems: Record<string, string> = { "": "None (over-the-counter sale)", ...Object.fromEntries(prescriptionLines.map((l) => [l.id, l.label])) };
+interface MedicineOption { id: string; name: string; stockAvailable: number; unitPrice: number }
+
+interface DispensingFormProps {
+  patients: { id: string; fullName: string }[];
+  prescriptions: PrescriptionOption[];
+  otcMedicines: MedicineOption[];
+  currency: string;
+}
+
+type SelectedLine = { medicineId: string; prescriptionLineId?: string; quantity: number };
+
+function money(amount: number, currency: string) {
+  return new Intl.NumberFormat("en", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
+}
+
+export function DispensingForm({ patients, prescriptions, otcMedicines, currency }: DispensingFormProps) {
+  const [state, action, pending] = useActionState(completeDispensing, initialState);
+  const [mode, setMode] = useState<"prescription" | "otc">("prescription");
+  const [prescriptionId, setPrescriptionId] = useState("");
+  const [selectedLines, setSelectedLines] = useState<SelectedLine[]>([]);
+  const [otcMedicineId, setOtcMedicineId] = useState("");
+  const [otcQuantity, setOtcQuantity] = useState(1);
+  const [discount, setDiscount] = useState(0);
+
+  const prescription = prescriptions.find((item) => item.id === prescriptionId);
+  const otcMedicine = otcMedicines.find((item) => item.id === otcMedicineId);
+  const lines = mode === "prescription" ? selectedLines : otcMedicine ? [{ medicineId: otcMedicine.id, quantity: otcQuantity }] : [];
+  const subtotal = useMemo(() => {
+    if (mode === "otc") return otcMedicine ? otcMedicine.unitPrice * otcQuantity : 0;
+    return selectedLines.reduce((sum, selected) => {
+      const line = prescription?.lines.find((item) => item.id === selected.prescriptionLineId);
+      return sum + (line?.unitPrice ?? 0) * selected.quantity;
+    }, 0);
+  }, [mode, otcMedicine, otcQuantity, prescription, selectedLines]);
+
+  function choosePrescription(id: string) {
+    setPrescriptionId(id);
+    const next = prescriptions.find((item) => item.id === id);
+    setSelectedLines(next?.lines.filter((line) => line.stockAvailable > 0).map((line) => ({
+      medicineId: line.medicineId,
+      prescriptionLineId: line.id,
+      quantity: Math.min(line.remaining, line.stockAvailable),
+    })) ?? []);
+  }
+
+  function toggleLine(line: PrescriptionLineOption) {
+    setSelectedLines((current) => current.some((item) => item.prescriptionLineId === line.id)
+      ? current.filter((item) => item.prescriptionLineId !== line.id)
+      : [...current, { medicineId: line.medicineId, prescriptionLineId: line.id, quantity: Math.min(line.remaining, line.stockAvailable) }]);
+  }
+
+  function setLineQuantity(line: PrescriptionLineOption, quantity: number) {
+    const safeQuantity = Math.max(1, Math.min(quantity || 1, line.remaining, line.stockAvailable));
+    setSelectedLines((current) => current.map((item) => item.prescriptionLineId === line.id ? { ...item, quantity: safeQuantity } : item));
+  }
 
   return (
-    <form action={action} className="grid gap-3 md:grid-cols-3">
-      {state.error ? (
-        <p className="md:col-span-3 rounded-md bg-destructive/10 p-3 text-sm text-destructive" aria-live="polite">{state.error}</p>
-      ) : null}
-      <div className="space-y-2">
-        <Label htmlFor="dispensing-number" required>Dispensing number</Label>
-        <Input id="dispensing-number" name="dispensingNumber" required aria-invalid={fieldErrors.dispensingNumber} className={cn(fieldErrors.dispensingNumber && "border-destructive")} />
-        {fieldErrors.dispensingNumber ? <p className="text-xs text-destructive">Enter a dispensing number.</p> : null}
+    <form action={action} className="space-y-6">
+      <input type="hidden" name="mode" value={mode} />
+      <input type="hidden" name="prescriptionId" value={mode === "prescription" ? prescriptionId : ""} />
+      <input type="hidden" name="linesJson" value={JSON.stringify(lines)} />
+      {state.error ? <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" aria-live="polite">{state.error}</p> : null}
+
+      <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Dispensing type">
+        <button type="button" role="radio" aria-checked={mode === "prescription"} onClick={() => setMode("prescription")} className={cn("flex items-start gap-3 rounded-xl border p-4 text-left transition-colors", mode === "prescription" ? "border-primary bg-primary/5" : "hover:bg-muted/50")}>
+          <ClipboardList className="mt-0.5 size-5 text-primary" />
+          <span><strong className="block">From prescription</strong><span className="text-sm text-muted-foreground">Select the prescription. Patient and medicines fill automatically.</span></span>
+          {mode === "prescription" ? <Check className="ml-auto size-5 text-primary" /> : null}
+        </button>
+        <button type="button" role="radio" aria-checked={mode === "otc"} onClick={() => setMode("otc")} className={cn("flex items-start gap-3 rounded-xl border p-4 text-left transition-colors", mode === "otc" ? "border-primary bg-primary/5" : "hover:bg-muted/50")}>
+          <ShoppingBasket className="mt-0.5 size-5 text-primary" />
+          <span><strong className="block">Over the counter</strong><span className="text-sm text-muted-foreground">Sell a medicine that does not require a prescription.</span></span>
+          {mode === "otc" ? <Check className="ml-auto size-5 text-primary" /> : null}
+        </button>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="dispensing-patientId">Patient</Label>
-        <Select name="patientId" defaultValue="" items={patientItems}>
-          <SelectTrigger id="dispensing-patientId" className="w-full"><SelectValue placeholder="Walk-in (no patient on file)" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">Walk-in (no patient on file)</SelectItem>
-            {patients.map((x) => <SelectItem key={x.id} value={x.id}>{x.fullName}</SelectItem>)}
-          </SelectContent>
-        </Select>
+
+      {mode === "prescription" ? (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="dispensing-prescription" required>Prescription</Label>
+            <select id="dispensing-prescription" value={prescriptionId} onChange={(event) => choosePrescription(event.target.value)} className={cn("h-11 w-full rounded-md border bg-background px-3", state.fieldErrors?.prescriptionId && "border-destructive")}>
+              <option value="">Select a patient prescription</option>
+              {prescriptions.map((item) => <option key={item.id} value={item.id}>{item.prescriptionNumber} · {item.patientName}</option>)}
+            </select>
+          </div>
+          {prescription ? (
+            <div className="space-y-4 rounded-xl border bg-muted/20 p-4">
+              <div className="grid gap-3 text-sm sm:grid-cols-3">
+                <div><span className="block text-muted-foreground">Patient</span><strong>{prescription.patientName}</strong></div>
+                <div><span className="block text-muted-foreground">Prescriber</span><strong>{prescription.prescriberName}</strong></div>
+                <div><span className="block text-muted-foreground">Prescribed</span><strong>{prescription.prescribedAt}</strong></div>
+              </div>
+              <div className="space-y-3">
+                {prescription.lines.map((line) => {
+                  const selected = selectedLines.find((item) => item.prescriptionLineId === line.id);
+                  const unavailable = line.stockAvailable <= 0;
+                  return (
+                    <div key={line.id} className={cn("grid gap-3 rounded-lg border bg-background p-3 sm:grid-cols-[auto_1fr_110px] sm:items-center", unavailable && "opacity-60")}>
+                      <input type="checkbox" checked={Boolean(selected)} disabled={unavailable} onChange={() => toggleLine(line)} className="size-4" aria-label={`Dispense ${line.medicineName}`} />
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2"><strong>{line.medicineName}</strong>{line.controlled ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">Approval required</span> : null}</div>
+                        <p className="text-sm text-muted-foreground">{line.dosage} · {line.frequency}{line.instructions ? ` · ${line.instructions}` : ""}</p>
+                        <p className="text-xs text-muted-foreground">{line.remaining} prescribed remaining · {line.stockAvailable} in stock · {money(line.unitPrice, currency)} each</p>
+                        {unavailable ? <p className="text-xs font-medium text-destructive">Out of eligible stock</p> : null}
+                      </div>
+                      <div className="space-y-1"><Label htmlFor={`quantity-${line.id}`}>Quantity</Label><Input id={`quantity-${line.id}`} type="number" min={1} max={Math.min(line.remaining, line.stockAvailable)} value={selected?.quantity ?? 0} disabled={!selected} onChange={(event) => setLineQuantity(line, Number(event.target.value))} /></div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : prescriptions.length === 0 ? <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No active prescriptions are ready to dispense. Create a valid prescription first.</p> : null}
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="dispensing-otc-medicine" required>Medicine</Label>
+            <select id="dispensing-otc-medicine" value={otcMedicineId} onChange={(event) => setOtcMedicineId(event.target.value)} className="h-11 w-full rounded-md border bg-background px-3">
+              <option value="">Select an over-the-counter medicine</option>
+              {otcMedicines.map((item) => <option key={item.id} value={item.id} disabled={item.stockAvailable <= 0}>{item.name} · {item.stockAvailable} in stock · {money(item.unitPrice, currency)}</option>)}
+            </select>
+          </div>
+          <div className="space-y-2"><Label htmlFor="dispensing-otc-quantity" required>Quantity</Label><Input id="dispensing-otc-quantity" type="number" min={1} max={otcMedicine?.stockAvailable || 1} value={otcQuantity} onChange={(event) => setOtcQuantity(Math.max(1, Number(event.target.value) || 1))} /></div>
+          <div className="space-y-2 sm:col-span-3"><Label htmlFor="dispensing-patientId">Patient (optional)</Label><select id="dispensing-patientId" name="patientId" defaultValue="" className="h-11 w-full rounded-md border bg-background px-3"><option value="">Walk-in customer</option>{patients.map((patient) => <option key={patient.id} value={patient.id}>{patient.fullName}</option>)}</select></div>
+        </div>
+      )}
+
+      <div className="grid gap-4 rounded-xl border p-4 sm:grid-cols-3">
+        <div className="space-y-2"><Label htmlFor="dispensing-paymentMethod" required>Payment method</Label><select id="dispensing-paymentMethod" name="paymentMethod" defaultValue="CASH" className="h-10 w-full rounded-md border bg-background px-3">{Object.entries(PAYMENT_METHOD_ITEMS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+        <div className="space-y-2"><Label htmlFor="dispensing-paymentReference">Payment reference</Label><Input id="dispensing-paymentReference" name="paymentReference" placeholder="Optional" /></div>
+        <div className="space-y-2"><Label htmlFor="dispensing-discount">Discount</Label><Input id="dispensing-discount" name="discount" type="number" min="0" max={subtotal} step="0.01" value={discount} onChange={(event) => setDiscount(Math.max(0, Number(event.target.value) || 0))} /></div>
+        <div className="sm:col-span-3 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+          <div><span className="text-sm text-muted-foreground">Amount to collect</span><p className="text-2xl font-semibold">{money(Math.max(0, subtotal - discount), currency)}</p></div>
+          <Button type="submit" size="lg" disabled={pending || lines.length === 0}>{pending ? "Completing dispense..." : mode === "prescription" ? "Dispense selected medicines" : "Complete sale"}</Button>
+        </div>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="dispensing-prescriptionId">Prescription</Label>
-        <Select name="prescriptionId" defaultValue="" items={prescriptionItems}>
-          <SelectTrigger id="dispensing-prescriptionId" className="w-full"><SelectValue placeholder="None (over-the-counter sale)" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">None (over-the-counter sale)</SelectItem>
-            {openPrescriptions.map((x) => <SelectItem key={x.id} value={x.id}>{x.prescriptionNumber}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="dispensing-medicineId" required>Medicine</Label>
-        <Select name="medicineId" items={medicineItems}>
-          <SelectTrigger id="dispensing-medicineId" className={cn("w-full", fieldErrors.medicineId && "border-destructive")}><SelectValue placeholder="Select" /></SelectTrigger>
-          <SelectContent>{medicines.map((x) => <SelectItem key={x.id} value={x.id}>{medicineLabel(x)}</SelectItem>)}</SelectContent>
-        </Select>
-        {fieldErrors.medicineId ? <p className="text-xs text-destructive">Select a medicine.</p> : null}
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="dispensing-prescriptionLineId">Prescription line</Label>
-        <Select name="prescriptionLineId" defaultValue="" items={prescriptionLineItems}>
-          <SelectTrigger id="dispensing-prescriptionLineId" className="w-full"><SelectValue placeholder="None (over-the-counter sale)" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">None (over-the-counter sale)</SelectItem>
-            {prescriptionLines.map((x) => <SelectItem key={x.id} value={x.id}>{x.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="dispensing-quantity" required>Quantity</Label>
-        <Input id="dispensing-quantity" name="quantity" type="number" min="1" required aria-invalid={fieldErrors.quantity} className={cn(fieldErrors.quantity && "border-destructive")} />
-        {fieldErrors.quantity ? <p className="text-xs text-destructive">Enter a quantity of at least 1.</p> : null}
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="dispensing-discount">Discount</Label>
-        <Input id="dispensing-discount" name="discount" type="number" step="0.01" defaultValue="0" aria-invalid={fieldErrors.discount} className={cn(fieldErrors.discount && "border-destructive")} />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="dispensing-paymentMethod">Payment method</Label>
-        <Select name="paymentMethod" defaultValue="" items={{ "": "Not specified", ...PAYMENT_METHOD_ITEMS }}>
-          <SelectTrigger id="dispensing-paymentMethod" className="w-full"><SelectValue placeholder="Not specified" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">Not specified</SelectItem>
-            {Object.entries(PAYMENT_METHOD_ITEMS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="dispensing-paymentReference">Payment reference</Label>
-        <Input id="dispensing-paymentReference" name="paymentReference" />
-      </div>
-      <Button type="submit" disabled={pending}>{pending ? "Dispensing…" : "Dispense"}</Button>
     </form>
   );
 }

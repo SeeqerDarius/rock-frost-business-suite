@@ -128,6 +128,17 @@ describe("Pharmacy controlled-drug maker-checker (real Postgres)", () => {
     expect(restrictedEntry).not.toBeNull();
   });
 
+  it("derives the patient from the selected prescription instead of requiring duplicate patient input", async () => {
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const fixture = await newControlledDispenseFixture(orgA, suffix);
+    await receiveBatch(orgA.organizationId, orgA.userId, { medicineId: fixture.medicine.id, batchNumber: `LOT-${suffix}`, quantity: 10, costPrice: "1.00", expiryDate: new Date(Date.now() + 86_400_000) });
+    const data = controlledDispenseData(fixture, suffix, 1);
+    const pending = await dispense(orgA.organizationId, orgA.userId, { ...data, patientId: undefined });
+
+    expect(pending.patientId).toBe(fixture.patient.id);
+    expect(pending.prescriptionId).toBe(fixture.prescription.id);
+  });
+
   it("blocks the requester from approving or rejecting their own request", async () => {
     const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const fixture = await newControlledDispenseFixture(orgA, suffix);

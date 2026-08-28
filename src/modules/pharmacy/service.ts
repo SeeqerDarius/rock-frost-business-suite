@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
 import { Prisma, PharmacyBatchStatus, PharmacyMedicineClass, PharmacyStockMovementType } from "@prisma/client";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
@@ -301,6 +302,13 @@ export function getPharmacySettings(organizationId: string) {
   return db.pharmacySettings.upsert({ where: { organizationId }, update: {}, create: { organizationId } });
 }
 
+/** Human-readable, collision-resistant counter number generated on the server. */
+export async function createDispensingNumber(organizationId: string) {
+  const settings = await getPharmacySettings(organizationId);
+  const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+  return `${settings.receiptPrefix}-${date}-${randomUUID().slice(0, 6)}`.toUpperCase();
+}
+
 export function updatePharmacySettings(organizationId: string, data: { licenceNumber?: string | null; superintendentPharmacist?: string | null; superintendentRegistration?: string | null; receiptPrefix: string; prescriptionValidityDays: number; expiryAlertDays: number; requirePatientForControlled: boolean; controlledDispenseMakerCheckerEnabled: boolean; allowNegativeStock: boolean; smsNotificationsEnabled: boolean }) {
   return db.pharmacySettings.upsert({ where: { organizationId }, update: data, create: { organizationId, ...data } });
 }
@@ -392,13 +400,14 @@ export async function dispense(organizationId: string, actorId: string, data: {
     const medicineIds = [...new Set(data.lines.map((line) => line.medicineId))];
     const medicines = await tx.pharmacyMedicine.findMany({ where: { organizationId, id: { in: medicineIds }, active: true } });
     if (medicines.length !== medicineIds.length) throw new PharmacyNotFoundError("Medicine not found.");
-    const needsPrescription = medicines.some((medicine) => medicine.requiresPrescription || medicine.medicineClass === "PRESCRIPTION_ONLY" || medicine.medicineClass === "CONTROLLED");
     const prescription = data.prescriptionId ? await tx.pharmacyPrescription.findFirst({ where: { id: data.prescriptionId, organizationId, status: { in: ["ACTIVE", "PARTIALLY_DISPENSED"] }, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, include: { lines: true, patient: true, prescriber: true } }) : null;
-    if (needsPrescription && !prescription) throw new PharmacyPrescriptionRequiredError("An active prescription is required.");
     if (data.patientId && prescription && prescription.patientId !== data.patientId) throw new PharmacyNotFoundError("Prescription patient mismatch.");
+    const patientId = prescription?.patientId ?? data.patientId ?? null;
 
     const resolvedLines: PendingDispenseLine[] = [];
     for (const line of data.lines) {
+      const medicine = medicines.find((item) => item.id === line.medicineId)!;
+      const needsPrescription = medicine.requiresPrescription || medicine.medicineClass === "PRESCRIPTION_ONLY" || medicine.medicineClass === "CONTROLLED";
       const prescriptionLine = line.prescriptionLineId ? prescription?.lines.find((item) => item.id === line.prescriptionLineId && item.medicineId === line.medicineId) : null;
       if (needsPrescription && !prescriptionLine) throw new PharmacyPrescriptionRequiredError("Dispensing must match a prescription line.");
       if (prescriptionLine && prescriptionLine.quantityDispensed + line.quantity > prescriptionLine.quantityPrescribed) throw new PharmacyStockError("Dispensing exceeds prescribed quantity.");
@@ -414,12 +423,12 @@ export async function dispense(organizationId: string, actorId: string, data: {
     const makerCheckerEnabled = hasControlled && (settings?.controlledDispenseMakerCheckerEnabled ?? true);
 
     if (makerCheckerEnabled) {
-      const dispensing = await tx.pharmacyDispensing.create({ data: { organizationId, dispensingNumber: data.dispensingNumber, patientId: data.patientId, prescriptionId: data.prescriptionId, subtotal, discount, total: subtotal.sub(discount), paymentMethod: data.paymentMethod, paymentReference: data.paymentReference, dispensedById: actorId, status: "PENDING_APPROVAL", makerCheckerEnabled: true, pendingLines: resolvedLines as unknown as Prisma.InputJsonValue } });
+      const dispensing = await tx.pharmacyDispensing.create({ data: { organizationId, dispensingNumber: data.dispensingNumber, patientId, prescriptionId: prescription?.id ?? null, subtotal, discount, total: subtotal.sub(discount), paymentMethod: data.paymentMethod, paymentReference: data.paymentReference, dispensedById: actorId, status: "PENDING_APPROVAL", makerCheckerEnabled: true, pendingLines: resolvedLines as unknown as Prisma.InputJsonValue } });
       await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "dispensing.requested", entityName: "PharmacyDispensing", entityId: dispensing.id, metadata: { dispensingNumber: dispensing.dispensingNumber, total: dispensing.total.toString(), reason: "controlled-drug maker-checker approval required" } }, tx);
       return dispensing;
     }
 
-    const dispensing = await tx.pharmacyDispensing.create({ data: { organizationId, dispensingNumber: data.dispensingNumber, patientId: data.patientId, prescriptionId: data.prescriptionId, subtotal, discount, total: subtotal.sub(discount), paymentMethod: data.paymentMethod, paymentReference: data.paymentReference, dispensedById: actorId } });
+    const dispensing = await tx.pharmacyDispensing.create({ data: { organizationId, dispensingNumber: data.dispensingNumber, patientId, prescriptionId: prescription?.id ?? null, subtotal, discount, total: subtotal.sub(discount), paymentMethod: data.paymentMethod, paymentReference: data.paymentReference, dispensedById: actorId } });
     await completeDispensingLines(tx, organizationId, actorId, dispensing.id, resolvedLines, medicines, prescription);
     await logAuditEvent({ organizationId, userId: actorId, module: "pharmacy", action: "dispensing.completed", entityName: "PharmacyDispensing", entityId: dispensing.id, metadata: { dispensingNumber: dispensing.dispensingNumber, total: dispensing.total.toString() } }, tx);
     return dispensing;

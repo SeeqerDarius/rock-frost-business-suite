@@ -6,7 +6,7 @@ import { z } from "zod";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { parseWithSchema, shortText, cuid, moneyAmount, positiveInt, optionalShortText, optionalLongText, optionalEmail, optionalCoercedDate } from "@/lib/validation";
-import { approveControlledDispense, createMedicine, createPatient, createPrescriber, createPrescription, createSupplier, dispense, findBatchByBarcode, findMedicineByBarcode, receiveBatch, recordPatientReturn, recordStockAdjustment, recordStockCount, recordSupplierReturn, recordWriteOff, rejectControlledDispense, reverseDispensing, updateBatchStatus, updatePatient, updatePharmacySettings, updatePrescriber, PharmacyNotFoundError, PharmacyStockError, PharmacyPrescriptionRequiredError, PharmacyWorkflowError } from "@/modules/pharmacy/service";
+import { approveControlledDispense, createDispensingNumber, createMedicine, createPatient, createPrescriber, createPrescription, createSupplier, dispense, findBatchByBarcode, findMedicineByBarcode, receiveBatch, recordPatientReturn, recordStockAdjustment, recordStockCount, recordSupplierReturn, recordWriteOff, rejectControlledDispense, reverseDispensing, updateBatchStatus, updatePatient, updatePharmacySettings, updatePrescriber, PharmacyNotFoundError, PharmacyStockError, PharmacyPrescriptionRequiredError, PharmacyWorkflowError } from "@/modules/pharmacy/service";
 import { postModuleRevenue, reverseModuleRevenue } from "@/lib/accounting-integration";
 
 /** Blank-string-safe optional enum, e.g. an unselected `<select>` submits `""`, not an absent key. */
@@ -245,16 +245,20 @@ export interface CompleteDispensingState {
 }
 
 const completeDispensingSchema = z.object({
-  dispensingNumber: shortText,
+  mode: z.enum(["prescription", "otc"]),
   patientId: z.union([cuid, z.literal("")]).optional(),
   prescriptionId: z.union([cuid, z.literal("")]).optional(),
-  medicineId: cuid,
-  prescriptionLineId: z.union([cuid, z.literal("")]).optional(),
-  quantity: positiveInt,
+  linesJson: z.string().min(2).max(20_000),
   discount: moneyAmount,
   paymentMethod: optionalEnum(["CASH", "CARD", "MOBILE_MONEY", "INSURANCE", "OTHER"]),
   paymentReference: optionalShortText,
 });
+
+const dispensingLinesSchema = z.array(z.object({
+  medicineId: cuid,
+  prescriptionLineId: z.union([cuid, z.literal("")]).optional(),
+  quantity: positiveInt,
+})).min(1).max(50);
 
 /**
  * Returns state instead of redirecting on failure (the shared runOrRedirect/
@@ -277,17 +281,26 @@ export async function completeDispensing(_previousState: CompleteDispensingState
     return { error: "Check the highlighted fields and try again.", fieldErrors };
   }
   const parsed = result.data;
+  let lines: z.infer<typeof dispensingLinesSchema>;
+  try {
+    lines = dispensingLinesSchema.parse(JSON.parse(parsed.linesJson));
+  } catch {
+    return { error: "Select at least one medicine and enter a valid quantity.", fieldErrors: { linesJson: true } };
+  }
+  if (parsed.mode === "prescription" && !parsed.prescriptionId) {
+    return { error: "Select a prescription to dispense.", fieldErrors: { prescriptionId: true } };
+  }
 
   let dispensing;
   try {
     dispensing = await dispense(tenant.organizationId, tenant.userId, {
-      dispensingNumber: parsed.dispensingNumber,
+      dispensingNumber: await createDispensingNumber(tenant.organizationId),
       patientId: parsed.patientId || null,
       prescriptionId: parsed.prescriptionId || null,
       discount: parsed.discount,
       paymentMethod: parsed.paymentMethod,
       paymentReference: parsed.paymentReference,
-      lines: [{ medicineId: parsed.medicineId, prescriptionLineId: parsed.prescriptionLineId || null, quantity: parsed.quantity }],
+      lines: lines.map((line) => ({ ...line, prescriptionLineId: line.prescriptionLineId || null })),
     });
   } catch (error) {
     if (error instanceof PharmacyNotFoundError || error instanceof PharmacyStockError || error instanceof PharmacyPrescriptionRequiredError || error instanceof PharmacyWorkflowError) {
@@ -312,7 +325,8 @@ export async function completeDispensing(_previousState: CompleteDispensingState
       createdById: tenant.userId,
     });
   }
-  revalidatePath("/app/pharmacy"); redirect("/app/pharmacy/dispensing?saved=1");
+  revalidatePath("/app/pharmacy");
+  redirect(`/app/pharmacy/dispensing?saved=${dispensing.status === "COMPLETED" ? "completed" : "approval"}`);
 }
 
 export async function approveControlledDispenseAction(formData: FormData) {

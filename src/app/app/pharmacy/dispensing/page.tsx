@@ -23,7 +23,7 @@ export default async function Page({
   const { saved, error } = await searchParams;
   const t = await requireModuleAccess("pharmacy");
   const canApprove = hasPermission(t, PERMISSIONS.PHARMACY_RESTRICTED_APPROVE);
-  const currency = t.organization.currency;
+  const currency = t.organization.currency ?? "GHS";
   const [sales, meds, patients, rx, pending] = await Promise.all([
     listDispensings(t.organizationId),
     listMedicines(t.organizationId),
@@ -37,22 +37,37 @@ export default async function Page({
   // pick one that then fails with a confusing "prescription is required"
   // error, even though they clearly selected one.
   const open = rx.filter((x) => ["ACTIVE", "PARTIALLY_DISPENSED"].includes(x.status) && (!x.expiresAt || x.expiresAt > new Date()));
-  // Matches dispense()'s own needsPrescription condition exactly, so a
-  // medicine that will actually be rejected without a prescription selected
-  // is visibly marked here instead of only failing after Dispense is clicked.
-  const medicines = meds.map((m) => ({
-    id: m.id,
-    name: m.name,
-    needsPrescription: m.requiresPrescription || m.medicineClass === "PRESCRIPTION_ONLY" || m.medicineClass === "CONTROLLED",
-  }));
-  const prescriptionLines = open.flatMap((x) => x.lines).map((x) => ({
-    id: x.id,
-    label: `${x.medicine.name} (${x.quantityPrescribed - x.quantityDispensed} remaining)`,
-  }));
+  const availableStock = new Map(meds.map((medicine) => [medicine.id, medicine.batches
+    .filter((batch) => batch.status === "AVAILABLE" && batch.quantity > 0 && batch.expiryDate > new Date())
+    .reduce((sum, batch) => sum + batch.quantity, 0)]));
+  const prescriptions = open.map((prescription) => ({
+    id: prescription.id,
+    prescriptionNumber: prescription.prescriptionNumber,
+    patientName: prescription.patient.fullName,
+    prescriberName: prescription.prescriber.fullName,
+    prescribedAt: prescription.prescribedAt.toLocaleDateString(),
+    lines: prescription.lines
+      .filter((line) => line.quantityDispensed < line.quantityPrescribed)
+      .map((line) => ({
+        id: line.id,
+        medicineId: line.medicineId,
+        medicineName: line.medicine.name,
+        dosage: line.dosage,
+        frequency: line.frequency,
+        instructions: line.instructions,
+        remaining: line.quantityPrescribed - line.quantityDispensed,
+        stockAvailable: availableStock.get(line.medicineId) ?? 0,
+        unitPrice: line.medicine.sellingPrice.toNumber(),
+        controlled: line.medicine.medicineClass === "CONTROLLED",
+      })),
+  })).filter((prescription) => prescription.lines.length > 0);
+  const otcMedicines = meds
+    .filter((medicine) => medicine.active && !medicine.requiresPrescription && !["PRESCRIPTION_ONLY", "CONTROLLED"].includes(medicine.medicineClass))
+    .map((medicine) => ({ id: medicine.id, name: medicine.name, stockAvailable: availableStock.get(medicine.id) ?? 0, unitPrice: medicine.sellingPrice.toNumber() }));
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Dispensing" description="Prescription-aware FEFO dispensing that excludes expired, quarantined and recalled batches." />
+      <PageHeader title="Dispensing" description="Select a prescription, review its medicines, collect payment, and dispense." />
 
       <PharmacyStatusBanner saved={saved} error={error} />
 
@@ -85,11 +100,9 @@ export default async function Page({
       )}
 
       <Card>
-        <CardHeader><CardTitle>Complete dispensing</CardTitle></CardHeader>
+        <CardHeader><CardTitle>New dispensing</CardTitle></CardHeader>
         <CardContent>
-          <DispensingForm patients={patients} openPrescriptions={open} medicines={medicines} prescriptionLines={prescriptionLines} />
-          <p className="mt-2 text-xs text-muted-foreground">A medicine marked &quot;(prescription required)&quot; needs an active, unexpired prescription and prescription line selected above, or the dispense will be rejected. Create one from Prescriptions first if none is listed yet.</p>
-          <p className="mt-1 text-xs text-muted-foreground">A dispense containing a controlled medicine goes to pending approval instead of completing immediately when the pharmacy maker-checker setting is on.</p>
+          <DispensingForm patients={patients} prescriptions={prescriptions} otcMedicines={otcMedicines} currency={currency} />
         </CardContent>
       </Card>
 
