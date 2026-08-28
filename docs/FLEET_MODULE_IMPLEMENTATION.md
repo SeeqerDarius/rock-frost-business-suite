@@ -26,7 +26,7 @@ The responsive Next.js web application is the system of record. Its server-actio
 - Permission-controlled navigation and server-side authorization
 - In-app maintenance completion notifications
 - Audit events and shared platform audit logging
-- Vehicle Make/Model entry uses a searchable reference list covering major global manufacturers and major Chinese manufacturers, with a colored initials badge next to the selected make and an "Other" free-text fallback for anything not listed
+- Vehicle Make/Model entry uses a searchable reference list covering major global manufacturers and major Chinese manufacturers, with the make's real emblem shown for ~30 common Western/Japanese/Korean makes (`@cardog-icons/react`, MIT-licensed SVG redraws) and a colored initials badge fallback for everything else - most Chinese manufacturers included, since no comparably-licensed real-logo source was found for them; an "Other" free-text fallback covers anything not listed at all
 - Driver and Vehicle Owner invite-by-email, reusing the platform's existing invitation/acceptance lifecycle so the roster entry links and the person's status becomes active automatically once they accept
 - Reports gets a vehicles-by-status donut chart and a verified-payments revenue trend chart (day/week/month switcher); the Investor dashboard gets a collections trend chart scoped to whichever owner portfolio is visible
 

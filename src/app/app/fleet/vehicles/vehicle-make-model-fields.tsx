@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { VEHICLE_MAKES, makeBadgeColor, makeInitials } from "@/lib/fleet-vehicle-makes";
+import { MakeLogo } from "@/components/fleet/make-logo";
+import { VEHICLE_MAKES } from "@/lib/fleet-vehicle-makes";
 
 const OTHER = "__other__";
 
@@ -37,15 +38,7 @@ export function VehicleMakeModelFields({
       <div className="space-y-2">
         <Label htmlFor={`make${idSuffix}`}>Make</Label>
         <div className="flex items-center gap-2">
-          {make && make !== OTHER ? (
-            <span
-              aria-hidden="true"
-              className="flex size-8 shrink-0 items-center justify-center rounded-md text-xs font-semibold text-white"
-              style={{ background: makeBadgeColor(make) }}
-            >
-              {makeInitials(make)}
-            </span>
-          ) : null}
+          {make && make !== OTHER ? <MakeLogo make={make} size={32} /> : null}
           <select
             id={`make${idSuffix}`}
             value={make}

@@ -11,7 +11,7 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listFleetVehicles, listFleetOwners, listFleetDrivers } from "@/modules/fleet/service";
-import { makeBadgeColor, makeInitials } from "@/lib/fleet-vehicle-makes";
+import { MakeLogo } from "@/components/fleet/make-logo";
 import { VehicleMakeModelFields } from "./vehicle-make-model-fields";
 import { upsertFleetVehicle } from "./actions";
 
@@ -241,13 +241,7 @@ export default async function FleetVehiclesPage({
                 <TableCell className="text-muted-foreground">
                   {vehicle.make ? (
                     <div className="flex items-center gap-2">
-                      <span
-                        aria-hidden="true"
-                        className="flex size-6 shrink-0 items-center justify-center rounded-md text-[10px] font-semibold text-white"
-                        style={{ background: makeBadgeColor(vehicle.make) }}
-                      >
-                        {makeInitials(vehicle.make)}
-                      </span>
+                      <MakeLogo make={vehicle.make} size={24} />
                       <span>{[vehicle.make, vehicle.model].filter(Boolean).join(" ")}</span>
                     </div>
                   ) : (

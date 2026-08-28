@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
+    "@cardog-icons/react": "^1.2.0",
     "@hookform/resolvers": "^5.4.0",
     "@prisma/client": "^6.19.3",
     "@tanstack/react-table": "^8.21.3",
