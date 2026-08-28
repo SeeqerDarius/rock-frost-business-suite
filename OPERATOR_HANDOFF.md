@@ -9,6 +9,7 @@
 - **Important files**: `src/lib/trend-buckets.ts` (new), `src/components/dashboard/charts.tsx` (`PeriodicTrendChart`), `src/lib/accounting-integration.ts`, `src/modules/accounting/service.ts`, `src/app/app/(overview)/dashboard/page.tsx`, `src/app/app/accounting/page.tsx`, `test/dashboard-and-accounting-trends.test.ts`.
 - **Validation**: `npx tsc --noEmit` — passed. `npm run lint` — passed, zero warnings. `npm run test` — passed: 106 files, 730 tests (+1 from the new period-switcher assertion). `npm run build` — passed, confirmed `/app/dashboard` and `/app/accounting` both compiled cleanly.
 - **Not manually browser-verified against a real tenant** (same unchanged limitation as the two entries above) - given the immediately preceding hotfix was exactly this kind of runtime-only failure, this change was audited more carefully than usual for the same bug class before shipping (see above), but a real click-through - switching between Last 6 days/weeks/months on both pages - remains the strongest confirmation once available.
+- **Production deploy verified**: commit `5f9cf06` reached Vercel production deployment `dpl_5gZWAHrgNrgh9UjEr4gkvEWgCExb` (`READY`, all production aliases attached, `aliasError: null`). `/api/health` returned `{"ok":true,"database":"reachable"}`. `get_runtime_errors` scoped strictly to after this deployment's ready timestamp returned zero errors of any kind.
 
 ## 2026-08-28: HOTFIX - /app/dashboard and /app/accounting were crashing in production (RSC boundary violation, no schema change)
 
