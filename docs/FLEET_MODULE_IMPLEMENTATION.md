@@ -26,6 +26,8 @@ The responsive Next.js web application is the system of record. Its server-actio
 - Permission-controlled navigation and server-side authorization
 - In-app maintenance completion notifications
 - Audit events and shared platform audit logging
+- Vehicle Make/Model entry uses a searchable reference list covering major global manufacturers and major Chinese manufacturers, with a colored initials badge next to the selected make and an "Other" free-text fallback for anything not listed
+- Driver and Vehicle Owner invite-by-email, reusing the platform's existing invitation/acceptance lifecycle so the roster entry links and the person's status becomes active automatically once they accept
 
 ## Maintenance workflow
 
@@ -74,6 +76,12 @@ Every step writes an immutable `FleetMaintenanceEvent` containing actor, event t
 - Owner maintenance approval additionally requires the current user to be linked to the owner of the affected vehicle.
 - Maintenance management actions require `fleet.maintenance.manage`.
 - Unauthorized vehicle maintenance submissions fail closed.
+- The Drivers page's login dropdown and the Owners page's portal-login dropdown are each scoped to the people who can actually hold that login (driver: `fleet.driver.self_service`; owner: the `Vehicle Owner` role), not every active organization member. Previously both dropdowns listed every active member, so unrelated people (including, for example, the Organization Owner) could be selected.
+- Inviting a driver or owner from the Fleet pages reuses the platform's `Role`/`OrganizationMember`/`Invitation` lifecycle at the fixed "Driver" or "Vehicle Owner" role, gated on Fleet's own `fleet.drivers.manage`/`fleet.owners.manage` permission rather than Administration's `organization.settings.manage` - a Fleet manager without full Administration access can still invite. `ensureFleetDriverForUser`/`ensureFleetOwnerForUser` now also link to a pre-existing roster row added manually by name/email (`userId` still null) instead of creating a duplicate when that same email is later invited or accepts.
+
+## Known gap: organization as a vehicle owner
+
+A company can own a vehicle directly, not only through an individual owner. The design for this (a `FleetOwner.isOrganizationOwner` flag, lazily provisioned per organization) is not yet implemented: it requires a schema migration, and this repository's release rule requires a schema-migration phase's integration suite to pass against the disposable test database (`TEST_DATABASE_URL`, `docs/TESTING_STRATEGY.md`) before it ships. That database's stored credentials are currently rejecting authentication (verified directly against both the test and production connection strings - production authenticates, the test branch does not), which is an external blocker, not a code issue. Once the test branch's credentials are refreshed, this is a small, well-scoped follow-up.
 
 ## HR integration
 

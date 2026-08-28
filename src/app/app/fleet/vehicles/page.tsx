@@ -11,6 +11,8 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listFleetVehicles, listFleetOwners, listFleetDrivers } from "@/modules/fleet/service";
+import { makeBadgeColor, makeInitials } from "@/lib/fleet-vehicle-makes";
+import { VehicleMakeModelFields } from "./vehicle-make-model-fields";
 import { upsertFleetVehicle } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -80,16 +82,9 @@ function VehicleFields({ vehicle, owners, drivers }: VehicleFieldsProps) {
           <Input id={`plateNumber${idSuffix}`} name="plateNumber" defaultValue={vehicle?.plateNumber} required />
         </div>
       </div>
+      <VehicleMakeModelFields idSuffix={idSuffix} initialMake={vehicle?.make} initialModel={vehicle?.model} />
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="space-y-2">
-          <Label htmlFor={`make${idSuffix}`}>Make</Label>
-          <Input id={`make${idSuffix}`} name="make" defaultValue={vehicle?.make ?? ""} />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor={`model${idSuffix}`}>Model</Label>
-          <Input id={`model${idSuffix}`} name="model" defaultValue={vehicle?.model ?? ""} />
-        </div>
-        <div className="space-y-2">
+        <div className="space-y-2 sm:col-start-3">
           <Label htmlFor={`year${idSuffix}`}>Year</Label>
           <Input id={`year${idSuffix}`} name="year" type="number" defaultValue={vehicle?.year ?? ""} />
         </div>
@@ -244,7 +239,20 @@ export default async function FleetVehiclesPage({
                 <TableCell className="font-medium">{vehicle.assetTag}</TableCell>
                 <TableCell className="text-muted-foreground">{vehicle.plateNumber}</TableCell>
                 <TableCell className="text-muted-foreground">
-                  {[vehicle.make, vehicle.model].filter(Boolean).join(" ") || "-"}
+                  {vehicle.make ? (
+                    <div className="flex items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        className="flex size-6 shrink-0 items-center justify-center rounded-md text-[10px] font-semibold text-white"
+                        style={{ background: makeBadgeColor(vehicle.make) }}
+                      >
+                        {makeInitials(vehicle.make)}
+                      </span>
+                      <span>{[vehicle.make, vehicle.model].filter(Boolean).join(" ")}</span>
+                    </div>
+                  ) : (
+                    "-"
+                  )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   <p>{vehicle.owner?.name ?? "-"}</p>

@@ -1,4 +1,4 @@
-import { UserRound, Plus } from "lucide-react";
+import { UserRound, Plus, Mail } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -10,13 +10,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listFleetDrivers, listAssignableFleetUsers } from "@/modules/fleet/service";
-import { upsertFleetDriver } from "./actions";
+import { listFleetDrivers, listAssignableDriverUsers } from "@/modules/fleet/service";
+import { upsertFleetDriver, inviteFleetDriver } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage drivers.",
   "missing-fields": "Driver name is required.",
   "invalid-input": "Please check that the email and dates are valid.",
+  "role-unavailable": "The Driver role isn't available for this organization yet.",
+  "platform-owner": "That email belongs to a platform account and can't be invited.",
+  "seat-limit": "No available seats for the Driver role. Free up a seat or upgrade your plan.",
+  "delivery-failed": "The driver was added but the invitation email failed to send. Use Resend from Administration.",
 };
 
 const STATUS_OPTIONS: Record<string, string> = { ACTIVE: "Active", INACTIVE: "Inactive", SUSPENDED: "Suspended" };
@@ -87,36 +91,63 @@ function DriverFields({ driver, users }: { driver?: { name: string; licenceNumbe
 export default async function FleetDriversPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string }>;
+  searchParams: Promise<{ saved?: string; invited?: string; error?: string }>;
 }) {
-  const { saved, error } = await searchParams;
+  const { saved, invited, error } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_DRIVERS_MANAGE);
-  const [drivers, users] = await Promise.all([listFleetDrivers(tenant.organizationId), listAssignableFleetUsers(tenant.organizationId)]);
+  const [drivers, users] = await Promise.all([listFleetDrivers(tenant.organizationId), listAssignableDriverUsers(tenant.organizationId)]);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <PageHeader title="Drivers" description="Drivers assigned to fleet vehicles." />
         {canManage ? (
-          <EntityDialog
-            trigger={
-              <Button size="sm">
-                <Plus />
-                New driver
-              </Button>
-            }
-            title="New driver"
-            action={upsertFleetDriver}
-          >
-            <DriverFields users={users} />
-          </EntityDialog>
+          <div className="flex gap-2">
+            <EntityDialog
+              trigger={
+                <Button size="sm" variant="outline">
+                  <Mail />
+                  Invite driver
+                </Button>
+              }
+              title="Invite driver"
+              description="Sends an activation link to this email with the Driver role. The roster entry links and becomes active automatically once they sign in."
+              action={inviteFleetDriver}
+            >
+              <div className="space-y-2">
+                <Label htmlFor="invite-name">Name</Label>
+                <Input id="invite-name" name="name" required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="invite-email">Email</Label>
+                <Input id="invite-email" name="email" type="email" required />
+              </div>
+            </EntityDialog>
+            <EntityDialog
+              trigger={
+                <Button size="sm">
+                  <Plus />
+                  New driver
+                </Button>
+              }
+              title="New driver"
+              action={upsertFleetDriver}
+            >
+              <DriverFields users={users} />
+            </EntityDialog>
+          </div>
         ) : null}
       </div>
 
       {saved ? (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
           Saved.
+        </div>
+      ) : null}
+      {invited ? (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
+          Invitation sent. The driver will appear here once they accept.
         </div>
       ) : null}
       {error && ERROR_MESSAGES[error] ? (

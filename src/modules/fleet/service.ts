@@ -84,6 +84,13 @@ export async function ensureFleetOwnerForUser(tx: TxClient, organizationId: stri
   if (existing) return existing;
   const user = await tx.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
   if (!user) return null;
+  // Link to a roster row a manager already created by name/email (userId still
+  // null) instead of creating a duplicate - the manual "add owner" flow and the
+  // invite-then-accept flow can both name the same person for the same vehicle.
+  if (user.email) {
+    const unlinked = await tx.fleetOwner.findFirst({ where: { organizationId, userId: null, email: user.email } });
+    if (unlinked) return tx.fleetOwner.update({ where: { id: unlinked.id }, data: { userId } });
+  }
   return tx.fleetOwner.create({ data: { organizationId, userId, name: user.name || user.email, email: user.email } });
 }
 
@@ -144,9 +151,31 @@ export function updateFleetOwner(
   return db.fleetOwner.update({ where: { id, organizationId }, data });
 }
 
-export async function listAssignableFleetUsers(organizationId: string) {
+/**
+ * Owner-portal and driver-login dropdowns must only offer people who can
+ * actually use that login - not every active member of the organization
+ * (which previously let, e.g., the Organization Owner show up as a
+ * selectable driver). Scoped the same way the roster backfills already are:
+ * drivers by the fleet.driver.self_service permission, owners by the
+ * "Vehicle Owner" role name.
+ */
+export async function listAssignableDriverUsers(organizationId: string) {
   const memberships = await db.organizationMember.findMany({
-    where: { organizationId, status: "ACTIVE", user: { status: "ACTIVE" } },
+    where: {
+      organizationId,
+      status: "ACTIVE",
+      user: { status: "ACTIVE" },
+      role: { rolePermissions: { some: { permission: { key: PERMISSIONS.FLEET_DRIVER_SELF_SERVICE } } } },
+    },
+    select: { user: { select: { id: true, name: true, email: true } } },
+    orderBy: { user: { name: "asc" } },
+  });
+  return memberships.map(({ user }) => user);
+}
+
+export async function listAssignableOwnerUsers(organizationId: string) {
+  const memberships = await db.organizationMember.findMany({
+    where: { organizationId, status: "ACTIVE", user: { status: "ACTIVE" }, role: { name: "Vehicle Owner" } },
     select: { user: { select: { id: true, name: true, email: true } } },
     orderBy: { user: { name: "asc" } },
   });
@@ -173,6 +202,12 @@ export async function ensureFleetDriverForUser(tx: TxClient, organizationId: str
   if (existing) return existing;
   const user = await tx.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
   if (!user) return null;
+  // Same email-based linking as ensureFleetOwnerForUser: a driver manually
+  // added by name/email before being invited must be linked, not duplicated.
+  if (user.email) {
+    const unlinked = await tx.fleetDriver.findFirst({ where: { organizationId, userId: null, email: user.email } });
+    if (unlinked) return tx.fleetDriver.update({ where: { id: unlinked.id }, data: { userId, status: "ACTIVE" } });
+  }
   return tx.fleetDriver.create({ data: { organizationId, userId, name: user.name || user.email, email: user.email } });
 }
 
