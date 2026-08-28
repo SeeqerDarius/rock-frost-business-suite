@@ -10,7 +10,7 @@
 - **Extended the regression test** (`test/module-blocks-illustration.test.ts`, now 6 tests) to assert the loop is infinite (not a one-shot `both` fill-mode), that elements use the shared `--dash-length` custom property, and that the reduced-motion override exists with the exact pinned fully-drawn state.
 - **Important files**: `src/app/globals.css`, `src/components/marketing/module-blocks-illustration.tsx`, `test/module-blocks-illustration.test.ts`, `docs/DESIGN_SYSTEM.md`.
 - **Validation**: `npx tsc --noEmit` — passed. `npm run lint` — passed, zero warnings. `npm run test` — passed: 111 files, 802 tests (+2 new). `npm run build` — passed. No schema change, so no integration-test requirement.
-- **Production deploy verified**: commit `<pending>` reached Vercel production deployment `<pending>`.
+- **Production deploy verified, including a direct check of the loop on the live page (not just health/error checks)**: commit `411b126` reached Vercel production deployment `dpl_2Y1UDNsyTEPQxWQNKyzSph3D2VVT` (`READY`, all production aliases attached including `app.rockfrostgroup.com`, `aliasError: null`). `/api/health` returned `{"ok":true,"database":"reachable"}`. `get_runtime_errors` (15m window, post-deploy) returned none. Loaded the actual production homepage in a real browser and confirmed via `getComputedStyle` that `animation-iteration-count` is `infinite`, and that the same element's `stroke-dashoffset` genuinely changed value (0px, then 39.8px 800ms later) - proving the loop is actively running on the live page, not just present in the shipped code.
 
 ## 2026-08-28: Homepage hero gets an original animated illustration in the same technique as a competitor's, on Rock Frost's own theme (no schema change)
 
