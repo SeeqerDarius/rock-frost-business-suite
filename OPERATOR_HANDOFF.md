@@ -8,7 +8,7 @@
 - **Verified live in a browser at the computed-style level**: confirmed a real icon (the floating "Contact Rock Frost support" button) resolves `animation-duration: 0.65s` while hovered; injected the same two-path `Bell` test icon used in the original entry and confirmed its second path now delays by `0.07s` (70ms) at the new `0.65s` duration, matching the updated stagger.
 - **Important files**: `src/app/globals.css`, `docs/DESIGN_SYSTEM.md` (updated the stale "40ms" reference and noted the correction and its reasoning).
 - **Validation**: `npm run lint` — passed, zero warnings. `npm run test` — passed: 111 files, 802 tests unchanged (no existing test asserted the old timing values, confirmed by search before editing). `npm run build` — passed. No schema change, so no integration-test requirement.
-- **Production deploy verified**: commit `<pending>` reached Vercel production deployment `<pending>`.
+- **Production deploy verified, including a direct check of the new timing on the live page**: commit `cb129f5` reached Vercel production deployment `dpl_2AHWmXQB8tuu6jCQKk51s5HW1WZn` (`READY`, all production aliases attached including `app.rockfrostgroup.com`, `aliasError: null`). `/api/health` returned `{"ok":true,"database":"reachable"}`. `get_runtime_errors` (15m window, post-deploy) returned none. Loaded the actual production homepage, hovered the real "Contact Rock Frost support" icon, and confirmed via `getComputedStyle` that its hover animation now resolves `animation-duration: 0.65s` (up from the old `0.42s`) on the live page, not just in the shipped source.
 
 ## 2026-08-28: Hero illustration loops continuously instead of playing once (no schema change)
 
