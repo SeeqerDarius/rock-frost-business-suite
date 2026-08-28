@@ -1,5 +1,15 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-28: Icon hover reveal slowed down to actually read as "growing into the shape" (no schema change)
+
+- **User feedback after seeing the hero illustration work**: "now you see how the animation you did works. it grws into making the shape. thats how the icos should be. it shouldnt be too fast too" - the universal icon draw-in reveal already uses the identical `stroke-dasharray`/`stroke-dashoffset` technique as the hero illustration, but at 420ms it read as a quick flick rather than a deliberate "growing" motion, especially for short/simple icons (already flagged as a known tradeoff in the entry that shipped it).
+- **Scoped this to timing, not behavior**: kept the icon reveal hover-triggered (not looping continuously like the hero) - a decorative, always-visible hero illustration and a functional button hovered mid-click are different contexts, and having every icon in the app loop draw/erase indefinitely while hovered would be genuinely distracting on high-frequency controls like `Plus` (81 usages). Stated this scoping decision plainly rather than silently deciding it.
+- **New timing** (`src/app/globals.css`): `lucide-draw-in` duration raised from 420ms to 650ms - matching the hero illustration's own ~640ms draw-in phase, the same pacing the user pointed at as the reference. Per-child stagger for multi-part icons raised proportionally, from 40ms to 70ms per step, so the relative "each part traces in sequence" rhythm stays intact at the slower overall speed rather than becoming imperceptibly close together.
+- **Verified live in a browser at the computed-style level**: confirmed a real icon (the floating "Contact Rock Frost support" button) resolves `animation-duration: 0.65s` while hovered; injected the same two-path `Bell` test icon used in the original entry and confirmed its second path now delays by `0.07s` (70ms) at the new `0.65s` duration, matching the updated stagger.
+- **Important files**: `src/app/globals.css`, `docs/DESIGN_SYSTEM.md` (updated the stale "40ms" reference and noted the correction and its reasoning).
+- **Validation**: `npm run lint` — passed, zero warnings. `npm run test` — passed: 111 files, 802 tests unchanged (no existing test asserted the old timing values, confirmed by search before editing). `npm run build` — passed. No schema change, so no integration-test requirement.
+- **Production deploy verified**: commit `<pending>` reached Vercel production deployment `<pending>`.
+
 ## 2026-08-28: Hero illustration loops continuously instead of playing once (no schema change)
 
 - **Direct user correction to the entry immediately below**: "it should be continues like the one in resend, not one time." The illustration previously drew itself in once on page load and held there; the reference animation apparently loops.
