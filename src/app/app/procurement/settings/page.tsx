@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SettingsBanner } from "@/components/settings/settings-banner";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, canAccessModule, PERMISSIONS } from "@/lib/auth/permissions";
 import { getOrderNumberPrefix, getSettings } from "@/modules/procurement/service";
@@ -61,18 +62,9 @@ export default async function ProcurementSettingsPage({
         </Link>
       ) : null}
 
-      {saved ? (
-        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
-          Saved.
-        </div>
-      ) : null}
-      {error && ERROR_MESSAGES[error] ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {ERROR_MESSAGES[error]}
-        </div>
-      ) : null}
+      <SettingsBanner saved={saved} error={error} errorMessages={ERROR_MESSAGES} />
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <div className="flex items-center gap-2">
             <Hash className="size-5 text-muted-foreground" />
@@ -83,7 +75,7 @@ export default async function ProcurementSettingsPage({
         <CardContent>
           <form action={saveOrderNumberPrefix} className="flex flex-wrap items-end gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="orderNumberPrefix">Order number prefix</Label>
+              <Label htmlFor="orderNumberPrefix" required>Order number prefix</Label>
               <Input id="orderNumberPrefix" name="orderNumberPrefix" defaultValue={orderNumberPrefix} minLength={2} maxLength={8} className="w-32 uppercase" required />
             </div>
             <Button type="submit" size="sm" variant="outline">Save</Button>
@@ -91,7 +83,7 @@ export default async function ProcurementSettingsPage({
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <div className="flex items-center gap-2">
             <Warehouse className="size-5 text-muted-foreground" />

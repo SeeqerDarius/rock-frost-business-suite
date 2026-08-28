@@ -5,6 +5,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { SettingsBanner } from "@/components/settings/settings-banner";
+import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getSettings } from "@/modules/payroll/service";
@@ -40,18 +42,9 @@ export default async function PayrollSettingsPage({
     <div className="space-y-6">
       <PageHeader title="Payroll Settings" description="Module-wide configuration for Payroll." />
 
-      {saved ? (
-        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
-          Saved.
-        </div>
-      ) : null}
-      {error && ERROR_MESSAGES[error] ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {ERROR_MESSAGES[error]}
-        </div>
-      ) : null}
+      <SettingsBanner saved={saved} error={error} errorMessages={ERROR_MESSAGES} />
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <div className="flex items-center gap-2">
             <Percent className="size-5 text-muted-foreground" />
@@ -59,16 +52,18 @@ export default async function PayrollSettingsPage({
           </div>
           <CardDescription>Applied as a flat deduction against gross pay when a run is processed.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <form action={saveDefaultTaxRate} className="flex flex-wrap items-end gap-4">
-            <div className="space-y-2">
+        <CardContent className="space-y-4">
+          <form action={saveDefaultTaxRate} className="space-y-4">
+            <div className="max-w-32 space-y-2">
               <Label htmlFor="defaultTaxRatePercent">Tax rate (%)</Label>
-              <Input id="defaultTaxRatePercent" name="defaultTaxRatePercent" type="number" step="0.01" defaultValue={currentPercent} className="w-32" />
+              <Input id="defaultTaxRatePercent" name="defaultTaxRatePercent" type="number" step="0.01" defaultValue={currentPercent} />
             </div>
-            <label className="flex items-center gap-2 pb-2 text-sm">
-              <input type="checkbox" name="smsNotificationsEnabled" className="size-4" defaultChecked={settings.smsNotificationsEnabled} />
-              Text employees when their payslip is issued
-            </label>
+            <SettingsToggleRow
+              id="smsNotificationsEnabled"
+              name="smsNotificationsEnabled"
+              label="Text employees when their payslip is issued"
+              defaultChecked={settings.smsNotificationsEnabled}
+            />
             <Button type="submit" size="sm" variant="outline">
               Save
             </Button>

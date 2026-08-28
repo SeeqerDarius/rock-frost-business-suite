@@ -52,7 +52,7 @@ export default async function ProjectsSettingsPage({
         </Alert>
       ) : null}
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <div className="flex items-center gap-2">
             <Hash className="size-5 text-muted-foreground" />
@@ -63,7 +63,7 @@ export default async function ProjectsSettingsPage({
         <CardContent>
           <form action={saveProjectsSettings} className="flex flex-wrap items-end gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="projectCodePrefix">Project code prefix</Label>
+              <Label htmlFor="projectCodePrefix" required>Project code prefix</Label>
               <Input
                 id="projectCodePrefix"
                 name="projectCodePrefix"

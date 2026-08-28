@@ -3,7 +3,7 @@ import { School } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormFeedback, ReadOnlyNotice } from "@/components/school/form-feedback";
 import { CheckboxField, FieldGrid, TextField } from "@/components/school/form-fields";
 import { GradingScaleField } from "@/components/school/grading-scale-field";
@@ -42,7 +42,7 @@ export default async function SchoolSettingsPage({ searchParams }: { searchParam
           return (
             <form key={campus.id} action={upsertSchoolSettingsAction}>
               <input type="hidden" name="campusId" value={campus.id} />
-              <Card>
+              <Card className="shadow-sm">
                 <CardHeader className="border-b">
                   <CardTitle>{campus.name}</CardTitle>
                   <CardDescription>{campus.code} · These settings apply only to this campus.</CardDescription>
@@ -97,9 +97,9 @@ export default async function SchoolSettingsPage({ searchParams }: { searchParam
                   </section>
                 </CardContent>
                 {canManage ? (
-                  <div className="flex justify-end border-t px-4 py-3">
+                  <CardFooter className="justify-end">
                     <Button type="submit">Save {campus.name}</Button>
-                  </div>
+                  </CardFooter>
                 ) : null}
               </Card>
             </form>

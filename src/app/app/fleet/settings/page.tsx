@@ -53,7 +53,7 @@ export default async function FleetSettingsPage({
         </Alert>
       ) : null}
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <div className="flex items-center gap-2">
             <BellRing className="size-5 text-muted-foreground" />
@@ -67,7 +67,7 @@ export default async function FleetSettingsPage({
         <CardContent>
           <form action={saveFleetSettings} className="flex flex-wrap items-end gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="documentRenewalReminderDays">Reminder window (days before expiry)</Label>
+              <Label htmlFor="documentRenewalReminderDays" required>Reminder window (days before expiry)</Label>
               <Input
                 id="documentRenewalReminderDays"
                 name="documentRenewalReminderDays"

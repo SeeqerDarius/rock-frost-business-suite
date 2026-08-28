@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { SettingsBanner } from "@/components/settings/settings-banner";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, canAccessModule, PERMISSIONS } from "@/lib/auth/permissions";
 import { getInventorySettings, listCategories } from "@/modules/inventory/service";
@@ -58,18 +59,9 @@ export default async function InventorySettingsPage({
         </Link>
       ) : null}
 
-      {saved ? (
-        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
-          Saved.
-        </div>
-      ) : null}
-      {error && ERROR_MESSAGES[error] ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {ERROR_MESSAGES[error]}
-        </div>
-      ) : null}
+      <SettingsBanner saved={saved} error={error} errorMessages={ERROR_MESSAGES} />
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <div className="flex items-center gap-2">
             <AlertTriangle className="size-5 text-muted-foreground" />
@@ -80,7 +72,7 @@ export default async function InventorySettingsPage({
         <CardContent>
           <form action={saveInventorySettings} className="flex flex-wrap items-end gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="defaultReorderPoint">Default reorder point for new items</Label>
+              <Label htmlFor="defaultReorderPoint" required>Default reorder point for new items</Label>
               <Input id="defaultReorderPoint" name="defaultReorderPoint" type="number" min={0} defaultValue={settings.defaultReorderPoint} className="w-32" required />
             </div>
             <Button type="submit" size="sm" variant="outline">Save</Button>
@@ -88,7 +80,7 @@ export default async function InventorySettingsPage({
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <div className="flex items-center gap-2">
             <Tag className="size-5 text-muted-foreground" />

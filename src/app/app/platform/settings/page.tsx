@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
 import { db } from "@/lib/db";
 import { readPlatformMarketing } from "@/lib/platform-marketing";
 import { getCurrentTenant } from "@/lib/tenant";
@@ -54,17 +55,17 @@ export default async function PlatformSettingsPage({ searchParams }: {
     {error && ERRORS[error] ? <Alert variant="destructive"><AlertTitle>Could not save</AlertTitle><AlertDescription>{ERRORS[error]}</AlertDescription></Alert> : null}
 
     <div className="grid gap-6 xl:grid-cols-2">
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader><CardTitle className="flex items-center gap-2"><Settings2 className="size-5" />Operations</CardTitle><CardDescription>Defaults governing platform-wide administrative workflows.</CardDescription></CardHeader>
         <CardContent>
           <form id="platform-controls" action={updatePlatformSettings} className="space-y-4">
-            <div className="space-y-2"><Label htmlFor="organizationDeletionRecoveryDays">Organization deletion recovery (days)</Label><Input id="organizationDeletionRecoveryDays" name="organizationDeletionRecoveryDays" type="number" min={1} max={365} defaultValue={recoveryDays} required /><p className="text-xs text-muted-foreground">Scheduled tenant deletions remain recoverable for this period.</p></div>
+            <div className="space-y-2"><Label htmlFor="organizationDeletionRecoveryDays" required>Organization deletion recovery (days)</Label><Input id="organizationDeletionRecoveryDays" name="organizationDeletionRecoveryDays" type="number" min={1} max={365} defaultValue={recoveryDays} required /><p className="text-xs text-muted-foreground">Scheduled tenant deletions remain recoverable for this period.</p></div>
             <div className="border-t pt-4"><p className="font-medium">Public customer showcase</p><p className="text-sm text-muted-foreground">Controls the complete customer-story section on the public home page.</p></div>
-            <label className="flex items-center gap-3 rounded-md border p-3 text-sm font-medium"><input name="showcaseEnabled" type="checkbox" defaultChecked={marketing.showcaseEnabled} className="size-4 accent-primary" />Show customer stories on the home page</label>
-            <label className="flex items-center gap-3 rounded-md border p-3 text-sm font-medium"><input name="showIndustry" type="checkbox" defaultChecked={marketing.showIndustry} className="size-4 accent-primary" />Show customer industries</label>
-            <div className="space-y-2"><Label htmlFor="eyebrow">Section label</Label><Input id="eyebrow" name="eyebrow" maxLength={60} defaultValue={marketing.eyebrow} required /></div>
-            <div className="space-y-2"><Label htmlFor="headline">Headline</Label><Input id="headline" name="headline" maxLength={140} defaultValue={marketing.headline} required /></div>
-            <div className="space-y-2"><Label htmlFor="description">Description</Label><Textarea id="description" name="description" maxLength={240} rows={3} defaultValue={marketing.description} required /></div>
+            <SettingsToggleRow id="showcaseEnabled" name="showcaseEnabled" label="Show customer stories on the home page" defaultChecked={marketing.showcaseEnabled} />
+            <SettingsToggleRow id="showIndustry" name="showIndustry" label="Show customer industries" defaultChecked={marketing.showIndustry} />
+            <div className="space-y-2"><Label htmlFor="eyebrow" required>Section label</Label><Input id="eyebrow" name="eyebrow" maxLength={60} defaultValue={marketing.eyebrow} required /></div>
+            <div className="space-y-2"><Label htmlFor="headline" required>Headline</Label><Input id="headline" name="headline" maxLength={140} defaultValue={marketing.headline} required /></div>
+            <div className="space-y-2"><Label htmlFor="description" required>Description</Label><Textarea id="description" name="description" maxLength={240} rows={3} defaultValue={marketing.description} required /></div>
             <div className="border-t pt-4"><p className="font-medium">Public contact details</p><p className="text-sm text-muted-foreground">Shown on the public Contact page. Leave a field empty to use the platform organization profile where available.</p></div>
             <div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label htmlFor="salesEmail">Sales email</Label><Input id="salesEmail" name="salesEmail" type="email" defaultValue={publicContact.salesEmail ?? ""} /></div><div className="space-y-2"><Label htmlFor="supportEmail">Support email</Label><Input id="supportEmail" name="supportEmail" type="email" defaultValue={publicContact.supportEmail ?? ""} /></div><div className="space-y-2"><Label htmlFor="publicPhone">Public phone</Label><Input id="publicPhone" name="publicPhone" defaultValue={publicContact.phone ?? ""} /></div><div className="space-y-2"><Label htmlFor="publicWhatsapp">WhatsApp number</Label><Input id="publicWhatsapp" name="publicWhatsapp" defaultValue={publicContact.whatsapp ?? ""} /></div></div>
             <Button type="submit">Save platform controls</Button>
@@ -72,7 +73,7 @@ export default async function PlatformSettingsPage({ searchParams }: {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader><CardTitle>Publishing rules</CardTitle><CardDescription>How public customer proof is protected.</CardDescription></CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
           <p>On-platform tenants still require ACTIVE status, an uploaded logo, complete approved copy, and explicit approval from their organization record.</p>
@@ -89,16 +90,16 @@ export default async function PlatformSettingsPage({ searchParams }: {
         <p className="text-muted-foreground">Manage customers whose systems were built by Rock Frost but are hosted outside this platform.</p>
       </div>
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader><CardTitle className="flex items-center gap-2"><ImagePlus className="size-5" />Add independent customer</CardTitle><CardDescription>Use only logos and testimonial wording the customer has approved for public marketing.</CardDescription></CardHeader>
         <CardContent><CustomerForm /></CardContent>
       </Card>
 
       <div className="space-y-4">
         {marketing.externalCustomers.length === 0 ? (
-          <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">No independent showcase customers have been added yet.</CardContent></Card>
+          <Card className="shadow-sm"><CardContent className="py-10 text-center text-sm text-muted-foreground">No independent showcase customers have been added yet.</CardContent></Card>
         ) : marketing.externalCustomers.map((customer, index) => (
-          <Card key={customer.id}>
+          <Card key={customer.id} className="shadow-sm">
             <CardHeader className="flex-row items-start justify-between gap-4">
               <div className="flex min-w-0 items-center gap-4">
                 <div className="flex h-16 w-28 shrink-0 items-center justify-center rounded-lg bg-slate-950 p-2">
@@ -129,12 +130,12 @@ function CustomerForm({ customer }: { customer?: ReturnType<typeof readPlatformM
   const prefix = customer?.id ?? "new-customer";
   return <form action={saveExternalShowcaseCustomer} className="grid gap-4 md:grid-cols-2">
     {customer ? <input type="hidden" name="customerId" value={customer.id} /> : null}
-    <div className="space-y-2"><Label htmlFor={`${prefix}-name`}>Customer name</Label><Input id={`${prefix}-name`} name="name" defaultValue={customer?.name ?? ""} maxLength={120} required /></div>
+    <div className="space-y-2"><Label htmlFor={`${prefix}-name`} required>Customer name</Label><Input id={`${prefix}-name`} name="name" defaultValue={customer?.name ?? ""} maxLength={120} required /></div>
     <div className="space-y-2"><Label htmlFor={`${prefix}-industry`}>Industry</Label><Input id={`${prefix}-industry`} name="industry" defaultValue={customer?.industry ?? ""} maxLength={100} /></div>
-    <div className="space-y-2 md:col-span-2"><Label htmlFor={`${prefix}-quote`}>Approved customer quote</Label><Textarea id={`${prefix}-quote`} name="quote" defaultValue={customer?.quote ?? ""} maxLength={320} rows={3} required /></div>
-    <div className="space-y-2"><Label htmlFor={`${prefix}-attribution`}>Attribution</Label><Input id={`${prefix}-attribution`} name="attribution" defaultValue={customer?.attribution ?? ""} maxLength={120} placeholder="Name, role, or organization team" required /></div>
-    <div className="space-y-2"><Label htmlFor={`${prefix}-logo`}>{customer ? "Replace logo (optional)" : "Customer logo"}</Label><Input id={`${prefix}-logo`} name="logo" type="file" accept="image/jpeg,image/png,image/webp" required={!customer} /><p className="text-xs text-muted-foreground">JPG, PNG, or WebP, up to 1 MB.</p></div>
-    <label className="flex items-center gap-3 rounded-md border p-3 text-sm font-medium"><input name="enabled" type="checkbox" defaultChecked={customer?.enabled ?? false} className="size-4 accent-primary" />Publish on home page</label>
+    <div className="space-y-2 md:col-span-2"><Label htmlFor={`${prefix}-quote`} required>Approved customer quote</Label><Textarea id={`${prefix}-quote`} name="quote" defaultValue={customer?.quote ?? ""} maxLength={320} rows={3} required /></div>
+    <div className="space-y-2"><Label htmlFor={`${prefix}-attribution`} required>Attribution</Label><Input id={`${prefix}-attribution`} name="attribution" defaultValue={customer?.attribution ?? ""} maxLength={120} placeholder="Name, role, or organization team" required /></div>
+    <div className="space-y-2"><Label htmlFor={`${prefix}-logo`} required={!customer}>{customer ? "Replace logo (optional)" : "Customer logo"}</Label><Input id={`${prefix}-logo`} name="logo" type="file" accept="image/jpeg,image/png,image/webp" required={!customer} /><p className="text-xs text-muted-foreground">JPG, PNG, or WebP, up to 1 MB.</p></div>
+    <SettingsToggleRow id={`${prefix}-enabled`} name="enabled" label="Publish on home page" defaultChecked={customer?.enabled ?? false} />
     <Button type="submit" className="md:w-fit">{customer ? "Save customer" : "Add customer"}</Button>
   </form>;
 }

@@ -29,7 +29,7 @@ export function NamedLookupSection({
   extraField?: { name: string; label: string; options: Record<string, string>; defaultValue: string };
 }) {
   return (
-    <Card>
+    <Card className="shadow-sm">
       <CardHeader>
         <div className="flex items-center gap-2">
           {icon}

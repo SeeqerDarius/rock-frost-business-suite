@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
@@ -69,7 +70,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
         </Alert>
       ) : null}
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <div className="flex items-center gap-2">
             <ImageIcon className="size-5 text-muted-foreground" />
@@ -103,7 +104,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <div className="flex items-center gap-2">
             <Palette className="size-5 text-muted-foreground" />
@@ -133,7 +134,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <CardTitle>Backup and recovery policy</CardTitle>
           <CardDescription>Record your preferred retention and recovery policy. Downloadable module backups and protected merge restores are available from the backup workspace; physical database recovery remains a platform-operator procedure.</CardDescription>
@@ -154,19 +155,24 @@ export default async function OrganizationSettingsPage({ searchParams }: {
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="backupRetentionDays">Backup retention (days)</Label>
+                <Label htmlFor="backupRetentionDays" required>Backup retention (days)</Label>
                 <Input id="backupRetentionDays" name="backupRetentionDays" type="number" min={1} max={365} defaultValue={settings.backupRetentionDays ?? 30} required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="recoveryDays">Recovery window (days)</Label>
+                <Label htmlFor="recoveryDays" required>Recovery window (days)</Label>
                 <Input id="recoveryDays" name="recoveryDays" type="number" min={1} max={365} defaultValue={settings.recoveryDays ?? 30} required />
               </div>
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input name="dataRecoveryEnabled" type="checkbox" defaultChecked={settings.dataRecoveryEnabled ?? true} /> Allow recovery requests for retained tenant data
-            </label>
-            <Button type="submit" size="sm" variant="outline">Save policy</Button>
-            <Button nativeButton={false} render={<Link href="/app/organization/backups" />}><DatabaseBackup />Open backup workspace</Button>
+            <SettingsToggleRow
+              id="dataRecoveryEnabled"
+              name="dataRecoveryEnabled"
+              label="Allow recovery requests for retained tenant data"
+              defaultChecked={settings.dataRecoveryEnabled ?? true}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" size="sm" variant="outline">Save policy</Button>
+              <Button nativeButton={false} render={<Link href="/app/organization/backups" />}><DatabaseBackup />Open backup workspace</Button>
+            </div>
           </form>
         </CardContent>
       </Card>

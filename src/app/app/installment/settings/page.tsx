@@ -1,11 +1,12 @@
 import { Lock, Settings as SettingsIcon } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
+import { SettingsBanner } from "@/components/settings/settings-banner";
+import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getInstallmentSettings } from "@/modules/installment/service";
@@ -39,26 +40,17 @@ export default async function InstallmentSettingsPage({
     <div className="space-y-6">
       <PageHeader title="Installment Settings" description="Module-wide configuration for Installment Management." />
 
-      {saved ? (
-        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
-          Saved.
-        </div>
-      ) : null}
-      {error && ERROR_MESSAGES[error] ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {ERROR_MESSAGES[error]}
-        </div>
-      ) : null}
+      <SettingsBanner saved={saved} error={error} errorMessages={ERROR_MESSAGES} />
 
-      <form action={saveInstallmentSettings} className="space-y-6">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <SettingsIcon className="size-5 text-muted-foreground" />
-              <CardTitle>Installment configuration</CardTitle>
-            </div>
-            <CardDescription>Every field here actively drives real business logic; changing them changes behavior.</CardDescription>
-          </CardHeader>
+      <Card className="shadow-sm">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <SettingsIcon className="size-5 text-muted-foreground" />
+            <CardTitle>Installment configuration</CardTitle>
+          </div>
+          <CardDescription>Every field here actively drives real business logic; changing them changes behavior.</CardDescription>
+        </CardHeader>
+        <form action={saveInstallmentSettings}>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="installmentDurationDays">Default installment duration (days)</Label>
@@ -135,15 +127,21 @@ export default async function InstallmentSettingsPage({
               <Input id="payrollDay" name="payrollDay" type="number" min={1} max={28} defaultValue={settings.payrollDay} />
               <p className="text-xs text-muted-foreground">Shown in Reports as the next payroll due date; there is no automated payroll run.</p>
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox name="commissionEnabled" defaultChecked={settings.commissionEnabled} />
-              Commission enabled
-            </label>
+            <div className="sm:col-span-2">
+              <SettingsToggleRow
+                id="commissionEnabled"
+                name="commissionEnabled"
+                label="Commission enabled"
+                description="Shows staff commission figures in Reports, based on the percentage above."
+                defaultChecked={settings.commissionEnabled}
+              />
+            </div>
           </CardContent>
-        </Card>
-
-        <Button type="submit">Save settings</Button>
-      </form>
+          <CardFooter className="justify-end">
+            <Button type="submit">Save settings</Button>
+          </CardFooter>
+        </form>
+      </Card>
     </div>
   );
 }

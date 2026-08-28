@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SettingsBanner } from "@/components/settings/settings-banner";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getAccountingSettings, listExpenseCategories, listAccounts } from "@/modules/accounting/service";
@@ -48,18 +49,9 @@ export default async function AccountingSettingsPage({
     <div className="space-y-6">
       <PageHeader title="Accounting Settings" description="Module-wide configuration for Accounting." />
 
-      {saved ? (
-        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
-          Saved.
-        </div>
-      ) : null}
-      {error && ERROR_MESSAGES[error] ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {ERROR_MESSAGES[error]}
-        </div>
-      ) : null}
+      <SettingsBanner saved={saved} error={error} errorMessages={ERROR_MESSAGES} />
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <div className="flex items-center gap-2">
             <Hash className="size-5 text-muted-foreground" />
@@ -70,7 +62,7 @@ export default async function AccountingSettingsPage({
         <CardContent>
           <form action={saveAccountingSettings} className="flex flex-wrap items-end gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="invoiceNumberPrefix">Invoice number prefix</Label>
+              <Label htmlFor="invoiceNumberPrefix" required>Invoice number prefix</Label>
               <Input id="invoiceNumberPrefix" name="invoiceNumberPrefix" defaultValue={settings.invoiceNumberPrefix} minLength={2} maxLength={8} className="w-32 uppercase" required />
             </div>
             <Button type="submit" size="sm" variant="outline">Save</Button>
@@ -78,7 +70,7 @@ export default async function AccountingSettingsPage({
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <div className="flex items-center gap-2">
             <Tag className="size-5 text-muted-foreground" />

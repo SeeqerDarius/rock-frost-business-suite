@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { SettingsBanner } from "@/components/settings/settings-banner";
+import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { formatMoney } from "@/lib/currency";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
@@ -92,16 +94,7 @@ export default async function HrSettingsPage({
     <div className="space-y-6">
       <PageHeader title="HR Settings" description="Module-wide configuration for Human Resources." />
 
-      {saved ? (
-        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
-          Saved.
-        </div>
-      ) : null}
-      {error && ERROR_MESSAGES[error] ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {ERROR_MESSAGES[error]}
-        </div>
-      ) : null}
+      <SettingsBanner saved={saved} error={error} errorMessages={ERROR_MESSAGES} />
 
       <Tabs defaultValue="general">
         <TabsList>
@@ -110,7 +103,7 @@ export default async function HrSettingsPage({
         </TabsList>
 
         <TabsContent value="general" className="space-y-6">
-          <Card>
+          <Card className="shadow-sm">
             <CardHeader>
               <div className="flex items-center gap-2">
                 <Hash className="size-5 text-muted-foreground" />
@@ -118,19 +111,26 @@ export default async function HrSettingsPage({
               </div>
               <CardDescription>e.g. &quot;EMP&quot; → EMP-0001. Existing employee numbers are not renumbered.</CardDescription>
             </CardHeader>
-            <CardContent>
-              <form action={saveHrSettings} className="flex flex-wrap items-end gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="employeeNumberPrefix">Employee number prefix</Label>
-                  <Input id="employeeNumberPrefix" name="employeeNumberPrefix" defaultValue={settings.employeeNumberPrefix} minLength={2} maxLength={8} className="w-32 uppercase" required />
+            <CardContent className="space-y-4">
+              <form action={saveHrSettings} className="space-y-4">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="employeeNumberPrefix" required>Employee number prefix</Label>
+                    <Input id="employeeNumberPrefix" name="employeeNumberPrefix" defaultValue={settings.employeeNumberPrefix} minLength={2} maxLength={8} className="w-32 uppercase" required />
+                  </div>
                 </div>
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="terminationApprovalRequired" defaultChecked={settings.terminationApprovalRequired} />Require a different HR approver for termination</label>
+                <SettingsToggleRow
+                  id="terminationApprovalRequired"
+                  name="terminationApprovalRequired"
+                  label="Require a different HR approver for termination"
+                  defaultChecked={settings.terminationApprovalRequired}
+                />
                 <Button type="submit" size="sm" variant="outline">Save</Button>
               </form>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="shadow-sm">
             <CardHeader>
               <div className="flex items-center gap-2">
                 <CalendarClock className="size-5 text-muted-foreground" />
@@ -167,7 +167,7 @@ export default async function HrSettingsPage({
           </Card>
 
           {canManagePlans ? (
-            <Card>
+            <Card className="shadow-sm">
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <ListChecks className="size-5 text-muted-foreground" />
@@ -223,7 +223,7 @@ export default async function HrSettingsPage({
         </TabsContent>
 
         <TabsContent value="configuration" className="space-y-6">
-          <Card>
+          <Card className="shadow-sm">
             <CardHeader>
               <div className="flex items-center gap-2">
                 <Sparkles className="size-5 text-muted-foreground" />
@@ -329,7 +329,7 @@ export default async function HrSettingsPage({
             removeAction={removeJobPosition}
           />
 
-          <Card>
+          <Card className="shadow-sm">
             <CardHeader>
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-2">

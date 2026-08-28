@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SettingsBanner } from "@/components/settings/settings-banner";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getCrmSettings, listActiveMembers, listLeadSources } from "@/modules/crm/service";
@@ -44,18 +46,9 @@ export default async function CrmSettingsPage({
     <div className="space-y-6">
       <PageHeader title="CRM Settings" description="Module-wide configuration for CRM." />
 
-      {saved ? (
-        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
-          Saved.
-        </div>
-      ) : null}
-      {error && ERROR_MESSAGES[error] ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {ERROR_MESSAGES[error]}
-        </div>
-      ) : null}
+      <SettingsBanner saved={saved} error={error} errorMessages={ERROR_MESSAGES} />
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <div className="flex items-center gap-2">
             <UserCircle className="size-5 text-muted-foreground" />
@@ -67,17 +60,20 @@ export default async function CrmSettingsPage({
           <form action={saveCrmSettings} className="flex flex-wrap items-end gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="defaultOwnerId">Default owner</Label>
-              <select id="defaultOwnerId" name="defaultOwnerId" defaultValue={settings.defaultOwnerId ?? ""} className="h-9 w-56 rounded-md border bg-transparent px-3 text-sm">
-                <option value="">No default (leave unowned)</option>
-                {members.map((member) => <option key={member.id} value={member.id}>{member.name || member.email}</option>)}
-              </select>
+              <Select name="defaultOwnerId" defaultValue={settings.defaultOwnerId ?? ""} items={{ "": "No default (leave unowned)", ...Object.fromEntries(members.map((m) => [m.id, m.name || m.email])) }}>
+                <SelectTrigger id="defaultOwnerId" className="w-56"><SelectValue placeholder="No default (leave unowned)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">No default (leave unowned)</SelectItem>
+                  {members.map((member) => <SelectItem key={member.id} value={member.id}>{member.name || member.email}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <Button type="submit" size="sm" variant="outline">Save</Button>
           </form>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <div className="flex items-center gap-2">
             <Tag className="size-5 text-muted-foreground" />
