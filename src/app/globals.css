@@ -296,3 +296,18 @@
   animation: logo-shimmer-sweep 4.5s ease-in-out infinite;
   pointer-events: none;
 }
+
+/* Homepage hero illustration (ModuleBlocksIllustration): each isometric
+   block's outline and three internal spokes trace themselves in once on
+   page load, unlike the hover-triggered icon reveal above - this plays
+   automatically since a hero is already the first thing a visitor sees, no
+   scroll-into-view trigger needed. stroke-dasharray/dashoffset are set
+   per-element as an exact computed length (every edge of these hexagons is
+   exactly `r` long) rather than a shared guessed constant, since the
+   component fully controls its own geometry. */
+@keyframes module-block-draw {
+  to { stroke-dashoffset: 0; }
+}
+.module-block-draw {
+  animation: module-block-draw 700ms ease-out both;
+}

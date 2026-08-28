@@ -9,6 +9,10 @@ fixed multicolour gradients, and other patterns that make the site feel like a
 generic generated template. The em dash character is prohibited in all public
 copy; rewrite with normal sentence punctuation instead.
 
+## Homepage hero illustration
+
+`ModuleBlocksIllustration` (`src/components/marketing/module-blocks-illustration.tsx`), rendered into `PublicHero`'s own `children` slot on the homepage (`src/app/(public)/page.tsx`), is five independent isometric-block outlines loosely clustered together - original artwork illustrating this hero's own headline ("One platform. Every business system your organization runs on."), not generic clip art. Built after inspecting a competitor's DevTools and finding an unrelated empty-state illustration animated via `stroke-dasharray`/`stroke-dashoffset` - the *technique* was worth adopting, the *subject* (their cube) deliberately was not, so this is original geometry on an original, business-relevant theme. Each block's outline and three internal spokes trace themselves in once on page load (the `module-block-draw` CSS animation, `src/app/globals.css`) rather than on hover like the icon system - a hero is already the first thing a visitor sees, so no scroll-into-view trigger is needed. Because the component fully controls its own geometry (every hexagon edge and internal spoke is exactly `r` long by construction), each element's `stroke-dasharray` is computed as an exact value per block rather than one shared guessed constant like the icon system uses for icons it doesn't control. One block is accented in the primary brand color as a single "keystone" touch; the rest stay neutral (`text-muted-foreground`) so the accent still reads as semantic emphasis, not decoration.
+
 ## Foundation
 
 shadcn/ui (Base UI primitives, `base-nova` preset) + Tailwind CSS v4. See `docs/DECISIONS.md` for the license/rationale and why this was chosen over a purchased dashboard template.

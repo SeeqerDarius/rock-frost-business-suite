@@ -13,6 +13,7 @@ import { CustomerShowcase } from "@/components/marketing/customer-showcase";
 import { findPlatformOrganizationMetadata, readPlatformMarketing, PUBLIC_MARKETING_CACHE_TAG } from "@/lib/platform-marketing";
 import { buildShowcaseCustomers } from "@/lib/showcase-composition";
 import { PublicHero } from "@/components/marketing/public-hero";
+import { ModuleBlocksIllustration } from "@/components/marketing/module-blocks-illustration";
 import { AccountingModuleShowcase } from "@/components/marketing/module-showcases/accounting";
 import { FleetModuleShowcase } from "@/components/marketing/module-showcases/fleet";
 import { PharmacyModuleShowcase } from "@/components/marketing/module-showcases/pharmacy";
@@ -88,7 +89,9 @@ export default async function HomePage() {
       <PublicHero eyebrow="Rock Frost Business Suite" title="One platform. Every business system your organization runs on." description="Activate independent management modules, including fleet and installment sales, from a single, unified workspace, without mixing unrelated business data together." actions={<>
             <Button size="lg" nativeButton={false} render={<Link href="/login" />}>Sign in</Button>
             <Button size="lg" variant="outline" nativeButton={false} render={<Link href="/contact" />}>Request a demo</Button>
-          </>} />
+          </>}>
+        <ModuleBlocksIllustration className="mx-auto h-auto w-full max-w-sm" />
+      </PublicHero>
       {marketing.showcaseEnabled && customers.length > 0 ? (
         <CustomerShowcase
           customers={customers}
