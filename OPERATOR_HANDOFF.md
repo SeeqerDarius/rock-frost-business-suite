@@ -4,7 +4,7 @@
 
 - Shared money charts now display compact organization-currency ticks on the Y-axis and responsive period labels on the X-axis. Tooltips retain the exact amount and identify the period.
 - Fleet obligation charts use the server-derived allocated daily or weekly sales amount as a same-frequency target line. They show target, actual paid, remaining, achievement percentage, and below-target/met/exceeded status consistently in Curved, Zigzag, and Bars modes. Weekly targets are never divided into invented daily targets.
-- Important files: `src/components/dashboard/charts.tsx`, Driver Workspace, shared chart tests, `docs/DESIGN_SYSTEM.md`, and `docs/FLEET_MODULE_IMPLEMENTATION.md`. No schema, query, permission, or environment change is required. TypeScript, changed-file ESLint, 32/32 focused tests, the full mocked suite (116 files, 833 tests), and the production build (220 pages) passed. Release evidence follows.
+- Important files: `src/components/dashboard/charts.tsx`, Driver Workspace, shared chart tests, `docs/DESIGN_SYSTEM.md`, and `docs/FLEET_MODULE_IMPLEMENTATION.md`. No schema, query, permission, or environment change is required. TypeScript, changed-file ESLint, 32/32 focused tests, the full mocked suite (116 files, 833 tests), and the production build (220 pages) passed. Commit `567c2cb` reached production deployment `dpl_Apgy8uwsFpLFpr5yFauRshLFdNC2` with all aliases attached. Health returned HTTP 200 with `database: reachable`, the protected Driver route redirected to login, and the deployment had no HTTP 500 events after release.
 
 ## 2026-08-29: Fleet Driver redesign, Phase 5 of 5 - documentation consolidation and final cross-phase confirmation (docs only, no code change)
 
