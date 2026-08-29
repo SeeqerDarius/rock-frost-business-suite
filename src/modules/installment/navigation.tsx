@@ -1,4 +1,5 @@
-import { LayoutGrid, Users, Package, FileText, Receipt, Wallet, UserRound, BarChart3, Settings } from "lucide-react";
+import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
+import { LayoutGrid, Users, Package, FileText, Receipt, Wallet, UserRound, BarChart3 } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const installmentNavigation: ModuleNavItem[] = [
@@ -10,5 +11,5 @@ export const installmentNavigation: ModuleNavItem[] = [
   { label: "Collections", href: "/app/installment/collections", icon: <Wallet className="size-4" />, description: "Compare expected versus actual collections for each day of the current week." },
   { label: "Staff", href: "/app/installment/staff", icon: <UserRound className="size-4" />, description: "Manage installment staff profiles, their linked login, monthly salary, and salary payment history." },
   { label: "Reports", href: "/app/installment/reports", icon: <BarChart3 className="size-4" />, description: "Review receivables, profit, payroll, and staff performance summaries for the installment business." },
-  { label: "Installment Settings", href: "/app/installment/settings", icon: <Settings className="size-4" />, description: "Configure default installment duration, refund fee percentage, payment edit window, and procurement threshold." },
+  { label: "Installment Settings", href: "/app/installment/settings", icon: <AnimatedSettingsIcon size={16} />, description: "Configure default installment duration, refund fee percentage, payment edit window, and procurement threshold." },
 ];

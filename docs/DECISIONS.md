@@ -59,6 +59,9 @@
 **Not done (and deliberately so):** POS does not yet compute or post per-line VAT/NHIL/GETFund evidence using an item's `taxCodeId` — this field is a foundation for that (closing a gap `docs/TAX_AND_STATUTORY_REPORTING.md` already names: POS is one of the eight revenue modules that still posts gross revenue only), not the posting integration itself. That remains a separate, larger piece of work.
 
 ---
+## 2026-08-29: One Paystack integration with tenant subaccount settlement
+
+Rock Frost uses one platform Paystack integration. Tenant operational collections are routed using Paystack subaccounts. Tenants do not supply secret credentials. Platform subscription revenue and tenant operational revenue have separate payment records, beneficiaries, and Accounting flows. Version 1 settles operational collections to the organization Settlement Account and does not pool tenant funds inside Rock Frost.
 
 ## 2026-08-22 — Every write path that finalizes a module's revenue must post to Accounting, not just the first one wired
 

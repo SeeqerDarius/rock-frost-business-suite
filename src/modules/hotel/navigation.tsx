@@ -1,4 +1,5 @@
-import { LayoutDashboard, Building2, BedDouble, Users, CalendarDays, Receipt, Sparkles, UtensilsCrossed, RadioTower, BarChart3, Settings } from "lucide-react";
+import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
+import { LayoutDashboard, Building2, BedDouble, Users, CalendarDays, Receipt, Sparkles, UtensilsCrossed, RadioTower, BarChart3 } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const hotelNavigation: ModuleNavItem[] = [
@@ -12,5 +13,5 @@ export const hotelNavigation: ModuleNavItem[] = [
   { label: "Folios & Payments", shortLabel: "Folios", group: "Finance & insights", href: "/app/hotel/folios", icon: <Receipt className="size-4" />, description: "Post charges to a guest's open folio, record payments against it, and see the running balance." },
   { label: "Reports", group: "Finance & insights", href: "/app/hotel/reports", icon: <BarChart3 className="size-4" />, description: "View current occupancy, arrivals, in-house, folio, housekeeping, and restaurant order counts, and export the report." },
   { label: "Properties", group: "Configuration", href: "/app/hotel/properties", icon: <Building2 className="size-4" />, description: "Add hotel properties with code, contact info, timezone, and currency, and see room counts per property." },
-  { label: "Hotel Settings", shortLabel: "Settings", group: "Configuration", href: "/app/hotel/settings", icon: <Settings className="size-4" />, description: "Configure per-property check-in and check-out times, tax and service charge rates, document number prefixes, and housekeeping rules." },
+  { label: "Hotel Settings", shortLabel: "Settings", group: "Configuration", href: "/app/hotel/settings", icon: <AnimatedSettingsIcon size={16} />, description: "Configure per-property check-in and check-out times, tax and service charge rates, document number prefixes, and housekeeping rules." },
 ];

@@ -8,6 +8,7 @@ import {
   updatePaystackSubscriptionState,
 } from "@/platform/subscriptions/service";
 import { logAuditEvent } from "@/lib/audit";
+import { confirmOperationalPayment } from "@/lib/payments/operational";
 
 function nestedRecord(value: unknown) {
   return value && typeof value === "object" ? value as Record<string, unknown> : undefined;
@@ -66,6 +67,10 @@ export async function POST(request: NextRequest) {
       // server-to-server against Paystack's API before activating anything.
       const verification = await verifyTransaction("PAYSTACK", reference);
       if (verification.success) {
+        if (reference.startsWith("op_")) {
+          await confirmOperationalPayment({ reference, amount: verification.amount, currency: verification.currency, paidAt: verification.paidAt, channel: verification.channel, subaccountCode: verification.subaccountCode });
+          return NextResponse.json({ received: true }, { status: 200 });
+        }
         try {
           await activateSubscriptionFromGateway({
             reference,

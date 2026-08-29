@@ -48,6 +48,8 @@ npm run test:all          # npm run test && npm run test:integration
 
 The integration setup validates `TEST_DATABASE_URL` before importing application services, then binds both the fixture Prisma client and the services' shared Prisma client to that already-approved disposable URL. This is required because service functions use `src/lib/db.ts`; leaving `DATABASE_URL` on CI's unreachable install-time placeholder would test only fixtures and make every real service query fail before exercising its invariants. Test files share one isolated Vitest fork/module graph and use a bounded connection pool, preventing a fresh pair of Prisma pools from leaking across every suite while preserving deliberate within-test concurrency.
 
+Integration fixture hooks allow 60 seconds because a guarded remote Neon branch can take longer than 30 seconds to seed platform rows and create multiple isolated organizations. Individual test assertions retain their 30-second timeout. Operations that deliberately hold PostgreSQL locks across several remote queries use explicit bounded Prisma transaction timeouts at the service boundary rather than weakening concurrency assertions.
+
 **Re-running a failed workflow**: from the GitHub Actions UI, open the failed run and use "Re-run jobs" (either the failed job only, or all jobs). From the `gh` CLI: `gh run rerun <run-id>` (or `--failed` to rerun only failed jobs).
 
 ## Required validation at the end of every milestone

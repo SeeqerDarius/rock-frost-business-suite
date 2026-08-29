@@ -34,7 +34,7 @@ export default defineConfig({
     // are always run via `npm run test:integration` from there).
     setupFiles: ["dotenv/config", "./test/integration/setup/environment.ts"],
     testTimeout: 30_000,
-    hookTimeout: 30_000,
+    hookTimeout: 60_000,
     pool: "forks",
     poolOptions: { forks: { singleFork: true } },
     fileParallelism: false,

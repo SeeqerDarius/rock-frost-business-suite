@@ -86,6 +86,9 @@ export async function initializeTransaction(input: InitializeTransactionInput): 
       currency: input.currency,
       callback_url: input.callbackUrl,
       ...(input.planCode ? { plan: input.planCode } : {}),
+      ...(input.subaccountCode ? { subaccount: input.subaccountCode } : {}),
+      ...(input.transactionCharge != null ? { transaction_charge: input.transactionCharge } : {}),
+      ...(input.bearer ? { bearer: input.bearer } : {}),
       metadata: input.metadata ?? {},
     }),
   });
@@ -111,12 +114,42 @@ export async function verifyTransaction(reference: string): Promise<VerifyTransa
   }
 
   const data = body.data;
-  return {
+  const result: VerifyTransactionResult = {
     success: data.status === "success",
     reference: data.reference,
     amount: fromSubunits(Number(data.amount)),
     currency: String(data.currency ?? "").toUpperCase(),
   };
+  if (typeof data.paid_at === "string") result.paidAt = new Date(data.paid_at);
+  if (typeof data.channel === "string") result.channel = data.channel;
+  if (typeof data.subaccount?.subaccount_code === "string") result.subaccountCode = data.subaccount.subaccount_code;
+  return result;
+}
+
+export async function listBanks(country = "ghana") {
+  return paystackRequest(`/bank?country=${encodeURIComponent(country)}&perPage=100`);
+}
+
+export async function resolveAccountNumber(accountNumber: string, bankCode: string): Promise<{ accountName: string; accountNumber: string }> {
+  const data = await paystackRequest(`/bank/resolve?account_number=${encodeURIComponent(accountNumber)}&bank_code=${encodeURIComponent(bankCode)}`);
+  return { accountName: String(data.account_name), accountNumber: String(data.account_number) };
+}
+
+export async function createSubaccount(input: { businessName: string; bankCode: string; accountNumber: string; percentageCharge?: number }) {
+  const data = await paystackRequest("/subaccount", {
+    method: "POST",
+    body: JSON.stringify({ business_name: input.businessName, settlement_bank: input.bankCode, account_number: input.accountNumber, percentage_charge: input.percentageCharge ?? 0 }),
+  });
+  if (!data?.subaccount_code) throw new Error("Paystack did not return a settlement account reference.");
+  return { subaccountCode: String(data.subaccount_code), accountName: String(data.account_name ?? input.businessName), bankName: String(data.settlement_bank ?? input.bankCode) };
+}
+
+export async function updateSubaccount(subaccountCode: string, input: { businessName: string; bankCode: string; accountNumber: string }) {
+  const data = await paystackRequest(`/subaccount/${encodeURIComponent(subaccountCode)}`, {
+    method: "PUT",
+    body: JSON.stringify({ business_name: input.businessName, settlement_bank: input.bankCode, account_number: input.accountNumber, active: true }),
+  });
+  return { subaccountCode: String(data.subaccount_code ?? subaccountCode), accountName: String(data.account_name ?? input.businessName), bankName: String(data.settlement_bank ?? input.bankCode) };
 }
 
 /**

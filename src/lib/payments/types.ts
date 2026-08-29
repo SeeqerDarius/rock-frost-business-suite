@@ -13,6 +13,10 @@ export interface InitializeTransactionInput {
   callbackUrl: string;
   /** Paystack plan code. When present, successful checkout creates a recurring card subscription. */
   planCode?: string;
+  /** Paystack subaccount used only for tenant operational collections. */
+  subaccountCode?: string;
+  transactionCharge?: number;
+  bearer?: "account" | "subaccount";
   metadata?: Record<string, unknown>;
 }
 
@@ -27,4 +31,7 @@ export interface VerifyTransactionResult {
   /** Major currency units, as a string, matching Subscription.amount's own representation. */
   amount: string;
   currency: string;
+  paidAt?: Date | null;
+  channel?: string | null;
+  subaccountCode?: string | null;
 }

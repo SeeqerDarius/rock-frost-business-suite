@@ -131,6 +131,48 @@ enum SubscriptionPaymentStatus {
   FAILED
 }
 
+enum OperationalPaymentPurpose {
+  FLEET_REMITTANCE
+  FLEET_WORK_AND_PAY
+  INSTALLMENT_PAYMENT
+  POS_SALE
+  HOTEL_PAYMENT
+  SCHOOL_FEE
+  HOSTEL_FEE
+  PHARMACY_SALE
+  HOSPITAL_PAYMENT
+}
+
+enum OperationalPaymentStatus {
+  CREATED
+  INITIALIZED
+  PENDING
+  SUCCESS
+  FAILED
+  ABANDONED
+  REVERSED
+  REFUNDED
+}
+
+enum PaymentBeneficiaryType {
+  ORGANIZATION
+  VEHICLE_OWNER
+}
+
+enum SettlementProfileStatus {
+  PENDING
+  VERIFIED
+  ACTIVE
+  SUSPENDED
+  FAILED
+}
+
+enum PaymentReconciliationStatus {
+  PENDING
+  COMPLETE
+  NEEDS_RETRY
+}
+
 enum FleetVehicleStatus {
   AVAILABLE
   ASSIGNED
@@ -462,6 +504,8 @@ model Organization {
   fleetMaintenanceEvents          FleetMaintenanceEvent[]
   fleetPayments                   FleetPayment[]
   workAndPayContracts             FleetWorkAndPayContract[]
+  settlementProfile              SettlementProfile?
+  operationalPayments            OperationalPayment[]
   hirePurchaseStaff               HirePurchaseStaff[]
   hirePurchaseStaffSalaryPayments HirePurchaseStaffSalaryPayment[]
   hirePurchaseStaffSalaryHistory  HirePurchaseStaffSalaryHistory[]
@@ -1214,6 +1258,59 @@ model SubscriptionPayment {
   @@unique([gatewayProvider, paymentReference])
   @@index([organizationId, createdAt])
   @@index([subscriptionId, createdAt])
+}
+
+model SettlementProfile {
+  id                       String                  @id @default(cuid())
+  organizationId           String                  @unique
+  provider                 PaymentGatewayProvider @default(PAYSTACK)
+  providerSubaccountCode   String                  @unique
+  settlementBankCode       String
+  settlementBankName       String
+  accountLast4             String
+  accountName              String
+  currency                 String                  @default("GHS")
+  status                   SettlementProfileStatus @default(PENDING)
+  onlineCollectionsEnabled Boolean                 @default(false)
+  settlementMode           PaymentBeneficiaryType  @default(ORGANIZATION)
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+}
+
+model OperationalPayment {
+  id                   String                      @id @default(cuid())
+  organizationId       String
+  provider             PaymentGatewayProvider      @default(PAYSTACK)
+  providerReference    String
+  purpose              OperationalPaymentPurpose
+  sourceModule         String
+  sourceType           String
+  sourceId             String
+  payerId              String?
+  beneficiaryType      PaymentBeneficiaryType      @default(ORGANIZATION)
+  beneficiaryReference String
+  amount               Decimal                     @db.Decimal(18, 2)
+  currency             String
+  status               OperationalPaymentStatus    @default(CREATED)
+  reconciliationStatus PaymentReconciliationStatus @default(PENDING)
+  failureReason        String?                     @db.Text
+  accountingEntryId    String?
+  receiptNumber        String?                     @unique
+  paidAt               DateTime?
+  metadata             Json?
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerReference])
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, sourceModule, sourceType, sourceId])
+  @@index([reconciliationStatus, createdAt])
 }
 
 model Notification {

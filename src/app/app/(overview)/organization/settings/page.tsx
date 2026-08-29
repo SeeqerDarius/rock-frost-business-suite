@@ -1,4 +1,4 @@
-import { CheckCircle2, DatabaseBackup, ImageIcon, Lock, Palette, TriangleAlert } from "lucide-react";
+import { CheckCircle2, CreditCard, DatabaseBackup, ImageIcon, Lock, Palette, TriangleAlert } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
@@ -13,11 +13,13 @@ import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
-import { uploadCompanyLogo, updateWorkspaceSettings } from "./actions";
+import { uploadCompanyLogo, updateWorkspaceSettings, saveSettlementAccount } from "./actions";
+import { getSettlementProfile } from "@/lib/payments/operational";
 
 const ERROR_MESSAGES: Record<string, string> = {
   image: "Choose a JPG, PNG, or WebP logo no larger than 1 MB.",
   invalid: "Check the settings and try again.",
+  settlement: "We could not verify or save that settlement account. Check the bank details and try again.",
 };
 
 type WorkspaceSettings = {
@@ -44,12 +46,15 @@ export default async function OrganizationSettingsPage({ searchParams }: {
     ? (metadata as Record<string, unknown>).workspaceSettings
     : {}) as WorkspaceSettings;
   const { saved, error } = await searchParams;
+  const settlement = await getSettlementProfile(tenant.organizationId);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <PageHeader title="Workspace settings" description="Branding, interface defaults, backup policy, and recovery controls for this tenant." />
 
-      {saved === "logo" ? (
+      {saved === "settlement" ? (
+        <Alert><CheckCircle2 /><AlertTitle>Settlement Account saved</AlertTitle><AlertDescription>Online operational collections can now be routed to the verified account shown below.</AlertDescription></Alert>
+      ) : saved === "logo" ? (
         <Alert>
           <CheckCircle2 />
           <AlertTitle>Logo updated</AlertTitle>
@@ -69,6 +74,21 @@ export default async function OrganizationSettingsPage({ searchParams }: {
           <AlertDescription>{ERROR_MESSAGES[error]}</AlertDescription>
         </Alert>
       ) : null}
+
+      <Card>
+        <CardHeader><div className="flex items-center gap-2"><CreditCard className="size-5 text-muted-foreground" /><CardTitle>Payments and online collections</CardTitle></div><CardDescription>Connect the organization bank account that should receive operational payments. Rock Frost uses its secure Paystack integration to route collections. Your Paystack credentials are never required.</CardDescription></CardHeader>
+        <CardContent className="space-y-4">
+          {settlement ? <div className="grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-3"><div><p className="text-muted-foreground">Bank</p><p className="font-medium">{settlement.settlementBankName}</p></div><div><p className="text-muted-foreground">Account</p><p className="font-medium">•••• {settlement.accountLast4}</p></div><div><p className="text-muted-foreground">Status</p><p className="font-medium">{settlement.status === "ACTIVE" ? "Verified" : settlement.status}</p></div><div className="sm:col-span-3"><p className="text-muted-foreground">Account name</p><p className="font-medium">{settlement.accountName}</p></div></div> : null}
+          <form action={saveSettlementAccount} className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2"><Label htmlFor="bankName">Bank name</Label><Input id="bankName" name="bankName" placeholder="Ecobank Ghana" defaultValue={settlement?.settlementBankName} required /></div>
+            <div className="space-y-2"><Label htmlFor="bankCode">Paystack bank code</Label><Input id="bankCode" name="bankCode" placeholder="Bank code" defaultValue={settlement?.settlementBankCode} required /></div>
+            <div className="space-y-2 sm:col-span-2"><Label htmlFor="accountNumber">Bank account number</Label><Input id="accountNumber" name="accountNumber" inputMode="numeric" autoComplete="off" placeholder={settlement ? `Currently ending ${settlement.accountLast4}` : "Account number"} required /></div>
+            <label className="flex items-center gap-2 text-sm sm:col-span-2"><input name="enabled" type="checkbox" defaultChecked={settlement?.onlineCollectionsEnabled ?? true} /> Enable online collections after verification</label>
+            <Button type="submit" className="sm:col-span-2">{settlement ? "Update Settlement Account" : "Verify and connect Settlement Account"}</Button>
+          </form>
+          <p className="text-xs text-muted-foreground">The full account number is sent securely to Paystack for verification and is not retained by Rock Frost. Only the masked last four digits and provider reference are stored.</p>
+        </CardContent>
+      </Card>
 
       <Card className="shadow-sm">
         <CardHeader>

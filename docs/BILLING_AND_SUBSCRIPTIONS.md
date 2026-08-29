@@ -1,5 +1,7 @@
 # Billing and Subscriptions
 
+This document covers platform billing. Tenant operational collections use `docs/SHARED_PAYMENTS_AND_SETTLEMENTS.md`. Operational revenue never activates subscriptions or becomes Rock Frost subscription revenue.
+
 ## Module user seats
 
 ## Production pricing catalogue

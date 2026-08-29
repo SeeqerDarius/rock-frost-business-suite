@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { AnimatedIconHoverScope } from "@/components/icons/animated-icon-hover-context";
 import { getActiveNavigationHref } from "@/components/navigation/active-navigation";
 import type { ModuleNavItem } from "@/types/module";
 
@@ -67,7 +68,7 @@ export function SidebarNav({ items, collapsed = false, onNavigate, tourTargets =
         );
 
         return (
-          <div key={item.href}>
+          <AnimatedIconHoverScope key={item.href}>
             {showGroup && !collapsed ? (
               <p className="px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">
                 {item.group}
@@ -80,7 +81,7 @@ export function SidebarNav({ items, collapsed = false, onNavigate, tourTargets =
                 <TooltipContent side="right" sideOffset={8}>{item.label}</TooltipContent>
               </Tooltip>
             ) : link}
-          </div>
+          </AnimatedIconHoverScope>
         );
       })}
     </nav>

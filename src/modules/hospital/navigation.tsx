@@ -11,8 +11,8 @@ import {
   ClipboardList,
   BarChart3,
   Building2,
-  Settings,
 } from "lucide-react";
+import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
 import type { ModuleNavItem } from "@/types/module";
 
 export const hospitalNavigation: ModuleNavItem[] = [
@@ -28,5 +28,5 @@ export const hospitalNavigation: ModuleNavItem[] = [
   { label: "Billing & Claims", shortLabel: "Billing", group: "Finance & insights", href: "/app/hospital/billing", icon: <Receipt className="size-4" />, description: "Create itemized patient invoices, record payments, void invoices, and file insurance claims." },
   { label: "Reports", group: "Finance & insights", href: "/app/hospital/reports", icon: <BarChart3 className="size-4" />, description: "Review patient census, appointment outcomes, lab verification rates, and discharge summaries." },
   { label: "Facility", group: "Configuration", href: "/app/hospital/facility", icon: <Building2 className="size-4" />, description: "Set up facilities, departments, service pricing, providers, wards, and beds." },
-  { label: "Hospital Settings", shortLabel: "Settings", group: "Configuration", href: "/app/hospital/settings", icon: <Settings className="size-4" />, description: "Configure per-facility numbering, timezone, currency, and record-retention policy." },
+  { label: "Hospital Settings", shortLabel: "Settings", group: "Configuration", href: "/app/hospital/settings", icon: <AnimatedSettingsIcon size={16} />, description: "Configure per-facility numbering, timezone, currency, and record-retention policy." },
 ];

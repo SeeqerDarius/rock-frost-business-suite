@@ -1,4 +1,5 @@
-import { LayoutGrid, Building2, UsersRound, Users, CalendarClock, ClipboardCheck, BarChart3, Settings, UserMinus } from "lucide-react";
+import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
+import { LayoutGrid, Building2, UsersRound, Users, CalendarClock, ClipboardCheck, BarChart3, UserMinus } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 /** Configuration lives as a tab on HR Settings (src/app/app/hr/settings/page.tsx),
@@ -13,5 +14,5 @@ export const hrNavigation: ModuleNavItem[] = [
   { label: "Leave", href: "/app/hr/leave", icon: <CalendarClock className="size-4" />, description: "Submit, approve, or reject employee time-off requests." },
   { label: "Reviews", href: "/app/hr/reviews", icon: <ClipboardCheck className="size-4" />, description: "Create performance reviews with a rating and summary, then mark them complete." },
   { label: "Reports", href: "/app/hr/reports", icon: <BarChart3 className="size-4" />, description: "View headcount by department, pending leave and review activity, and the organization's skills inventory." },
-  { label: "HR Settings", href: "/app/hr/settings", icon: <Settings className="size-4" />, description: "Configure leave types, onboarding and offboarding plan templates, job positions, and other HR lookup lists." },
+  { label: "HR Settings", href: "/app/hr/settings", icon: <AnimatedSettingsIcon size={16} />, description: "Configure leave types, onboarding and offboarding plan templates, job positions, and other HR lookup lists." },
 ];
