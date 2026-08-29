@@ -106,6 +106,28 @@ describe("Fleet driver remittance controls", () => {
     expect(service).toContain("return { contract: finalContract, payment: ledgerPayment };");
   });
 
+  it("keeps the Driver role off the organization-wide dashboard and off the subscription-status badge", () => {
+    const dashboardPage = read("src/app/app/(overview)/dashboard/page.tsx");
+    const appLayout = read("src/app/app/layout.tsx");
+    const workspaceNavigation = read("src/platform/modules/workspace-navigation.tsx");
+    expect(dashboardPage).toContain('if (isFleetDriverRole(tenant)) redirect("/app/fleet/driver-portal");');
+    expect(appLayout).toContain("!platformIdentity && !isFleetDriverRole(tenant)");
+    expect(workspaceNavigation).not.toMatch(/\{ label: "Modules"[^}]*\},\s*\{ label: "Notifications"/);
+  });
+
+  it("gives the driver their own revenue trends, kept separate from the organization's", () => {
+    const service = read("src/modules/fleet/service.ts");
+    const driverPortal = read("src/app/app/fleet/driver-portal/page.tsx");
+    expect(service).toContain("export async function getFleetDriverTrends(");
+    expect(service).toContain('buildSeriesFor("FleetVehicle", vehicleIds)');
+    expect(service).toContain('buildSeriesFor("FleetWorkAndPayContract", contractIds)');
+    expect(driverPortal).toContain("getFleetDriverTrends");
+    expect(driverPortal).toContain("trends.vehicleRevenue");
+    expect(driverPortal).toContain("trends.workAndPay");
+    expect(driverPortal).toContain("contract.completionPercentage");
+    expect(driverPortal).toContain("left to pay");
+  });
+
   it("accepts only a bounded image with a real supported signature", async () => {
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
     const encoded = await fleetMaintenancePhotoData(new File([png], "fault.png", { type: "image/png" }));

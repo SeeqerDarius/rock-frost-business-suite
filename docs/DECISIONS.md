@@ -1,5 +1,17 @@
 # Architecture & Tooling Decisions
 
+## 2026-08-29 — A Driver's vehicle-remittance and Work & Pay trends are shown as two separate series, never summed
+
+**Decision:** `getFleetDriverTrends(organizationId, { vehicleIds, contractIds })` (`src/modules/fleet/service.ts`) returns `{ vehicleRevenue, workAndPay }` as two independent trend series, each bucketed by day/week/month like every other trend chart in the app. The Driver Workspace renders them as two tabs, and only shows the Work & Pay tab at all when the driver actually holds an active contract.
+
+**Why:** A user bug report distinguished these explicitly - "he can see insights or trends of his revenue generated for the org... and if its work and pay, insight or trend of his work and pay contract, not what the org's admin sees." Vehicle remittance and a Work & Pay instalment are different obligations on different schedules against different targets; summing them into one number would make neither figure legible to a Driver deciding what they still owe versus what they've already remitted.
+
+**How the boundary is preserved:** `getFleetDriverTrends` mirrors the existing `getFleetInvestorTrends` filter-by-`relatedEntity`/`relatedEntityId` pattern (`FleetPayment` has no `driverId` column, only a polymorphic pointer to `FleetVehicle` or `FleetWorkAndPayContract`), but takes the caller's already-known vehicle/contract ID sets as input instead of re-querying `fleetDriver.findFirst`, since `driver-portal/page.tsx` already has this data from `getFleetDriverWorkspace`.
+
+**Not done (and deliberately so):** No combined "total revenue" figure was added anywhere in the Driver Workspace - the point of the split is that a Driver's two obligations stay visually and numerically distinct.
+
+---
+
 ## 2026-08-27 — Every displayed money amount routes through one shared `formatMoney()`, keyed to `Organization.currency`
 
 **Decision:** A new `src/lib/currency.ts` exports `formatMoney(value, currencyCode?)`, which formats a `Prisma.Decimal | number | string` through `Intl.NumberFormat("en-GH", { style: "currency", currency: code })`, falling back to `"GHS"` when no code is given or the given code is invalid. Every page/component across Accounting, POS, Payroll, Installment, Procurement, Fleet, Hotel, Hospital, Hostel, CRM, Analytics, Inventory, and HR that displays a monetary amount now calls this function (or a file-local `money()` wrapper that closes over the tenant's currency) instead of a bare `.toFixed(2)`. Input fields that feed a value back into form submission (`defaultValue` on a `type="number"` input) are deliberately left as raw numeric strings - only their `<Label>`/placeholder text gets a currency hint (e.g. "Selling price (GHS)").
