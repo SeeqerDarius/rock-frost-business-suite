@@ -16,5 +16,7 @@ describe("AnimatedSettingsIcon", () => {
     expect(component).toContain('startAnimation: () => controls.start("animate")');
     expect(component).toContain('if (!isControlledRef.current) void controls.start("animate")');
     expect(component).toContain('if (!isControlledRef.current) void controls.start("normal")');
+    expect(component).toContain("useAnimatedIconHover()");
+    expect(component).toContain('controls.start(parentHovered ? "animate" : "normal")');
   });
 });

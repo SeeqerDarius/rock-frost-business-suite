@@ -3,8 +3,9 @@
 import type { Variants } from "motion/react";
 import { motion, useAnimation } from "motion/react";
 import type { HTMLAttributes, MouseEvent } from "react";
-import { forwardRef, useCallback, useImperativeHandle, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
 
+import { useAnimatedIconHover } from "@/components/icons/animated-icon-hover-context";
 import { cn } from "@/lib/utils";
 
 export interface AnimatedActivityIconHandle {
@@ -42,6 +43,12 @@ const AnimatedActivityIcon = forwardRef<AnimatedActivityIconHandle, AnimatedActi
   ({ onMouseEnter, onMouseLeave, className, size = 28, ...props }, ref) => {
     const controls = useAnimation();
     const isControlledRef = useRef(false);
+    const parentHovered = useAnimatedIconHover();
+
+    useEffect(() => {
+      if (isControlledRef.current) return;
+      void controls.start(parentHovered ? "animate" : "normal");
+    }, [controls, parentHovered]);
 
     useImperativeHandle(ref, () => {
       isControlledRef.current = true;

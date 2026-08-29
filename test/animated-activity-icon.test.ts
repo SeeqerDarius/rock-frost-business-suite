@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 const root = process.cwd();
 const component = fs.readFileSync(path.join(root, "src/components/icons/animated-activity-icon.tsx"), "utf8");
 const platformNavigation = fs.readFileSync(path.join(root, "src/platform/modules/platform-navigation.tsx"), "utf8");
+const sidebarNavigation = fs.readFileSync(path.join(root, "src/components/navigation/sidebar-nav.tsx"), "utf8");
 
 describe("animated activity icon", () => {
   it("uses path drawing motion with the shared imperative animation contract", () => {
@@ -19,5 +20,11 @@ describe("animated activity icon", () => {
     expect(platformNavigation).toContain('import { AnimatedActivityIcon }');
     expect(platformNavigation).toContain('label: "System Activity"');
     expect(platformNavigation).toContain("icon: <AnimatedActivityIcon size={16} />");
+  });
+
+  it("responds when any part of its navigation row is hovered or focused", () => {
+    expect(component).toContain("useAnimatedIconHover()");
+    expect(component).toContain('controls.start(parentHovered ? "animate" : "normal")');
+    expect(sidebarNavigation).toContain("AnimatedIconHoverScope");
   });
 });

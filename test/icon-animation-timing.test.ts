@@ -7,6 +7,7 @@ const css = fs.readFileSync(path.join(process.cwd(), "src/app/globals.css"), "ut
 describe("icon animation timing", () => {
   it("keeps the universal draw-in slow enough to read clearly", () => {
     expect(css).toContain("animation: lucide-draw-in 1000ms");
+    expect(css).toContain(":is(:hover, :focus-visible)");
     expect(css).toContain(":nth-child(2) { animation-delay: 120ms; }");
     expect(css).toContain(":nth-child(6) { animation-delay: 600ms; }");
   });

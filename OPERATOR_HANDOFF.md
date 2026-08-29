@@ -3521,7 +3521,7 @@ type definition and was corrected to the version-documented
 - Added the direct `motion` dependency. The component preserves consumer mouse handlers, supports imperative control, is decorative to assistive technology, and is isolated from the global Lucide hover rule.
 - Files: `src/components/icons/animated-settings-icon.tsx`, module navigation files, `src/platform/modules/platform-navigation.tsx`, `src/components/navigation/user-menu.tsx`, `package.json`, `package-lock.json`, `docs/DESIGN_SYSTEM.md`.
 - Validation: focused icon, timing, and editorial checks passed (3 files, 6 tests); full Vitest suite passed (113 files, 806 tests); ESLint passed; Next.js 16.2.12 production build compiled all 219 routes; `git diff --check` passed; `npm install motion` reported zero dependency vulnerabilities.
-- Release: commit `765c915` was pushed to `codex/icon-motion-slower` and fast-forwarded to `main`. Vercel production deployment `dpl_BZ8jcSJgzxExNTbC5UPdf5Qkz9Po` reached READY and received all Rock Frost production aliases. `/api/health` returned `ok: true` with the database reachable, and the deployment-scoped error-log scan returned no errors.
+- Release: commit `17fa617` was pushed to `codex/icon-motion-slower` and fast-forwarded to `main`. Its production deployment reached READY with all Rock Frost production aliases.
 
 # 2026-08-29: Bespoke Motion-powered Activity icon
 
@@ -3530,4 +3530,12 @@ type definition and was corrected to the version-documented
 - Corrected the pasted SVG namespace into a valid literal URL and kept the animation scoped to this icon instead of adding another global selector.
 - Files: `src/components/icons/animated-activity-icon.tsx`, `src/platform/modules/platform-navigation.tsx`, `test/animated-activity-icon.test.ts`, `docs/DESIGN_SYSTEM.md`.
 - Validation: the focused Settings and Activity icon suite passed 4/4; TypeScript passed; ESLint passed; the Next.js production build compiled all 219 routes; the full mocked suite passed 807/808 tests. Its only failure was the pre-existing support-assistant permission-gating test exceeding its fixed five-second timeout, which reproduced when rerun alone and is unrelated to navigation or icon code.
+- Release: commit `765c915` was pushed to `codex/icon-motion-slower` and fast-forwarded to `main`. Vercel production deployment `dpl_BZ8jcSJgzxExNTbC5UPdf5Qkz9Po` reached READY and received all Rock Frost production aliases. `/api/health` returned `ok: true` with the database reachable, and the deployment-scoped error-log scan returned no errors.
+
+# 2026-08-29: Whole-control icon animation triggers
+
+- Corrected the shared interaction behavior so an icon animates when the user hovers or keyboard-focuses any part of its link or button, including the visible word label, rather than requiring the pointer to sit directly over the icon.
+- Ordinary Lucide icons remain covered system-wide by the global interactive-ancestor CSS rule. The rule now includes keyboard focus. Motion-powered Settings and Activity icons use the new `AnimatedIconHoverScope` context supplied by every shared sidebar row, while retaining their direct-icon hover and imperative-control behavior in other placements.
+- Files: `src/components/icons/animated-icon-hover-context.tsx`, both animated icon components, `src/components/navigation/sidebar-nav.tsx`, `src/app/globals.css`, icon tests, `docs/DESIGN_SYSTEM.md`.
+- Validation: focused icon interaction tests passed 7/7; TypeScript passed; ESLint passed; the Next.js production build compiled all 219 routes; `git diff --check` passed. The prior full-suite run for this icon branch passed 807/808 tests, with only the separately documented support-assistant five-second timeout failure.
 - Release status: commit, push, deployment, and production verification are recorded below after completion.
