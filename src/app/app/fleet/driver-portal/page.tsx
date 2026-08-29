@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { PeriodicTrendChart } from "@/components/dashboard/charts";
+import { PeriodicTrendChart, TrendAreaChart } from "@/components/dashboard/charts";
 import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { EmptyState } from "@/components/feedback/empty-state";
@@ -310,7 +310,21 @@ export default async function DriverPortalPage({
                       <Progress value={percentPaid} aria-label={`${contract.contractName} completion`} />
                     </div>
                     {summary ? (
-                      <p className="flex items-center gap-2 text-muted-foreground"><CalendarClock className="size-4 shrink-0" aria-hidden="true" />Next due {shortDate(summary.nextDueDate)}{summary.dueNow > 0 ? ` - ${money(currency, summary.dueNow)} due for this period` : " - this period is paid"}.</p>
+                      <>
+                        <p className="flex items-center gap-2 text-muted-foreground"><CalendarClock className="size-4 shrink-0" aria-hidden="true" />Next due {shortDate(summary.nextDueDate)}{summary.dueNow > 0 ? ` - ${money(currency, summary.dueNow)} due for this period` : " - this period is paid"}.</p>
+                        {summary.onTimeRate !== null ? (
+                          <p className="flex items-center gap-2 text-muted-foreground"><TrendingUp className="size-4 shrink-0" aria-hidden="true" />On-time rate over the last {summary.periods.length} periods: <span className="font-medium text-foreground">{Math.round(summary.onTimeRate * 100)}%</span></p>
+                        ) : null}
+                        {(() => {
+                          const balanceHistory = buildBalanceHistory(summary.periods, Number(contract.outstandingBalance));
+                          return balanceHistory.length > 1 ? (
+                            <div className="border-t pt-3">
+                              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Balance remaining over time</p>
+                              <TrendAreaChart data={balanceHistory} series={[{ key: "balance", label: "Balance remaining" }]} currency={currency} />
+                            </div>
+                          ) : null;
+                        })()}
+                      </>
                     ) : null}
                     {submissions.length > 0 ? (
                       <div className="border-t pt-3">
@@ -515,6 +529,7 @@ export default async function DriverPortalPage({
 function ObligationCard({ title, currency, summary, payButton }: { title: string; currency: string; summary: ObligationSummary; payButton: React.ReactNode }) {
   const current = summary.periods[summary.periods.length - 1];
   const shortfall = summary.dueNow > 0 && current.approvedAmount > 0;
+  const trendData = summary.periods.filter((p) => p.existedYet).map((p) => ({ label: shortDate(p.periodStart), due: p.expectedAmount, paid: p.approvedAmount }));
   return (
     <div className="rounded-xl border bg-card p-4 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -531,7 +546,39 @@ function ObligationCard({ title, currency, summary, payButton }: { title: string
       </div>
       {shortfall ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">You&apos;ve paid part of this period&apos;s obligation - {money(currency, summary.dueNow)} still remaining.</p> : null}
       {current.pendingAmount > 0 ? <p className="mt-2 text-xs text-muted-foreground">{money(currency, current.pendingAmount)} submitted and awaiting manager verification.</p> : null}
+      {summary.onTimeRate !== null ? (
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <TrendingUp className="size-3.5 shrink-0" aria-hidden="true" />
+          On-time rate over the last {summary.periods.length} periods: <span className="font-medium text-foreground">{Math.round(summary.onTimeRate * 100)}%</span>
+        </p>
+      ) : null}
       {payButton ? <div className="mt-3">{payButton}</div> : null}
+      {trendData.length > 1 ? (
+        <details className="mt-4 border-t pt-3">
+          <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground">Due vs. paid history</summary>
+          <div className="mt-3">
+            <TrendAreaChart data={trendData} series={[{ key: "due", label: "Due" }, { key: "paid", label: "Paid" }]} currency={currency} />
+          </div>
+        </details>
+      ) : null}
     </div>
   );
+}
+
+/**
+ * Reconstructs a contract's balance at the end of each trailing period by
+ * working backward from its current stored outstandingBalance and adding
+ * back each period's approvedAmount, then reversing into oldest-first order
+ * for the chart. There is no stored balance history to read directly. Periods
+ * before the contract existed are excluded first so a freshly created
+ * contract doesn't show a flat phantom balance stretching into the past.
+ */
+function buildBalanceHistory(periods: ObligationSummary["periods"], currentBalance: number): { label: string; balance: number }[] {
+  const real = periods.filter((p) => p.existedYet);
+  const endBalances = new Array<number>(real.length);
+  endBalances[real.length - 1] = currentBalance;
+  for (let i = real.length - 1; i > 0; i--) {
+    endBalances[i - 1] = endBalances[i] + real[i].approvedAmount;
+  }
+  return real.map((p, i) => ({ label: shortDate(p.periodEnd), balance: Math.max(endBalances[i], 0) }));
 }

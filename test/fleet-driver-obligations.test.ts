@@ -142,6 +142,16 @@ describe("computeObligationSummary", () => {
     expect(summary.overdueAmount).toBe(0);
   });
 
+  it("marks existedYet false for periods before existsSince, so trend charts know to exclude them (not just overdue/on-time logic)", () => {
+    const now = utc(2026, 8, 26, 10);
+    const assignedToday = utc(2026, 8, 26);
+    const summary = computeObligationSummary("DAILY", 200, [], now, 6, assignedToday);
+    const priorDays = summary.periods.filter((p) => p.periodStart.getTime() !== assignedToday.getTime());
+    expect(priorDays.every((p) => !p.existedYet)).toBe(true);
+    const today = summary.periods.find((p) => p.periodStart.getTime() === assignedToday.getTime());
+    expect(today?.existedYet).toBe(true);
+  });
+
   it("still evaluates periods normally once existsSince is far enough in the past to cover the whole window", () => {
     const now = utc(2026, 8, 26, 10);
     const longAgo = utc(2020, 1, 1);

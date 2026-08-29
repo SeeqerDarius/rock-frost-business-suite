@@ -64,6 +64,8 @@ export interface ObligationPeriod {
   isOverdue: boolean;
   /** null until the period is either paid or closed unpaid - there is nothing to judge "on time" against yet. */
   isOnTime: boolean | null;
+  /** False for a period that closed before the obligation's own existsSince - trend views must exclude these, not just overdue/on-time logic. */
+  existedYet: boolean;
 }
 
 export interface ObligationSummary {
@@ -126,7 +128,7 @@ export function computeObligationSummary(
       : isPaid && earliestApprovedPaymentDate !== null
         ? earliestApprovedPaymentDate <= deadline.getTime()
         : isOverdue ? false : null;
-    periods.unshift({ periodStart, periodEnd, expectedAmount, approvedAmount, pendingAmount, isCurrent: i === 0, isClosed, isPaid, isOverdue, isOnTime });
+    periods.unshift({ periodStart, periodEnd, expectedAmount, approvedAmount, pendingAmount, isCurrent: i === 0, isClosed, isPaid, isOverdue, isOnTime, existedYet });
     cursor = stepPeriod(type, cursor, -1);
   }
 

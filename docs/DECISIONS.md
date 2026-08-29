@@ -1,5 +1,13 @@
 # Architecture & Tooling Decisions
 
+## 2026-08-29 - Trend charts filter on a new `existedYet` period flag, not just `existsSince`
+
+**Decision:** `ObligationPeriod` (`src/modules/fleet/driver-obligations.ts`) gained an `existedYet: boolean` field, and both Phase 4 trend charts (due-vs-paid in `ObligationCard`, balance-remaining-over-time in the Work & Pay tab) filter their chart data on it before building series, in addition to whatever the existing `isOverdue`/`isOnTime` guarding already did.
+
+**Why:** Phase 3's `existsSince` guard (see the Phase 3 entry below) stops a freshly assigned vehicle or contract from showing fake *overdue* history, but it only ever gated `isClosed` (and, transitively, `isOverdue`/`isOnTime`) - it never touched `expectedAmount`, which is a constant per period regardless of whether the obligation existed yet. Wiring a due-vs-paid trend chart straight off `summary.periods` therefore reproduced the exact failure mode Phase 3 had already fixed once, in a new place: a same-day-assigned vehicle would show a flat "due GHS 200" line stretching back across the whole 6-period trailing window, days before it was ever assigned. This was caught by browser-testing a same-day-assigned scratch case before shipping, not by the unit or integration suites (neither exercises the new chart-building code, only the pure summary math).
+
+**How it's applied:** Charts filter `periods.filter((p) => p.existedYet)` before mapping to chart data, and render nothing (no chart, no misleading single-point line) when fewer than two real periods remain - a one-point trend isn't informative. `existedYet` itself is `existsSince === null || periodEnd >= existsSince`, computed once per period and exposed alongside the existing flags rather than re-derived by each consumer.
+
 ## 2026-08-29 - "Outstanding balance" on the Driver Overview means due-now plus overdue combined, not a third independent figure
 
 **Decision:** The Driver Workspace Overview's 8 KPI tiles interpret "outstanding balance" as `dueNow + overdueAmount` - a "everything you currently owe, right now" bottom-line figure - rather than inventing a separate stored balance concept for periodic remittance obligations.
