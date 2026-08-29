@@ -31,6 +31,8 @@ shadcn/ui (Base UI primitives, `base-nova` preset) + Tailwind CSS v4. See `docs/
 
 `TrendChart` and `PeriodicTrendChart` in `src/components/dashboard/charts.tsx` are the authoritative time-series visualizations. Every chart offers Curved, Zigzag, and Bars views over the same unchanged dataset. The session-scoped choice synchronizes across mounted charts, while period selection remains independent. Tooltips expose exact formatted values, an assistive summary exposes every point, controls are keyboard operable, and theme tokens supply series colours. Curved uses monotone interpolation, Zigzag uses direct linear segments, and Bars aligns one bar group to each period.
 
+Money charts show compact organization-currency values on the vertical axis and period labels on the horizontal axis, with mobile-safe tick spacing. A chart may receive a server-derived target; the shared component then renders the same labelled reference line and target, actual, remaining, achievement, and status summary in all three presentation modes.
+
 Current consumers are the organization Dashboard, Accounting overview, Accounting Insights, Fleet reports, Fleet investor workspace, and Fleet Driver Workspace. Breakdown donuts, KPI progress bars, categorical source bars, and HR organization charts remain specialized because they are not time-series trends. Future module trend surfaces must use these shared components instead of introducing another chart implementation.
 
 ## Brand and application icons

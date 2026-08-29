@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { Area, AreaChart, Bar, BarChart, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, Bar, BarChart, Cell, Legend, Line, LineChart, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/currency";
 import type { TrendGranularity } from "@/lib/trend-buckets";
@@ -99,21 +99,30 @@ export function TrendChart({
   series,
   currency,
   valueFormat = "money",
+  target,
 }: {
   data: Record<string, string | number>[];
   series: { key: string; label: string }[];
   currency?: string | null;
   valueFormat?: "money" | "count" | "percentage";
+  target?: { amount: number; label: string; actualKey: string };
 }) {
   const [style, setStyle] = useTrendChartStyle();
   const hasData = data.length > 0 && data.some((row) => series.some((s) => row[s.key] !== undefined && row[s.key] !== null && Number.isFinite(Number(row[s.key]))));
   if (!hasData) return <NoData label="No activity yet for this period." />;
   const formatValue = (value: number) => valueFormat === "money" ? formatMoney(value, currency) : valueFormat === "percentage" ? `${value}%` : new Intl.NumberFormat("en-US").format(value);
-  const common = <><XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" /><YAxis width={8} tick={false} axisLine={false} tickLine={false} /><Tooltip contentStyle={tooltipStyle} formatter={((value: number, name: string) => [formatValue(value), name]) as (...args: unknown[]) => [string, string]} /><Legend wrapperStyle={{ fontSize: 12 }} /></>;
+  const compactMoney = (value: number) => `${currency ?? "GHS"} ${Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
+  const latest = data[data.length - 1];
+  const actual = target && latest ? Number(latest[target.actualKey] ?? 0) : 0;
+  const remaining = target ? Math.max(target.amount - actual, 0) : 0;
+  const achieved = target?.amount ? (actual / target.amount) * 100 : 0;
+  const targetStatus = actual > (target?.amount ?? 0) ? "Exceeded" : actual === (target?.amount ?? 0) ? "Met" : "Below target";
+  const common = <><XAxis dataKey="label" interval="preserveStartEnd" minTickGap={24} tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" /><YAxis width={72} tickFormatter={valueFormat === "money" ? compactMoney : undefined} tickLine={false} axisLine={false} fontSize={11} stroke="var(--muted-foreground)" /><Tooltip labelFormatter={(label) => `Period: ${label}`} contentStyle={tooltipStyle} formatter={((value: number, name: string) => [formatValue(value), name]) as (...args: unknown[]) => [string, string]} /><Legend wrapperStyle={{ fontSize: 12 }} />{target ? <ReferenceLine y={target.amount} stroke="var(--destructive)" strokeDasharray="5 4" label={{ value: `${target.label}: ${formatValue(target.amount)}`, position: "insideTopLeft", fill: "var(--foreground)", fontSize: 11 }} /> : null}</>;
 
   return (
     <div className="space-y-3">
       <div className="flex justify-end"><ChartStyleToggle value={style} onChange={setStyle} /></div>
+      {target ? <div className="grid grid-cols-2 gap-2 rounded-lg border bg-muted/30 p-3 text-xs sm:grid-cols-4"><span><span className="text-muted-foreground">Target</span><strong className="block">{formatValue(target.amount)}</strong></span><span><span className="text-muted-foreground">Actual</span><strong className="block">{formatValue(actual)}</strong></span><span><span className="text-muted-foreground">Remaining</span><strong className="block">{formatValue(remaining)}</strong></span><span><span className="text-muted-foreground">Achievement</span><strong className="block">{Math.round(achieved)}% · {targetStatus}</strong></span></div> : null}
       <div role="img" aria-label={`${STYLE_OPTIONS.find((option) => option.value === style)?.label} trend chart`} className="h-[220px] w-full">
         <ResponsiveContainer width="100%" height="100%">
           {style === "bars" ? <BarChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>{common}{series.map((s, i) => <Bar key={s.key} dataKey={s.key} name={s.label} fill={CHART_COLORS[i % CHART_COLORS.length]} radius={[4, 4, 0, 0]} isAnimationActive={false} />)}</BarChart>

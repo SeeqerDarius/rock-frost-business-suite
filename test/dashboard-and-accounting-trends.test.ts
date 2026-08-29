@@ -90,5 +90,8 @@ describe("dashboard and Accounting overview trend widgets", () => {
     expect(charts).toContain("<BarChart");
     expect(charts).toContain("sessionStorage.setItem(STYLE_STORAGE_KEY, next)");
     expect(insightsChart).toContain("<TrendChart");
+    expect(charts).toContain("tickFormatter={valueFormat === \"money\" ? compactMoney : undefined}");
+    expect(charts).toContain("<ReferenceLine y={target.amount}");
+    expect(charts).toContain("Below target");
   });
 });

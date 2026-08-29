@@ -557,7 +557,7 @@ function ObligationCard({ title, currency, summary, payButton }: { title: string
         <details className="mt-4 border-t pt-3">
           <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground">Due vs. paid history</summary>
           <div className="mt-3">
-            <TrendAreaChart data={trendData} series={[{ key: "due", label: "Due" }, { key: "paid", label: "Paid" }]} currency={currency} />
+            <TrendAreaChart data={trendData} series={[{ key: "due", label: "Due" }, { key: "paid", label: "Paid" }]} currency={currency} target={{ amount: summary.expectedAmount, label: summary.type === "DAILY" ? "Daily target" : "Weekly target", actualKey: "paid" }} />
           </div>
         </details>
       ) : null}
