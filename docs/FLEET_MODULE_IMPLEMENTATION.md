@@ -1,5 +1,9 @@
 # Fleet & Asset Management System Implementation
 
+## Online driver collections
+
+Drivers can start Paystack checkout for their own configured daily or weekly remittance and active Work & Pay obligations when the organization has an active Settlement Account. Amount, currency, assignment, contract, organization, and beneficiary are re-derived on the server. Paystack confirmation automatically verifies the Fleet submission and posts confirmed revenue through Accounting. Existing manual payment recording remains available.
+
 ## Architecture
 
 The Fleet module is implemented as a tenant-scoped module in Rock Frost Business Suite. All records remain in the shared PostgreSQL database and carry `organizationId`; service functions verify organization ownership before reading or mutating records.

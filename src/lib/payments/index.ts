@@ -19,4 +19,5 @@ export function verifyTransaction(provider: GatewayProvider, reference: string):
 }
 
 export { verifySignature as verifyPaystackSignature } from "./paystack";
+export { listBanks as listPaystackBanks, resolveAccountNumber as resolvePaystackAccount, createSubaccount as createPaystackSubaccount, updateSubaccount as updatePaystackSubaccount } from "./paystack";
 export { verifyWebhookHash as verifyFlutterwaveWebhookHash } from "./flutterwave";

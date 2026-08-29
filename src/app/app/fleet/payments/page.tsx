@@ -13,6 +13,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listFleetPayments, listFleetDriverPaymentSubmissions } from "@/modules/fleet/service";
 import { createPayment, verifyPayment } from "./actions";
 import { SubmissionReviewControls } from "./submission-review-controls";
+import { listOperationalPayments } from "@/lib/payments/operational";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage payments.",
@@ -62,7 +63,7 @@ export default async function FleetPaymentsPage({
   const { saved, reviewed, error } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_PAYMENTS_MANAGE);
-  const [payments, driverSubmissions] = await Promise.all([listFleetPayments(tenant.organizationId), listFleetDriverPaymentSubmissions(tenant.organizationId)]);
+  const [payments, driverSubmissions, onlinePayments] = await Promise.all([listFleetPayments(tenant.organizationId), listFleetDriverPaymentSubmissions(tenant.organizationId), listOperationalPayments(tenant.organizationId)]);
 
   return (
     <div className="space-y-6">
@@ -187,6 +188,13 @@ export default async function FleetPaymentsPage({
           </TableBody>
         </Table>
       )}
+      {canManage ? (
+        <section className="rounded-xl border p-5">
+          <h2 className="font-semibold">Online collection reconciliation</h2>
+          <p className="text-sm text-muted-foreground">Paystack confirmations, settlement routing, receipts, and Accounting posting state for this organization only.</p>
+          {onlinePayments.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">No online operational payments yet.</p> : <div className="mt-3 overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Reference</TableHead><TableHead>Purpose</TableHead><TableHead>Amount</TableHead><TableHead>Payment</TableHead><TableHead>Reconciliation</TableHead><TableHead>Receipt</TableHead></TableRow></TableHeader><TableBody>{onlinePayments.map((item) => <TableRow key={item.id}><TableCell className="font-medium">{item.providerReference}</TableCell><TableCell>{item.purpose.replaceAll("_", " ")}</TableCell><TableCell>{item.currency} {Number(item.amount).toFixed(2)}</TableCell><TableCell><Badge variant={item.status === "SUCCESS" ? "default" : item.status === "FAILED" ? "destructive" : "outline"}>{item.status}</Badge></TableCell><TableCell>{item.reconciliationStatus.replaceAll("_", " ")}</TableCell><TableCell>{item.receiptNumber ?? "Pending"}</TableCell></TableRow>)}</TableBody></Table></div>}
+        </section>
+      ) : null}
       {canManage ? (
         <section className="rounded-xl border p-5">
           <h2 className="font-semibold">Driver-recorded payments</h2>

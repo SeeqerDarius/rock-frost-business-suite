@@ -15,6 +15,7 @@ import {
 } from "@/modules/fleet/service";
 import { logAuditEvent } from "@/lib/audit";
 import type { FleetDriverSubmissionType } from "@prisma/client";
+import { initializeFleetOperationalPayment, SettlementUnavailableError } from "@/lib/payments/operational";
 
 const clean = (value: FormDataEntryValue | null) => String(value ?? "").trim() || null;
 
@@ -56,4 +57,23 @@ export async function submitDriverPayment(formData: FormData): Promise<void> {
   }
   revalidatePath("/app/fleet/driver-portal");
   redirect("/app/fleet/driver-portal?saved=1");
+}
+
+export async function payFleetObligationOnline(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("fleet");
+  if (!hasPermission(tenant, PERMISSIONS.FLEET_DRIVER_SELF_SERVICE)) redirect("/app/fleet/driver-portal?error=forbidden");
+  const session = await getServerAuthSession();
+  if (!session?.user?.id) redirect("/login");
+  const vehicleId = clean(formData.get("vehicleId"));
+  const submissionType = clean(formData.get("submissionType"));
+  const periodStart = clean(formData.get("periodStart"));
+  if (!vehicleId || !periodStart || !submissionType || !["DAILY_SALES", "WEEKLY_SALES", "WORK_AND_PAY"].includes(submissionType)) redirect("/app/fleet/driver-portal?error=invalid-type");
+  try {
+    const checkout = await initializeFleetOperationalPayment({ organizationId: tenant.organizationId, userId: session.user.id, vehicleId, contractId: clean(formData.get("contractId")), submissionType: submissionType as FleetDriverSubmissionType, periodStart: new Date(`${periodStart}T00:00:00.000Z`) });
+    redirect(checkout.checkoutUrl);
+  } catch (error) {
+    if (error instanceof SettlementUnavailableError) redirect("/app/fleet/driver-portal?error=online-unavailable");
+    console.error("[fleet] Online collection initialization failed", error);
+    redirect("/app/fleet/driver-portal?error=online-failed");
+  }
 }

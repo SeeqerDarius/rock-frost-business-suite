@@ -1,5 +1,7 @@
 # Rock Frost Business Suite
 
+Shared Paystack operational-payment infrastructure lets tenant organizations connect a masked Settlement Account. Fleet drivers can pay server-calculated remittance and Work & Pay obligations through hosted checkout, with confirmed revenue posted to the tenant Accounting ledger. See [Shared Payments and Settlements](docs/SHARED_PAYMENTS_AND_SETTLEMENTS.md).
+
 Security and compliance claims are tracked in [docs/COMPLIANCE_AND_ASSURANCE.md](docs/COMPLIANCE_AND_ASSURANCE.md). The register separates implemented product controls from provider-dependent controls and external certifications or regulatory determinations.
 
 A modular multi-tenant business platform. Organizations activate fourteen customer-facing products: Fleet, Installment Sales, CRM, Inventory & Procurement, Accounting, Human Resources & Payroll, Analytics, Point of Sale, Project Management, Hotel Management, School Management, Hostel Management, Pharmacy Management, and Hospital Management. Each product runs in one unified workspace without mixing unrelated business data.

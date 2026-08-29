@@ -9,6 +9,8 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { getFleetDriverWorkspace } from "@/modules/fleet/service";
 import { DriverCollectionForm } from "./collection-form";
+import { payFleetObligationOnline } from "./actions";
+import { getSettlementProfile } from "@/lib/payments/operational";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "Your role does not include driver self-service.",
@@ -19,6 +21,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-evidence": "Choose a supported payment method and enter its transaction reference. Cash references are optional.",
   "duplicate-period": "A pending or approved remittance already exists for that vehicle and payment period.",
   "not-found": "The selected vehicle or contract is no longer assigned to you.",
+  "online-unavailable": "Online collections are not active. Pay the company using another method and record it below.",
+  "online-failed": "Secure checkout could not be started. No payment was taken. Please try again.",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -56,6 +60,9 @@ export default async function DriverPortalPage({ searchParams }: { searchParams:
     })),
   }));
   const currency = tenant.organization.currency ?? "GHS";
+  const settlement = await getSettlementProfile(tenant.organizationId);
+  const onlineAvailable = settlement?.status === "ACTIVE" && settlement.onlineCollectionsEnabled;
+  const today = new Date().toISOString().slice(0, 10);
 
   return (
     <div className="space-y-6">
@@ -85,10 +92,12 @@ export default async function DriverPortalPage({ searchParams }: { searchParams:
                     <div><p className="text-muted-foreground">Mileage</p><p className="font-medium">{vehicle.mileage ?? "Not recorded"}</p></div>
                       <div><p className="text-muted-foreground">Required remittance</p><p className="font-medium">{vehicle.salesTargetPeriod && vehicle.salesTargetAmount ? `${currency} ${Number(vehicle.salesTargetAmount).toFixed(2)} / ${vehicle.salesTargetPeriod === "DAILY" ? "day" : "week"}` : "Not configured"}</p></div>
                   </div>
+                  {onlineAvailable && vehicle.salesTargetPeriod && vehicle.salesTargetAmount ? <form action={payFleetObligationOnline}><input type="hidden" name="vehicleId" value={vehicle.id} /><input type="hidden" name="submissionType" value={vehicle.salesTargetPeriod === "DAILY" ? "DAILY_SALES" : "WEEKLY_SALES"} /><input type="hidden" name="periodStart" value={today} /><Button type="submit" className="w-full">Pay {currency} {Number(vehicle.salesTargetAmount).toFixed(2)} securely</Button></form> : null}
                   {vehicle.workAndPayContracts.map((contract) => (
                     <div key={contract.id} className="rounded-lg border p-3">
                       <p className="font-medium">{contract.contractName}</p>
                       <p className="text-muted-foreground">{currency} {Number(contract.outstandingBalance).toFixed(2)} outstanding. {currency} {Number(contract.scheduledPaymentAmount ?? contract.weeklyPaymentAmount).toFixed(2)} per {contract.paymentSchedule === "DAILY" ? "day" : "week"}.</p>
+                      {onlineAvailable ? <form action={payFleetObligationOnline} className="mt-3"><input type="hidden" name="vehicleId" value={vehicle.id} /><input type="hidden" name="contractId" value={contract.id} /><input type="hidden" name="submissionType" value="WORK_AND_PAY" /><input type="hidden" name="periodStart" value={today} /><Button type="submit" size="sm">Pay Work &amp; Pay instalment</Button></form> : null}
                     </div>
                   ))}
                   <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/fleet/maintenance" />}>Report maintenance concern</Button>

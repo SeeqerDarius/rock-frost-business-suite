@@ -1,0 +1,17 @@
+# Shared Payments and Settlements
+
+Rock Frost uses one server-side Paystack integration. Platform subscription payments belong to Rock Frost and remain represented by `Subscription` and `SubscriptionPayment`. Tenant operational collections belong to the tenant and are represented separately by `SettlementProfile` and `OperationalPayment`.
+
+Tenants never provide Paystack secret credentials. An organization administrator verifies a bank account in Workspace Settings. The server creates or updates a Paystack subaccount and retains only its provider reference, bank identity, account name, and last four account digits. Tenant-facing copy calls this a Settlement Account.
+
+Fleet drivers can pay a configured daily or weekly vehicle remittance or an active Work & Pay instalment from their assignment-scoped workspace. The server re-resolves the active driver, assigned vehicle, active contract, amount, currency, organization, and Settlement Account. Existing manual collection flows remain supported.
+
+Operational references use the reserved `op_` namespace. Paystack checkout includes the organization subaccount. The signed webhook and server-to-server verification are authoritative. A PostgreSQL advisory transaction lock and provider-reference unique constraint prevent duplicate confirmation. The browser callback can accelerate verification but cannot assert success.
+
+Confirmation approves the pending Fleet submission, creates the verified Fleet ledger payment, updates Work & Pay balances, creates a receipt number, writes tenant audit events, and calls the shared Accounting posting contract. Only confirmed payments post to Accounting. If downstream processing fails after Paystack confirms money, external success remains stored and reconciliation is marked `NEEDS_RETRY`.
+
+Full account numbers and Paystack secrets are not persisted. Amount, currency, organization, assignment, beneficiary, subaccount, and callback URL are server-derived. Platform subscription and tenant operational payments use separate records and flows. Authorized Fleet managers see reconciliation data scoped to their organization.
+
+Installment, POS, Hotel, School, Hostel, Pharmacy, and Hospital payment purposes are reserved for later source-specific adapters. Vehicle-owner settlement, platform fees, and configurable gateway-fee bearing are deferred. Version 1 uses organization settlement with no Rock Frost platform fee.
+
+Production requires `PAYSTACK_SECRET_KEY`, `PAYSTACK_PUBLIC_KEY`, and the canonical tenant application origin. Configure the live webhook as `https://app.rockfrostgroup.com/api/payments/paystack/webhook`. Confirm that Paystack Ghana has enabled split/subaccount settlement and bank resolution before enabling customer Online Collections.
