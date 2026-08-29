@@ -14,7 +14,7 @@ import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
 import { uploadCompanyLogo, updateWorkspaceSettings, saveSettlementAccount } from "./actions";
-import { getSettlementProfile } from "@/lib/payments/operational";
+import { getSettlementProfile, settlementStatusLabel } from "@/lib/payments/operational";
 
 const ERROR_MESSAGES: Record<string, string> = {
   image: "Choose a JPG, PNG, or WebP logo no larger than 1 MB.",
@@ -78,7 +78,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
       <Card>
         <CardHeader><div className="flex items-center gap-2"><CreditCard className="size-5 text-muted-foreground" /><CardTitle>Payments and online collections</CardTitle></div><CardDescription>Connect the organization bank account that should receive operational payments. Rock Frost uses its secure Paystack integration to route collections. Your Paystack credentials are never required.</CardDescription></CardHeader>
         <CardContent className="space-y-4">
-          {settlement ? <div className="grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-3"><div><p className="text-muted-foreground">Bank</p><p className="font-medium">{settlement.settlementBankName}</p></div><div><p className="text-muted-foreground">Account</p><p className="font-medium">•••• {settlement.accountLast4}</p></div><div><p className="text-muted-foreground">Status</p><p className="font-medium">{settlement.status === "ACTIVE" ? "Verified" : settlement.status}</p></div><div className="sm:col-span-3"><p className="text-muted-foreground">Account name</p><p className="font-medium">{settlement.accountName}</p></div></div> : null}
+          {settlement ? <div className="grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-3"><div><p className="text-muted-foreground">Bank</p><p className="font-medium">{settlement.settlementBankName}</p></div><div><p className="text-muted-foreground">Account</p><p className="font-medium">•••• {settlement.accountLast4}</p></div><div><p className="text-muted-foreground">Status</p><p className="font-medium">{settlementStatusLabel(settlement.status)}</p></div><div className="sm:col-span-3"><p className="text-muted-foreground">Account name</p><p className="font-medium">{settlement.accountName}</p></div></div> : null}
           <form action={saveSettlementAccount} className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2"><Label htmlFor="bankName">Bank name</Label><Input id="bankName" name="bankName" placeholder="Ecobank Ghana" defaultValue={settlement?.settlementBankName} required /></div>
             <div className="space-y-2"><Label htmlFor="bankCode">Paystack bank code</Label><Input id="bankCode" name="bankCode" placeholder="Bank code" defaultValue={settlement?.settlementBankCode} required /></div>

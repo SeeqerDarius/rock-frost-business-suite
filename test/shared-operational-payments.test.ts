@@ -45,8 +45,17 @@ describe("shared operational payments architecture", () => {
 
   it("posts Accounting only after provider confirmation and retains recovery state", () => {
     const confirmationBlock = service.slice(service.indexOf("export async function confirmOperationalPayment"));
-    expect(confirmationBlock.indexOf("status: \"SUCCESS\"")).toBeLessThan(confirmationBlock.indexOf("await postModuleRevenue"));
+    expect(confirmationBlock.indexOf("status: \"SUCCESS\"")).toBeLessThan(confirmationBlock.indexOf("reconcileOperationalPayment("));
+    expect(service).toContain("await postModuleRevenue");
     expect(service).toContain('reconciliationStatus: "NEEDS_RETRY"');
     expect(service).toContain('reconciliationStatus: accounting.posted');
+  });
+
+  it("retries reconciliation through the same shared helper the webhook path uses, never a duplicate implementation", () => {
+    const reconcileBody = service.slice(service.indexOf("async function reconcileOperationalPayment"), service.indexOf("export async function confirmOperationalPayment"));
+    expect(reconcileBody).toContain("await postModuleRevenue");
+    const retryBlock = service.slice(service.indexOf("export async function retryOperationalPaymentReconciliation"));
+    expect(retryBlock).toContain("await reconcileOperationalPayment(payment)");
+    expect(retryBlock).not.toContain("await postModuleRevenue");
   });
 });
