@@ -28,6 +28,35 @@ function NoData({ label }: { label: string }) {
 }
 
 /**
+ * Recharts renders to an unlabeled <svg> with no data exposed to assistive
+ * tech - this sr-only table is the only way a screen reader user gets the
+ * actual numbers behind a chart. Built from the same data already passed to
+ * the visual chart, so every existing caller gets this for free with no
+ * prop or call-site change.
+ */
+function ChartDataTable({ caption, columns, rows }: { caption: string; columns: string[]; rows: { label: string; values: string[] }[] }) {
+  return (
+    <table className="sr-only">
+      <caption>{caption}</caption>
+      <thead>
+        <tr>
+          <th scope="col" />
+          {columns.map((column) => <th key={column} scope="col">{column}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.label}>
+            <th scope="row">{row.label}</th>
+            {row.values.map((value, i) => <td key={columns[i]}>{value}</td>)}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/**
  * Formats a tooltip value as money directly inside this client component,
  * rather than accepting a formatter function as a prop - a function passed
  * from a Server Component parent can't cross the client-component boundary
@@ -48,27 +77,34 @@ export function TrendAreaChart({
   if (!hasData) return <NoData label="No activity yet for this period." />;
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
-      <AreaChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
-        <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
-        <Tooltip
-          contentStyle={tooltipStyle}
-          formatter={((value: number, name: string) => [formatMoney(value, currency), name]) as (...args: unknown[]) => [string, string]}
-        />
-        {series.map((s, i) => (
-          <Area
-            key={s.key}
-            type="monotone"
-            dataKey={s.key}
-            name={s.label}
-            stroke={CHART_COLORS[i % CHART_COLORS.length]}
-            fill={CHART_COLORS[i % CHART_COLORS.length]}
-            fillOpacity={0.15}
-            strokeWidth={2}
+    <>
+      <ResponsiveContainer width="100%" height={220}>
+        <AreaChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
+          <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
+          <Tooltip
+            contentStyle={tooltipStyle}
+            formatter={((value: number, name: string) => [formatMoney(value, currency), name]) as (...args: unknown[]) => [string, string]}
           />
-        ))}
-      </AreaChart>
-    </ResponsiveContainer>
+          {series.map((s, i) => (
+            <Area
+              key={s.key}
+              type="monotone"
+              dataKey={s.key}
+              name={s.label}
+              stroke={CHART_COLORS[i % CHART_COLORS.length]}
+              fill={CHART_COLORS[i % CHART_COLORS.length]}
+              fillOpacity={0.15}
+              strokeWidth={2}
+            />
+          ))}
+        </AreaChart>
+      </ResponsiveContainer>
+      <ChartDataTable
+        caption={`Trend data: ${series.map((s) => s.label).join(", ")}`}
+        columns={series.map((s) => s.label)}
+        rows={data.map((row) => ({ label: String(row.label), values: series.map((s) => formatMoney(Number(row[s.key]), currency)) }))}
+      />
+    </>
   );
 }
 
@@ -150,6 +186,11 @@ export function BreakdownDonutChart({
           </li>
         ))}
       </ul>
+      <ChartDataTable
+        caption="Breakdown data"
+        columns={["Value", "Share"]}
+        rows={data.map((d) => ({ label: d.label, values: [formatValue(d.value), `${Math.round((d.value / total) * 100)}%`] }))}
+      />
     </div>
   );
 }

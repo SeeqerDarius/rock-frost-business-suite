@@ -1,6 +1,16 @@
 # Architecture & Tooling Decisions
 
-## 2026-08-29 — A Driver's vehicle-remittance and Work & Pay trends are shown as two separate series, never summed
+## 2026-08-29 - Fleet's due-date/overdue/on-time-rate concept is derived entirely at read time, with no schema change
+
+**Decision:** `src/modules/fleet/driver-obligations.ts` computes "amount due now," "overdue amount," "next due date," and "on-time rate" purely from `FleetDriverPaymentSubmission` history, anchored on the same periodic (DAILY/WEEKLY) schedule `submitFleetDriverPayment` already uses - nothing is stored. `computeObligationSummary()` is a pure function (no DB access) taking a schedule type, an expected amount, and a caller-supplied list of submissions; `getFleetDriverObligations()` is the thin DB-facing wrapper that fetches a bounded 60-day window and calls it once per vehicle and once per Work & Pay contract. On-time is keyed on the driver's own `paymentDate`, never the manager's later review/approval timestamp.
+
+**Why:** Fleet has no due-date column anywhere - `FleetVehicle.salesTargetPeriod`/`salesTargetAmount` and `FleetWorkAndPayContract.paymentSchedule`/`scheduledPaymentAmount` are both purely periodic. Installment's closest analog (`getEffectiveAccountStatus`, a whole-contract `expectedEndDate` vs. now) doesn't transfer, since Fleet's obligation recurs every period rather than having one lifetime end date. Accounting's `AccountingInvoice.dueDate` + `sweepOverdueInvoices()` sweep-on-read pattern is closer in spirit but assumes a real stored due date to sweep - Fleet has nothing to sweep, so the read-time derivation has to reconstruct the schedule from scratch using the same `salesPeriod()`-shaped boundary math already proven correct in `submitFleetDriverPayment`. Keying on-time on `paymentDate` rather than review time was a deliberate call: a manager who is slow to approve a submission must never cost the driver their on-time record for something entirely outside their control.
+
+**How the boundary is preserved:** The trailing window is fixed at 6 periods (6 days for DAILY, 6 weeks for WEEKLY) rather than an unbounded historical scan, matching the existing bounded-window convention already used for Fleet's own trend charts. A period only becomes "overdue" once the calendar day after `periodEnd` has actually started (`periodDeadline = periodEnd + 1 day`) - checking `now > periodEnd` directly would have marked every DAILY obligation "overdue" for the entire remainder of its own due day, since `periodEnd` for a daily period is midnight of that same day, not end-of-day.
+
+**Not done (and deliberately so):** No new Prisma model or column - this stays a pure derived-at-read-time layer specifically to avoid a migration for a feature that has no need to persist anything. No cron/sweep job either, unlike Accounting's invoice sweep - there's nothing stored to go stale, so every read is already fresh.
+
+## 2026-08-29 - A Driver's vehicle-remittance and Work & Pay trends are shown as two separate series, never summed
 
 **Decision:** `getFleetDriverTrends(organizationId, { vehicleIds, contractIds })` (`src/modules/fleet/service.ts`) returns `{ vehicleRevenue, workAndPay }` as two independent trend series, each bucketed by day/week/month like every other trend chart in the app. The Driver Workspace renders them as two tabs, and only shows the Work & Pay tab at all when the driver actually holds an active contract.
 

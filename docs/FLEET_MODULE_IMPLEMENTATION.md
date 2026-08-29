@@ -10,6 +10,10 @@ The Fleet module is implemented as a tenant-scoped module in Rock Frost Business
 
 The responsive Next.js web application is the system of record. Its server-action/service boundaries can later support native Android and iOS clients through authenticated route handlers without changing the domain model.
 
+## Driver Workspace redesign (in progress, 2026-08-29)
+
+A complete UX/IA redesign of the Driver Workspace and manager Drivers roster is underway, shipping phase by phase (see `docs/DECISIONS.md`'s 2026-08-29 entry for the due-date/overdue derivation this depends on). **Phase 1 (backend foundations) has shipped**: `src/modules/fleet/driver-obligations.ts` (`computeObligationSummary`/`getFleetDriverObligations`) derives amount-due-now, overdue amount, pending-verification amount, and on-time rate per vehicle and per Work & Pay contract, entirely at read time with no schema change. `src/components/ui/progress.tsx` is a new shared, accessible progress-bar primitive. `src/components/dashboard/charts.tsx`'s trend/donut charts now carry an `sr-only` accessible data table alongside the visual chart. The Driver Workspace's own information architecture (Overview/Payments/Work & Pay/Vehicle/Maintenance/Activity tabs) and the manager roster redesign are the next phases - this section will be rewritten once they ship, since large parts of the "Access control" and "Financial behavior" sections below describe the pre-redesign interface.
+
 ## Delivered capabilities
 
 - Fleet overview dashboard with vehicles, drivers, owners, maintenance, document expiry, pending remittances, weekly and monthly verified revenue, outstanding Work & Pay balances, and recent payments

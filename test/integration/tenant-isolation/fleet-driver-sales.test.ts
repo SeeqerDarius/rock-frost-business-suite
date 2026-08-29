@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as fleet from "@/modules/fleet/service";
+import { getFleetDriverObligations } from "@/modules/fleet/driver-obligations";
 import { testDb } from "../setup/db";
 import { cleanupTestOrg, createTestOrg, type TestOrg } from "../setup/fixtures";
 
@@ -225,6 +226,56 @@ describe("Fleet driver remittances and owner access (real Postgres)", () => {
     } finally {
       await testDb.fleetVehicle.update({ where: { id: assignedVehicleId }, data: { assignedDriverId: contract.driverId } });
     }
+  });
+
+  it("derives an obligation summary from real submission history that matches actual approved/pending amounts", async () => {
+    const obligationDriverUser = await testDb.user.create({ data: { name: "Obligation Driver", email: `obligation-${org.organizationId}@example.invalid`, status: "ACTIVE" } });
+    const obligationDriver = await fleet.createFleetDriver(org.organizationId, { name: "Obligation Driver", userId: obligationDriverUser.id });
+    const obligationVehicle = await fleet.createFleetVehicle(org.organizationId, {
+      assetTag: "DRV-OBLIGATION-1",
+      plateNumber: "DRV-3003",
+      assignedDriverId: obligationDriver.id,
+      status: "ASSIGNED",
+      salesTargetPeriod: "DAILY",
+      salesTargetAmount: "150.00",
+    }, org.userId);
+
+    const now = new Date("2026-08-26T10:00:00.000Z");
+    const paidPeriod = new Date("2026-08-25T00:00:00.000Z");
+    const partialPeriod = new Date("2026-08-26T00:00:00.000Z");
+
+    const paidSubmission = await fleet.submitFleetDriverPayment(org.organizationId, obligationDriverUser.id, {
+      vehicleId: obligationVehicle.id,
+      submissionType: "DAILY_SALES",
+      periodStart: paidPeriod,
+      amount: "150.00",
+      paymentDate: paidPeriod,
+      paymentMethod: "CASH",
+    });
+    await fleet.reviewFleetDriverPaymentSubmission(org.organizationId, paidSubmission.id, org.userId, true);
+
+    await fleet.submitFleetDriverPayment(org.organizationId, obligationDriverUser.id, {
+      vehicleId: obligationVehicle.id,
+      submissionType: "DAILY_SALES",
+      periodStart: partialPeriod,
+      amount: "90.00",
+      paymentDate: partialPeriod,
+      paymentMethod: "CASH",
+    });
+
+    const driverWithVehicles = await fleet.getFleetDriverWorkspace(org.organizationId, obligationDriverUser.id);
+    const obligations = await getFleetDriverObligations(org.organizationId, driverWithVehicles!.assignedVehicles, now);
+
+    const vehicleObligation = obligations.vehicles.find((v) => v.vehicleId === obligationVehicle.id);
+    expect(vehicleObligation?.summary?.pendingAmount).toBe(90);
+    expect(vehicleObligation?.summary?.dueNow).toBe(150); // today's own period is still unsubmitted and open
+    expect(obligations.totals.pendingAmount).toBe(90);
+
+    const paidPeriodSummary = vehicleObligation?.summary?.periods.find((p) => p.periodStart.getTime() === paidPeriod.getTime());
+    expect(paidPeriodSummary?.isPaid).toBe(true);
+    expect(paidPeriodSummary?.isOverdue).toBe(false);
+
+    await testDb.user.delete({ where: { id: obligationDriverUser.id } });
   });
 
   it("seeds a least-privilege Vehicle Owner role and removes organization-wide Fleet view from Driver", async () => {
