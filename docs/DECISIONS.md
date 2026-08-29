@@ -1,5 +1,13 @@
 # Architecture & Tooling Decisions
 
+## 2026-08-29 - The manual-payment collection form only shows a dropdown where there's a real choice
+
+**Decision:** In `DriverCollectionForm` (`src/app/app/fleet/driver-portal/collection-form.tsx`), the "Assigned vehicle," "Payment obligation," and "Active Work & Pay contract" fields render as a plain read-only value (backed by a hidden input for form submission) whenever there is only one eligible option, and fall back to the existing `<select>` only when there are genuinely two or more.
+
+**Why:** Direct user feedback on the shipped form: a driver with one vehicle and one obligation type saw two dropdowns styled with a chevron, implying a choice, when there was nothing to choose. In practice a driver is assigned exactly one vehicle, so the vehicle field almost always has one option; the obligation-type field has one option unless that vehicle also has an active Work & Pay contract; the contract field has one option unless a vehicle somehow has more than one active contract. A dropdown that always resolves to its only option is worse than plain text - it invites an unnecessary click and implies a decision the driver isn't actually making.
+
+**How it's applied:** Each of the three fields checks its own option count (`eligibleVehicles.length > 1`, `typeOptions.length > 1`, `vehicle.contracts.length > 1`) rather than assuming a fixed cardinality - the component's existing types already model vehicles and contracts as arrays (matching how the rest of the Driver Workspace treats them elsewhere), so the fix degrades gracefully to a dropdown again if a driver ever legitimately has more than one option, rather than hard-coding "always exactly one" and breaking if that assumption changes.
+
 ## 2026-08-29 - Trend charts filter on a new `existedYet` period flag, not just `existsSince`
 
 **Decision:** `ObligationPeriod` (`src/modules/fleet/driver-obligations.ts`) gained an `existedYet: boolean` field, and both Phase 4 trend charts (due-vs-paid in `ObligationCard`, balance-remaining-over-time in the Work & Pay tab) filter their chart data on it before building series, in addition to whatever the existing `isOverdue`/`isOnTime` guarding already did.

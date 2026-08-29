@@ -46,51 +46,72 @@ export function DriverCollectionForm({ vehicles, currency }: { vehicles: DriverV
     <form action={submitDriverPayment} className="grid gap-5 md:grid-cols-2">
       <div>
         <Label htmlFor="vehicleId">Assigned vehicle</Label>
-        <select
-          id="vehicleId"
-          name="vehicleId"
-          value={vehicleId}
-          onChange={(event) => {
-            const nextVehicle = eligibleVehicles.find((item) => item.id === event.target.value);
-            setVehicleId(event.target.value);
-            setContractId(nextVehicle?.contracts[0]?.id ?? "");
-            setSubmissionType(
-              nextVehicle?.salesTargetPeriod === "DAILY"
-                ? "DAILY_SALES"
-                : nextVehicle?.salesTargetPeriod === "WEEKLY"
-                  ? "WEEKLY_SALES"
-                  : "WORK_AND_PAY",
-            );
-          }}
-          className="mt-2 h-11 w-full rounded-md border bg-background px-3"
-          required
-        >
-          {eligibleVehicles.map((item) => <option key={item.id} value={item.id}>{item.plateNumber}</option>)}
-        </select>
+        {eligibleVehicles.length > 1 ? (
+          <select
+            id="vehicleId"
+            name="vehicleId"
+            value={vehicleId}
+            onChange={(event) => {
+              const nextVehicle = eligibleVehicles.find((item) => item.id === event.target.value);
+              setVehicleId(event.target.value);
+              setContractId(nextVehicle?.contracts[0]?.id ?? "");
+              setSubmissionType(
+                nextVehicle?.salesTargetPeriod === "DAILY"
+                  ? "DAILY_SALES"
+                  : nextVehicle?.salesTargetPeriod === "WEEKLY"
+                    ? "WEEKLY_SALES"
+                    : "WORK_AND_PAY",
+              );
+            }}
+            className="mt-2 h-11 w-full rounded-md border bg-background px-3"
+            required
+          >
+            {eligibleVehicles.map((item) => <option key={item.id} value={item.id}>{item.plateNumber}</option>)}
+          </select>
+        ) : (
+          <>
+            <input type="hidden" name="vehicleId" value={vehicleId} />
+            <p id="vehicleId" className="mt-2 flex h-11 items-center rounded-md border bg-muted/30 px-3 font-medium">{vehicle?.plateNumber}</p>
+          </>
+        )}
       </div>
       <div>
         <Label htmlFor="submissionType">Payment obligation</Label>
-        <select
-          id="submissionType"
-          name="submissionType"
-          value={availableType}
-          onChange={(event) => setSubmissionType(event.target.value)}
-          className="mt-2 h-11 w-full rounded-md border bg-background px-3"
-          required
-        >
-          {typeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
+        {typeOptions.length > 1 ? (
+          <select
+            id="submissionType"
+            name="submissionType"
+            value={availableType}
+            onChange={(event) => setSubmissionType(event.target.value)}
+            className="mt-2 h-11 w-full rounded-md border bg-background px-3"
+            required
+          >
+            {typeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        ) : (
+          <>
+            <input type="hidden" name="submissionType" value={availableType} />
+            <p id="submissionType" className="mt-2 flex h-11 items-center rounded-md border bg-muted/30 px-3 font-medium">{typeOptions[0]?.label}</p>
+          </>
+        )}
       </div>
       {availableType === "WORK_AND_PAY" ? (
         <div className="md:col-span-2">
           <Label htmlFor="contractId">Active Work & Pay contract</Label>
-          <select id="contractId" name="contractId" value={contract?.id ?? ""} onChange={(event) => setContractId(event.target.value)} className="mt-2 h-11 w-full rounded-md border bg-background px-3" required>
-            {vehicle?.contracts.map((contract) => (
-              <option key={contract.id} value={contract.id}>
-                {contract.name} ({currency} {Number(contract.scheduledAmount).toFixed(2)} per {contract.paymentSchedule === "DAILY" ? "day" : "week"})
-              </option>
-            ))}
-          </select>
+          {(vehicle?.contracts.length ?? 0) > 1 ? (
+            <select id="contractId" name="contractId" value={contract?.id ?? ""} onChange={(event) => setContractId(event.target.value)} className="mt-2 h-11 w-full rounded-md border bg-background px-3" required>
+              {vehicle?.contracts.map((contract) => (
+                <option key={contract.id} value={contract.id}>
+                  {contract.name} ({currency} {Number(contract.scheduledAmount).toFixed(2)} per {contract.paymentSchedule === "DAILY" ? "day" : "week"})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <>
+              <input type="hidden" name="contractId" value={contract?.id ?? ""} />
+              <p id="contractId" className="mt-2 flex h-11 items-center rounded-md border bg-muted/30 px-3 font-medium">{contract?.name}</p>
+            </>
+          )}
           <p className="mt-2 text-sm text-muted-foreground">Required instalment: {currency} {Number(contract?.scheduledAmount ?? 0).toFixed(2)} per {contract?.paymentSchedule === "DAILY" ? "day" : "week"}.</p>
         </div>
       ) : (
