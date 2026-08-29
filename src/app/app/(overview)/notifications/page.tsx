@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/lib/db";
 import { requireCurrentTenant } from "@/lib/tenant";
+import { isFleetDriverRole } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { markNotificationRead, markAllNotificationsRead } from "./actions";
 
@@ -16,7 +17,11 @@ export default async function WorkspaceNotificationsPage() {
   const notifications = await db.notification.findMany({
     where: {
       organizationId: tenant.organizationId,
-      OR: [{ userId }, { userId: null }],
+      // A Driver only ever sees notifications addressed to them - payment
+      // and maintenance updates on their own submissions - never an
+      // org-wide broadcast (a document-renewal reminder, for example) that
+      // isn't theirs to act on. Every other role keeps seeing both.
+      ...(isFleetDriverRole(tenant) ? { userId } : { OR: [{ userId }, { userId: null }] }),
     },
     orderBy: { createdAt: "desc" },
     take: 50,

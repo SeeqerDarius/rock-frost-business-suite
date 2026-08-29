@@ -11,12 +11,35 @@ import { PeriodicTrendChart, BreakdownDonutChart } from "@/components/dashboard/
 import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry";
 import { productGroupKeys } from "@/platform/modules/product-groups";
 import { dashboardWidgets } from "@/platform/modules/dashboard-widgets";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { getCurrentTenant } from "@/lib/tenant";
 import { isFleetDriverRole } from "@/lib/auth/permissions";
 import { getRevenueInsights } from "@/lib/accounting-integration";
 
-export default async function OrganizationDashboardPage() {
-  const tenant = await requireCurrentTenant();
+const ERROR_MESSAGES: Record<string, string> = {
+  "no-organization-access": "Your account isn't assigned to an organization yet. Contact an administrator to be added to a workspace.",
+  forbidden: "You don't have access to that page.",
+  "module-unavailable": "That module isn't available for your account.",
+};
+
+export default async function OrganizationDashboardPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const { error } = await searchParams;
+  // getCurrentTenant() (not requireCurrentTenant()) so a tenant-resolution
+  // failure degrades to this same message instead of throwing - this page is
+  // the fallback landing target several guards (requireModuleAccess,
+  // requirePlatformOperator) redirect to on that exact failure, so it must
+  // survive a null tenant rather than re-throwing the error those guards
+  // were trying to route around.
+  const tenant = await getCurrentTenant();
+  if (!tenant) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Overview" description="A summary of the modules enabled for your organization." />
+        <p className="rounded-md border p-4 text-sm text-muted-foreground">
+          {error && ERROR_MESSAGES[error] ? ERROR_MESSAGES[error] : "Your account isn't assigned to an organization yet. Contact an administrator to be added to a workspace."}
+        </p>
+      </div>
+    );
+  }
   // A Driver has no business seeing organization-wide revenue - this page's
   // own Revenue insights card sums every module's posted revenue with no
   // role scoping. /app/fleet/driver-portal is that role's real home (already

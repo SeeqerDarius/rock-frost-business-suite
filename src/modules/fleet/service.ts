@@ -449,8 +449,9 @@ export async function submitFleetDriverPayment(
   });
   if (existing) throw new FleetDuplicateSubmissionError("A remittance for this vehicle and payment period already exists.");
 
+  let submission;
   try {
-    return await db.fleetDriverPaymentSubmission.create({
+    submission = await db.fleetDriverPaymentSubmission.create({
       data: {
         organizationId,
         driverId: driver.id,
@@ -473,6 +474,22 @@ export async function submitFleetDriverPayment(
     }
     throw error;
   }
+  // Notifying the driver is not a condition of the submission's own success -
+  // a failure here must never surface as a duplicate-submission error, so it
+  // sits outside the try/catch above rather than inside it.
+  await db.notification.create({
+    data: {
+      organizationId,
+      userId,
+      type: "FLEET_DRIVER_PAYMENT_SUBMITTED",
+      title: `Payment recorded: ${vehicle.plateNumber}`,
+      message: `Your ${amount.toString()} payment for ${vehicle.plateNumber} has been recorded and sent for manager verification.`,
+      status: "SENT",
+      sentAt: new Date(),
+      metadata: { submissionId: submission.id, vehicleId: vehicle.id, amount: amount.toString() },
+    },
+  });
+  return submission;
 }
 
 export function listFleetDriverPaymentSubmissions(organizationId: string) {
@@ -488,7 +505,7 @@ export async function reviewFleetDriverPaymentSubmission(organizationId: string,
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fleet-driver-submission:${organizationId}:${id}`}))`;
     const submission = await tx.fleetDriverPaymentSubmission.findFirst({
       where: { id, organizationId, status: "PENDING" },
-      include: { vehicle: true, contract: true },
+      include: { vehicle: true, contract: true, driver: true },
     });
     if (!submission) throw new NotFoundError("Pending submission not found.");
     let fleetPaymentId: string | null = null;
@@ -557,6 +574,23 @@ export async function reviewFleetDriverPaymentSubmission(organizationId: string,
         paymentId: fleetPaymentId,
       },
     }, tx);
+    if (submission.driver.userId) {
+      const vehicleLabel = submission.vehicle?.plateNumber ?? "your vehicle";
+      await tx.notification.create({
+        data: {
+          organizationId,
+          userId: submission.driver.userId,
+          type: approved ? "FLEET_DRIVER_PAYMENT_APPROVED" : "FLEET_DRIVER_PAYMENT_REJECTED",
+          title: approved ? `Payment approved: ${vehicleLabel}` : `Payment rejected: ${vehicleLabel}`,
+          message: approved
+            ? `Your ${submission.amount.toString()} payment for ${vehicleLabel} has been verified.`
+            : `Your ${submission.amount.toString()} payment for ${vehicleLabel} was rejected.${rejectionReason ? ` Reason: ${rejectionReason}` : ""}`,
+          status: "SENT",
+          sentAt: new Date(),
+          metadata: { submissionId: submission.id, vehicleId: submission.vehicleId, amount: submission.amount.toString() },
+        },
+      });
+    }
     return reviewedSubmission;
   });
 }
@@ -802,7 +836,8 @@ export async function createFleetMaintenanceRequest(
     photo?: { fileName: string; mimeType: string; size: number; dataUrl: string } | null;
   }
 ) {
-  await requireVehicle(organizationId, data.vehicleId);
+  const vehicle = await db.fleetVehicle.findFirst({ where: { id: data.vehicleId, organizationId } });
+  if (!vehicle) throw new NotFoundError("Vehicle not found.");
   return db.$transaction(async (tx) => {
     const { photo, ...requestData } = data;
     const request = await tx.fleetMaintenanceRequest.create({ data: { organizationId, ...requestData } });
@@ -832,6 +867,20 @@ export async function createFleetMaintenanceRequest(
         note: data.faultDescription,
       },
     });
+    if (data.requestedById) {
+      await tx.notification.create({
+        data: {
+          organizationId,
+          userId: data.requestedById,
+          type: "FLEET_MAINTENANCE_SUBMITTED",
+          title: `Maintenance reported: ${vehicle.plateNumber}`,
+          message: `Your report for ${vehicle.plateNumber} has been submitted for review.`,
+          status: "SENT",
+          sentAt: new Date(),
+          metadata: { maintenanceRequestId: request.id, vehicleId: vehicle.id },
+        },
+      });
+    }
     return request;
   });
 }
@@ -883,7 +932,7 @@ export async function managerReviewMaintenanceRequest(
   },
 ) {
   return db.$transaction(async (tx) => {
-    const request = await tx.fleetMaintenanceRequest.findFirst({ where: { id, organizationId } });
+    const request = await tx.fleetMaintenanceRequest.findFirst({ where: { id, organizationId }, include: { vehicle: true } });
     if (!request) throw new NotFoundError("Maintenance request not found.");
     if (!["REPORTED", "REVIEWING"].includes(request.progressStatus)) {
       throw new InvalidMaintenanceTransitionError("Only newly reported requests can be reviewed.");
@@ -909,6 +958,25 @@ export async function managerReviewMaintenanceRequest(
         metadata: { approvalStatus, ownerApprovalRequired: data.ownerApprovalRequired },
       },
     });
+    if (request.requestedById) {
+      const message = !data.approved
+        ? `Your maintenance report for ${request.vehicle.plateNumber} was declined.${data.fleetManagerReview ? ` Reason: ${data.fleetManagerReview}` : ""}`
+        : data.ownerApprovalRequired
+          ? `Your maintenance report for ${request.vehicle.plateNumber} is approved and now awaiting the vehicle owner's sign-off.`
+          : `Your maintenance report for ${request.vehicle.plateNumber} has been approved. A mechanic will be assigned.`;
+      await tx.notification.create({
+        data: {
+          organizationId,
+          userId: request.requestedById,
+          type: data.approved ? "FLEET_MAINTENANCE_APPROVED" : "FLEET_MAINTENANCE_REJECTED",
+          title: data.approved ? `Maintenance approved: ${request.vehicle.plateNumber}` : `Maintenance declined: ${request.vehicle.plateNumber}`,
+          message,
+          status: "SENT",
+          sentAt: new Date(),
+          metadata: { maintenanceRequestId: id, vehicleId: request.vehicleId },
+        },
+      });
+    }
   });
 }
 
@@ -1040,6 +1108,20 @@ export async function verifyMaintenanceCompletion(organizationId: string, id: st
         metadata: { maintenanceRequestId: id, vehicleId: request.vehicleId, ownerId: request.vehicle.ownerId },
       },
     });
+    if (request.requestedById && request.requestedById !== request.vehicle.owner?.userId) {
+      await tx.notification.create({
+        data: {
+          organizationId,
+          userId: request.requestedById,
+          type: "FLEET_MAINTENANCE_COMPLETED",
+          title: `Repair completed: ${request.vehicle.plateNumber}`,
+          message: `The issue you reported for ${request.vehicle.plateNumber} has been repaired and verified. Your vehicle is ready.`,
+          status: "SENT",
+          sentAt: now,
+          metadata: { maintenanceRequestId: id, vehicleId: request.vehicleId },
+        },
+      });
+    }
   });
 }
 

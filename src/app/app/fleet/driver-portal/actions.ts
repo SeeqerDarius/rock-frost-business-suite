@@ -7,6 +7,8 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import {
   submitFleetDriverPayment,
+  createFleetMaintenanceRequest,
+  canUserReportFleetVehicle,
   NotFoundError,
   InvalidPaymentAmountError,
   FleetDuplicateSubmissionError,
@@ -17,6 +19,7 @@ import {
 import { logAuditEvent } from "@/lib/audit";
 import type { FleetDriverSubmissionType } from "@prisma/client";
 import { initializeFleetOperationalPayment, SettlementUnavailableError } from "@/lib/payments/operational";
+import { fleetMaintenancePhotoData } from "@/lib/fleet-maintenance-photo";
 
 const clean = (value: FormDataEntryValue | null) => String(value ?? "").trim() || null;
 
@@ -59,6 +62,46 @@ export async function submitDriverPayment(formData: FormData): Promise<void> {
   }
   revalidatePath("/app/fleet/driver-portal");
   redirect("/app/fleet/driver-portal?saved=1");
+}
+
+export async function reportMaintenanceFromDriverPortal(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("fleet");
+  if (!hasPermission(tenant, PERMISSIONS.FLEET_DRIVER_SELF_SERVICE)) redirect("/app/fleet/driver-portal?tab=maintenance&error=forbidden");
+  const session = await getServerAuthSession();
+  if (!session?.user?.id) redirect("/login");
+  const vehicleId = clean(formData.get("vehicleId"));
+  const faultDescription = clean(formData.get("faultDescription"));
+  if (!vehicleId || !faultDescription) redirect("/app/fleet/driver-portal?tab=maintenance&error=missing-fields");
+  if (!(await canUserReportFleetVehicle(tenant.organizationId, vehicleId, session.user.id))) {
+    redirect("/app/fleet/driver-portal?tab=maintenance&error=not-found");
+  }
+  const photoFile = formData.get("photo");
+  try {
+    const photo = photoFile instanceof File ? await fleetMaintenancePhotoData(photoFile) : null;
+    const request = await createFleetMaintenanceRequest(tenant.organizationId, {
+      vehicleId,
+      faultDescription,
+      requestedById: session.user.id,
+      photo,
+    });
+    await logAuditEvent({
+      organizationId: tenant.organizationId,
+      userId: session.user.id,
+      module: "fleet",
+      action: "fleet.maintenance.submitted",
+      entityName: "FleetMaintenanceRequest",
+      entityId: request.id,
+      metadata: { vehicleId, hasPhoto: Boolean(photo) },
+    });
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/fleet/driver-portal?tab=maintenance&error=not-found");
+    if (error instanceof Error && error.message === "invalid-maintenance-photo") {
+      redirect("/app/fleet/driver-portal?tab=maintenance&error=invalid-photo");
+    }
+    throw error;
+  }
+  revalidatePath("/app/fleet/driver-portal");
+  redirect("/app/fleet/driver-portal?tab=maintenance&maintenance-saved=1");
 }
 
 export async function payFleetObligationOnline(formData: FormData): Promise<void> {

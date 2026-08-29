@@ -1,13 +1,20 @@
+import { redirect } from "next/navigation";
 import { Lock } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { getFleetNavigationForTenant } from "@/modules/fleet/navigation-access";
 import { getFullModuleNavigation } from "@/platform/modules/full-navigation";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { getCurrentTenant } from "@/lib/tenant";
 import { canAccessModule, isFleetDriverRole } from "@/lib/auth/permissions";
 
 export default async function FleetLayout({ children }: { children: React.ReactNode }) {
-  const tenant = await requireCurrentTenant();
+  // getCurrentTenant() (not requireCurrentTenant()) - the root layout
+  // (src/app/app/layout.tsx) already re-checked this moments earlier for the
+  // same request, so a null result here reflects a transient tenant-lookup
+  // failure rather than a real "no access" state; redirecting to sign back
+  // in recovers cleanly instead of throwing a raw 500.
+  const tenant = await getCurrentTenant();
+  if (!tenant) redirect("/login");
 
   if (!canAccessModule(tenant, "fleet")) {
     return (
