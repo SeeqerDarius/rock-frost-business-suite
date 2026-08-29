@@ -120,21 +120,22 @@ export default async function DriverPortalPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader title={`Welcome, ${driver.name}`} description="Your assigned vehicle, balance, and what's next - kept simple." />
+      <PageHeader title={`Welcome, ${driver.name}`} description="Your vehicle, balance, and revenue at a glance - then quick actions below." />
       {savedMessage ? <p role="status" className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-800 dark:text-emerald-300"><CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />{savedMessage}</p> : null}
       {error && ERROR_MESSAGES[error] ? <p role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />{ERROR_MESSAGES[error]}</p> : null}
 
-      <section aria-label="Workspace summary" className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border bg-card p-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><CarFront className="size-4" aria-hidden="true" />Assigned vehicles</div><p className="mt-2 text-2xl font-semibold">{driver.assignedVehicles.length}</p></div>
-        <div className="rounded-xl border bg-card p-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Clock3 className="size-4" aria-hidden="true" />Awaiting verification</div><p className="mt-2 text-2xl font-semibold">{pendingCount}</p></div>
-        <div className="rounded-xl border bg-card p-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Wrench className="size-4" aria-hidden="true" />Open maintenance</div><p className="mt-2 text-2xl font-semibold">{openMaintenanceCount}</p></div>
-      </section>
+      <section aria-labelledby="overview-heading" className="space-y-4">
+        <h2 id="overview-heading" className="text-lg font-semibold">Overview</h2>
 
-      {driver.assignedVehicles.length === 0 ? (
-        <p className="rounded-md border p-4 text-sm text-muted-foreground">No vehicle is currently assigned to you.</p>
-      ) : (
-        <section aria-labelledby="vehicles-heading" className="space-y-3">
-          <div><h2 id="vehicles-heading" className="text-lg font-semibold">My vehicles</h2><p className="text-sm text-muted-foreground">What&apos;s assigned to you and what you owe, at a glance.</p></div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border bg-card p-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><CarFront className="size-4" aria-hidden="true" />Assigned vehicles</div><p className="mt-2 text-2xl font-semibold">{driver.assignedVehicles.length}</p></div>
+          <div className="rounded-xl border bg-card p-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Clock3 className="size-4" aria-hidden="true" />Awaiting verification</div><p className="mt-2 text-2xl font-semibold">{pendingCount}</p></div>
+          <div className="rounded-xl border bg-card p-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Wrench className="size-4" aria-hidden="true" />Open maintenance</div><p className="mt-2 text-2xl font-semibold">{openMaintenanceCount}</p></div>
+        </div>
+
+        {driver.assignedVehicles.length === 0 ? (
+          <p className="rounded-md border p-4 text-sm text-muted-foreground">No vehicle is currently assigned to you.</p>
+        ) : (
           <div className="grid gap-4 lg:grid-cols-2">
           {driver.assignedVehicles.map((vehicle) => {
             const openMaintenance = vehicle.maintenanceRequests.filter((request) => !["COMPLETED", "CANCELLED"].includes(request.progressStatus));
@@ -174,8 +175,38 @@ export default async function DriverPortalPage({
             );
           })}
           </div>
-        </section>
-      )}
+        )}
+
+        {trends ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>My revenue</CardTitle>
+              <CardDescription>
+                What you&apos;ve remitted from your assigned vehicle{driver.assignedVehicles.length === 1 ? "" : "s"}
+                {hasWorkAndPay ? ", and what you've paid toward your Work & Pay contract" : ""}. Only your own figures, not the organization&apos;s.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {hasWorkAndPay ? (
+                <Tabs defaultValue="vehicle">
+                  <TabsList variant="line">
+                    <TabsTrigger value="vehicle">Vehicle remittance</TabsTrigger>
+                    <TabsTrigger value="contract">Work & Pay</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="vehicle" className="mt-6">
+                    <PeriodicTrendChart data={trends.vehicleRevenue} series={[{ key: "revenue", label: "Remitted" }]} currency={currency} />
+                  </TabsContent>
+                  <TabsContent value="contract" className="mt-6">
+                    <PeriodicTrendChart data={trends.workAndPay} series={[{ key: "revenue", label: "Paid" }]} currency={currency} />
+                  </TabsContent>
+                </Tabs>
+              ) : (
+                <PeriodicTrendChart data={trends.vehicleRevenue} series={[{ key: "revenue", label: "Remitted" }]} currency={currency} />
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
+      </section>
 
       <Tabs defaultValue={defaultTab}>
         <TabsList>
@@ -209,36 +240,6 @@ export default async function DriverPortalPage({
                 </div>
               ))}
             </div>
-          ) : null}
-
-          {trends ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>My revenue</CardTitle>
-                <CardDescription>
-                  What you&apos;ve remitted from your assigned vehicle{driver.assignedVehicles.length === 1 ? "" : "s"}
-                  {hasWorkAndPay ? ", and what you've paid toward your Work & Pay contract" : ""}. Only your own figures, not the organization&apos;s.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {hasWorkAndPay ? (
-                  <Tabs defaultValue="vehicle">
-                    <TabsList variant="line">
-                      <TabsTrigger value="vehicle">Vehicle remittance</TabsTrigger>
-                      <TabsTrigger value="contract">Work & Pay</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="vehicle" className="mt-6">
-                      <PeriodicTrendChart data={trends.vehicleRevenue} series={[{ key: "revenue", label: "Remitted" }]} currency={currency} />
-                    </TabsContent>
-                    <TabsContent value="contract" className="mt-6">
-                      <PeriodicTrendChart data={trends.workAndPay} series={[{ key: "revenue", label: "Paid" }]} currency={currency} />
-                    </TabsContent>
-                  </Tabs>
-                ) : (
-                  <PeriodicTrendChart data={trends.vehicleRevenue} series={[{ key: "revenue", label: "Remitted" }]} currency={currency} />
-                )}
-              </CardContent>
-            </Card>
           ) : null}
 
           <section className="rounded-xl border bg-card p-4 sm:p-6">
