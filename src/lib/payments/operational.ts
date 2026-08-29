@@ -115,10 +115,16 @@ function isWebhookCallbackResolvable(): boolean {
  * function, no matter what the seven checks report - lifting an
  * administrative restriction is a separate, deliberate action, not an
  * automatic side effect of re-running a readiness check.
+ *
+ * `commit` (default true) exists so a Server Component page render can call
+ * this to preview the checklist - e.g. while the wizard step is simply
+ * displayed, not submitted - without ever writing to the database as a side
+ * effect of a GET request. Only an explicit Server Action should ever pass
+ * `commit: true` (or omit it).
  */
 export async function runSettlementReadinessCheck(
   organizationId: string,
-  options: { actorId?: string; enabledModuleKeys?: string[]; enableIfReady?: boolean } = {},
+  options: { actorId?: string; enabledModuleKeys?: string[]; enableIfReady?: boolean; commit?: boolean } = {},
 ): Promise<SettlementReadinessReport> {
   const [organization, profile, enabledModuleKeys] = await Promise.all([
     db.organization.findUnique({ where: { id: organizationId }, select: { status: true, currency: true } }),
@@ -152,17 +158,12 @@ export async function runSettlementReadinessCheck(
   const mechanicallyPassing = checks.every((check) => check.passed);
   const overall: "READY" | "NOT_READY" = mechanicallyPassing && profile?.status !== "SUSPENDED" ? "READY" : "NOT_READY";
 
-  if (overall === "READY" && profile?.status === "VERIFIED") {
+  if ((options.commit ?? true) && overall === "READY" && profile?.status === "VERIFIED") {
     const updated = await db.settlementProfile.update({ where: { organizationId }, data: { status: "ACTIVE", onlineCollectionsEnabled: options.enableIfReady ?? profile.onlineCollectionsEnabled } });
     await logAuditEvent({ organizationId, userId: options.actorId ?? null, module: "payments", action: "settlement_account.activated", entityName: "SettlementProfile", entityId: updated.id, metadata: { onlineCollectionsEnabled: updated.onlineCollectionsEnabled } });
   }
 
   return { overall, checks };
-}
-
-/** @deprecated Use initiateSettlementProfile + confirmSettlementBeneficiary + runSettlementReadinessCheck instead. Kept only for the existing single-step Organization Settings form until the guided activation wizard replaces it; `enabled` is no longer honored directly - real activation now requires passing the full readiness check. */
-export async function saveSettlementProfile(input: { organizationId: string; actorId: string; bankCode: string; bankName: string; accountNumber: string; enabled: boolean }) {
-  return upsertSettlementProfile(input);
 }
 
 export async function initializeFleetOperationalPayment(input: { organizationId: string; userId: string; vehicleId: string; contractId?: string | null; submissionType: "DAILY_SALES" | "WEEKLY_SALES" | "WORK_AND_PAY"; periodStart: Date }) {

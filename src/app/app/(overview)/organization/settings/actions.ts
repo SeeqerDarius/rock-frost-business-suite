@@ -6,7 +6,6 @@ import { db } from "@/lib/db";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import type { Prisma } from "@prisma/client";
-import { saveSettlementProfile } from "@/lib/payments/operational";
 
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BYTES = 1024 * 1024;
@@ -63,20 +62,4 @@ export async function uploadCompanyLogo(formData: FormData): Promise<void> {
   await db.organization.update({ where: { id: tenant.organizationId }, data: { logoUrl } });
   revalidatePath("/app");
   redirect("/app/organization/settings?saved=logo");
-}
-
-export async function saveSettlementAccount(formData: FormData): Promise<void> {
-  const tenant = await authorizedTenant();
-  const bankCode = String(formData.get("bankCode") ?? "").trim();
-  const bankName = String(formData.get("bankName") ?? "").trim();
-  const accountNumber = String(formData.get("accountNumber") ?? "").trim();
-  if (!bankCode || !bankName || !accountNumber) redirect("/app/organization/settings?error=settlement");
-  try {
-    await saveSettlementProfile({ organizationId: tenant.organizationId, actorId: tenant.userId, bankCode, bankName, accountNumber, enabled: formData.get("enabled") === "on" });
-  } catch (error) {
-    console.error("[payments] Settlement account setup failed", error);
-    redirect("/app/organization/settings?error=settlement");
-  }
-  revalidatePath("/app/organization/settings");
-  redirect("/app/organization/settings?saved=settlement");
 }

@@ -41,3 +41,53 @@ describe("organization-scope payments and reconciliation page (Phase B2)", () =>
     expect(fleetPaymentsPage).not.toContain("retrySettlementReconciliation");
   });
 });
+
+describe("guided activation wizard (Phase B3)", () => {
+  const actions = read("src/app/app/(overview)/organization/payments/actions.ts");
+  const page = read("src/app/app/(overview)/organization/payments/page.tsx");
+  const bankOptions = read("src/app/app/(overview)/organization/payments/bank-options.ts");
+  const settingsPage = read("src/app/app/(overview)/organization/settings/page.tsx");
+  const settingsActions = read("src/app/app/(overview)/organization/settings/actions.ts");
+  const operational = read("src/lib/payments/operational.ts");
+
+  it("never trusts a client-submitted bank name or a forged bank code - both are re-derived from the live bank list server-side", () => {
+    const block = actions.slice(actions.indexOf("export async function submitSettlementAccount"), actions.indexOf("export async function confirmBeneficiaryTerms"));
+    expect(block).toContain("(await loadBankOptions()).find((option) => option.code === bankCode)");
+    expect(block).toContain("if (!bank) redirect(");
+    expect(block).not.toContain('formData.get("bankName")');
+  });
+
+  it("previews the readiness checklist with commit: false, so simply viewing the step never writes to the database", () => {
+    const block = page.slice(page.indexOf("async function ReadinessStep"));
+    expect(block).toContain("commit: false");
+  });
+
+  it("keeps the real activation's not-ready redirect outside the try/catch, so a clean not-ready result is never misreported as a failed activation", () => {
+    const block = actions.slice(actions.indexOf("export async function activateOnlineCollections"));
+    const tryEnd = block.indexOf("}", block.indexOf("catch"));
+    const redirectOutside = block.indexOf('redirect("/app/organization/payments?step=readiness&error=not-ready")', tryEnd);
+    expect(redirectOutside).toBeGreaterThan(tryEnd);
+  });
+
+  it("only unlocks the Activate control once the readiness check reports READY", () => {
+    const block = page.slice(page.indexOf("async function ReadinessStep"));
+    expect(block).toContain('report.overall === "READY"');
+    expect(block).toContain("activateOnlineCollections");
+  });
+
+  it("retires the old single-step settlement form and its action entirely, not just hides it", () => {
+    expect(settingsPage).not.toContain("saveSettlementAccount");
+    expect(settingsPage).not.toContain('name="bankCode"');
+    expect(settingsActions).not.toContain("saveSettlementAccount");
+    expect(operational).not.toContain("export async function saveSettlementProfile");
+  });
+
+  it("Workspace settings links out to the guided wizard instead of duplicating the form", () => {
+    expect(settingsPage).toContain('href="/app/organization/payments"');
+  });
+
+  it("bank list loading degrades gracefully (empty list) rather than throwing when Paystack isn't configured", () => {
+    expect(bankOptions).toContain('if (!isGatewayConfigured("PAYSTACK")) return [];');
+    expect(bankOptions).toContain("catch (error)");
+  });
+});

@@ -180,6 +180,21 @@ describe("runSettlementReadinessCheck", () => {
     expect(report.overall).toBe("READY");
     expect(mockDb.settlementProfile.update).not.toHaveBeenCalled();
   });
+
+  it("with commit: false, computes and returns the same report but never writes or audit-logs - safe to call from a Server Component's GET render", async () => {
+    readyFixtures({ profileStatus: "VERIFIED" });
+    const report = await runSettlementReadinessCheck("org-1", { enabledModuleKeys: ["fleet"], commit: false });
+    expect(report.overall).toBe("READY");
+    expect(mockDb.settlementProfile.update).not.toHaveBeenCalled();
+    expect(mockLogAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("commit defaults to true when omitted, preserving the original committing behavior for existing callers", async () => {
+    readyFixtures({ profileStatus: "VERIFIED" });
+    mockDb.settlementProfile.update.mockResolvedValue({ id: "sp-1", status: "ACTIVE", onlineCollectionsEnabled: false });
+    await runSettlementReadinessCheck("org-1", { enabledModuleKeys: ["fleet"] });
+    expect(mockDb.settlementProfile.update).toHaveBeenCalled();
+  });
 });
 
 describe("MODULES_WITH_OPERATIONAL_PAYMENT_SUPPORT", () => {
