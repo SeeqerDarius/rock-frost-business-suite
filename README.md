@@ -1,6 +1,6 @@
 # Rock Frost Business Suite
 
-Shared Paystack operational-payment infrastructure lets tenant organizations connect a masked Settlement Account. Fleet drivers can pay server-calculated remittance and Work & Pay obligations through hosted checkout, with confirmed revenue posted to the tenant Accounting ledger. See [Shared Payments and Settlements](docs/SHARED_PAYMENTS_AND_SETTLEMENTS.md).
+Shared Paystack operational-payment infrastructure lets tenant organizations connect a masked Settlement Account. Fleet drivers can pay server-calculated remittance and Work & Pay obligations through hosted checkout, with confirmed revenue posted to the tenant Accounting ledger. Shared trend charts across dashboards and reporting allow Curved, Zigzag, and Bars views without changing the underlying figures. See [Shared Payments and Settlements](docs/SHARED_PAYMENTS_AND_SETTLEMENTS.md).
 
 Security and compliance claims are tracked in [docs/COMPLIANCE_AND_ASSURANCE.md](docs/COMPLIANCE_AND_ASSURANCE.md). The register separates implemented product controls from provider-dependent controls and external certifications or regulatory determinations.
 

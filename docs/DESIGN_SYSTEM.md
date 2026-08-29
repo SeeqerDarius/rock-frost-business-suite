@@ -27,6 +27,12 @@ shadcn/ui (Base UI primitives, `base-nova` preset) + Tailwind CSS v4. See `docs/
 - **Dark mode**: `next-themes`, class-based (`.dark` on `<html>`), system-aware by default. Every shadcn component ships both light and dark tokens already — don't hardcode colors outside the token system.
 - **Theme tokens**: defined as CSS variables in `src/app/globals.css` (`--background`, `--foreground`, `--primary`, `--card`, `--border`, etc., plus matching `.dark` overrides). Use Tailwind's semantic classes (`bg-background`, `text-muted-foreground`, `border-border`) — never a raw hex/oklch value in a component.
 
+## Trend charts
+
+`TrendChart` and `PeriodicTrendChart` in `src/components/dashboard/charts.tsx` are the authoritative time-series visualizations. Every chart offers Curved, Zigzag, and Bars views over the same unchanged dataset. The session-scoped choice synchronizes across mounted charts, while period selection remains independent. Tooltips expose exact formatted values, an assistive summary exposes every point, controls are keyboard operable, and theme tokens supply series colours. Curved uses monotone interpolation, Zigzag uses direct linear segments, and Bars aligns one bar group to each period.
+
+Current consumers are the organization Dashboard, Accounting overview, Accounting Insights, Fleet reports, Fleet investor workspace, and Fleet Driver Workspace. Breakdown donuts, KPI progress bars, categorical source bars, and HR organization charts remain specialized because they are not time-series trends. Future module trend surfaces must use these shared components instead of introducing another chart implementation.
+
 ## Brand and application icons
 
 - The authoritative raster RF mark is `public/rf logo.png`; keep it unchanged as the source asset. Application chrome uses the optically cropped `src/app/icon.png` derivative rather than shrinking the detailed source at runtime.
