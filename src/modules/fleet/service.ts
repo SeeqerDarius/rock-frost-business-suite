@@ -1325,6 +1325,48 @@ export async function getFleetInvestorTrends(organizationId: string, userId?: st
   return { trends: { days: buildSeries("days"), weeks: buildSeries("weeks"), months: buildSeries("months") } };
 }
 
+/**
+ * A driver's own two revenue trends, kept separate rather than merged: how
+ * much they've remitted from vehicle sales versus how much they've paid
+ * toward a Work & Pay contract are different obligations with different
+ * schedules, so showing one combined number would blur what the driver
+ * actually needs to track. Mirrors getFleetInvestorTrends's
+ * filter-by-relatedEntity pattern, but takes the vehicle/contract id sets as
+ * input rather than looking them up itself, since every caller already has
+ * them from getFleetDriverWorkspace.
+ */
+export async function getFleetDriverTrends(
+  organizationId: string,
+  scope: { vehicleIds: string[]; contractIds: string[] },
+): Promise<{ vehicleRevenue: FleetPaymentTrends["trends"]; workAndPay: FleetPaymentTrends["trends"] }> {
+  const vehicleIds = new Set(scope.vehicleIds);
+  const contractIds = new Set(scope.contractIds);
+  const emptyTrends = () => {
+    const empty = (granularity: TrendGranularity) => buildTrendBuckets(granularity).map((bucket) => ({ label: bucket.label, revenue: 0 }));
+    return { days: empty("days"), weeks: empty("weeks"), months: empty("months") };
+  };
+  if (vehicleIds.size === 0 && contractIds.size === 0) {
+    return { vehicleRevenue: emptyTrends(), workAndPay: emptyTrends() };
+  }
+
+  const payments = await db.fleetPayment.findMany({
+    where: { organizationId, status: "VERIFIED", date: { gte: widestTrendLookback() } },
+    select: { amount: true, date: true, relatedEntity: true, relatedEntityId: true },
+  });
+  const buildSeriesFor = (relatedEntity: "FleetVehicle" | "FleetWorkAndPayContract", ids: Set<string>) => {
+    const relevant = payments.filter((payment) => payment.relatedEntity === relatedEntity && payment.relatedEntityId && ids.has(payment.relatedEntityId));
+    const revenueBetween = (start: Date, end: Date) =>
+      relevant.filter((payment) => payment.date >= start && payment.date < end).reduce((sum, payment) => sum + Number(payment.amount), 0);
+    const buildSeries = (granularity: TrendGranularity) =>
+      buildTrendBuckets(granularity).map((bucket) => ({ label: bucket.label, revenue: revenueBetween(bucket.start, bucket.end) }));
+    return { days: buildSeries("days"), weeks: buildSeries("weeks"), months: buildSeries("months") };
+  };
+  return {
+    vehicleRevenue: buildSeriesFor("FleetVehicle", vehicleIds),
+    workAndPay: buildSeriesFor("FleetWorkAndPayContract", contractIds),
+  };
+}
+
 export async function getFleetDriverDashboardSummary(organizationId: string, userId: string) {
   const driver = await getFleetDriverWorkspace(organizationId, userId);
   if (!driver) return { assignedVehicleCount: 0, openMaintenanceCount: 0, pendingSubmissionCount: 0 };

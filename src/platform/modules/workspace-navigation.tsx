@@ -23,17 +23,21 @@ import { hasPermission, isFleetDriverRole, PERMISSIONS } from "@/lib/auth/permis
 export async function getWorkspaceNavigation(tenant: TenantContext): Promise<ModuleNavItem[]> {
   const items: ModuleNavItem[] = [
     { label: "Overview", href: "/app/dashboard", icon: <LayoutGrid className="size-4" /> },
-    { label: "Modules", href: "/app/modules", icon: <Blocks className="size-4" /> },
-    { label: "Notifications", href: "/app/notifications", icon: <Bell className="size-4" /> },
   ];
 
+  // Modules and Reports both require organization-wide context a Driver
+  // never has - /app/modules and /app/reports already redirect the Driver
+  // role straight back to /app/dashboard (see those pages' own
+  // isFleetDriverRole checks), so showing either link here was previously a
+  // dead click, not a real destination.
   if (!isFleetDriverRole(tenant)) {
-    items.splice(
-      2,
-      0,
+    items.push(
+      { label: "Modules", href: "/app/modules", icon: <Blocks className="size-4" /> },
       { label: "Reports", href: "/app/reports", icon: <BarChart3 className="size-4" /> },
     );
   }
+
+  items.push({ label: "Notifications", href: "/app/notifications", icon: <Bell className="size-4" /> });
 
   if (hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) {
     items.push(

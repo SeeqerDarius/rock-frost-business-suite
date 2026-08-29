@@ -4,10 +4,12 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PeriodicTrendChart } from "@/components/dashboard/charts";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { getFleetDriverWorkspace } from "@/modules/fleet/service";
+import { getFleetDriverWorkspace, getFleetDriverTrends } from "@/modules/fleet/service";
 import { DriverCollectionForm } from "./collection-form";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -57,6 +59,11 @@ export default async function DriverPortalPage({ searchParams }: { searchParams:
   }));
   const currency = tenant.organization.currency ?? "GHS";
 
+  const vehicleIds = driver.assignedVehicles.map((vehicle) => vehicle.id);
+  const contractIds = driver.assignedVehicles.flatMap((vehicle) => vehicle.workAndPayContracts.map((contract) => contract.id));
+  const hasWorkAndPay = contractIds.length > 0;
+  const trends = vehicleIds.length > 0 ? await getFleetDriverTrends(tenant.organizationId, { vehicleIds, contractIds }) : null;
+
   return (
     <div className="space-y-6">
       <PageHeader title="Driver workspace" description="Only your assigned vehicles, maintenance, contracts, and payment obligations are shown here." />
@@ -85,12 +92,21 @@ export default async function DriverPortalPage({ searchParams }: { searchParams:
                     <div><p className="text-muted-foreground">Mileage</p><p className="font-medium">{vehicle.mileage ?? "Not recorded"}</p></div>
                       <div><p className="text-muted-foreground">Required remittance</p><p className="font-medium">{vehicle.salesTargetPeriod && vehicle.salesTargetAmount ? `${currency} ${Number(vehicle.salesTargetAmount).toFixed(2)} / ${vehicle.salesTargetPeriod === "DAILY" ? "day" : "week"}` : "Not configured"}</p></div>
                   </div>
-                  {vehicle.workAndPayContracts.map((contract) => (
-                    <div key={contract.id} className="rounded-lg border p-3">
-                      <p className="font-medium">{contract.contractName}</p>
-                      <p className="text-muted-foreground">{currency} {Number(contract.outstandingBalance).toFixed(2)} outstanding. {currency} {Number(contract.scheduledPaymentAmount ?? contract.weeklyPaymentAmount).toFixed(2)} per {contract.paymentSchedule === "DAILY" ? "day" : "week"}.</p>
-                    </div>
-                  ))}
+                  {vehicle.workAndPayContracts.map((contract) => {
+                    const percentPaid = Math.min(Math.max(Number(contract.completionPercentage), 0), 100);
+                    return (
+                      <div key={contract.id} className="rounded-lg border p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-medium">{contract.contractName}</p>
+                          <p className="text-xs font-medium text-muted-foreground">{percentPaid.toFixed(0)}% paid</p>
+                        </div>
+                        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                          <div className="h-full rounded-full bg-primary" style={{ width: `${percentPaid}%` }} />
+                        </div>
+                        <p className="mt-2 text-muted-foreground">{currency} {Number(contract.outstandingBalance).toFixed(2)} left to pay. {currency} {Number(contract.scheduledPaymentAmount ?? contract.weeklyPaymentAmount).toFixed(2)} per {contract.paymentSchedule === "DAILY" ? "day" : "week"}.</p>
+                      </div>
+                    );
+                  })}
                   <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/fleet/maintenance" />}>Report maintenance concern</Button>
                 </CardContent>
               </Card>
@@ -98,6 +114,36 @@ export default async function DriverPortalPage({ searchParams }: { searchParams:
           })}
         </section>
       )}
+
+      {trends ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>My revenue</CardTitle>
+            <CardDescription>
+              What you&apos;ve remitted from your assigned vehicle{driver.assignedVehicles.length === 1 ? "" : "s"}
+              {hasWorkAndPay ? ", and what you've paid toward your Work & Pay contract" : ""}. Only your own figures, not the organization&apos;s.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {hasWorkAndPay ? (
+              <Tabs defaultValue="vehicle">
+                <TabsList variant="line">
+                  <TabsTrigger value="vehicle">Vehicle remittance</TabsTrigger>
+                  <TabsTrigger value="contract">Work & Pay</TabsTrigger>
+                </TabsList>
+                <TabsContent value="vehicle" className="mt-6">
+                  <PeriodicTrendChart data={trends.vehicleRevenue} series={[{ key: "revenue", label: "Remitted" }]} currency={currency} />
+                </TabsContent>
+                <TabsContent value="contract" className="mt-6">
+                  <PeriodicTrendChart data={trends.workAndPay} series={[{ key: "revenue", label: "Paid" }]} currency={currency} />
+                </TabsContent>
+              </Tabs>
+            ) : (
+              <PeriodicTrendChart data={trends.vehicleRevenue} series={[{ key: "revenue", label: "Remitted" }]} currency={currency} />
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <section className="rounded-xl border p-5">
         <h2 className="text-lg font-semibold">Record a completed payment</h2>

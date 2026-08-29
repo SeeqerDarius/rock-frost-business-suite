@@ -7,7 +7,7 @@ import { OrganizationBrandingProvider } from "@/components/theme/organization-br
 import { db } from "@/lib/db";
 import { headers } from "next/headers";
 import { buildSurfaceUrl, classifyAppSurface, isIdentityAllowedOnSurface } from "@/lib/app-surfaces";
-import { isPlatformOperator } from "@/lib/auth/permissions";
+import { isFleetDriverRole, isPlatformOperator } from "@/lib/auth/permissions";
 import type { Metadata } from "next";
 import { getTrialDaysRemaining } from "@/platform/trials/service";
 import { AppNavigationLoader } from "@/components/feedback/app-navigation-loader";
@@ -95,7 +95,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <Suspense fallback={null}>
         <AppNavigationLoader />
       </Suspense>
-      {!platformIdentity ? (
+      {!platformIdentity && !isFleetDriverRole(tenant) ? (
         <div className="fixed right-24 top-4 z-40 hidden rounded-full border bg-background/95 px-3 py-1 text-xs font-medium shadow-sm backdrop-blur sm:block">
           {organization?.status === "TRIAL"
             ? `Trial workspace · ${trialDaysRemaining} day${trialDaysRemaining === 1 ? "" : "s"} remaining`

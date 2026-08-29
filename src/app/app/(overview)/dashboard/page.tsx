@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { LayoutGrid } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
@@ -11,10 +12,18 @@ import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry"
 import { productGroupKeys } from "@/platform/modules/product-groups";
 import { dashboardWidgets } from "@/platform/modules/dashboard-widgets";
 import { requireCurrentTenant } from "@/lib/tenant";
+import { isFleetDriverRole } from "@/lib/auth/permissions";
 import { getRevenueInsights } from "@/lib/accounting-integration";
 
 export default async function OrganizationDashboardPage() {
   const tenant = await requireCurrentTenant();
+  // A Driver has no business seeing organization-wide revenue - this page's
+  // own Revenue insights card sums every module's posted revenue with no
+  // role scoping. /app/fleet/driver-portal is that role's real home (already
+  // where /app/fleet itself redirects a Driver); redirecting here too closes
+  // the leak instead of just hiding the card, so "Overview" in the sidebar
+  // never dead-ends for a Driver the way /app/modules used to.
+  if (isFleetDriverRole(tenant)) redirect("/app/fleet/driver-portal");
   const enabledModules = catalogueModuleRegistry.flatMap((mod) => {
     const accessibleKey = productGroupKeys(mod.key).find((key) => tenant.accessibleModuleKeys.includes(key));
     const accessibleModule = accessibleKey ? getModule(accessibleKey) : null;
