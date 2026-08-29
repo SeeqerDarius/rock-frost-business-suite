@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
+import { useState, useSyncExternalStore } from "react";
+import { Area, AreaChart, Bar, BarChart, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/currency";
 import type { TrendGranularity } from "@/lib/trend-buckets";
@@ -14,6 +14,13 @@ const PERIOD_LABELS: Record<TrendGranularity, string> = {
 
 /** The same five chart tokens declared in globals.css for both themes - never a hardcoded hex here, so charts stay in sync with the active theme automatically. */
 const CHART_COLORS = ["var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-4)", "var(--color-chart-5)"];
+export type TrendChartStyle = "curved" | "zigzag" | "bars";
+const STYLE_STORAGE_KEY = "rock-frost-trend-chart-style";
+const STYLE_OPTIONS: { value: TrendChartStyle; label: string; description: string }[] = [
+  { value: "curved", label: "Curved", description: "Shows the overall direction with a smooth line." },
+  { value: "zigzag", label: "Zigzag", description: "Shows direct period-to-period changes." },
+  { value: "bars", label: "Bars", description: "Compares the value of each period." },
+];
 
 const tooltipStyle = {
   background: "var(--popover)",
@@ -64,49 +71,62 @@ function ChartDataTable({ caption, columns, rows }: { caption: string; columns: 
  * Client Components"). A currency code is a plain, serializable string, so
  * it passes through the RSC boundary safely.
  */
-export function TrendAreaChart({
+function ChartStyleToggle({ value, onChange }: { value: TrendChartStyle; onChange: (value: TrendChartStyle) => void }) {
+  return <div role="group" aria-label="Chart style" className="inline-flex rounded-lg border bg-muted/60 p-0.5 text-xs">
+    {STYLE_OPTIONS.map((option) => <button key={option.value} type="button" title={option.description} aria-label={`${option.label}. ${option.description}`} aria-pressed={value === option.value} onClick={() => onChange(option.value)} className={cn("min-h-8 rounded-md px-2.5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", value === option.value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>{option.label}</button>)}
+  </div>;
+}
+
+function useTrendChartStyle() {
+  const subscribe = (onChange: () => void) => {
+    window.addEventListener("rock-frost-chart-style", onChange);
+    return () => window.removeEventListener("rock-frost-chart-style", onChange);
+  };
+  const getSnapshot = (): TrendChartStyle => {
+    const stored = sessionStorage.getItem(STYLE_STORAGE_KEY);
+    return stored === "zigzag" || stored === "bars" ? stored : "curved";
+  };
+  const style = useSyncExternalStore<TrendChartStyle>(subscribe, getSnapshot, (): TrendChartStyle => "curved");
+  const setStyle = (next: TrendChartStyle) => {
+    sessionStorage.setItem(STYLE_STORAGE_KEY, next);
+    window.dispatchEvent(new Event("rock-frost-chart-style"));
+  };
+  return [style, setStyle] as const;
+}
+
+export function TrendChart({
   data,
   series,
   currency,
+  valueFormat = "money",
 }: {
   data: Record<string, string | number>[];
   series: { key: string; label: string }[];
   currency?: string | null;
+  valueFormat?: "money" | "count" | "percentage";
 }) {
-  const hasData = data.some((row) => series.some((s) => Number(row[s.key]) > 0));
+  const [style, setStyle] = useTrendChartStyle();
+  const hasData = data.length > 0 && data.some((row) => series.some((s) => row[s.key] !== undefined && row[s.key] !== null && Number.isFinite(Number(row[s.key]))));
   if (!hasData) return <NoData label="No activity yet for this period." />;
+  const formatValue = (value: number) => valueFormat === "money" ? formatMoney(value, currency) : valueFormat === "percentage" ? `${value}%` : new Intl.NumberFormat("en-US").format(value);
+  const common = <><XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" /><YAxis width={8} tick={false} axisLine={false} tickLine={false} /><Tooltip contentStyle={tooltipStyle} formatter={((value: number, name: string) => [formatValue(value), name]) as (...args: unknown[]) => [string, string]} /><Legend wrapperStyle={{ fontSize: 12 }} /></>;
 
   return (
-    <>
-      <ResponsiveContainer width="100%" height={220}>
-        <AreaChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
-          <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
-          <Tooltip
-            contentStyle={tooltipStyle}
-            formatter={((value: number, name: string) => [formatMoney(value, currency), name]) as (...args: unknown[]) => [string, string]}
-          />
-          {series.map((s, i) => (
-            <Area
-              key={s.key}
-              type="monotone"
-              dataKey={s.key}
-              name={s.label}
-              stroke={CHART_COLORS[i % CHART_COLORS.length]}
-              fill={CHART_COLORS[i % CHART_COLORS.length]}
-              fillOpacity={0.15}
-              strokeWidth={2}
-            />
-          ))}
-        </AreaChart>
-      </ResponsiveContainer>
-      <ChartDataTable
-        caption={`Trend data: ${series.map((s) => s.label).join(", ")}`}
-        columns={series.map((s) => s.label)}
-        rows={data.map((row) => ({ label: String(row.label), values: series.map((s) => formatMoney(Number(row[s.key]), currency)) }))}
-      />
-    </>
+    <div className="space-y-3">
+      <div className="flex justify-end"><ChartStyleToggle value={style} onChange={setStyle} /></div>
+      <div role="img" aria-label={`${STYLE_OPTIONS.find((option) => option.value === style)?.label} trend chart`} className="h-[220px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          {style === "bars" ? <BarChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>{common}{series.map((s, i) => <Bar key={s.key} dataKey={s.key} name={s.label} fill={CHART_COLORS[i % CHART_COLORS.length]} radius={[4, 4, 0, 0]} isAnimationActive={false} />)}</BarChart>
+            : style === "zigzag" ? <LineChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>{common}{series.map((s, i) => <Line key={s.key} type="linear" dataKey={s.key} name={s.label} stroke={CHART_COLORS[i % CHART_COLORS.length]} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} isAnimationActive={false} />)}</LineChart>
+              : <AreaChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>{common}{series.map((s, i) => <Area key={s.key} type="monotone" dataKey={s.key} name={s.label} stroke={CHART_COLORS[i % CHART_COLORS.length]} fill={CHART_COLORS[i % CHART_COLORS.length]} fillOpacity={0.15} strokeWidth={2} isAnimationActive={false} />)}</AreaChart>}
+        </ResponsiveContainer>
+      </div>
+      <ChartDataTable caption={`Trend data: ${series.map((s) => s.label).join(", ")}`} columns={series.map((s) => s.label)} rows={data.map((row) => ({ label: String(row.label), values: series.map((s) => formatValue(Number(row[s.key]))) }))} />
+    </div>
   );
 }
+
+export const TrendAreaChart = TrendChart;
 
 /**
  * Wraps TrendAreaChart with a day/week/month period switcher. All three
@@ -146,7 +166,7 @@ export function PeriodicTrendChart({
           ))}
         </div>
       </div>
-      <TrendAreaChart data={data[period]} series={series} currency={currency} />
+      <TrendChart data={data[period]} series={series} currency={currency} />
     </div>
   );
 }

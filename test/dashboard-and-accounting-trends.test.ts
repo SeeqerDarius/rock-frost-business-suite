@@ -78,4 +78,17 @@ describe("dashboard and Accounting overview trend widgets", () => {
     expect(dashboard).toContain("PeriodicTrendChart");
     expect(accountingPage).toContain("PeriodicTrendChart");
   });
+
+  it("uses one accessible, remembered Curved, Zigzag, and Bars selector across trend charts", () => {
+    const charts = readFileSync("src/components/dashboard/charts.tsx", "utf8");
+    const insightsChart = readFileSync("src/app/app/accounting/insights/insights-chart.tsx", "utf8");
+    for (const label of ["Curved", "Zigzag", "Bars"]) expect(charts).toContain(`label: "${label}"`);
+    expect(charts).toContain('role="group" aria-label="Chart style"');
+    expect(charts).toContain('aria-pressed={value === option.value}');
+    expect(charts).toContain('type="monotone"');
+    expect(charts).toContain('type="linear"');
+    expect(charts).toContain("<BarChart");
+    expect(charts).toContain("sessionStorage.setItem(STYLE_STORAGE_KEY, next)");
+    expect(insightsChart).toContain("<TrendChart");
+  });
 });
