@@ -3514,3 +3514,11 @@ type definition and was corrected to the version-documented
 - Files: `src/app/globals.css`, `docs/DESIGN_SYSTEM.md`.
 - Validation: focused animation and editorial checks passed (2 files, 4 tests); full Vitest suite passed (112 files, 804 tests); ESLint passed; Next.js 16.2.12 production build compiled all 219 routes; `git diff --check` passed.
 - Release: commit `1d787ff` pushed to `codex/icon-motion-slower` and fast-forwarded to `main`. Vercel production deployment `dpl_DsP9bh1HkKr69DmVvHkszVX813QJ` reached `READY` with the production aliases attached. `/api/health` returned HTTP 200 with the database reachable, and the post-deploy runtime-error scan found no errors in the selected deployment window.
+# 2026-08-29: Bespoke Motion-powered Settings icon
+
+- Added `AnimatedSettingsIcon`, based on the user-supplied Motion pattern, with a slower spring (`stiffness: 38`, `damping: 12`, `mass: 1.15`) so the gear movement is deliberate rather than a quick generic stroke reveal.
+- Replaced the Settings icon in every module navigation, combined HR and Payroll navigation, platform footer navigation, and the profile settings menu. Decorative settings icons inside page content remain unchanged.
+- Added the direct `motion` dependency. The component preserves consumer mouse handlers, supports imperative control, is decorative to assistive technology, and is isolated from the global Lucide hover rule.
+- Files: `src/components/icons/animated-settings-icon.tsx`, module navigation files, `src/platform/modules/platform-navigation.tsx`, `src/components/navigation/user-menu.tsx`, `package.json`, `package-lock.json`, `docs/DESIGN_SYSTEM.md`.
+- Validation: focused icon, timing, and editorial checks passed (3 files, 6 tests); full Vitest suite passed (113 files, 806 tests); ESLint passed; Next.js 16.2.12 production build compiled all 219 routes; `git diff --check` passed; `npm install motion` reported zero dependency vulnerabilities.
+- Release status: commit, push, deployment, and production verification are recorded below after completion.

@@ -1,4 +1,5 @@
-import { LayoutGrid, Store, ShoppingBag, ReceiptText, History, Wallet, BarChart3, Settings } from "lucide-react";
+import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
+import { LayoutGrid, Store, ShoppingBag, ReceiptText, History, Wallet, BarChart3 } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const posNavigation: ModuleNavItem[] = [
@@ -9,5 +10,5 @@ export const posNavigation: ModuleNavItem[] = [
   { label: "Sessions", href: "/app/pos/sessions", icon: <History className="size-4" />, description: "Review every till session's opening float, closing cash, cash variance, and sales count across all registers." },
   { label: "Payments", href: "/app/pos/payments", icon: <Wallet className="size-4" />, description: "See every payment recorded against a sale, totaled by payment method, across every register." },
   { label: "Reports", href: "/app/pos/reports", icon: <BarChart3 className="size-4" />, description: "View summary counts and totals for registers, sessions, and sales, and export the report." },
-  { label: "POS Settings", href: "/app/pos/settings", icon: <Settings className="size-4" />, description: "Set the sale number prefix and edit the footer text printed on every receipt." },
+  { label: "POS Settings", href: "/app/pos/settings", icon: <AnimatedSettingsIcon size={16} />, description: "Set the sale number prefix and edit the footer text printed on every receipt." },
 ];

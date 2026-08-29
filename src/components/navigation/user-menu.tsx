@@ -1,9 +1,10 @@
 "use client";
 
+import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
-import { Compass, LogOut, Settings } from "lucide-react";
+import { Compass, LogOut } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,7 +68,7 @@ export function UserMenu() {
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<Link href={profileHref} />}>
-          <Settings />
+          <AnimatedSettingsIcon size={16} />
           Profile settings
         </DropdownMenuItem>
         {isPlatformOwner ? null : (

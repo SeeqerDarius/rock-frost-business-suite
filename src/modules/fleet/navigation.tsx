@@ -1,4 +1,5 @@
-import { Truck, Users, UserRound, ShieldCheck, Wrench, Handshake, Receipt, BarChart3, Settings, Landmark, Gauge } from "lucide-react";
+import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
+import { Truck, Users, UserRound, ShieldCheck, Wrench, Handshake, Receipt, BarChart3, Landmark, Gauge } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const fleetNavigation: ModuleNavItem[] = [
@@ -13,5 +14,5 @@ export const fleetNavigation: ModuleNavItem[] = [
   { label: "Work & Pay", href: "/app/fleet/work-and-pay", icon: <Handshake className="size-4" />, description: "Set up and manage Work and Pay contracts that let a driver buy their assigned vehicle through instalments." },
   { label: "Reports", href: "/app/fleet/reports", icon: <BarChart3 className="size-4" />, description: "View fleet-wide financial and operational summaries covering vehicles, maintenance, payments, and documents." },
   { label: "Investor Dashboard", href: "/app/fleet/investor", icon: <Landmark className="size-4" />, description: "As a vehicle owner or investor, review your portfolio's collections, outstanding balances, and net cash position." },
-  { label: "Fleet Settings", href: "/app/fleet/settings", icon: <Settings className="size-4" />, description: "Configure how many days before expiry insurance and roadworthy documents trigger renewal reminders." },
+  { label: "Fleet Settings", href: "/app/fleet/settings", icon: <AnimatedSettingsIcon size={16} />, description: "Configure how many days before expiry insurance and roadworthy documents trigger renewal reminders." },
 ];

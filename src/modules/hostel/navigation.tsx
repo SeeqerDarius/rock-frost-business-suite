@@ -1,4 +1,5 @@
-import { LayoutDashboard, Building2, Users, ShieldCheck, Receipt, BarChart3, Settings } from "lucide-react";
+import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
+import { LayoutDashboard, Building2, Users, ShieldCheck, Receipt, BarChart3 } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const hostelNavigation: ModuleNavItem[] = [
@@ -8,5 +9,5 @@ export const hostelNavigation: ModuleNavItem[] = [
   { label: "Wardens", href: "/app/hostel/wardens", icon: <ShieldCheck className="size-4" />, description: "Assign staff members as wardens responsible for a specific hostel building." },
   { label: "Fees & Payments", shortLabel: "Fees", href: "/app/hostel/fees", icon: <Receipt className="size-4" />, description: "Set up hostel fee structures, issue invoices to students, and record payments against them." },
   { label: "Reports", href: "/app/hostel/reports", icon: <BarChart3 className="size-4" />, description: "View occupancy, allocation, and fee-billing indicators and export hostel reports." },
-  { label: "Hostel Settings", shortLabel: "Settings", href: "/app/hostel/settings", icon: <Settings className="size-4" />, description: "Placeholder page. Hostel-wide configuration options are not yet built here." },
+  { label: "Hostel Settings", shortLabel: "Settings", href: "/app/hostel/settings", icon: <AnimatedSettingsIcon size={16} />, description: "Placeholder page. Hostel-wide configuration options are not yet built here." },
 ];

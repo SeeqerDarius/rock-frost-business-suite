@@ -1,4 +1,5 @@
-import { LayoutGrid, Users, Target, Handshake, History, BarChart3, Settings } from "lucide-react";
+import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
+import { LayoutGrid, Users, Target, Handshake, History, BarChart3 } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const crmNavigation: ModuleNavItem[] = [
@@ -8,5 +9,5 @@ export const crmNavigation: ModuleNavItem[] = [
   { label: "Deals", href: "/app/crm/deals", icon: <Handshake className="size-4" />, description: "Manage deals through pipeline stages from new to won or lost, with value and expected close date." },
   { label: "Activities", href: "/app/crm/activities", icon: <History className="size-4" />, description: "Log calls, emails, meetings, notes, and tasks against contacts, leads, and deals." },
   { label: "Reports", href: "/app/crm/reports", icon: <BarChart3 className="size-4" />, description: "Review pipeline value, win rate, and contact, lead, and deal activity summaries." },
-  { label: "CRM Settings", href: "/app/crm/settings", icon: <Settings className="size-4" />, description: "Set the default owner automatically assigned to new leads and deals, and manage lead sources." },
+  { label: "CRM Settings", href: "/app/crm/settings", icon: <AnimatedSettingsIcon size={16} />, description: "Set the default owner automatically assigned to new leads and deals, and manage lead sources." },
 ];

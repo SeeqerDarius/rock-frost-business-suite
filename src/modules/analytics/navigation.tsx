@@ -1,4 +1,5 @@
-import { LayoutGrid, Wallet, Handshake, Truck, UsersRound, Settings } from "lucide-react";
+import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
+import { LayoutGrid, Wallet, Handshake, Truck, UsersRound } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const analyticsNavigation: ModuleNavItem[] = [
@@ -7,5 +8,5 @@ export const analyticsNavigation: ModuleNavItem[] = [
   { label: "Sales & CRM", href: "/app/analytics/sales", icon: <Handshake className="size-4" />, description: "Check CRM pipeline value, win rate, leads, and deals alongside installment collections and receivables." },
   { label: "Operations", href: "/app/analytics/operations", icon: <Truck className="size-4" />, description: "See fleet, inventory, and procurement figures like vehicle count, stock value, and open purchase orders in one place." },
   { label: "People", href: "/app/analytics/people", icon: <UsersRound className="size-4" />, description: "View total and active headcount, onboarding and leave counts, and staff numbers broken down by department." },
-  { label: "Analytics Settings", href: "/app/analytics/settings", icon: <Settings className="size-4" />, description: "Nothing to configure here. Analytics only mirrors data controlled by each source module's own settings." },
+  { label: "Analytics Settings", href: "/app/analytics/settings", icon: <AnimatedSettingsIcon size={16} />, description: "Nothing to configure here. Analytics only mirrors data controlled by each source module's own settings." },
 ];
