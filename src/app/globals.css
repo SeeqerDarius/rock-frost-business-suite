@@ -181,23 +181,23 @@
 :is(button, a, [role="button"], summary):not(:disabled):hover
   .lucide:not(.animate-spin):not(.lucide-mail):not(.lucide-chart-column)
   :is(path, rect, circle, ellipse, line, polyline, polygon) {
-  animation: lucide-draw-in 650ms ease-out both;
+  animation: lucide-draw-in 1000ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 :is(button, a, [role="button"], summary):not(:disabled):hover
   .lucide:not(.animate-spin):not(.lucide-mail):not(.lucide-chart-column)
-  :is(path, rect, circle, ellipse, line, polyline, polygon):nth-child(2) { animation-delay: 70ms; }
+  :is(path, rect, circle, ellipse, line, polyline, polygon):nth-child(2) { animation-delay: 120ms; }
 :is(button, a, [role="button"], summary):not(:disabled):hover
   .lucide:not(.animate-spin):not(.lucide-mail):not(.lucide-chart-column)
-  :is(path, rect, circle, ellipse, line, polyline, polygon):nth-child(3) { animation-delay: 140ms; }
+  :is(path, rect, circle, ellipse, line, polyline, polygon):nth-child(3) { animation-delay: 240ms; }
 :is(button, a, [role="button"], summary):not(:disabled):hover
   .lucide:not(.animate-spin):not(.lucide-mail):not(.lucide-chart-column)
-  :is(path, rect, circle, ellipse, line, polyline, polygon):nth-child(4) { animation-delay: 210ms; }
+  :is(path, rect, circle, ellipse, line, polyline, polygon):nth-child(4) { animation-delay: 360ms; }
 :is(button, a, [role="button"], summary):not(:disabled):hover
   .lucide:not(.animate-spin):not(.lucide-mail):not(.lucide-chart-column)
-  :is(path, rect, circle, ellipse, line, polyline, polygon):nth-child(5) { animation-delay: 280ms; }
+  :is(path, rect, circle, ellipse, line, polyline, polygon):nth-child(5) { animation-delay: 480ms; }
 :is(button, a, [role="button"], summary):not(:disabled):hover
   .lucide:not(.animate-spin):not(.lucide-mail):not(.lucide-chart-column)
-  :is(path, rect, circle, ellipse, line, polyline, polygon):nth-child(6) { animation-delay: 350ms; }
+  :is(path, rect, circle, ellipse, line, polyline, polygon):nth-child(6) { animation-delay: 600ms; }
 
 /* Icon-specific micro-interactions: two icons get motion tailored to their
    own shape instead of the generic draw-in above (opted out of it by name
@@ -213,7 +213,7 @@
    the envelope body (a <rect>, left untouched) on hover, then settles back. */
 .lucide-mail path {
   transform-box: fill-box;
-  transition: transform 200ms ease-out;
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 :is(button, a, [role="button"], summary):not(:disabled):hover .lucide-mail path {
   transform: translateY(-2px) scale(1.05);
@@ -230,17 +230,17 @@
 .lucide-chart-column path:not(:first-child) {
   transform-box: fill-box;
   transform-origin: 50% 100%;
-  transition: transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 520ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 :is(button, a, [role="button"], summary):not(:disabled):hover .lucide-chart-column path:nth-child(2) {
   transform: scaleY(1.35);
 }
 :is(button, a, [role="button"], summary):not(:disabled):hover .lucide-chart-column path:nth-child(3) {
-  transition-delay: 50ms;
+  transition-delay: 90ms;
   transform: scaleY(1.35);
 }
 :is(button, a, [role="button"], summary):not(:disabled):hover .lucide-chart-column path:nth-child(4) {
-  transition-delay: 100ms;
+  transition-delay: 180ms;
   transform: scaleY(1.35);
 }
 
