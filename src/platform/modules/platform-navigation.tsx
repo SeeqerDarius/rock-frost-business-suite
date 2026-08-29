@@ -1,5 +1,6 @@
 import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
-import { LayoutGrid, Building2, CreditCard, Blocks, Activity, Inbox } from "lucide-react";
+import { AnimatedActivityIcon } from "@/components/icons/animated-activity-icon";
+import { LayoutGrid, Building2, CreditCard, Blocks, Inbox } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 /**
@@ -17,7 +18,7 @@ export function getPlatformNavigation(): ModuleNavItem[] {
     { label: "Requests", href: "/app/platform/requests", icon: <Inbox className="size-4" /> },
     { label: "Subscriptions", href: "/app/platform/subscriptions", icon: <CreditCard className="size-4" /> },
     { label: "Modules", href: "/app/platform/modules", icon: <Blocks className="size-4" /> },
-    { label: "System Activity", href: "/app/platform/activity", icon: <Activity className="size-4" /> },
+    { label: "System Activity", href: "/app/platform/activity", icon: <AnimatedActivityIcon size={16} /> },
   ];
 }
 

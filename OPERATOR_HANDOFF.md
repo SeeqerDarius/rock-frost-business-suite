@@ -3522,3 +3522,12 @@ type definition and was corrected to the version-documented
 - Files: `src/components/icons/animated-settings-icon.tsx`, module navigation files, `src/platform/modules/platform-navigation.tsx`, `src/components/navigation/user-menu.tsx`, `package.json`, `package-lock.json`, `docs/DESIGN_SYSTEM.md`.
 - Validation: focused icon, timing, and editorial checks passed (3 files, 6 tests); full Vitest suite passed (113 files, 806 tests); ESLint passed; Next.js 16.2.12 production build compiled all 219 routes; `git diff --check` passed; `npm install motion` reported zero dependency vulnerabilities.
 - Release status: commit, push, deployment, and production verification are recorded below after completion.
+
+# 2026-08-29: Bespoke Motion-powered Activity icon
+
+- Added `AnimatedActivityIcon` from the user-provided heartbeat-path design and connected it to the platform `System Activity` navigation item.
+- The icon follows the same component contract as `AnimatedSettingsIcon`: autonomous hover animation, optional imperative `startAnimation` and `stopAnimation` controls, preserved consumer pointer handlers, decorative accessibility treatment, and a fixed 16 px navigation size.
+- Corrected the pasted SVG namespace into a valid literal URL and kept the animation scoped to this icon instead of adding another global selector.
+- Files: `src/components/icons/animated-activity-icon.tsx`, `src/platform/modules/platform-navigation.tsx`, `test/animated-activity-icon.test.ts`, `docs/DESIGN_SYSTEM.md`.
+- Validation: the focused Settings and Activity icon suite passed 4/4; TypeScript passed; ESLint passed; the Next.js production build compiled all 219 routes; the full mocked suite passed 807/808 tests. Its only failure was the pre-existing support-assistant permission-gating test exceeding its fixed five-second timeout, which reproduced when rerun alone and is unrelated to navigation or icon code.
+- Release status: commit, push, deployment, and production verification are recorded below after completion.
