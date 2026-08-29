@@ -3669,3 +3669,11 @@ type definition and was corrected to the version-documented
 - Files: `src/components/icons/animated-icon-hover-context.tsx`, both animated icon components, `src/components/navigation/sidebar-nav.tsx`, `src/app/globals.css`, icon tests, `docs/DESIGN_SYSTEM.md`.
 - Validation: focused icon interaction tests passed 7/7; TypeScript passed; ESLint passed; the Next.js production build compiled all 219 routes; `git diff --check` passed. The prior full-suite run for this icon branch passed 807/808 tests, with only the separately documented support-assistant five-second timeout failure.
 - Release: commit `f63fbc6` was pushed to `codex/icon-motion-slower` and fast-forwarded to `main`. Vercel production deployment `dpl_BVufNR9zmaavjvSiwswRxafwigVK` reached READY and received all Rock Frost production aliases. `/api/health` on `app.rockfrostgroup.com` returned `ok: true` with the database reachable, and the deployment-scoped error-log scan returned no errors.
+
+# 2026-08-29: Shared semantic icon motion redesign
+
+- Replaced immediate generic hover replay with one delegated controller covering hover intent, keyboard focus, pointer activation, replay protection, disabled controls, spinner exclusion, explicit opt-out, and reduced-motion safety.
+- Added meaning-specific groups for notifications, navigation, transfers, refresh, tools, search, identity, security, payments, and vehicles while preserving the slower fallback draw-in and specialized Mail, chart, Settings, and Activity treatments.
+- Files: `src/components/icons/icon-motion-controller.tsx`, `src/app/layout.tsx`, `src/app/globals.css`, icon tests, and `docs/DESIGN_SYSTEM.md`.
+- Validation: focused icon suite passed 10/10; TypeScript passed; ESLint passed; production build compiled all 220 routes; `git diff --check` passed. The full suite passed 835/836 on its first run, with only the pre-existing support-assistant five-second timeout; that file passed 12/12 when rerun alone.
+- Release evidence: pending commit, deployment, and production verification.

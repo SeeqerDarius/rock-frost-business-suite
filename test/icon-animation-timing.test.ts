@@ -7,7 +7,7 @@ const css = fs.readFileSync(path.join(process.cwd(), "src/app/globals.css"), "ut
 describe("icon animation timing", () => {
   it("keeps the universal draw-in slow enough to read clearly", () => {
     expect(css).toContain("animation: lucide-draw-in 1000ms");
-    expect(css).toContain(":is(:hover, :focus-visible)");
+    expect(css).toContain(".icon-motion-active");
     expect(css).toContain(":nth-child(2) { animation-delay: 120ms; }");
     expect(css).toContain(":nth-child(6) { animation-delay: 600ms; }");
   });
@@ -15,5 +15,11 @@ describe("icon animation timing", () => {
   it("keeps bespoke icon interactions aligned with the slower motion language", () => {
     expect(css).toContain("transition: transform 420ms");
     expect(css).toContain("transition: transform 520ms");
+  });
+
+  it("maps common meanings to restrained motion", () => {
+    for (const icon of ["bell-ring", "search", "upload-cloud", "download-cloud", "refresh-cw", "wrench", "credit-card", "truck"]) {
+      expect(css).toContain(`.lucide-${icon}`);
+    }
   });
 });
