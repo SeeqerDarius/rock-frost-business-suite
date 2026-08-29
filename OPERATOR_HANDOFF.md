@@ -3513,4 +3513,4 @@ type definition and was corrected to the version-documented
 - Preserved spinner exclusions and the global reduced-motion override.
 - Files: `src/app/globals.css`, `docs/DESIGN_SYSTEM.md`.
 - Validation: focused animation and editorial checks passed (2 files, 4 tests); full Vitest suite passed (112 files, 804 tests); ESLint passed; Next.js 16.2.12 production build compiled all 219 routes; `git diff --check` passed.
-- Release status: commit, push, production deployment, and live verification are recorded below after completion.
+- Release: commit `1d787ff` pushed to `codex/icon-motion-slower` and fast-forwarded to `main`. Vercel production deployment `dpl_DsP9bh1HkKr69DmVvHkszVX813QJ` reached `READY` with the production aliases attached. `/api/health` returned HTTP 200 with the database reachable, and the post-deploy runtime-error scan found no errors in the selected deployment window.
