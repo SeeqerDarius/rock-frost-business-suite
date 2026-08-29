@@ -87,6 +87,13 @@ export interface ObligationSummary {
  * manager needs to see about it right now. Trailing window defaults to 6
  * periods (6 days for DAILY, 6 weeks for WEEKLY) - deliberately bounded, not
  * an unbounded historical scan.
+ *
+ * `existsSince` guards against a real failure mode: without it, a vehicle
+ * assigned *today* with no submission history yet would show every prior
+ * period in the trailing window as "overdue," simply because nothing was
+ * ever submitted for days the obligation didn't exist on. Any period whose
+ * own periodEnd falls before `existsSince` is excluded from overdue/on-time
+ * consideration entirely - not "unpaid," just not applicable.
  */
 export function computeObligationSummary(
   type: PeriodType,
@@ -94,6 +101,7 @@ export function computeObligationSummary(
   submissions: ObligationSubmission[],
   now: Date = new Date(),
   windowSize = 6,
+  existsSince: Date | null = null,
 ): ObligationSummary {
   const periods: ObligationPeriod[] = [];
   let cursor = now;
@@ -106,15 +114,18 @@ export function computeObligationSummary(
     const approvedAmount = approved.reduce((sum, s) => sum + s.amount, 0);
     const pendingAmount = matches.filter((s) => s.status === "PENDING").reduce((sum, s) => sum + s.amount, 0);
     const deadline = periodDeadline(periodEnd);
-    const isClosed = now.getTime() >= deadline.getTime();
+    const existedYet = existsSince === null || periodEnd.getTime() >= existsSince.getTime();
+    const isClosed = existedYet && now.getTime() >= deadline.getTime();
     const isPaid = approvedAmount >= expectedAmount && expectedAmount > 0;
     const isOverdue = isClosed && !isPaid;
     // Keyed on the driver's own paymentDate, never the manager's review timestamp -
     // a manager's approval lag must never count against the driver's on-time record.
     const earliestApprovedPaymentDate = approved.length > 0 ? Math.min(...approved.map((s) => s.paymentDate.getTime())) : null;
-    const isOnTime = isPaid && earliestApprovedPaymentDate !== null
-      ? earliestApprovedPaymentDate <= deadline.getTime()
-      : isOverdue ? false : null;
+    const isOnTime = !existedYet
+      ? null
+      : isPaid && earliestApprovedPaymentDate !== null
+        ? earliestApprovedPaymentDate <= deadline.getTime()
+        : isOverdue ? false : null;
     periods.unshift({ periodStart, periodEnd, expectedAmount, approvedAmount, pendingAmount, isCurrent: i === 0, isClosed, isPaid, isOverdue, isOnTime });
     cursor = stepPeriod(type, cursor, -1);
   }
@@ -179,11 +190,13 @@ export async function getFleetDriverObligations(
   vehicles: {
     id: string;
     plateNumber: string;
+    createdAt: Date;
     salesTargetPeriod: FleetSalesTargetPeriod | null;
     salesTargetAmount: { toNumber?: () => number } | number | null;
     workAndPayContracts: {
       id: string;
       contractName: string;
+      createdAt: Date;
       paymentSchedule: FleetSalesTargetPeriod;
       scheduledPaymentAmount: { toNumber?: () => number } | number | null;
       weeklyPaymentAmount: { toNumber?: () => number } | number;
@@ -226,7 +239,7 @@ export async function getFleetDriverObligations(
       return { vehicleId: vehicle.id, plateNumber: vehicle.plateNumber, summary: null };
     }
     const relevant = submissions.filter((s) => s.vehicleId === vehicle.id && !s.contractId).map(asObligationSubmission);
-    const summary = computeObligationSummary(vehicle.salesTargetPeriod, toNumber(vehicle.salesTargetAmount), relevant, now);
+    const summary = computeObligationSummary(vehicle.salesTargetPeriod, toNumber(vehicle.salesTargetAmount), relevant, now, 6, vehicle.createdAt);
     return { vehicleId: vehicle.id, plateNumber: vehicle.plateNumber, summary };
   });
 
@@ -234,7 +247,7 @@ export async function getFleetDriverObligations(
     vehicle.workAndPayContracts.map((contract) => {
       const relevant = submissions.filter((s) => s.contractId === contract.id).map(asObligationSubmission);
       const expected = toNumber(contract.scheduledPaymentAmount ?? contract.weeklyPaymentAmount);
-      const summary = computeObligationSummary(contract.paymentSchedule, expected, relevant, now);
+      const summary = computeObligationSummary(contract.paymentSchedule, expected, relevant, now, 6, contract.createdAt);
       return { contractId: contract.id, vehicleId: vehicle.id, contractName: contract.contractName, summary };
     }),
   );
@@ -255,4 +268,86 @@ export async function getFleetDriverObligations(
       onTimeRate: resolvedOnTime.length > 0 ? resolvedOnTime.reduce((sum, s) => sum + (s.onTimeRate ?? 0), 0) / resolvedOnTime.length : null,
     },
   };
+}
+
+export type PaymentReadiness = "current" | "due" | "overdue" | "no-obligation";
+
+export interface DriverRosterEntry {
+  driverId: string;
+  name: string;
+  status: string;
+  loginLinked: boolean;
+  loginEmail: string | null;
+  vehiclePlates: string[];
+  paymentReadiness: PaymentReadiness;
+  currentObligation: number;
+  overdueAmount: number;
+  pendingSubmissionCount: number;
+  hasActiveWorkAndPay: boolean;
+  workAndPayProgress: number | null;
+  openMaintenanceCount: number;
+}
+
+/**
+ * One row per driver for the manager-facing roster - the same
+ * getFleetDriverObligations already proven for the Driver Workspace, run
+ * once per driver (N+1: acceptable for a fleet's roster size; a genuinely
+ * large fleet would want a batched query instead, not attempted here since
+ * nothing in this codebase's Fleet install approaches that scale yet).
+ */
+export async function getFleetDriverRosterSummary(organizationId: string): Promise<DriverRosterEntry[]> {
+  const drivers = await db.fleetDriver.findMany({
+    where: { organizationId },
+    include: {
+      user: { select: { email: true } },
+      assignedVehicles: {
+        include: {
+          workAndPayContracts: { where: { contractStatus: { in: ["ACTIVE", "PAUSED"] } } },
+          maintenanceRequests: { select: { progressStatus: true } },
+        },
+      },
+      paymentSubmissions: { where: { status: "PENDING" }, select: { id: true } },
+    },
+    orderBy: { name: "asc" },
+  });
+
+  const toNumber = (value: { toNumber?: () => number } | number | null): number =>
+    value === null ? 0 : typeof value === "number" ? value : value.toNumber ? value.toNumber() : Number(value);
+
+  return Promise.all(
+    drivers.map(async (driver): Promise<DriverRosterEntry> => {
+      const obligations = await getFleetDriverObligations(organizationId, driver.assignedVehicles);
+      const allContracts = driver.assignedVehicles.flatMap((v) => v.workAndPayContracts);
+      const workAndPayProgress = allContracts.length > 0
+        ? allContracts.reduce((sum, c) => sum + toNumber(c.completionPercentage), 0) / allContracts.length
+        : null;
+      const openMaintenanceCount = driver.assignedVehicles.reduce(
+        (sum, v) => sum + v.maintenanceRequests.filter((r) => !["COMPLETED", "CANCELLED"].includes(r.progressStatus)).length,
+        0,
+      );
+      const paymentReadiness: PaymentReadiness = driver.assignedVehicles.length === 0
+        ? "no-obligation"
+        : obligations.totals.overdueAmount > 0
+          ? "overdue"
+          : obligations.totals.dueNow > 0
+            ? "due"
+            : "current";
+
+      return {
+        driverId: driver.id,
+        name: driver.name,
+        status: driver.status,
+        loginLinked: driver.userId !== null,
+        loginEmail: driver.user?.email ?? null,
+        vehiclePlates: driver.assignedVehicles.map((v) => v.plateNumber),
+        paymentReadiness,
+        currentObligation: obligations.totals.dueNow,
+        overdueAmount: obligations.totals.overdueAmount,
+        pendingSubmissionCount: driver.paymentSubmissions.length,
+        hasActiveWorkAndPay: allContracts.length > 0,
+        workAndPayProgress,
+        openMaintenanceCount,
+      };
+    }),
+  );
 }

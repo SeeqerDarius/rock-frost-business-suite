@@ -1,4 +1,5 @@
-import { UserRound, Plus, Mail, CircleAlert, CircleCheck } from "lucide-react";
+import Link from "next/link";
+import { UserRound, Plus, Mail, CircleAlert, CircleCheck, Search } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -11,6 +12,7 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listFleetDrivers, listAssignableDriverUsers } from "@/modules/fleet/service";
+import { getFleetDriverRosterSummary, type PaymentReadiness } from "@/modules/fleet/driver-obligations";
 import { upsertFleetDriver, inviteFleetDriver } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -25,6 +27,22 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 const STATUS_OPTIONS: Record<string, string> = { ACTIVE: "Active", INACTIVE: "Inactive", SUSPENDED: "Suspended" };
+
+const READINESS_LABELS: Record<PaymentReadiness, string> = {
+  current: "Up to date",
+  due: "Due",
+  overdue: "Overdue",
+  "no-obligation": "No obligation",
+};
+
+const READINESS_BADGE: Record<PaymentReadiness, "default" | "outline" | "destructive" | "secondary"> = {
+  current: "default",
+  due: "outline",
+  overdue: "destructive",
+  "no-obligation": "outline",
+};
+
+const SELECT_CLASS = "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30";
 
 function toDateInputValue(date: Date | null) {
   return date ? date.toISOString().slice(0, 10) : "";
@@ -93,14 +111,37 @@ function DriverFields({ driver, users }: { driver?: { id: string; name: string; 
 export default async function FleetDriversPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; invited?: string; error?: string }>;
+  searchParams: Promise<{ saved?: string; invited?: string; error?: string; q?: string; readiness?: string; status?: string; maintenance?: string }>;
 }) {
-  const { saved, invited, error } = await searchParams;
+  const { saved, invited, error, q, readiness, status, maintenance } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_DRIVERS_MANAGE);
-  const [drivers, users] = await Promise.all([listFleetDrivers(tenant.organizationId), listAssignableDriverUsers(tenant.organizationId)]);
+  const currency = tenant.organization.currency ?? "GHS";
+  const [drivers, users, roster] = await Promise.all([
+    listFleetDrivers(tenant.organizationId),
+    listAssignableDriverUsers(tenant.organizationId),
+    getFleetDriverRosterSummary(tenant.organizationId),
+  ]);
+  const rosterById = new Map(roster.map((entry) => [entry.driverId, entry]));
+
   const activeCount = drivers.filter((driver) => driver.status === "ACTIVE").length;
   const linkedCount = drivers.filter((driver) => driver.userId).length;
+  const overdueCount = roster.filter((entry) => entry.paymentReadiness === "overdue").length;
+  const pendingSubmissionCount = roster.reduce((sum, entry) => sum + entry.pendingSubmissionCount, 0);
+
+  const searchTerm = (q ?? "").trim().toLowerCase();
+  const filteredDrivers = drivers.filter((driver) => {
+    const entry = rosterById.get(driver.id);
+    if (status && driver.status !== status) return false;
+    if (readiness && entry?.paymentReadiness !== readiness) return false;
+    if (maintenance === "open" && !(entry && entry.openMaintenanceCount > 0)) return false;
+    if (searchTerm) {
+      const haystack = [driver.name, ...(entry?.vehiclePlates ?? [])].join(" ").toLowerCase();
+      if (!haystack.includes(searchTerm)) return false;
+    }
+    return true;
+  });
+  const hasActiveFilter = Boolean(q || readiness || status || maintenance);
 
   return (
     <div className="space-y-6">
@@ -116,7 +157,7 @@ export default async function FleetDriversPage({
                 </Button>
               }
               title="Invite driver"
-              description="Sends an activation link to this email with the Driver role. The roster entry links and becomes active automatically once they sign in."
+              description="Sends an activation link to this email with the Driver role. The roster entry links and becomes active automatically once they accept."
               action={inviteFleetDriver}
             >
               <div className="space-y-2">
@@ -160,56 +201,120 @@ export default async function FleetDriversPage({
         </div>
       ) : null}
 
-      <section aria-label="Driver roster summary" className="grid gap-3 sm:grid-cols-3">
+      <section aria-label="Driver roster summary" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-xl border bg-card p-4"><p className="text-sm text-muted-foreground">Total drivers</p><p className="mt-1 text-2xl font-semibold">{drivers.length}</p></div>
         <div className="rounded-xl border bg-card p-4"><p className="text-sm text-muted-foreground">Active</p><p className="mt-1 text-2xl font-semibold">{activeCount}</p></div>
         <div className="rounded-xl border bg-card p-4"><p className="text-sm text-muted-foreground">Workspace access</p><p className="mt-1 text-2xl font-semibold">{linkedCount}<span className="text-sm font-normal text-muted-foreground"> / {drivers.length}</span></p></div>
+        <Link href="/app/fleet/drivers?readiness=overdue" className="rounded-xl border bg-card p-4 transition-colors hover:border-destructive/40"><p className="text-sm text-muted-foreground">Overdue</p><p className="mt-1 text-2xl font-semibold text-destructive">{overdueCount}</p></Link>
+        <Link href="/app/fleet/payments" className="rounded-xl border bg-card p-4 transition-colors hover:border-primary/40"><p className="text-sm text-muted-foreground">Pending verification</p><p className="mt-1 text-2xl font-semibold">{pendingSubmissionCount}</p></Link>
       </section>
+
+      <form method="GET" className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4">
+        <div className="w-56 space-y-1.5">
+          <Label htmlFor="q">Search</Label>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <input id="q" name="q" type="search" defaultValue={q ?? ""} placeholder="Name or plate" className={`${SELECT_CLASS} pl-8`} />
+          </div>
+        </div>
+        <div className="w-48 space-y-1.5">
+          <Label htmlFor="readiness">Payment readiness</Label>
+          <select id="readiness" name="readiness" defaultValue={readiness ?? ""} className={SELECT_CLASS}>
+            <option value="">Any</option>
+            {Object.entries(READINESS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </div>
+        <div className="w-40 space-y-1.5">
+          <Label htmlFor="status">Status</Label>
+          <select id="status" name="status" defaultValue={status ?? ""} className={SELECT_CLASS}>
+            <option value="">Any</option>
+            {Object.entries(STATUS_OPTIONS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </div>
+        <div className="w-44 space-y-1.5">
+          <Label htmlFor="maintenance">Maintenance</Label>
+          <select id="maintenance" name="maintenance" defaultValue={maintenance ?? ""} className={SELECT_CLASS}>
+            <option value="">Any</option>
+            <option value="open">Needs attention</option>
+          </select>
+        </div>
+        <Button type="submit" size="sm">Filter</Button>
+        {hasActiveFilter ? <Button type="button" size="sm" variant="ghost" nativeButton={false} render={<Link href="/app/fleet/drivers" />}>Clear</Button> : null}
+      </form>
 
       {drivers.length === 0 ? (
         <EmptyState icon={UserRound} title="No drivers yet" description="Drivers you add will appear here." />
+      ) : filteredDrivers.length === 0 ? (
+        <EmptyState icon={Search} title="No drivers match these filters" description="Try a different search term or clear the filters above." />
       ) : (
         <div className="overflow-x-auto rounded-xl border">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>Licence</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Login</TableHead>
+              <TableHead>Vehicle</TableHead>
+              <TableHead>Payment readiness</TableHead>
+              <TableHead className="hidden md:table-cell">Current obligation</TableHead>
+              <TableHead className="hidden lg:table-cell">Pending</TableHead>
+              <TableHead className="hidden lg:table-cell">Work & Pay</TableHead>
+              <TableHead className="hidden xl:table-cell">Maintenance</TableHead>
+              <TableHead className="hidden md:table-cell">Login</TableHead>
               {canManage ? <TableHead /> : null}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {drivers.map((driver) => (
-              <TableRow key={driver.id}>
-                <TableCell className="font-medium">{driver.name}</TableCell>
-                <TableCell className="text-muted-foreground">{driver.licenceNumber ?? "-"}</TableCell>
-                <TableCell className="text-muted-foreground">{driver.phone ?? "-"}</TableCell>
-                <TableCell>
-                  <Badge variant={driver.status === "ACTIVE" ? "default" : "outline"}>{STATUS_OPTIONS[driver.status]}</Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground">{driver.user?.email ?? "Not linked"}</TableCell>
-                {canManage ? (
-                  <TableCell className="text-right">
-                    <EntityDialog
-                      trigger={
-                        <Button className="min-h-10" size="sm" variant="ghost">
-                          Edit
-                        </Button>
-                      }
-                      title="Edit driver"
-                      action={upsertFleetDriver}
-                      submitLabel="Save changes"
-                    >
-                      <input type="hidden" name="id" value={driver.id} />
-                      <DriverFields driver={driver} users={users} />
-                    </EntityDialog>
+            {filteredDrivers.map((driver) => {
+              const entry = rosterById.get(driver.id);
+              return (
+                <TableRow key={driver.id}>
+                  <TableCell className="font-medium">
+                    {driver.name}
+                    <div className="mt-0.5 text-xs font-normal text-muted-foreground md:hidden">{driver.user?.email ?? "No login"}</div>
                   </TableCell>
-                ) : null}
-              </TableRow>
-            ))}
+                  <TableCell className="text-muted-foreground">{entry?.vehiclePlates.length ? entry.vehiclePlates.join(", ") : "Unassigned"}</TableCell>
+                  <TableCell>
+                    {entry ? <Badge variant={READINESS_BADGE[entry.paymentReadiness]}>{READINESS_LABELS[entry.paymentReadiness]}</Badge> : null}
+                  </TableCell>
+                  <TableCell className="hidden text-muted-foreground md:table-cell">
+                    {entry && entry.paymentReadiness !== "no-obligation" ? (
+                      <>
+                        {currency} {(entry.currentObligation + entry.overdueAmount).toFixed(2)}
+                        {entry.overdueAmount > 0 ? <span className="ml-1 text-xs text-destructive">({currency} {entry.overdueAmount.toFixed(2)} overdue)</span> : null}
+                      </>
+                    ) : "-"}
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell">
+                    {entry && entry.pendingSubmissionCount > 0 ? (
+                      <Link href="/app/fleet/payments" className="text-primary underline underline-offset-2">{entry.pendingSubmissionCount} pending</Link>
+                    ) : <span className="text-muted-foreground">-</span>}
+                  </TableCell>
+                  <TableCell className="hidden text-muted-foreground lg:table-cell">
+                    {entry?.hasActiveWorkAndPay ? `${(entry.workAndPayProgress ?? 0).toFixed(0)}% complete` : "-"}
+                  </TableCell>
+                  <TableCell className="hidden xl:table-cell">
+                    {entry && entry.openMaintenanceCount > 0 ? <Badge variant="secondary">{entry.openMaintenanceCount} open</Badge> : <span className="text-muted-foreground">-</span>}
+                  </TableCell>
+                  <TableCell className="hidden text-muted-foreground md:table-cell">{driver.user?.email ?? "Not linked"}</TableCell>
+                  {canManage ? (
+                    <TableCell className="text-right">
+                      <EntityDialog
+                        trigger={
+                          <Button className="min-h-10" size="sm" variant="ghost">
+                            Edit
+                          </Button>
+                        }
+                        title="Edit driver"
+                        action={upsertFleetDriver}
+                        submitLabel="Save changes"
+                      >
+                        <input type="hidden" name="id" value={driver.id} />
+                        <DriverFields driver={driver} users={users} />
+                      </EntityDialog>
+                    </TableCell>
+                  ) : null}
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
         </div>

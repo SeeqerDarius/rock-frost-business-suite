@@ -132,6 +132,23 @@ describe("computeObligationSummary", () => {
     expect(summary.onTimeRate).toBeNull();
   });
 
+  it("never marks a period overdue if it closed before the obligation existed (existsSince), so a freshly assigned vehicle doesn't inherit fake history", () => {
+    const now = utc(2026, 8, 26, 10);
+    const assignedToday = utc(2026, 8, 26); // the vehicle/contract was only just created
+    const summary = computeObligationSummary("DAILY", 200, [], now, 6, assignedToday);
+    const priorDays = summary.periods.filter((p) => p.periodStart.getTime() !== assignedToday.getTime());
+    expect(priorDays.every((p) => !p.isOverdue)).toBe(true);
+    expect(priorDays.every((p) => p.isOnTime === null)).toBe(true);
+    expect(summary.overdueAmount).toBe(0);
+  });
+
+  it("still evaluates periods normally once existsSince is far enough in the past to cover the whole window", () => {
+    const now = utc(2026, 8, 26, 10);
+    const longAgo = utc(2020, 1, 1);
+    const summary = computeObligationSummary("DAILY", 150, [], now, 6, longAgo);
+    expect(summary.overdueAmount).toBe(150 * 5);
+  });
+
   it("rejected and cancelled submissions never count toward paid, pending, or due-reduction", () => {
     const now = utc(2026, 8, 26, 10);
     const { periodStart, periodEnd } = currentPeriodBounds("DAILY", now);

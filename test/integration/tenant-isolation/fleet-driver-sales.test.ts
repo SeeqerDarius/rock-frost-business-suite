@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as fleet from "@/modules/fleet/service";
-import { getFleetDriverObligations } from "@/modules/fleet/driver-obligations";
+import { getFleetDriverObligations, getFleetDriverRosterSummary } from "@/modules/fleet/driver-obligations";
 import { testDb } from "../setup/db";
 import { cleanupTestOrg, createTestOrg, type TestOrg } from "../setup/fixtures";
 
@@ -276,6 +276,36 @@ describe("Fleet driver remittances and owner access (real Postgres)", () => {
     expect(paidPeriodSummary?.isOverdue).toBe(false);
 
     await testDb.user.delete({ where: { id: obligationDriverUser.id } });
+  });
+
+  it("computes an accurate roster summary across drivers with different assignment, login, and payment states", async () => {
+    const linkedUser = await testDb.user.create({ data: { name: "Linked Roster Driver", email: `roster-linked-${org.organizationId}@example.invalid`, status: "ACTIVE" } });
+    const linkedDriver = await fleet.createFleetDriver(org.organizationId, { name: "Linked Roster Driver", userId: linkedUser.id });
+    const unlinkedDriver = await fleet.createFleetDriver(org.organizationId, { name: "Unlinked Roster Driver" });
+    const rosterVehicle = await fleet.createFleetVehicle(org.organizationId, {
+      assetTag: "DRV-ROSTER-1",
+      plateNumber: "DRV-4004",
+      assignedDriverId: linkedDriver.id,
+      status: "ASSIGNED",
+      salesTargetPeriod: "DAILY",
+      salesTargetAmount: "175.00",
+    }, org.userId);
+
+    const roster = await getFleetDriverRosterSummary(org.organizationId);
+    const linkedEntry = roster.find((r) => r.driverId === linkedDriver.id);
+    const unlinkedEntry = roster.find((r) => r.driverId === unlinkedDriver.id);
+
+    expect(linkedEntry?.loginLinked).toBe(true);
+    expect(linkedEntry?.loginEmail).toBe(linkedUser.email);
+    expect(linkedEntry?.vehiclePlates).toEqual([rosterVehicle.plateNumber]);
+    expect(linkedEntry?.paymentReadiness).toBe("due"); // today's remittance is unsubmitted but not yet overdue
+    expect(linkedEntry?.pendingSubmissionCount).toBe(0);
+
+    expect(unlinkedEntry?.loginLinked).toBe(false);
+    expect(unlinkedEntry?.loginEmail).toBeNull();
+    expect(unlinkedEntry?.paymentReadiness).toBe("no-obligation");
+
+    await testDb.user.delete({ where: { id: linkedUser.id } });
   });
 
   it("seeds a least-privilege Vehicle Owner role and removes organization-wide Fleet view from Driver", async () => {
