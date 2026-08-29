@@ -1,4 +1,4 @@
-import { CheckCircle2, CreditCard, DatabaseBackup, ImageIcon, Lock, Palette, TriangleAlert } from "lucide-react";
+import { CheckCircle2, CreditCard, DatabaseBackup, ImageIcon, Lock, Palette, Receipt, TriangleAlert } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
@@ -87,6 +87,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
             <Button type="submit" className="sm:col-span-2">{settlement ? "Update Settlement Account" : "Verify and connect Settlement Account"}</Button>
           </form>
           <p className="text-xs text-muted-foreground">The full account number is sent securely to Paystack for verification and is not retained by Rock Frost. Only the masked last four digits and provider reference are stored.</p>
+          {settlement ? <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/organization/payments" />}><Receipt />View reconciliation and receipts</Button> : null}
         </CardContent>
       </Card>
 
