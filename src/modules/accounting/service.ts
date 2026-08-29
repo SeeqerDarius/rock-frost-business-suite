@@ -304,7 +304,7 @@ export async function postSourceJournalEntry(
     throw new Error("Source type, source id, and posting purpose are required.");
   }
   try {
-    return await db.$transaction((tx) => postJournalEntry(tx, organizationId, input));
+    return await db.$transaction((tx) => postJournalEntry(tx, organizationId, input), { timeout: 30_000 });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       const existing = await db.accountingJournalEntry.findFirst({

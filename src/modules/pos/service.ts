@@ -428,7 +428,7 @@ export async function returnSaleLines(
     const totalReturned = await tx.posReturnLine.aggregate({ where: { return: { saleId, status: "COMPLETED" } }, _sum: { lineAmount: true } });
     await tx.posSale.update({ where: { id: saleId }, data: { status: new Prisma.Decimal(totalReturned._sum.lineAmount ?? 0).gte(sale.total) ? "REFUNDED" : "PARTIALLY_REFUNDED" } });
     return posReturn;
-  }));
+  }, { timeout: 30_000 }));
 }
 
 /**
