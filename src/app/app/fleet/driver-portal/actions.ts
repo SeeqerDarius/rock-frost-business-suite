@@ -12,6 +12,7 @@ import {
   FleetDuplicateSubmissionError,
   FleetSalesTargetError,
   FleetPaymentEvidenceError,
+  FleetPaymentDateError,
 } from "@/modules/fleet/service";
 import { logAuditEvent } from "@/lib/audit";
 import type { FleetDriverSubmissionType } from "@prisma/client";
@@ -53,6 +54,7 @@ export async function submitDriverPayment(formData: FormData): Promise<void> {
     if (error instanceof FleetDuplicateSubmissionError) redirect("/app/fleet/driver-portal?error=duplicate-period");
     if (error instanceof FleetSalesTargetError) redirect("/app/fleet/driver-portal?error=invalid-target");
     if (error instanceof FleetPaymentEvidenceError) redirect("/app/fleet/driver-portal?error=invalid-evidence");
+    if (error instanceof FleetPaymentDateError) redirect("/app/fleet/driver-portal?error=invalid-date");
     throw error;
   }
   revalidatePath("/app/fleet/driver-portal");

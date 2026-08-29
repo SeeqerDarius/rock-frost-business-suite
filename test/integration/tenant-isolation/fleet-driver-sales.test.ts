@@ -116,6 +116,43 @@ describe("Fleet driver remittances and owner access (real Postgres)", () => {
     })).rejects.toThrow(fleet.FleetPaymentEvidenceError);
   });
 
+  it("rejects future-dated completed payments and obligation periods", async () => {
+    await expect(fleet.submitFleetDriverPayment(org.organizationId, driverUserId, {
+      vehicleId: assignedVehicleId,
+      submissionType: "DAILY_SALES",
+      periodStart: new Date("2099-01-01T00:00:00.000Z"),
+      amount: "150.00",
+      paymentDate: new Date("2099-01-01T00:00:00.000Z"),
+      paymentMethod: "CASH",
+    })).rejects.toThrow(fleet.FleetPaymentDateError);
+  });
+
+  it("normalizes weekly remittances to Monday so one week cannot be submitted twice", async () => {
+    await testDb.fleetVehicle.update({ where: { id: assignedVehicleId }, data: { salesTargetPeriod: "WEEKLY", salesTargetAmount: "700.00" } });
+    try {
+      const first = await fleet.submitFleetDriverPayment(org.organizationId, driverUserId, {
+        vehicleId: assignedVehicleId,
+        submissionType: "WEEKLY_SALES",
+        periodStart: new Date("2026-08-24T00:00:00.000Z"),
+        amount: "700.00",
+        paymentDate: new Date("2026-08-24T00:00:00.000Z"),
+        paymentMethod: "CASH",
+      });
+      expect(first.periodStart.toISOString()).toBe("2026-08-24T00:00:00.000Z");
+      expect(first.periodEnd.toISOString()).toBe("2026-08-30T00:00:00.000Z");
+      await expect(fleet.submitFleetDriverPayment(org.organizationId, driverUserId, {
+        vehicleId: assignedVehicleId,
+        submissionType: "WEEKLY_SALES",
+        periodStart: new Date("2026-08-27T00:00:00.000Z"),
+        amount: "700.00",
+        paymentDate: new Date("2026-08-27T00:00:00.000Z"),
+        paymentMethod: "CASH",
+      })).rejects.toThrow(fleet.FleetDuplicateSubmissionError);
+    } finally {
+      await testDb.fleetVehicle.update({ where: { id: assignedVehicleId }, data: { salesTargetPeriod: "DAILY", salesTargetAmount: "150.00" } });
+    }
+  });
+
   it("serializes duplicate submission and approval attempts", async () => {
     const periodStart = new Date("2026-08-22T00:00:00.000Z");
     const input = {

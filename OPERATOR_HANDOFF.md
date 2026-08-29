@@ -1,5 +1,12 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-29: Driver workflow, workspace UX, and payment-period integrity
+
+- Reworked the driver workspace around assignments, pending verification, maintenance, vehicle obligations, payment recording, and status history while preserving the newer driver-only revenue insights and Work & Pay progress display already on production. Added semantic alerts, submission progress, clearer status language, larger controls, and readable shortfall or overpayment wording.
+- Improved the manager roster with readiness summaries and safer one-login-per-driver linking. Weekly obligations now normalize to Monday through Sunday before duplicate detection, and future completed-payment or obligation dates are rejected server-side. No schema or environment change is required.
+- Validation before release: TypeScript, changed-file ESLint, 533 mocked tests, production build, and all 13 affected real-PostgreSQL driver tests passed. A full remote integration run passed 197/200; three unrelated POS/Accounting concurrency cases exceeded Prisma's five-second transaction timeout over Neon. GitHub CI's local PostgreSQL service is the authoritative timing-sensitive release gate. Disposable branch: `driver-workflow-test-20260829` (`br-odd-leaf-ahmb6kwh`), auto-expiring at `2026-08-29T16:00:00Z`.
+- Release commit, CI, deployment, health, route, migration, and runtime-log evidence follow.
+
 ## 2026-08-29: Fleet Driver role no longer sees organization revenue, gets a working Modules link removed and its own revenue insights instead (no schema change)
 
 - **User bug report, three points, verified against the code before any fix**: (1) the Driver's main workspace dashboard (`/app/dashboard`) rendered the organization's full revenue-insights trend and per-module breakdown with zero role check, and clicking "Modules" in the sidebar did nothing useful; (2) the Driver Workspace should be simple - assigned vehicle, balance, what's left to pay on a Work & Pay contract - with smooth navigation; (3) the floating "Subscribed workspace" badge doesn't concern a Driver and should be removed for that role.

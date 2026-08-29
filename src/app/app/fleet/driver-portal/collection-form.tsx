@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useFormStatus } from "react-dom";
+import { LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,7 +43,7 @@ export function DriverCollectionForm({ vehicles, currency }: { vehicles: DriverV
   }
 
   return (
-    <form action={submitDriverPayment} className="grid gap-4 md:grid-cols-2">
+    <form action={submitDriverPayment} className="grid gap-5 md:grid-cols-2">
       <div>
         <Label htmlFor="vehicleId">Assigned vehicle</Label>
         <select
@@ -60,7 +62,7 @@ export function DriverCollectionForm({ vehicles, currency }: { vehicles: DriverV
                   : "WORK_AND_PAY",
             );
           }}
-          className="mt-2 h-10 w-full rounded-md border bg-background px-3"
+          className="mt-2 h-11 w-full rounded-md border bg-background px-3"
           required
         >
           {eligibleVehicles.map((item) => <option key={item.id} value={item.id}>{item.plateNumber}</option>)}
@@ -73,7 +75,7 @@ export function DriverCollectionForm({ vehicles, currency }: { vehicles: DriverV
           name="submissionType"
           value={availableType}
           onChange={(event) => setSubmissionType(event.target.value)}
-          className="mt-2 h-10 w-full rounded-md border bg-background px-3"
+          className="mt-2 h-11 w-full rounded-md border bg-background px-3"
           required
         >
           {typeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -82,7 +84,7 @@ export function DriverCollectionForm({ vehicles, currency }: { vehicles: DriverV
       {availableType === "WORK_AND_PAY" ? (
         <div className="md:col-span-2">
           <Label htmlFor="contractId">Active Work & Pay contract</Label>
-          <select id="contractId" name="contractId" value={contract?.id ?? ""} onChange={(event) => setContractId(event.target.value)} className="mt-2 h-10 w-full rounded-md border bg-background px-3" required>
+          <select id="contractId" name="contractId" value={contract?.id ?? ""} onChange={(event) => setContractId(event.target.value)} className="mt-2 h-11 w-full rounded-md border bg-background px-3" required>
             {vehicle?.contracts.map((contract) => (
               <option key={contract.id} value={contract.id}>
                 {contract.name} ({currency} {Number(contract.scheduledAmount).toFixed(2)} per {contract.paymentSchedule === "DAILY" ? "day" : "week"})
@@ -114,7 +116,7 @@ export function DriverCollectionForm({ vehicles, currency }: { vehicles: DriverV
       </div>
       <div>
         <Label htmlFor="paymentMethod">Payment method</Label>
-        <select id="paymentMethod" name="paymentMethod" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} className="mt-2 h-10 w-full rounded-md border bg-background px-3" required>
+        <select id="paymentMethod" name="paymentMethod" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} className="mt-2 h-11 w-full rounded-md border bg-background px-3" required>
           <option value="MOBILE_MONEY">Mobile money</option>
           <option value="BANK_TRANSFER">Bank transfer</option>
           <option value="CASH">Cash</option>
@@ -131,7 +133,17 @@ export function DriverCollectionForm({ vehicles, currency }: { vehicles: DriverV
         <Label htmlFor="notes">Notes (optional)</Label>
         <Textarea id="notes" name="notes" />
       </div>
-      <Button className="md:col-span-2" type="submit">Record payment for verification</Button>
+      <div className="md:col-span-2"><SubmitButton /></div>
     </form>
+  );
+}
+
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <Button className="min-h-11 w-full sm:w-auto" type="submit" disabled={pending} aria-disabled={pending}>
+      {pending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : null}
+      {pending ? "Recording payment..." : "Record payment for verification"}
+    </Button>
   );
 }

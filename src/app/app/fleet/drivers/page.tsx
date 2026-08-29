@@ -1,4 +1,4 @@
-import { UserRound, Plus, Mail } from "lucide-react";
+import { UserRound, Plus, Mail, CircleAlert, CircleCheck } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -21,6 +21,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "platform-owner": "That email belongs to a platform account and can't be invited.",
   "seat-limit": "No available seats for the Driver role. Free up a seat or upgrade your plan.",
   "delivery-failed": "The driver was added but the invitation email failed to send. Use Resend from Administration.",
+  "login-linked": "That login is already linked to another driver profile.",
 };
 
 const STATUS_OPTIONS: Record<string, string> = { ACTIVE: "Active", INACTIVE: "Inactive", SUSPENDED: "Suspended" };
@@ -29,8 +30,9 @@ function toDateInputValue(date: Date | null) {
   return date ? date.toISOString().slice(0, 10) : "";
 }
 
-function DriverFields({ driver, users }: { driver?: { name: string; licenceNumber: string | null; licenceExpiry: Date | null; phone: string | null; email: string | null; status: string; employmentStartDate: Date | null; userId: string | null }; users: { id: string; name: string | null; email: string }[] }) {
+function DriverFields({ driver, users }: { driver?: { id: string; name: string; licenceNumber: string | null; licenceExpiry: Date | null; phone: string | null; email: string | null; status: string; employmentStartDate: Date | null; userId: string | null }; users: { id: string; name: string | null; email: string; linkedDriverId: string | null }[] }) {
   const idSuffix = driver ? "-edit" : "";
+  const availableUsers = users.filter((user) => !user.linkedDriverId || user.linkedDriverId === driver?.id);
   return (
     <>
       <div className="space-y-2">
@@ -47,7 +49,7 @@ function DriverFields({ driver, users }: { driver?: { name: string; licenceNumbe
           <Input id={`licenceExpiry${idSuffix}`} name="licenceExpiry" type="date" defaultValue={toDateInputValue(driver?.licenceExpiry ?? null)} />
         </div>
       </div>
-      <div className="space-y-2"><Label htmlFor={`userId${idSuffix}`}>Driver login</Label><select id={`userId${idSuffix}`} name="userId" defaultValue={driver?.userId ?? ""} className="h-10 w-full rounded-md border bg-background px-3"><option value="">No login linked</option>{users.map((user) => <option key={user.id} value={user.id}>{user.name || user.email} ({user.email})</option>)}</select><p className="text-xs text-muted-foreground">Invite the driver from Administration with the Driver role, then link the active login here.</p></div>
+      <div className="space-y-2"><Label htmlFor={`userId${idSuffix}`}>Workspace login</Label><select id={`userId${idSuffix}`} name="userId" defaultValue={driver?.userId ?? ""} className="h-11 w-full rounded-md border bg-background px-3"><option value="">No login linked</option>{availableUsers.map((user) => <option key={user.id} value={user.id}>{user.name || user.email} ({user.email})</option>)}</select><p className="text-xs text-muted-foreground">Link one active Driver-role member. Logins already used by another driver are hidden.</p></div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor={`phone${idSuffix}`}>Phone</Label>
@@ -97,11 +99,13 @@ export default async function FleetDriversPage({
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_DRIVERS_MANAGE);
   const [drivers, users] = await Promise.all([listFleetDrivers(tenant.organizationId), listAssignableDriverUsers(tenant.organizationId)]);
+  const activeCount = drivers.filter((driver) => driver.status === "ACTIVE").length;
+  const linkedCount = drivers.filter((driver) => driver.userId).length;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <PageHeader title="Drivers" description="Drivers assigned to fleet vehicles." />
+        <PageHeader title="Drivers" description="Manage driver records, workspace access, and operational readiness." />
         {canManage ? (
           <div className="flex gap-2">
             <EntityDialog
@@ -142,7 +146,7 @@ export default async function FleetDriversPage({
 
       {saved ? (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
-          Saved.
+          <span className="flex items-center gap-2"><CircleCheck className="size-4" aria-hidden="true" />Driver saved.</span>
         </div>
       ) : null}
       {invited ? (
@@ -151,14 +155,21 @@ export default async function FleetDriversPage({
         </div>
       ) : null}
       {error && ERROR_MESSAGES[error] ? (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {ERROR_MESSAGES[error]}
+        <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <span className="flex items-center gap-2"><CircleAlert className="size-4" aria-hidden="true" />{ERROR_MESSAGES[error]}</span>
         </div>
       ) : null}
+
+      <section aria-label="Driver roster summary" className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border bg-card p-4"><p className="text-sm text-muted-foreground">Total drivers</p><p className="mt-1 text-2xl font-semibold">{drivers.length}</p></div>
+        <div className="rounded-xl border bg-card p-4"><p className="text-sm text-muted-foreground">Active</p><p className="mt-1 text-2xl font-semibold">{activeCount}</p></div>
+        <div className="rounded-xl border bg-card p-4"><p className="text-sm text-muted-foreground">Workspace access</p><p className="mt-1 text-2xl font-semibold">{linkedCount}<span className="text-sm font-normal text-muted-foreground"> / {drivers.length}</span></p></div>
+      </section>
 
       {drivers.length === 0 ? (
         <EmptyState icon={UserRound} title="No drivers yet" description="Drivers you add will appear here." />
       ) : (
+        <div className="overflow-x-auto rounded-xl border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -184,7 +195,7 @@ export default async function FleetDriversPage({
                   <TableCell className="text-right">
                     <EntityDialog
                       trigger={
-                        <Button size="sm" variant="ghost">
+                        <Button className="min-h-10" size="sm" variant="ghost">
                           Edit
                         </Button>
                       }
@@ -201,6 +212,7 @@ export default async function FleetDriversPage({
             ))}
           </TableBody>
         </Table>
+        </div>
       )}
     </div>
   );

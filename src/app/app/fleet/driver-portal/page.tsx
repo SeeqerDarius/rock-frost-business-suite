@@ -13,6 +13,7 @@ import { getFleetDriverWorkspace, getFleetDriverTrends } from "@/modules/fleet/s
 import { DriverCollectionForm } from "./collection-form";
 import { payFleetObligationOnline } from "./actions";
 import { getSettlementProfile } from "@/lib/payments/operational";
+import { AlertTriangle, Banknote, CarFront, CheckCircle2, Clock3, Wrench } from "lucide-react";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "Your role does not include driver self-service.",
@@ -21,6 +22,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-amount": "Enter an amount greater than zero.",
   "invalid-target": "That payment does not match the selected vehicle's remittance schedule or active Work & Pay contract.",
   "invalid-evidence": "Choose a supported payment method and enter its transaction reference. Cash references are optional.",
+  "invalid-date": "Use today or an earlier date for a completed payment and its obligation period.",
   "duplicate-period": "A pending or approved remittance already exists for that vehicle and payment period.",
   "not-found": "The selected vehicle or contract is no longer assigned to you.",
   "online-unavailable": "Online collections are not active. Pay the company using another method and record it below.",
@@ -65,6 +67,12 @@ export default async function DriverPortalPage({ searchParams }: { searchParams:
   const settlement = await getSettlementProfile(tenant.organizationId);
   const onlineAvailable = settlement?.status === "ACTIVE" && settlement.onlineCollectionsEnabled;
   const today = new Date().toISOString().slice(0, 10);
+  const openMaintenanceCount = driver.assignedVehicles.reduce(
+    (total, vehicle) => total + vehicle.maintenanceRequests.filter((request) => !["COMPLETED", "CANCELLED"].includes(request.progressStatus)).length,
+    0,
+  );
+  const pendingCount = driver.paymentSubmissions.filter((item) => item.status === "PENDING").length;
+  const configuredObligations = vehicleOptions.reduce((total, vehicle) => total + (vehicle.salesTargetPeriod ? 1 : 0) + vehicle.contracts.length, 0);
 
   const vehicleIds = driver.assignedVehicles.map((vehicle) => vehicle.id);
   const contractIds = driver.assignedVehicles.flatMap((vehicle) => vehicle.workAndPayContracts.map((contract) => contract.id));
@@ -73,18 +81,26 @@ export default async function DriverPortalPage({ searchParams }: { searchParams:
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Driver workspace" description="Only your assigned vehicles, maintenance, contracts, and payment obligations are shown here." />
-      {saved ? <p className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm">Payment recorded and sent for manager verification.</p> : null}
-      {error && ERROR_MESSAGES[error] ? <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{ERROR_MESSAGES[error]}</p> : null}
+      <PageHeader title={`Welcome, ${driver.name}`} description="See what needs attention, make or record payments, and track manager verification." />
+      {saved ? <p role="status" className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-800 dark:text-emerald-300"><CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />Payment recorded. A manager will verify it before it is approved.</p> : null}
+      {error && ERROR_MESSAGES[error] ? <p role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />{ERROR_MESSAGES[error]}</p> : null}
+
+      <section aria-label="Workspace summary" className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border bg-card p-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><CarFront className="size-4" aria-hidden="true" />Assigned vehicles</div><p className="mt-2 text-2xl font-semibold">{driver.assignedVehicles.length}</p></div>
+        <div className="rounded-xl border bg-card p-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Clock3 className="size-4" aria-hidden="true" />Awaiting verification</div><p className="mt-2 text-2xl font-semibold">{pendingCount}</p></div>
+        <div className="rounded-xl border bg-card p-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Wrench className="size-4" aria-hidden="true" />Open maintenance</div><p className="mt-2 text-2xl font-semibold">{openMaintenanceCount}</p></div>
+      </section>
 
       {driver.assignedVehicles.length === 0 ? (
         <p className="rounded-md border p-4 text-sm text-muted-foreground">No vehicle is currently assigned to you.</p>
       ) : (
-        <section className="grid gap-4 md:grid-cols-2">
+        <section aria-labelledby="vehicles-heading" className="space-y-3">
+          <div><h2 id="vehicles-heading" className="text-lg font-semibold">My vehicles</h2><p className="text-sm text-muted-foreground">Assignments, obligations, and maintenance at a glance.</p></div>
+          <div className="grid gap-4 lg:grid-cols-2">
           {driver.assignedVehicles.map((vehicle) => {
             const openMaintenance = vehicle.maintenanceRequests.filter((request) => !["COMPLETED", "CANCELLED"].includes(request.progressStatus));
             return (
-              <Card key={vehicle.id}>
+              <Card key={vehicle.id} className="overflow-hidden">
                 <CardHeader>
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -95,9 +111,9 @@ export default async function DriverPortalPage({ searchParams }: { searchParams:
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div><p className="text-muted-foreground">Mileage</p><p className="font-medium">{vehicle.mileage ?? "Not recorded"}</p></div>
-                      <div><p className="text-muted-foreground">Required remittance</p><p className="font-medium">{vehicle.salesTargetPeriod && vehicle.salesTargetAmount ? `${currency} ${Number(vehicle.salesTargetAmount).toFixed(2)} / ${vehicle.salesTargetPeriod === "DAILY" ? "day" : "week"}` : "Not configured"}</p></div>
+                  <div className="grid grid-cols-2 gap-3 rounded-lg bg-muted/40 p-3">
+                    <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Mileage</p><p className="mt-1 font-medium">{vehicle.mileage !== null ? Number(vehicle.mileage).toLocaleString() : "Not recorded"}</p></div>
+                    <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Remittance</p><p className="mt-1 font-medium">{vehicle.salesTargetPeriod && vehicle.salesTargetAmount ? `${currency} ${Number(vehicle.salesTargetAmount).toFixed(2)} / ${vehicle.salesTargetPeriod === "DAILY" ? "day" : "week"}` : "Not configured"}</p></div>
                   </div>
                   {onlineAvailable && vehicle.salesTargetPeriod && vehicle.salesTargetAmount ? <form action={payFleetObligationOnline}><input type="hidden" name="vehicleId" value={vehicle.id} /><input type="hidden" name="submissionType" value={vehicle.salesTargetPeriod === "DAILY" ? "DAILY_SALES" : "WEEKLY_SALES"} /><input type="hidden" name="periodStart" value={today} /><Button type="submit" className="w-full">Pay {currency} {Number(vehicle.salesTargetAmount).toFixed(2)} securely</Button></form> : null}
                   {vehicle.workAndPayContracts.map((contract) => {
@@ -116,11 +132,12 @@ export default async function DriverPortalPage({ searchParams }: { searchParams:
                       </div>
                     );
                   })}
-                  <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/fleet/maintenance" />}>Report maintenance concern</Button>
+                  <Button className="min-h-11 w-full sm:w-auto" variant="outline" nativeButton={false} render={<Link href="/app/fleet/maintenance" />}><Wrench aria-hidden="true" />Report maintenance concern</Button>
                 </CardContent>
               </Card>
             );
           })}
+          </div>
         </section>
       )}
 
@@ -154,25 +171,24 @@ export default async function DriverPortalPage({ searchParams }: { searchParams:
         </Card>
       ) : null}
 
-      <section className="rounded-xl border p-5">
-        <h2 className="text-lg font-semibold">Record a completed payment</h2>
-        <p className="mb-4 text-sm text-muted-foreground">First pay the company by cash, mobile money, bank transfer, or another supported method. Then record the payment here. The selected vehicle controls the required schedule and management verifies receipt.</p>
+      <section id="record-payment" className="scroll-mt-6 rounded-xl border bg-card p-4 sm:p-6">
+        <div className="mb-5 flex items-start gap-3"><div className="rounded-lg bg-primary/10 p-2 text-primary"><Banknote className="size-5" aria-hidden="true" /></div><div><h2 className="text-lg font-semibold">Record a completed payment</h2><p className="text-sm text-muted-foreground">Use this after you have paid outside the app. Choose the obligation, add the payment evidence, then send it for verification.</p></div></div>
         <DriverCollectionForm vehicles={vehicleOptions} currency={currency} />
       </section>
 
-      <section className="rounded-xl border p-5">
-        <h2 className="text-lg font-semibold">Recent submissions</h2>
+      <section className="rounded-xl border bg-card p-4 sm:p-6">
+        <div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Payment history</h2><p className="text-sm text-muted-foreground">Your 20 most recent submissions.</p></div>{configuredObligations > 0 ? <Badge variant="outline">{configuredObligations} active obligation{configuredObligations === 1 ? "" : "s"}</Badge> : null}</div>
         {driver.paymentSubmissions.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">No payments recorded yet.</p> : (
           <div className="mt-3 space-y-2">
             {driver.paymentSubmissions.map((item) => {
               const variance = item.expectedAmount ? Number(item.amount) - Number(item.expectedAmount) : null;
               return (
-                <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm">
+                <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm last:border-0">
                   <div>
                     <p className="font-medium">{item.vehicle?.plateNumber ?? "Assigned vehicle"}. {TYPE_LABELS[item.submissionType]}</p>
-                    <p className="text-muted-foreground">{item.periodStart.toLocaleDateString()} to {item.periodEnd.toLocaleDateString()}. {currency} {Number(item.amount).toFixed(2)}{variance === null ? "" : ` (${variance >= 0 ? "+" : ""}${variance.toFixed(2)} variance)`}</p>
+                    <p className="text-muted-foreground">{item.periodStart.toLocaleDateString()} to {item.periodEnd.toLocaleDateString()}. {currency} {Number(item.amount).toFixed(2)}{variance === null || variance === 0 ? "" : ` (${currency} ${Math.abs(variance).toFixed(2)} ${variance < 0 ? "short" : "over"})`}</p>
                   </div>
-                  <Badge variant={item.status === "APPROVED" ? "default" : item.status === "REJECTED" ? "destructive" : "outline"}>{item.status}</Badge>
+                  <Badge variant={item.status === "APPROVED" ? "default" : item.status === "REJECTED" ? "destructive" : "outline"}>{item.status === "PENDING" ? "Awaiting verification" : item.status === "APPROVED" ? "Approved" : "Rejected"}</Badge>
                 </div>
               );
             })}

@@ -186,10 +186,15 @@ export async function listAssignableDriverUsers(organizationId: string) {
       user: { status: "ACTIVE" },
       role: { rolePermissions: { some: { permission: { key: PERMISSIONS.FLEET_DRIVER_SELF_SERVICE } } } },
     },
-    select: { user: { select: { id: true, name: true, email: true } } },
+    select: { user: { select: { id: true, name: true, email: true, fleetDriverProfiles: { where: { organizationId }, select: { id: true }, take: 1 } } } },
     orderBy: { user: { name: "asc" } },
   });
-  return memberships.map(({ user }) => user);
+  return memberships.map(({ user }) => ({
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    linkedDriverId: user.fleetDriverProfiles[0]?.id ?? null,
+  }));
 }
 
 export async function listAssignableOwnerUsers(organizationId: string) {
@@ -258,7 +263,7 @@ export async function listFleetDrivers(organizationId: string) {
   return db.fleetDriver.findMany({ where: { organizationId }, include: { user: true }, orderBy: { name: "asc" } });
 }
 
-export function createFleetDriver(
+export async function createFleetDriver(
   organizationId: string,
   data: {
     name: string;
@@ -272,10 +277,21 @@ export function createFleetDriver(
     userId?: string | null;
   }
 ) {
-  return db.fleetDriver.create({ data: { organizationId, ...data } });
+  if (data.userId) {
+    const linked = await db.fleetDriver.findUnique({ where: { organizationId_userId: { organizationId, userId: data.userId } }, select: { id: true } });
+    if (linked) throw new FleetDriverLoginConflictError("This login is already linked to another driver profile.");
+  }
+  try {
+    return await db.fleetDriver.create({ data: { organizationId, ...data } });
+  } catch (error) {
+    if (data.userId && error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new FleetDriverLoginConflictError("This login is already linked to another driver profile.");
+    }
+    throw error;
+  }
 }
 
-export function updateFleetDriver(
+export async function updateFleetDriver(
   organizationId: string,
   id: string,
   data: {
@@ -290,7 +306,18 @@ export function updateFleetDriver(
     userId?: string | null;
   }
 ) {
-  return db.fleetDriver.update({ where: { id, organizationId }, data });
+  if (data.userId) {
+    const linked = await db.fleetDriver.findUnique({ where: { organizationId_userId: { organizationId, userId: data.userId } }, select: { id: true } });
+    if (linked && linked.id !== id) throw new FleetDriverLoginConflictError("This login is already linked to another driver profile.");
+  }
+  try {
+    return await db.fleetDriver.update({ where: { id, organizationId }, data });
+  } catch (error) {
+    if (data.userId && error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new FleetDriverLoginConflictError("This login is already linked to another driver profile.");
+    }
+    throw error;
+  }
 }
 
 export async function getFleetDriverWorkspace(organizationId: string, userId: string) {
@@ -314,7 +341,9 @@ export async function getFleetDriverWorkspace(organizationId: string, userId: st
 export class FleetDuplicateSubmissionError extends Error {}
 export class FleetSalesTargetError extends Error {}
 export class FleetPaymentEvidenceError extends Error {}
+export class FleetPaymentDateError extends Error {}
 export class FleetDriverAssignmentError extends Error {}
+export class FleetDriverLoginConflictError extends Error {}
 
 export const FLEET_REMITTANCE_METHODS = ["CASH", "MOBILE_MONEY", "BANK_TRANSFER", "CARD", "CHEQUE", "OTHER"] as const;
 export type FleetRemittanceMethod = (typeof FLEET_REMITTANCE_METHODS)[number];
@@ -335,7 +364,12 @@ function startOfUtcDay(value: Date) {
 function salesPeriod(type: FleetDriverSubmissionType, selectedStart: Date) {
   const periodStart = startOfUtcDay(selectedStart);
   const periodEnd = new Date(periodStart);
-  if (type !== "DAILY_SALES") periodEnd.setUTCDate(periodEnd.getUTCDate() + 6);
+  if (type !== "DAILY_SALES") {
+    const daysSinceMonday = (periodStart.getUTCDay() + 6) % 7;
+    periodStart.setUTCDate(periodStart.getUTCDate() - daysSinceMonday);
+    periodEnd.setTime(periodStart.getTime());
+    periodEnd.setUTCDate(periodEnd.getUTCDate() + 6);
+  }
   return { periodStart, periodEnd };
 }
 
@@ -364,7 +398,11 @@ export async function submitFleetDriverPayment(
   }
   if (!amount.isPositive()) throw new InvalidPaymentAmountError("Payment amount must be positive.");
   if (Number.isNaN(data.paymentDate.getTime()) || Number.isNaN(data.periodStart.getTime())) {
-    throw new InvalidPaymentAmountError("Payment and obligation dates must be valid.");
+    throw new FleetPaymentDateError("Payment and obligation dates must be valid.");
+  }
+  const today = startOfUtcDay(new Date());
+  if (startOfUtcDay(data.paymentDate) > today || startOfUtcDay(data.periodStart) > today) {
+    throw new FleetPaymentDateError("Completed payments and obligation periods cannot be dated in the future.");
   }
   requirePaymentEvidence(data.paymentMethod, data.reference);
   const vehicle = await db.fleetVehicle.findFirst({ where: { id: data.vehicleId, organizationId, assignedDriverId: driver.id } });

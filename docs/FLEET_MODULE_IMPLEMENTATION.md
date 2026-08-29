@@ -27,6 +27,7 @@ The responsive Next.js web application is the system of record. Its server-actio
 - Investor dashboard
 - A dedicated Vehicle Owner role limited to the linked owner portfolio and owner approvals
 - A driver-only workspace limited to assigned vehicles, assigned contracts, maintenance tasks, and the driver's own payment records
+- A task-oriented driver workspace with assignment, pending-verification, and open-maintenance summaries; readable obligation cards; explicit payment evidence guidance; pending submit feedback; and touch-friendly controls
 - Permission-controlled navigation and server-side authorization
 - In-app maintenance completion notifications
 - Audit events and shared platform audit logging
@@ -59,7 +60,8 @@ Every step writes an immutable `FleetMaintenanceEvent` containing actor, event t
 - The driver first pays the company outside the application by cash, mobile money, bank transfer, card, cheque, or another supported method. The driver then records the completed payment for manager verification. The application does not claim that initiating the form itself transfers money.
 - Non-cash payment records require a transaction reference. Cash may use an optional receipt reference. The server validates the supported method and evidence rule rather than relying on the form alone.
 - Driver records preserve the assigned vehicle, obligation type, payment period, required amount, actual amount, method, reference, and variance.
-- A pending or approved remittance cannot be recorded twice for the same driver, vehicle, type, and period.
+- A pending or approved remittance cannot be recorded twice for the same driver, vehicle, type, and period. Weekly periods are normalized to Monday through Sunday on the server, so choosing another day in the same week cannot bypass duplicate protection.
+- Completed-payment and obligation dates must be today or earlier. This is enforced by the service layer as well as the form.
 - Approved daily and weekly driver submissions become verified `WEEKLY_SALES` ledger entries related to the assigned vehicle. The type name is retained for backward compatibility while submission metadata preserves whether the period was daily or weekly.
 - Approved Work & Pay submissions become verified `WORK_AND_PAY` entries and atomically update amount paid, outstanding balance, completion percentage, and contract completion status.
 - A Fleet Manager can also record a payment received directly by the office, including payment date, method, and reference. This path writes a verified ledger entry because the authorized manager is confirming receipt at entry time.
@@ -85,6 +87,7 @@ Every step writes an immutable `FleetMaintenanceEvent` containing actor, event t
 - Maintenance management actions require `fleet.maintenance.manage`.
 - Unauthorized vehicle maintenance submissions fail closed.
 - The Drivers page's login dropdown and the Owners page's portal-login dropdown are each scoped to the people who can actually hold that login (driver: `fleet.driver.self_service`; owner: the `Vehicle Owner` role), not every active organization member. Previously both dropdowns listed every active member, so unrelated people (including, for example, the Organization Owner) could be selected.
+- A workspace login can belong to only one driver profile per organization. The roster hides logins already linked elsewhere and the service rejects conflicting create or update requests.
 - Inviting a driver or owner from the Fleet pages reuses the platform's `Role`/`OrganizationMember`/`Invitation` lifecycle at the fixed "Driver" or "Vehicle Owner" role, gated on Fleet's own `fleet.drivers.manage`/`fleet.owners.manage` permission rather than Administration's `organization.settings.manage` - a Fleet manager without full Administration access can still invite. `ensureFleetDriverForUser`/`ensureFleetOwnerForUser` now also link to a pre-existing roster row added manually by name/email (`userId` still null) instead of creating a duplicate when that same email is later invited or accepts.
 
 ## Organization as a vehicle owner

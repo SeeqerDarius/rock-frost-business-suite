@@ -75,4 +75,13 @@ describe("Fleet driver role sync (real Postgres)", () => {
     const drivers = await fleet.listFleetDrivers(org.organizationId);
     expect(drivers.some((d) => d.userId === memberUser.id)).toBe(false);
   });
+
+  it("does not allow one workspace login to be linked to two driver profiles", async () => {
+    const user = await testDb.user.create({
+      data: { name: "Unique Login Driver", email: `unique-driver-${org.organizationId}@example.invalid`, status: "ACTIVE" },
+    });
+    await fleet.createFleetDriver(org.organizationId, { name: "First profile", userId: user.id });
+    await expect(fleet.createFleetDriver(org.organizationId, { name: "Second profile", userId: user.id }))
+      .rejects.toThrow(fleet.FleetDriverLoginConflictError);
+  });
 });

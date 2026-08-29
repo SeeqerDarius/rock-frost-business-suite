@@ -15,7 +15,7 @@ import { buildTenantAppUrl } from "@/lib/app-url";
 import { logAuditEvent } from "@/lib/audit";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createFleetDriver, updateFleetDriver } from "@/modules/fleet/service";
+import { createFleetDriver, updateFleetDriver, FleetDriverLoginConflictError } from "@/modules/fleet/service";
 import { shortText, longText, email as emailSchema, dateInput, parseWithSchema } from "@/lib/validation";
 
 class PlatformOwnerTenantError extends Error {}
@@ -91,10 +91,17 @@ export async function upsertFleetDriver(formData: FormData): Promise<void> {
     userId: parsed.data.userId ?? null,
   };
 
-  if (id) {
-    await updateFleetDriver(tenant.organizationId, id, data);
-  } else {
-    await createFleetDriver(tenant.organizationId, data);
+  try {
+    if (id) {
+      await updateFleetDriver(tenant.organizationId, id, data);
+    } else {
+      await createFleetDriver(tenant.organizationId, data);
+    }
+  } catch (error) {
+    if (error instanceof FleetDriverLoginConflictError) {
+      redirect("/app/fleet/drivers?error=login-linked");
+    }
+    throw error;
   }
 
   revalidatePath("/app/fleet/drivers");
