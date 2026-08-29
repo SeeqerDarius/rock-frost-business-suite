@@ -51,6 +51,8 @@ Each obligation history chart now treats the assigned `salesTargetAmount` as its
 - Management reports
 - Investor dashboard
 - A dedicated Vehicle Owner role limited to the linked owner portfolio and owner approvals
+- The Vehicle Owner Workspace leads with owner-scoped vehicles, current remittance obligations, verified collections, completed and verified maintenance expenses, document warnings, owner approvals and per-vehicle activity. It never exposes organization-wide Fleet data, private driver records or management mutations. A direct vehicle URL is resolved only after matching both `organizationId` and the authenticated owner's `userId`.
+- Owner financial cards distinguish verified collections, verified operating expenses and operating position from an actual owner entitlement. Owner agreements, revenue sharing, management fees and owner-settlement records are not yet modeled, so the workspace explicitly says "Settlement calculation not configured" rather than inventing a payable amount.
 - A driver-only workspace limited to assigned vehicles, assigned contracts, maintenance tasks, and the driver's own payment records
 - A task-oriented driver workspace with assignment, pending-verification, and open-maintenance summaries; readable obligation cards; explicit payment evidence guidance; pending submit feedback; and touch-friendly controls
 - Permission-controlled navigation and server-side authorization

@@ -165,7 +165,8 @@ describe("module authorization source coverage", () => {
     // 116, up from 115: HR gains a Configuration page, requireModuleAccess("hr").
     // 118, up from 116: Accounting planning adds list and plan-detail pages.
     // 119, up from 118: Fleet's tenant-scoped online-payment callback.
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(119);
+    // 120, up from 119: the owner-scoped Fleet vehicle detail page.
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(120);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
     // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
     // all Hostel Server Actions, same shape as School's) joins the sweep

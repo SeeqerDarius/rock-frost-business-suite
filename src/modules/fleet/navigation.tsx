@@ -13,6 +13,6 @@ export const fleetNavigation: ModuleNavItem[] = [
   { label: "Payments", href: "/app/fleet/payments", icon: <Receipt className="size-4" />, description: "Record and verify fleet payments such as remittances, owner payouts, and Work and Pay instalments." },
   { label: "Work & Pay", href: "/app/fleet/work-and-pay", icon: <Handshake className="size-4" />, description: "Set up and manage Work and Pay contracts that let a driver buy their assigned vehicle through instalments." },
   { label: "Reports", href: "/app/fleet/reports", icon: <BarChart3 className="size-4" />, description: "View fleet-wide financial and operational summaries covering vehicles, maintenance, payments, and documents." },
-  { label: "Investor Dashboard", href: "/app/fleet/investor", icon: <Landmark className="size-4" />, description: "As a vehicle owner or investor, review your portfolio's collections, outstanding balances, and net cash position." },
+  { label: "Owner Workspace", href: "/app/fleet/investor", icon: <Landmark className="size-4" />, description: "As a vehicle owner or investor, review linked vehicles, remittances, maintenance, documents, and operating position." },
   { label: "Fleet Settings", href: "/app/fleet/settings", icon: <AnimatedSettingsIcon size={16} />, description: "Configure how many days before expiry insurance and roadworthy documents trigger renewal reminders." },
 ];
