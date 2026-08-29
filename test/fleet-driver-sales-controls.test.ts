@@ -125,7 +125,7 @@ describe("Fleet driver remittance controls", () => {
     expect(driverPortal).toContain("trends.vehicleRevenue");
     expect(driverPortal).toContain("trends.workAndPay");
     expect(driverPortal).toContain("contract.completionPercentage");
-    expect(driverPortal).toContain("left to pay");
+    expect(driverPortal).toContain("Remaining");
   });
 
   it("accepts only a bounded image with a real supported signature", async () => {

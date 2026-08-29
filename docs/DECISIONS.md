@@ -1,5 +1,15 @@
 # Architecture & Tooling Decisions
 
+## 2026-08-29 - "Outstanding balance" on the Driver Overview means due-now plus overdue combined, not a third independent figure
+
+**Decision:** The Driver Workspace Overview's 8 KPI tiles interpret "outstanding balance" as `dueNow + overdueAmount` - a "everything you currently owe, right now" bottom-line figure - rather than inventing a separate stored balance concept for periodic remittance obligations.
+
+**Why:** The redesign brief listed 8 KPIs including both "outstanding balance" and "Work & Pay amount remaining" as separate items, but Fleet's vehicle remittance has no independent "outstanding balance" concept beyond its own due-now/overdue split - a missed daily remittance doesn't accrue as standing debt the way a loan balance does, it simply becomes an overdue period. Treating "outstanding balance" as its own from-scratch concept would have meant inventing a definition with no basis in how the obligation actually works. Reading it as the sum of the two figures already computed (due now, overdue) turns three tiles into three genuinely distinct, non-redundant numbers instead of two meaningful figures and one duplicate.
+
+**How the boundary is preserved:** `outstandingTotal = obligations.totals.dueNow + obligations.totals.overdueAmount`, computed directly in `driver-portal/page.tsx` from the existing Phase 1 `getFleetDriverObligations()` totals - no new derived-logic function needed, since both inputs already exist.
+
+**Not done (and deliberately so):** No new field or column tracking a running "balance owed" for remittance obligations - Work & Pay already has exactly that (`FleetWorkAndPayContract.outstandingBalance`, a real lifetime figure) and stays completely separate, shown as its own "Work & Pay remaining" tile.
+
 ## 2026-08-29 - Fleet's due-date/overdue/on-time-rate concept is derived entirely at read time, with no schema change
 
 **Decision:** `src/modules/fleet/driver-obligations.ts` computes "amount due now," "overdue amount," "next due date," and "on-time rate" purely from `FleetDriverPaymentSubmission` history, anchored on the same periodic (DAILY/WEEKLY) schedule `submitFleetDriverPayment` already uses - nothing is stored. `computeObligationSummary()` is a pure function (no DB access) taking a schedule type, an expected amount, and a caller-supplied list of submissions; `getFleetDriverObligations()` is the thin DB-facing wrapper that fetches a bounded 60-day window and calls it once per vehicle and once per Work & Pay contract. On-time is keyed on the driver's own `paymentDate`, never the manager's later review/approval timestamp.

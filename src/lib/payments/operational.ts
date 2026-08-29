@@ -105,3 +105,34 @@ export async function getOperationalPaymentForTenant(organizationId: string, ref
 export async function listOperationalPayments(organizationId: string) {
   return db.operationalPayment.findMany({ where: { organizationId }, orderBy: { createdAt: "desc" }, take: 100 });
 }
+
+/**
+ * A driver's own online payments still awaiting Paystack confirmation, keyed
+ * by the vehicle/contract they're for - used to show "do not pay again"
+ * guidance and disable only the matching pay-online control while that
+ * specific checkout is in flight, rather than blocking every obligation
+ * because one of them has a payment pending.
+ */
+export async function listPendingOperationalPaymentsForPayer(organizationId: string, payerId: string) {
+  const pending = await db.operationalPayment.findMany({
+    where: { organizationId, payerId, status: { in: ["CREATED", "INITIALIZED"] } },
+    select: { id: true, sourceId: true, providerReference: true, amount: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+  });
+  if (pending.length === 0) return [];
+  const submissions = await db.fleetDriverPaymentSubmission.findMany({
+    where: { id: { in: pending.map((p) => p.sourceId) } },
+    select: { id: true, vehicleId: true, contractId: true },
+  });
+  const byId = new Map(submissions.map((s) => [s.id, s]));
+  return pending.map((payment) => ({ ...payment, vehicleId: byId.get(payment.sourceId)?.vehicleId ?? null, contractId: byId.get(payment.sourceId)?.contractId ?? null }));
+}
+
+/** A driver's own confirmed online payments, for the Activity/receipts view. */
+export async function listConfirmedOperationalPaymentsForPayer(organizationId: string, payerId: string) {
+  return db.operationalPayment.findMany({
+    where: { organizationId, payerId, status: "SUCCESS" },
+    orderBy: { paidAt: "desc" },
+    take: 20,
+  });
+}

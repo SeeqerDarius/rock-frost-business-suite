@@ -1,11 +1,15 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
 import { PeriodicTrendChart } from "@/components/dashboard/charts";
+import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card";
 import { EntityDialog } from "@/components/forms/entity-dialog";
+import { EmptyState } from "@/components/feedback/empty-state";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -14,10 +18,15 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { getFleetDriverWorkspace, getFleetDriverTrends } from "@/modules/fleet/service";
+import { getFleetDriverObligations, type ObligationSummary } from "@/modules/fleet/driver-obligations";
 import { DriverCollectionForm } from "./collection-form";
 import { payFleetObligationOnline, reportMaintenanceFromDriverPortal } from "./actions";
-import { getSettlementProfile } from "@/lib/payments/operational";
-import { AlertTriangle, Banknote, CarFront, CheckCircle2, Clock3, Plus, Wrench } from "lucide-react";
+import { PaySubmitButton } from "./submit-button";
+import { OfflineBanner } from "./offline-banner";
+import { getSettlementProfile, listPendingOperationalPaymentsForPayer, listConfirmedOperationalPaymentsForPayer } from "@/lib/payments/operational";
+import {
+  AlertTriangle, Banknote, CarFront, CheckCircle2, Clock3, Plus, Wrench, Handshake, TrendingUp, ReceiptText, CalendarClock,
+} from "lucide-react";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "Your role does not include driver self-service.",
@@ -58,6 +67,16 @@ const PROGRESS_BADGE: Record<string, "default" | "outline" | "destructive" | "se
   CANCELLED: "destructive",
 };
 
+const shortDate = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+function periodLabel(type: "DAILY" | "WEEKLY", periodStart: Date, periodEnd: Date) {
+  return type === "DAILY" ? `Today, ${shortDate(periodStart)}` : `This week, ${shortDate(periodStart)} - ${shortDate(periodEnd)}`;
+}
+
+function money(currency: string, amount: number) {
+  return `${currency} ${amount.toFixed(2)}`;
+}
+
 export default async function DriverPortalPage({
   searchParams,
 }: {
@@ -69,14 +88,18 @@ export default async function DriverPortalPage({
   const session = await getServerAuthSession();
   if (!session?.user?.id) redirect("/login");
   const driver = await getFleetDriverWorkspace(tenant.organizationId, session.user.id);
+
   if (!driver) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Driver workspace" description="Your assigned vehicles, tasks, and payment obligations." />
-        <p className="rounded-md border p-4 text-sm">Your administrator must link this login to an active driver profile.</p>
+        <PageHeader title="Driver workspace" description="Your assigned vehicle, balance, and what's next." />
+        <EmptyState icon={CarFront} title="Your login isn't linked to a driver profile yet" description="Ask your Fleet Manager to link this login to your driver record before you can see your assignment." />
       </div>
     );
   }
+
+  const currency = tenant.organization.currency ?? "GHS";
+  const today = new Date().toISOString().slice(0, 10);
 
   const vehicleOptions = driver.assignedVehicles.map((vehicle) => ({
     id: vehicle.id,
@@ -91,27 +114,42 @@ export default async function DriverPortalPage({
     })),
   }));
   const vehicleItems: Record<string, string> = Object.fromEntries(vehicleOptions.map((v) => [v.id, v.plateNumber]));
-  const currency = tenant.organization.currency ?? "GHS";
-  const settlement = await getSettlementProfile(tenant.organizationId);
-  const onlineAvailable = settlement?.status === "ACTIVE" && settlement.onlineCollectionsEnabled;
-  const today = new Date().toISOString().slice(0, 10);
-  const openMaintenanceCount = driver.assignedVehicles.reduce(
-    (total, vehicle) => total + vehicle.maintenanceRequests.filter((request) => !["COMPLETED", "CANCELLED"].includes(request.progressStatus)).length,
-    0,
-  );
-  const pendingCount = driver.paymentSubmissions.filter((item) => item.status === "PENDING").length;
-  const configuredObligations = vehicleOptions.reduce((total, vehicle) => total + (vehicle.salesTargetPeriod ? 1 : 0) + vehicle.contracts.length, 0);
 
-  const vehicleIds = driver.assignedVehicles.map((vehicle) => vehicle.id);
-  const contractIds = driver.assignedVehicles.flatMap((vehicle) => vehicle.workAndPayContracts.map((contract) => contract.id));
-  const hasWorkAndPay = contractIds.length > 0;
-  const trends = vehicleIds.length > 0 ? await getFleetDriverTrends(tenant.organizationId, { vehicleIds, contractIds }) : null;
+  const [settlement, obligations, trends, pendingOnlinePayments, confirmedOnlinePayments] = await Promise.all([
+    getSettlementProfile(tenant.organizationId),
+    getFleetDriverObligations(tenant.organizationId, driver.assignedVehicles),
+    driver.assignedVehicles.length > 0
+      ? getFleetDriverTrends(tenant.organizationId, {
+          vehicleIds: driver.assignedVehicles.map((v) => v.id),
+          contractIds: driver.assignedVehicles.flatMap((v) => v.workAndPayContracts.map((c) => c.id)),
+        })
+      : null,
+    listPendingOperationalPaymentsForPayer(tenant.organizationId, session.user.id),
+    listConfirmedOperationalPaymentsForPayer(tenant.organizationId, session.user.id),
+  ]);
+  const onlineAvailable = settlement?.status === "ACTIVE" && settlement.onlineCollectionsEnabled;
+  const hasPendingOnlineFor = (vehicleId: string, contractId?: string | null) =>
+    pendingOnlinePayments.some((p) => p.vehicleId === vehicleId && (contractId ? p.contractId === contractId : !p.contractId));
+
+  const allContracts = driver.assignedVehicles.flatMap((vehicle) => vehicle.workAndPayContracts.map((contract) => ({ vehicle, contract })));
+  const workAndPayRemaining = allContracts.reduce((sum, { contract }) => sum + Number(contract.outstandingBalance), 0);
+  const workAndPayProgress = allContracts.length > 0
+    ? allContracts.reduce((sum, { contract }) => sum + Number(contract.completionPercentage), 0) / allContracts.length
+    : null;
+  const outstandingTotal = obligations.totals.dueNow + obligations.totals.overdueAmount;
+  const openMaintenance = driver.assignedVehicles.flatMap((vehicle) =>
+    vehicle.maintenanceRequests.filter((request) => !["COMPLETED", "CANCELLED"].includes(request.progressStatus)).map((request) => ({ ...request, vehiclePlateNumber: vehicle.plateNumber })),
+  );
 
   const maintenanceRequests = driver.assignedVehicles
     .flatMap((vehicle) => vehicle.maintenanceRequests.map((request) => ({ ...request, vehiclePlateNumber: vehicle.plateNumber })))
     .sort((a, b) => b.requestedAt.getTime() - a.requestedAt.getTime());
 
-  const defaultTab = tab === "maintenance" || maintenanceSaved ? "maintenance" : "payment";
+  const confirmedBySubmissionId = new Map(confirmedOnlinePayments.map((p) => [p.sourceId, p]));
+
+  const defaultTab = tab && ["overview", "payments", "workandpay", "vehicle", "maintenance", "activity"].includes(tab)
+    ? tab
+    : maintenanceSaved ? "maintenance" : "overview";
   const savedMessage = maintenanceSaved
     ? "Maintenance issue reported. A manager will review it."
     : saved
@@ -120,154 +158,217 @@ export default async function DriverPortalPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader title={`Welcome, ${driver.name}`} description="Your vehicle, balance, and revenue at a glance - then quick actions below." />
+      <PageHeader title={`Welcome, ${driver.name}`} description={driver.assignedVehicles.length > 0 ? `Assigned to ${driver.assignedVehicles.map((v) => v.plateNumber).join(", ")}.` : "No vehicle is currently assigned to you."} />
+      <OfflineBanner />
       {savedMessage ? <p role="status" className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-800 dark:text-emerald-300"><CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />{savedMessage}</p> : null}
       {error && ERROR_MESSAGES[error] ? <p role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />{ERROR_MESSAGES[error]}</p> : null}
 
-      <section aria-labelledby="overview-heading" className="space-y-4">
-        <h2 id="overview-heading" className="text-lg font-semibold">Overview</h2>
-
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border bg-card p-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><CarFront className="size-4" aria-hidden="true" />Assigned vehicles</div><p className="mt-2 text-2xl font-semibold">{driver.assignedVehicles.length}</p></div>
-          <div className="rounded-xl border bg-card p-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Clock3 className="size-4" aria-hidden="true" />Awaiting verification</div><p className="mt-2 text-2xl font-semibold">{pendingCount}</p></div>
-          <div className="rounded-xl border bg-card p-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Wrench className="size-4" aria-hidden="true" />Open maintenance</div><p className="mt-2 text-2xl font-semibold">{openMaintenanceCount}</p></div>
-        </div>
-
-        {driver.assignedVehicles.length === 0 ? (
-          <p className="rounded-md border p-4 text-sm text-muted-foreground">No vehicle is currently assigned to you.</p>
-        ) : (
-          <div className="grid gap-4 lg:grid-cols-2">
-          {driver.assignedVehicles.map((vehicle) => {
-            const openMaintenance = vehicle.maintenanceRequests.filter((request) => !["COMPLETED", "CANCELLED"].includes(request.progressStatus));
-            return (
-              <Card key={vehicle.id} className="overflow-hidden">
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <CardTitle>{vehicle.plateNumber}</CardTitle>
-                      <CardDescription>{[vehicle.make, vehicle.model].filter(Boolean).join(" ") || vehicle.assetTag}</CardDescription>
-                    </div>
-                    <Badge variant={openMaintenance.length ? "secondary" : "outline"}>{openMaintenance.length} open task{openMaintenance.length === 1 ? "" : "s"}</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                  <div className="grid grid-cols-2 gap-3 rounded-lg bg-muted/40 p-3">
-                    <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Mileage</p><p className="mt-1 font-medium">{vehicle.mileage !== null ? Number(vehicle.mileage).toLocaleString() : "Not recorded"}</p></div>
-                    <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Remittance</p><p className="mt-1 font-medium">{vehicle.salesTargetPeriod && vehicle.salesTargetAmount ? `${currency} ${Number(vehicle.salesTargetAmount).toFixed(2)} / ${vehicle.salesTargetPeriod === "DAILY" ? "day" : "week"}` : "Not configured"}</p></div>
-                  </div>
-                  {vehicle.workAndPayContracts.map((contract) => {
-                    const percentPaid = Math.min(Math.max(Number(contract.completionPercentage), 0), 100);
-                    return (
-                      <div key={contract.id} className="rounded-lg border p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="font-medium">{contract.contractName}</p>
-                          <p className="text-xs font-medium text-muted-foreground">{percentPaid.toFixed(0)}% paid</p>
-                        </div>
-                        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                          <div className="h-full rounded-full bg-primary" style={{ width: `${percentPaid}%` }} />
-                        </div>
-                        <p className="mt-2 text-muted-foreground">{currency} {Number(contract.outstandingBalance).toFixed(2)} left to pay. {currency} {Number(contract.scheduledPaymentAmount ?? contract.weeklyPaymentAmount).toFixed(2)} per {contract.paymentSchedule === "DAILY" ? "day" : "week"}.</p>
-                      </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-            );
-          })}
-          </div>
-        )}
-
-        {trends ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>My revenue</CardTitle>
-              <CardDescription>
-                What you&apos;ve remitted from your assigned vehicle{driver.assignedVehicles.length === 1 ? "" : "s"}
-                {hasWorkAndPay ? ", and what you've paid toward your Work & Pay contract" : ""}. Only your own figures, not the organization&apos;s.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {hasWorkAndPay ? (
-                <Tabs defaultValue="vehicle">
-                  <TabsList variant="line">
-                    <TabsTrigger value="vehicle">Vehicle remittance</TabsTrigger>
-                    <TabsTrigger value="contract">Work & Pay</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="vehicle" className="mt-6">
-                    <PeriodicTrendChart data={trends.vehicleRevenue} series={[{ key: "revenue", label: "Remitted" }]} currency={currency} />
-                  </TabsContent>
-                  <TabsContent value="contract" className="mt-6">
-                    <PeriodicTrendChart data={trends.workAndPay} series={[{ key: "revenue", label: "Paid" }]} currency={currency} />
-                  </TabsContent>
-                </Tabs>
-              ) : (
-                <PeriodicTrendChart data={trends.vehicleRevenue} series={[{ key: "revenue", label: "Remitted" }]} currency={currency} />
-              )}
-            </CardContent>
-          </Card>
-        ) : null}
-      </section>
-
       <Tabs defaultValue={defaultTab}>
-        <TabsList>
-          <TabsTrigger value="payment"><Banknote aria-hidden="true" />Record a completed payment</TabsTrigger>
-          <TabsTrigger value="maintenance"><Wrench aria-hidden="true" />Maintenance</TabsTrigger>
+        <TabsList className="w-full justify-start overflow-x-auto">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="payments">Payments</TabsTrigger>
+          <TabsTrigger value="workandpay">Work & Pay</TabsTrigger>
+          <TabsTrigger value="vehicle">Vehicle</TabsTrigger>
+          <TabsTrigger value="maintenance">Maintenance</TabsTrigger>
+          <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="payment" className="mt-4 space-y-6">
-          {onlineAvailable ? (
-            <div className="space-y-2 rounded-xl border bg-card p-4 sm:p-6">
-              <h3 className="text-sm font-semibold">Pay online</h3>
-              {driver.assignedVehicles.map((vehicle) => (
-                <div key={vehicle.id} className="space-y-2">
-                  {vehicle.salesTargetPeriod && vehicle.salesTargetAmount ? (
-                    <form action={payFleetObligationOnline}>
-                      <input type="hidden" name="vehicleId" value={vehicle.id} />
-                      <input type="hidden" name="submissionType" value={vehicle.salesTargetPeriod === "DAILY" ? "DAILY_SALES" : "WEEKLY_SALES"} />
-                      <input type="hidden" name="periodStart" value={today} />
-                      <Button type="submit" className="w-full sm:w-auto">Pay {vehicle.plateNumber} {currency} {Number(vehicle.salesTargetAmount).toFixed(2)} securely</Button>
-                    </form>
-                  ) : null}
-                  {vehicle.workAndPayContracts.map((contract) => (
-                    <form action={payFleetObligationOnline} key={contract.id}>
-                      <input type="hidden" name="vehicleId" value={vehicle.id} />
-                      <input type="hidden" name="contractId" value={contract.id} />
-                      <input type="hidden" name="submissionType" value="WORK_AND_PAY" />
-                      <input type="hidden" name="periodStart" value={today} />
-                      <Button type="submit" size="sm" variant="outline">Pay {contract.contractName} instalment securely</Button>
-                    </form>
-                  ))}
-                </div>
-              ))}
-            </div>
-          ) : null}
+        {/* ---------- Overview ---------- */}
+        <TabsContent value="overview" className="mt-4 space-y-6">
+          {driver.assignedVehicles.length === 0 ? (
+            <EmptyState icon={CarFront} title="No vehicle assigned" description="You'll see your balance and obligations here once a Fleet Manager assigns you a vehicle." />
+          ) : (
+            <>
+              {outstandingTotal > 0 ? (
+                <Card className="border-primary/30 bg-primary/5">
+                  <CardContent className="flex flex-wrap items-center justify-between gap-4 py-5">
+                    <div>
+                      <p className="text-sm font-medium">{obligations.totals.overdueAmount > 0 ? "You have an overdue balance" : "You have a payment due"}</p>
+                      <p className="text-2xl font-semibold tracking-tight">{money(currency, outstandingTotal)}</p>
+                    </div>
+                    <Button nativeButton={false} render={<Link href="?tab=payments" />}>Pay now</Button>
+                  </CardContent>
+                </Card>
+              ) : (
+                <p role="status" className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-800 dark:text-emerald-300">
+                  <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />You&apos;re fully paid up. Nothing is due right now.
+                </p>
+              )}
 
-          <section className="rounded-xl border bg-card p-4 sm:p-6">
-            <div className="mb-5 flex items-start gap-3"><div className="rounded-lg bg-primary/10 p-2 text-primary"><Banknote className="size-5" aria-hidden="true" /></div><div><h2 className="text-lg font-semibold">Record a completed payment</h2><p className="text-sm text-muted-foreground">Use this after you have paid outside the app. Choose the obligation, add the payment evidence, then send it for verification.</p></div></div>
-            <DriverCollectionForm vehicles={vehicleOptions} currency={currency} />
-          </section>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <OverviewMetricCard icon={<Banknote />} label="Due now" value={money(currency, obligations.totals.dueNow)} description="Your current period's obligation, not yet approved." href="?tab=payments" />
+                <OverviewMetricCard icon={<CheckCircle2 />} label="Paid this period" value={money(currency, obligations.totals.paidThisPeriod)} description="Approved payments for the period in progress." href="?tab=activity" />
+                <OverviewMetricCard icon={<Clock3 />} label="Pending verification" value={money(currency, obligations.totals.pendingAmount)} description="Submitted, awaiting manager review." href="?tab=activity" />
+                <OverviewMetricCard icon={<AlertTriangle />} label="Overdue" value={money(currency, obligations.totals.overdueAmount)} description="Closed periods with nothing approved yet." href="?tab=payments" />
+                <OverviewMetricCard icon={<Banknote />} label="Outstanding balance" value={money(currency, outstandingTotal)} description="Due now plus everything overdue, combined." href="?tab=payments" />
+                {allContracts.length > 0 ? (
+                  <>
+                    <OverviewMetricCard icon={<Handshake />} label="Work & Pay remaining" value={money(currency, workAndPayRemaining)} description="Left to pay across your active contract(s)." href="?tab=workandpay" />
+                    <OverviewMetricCard icon={<TrendingUp />} label="Work & Pay progress" value={`${(workAndPayProgress ?? 0).toFixed(0)}%`} description="Average completion across your contract(s)." href="?tab=workandpay" />
+                  </>
+                ) : null}
+                <OverviewMetricCard icon={<Wrench />} label="Open maintenance" value={openMaintenance.length} description="Reported issues not yet completed." href="?tab=maintenance" />
+              </div>
+            </>
+          )}
+        </TabsContent>
 
-          <section className="rounded-xl border bg-card p-4 sm:p-6">
-            <div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Payment history</h2><p className="text-sm text-muted-foreground">Your 20 most recent submissions.</p></div>{configuredObligations > 0 ? <Badge variant="outline">{configuredObligations} active obligation{configuredObligations === 1 ? "" : "s"}</Badge> : null}</div>
-            {driver.paymentSubmissions.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">No payments recorded yet.</p> : (
-              <div className="mt-3 space-y-2">
-                {driver.paymentSubmissions.map((item) => {
-                  const variance = item.expectedAmount ? Number(item.amount) - Number(item.expectedAmount) : null;
+        {/* ---------- Payments ---------- */}
+        <TabsContent value="payments" className="mt-4 space-y-6">
+          {driver.assignedVehicles.length === 0 ? (
+            <EmptyState icon={Banknote} title="No vehicle assigned" description="Payments become available once a vehicle is assigned to you." />
+          ) : (
+            <>
+              <section className="space-y-3">
+                <h2 className="text-lg font-semibold">Your obligations</h2>
+                {driver.assignedVehicles.map((vehicle) => {
+                  const vehicleObligation = obligations.vehicles.find((v) => v.vehicleId === vehicle.id)?.summary ?? null;
                   return (
-                    <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm last:border-0">
-                      <div>
-                        <p className="font-medium">{item.vehicle?.plateNumber ?? "Assigned vehicle"}. {TYPE_LABELS[item.submissionType]}</p>
-                        <p className="text-muted-foreground">{item.periodStart.toLocaleDateString()} to {item.periodEnd.toLocaleDateString()}. {currency} {Number(item.amount).toFixed(2)}{variance === null || variance === 0 ? "" : ` (${currency} ${Math.abs(variance).toFixed(2)} ${variance < 0 ? "short" : "over"})`}</p>
-                      </div>
-                      <Badge variant={item.status === "APPROVED" ? "default" : item.status === "REJECTED" ? "destructive" : "outline"}>{item.status === "PENDING" ? "Awaiting verification" : item.status === "APPROVED" ? "Approved" : "Rejected"}</Badge>
+                    <div key={vehicle.id} className="space-y-2">
+                      {vehicleObligation ? (
+                        <ObligationCard
+                          title={`${vehicle.plateNumber} - vehicle remittance`}
+                          currency={currency}
+                          summary={vehicleObligation}
+                          payButton={
+                            onlineAvailable && !hasPendingOnlineFor(vehicle.id) ? (
+                              <form action={payFleetObligationOnline}>
+                                <input type="hidden" name="vehicleId" value={vehicle.id} />
+                                <input type="hidden" name="submissionType" value={vehicle.salesTargetPeriod === "DAILY" ? "DAILY_SALES" : "WEEKLY_SALES"} />
+                                <input type="hidden" name="periodStart" value={today} />
+                                <PaySubmitButton label={`Pay ${money(currency, vehicleObligation.dueNow || vehicleObligation.expectedAmount)} securely`} pendingLabel="Starting checkout..." className="w-full sm:w-auto" />
+                              </form>
+                            ) : hasPendingOnlineFor(vehicle.id) ? (
+                              <p className="text-sm text-amber-700 dark:text-amber-400">An online payment for this vehicle is awaiting confirmation. Do not pay again - check back shortly or use Activity to see its status.</p>
+                            ) : null
+                          }
+                        />
+                      ) : null}
+                      {vehicle.workAndPayContracts.map((contract) => {
+                        const contractObligation = obligations.contracts.find((c) => c.contractId === contract.id)?.summary ?? null;
+                        if (!contractObligation) return null;
+                        return (
+                          <ObligationCard
+                            key={contract.id}
+                            title={`${contract.contractName} - Work & Pay instalment`}
+                            currency={currency}
+                            summary={contractObligation}
+                            payButton={
+                              onlineAvailable && !hasPendingOnlineFor(vehicle.id, contract.id) ? (
+                                <form action={payFleetObligationOnline}>
+                                  <input type="hidden" name="vehicleId" value={vehicle.id} />
+                                  <input type="hidden" name="contractId" value={contract.id} />
+                                  <input type="hidden" name="submissionType" value="WORK_AND_PAY" />
+                                  <input type="hidden" name="periodStart" value={today} />
+                                  <PaySubmitButton label={`Pay ${money(currency, contractObligation.dueNow || contractObligation.expectedAmount)} securely`} pendingLabel="Starting checkout..." size="sm" variant="outline" />
+                                </form>
+                              ) : hasPendingOnlineFor(vehicle.id, contract.id) ? (
+                                <p className="text-sm text-amber-700 dark:text-amber-400">An online payment for this contract is awaiting confirmation. Do not pay again yet.</p>
+                              ) : null
+                            }
+                          />
+                        );
+                      })}
                     </div>
                   );
                 })}
-              </div>
-            )}
-          </section>
+                {!onlineAvailable ? <p className="text-xs text-muted-foreground">Online payment isn&apos;t active for your organization yet - pay the company directly, then record it below.</p> : null}
+              </section>
+
+              <section className="rounded-xl border bg-card p-4 sm:p-6">
+                <div className="mb-5 flex items-start gap-3"><div className="rounded-lg bg-muted p-2"><ReceiptText className="size-5" aria-hidden="true" /></div><div><h2 className="text-lg font-semibold">Record a payment made outside the app</h2><p className="text-sm text-muted-foreground">Use this only after you&apos;ve already paid by cash, mobile money, bank transfer, or another method - not for online payments, which confirm automatically.</p></div></div>
+                <DriverCollectionForm vehicles={vehicleOptions} currency={currency} />
+              </section>
+            </>
+          )}
         </TabsContent>
 
+        {/* ---------- Work & Pay ---------- */}
+        <TabsContent value="workandpay" className="mt-4 space-y-4">
+          {allContracts.length === 0 ? (
+            <EmptyState icon={Handshake} title="No active Work & Pay contract" description="Contracts your Fleet Manager sets up for you will appear here." />
+          ) : (
+            allContracts.map(({ vehicle, contract }) => {
+              const summary = obligations.contracts.find((c) => c.contractId === contract.id)?.summary ?? null;
+              const percentPaid = Math.min(Math.max(Number(contract.completionPercentage), 0), 100);
+              const submissions = driver.paymentSubmissions.filter((item) => item.contractId === contract.id);
+              return (
+                <Card key={contract.id}>
+                  <CardHeader>
+                    <CardTitle>{contract.contractName}</CardTitle>
+                    <CardDescription>{vehicle.plateNumber} - {contract.contractStatus === "ACTIVE" ? "Active" : contract.contractStatus === "PAUSED" ? "Paused" : contract.contractStatus === "COMPLETED" ? "Completed" : contract.contractStatus}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4 text-sm">
+                    <div className="grid grid-cols-2 gap-3 rounded-lg bg-muted/40 p-3 sm:grid-cols-4">
+                      <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Contract value</p><p className="mt-1 font-medium">{money(currency, Number(contract.contractAmount))}</p></div>
+                      <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Paid so far</p><p className="mt-1 font-medium">{money(currency, Number(contract.amountPaid))}</p></div>
+                      <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Remaining</p><p className="mt-1 font-medium">{money(currency, Number(contract.outstandingBalance))}</p></div>
+                      <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Instalment</p><p className="mt-1 font-medium">{money(currency, Number(contract.scheduledPaymentAmount ?? contract.weeklyPaymentAmount))} / {contract.paymentSchedule === "DAILY" ? "day" : "week"}</p></div>
+                    </div>
+                    <div>
+                      <div className="mb-1.5 flex items-center justify-between text-xs font-medium text-muted-foreground"><span>Completion</span><span>{percentPaid.toFixed(0)}%</span></div>
+                      <Progress value={percentPaid} aria-label={`${contract.contractName} completion`} />
+                    </div>
+                    {summary ? (
+                      <p className="flex items-center gap-2 text-muted-foreground"><CalendarClock className="size-4 shrink-0" aria-hidden="true" />Next due {shortDate(summary.nextDueDate)}{summary.dueNow > 0 ? ` - ${money(currency, summary.dueNow)} due for this period` : " - this period is paid"}.</p>
+                    ) : null}
+                    {submissions.length > 0 ? (
+                      <div className="border-t pt-3">
+                        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Instalment history</p>
+                        <div className="space-y-1.5">
+                          {submissions.slice(0, 5).map((item) => (
+                            <div key={item.id} className="flex items-center justify-between gap-3">
+                              <span className="text-muted-foreground">{item.paymentDate.toLocaleDateString()}</span>
+                              <span className="font-medium tabular-nums">{money(currency, Number(item.amount))}</span>
+                              <Badge variant={item.status === "APPROVED" ? "default" : item.status === "REJECTED" ? "destructive" : "outline"}>{item.status === "PENDING" ? "Pending" : item.status === "APPROVED" ? "Approved" : "Rejected"}</Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+        </TabsContent>
+
+        {/* ---------- Vehicle ---------- */}
+        <TabsContent value="vehicle" className="mt-4 space-y-4">
+          {driver.assignedVehicles.length === 0 ? (
+            <EmptyState icon={CarFront} title="No vehicle assigned" description="Your vehicle's details will appear here once one is assigned to you." />
+          ) : (
+            driver.assignedVehicles.map((vehicle) => {
+              const latestMaintenance = vehicle.maintenanceRequests[0] ?? null;
+              const vehicleOpenMaintenance = vehicle.maintenanceRequests.filter((r) => !["COMPLETED", "CANCELLED"].includes(r.progressStatus));
+              const vehicleObligation = obligations.vehicles.find((v) => v.vehicleId === vehicle.id)?.summary ?? null;
+              return (
+                <Card key={vehicle.id}>
+                  <CardHeader>
+                    <div className="flex items-start justify-between gap-3">
+                      <div><CardTitle>{vehicle.plateNumber}</CardTitle><CardDescription>{[vehicle.make, vehicle.model].filter(Boolean).join(" ") || vehicle.assetTag}</CardDescription></div>
+                      <Badge>Assigned to you</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm">
+                    <div className="grid grid-cols-2 gap-3 rounded-lg bg-muted/40 p-3 sm:grid-cols-3">
+                      <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Mileage</p><p className="mt-1 font-medium">{vehicle.mileage !== null ? Number(vehicle.mileage).toLocaleString() : "Not recorded"}</p></div>
+                      <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Remittance schedule</p><p className="mt-1 font-medium">{vehicle.salesTargetPeriod && vehicle.salesTargetAmount ? `${money(currency, Number(vehicle.salesTargetAmount))} / ${vehicle.salesTargetPeriod === "DAILY" ? "day" : "week"}` : "Not configured"}</p></div>
+                      <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Current obligation</p><p className="mt-1 font-medium">{vehicleObligation ? money(currency, vehicleObligation.dueNow) : "None"}</p></div>
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg border p-3">
+                      <div className="flex items-center gap-2"><Wrench className="size-4 text-muted-foreground" aria-hidden="true" /><span>{vehicleOpenMaintenance.length} open maintenance issue{vehicleOpenMaintenance.length === 1 ? "" : "s"}</span></div>
+                      {latestMaintenance ? <Badge variant={PROGRESS_BADGE[latestMaintenance.progressStatus]}>{PROGRESS_LABELS[latestMaintenance.progressStatus]}</Badge> : null}
+                    </div>
+                    <Button size="sm" variant="outline" nativeButton={false} render={<Link href="?tab=maintenance" />}>Report an issue</Button>
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+        </TabsContent>
+
+        {/* ---------- Maintenance ---------- */}
         <TabsContent value="maintenance" className="mt-4 space-y-6">
           <section className="rounded-xl border bg-card p-4 sm:p-6">
             <div className="flex items-center justify-between gap-4">
@@ -333,7 +434,104 @@ export default async function DriverPortalPage({
             )}
           </section>
         </TabsContent>
+
+        {/* ---------- Activity and receipts ---------- */}
+        <TabsContent value="activity" className="mt-4 space-y-6">
+          {trends ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>My revenue</CardTitle>
+                <CardDescription>
+                  What you&apos;ve remitted from your assigned vehicle{driver.assignedVehicles.length === 1 ? "" : "s"}
+                  {allContracts.length > 0 ? ", and what you've paid toward your Work & Pay contract" : ""}. Only your own figures, not the organization&apos;s.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {allContracts.length > 0 ? (
+                  <Tabs defaultValue="vehicle">
+                    <TabsList variant="line">
+                      <TabsTrigger value="vehicle">Vehicle remittance</TabsTrigger>
+                      <TabsTrigger value="contract">Work & Pay</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="vehicle" className="mt-6">
+                      <PeriodicTrendChart data={trends.vehicleRevenue} series={[{ key: "revenue", label: "Remitted" }]} currency={currency} />
+                    </TabsContent>
+                    <TabsContent value="contract" className="mt-6">
+                      <PeriodicTrendChart data={trends.workAndPay} series={[{ key: "revenue", label: "Paid" }]} currency={currency} />
+                    </TabsContent>
+                  </Tabs>
+                ) : (
+                  <PeriodicTrendChart data={trends.vehicleRevenue} series={[{ key: "revenue", label: "Remitted" }]} currency={currency} />
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          <section className="rounded-xl border bg-card p-4 sm:p-6">
+            <h2 className="text-lg font-semibold">Payment activity</h2>
+            {driver.paymentSubmissions.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">No payments recorded yet.</p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {driver.paymentSubmissions.map((item) => {
+                  const variance = item.expectedAmount ? Number(item.amount) - Number(item.expectedAmount) : null;
+                  const receipt = confirmedBySubmissionId.get(item.id);
+                  return (
+                    <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm last:border-0">
+                      <div>
+                        <p className="font-medium">{item.vehicle?.plateNumber ?? "Assigned vehicle"}. {TYPE_LABELS[item.submissionType]}</p>
+                        <p className="text-muted-foreground">{item.periodStart.toLocaleDateString()} to {item.periodEnd.toLocaleDateString()}. {money(currency, Number(item.amount))}{variance === null || variance === 0 ? "" : ` (${money(currency, Math.abs(variance))} ${variance < 0 ? "short" : "over"})`}</p>
+                        {receipt ? <Link href={`/app/fleet/driver-portal/payment/callback?reference=${receipt.providerReference}`} className="mt-1 inline-flex items-center gap-1 text-xs text-primary underline underline-offset-2">
+                          <ReceiptText className="size-3" aria-hidden="true" />View receipt
+                        </Link> : null}
+                      </div>
+                      <Badge variant={item.status === "APPROVED" ? "default" : item.status === "REJECTED" ? "destructive" : "outline"}>{item.status === "PENDING" ? "Awaiting verification" : item.status === "APPROVED" ? "Approved" : "Rejected"}</Badge>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {maintenanceRequests.length > 0 ? (
+            <section className="rounded-xl border bg-card p-4 sm:p-6">
+              <h2 className="text-lg font-semibold">Maintenance activity</h2>
+              <div className="mt-3 space-y-2">
+                {maintenanceRequests.map((request) => (
+                  <div key={request.id} className="flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm last:border-0">
+                    <div><p className="font-medium">{request.vehiclePlateNumber}</p><p className="text-muted-foreground">{request.faultDescription}</p></div>
+                    <Badge variant={PROGRESS_BADGE[request.progressStatus]}>{PROGRESS_LABELS[request.progressStatus]}</Badge>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function ObligationCard({ title, currency, summary, payButton }: { title: string; currency: string; summary: ObligationSummary; payButton: React.ReactNode }) {
+  const current = summary.periods[summary.periods.length - 1];
+  const shortfall = summary.dueNow > 0 && current.approvedAmount > 0;
+  return (
+    <div className="rounded-xl border bg-card p-4 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-medium">{title}</p>
+          <p className="text-sm text-muted-foreground">{periodLabel(summary.type, current.periodStart, current.periodEnd)} - due {shortDate(summary.nextDueDate)}</p>
+        </div>
+        {current.isOverdue ? <Badge variant="destructive">Overdue</Badge> : current.isPaid ? <Badge>Paid</Badge> : <Badge variant="outline">Due</Badge>}
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3 rounded-lg bg-muted/40 p-3 text-sm sm:grid-cols-3">
+        <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Obligation</p><p className="mt-1 font-medium">{money(currency, summary.expectedAmount)}</p></div>
+        <div><p className="text-xs uppercase tracking-wide text-muted-foreground">Paid so far</p><p className="mt-1 font-medium">{money(currency, current.approvedAmount)}</p></div>
+        <div><p className="text-xs uppercase tracking-wide text-muted-foreground">{summary.dueNow > 0 ? "Remaining" : "Balance"}</p><p className="mt-1 font-medium">{money(currency, summary.dueNow)}</p></div>
+      </div>
+      {shortfall ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">You&apos;ve paid part of this period&apos;s obligation - {money(currency, summary.dueNow)} still remaining.</p> : null}
+      {current.pendingAmount > 0 ? <p className="mt-2 text-xs text-muted-foreground">{money(currency, current.pendingAmount)} submitted and awaiting manager verification.</p> : null}
+      {payButton ? <div className="mt-3">{payButton}</div> : null}
     </div>
   );
 }
