@@ -7,7 +7,7 @@
 - **Claims discipline**: copy is limited to implemented behavior. It does not claim fabricated customer results, universal Accounting posting, legal certification or settlement calculations that are not configured.
 - **Important files**: `src/app/(public)/page.tsx`, `src/app/(public)/pricing/page.tsx`, `src/app/(public)/solutions/page.tsx`, `src/app/(public)/industries/page.tsx`, `src/app/(public)/modules/page.tsx`, `src/lib/seo.ts`, `test/public-subscription-ui.test.ts`, `docs/BILLING_AND_SUBSCRIPTIONS.md`, `README.md`.
 - **Validation**: focused public marketing, pricing and SEO tests passed (4 files, 14 tests). TypeScript passed. ESLint passed with zero warnings. Full unit suite passed (128 files, 999 tests). Production build passed and generated 225 routes. Editorial punctuation coverage passed as part of the full suite. No schema change or database integration test was required.
-- **Release status**: implementation validation is complete. Production deployment evidence is recorded in the follow-up entry after verification.
+- **Deployed and verified in production**: commit `4f4d7ff`, deployment `dpl_Eb94BF9aAN8GHLfzEHxksgdX6kas`, status `READY`, aliased to `https://www.rockfrostgroup.com` and `https://app.rockfrostgroup.com`. All 81 migrations were already applied. `/api/health` returned `ok: true` with the database reachable. The public homepage and Pricing page returned HTTP 200 and contained the new ERP headline, Ghana pricing label and Fleet audience description. The deployment's error-level log query returned no errors.
 
 ## 2026-08-30: Regression consolidation and docs closure, Track D Phase D6 of 15 (final phase)
 
