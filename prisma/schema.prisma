@@ -6592,10 +6592,16 @@ model SupportMessage {
 
 /**
  * Lightweight heartbeat-driven presence, updated only while a support chat surface is actually open — not a global "is this user active anywhere" tracker.
+ * activeConversationId is set only by the platform inbox, tracking which
+ * one conversation a Super Admin is currently viewing — no FK, since a
+ * stale id (the conversation's own row was never actually deleted, but
+ * this is intentionally loose) should just fail to match on the next
+ * lookup rather than cascade or require cleanup.
  */
 model UserPresence {
-  userId     String   @id
-  lastSeenAt DateTime @default(now())
+  userId               String   @id
+  lastSeenAt           DateTime @default(now())
+  activeConversationId String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

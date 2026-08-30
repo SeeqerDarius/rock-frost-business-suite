@@ -210,6 +210,58 @@ describe("Support messaging service — per-user tenant conversations", () => {
     await expect(support.isTenantOnline(USER)).resolves.toBe(false);
   });
 
+  it("isPlatformOnline (the tenant's own vague 'is the team around' indicator) remains platform-wide, untouched by the conversation-scoped fix", async () => {
+    mockDb.organizationMember.findMany.mockResolvedValue([{ userId: "admin-1" }]);
+    mockDb.userPresence.findFirst.mockResolvedValue({ userId: "admin-1" });
+
+    await expect(support.isPlatformOnline()).resolves.toBe(true);
+
+    const call = mockDb.userPresence.findFirst.mock.calls[0][0];
+    expect(call.where.userId).toEqual({ in: ["admin-1"] });
+    expect(call.where).not.toHaveProperty("activeConversationId");
+  });
+
+  it("isPlatformOnlineForConversation checks Super Admin presence scoped to that one conversation id, not platform-wide", async () => {
+    mockDb.organizationMember.findMany.mockResolvedValue([{ userId: "admin-1" }]);
+    mockDb.userPresence.findFirst.mockResolvedValue({ userId: "admin-1" });
+
+    await expect(support.isPlatformOnlineForConversation("conv-1")).resolves.toBe(true);
+
+    const call = mockDb.userPresence.findFirst.mock.calls[0][0];
+    expect(call.where.userId).toEqual({ in: ["admin-1"] });
+    expect(call.where.activeConversationId).toBe("conv-1");
+  });
+
+  it("isPlatformOnlineForConversation is false with no active Super Admins, without querying presence at all", async () => {
+    mockDb.organizationMember.findMany.mockResolvedValue([]);
+    await expect(support.isPlatformOnlineForConversation("conv-1")).resolves.toBe(false);
+    expect(mockDb.userPresence.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("isPlatformOnlineForConversation is false when a Super Admin is online but pointed at a different conversation", async () => {
+    mockDb.organizationMember.findMany.mockResolvedValue([{ userId: "admin-1" }]);
+    mockDb.userPresence.findFirst.mockResolvedValue(null);
+    await expect(support.isPlatformOnlineForConversation("conv-1")).resolves.toBe(false);
+  });
+
+  it("recordHeartbeat leaves activeConversationId untouched when omitted, so a tenant or admin heartbeat never wipes a Super Admin's own presence state", async () => {
+    mockDb.userPresence.upsert.mockResolvedValue({});
+    await support.recordHeartbeat(USER);
+
+    const call = mockDb.userPresence.upsert.mock.calls[0][0];
+    expect(call.update).not.toHaveProperty("activeConversationId");
+    expect(call.create.activeConversationId).toBeNull();
+  });
+
+  it("recordHeartbeat sets activeConversationId when explicitly provided", async () => {
+    mockDb.userPresence.upsert.mockResolvedValue({});
+    await support.recordHeartbeat("admin-1", "conv-1");
+
+    const call = mockDb.userPresence.upsert.mock.calls[0][0];
+    expect(call.update.activeConversationId).toBe("conv-1");
+    expect(call.create.activeConversationId).toBe("conv-1");
+  });
+
   it("sendAiMessage creates an AI-role message with no sender account and bumps no read cursor", async () => {
     mockDb.supportConversation.findUniqueOrThrow.mockResolvedValueOnce({ id: "conv-1", organizationId: ORG, userId: USER });
     mockDb.supportMessage.create.mockResolvedValue({ id: "msg-1", createdAt: new Date("2026-01-01") });
@@ -295,6 +347,14 @@ describe("Support messaging — access-guard source coverage", () => {
 
     const actionsSource = read("src/app/app/platform/support/actions.ts");
     expect(actionsSource).toContain("isPlatformOperator");
+  });
+
+  it("the platform inbox's heartbeat carries the currently-selected conversation id, so AI eligibility can be scoped per conversation", () => {
+    const pageSource = read("src/app/app/platform/support/page.tsx");
+    expect(pageSource).toContain("platformSupportHeartbeat.bind(null, selected.id)");
+
+    const actionsSource = read("src/app/app/platform/support/actions.ts");
+    expect(actionsSource).toMatch(/platformSupportHeartbeat\(conversationId\?/);
   });
 
   it("the organization admin inbox and its actions require ORG_SETTINGS_MANAGE, re-checked independently in every action", () => {

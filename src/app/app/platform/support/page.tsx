@@ -110,7 +110,7 @@ export default async function PlatformSupportPage({ searchParams }: { searchPara
                 templates={PLATFORM_SUPPORT_TEMPLATES}
                 onSend={sendPlatformSupportMessage.bind(null, selected.id)}
                 onPoll={pollPlatformSupportMessages.bind(null, selected.id)}
-                onHeartbeat={platformSupportHeartbeat}
+                onHeartbeat={platformSupportHeartbeat.bind(null, selected.id)}
                 onMarkRead={markPlatformSupportRead.bind(null, selected.id)}
               />
             </div>

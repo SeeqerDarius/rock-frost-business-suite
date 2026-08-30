@@ -53,9 +53,11 @@ export async function getPlatformSupportUnreadCount(): Promise<number> {
   return support.getPlatformUnreadCount();
 }
 
-export async function platformSupportHeartbeat(): Promise<void> {
+/** conversationId is the one currently selected in the inbox — recorded on every heartbeat so AI-eligibility checks can be scoped to that one conversation instead of the operator's presence in general. */
+export async function platformSupportHeartbeat(conversationId?: string): Promise<void> {
   const tenant = await requirePlatformOperatorTenant();
-  await support.recordHeartbeat(tenant.userId);
+  const parsedConversation = conversationId ? cuid.safeParse(conversationId) : null;
+  await support.recordHeartbeat(tenant.userId, parsedConversation?.success ? parsedConversation.data : undefined);
 }
 
 export async function markPlatformSupportRead(conversationId: string): Promise<void> {

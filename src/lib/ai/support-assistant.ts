@@ -194,11 +194,15 @@ export async function getAssistantReply(
 export async function triggerAiReplyIfEligible(tenant: TenantContext): Promise<void> {
   if (!hasPermission(tenant, PERMISSIONS.AI_ASSISTANT_USE)) return;
   if (!getGroqClient()) return;
-  if (await support.isPlatformOnline()) return;
   if (await support.isAiReplyRateLimited(tenant.organizationId)) return;
 
   const { conversation, messages } = await support.listSupportMessages(tenant.organizationId, tenant.userId);
   if (!conversation || messages.length === 0) return;
+
+  // Scoped to this one conversation, not a platform-wide check — an
+  // operator looking at a different organization's conversation must never
+  // suppress this one's AI reply.
+  if (await support.isPlatformOnlineForConversation(conversation.id)) return;
 
   const transcript: AssistantTranscriptMessage[] = messages.slice(-20).map((message) => ({
     speaker: message.senderRole === "TENANT" ? "tenant" : message.senderRole === "PLATFORM" || message.senderRole === "ADMIN" ? "platform" : "ai",

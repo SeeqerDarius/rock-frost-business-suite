@@ -228,11 +228,45 @@ export async function isTenantOnline(userId: string) {
   return !!presence && presence.lastSeenAt.getTime() > Date.now() - ONLINE_WINDOW_MS;
 }
 
-export async function recordHeartbeat(userId: string) {
+/**
+ * The actual AI-eligibility gate: is a Super Admin's heartbeat currently
+ * pointed at this one conversation, not merely at the platform inbox in
+ * general. Fixes the confirmed bug in isPlatformOnline() (still used
+ * elsewhere for the tenant's vague "is the team around" indicator), where
+ * an operator viewing any one tenant's conversation silently suppressed AI
+ * replies for every organization, not just the one on screen.
+ */
+export async function isPlatformOnlineForConversation(conversationId: string): Promise<boolean> {
+  const platformUserIds = await db.organizationMember.findMany({
+    where: { status: "ACTIVE", role: { name: "Super Admin", isSystem: true, organizationId: null } },
+    select: { userId: true },
+    distinct: ["userId"],
+  });
+  if (platformUserIds.length === 0) return false;
+  const recent = await db.userPresence.findFirst({
+    where: {
+      userId: { in: platformUserIds.map((m) => m.userId) },
+      activeConversationId: conversationId,
+      lastSeenAt: { gt: new Date(Date.now() - ONLINE_WINDOW_MS) },
+    },
+    select: { userId: true },
+  });
+  return !!recent;
+}
+
+/**
+ * activeConversationId is only ever set when the caller explicitly passes
+ * one (the platform inbox, on every heartbeat while a conversation is
+ * selected) — omitting it leaves a previously-recorded value in place
+ * rather than clearing it, so a tenant or admin heartbeat (neither of which
+ * has a concept of "the platform conversation I'm viewing") can never wipe
+ * out a Super Admin's own presence state.
+ */
+export async function recordHeartbeat(userId: string, activeConversationId?: string) {
   await db.userPresence.upsert({
     where: { userId },
-    update: { lastSeenAt: new Date() },
-    create: { userId, lastSeenAt: new Date() },
+    update: activeConversationId !== undefined ? { lastSeenAt: new Date(), activeConversationId } : { lastSeenAt: new Date() },
+    create: { userId, lastSeenAt: new Date(), activeConversationId: activeConversationId ?? null },
   });
 }
 
