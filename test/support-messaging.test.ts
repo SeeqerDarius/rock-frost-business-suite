@@ -6,7 +6,7 @@ const mockDb = {
   supportConversation: { upsert: vi.fn(), findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn(), findMany: vi.fn() },
   supportMessage: { create: vi.fn(), findMany: vi.fn(), count: vi.fn() },
   organizationMember: { findMany: vi.fn() },
-  userPresence: { findFirst: vi.fn(), upsert: vi.fn() },
+  userPresence: { findFirst: vi.fn(), findUnique: vi.fn(), upsert: vi.fn() },
   $transaction: vi.fn(),
   $executeRaw: vi.fn(),
 };
@@ -19,20 +19,22 @@ vi.mock("@/lib/platform-organizations", () => ({
 const support = await import("@/lib/support/service");
 
 const ORG = "org-1";
+const USER = "user-1";
+const OTHER_USER = "user-2";
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockDb.$transaction.mockImplementation(async (callback: (tx: typeof mockDb) => unknown) => callback(mockDb));
 });
 
-describe("Support messaging service — tenant isolation", () => {
-  it("listSupportMessages scopes the conversation lookup and message query by organizationId", async () => {
-    mockDb.supportConversation.findUnique.mockResolvedValue({ id: "conv-1", organizationId: ORG });
+describe("Support messaging service — per-user tenant conversations", () => {
+  it("listSupportMessages looks up the conversation by (organizationId, userId), not organizationId alone", async () => {
+    mockDb.supportConversation.findUnique.mockResolvedValue({ id: "conv-1", organizationId: ORG, userId: USER });
     mockDb.supportMessage.findMany.mockResolvedValue([]);
 
-    await support.listSupportMessages(ORG);
+    await support.listSupportMessages(ORG, USER);
 
-    expect(mockDb.supportConversation.findUnique).toHaveBeenCalledWith({ where: { organizationId: ORG } });
+    expect(mockDb.supportConversation.findUnique).toHaveBeenCalledWith({ where: { organizationId_userId: { organizationId: ORG, userId: USER } } });
     const call = mockDb.supportMessage.findMany.mock.calls[0][0];
     expect(call.where.organizationId).toBe(ORG);
     expect(call.where.conversationId).toBe("conv-1");
@@ -40,23 +42,27 @@ describe("Support messaging service — tenant isolation", () => {
 
   it("listSupportMessages returns an empty list without querying messages when no conversation exists yet", async () => {
     mockDb.supportConversation.findUnique.mockResolvedValue(null);
-    const result = await support.listSupportMessages(ORG);
+    const result = await support.listSupportMessages(ORG, USER);
     expect(result.messages).toEqual([]);
     expect(mockDb.supportMessage.findMany).not.toHaveBeenCalled();
   });
 
-  it("sendTenantMessage creates a TENANT-role message scoped to the sender's organization, marks the tenant side read, and returns the updated conversation", async () => {
-    mockDb.supportConversation.upsert.mockResolvedValue({ id: "conv-1", organizationId: ORG });
+  it("sendTenantMessage creates or reuses only that user's own conversation, creates a TENANT-role message, and marks the tenant side read", async () => {
+    mockDb.supportConversation.upsert.mockResolvedValue({ id: "conv-1", organizationId: ORG, userId: USER });
     mockDb.supportMessage.create.mockResolvedValue({ id: "msg-1", createdAt: new Date("2026-01-01") });
-    mockDb.supportConversation.update.mockResolvedValue({ id: "conv-1", organizationId: ORG, tenantLastReadAt: new Date("2026-01-01"), platformLastReadAt: null });
-    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValue({ id: "conv-1", organizationId: ORG, tenantLastReadAt: new Date("2026-01-01"), platformLastReadAt: null });
+    mockDb.supportConversation.update.mockResolvedValue({ id: "conv-1", organizationId: ORG, userId: USER, tenantLastReadAt: new Date("2026-01-01"), platformLastReadAt: null });
+    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValue({ id: "conv-1", organizationId: ORG, userId: USER, tenantLastReadAt: new Date("2026-01-01"), platformLastReadAt: null });
 
-    const { message, conversation } = await support.sendTenantMessage(ORG, "user-1", "Jane Doe", "My invoice looks wrong");
+    const { message, conversation } = await support.sendTenantMessage(ORG, USER, "Jane Doe", "My invoice looks wrong");
+
+    const upsertCall = mockDb.supportConversation.upsert.mock.calls[0][0];
+    expect(upsertCall.where).toEqual({ organizationId_userId: { organizationId: ORG, userId: USER } });
+    expect(upsertCall.create).toEqual({ organizationId: ORG, userId: USER });
 
     const createCall = mockDb.supportMessage.create.mock.calls[0][0];
     expect(createCall.data.organizationId).toBe(ORG);
     expect(createCall.data.senderRole).toBe("TENANT");
-    expect(createCall.data.senderId).toBe("user-1");
+    expect(createCall.data.senderId).toBe(USER);
 
     const updateCall = mockDb.supportConversation.update.mock.calls[0][0];
     expect(updateCall.data.tenantLastReadAt).toBeInstanceOf(Date);
@@ -66,13 +72,24 @@ describe("Support messaging service — tenant isolation", () => {
     expect(conversation.id).toBe("conv-1");
   });
 
-  it("sendPlatformMessage creates a PLATFORM-role message and marks the platform side read, not the tenant side", async () => {
-    mockDb.supportConversation.upsert.mockResolvedValue({ id: "conv-1", organizationId: ORG });
-    mockDb.supportMessage.create.mockResolvedValue({ id: "msg-1", createdAt: new Date("2026-01-01") });
-    mockDb.supportConversation.update.mockResolvedValue({ id: "conv-1", organizationId: ORG, tenantLastReadAt: null, platformLastReadAt: new Date("2026-01-01") });
-    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValue({ id: "conv-1", organizationId: ORG, tenantLastReadAt: null, platformLastReadAt: new Date("2026-01-01") });
+  it("two different users in the same organization never resolve to the same conversation", async () => {
+    mockDb.supportConversation.upsert.mockResolvedValueOnce({ id: "conv-a", organizationId: ORG, userId: USER });
+    mockDb.supportConversation.upsert.mockResolvedValueOnce({ id: "conv-b", organizationId: ORG, userId: OTHER_USER });
 
-    await support.sendPlatformMessage(ORG, "operator-1", "Rock Frost Support", "We're looking into this now");
+    await support.getOrCreateSupportConversation(ORG, USER);
+    await support.getOrCreateSupportConversation(ORG, OTHER_USER);
+
+    expect(mockDb.supportConversation.upsert.mock.calls[0][0].where).toEqual({ organizationId_userId: { organizationId: ORG, userId: USER } });
+    expect(mockDb.supportConversation.upsert.mock.calls[1][0].where).toEqual({ organizationId_userId: { organizationId: ORG, userId: OTHER_USER } });
+  });
+
+  it("sendPlatformMessage creates a PLATFORM-role message on the given conversation and marks the platform side read, not the tenant side", async () => {
+    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValueOnce({ id: "conv-1", organizationId: ORG, userId: USER });
+    mockDb.supportMessage.create.mockResolvedValue({ id: "msg-1", createdAt: new Date("2026-01-01") });
+    mockDb.supportConversation.update.mockResolvedValue({ id: "conv-1", organizationId: ORG, userId: USER, tenantLastReadAt: null, platformLastReadAt: new Date("2026-01-01") });
+    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValueOnce({ id: "conv-1", organizationId: ORG, userId: USER, tenantLastReadAt: null, platformLastReadAt: new Date("2026-01-01") });
+
+    await support.sendPlatformMessage("conv-1", "operator-1", "Rock Frost Support", "We're looking into this now");
 
     const createCall = mockDb.supportMessage.create.mock.calls[0][0];
     expect(createCall.data.senderRole).toBe("PLATFORM");
@@ -80,6 +97,39 @@ describe("Support messaging service — tenant isolation", () => {
     const updateCall = mockDb.supportConversation.update.mock.calls[0][0];
     expect(updateCall.data.platformLastReadAt).toBeInstanceOf(Date);
     expect(updateCall.data.tenantLastReadAt).toBeUndefined();
+  });
+
+  it("sendPlatformMessage refuses to reply into a legacy (userId: null) conversation", async () => {
+    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValue({ id: "conv-legacy", organizationId: ORG, userId: null });
+
+    await expect(support.sendPlatformMessage("conv-legacy", "operator-1", "Rock Frost Support", "Hi")).rejects.toThrow(support.LegacyConversationError);
+    expect(mockDb.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("sendAdminMessage creates an ADMIN-role message and refuses a conversation from a different organization, even with a valid conversation id", async () => {
+    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValue({ id: "conv-other-org", organizationId: "org-2", userId: USER });
+
+    await expect(support.sendAdminMessage(ORG, "conv-other-org", "admin-1", "Admin Name", "Hello")).rejects.toThrow(support.SupportNotFoundError);
+    expect(mockDb.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("sendAdminMessage succeeds and tags the message ADMIN when the conversation belongs to the admin's own organization", async () => {
+    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValueOnce({ id: "conv-1", organizationId: ORG, userId: USER });
+    mockDb.supportMessage.create.mockResolvedValue({ id: "msg-1", createdAt: new Date("2026-01-01") });
+    mockDb.supportConversation.update.mockResolvedValue({});
+    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValueOnce({ id: "conv-1", organizationId: ORG, userId: USER, tenantLastReadAt: null, platformLastReadAt: null, adminLastReadAt: new Date("2026-01-01") });
+
+    await support.sendAdminMessage(ORG, "conv-1", "admin-1", "Admin Name", "We're on it");
+
+    const createCall = mockDb.supportMessage.create.mock.calls[0][0];
+    expect(createCall.data.senderRole).toBe("ADMIN");
+    const updateCall = mockDb.supportConversation.update.mock.calls[0][0];
+    expect(updateCall.data.adminLastReadAt).toBeInstanceOf(Date);
+  });
+
+  it("sendAdminMessage refuses to reply into a legacy conversation", async () => {
+    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValue({ id: "conv-legacy", organizationId: ORG, userId: null });
+    await expect(support.sendAdminMessage(ORG, "conv-legacy", "admin-1", "Admin Name", "Hi")).rejects.toThrow(support.LegacyConversationError);
   });
 
   describe("otherPartyReadAt (read receipts)", () => {
@@ -97,81 +147,95 @@ describe("Support messaging service — tenant isolation", () => {
       expect(support.otherPartyReadAt(conversation, "TENANT")).toBeNull();
       expect(support.otherPartyReadAt(conversation, "PLATFORM")).toBeNull();
     });
+
+    it("always returns null for an ADMIN viewer — a third party has no single fixed other side", () => {
+      const conversation = { tenantLastReadAt: new Date(), platformLastReadAt: new Date() };
+      expect(support.otherPartyReadAt(conversation, "ADMIN")).toBeNull();
+    });
   });
 
   it("rejects an empty or whitespace-only message before touching the database", async () => {
-    await expect(support.sendTenantMessage(ORG, "user-1", "Jane", "   ")).rejects.toThrow();
+    mockDb.supportConversation.upsert.mockResolvedValue({ id: "conv-1", organizationId: ORG, userId: USER });
+    await expect(support.sendTenantMessage(ORG, USER, "Jane", "   ")).rejects.toThrow();
     expect(mockDb.$transaction).not.toHaveBeenCalled();
   });
 
   it("getTenantUnreadCount is 0 when no conversation exists yet", async () => {
     mockDb.supportConversation.findUnique.mockResolvedValue(null);
-    await expect(support.getTenantUnreadCount(ORG)).resolves.toBe(0);
+    await expect(support.getTenantUnreadCount(ORG, USER)).resolves.toBe(0);
     expect(mockDb.supportMessage.count).not.toHaveBeenCalled();
   });
 
-  it("getTenantUnreadCount counts PLATFORM and AI messages newer than tenantLastReadAt, scoped to the conversation", async () => {
+  it("getTenantUnreadCount counts PLATFORM, AI, and ADMIN messages newer than tenantLastReadAt, scoped to that user's own conversation", async () => {
     const lastRead = new Date("2026-01-01");
-    mockDb.supportConversation.findUnique.mockResolvedValue({ id: "conv-1", organizationId: ORG, tenantLastReadAt: lastRead });
+    mockDb.supportConversation.findUnique.mockResolvedValue({ id: "conv-1", organizationId: ORG, userId: USER, tenantLastReadAt: lastRead });
     mockDb.supportMessage.count.mockResolvedValue(3);
 
-    await support.getTenantUnreadCount(ORG);
+    await support.getTenantUnreadCount(ORG, USER);
 
     const call = mockDb.supportMessage.count.mock.calls[0][0];
     expect(call.where.organizationId).toBe(ORG);
     expect(call.where.conversationId).toBe("conv-1");
-    expect(call.where.senderRole).toEqual({ in: ["PLATFORM", "AI"] });
+    expect(call.where.senderRole).toEqual({ in: ["PLATFORM", "AI", "ADMIN"] });
     expect(call.where.createdAt).toEqual({ gt: lastRead });
   });
 
-  it("listPlatformConversations excludes platform anchor organizations", async () => {
-    mockDb.supportConversation.findMany.mockResolvedValue([]);
-    await support.listPlatformConversations();
+  it("listPlatformConversations excludes platform anchor organizations and tags each row's kind by whether userId is set", async () => {
+    mockDb.supportConversation.findMany.mockResolvedValue([
+      { id: "conv-1", organizationId: ORG, userId: USER, organization: { id: ORG, name: "Acme" }, user: { id: USER, name: "Jane" }, messages: [], platformLastReadAt: null },
+      { id: "conv-legacy", organizationId: ORG, userId: null, organization: { id: ORG, name: "Acme" }, user: null, messages: [], platformLastReadAt: null },
+    ]);
+    mockDb.supportMessage.count.mockResolvedValue(0);
+
+    const result = await support.listPlatformConversations();
+
     const call = mockDb.supportConversation.findMany.mock.calls[0][0];
     expect(call.where.organizationId).toEqual({ notIn: ["anchor-org"] });
+    expect(result.find((c) => c.id === "conv-1")?.kind).toBe("INDIVIDUAL");
+    expect(result.find((c) => c.id === "conv-legacy")?.kind).toBe("LEGACY");
   });
 
-  it("isTenantOnline checks presence only for that organization's own active members", async () => {
-    mockDb.organizationMember.findMany.mockResolvedValue([{ userId: "user-1" }, { userId: "user-2" }]);
-    mockDb.userPresence.findFirst.mockResolvedValue(null);
-
-    await support.isTenantOnline(ORG);
-
-    expect(mockDb.organizationMember.findMany).toHaveBeenCalledWith({ where: { organizationId: ORG, status: "ACTIVE" }, select: { userId: true } });
-    const call = mockDb.userPresence.findFirst.mock.calls[0][0];
-    expect(call.where.userId).toEqual({ in: ["user-1", "user-2"] });
+  it("isTenantOnline checks presence for exactly the one participant, not the whole organization", async () => {
+    mockDb.userPresence.findUnique.mockResolvedValue({ lastSeenAt: new Date() });
+    await expect(support.isTenantOnline(USER)).resolves.toBe(true);
+    expect(mockDb.userPresence.findUnique).toHaveBeenCalledWith({ where: { userId: USER }, select: { lastSeenAt: true } });
+    expect(mockDb.organizationMember.findMany).not.toHaveBeenCalled();
   });
 
-  it("isTenantOnline is false with no active members, without querying presence at all", async () => {
-    mockDb.organizationMember.findMany.mockResolvedValue([]);
-    await expect(support.isTenantOnline(ORG)).resolves.toBe(false);
-    expect(mockDb.userPresence.findFirst).not.toHaveBeenCalled();
+  it("isTenantOnline is false when there is no presence row, or it's stale", async () => {
+    mockDb.userPresence.findUnique.mockResolvedValue(null);
+    await expect(support.isTenantOnline(USER)).resolves.toBe(false);
+
+    mockDb.userPresence.findUnique.mockResolvedValue({ lastSeenAt: new Date(Date.now() - 60_000) });
+    await expect(support.isTenantOnline(USER)).resolves.toBe(false);
   });
 
-  it("sendAiMessage creates an AI-role message with no sender account and bumps neither read cursor", async () => {
-    mockDb.supportConversation.upsert.mockResolvedValue({ id: "conv-1", organizationId: ORG });
+  it("sendAiMessage creates an AI-role message with no sender account and bumps no read cursor", async () => {
+    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValueOnce({ id: "conv-1", organizationId: ORG, userId: USER });
     mockDb.supportMessage.create.mockResolvedValue({ id: "msg-1", createdAt: new Date("2026-01-01") });
-    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValue({ id: "conv-1", organizationId: ORG, tenantLastReadAt: null, platformLastReadAt: null });
+    mockDb.supportConversation.update.mockResolvedValue({});
+    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValueOnce({ id: "conv-1", organizationId: ORG, userId: USER, tenantLastReadAt: null, platformLastReadAt: null });
 
-    await support.sendAiMessage(ORG, "You have 482 active students.");
+    await support.sendAiMessage("conv-1", "You have 482 active students.");
 
     const createCall = mockDb.supportMessage.create.mock.calls[0][0];
     expect(createCall.data.senderRole).toBe("AI");
     expect(createCall.data.senderId).toBeNull();
     expect(createCall.data.senderName).toBe("Rock Frost AI Assistant");
 
-    // An AI reply isn't a read acknowledgment from either side of the conversation.
-    expect(mockDb.supportConversation.update).not.toHaveBeenCalled();
+    // An AI reply isn't a read acknowledgment from any human party.
+    const updateCall = mockDb.supportConversation.update.mock.calls[0][0];
+    expect(updateCall.data).toEqual({ status: "OPEN" });
   });
 
-  it("getPlatformUnreadCount still only counts TENANT messages — an AI reply doesn't need operator attention", async () => {
+  it("getPlatformUnreadCount counts TENANT and ADMIN messages, but not AI — an AI reply doesn't need operator attention", async () => {
     mockDb.supportConversation.findMany.mockResolvedValue([{ id: "conv-1", platformLastReadAt: null }]);
     mockDb.supportMessage.count.mockResolvedValue(0);
 
     await support.getPlatformUnreadCount();
 
     const call = mockDb.supportMessage.count.mock.calls[0][0];
-    expect(call.where.senderRole).toBe("TENANT");
+    expect(call.where.senderRole).toEqual({ in: ["TENANT", "ADMIN"] });
   });
 
   it("isAiReplyRateLimited caps AI replies per organization within a rolling hour", async () => {
@@ -185,6 +249,31 @@ describe("Support messaging service — tenant isolation", () => {
     expect(call.where.organizationId).toBe(ORG);
     expect(call.where.senderRole).toBe("AI");
     expect(call.where.createdAt.gte).toBeInstanceOf(Date);
+  });
+});
+
+describe("Support messaging service — organization admin inbox", () => {
+  it("listOrgSupportConversations only ever queries by the given organizationId", async () => {
+    mockDb.supportConversation.findMany.mockResolvedValue([]);
+    await support.listOrgSupportConversations(ORG);
+    const call = mockDb.supportConversation.findMany.mock.calls[0][0];
+    expect(call.where).toEqual({ organizationId: ORG });
+  });
+
+  it("markReadByAdmin refuses a conversation from a different organization", async () => {
+    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValue({ id: "conv-1", organizationId: "org-2" });
+    await expect(support.markReadByAdmin(ORG, "conv-1")).rejects.toThrow(support.SupportNotFoundError);
+    expect(mockDb.supportConversation.update).not.toHaveBeenCalled();
+  });
+
+  it("getOrgSupportUnreadCount counts TENANT, PLATFORM, and AI messages, but never the admin's own ADMIN-authored ones", async () => {
+    mockDb.supportConversation.findMany.mockResolvedValue([{ id: "conv-1", adminLastReadAt: null }]);
+    mockDb.supportMessage.count.mockResolvedValue(0);
+
+    await support.getOrgSupportUnreadCount(ORG);
+
+    const call = mockDb.supportMessage.count.mock.calls[0][0];
+    expect(call.where.senderRole).toEqual({ in: ["TENANT", "PLATFORM", "AI"] });
   });
 });
 
@@ -206,6 +295,20 @@ describe("Support messaging — access-guard source coverage", () => {
 
     const actionsSource = read("src/app/app/platform/support/actions.ts");
     expect(actionsSource).toContain("isPlatformOperator");
+  });
+
+  it("the organization admin inbox and its actions require ORG_SETTINGS_MANAGE, re-checked independently in every action", () => {
+    const pageSource = read("src/app/app/(overview)/support/inbox/page.tsx");
+    expect(pageSource).toContain("ORG_SETTINGS_MANAGE");
+
+    const actionsSource = read("src/app/app/(overview)/support/inbox/actions.ts");
+    expect(actionsSource).toContain("ORG_SETTINGS_MANAGE");
+    // Every exported action re-checks via the shared guard — not one page-level check trusted by all of them.
+    const exportedActionCount = (actionsSource.match(/^export async function/gm) ?? []).length;
+    const guardCallCount = (actionsSource.match(/requireOrgSupportAdminTenant\(\)/g) ?? []).length;
+    expect(exportedActionCount).toBeGreaterThanOrEqual(5);
+    expect(guardCallCount).toBe(exportedActionCount + 1); // +1 for the guard's own definition calling requireCurrentTenant, counted separately below
+
   });
 
   it("is reachable via a floating chat bubble in the top-level app layout, not a sidebar link, and never emails anyone", () => {

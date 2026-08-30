@@ -16,7 +16,7 @@ export interface SupportChatMessage {
   id: string;
   content: string;
   createdAt: string;
-  senderRole: "TENANT" | "PLATFORM" | "AI";
+  senderRole: "TENANT" | "PLATFORM" | "AI" | "ADMIN";
   senderName: string;
 }
 
@@ -48,8 +48,8 @@ function formatTimestamp(iso: string) {
 }
 
 interface SupportChatProps {
-  /** Which side of the conversation the current viewer is on. */
-  viewerRole: "TENANT" | "PLATFORM";
+  /** Which side of the conversation the current viewer is on. An ADMIN viewer is a third party (the org-scoped admin inbox) with no fixed "other side". */
+  viewerRole: "TENANT" | "PLATFORM" | "ADMIN";
   /** Display name for the other party in this conversation (e.g. "Rock Frost Support", or a tenant's org name). */
   otherPartyLabel: string;
   initialMessages: SupportChatMessage[];
@@ -58,6 +58,9 @@ interface SupportChatProps {
   initialOtherPartyReadAt?: string | null;
   disabled?: boolean;
   disabledReason?: string;
+  /** A pre-migration shared conversation frozen as history — hides the composer and quick replies, shows readOnlyReason instead. */
+  readOnly?: boolean;
+  readOnlyReason?: string;
   onSend: (content: string) => Promise<SendResult>;
   onPoll: (sinceIso: string | null) => Promise<PollResult>;
   onHeartbeat: () => Promise<void>;
@@ -80,6 +83,8 @@ export function SupportChat({
   initialOtherPartyReadAt = null,
   disabled = false,
   disabledReason,
+  readOnly = false,
+  readOnlyReason,
   onSend,
   onPoll,
   onHeartbeat,
@@ -247,7 +252,11 @@ export function SupportChat({
         </div>
       </div>
 
-      {messages.some((message) => message.senderRole === "AI") ? (
+      {readOnly ? (
+        <p className="shrink-0 border-b bg-muted/40 px-3 py-1.5 text-center text-[11px] leading-4 text-muted-foreground sm:px-4">
+          {readOnlyReason || "This conversation is read-only."}
+        </p>
+      ) : messages.some((message) => message.senderRole === "AI") ? (
         <p className="shrink-0 border-b bg-muted/40 px-3 py-1.5 text-center text-[11px] leading-4 text-muted-foreground sm:px-4">
           Some replies here are automated. The Rock Frost team can always help too.
         </p>
@@ -260,12 +269,15 @@ export function SupportChat({
           </div>
           {messages.length === 0 ? (
             <p className="m-auto max-w-xs text-center text-sm text-muted-foreground">
-              No messages yet. {viewerRole === "TENANT" ? "Send a message below and the Rock Frost team will reply here." : "Waiting for this organization to reach out."}
+              {readOnly
+                ? "No messages in this conversation."
+                : `No messages yet. ${viewerRole === "TENANT" ? "Send a message below and the Rock Frost team will reply here." : "Waiting for this organization to reach out."}`}
             </p>
           ) : (
             messages.map((message) => {
               const isOwn = message.senderRole === viewerRole;
               const isAi = message.senderRole === "AI";
+              const isAdmin = message.senderRole === "ADMIN";
               const isRead = isOwn && otherPartyReadAt !== null && message.createdAt <= otherPartyReadAt;
               return (
                 <div key={message.id} className={cn("flex items-end gap-2", isOwn ? "flex-row-reverse" : "flex-row")}>
@@ -293,6 +305,11 @@ export function SupportChat({
                             AI
                           </Badge>
                         ) : null}
+                        {isAdmin ? (
+                          <Badge variant="outline" className="h-4 rounded-full px-1.5 text-[9px] leading-none font-medium">
+                            Admin
+                          </Badge>
+                        ) : null}
                         <span>· {formatTimestamp(message.createdAt)}</span>
                       </span>
                       {isOwn ? (
@@ -317,7 +334,7 @@ export function SupportChat({
           {pendingMessage ? (
             <div className="flex animate-in flex-row-reverse items-end gap-2 fade-in-0 slide-in-from-bottom-2 duration-200">
               <Avatar size="sm" className="mb-4 shrink-0 opacity-70">
-                <AvatarFallback>{viewerRole === "TENANT" ? "You" : "RF"}</AvatarFallback>
+                <AvatarFallback>{viewerRole === "TENANT" ? "You" : viewerRole === "ADMIN" ? "You" : "RF"}</AvatarFallback>
               </Avatar>
               <div className="flex max-w-[75%] flex-col items-end gap-1">
                 <div className="rounded-2xl rounded-br-sm bg-primary/80 px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap text-primary-foreground break-words">
@@ -333,6 +350,7 @@ export function SupportChat({
         </div>
       </ScrollArea>
 
+      {readOnly ? null : (
       <form onSubmit={handleSubmit} className="shrink-0 border-t bg-background p-3">
         {disabled ? (
           <p className="rounded-md bg-muted/60 px-3 py-2 text-center text-xs text-muted-foreground">{disabledReason}</p>
@@ -378,6 +396,7 @@ export function SupportChat({
           </>
         )}
       </form>
+      )}
     </div>
   );
 }

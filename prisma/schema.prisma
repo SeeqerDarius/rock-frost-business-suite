@@ -381,6 +381,7 @@ model User {
   subscriptionsActivated          Subscription[]                   @relation("SubscriptionsActivated")
   organizationDeletionsRequested  Organization[]                   @relation("OrganizationDeletionRequestedBy")
   supportMessages                 SupportMessage[]
+  supportConversations            SupportConversation[]
   presence                        UserPresence?
   offlineDevices                  OfflineDevice[]                  @relation("OfflineDeviceUser")
   offlineDevicesRevoked           OfflineDevice[]                  @relation("OfflineDeviceRevokedBy")
@@ -675,7 +676,7 @@ model Organization {
   hospitalConsents                HospitalConsent[]
   hospitalAttachments             HospitalAttachment[]
   hospitalSettings                HospitalSettings[]
-  supportConversation             SupportConversation?
+  supportConversations            SupportConversation[]
   supportMessages                 SupportMessage[]
 
   @@index([industry])
@@ -6531,24 +6532,37 @@ enum SupportSenderRole {
   TENANT
   PLATFORM
   AI
+  /** An organization admin replying from the org-scoped admin inbox — attributed distinctly from the actual tenant participant and from Rock Frost platform staff. */
+  ADMIN
 }
 
 /**
- * One ongoing conversation per organization — a persistent support channel, not a multi-thread ticket system.
+ * One private conversation per (organization, tenant user) — each tenant member
+ * gets their own thread with the platform, never a shared org-wide inbox.
+ * A NULL userId marks a pre-migration legacy conversation: read-only, visible
+ * only through the platform inbox and the organization admin inbox, never
+ * addressable by a tenant user again (Postgres treats multiple NULLs in the
+ * composite unique index below as distinct, so legacy rows coexist safely
+ * with every org's new per-user rows).
  */
 model SupportConversation {
   id                 String                    @id @default(cuid())
-  organizationId     String                    @unique
+  organizationId     String
+  userId             String?
   status             SupportConversationStatus @default(OPEN)
   tenantLastReadAt   DateTime?
   platformLastReadAt DateTime?
+  adminLastReadAt    DateTime?
   lastMessageAt      DateTime                  @default(now())
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @updatedAt
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
   messages     SupportMessage[]
 
+  @@unique([organizationId, userId])
+  @@index([organizationId])
   @@index([status, lastMessageAt])
 }
 

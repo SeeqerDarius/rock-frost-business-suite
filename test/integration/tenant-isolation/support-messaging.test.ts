@@ -1,15 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as support from "@/lib/support/service";
-import { cleanupTestOrg, createTestOrg, type TestOrg } from "../setup/fixtures";
+import { cleanupTestOrg, createTestOrg, addSecondTestMember, type TestOrg } from "../setup/fixtures";
 import { testDb } from "../setup/db";
 
 let orgA: TestOrg;
 let orgB: TestOrg;
+let orgASecondUserId: string;
 let platformUserId: string;
 
 beforeAll(async () => {
   orgA = await createTestOrg("orgA-support");
   orgB = await createTestOrg("orgB-support");
+  const second = await addSecondTestMember(orgA, "orgA-support-second");
+  orgASecondUserId = second.userId;
   const platformUser = await testDb.user.create({
     data: {
       name: "Integration Platform Operator",
@@ -23,6 +26,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await cleanupTestOrg(orgA);
   await cleanupTestOrg(orgB);
+  await testDb.user.delete({ where: { id: orgASecondUserId } }).catch(() => {});
   await testDb.user.delete({ where: { id: platformUserId } }).catch(() => {});
 });
 
@@ -31,8 +35,8 @@ describe("Support messaging — real tenant isolation", () => {
     await support.sendTenantMessage(orgA.organizationId, orgA.userId, "Org A User", "Org A's first message");
     await support.sendTenantMessage(orgB.organizationId, orgB.userId, "Org B User", "Org B's first message");
 
-    const { messages: messagesA } = await support.listSupportMessages(orgA.organizationId);
-    const { messages: messagesB } = await support.listSupportMessages(orgB.organizationId);
+    const { messages: messagesA } = await support.listSupportMessages(orgA.organizationId, orgA.userId);
+    const { messages: messagesB } = await support.listSupportMessages(orgB.organizationId, orgB.userId);
 
     expect(messagesA).toHaveLength(1);
     expect(messagesB).toHaveLength(1);
@@ -41,30 +45,59 @@ describe("Support messaging — real tenant isolation", () => {
     expect(messagesA.map((m) => m.organizationId)).not.toContain(orgB.organizationId);
   });
 
-  it("marking one organization's conversation read never touches another organization's read state", async () => {
-    await support.sendPlatformMessage(orgA.organizationId, platformUserId, "Rock Frost Support", "Reply to org A");
-    await support.markReadByTenant(orgA.organizationId);
+  it("two active members of the same organization each get their own private conversation and never see each other's messages", async () => {
+    await support.sendTenantMessage(orgA.organizationId, orgASecondUserId, "Org A Second User", "Second user's own message");
 
-    const unreadA = await support.getTenantUnreadCount(orgA.organizationId);
-    const unreadB = await support.getTenantUnreadCount(orgB.organizationId);
+    const { conversation: conversationFirst, messages: messagesFirst } = await support.listSupportMessages(orgA.organizationId, orgA.userId);
+    const { conversation: conversationSecond, messages: messagesSecond } = await support.listSupportMessages(orgA.organizationId, orgASecondUserId);
+
+    expect(conversationFirst!.id).not.toBe(conversationSecond!.id);
+    expect(messagesFirst.map((m) => m.content)).not.toContain("Second user's own message");
+    expect(messagesSecond).toHaveLength(1);
+    expect(messagesSecond[0].content).toBe("Second user's own message");
+  });
+
+  it("a brand-new user's first message never resolves to another member's existing conversation", async () => {
+    const conversation = await support.getOrCreateSupportConversation(orgA.organizationId, orgASecondUserId);
+    const originalConversation = await testDb.supportConversation.findUniqueOrThrow({ where: { organizationId_userId: { organizationId: orgA.organizationId, userId: orgA.userId } } });
+    expect(conversation.id).not.toBe(originalConversation.id);
+  });
+
+  it("marking one organization's conversation read never touches another organization's read state", async () => {
+    const { conversation: conversationA } = await support.listSupportMessages(orgA.organizationId, orgA.userId);
+    await support.sendPlatformMessage(conversationA!.id, platformUserId, "Rock Frost Support", "Reply to org A");
+    await support.markReadByTenant(orgA.organizationId, orgA.userId);
+
+    const unreadA = await support.getTenantUnreadCount(orgA.organizationId, orgA.userId);
+    const unreadB = await support.getTenantUnreadCount(orgB.organizationId, orgB.userId);
 
     expect(unreadA).toBe(0);
     // Org B never received a platform reply, so it has nothing unread regardless of org A's read state.
     expect(unreadB).toBe(0);
   });
 
-  it("presence is scoped per organization — a heartbeat from org A's user never makes org B read as online", async () => {
+  it("presence is scoped per user — a heartbeat from org A's user never makes org B's user read as online", async () => {
     await support.recordHeartbeat(orgA.userId);
-    await expect(support.isTenantOnline(orgA.organizationId)).resolves.toBe(true);
-    await expect(support.isTenantOnline(orgB.organizationId)).resolves.toBe(false);
+    await expect(support.isTenantOnline(orgA.userId)).resolves.toBe(true);
+    await expect(support.isTenantOnline(orgB.userId)).resolves.toBe(false);
   });
 
   it("the platform inbox lists every real tenant conversation, each with its own organization identity intact", async () => {
     const conversations = await support.listPlatformConversations();
-    const byOrg = new Map(conversations.map((c) => [c.organizationId, c]));
-    expect(byOrg.has(orgA.organizationId)).toBe(true);
-    expect(byOrg.has(orgB.organizationId)).toBe(true);
-    expect(byOrg.get(orgA.organizationId)?.organization.id).toBe(orgA.organizationId);
-    expect(byOrg.get(orgB.organizationId)?.organization.id).toBe(orgB.organizationId);
+    const orgAConversations = conversations.filter((c) => c.organizationId === orgA.organizationId);
+    const orgBConversations = conversations.filter((c) => c.organizationId === orgB.organizationId);
+    expect(orgAConversations.length).toBeGreaterThanOrEqual(2);
+    expect(orgBConversations.length).toBeGreaterThanOrEqual(1);
+    expect(orgAConversations.every((c) => c.organization.id === orgA.organizationId)).toBe(true);
+    expect(orgBConversations.every((c) => c.organization.id === orgB.organizationId)).toBe(true);
+  });
+
+  it("the organization admin inbox for org A never returns a conversation belonging to org B, even implicitly", async () => {
+    const orgAAdminConversations = await support.listOrgSupportConversations(orgA.organizationId);
+    const orgBConversation = await testDb.supportConversation.findUniqueOrThrow({ where: { organizationId_userId: { organizationId: orgB.organizationId, userId: orgB.userId } } });
+    expect(orgAAdminConversations.some((c) => c.id === orgBConversation.id)).toBe(false);
+
+    // A crafted conversationId from another organization is refused, not silently accepted.
+    await expect(support.sendAdminMessage(orgA.organizationId, orgBConversation.id, orgA.userId, "Org A Admin", "Should never land")).rejects.toThrow(support.SupportNotFoundError);
   });
 });

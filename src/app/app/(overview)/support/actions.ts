@@ -36,7 +36,7 @@ export async function sendTenantSupportMessage(content: string): Promise<{ messa
 
 export async function pollTenantSupportMessages(sinceIso: string | null): Promise<{ messages: SupportChatMessage[]; online: boolean; otherPartyReadAt: string | null }> {
   const tenant = await requireCurrentTenant();
-  const { conversation, messages } = await support.listSupportMessages(tenant.organizationId, sinceIso ? new Date(sinceIso) : undefined);
+  const { conversation, messages } = await support.listSupportMessages(tenant.organizationId, tenant.userId, sinceIso ? new Date(sinceIso) : undefined);
   const online = await support.isPlatformOnline();
   return {
     messages: messages.map(toChatMessage),
@@ -52,11 +52,11 @@ export async function tenantSupportHeartbeat(): Promise<void> {
 
 export async function markTenantSupportRead(): Promise<void> {
   const tenant = await requireCurrentTenant();
-  await support.markReadByTenant(tenant.organizationId);
+  await support.markReadByTenant(tenant.organizationId, tenant.userId);
   revalidatePath("/app/support");
 }
 
 export async function getTenantSupportUnreadCount(): Promise<number> {
   const tenant = await requireCurrentTenant();
-  return support.getTenantUnreadCount(tenant.organizationId);
+  return support.getTenantUnreadCount(tenant.organizationId, tenant.userId);
 }

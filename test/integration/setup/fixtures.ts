@@ -98,3 +98,42 @@ export async function cleanupTestOrg(org: TestOrg) {
   await testDb.organization.delete({ where: { id: org.organizationId } }).catch(() => {});
   await testDb.user.delete({ where: { id: org.userId } }).catch(() => {});
 }
+
+/**
+ * Adds a second ACTIVE user/membership pair (Organization Owner role, same
+ * as the org's original user) to an already-created test org — for tests
+ * that need to prove two members of the *same* organization are still kept
+ * apart from each other (e.g. per-user support conversations). Caller is
+ * responsible for deleting the returned user id during cleanup; the
+ * membership and any per-user rows it owns are cascade-deleted along with
+ * the organization by cleanupTestOrg.
+ */
+export async function addSecondTestMember(org: TestOrg, label: string): Promise<{ userId: string; membershipId: string }> {
+  const runId = `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const user = await testDb.user.create({
+    data: {
+      name: `Integration Test User ${runId}`,
+      email: `itest-${runId}@example.invalid`,
+      passwordHash: await bcrypt.hash("not-a-real-password", 4),
+      status: "ACTIVE",
+    },
+  });
+
+  const ownerRole = await testDb.role.findFirst({ where: { organizationId: null, name: "Organization Owner" } });
+  if (!ownerRole) {
+    throw new Error("Organization Owner system role not found — ensurePlatformSeeded() should have created it.");
+  }
+
+  const membership = await testDb.organizationMember.create({
+    data: {
+      organizationId: org.organizationId,
+      userId: user.id,
+      roleId: ownerRole.id,
+      status: "ACTIVE",
+      joinedAt: new Date(),
+    },
+  });
+
+  return { userId: user.id, membershipId: membership.id };
+}

@@ -23,24 +23,24 @@ async function currentSenderName() {
   return session?.user?.name || session?.user?.email || "Rock Frost Support";
 }
 
-export async function sendPlatformSupportMessage(organizationId: string, content: string): Promise<{ message: SupportChatMessage; otherPartyReadAt: string | null }> {
+export async function sendPlatformSupportMessage(conversationId: string, content: string): Promise<{ message: SupportChatMessage; otherPartyReadAt: string | null }> {
   const tenant = await requirePlatformOperatorTenant();
-  const parsedOrg = cuid.safeParse(organizationId);
+  const parsedConversation = cuid.safeParse(conversationId);
   const parsedContent = messageSchema.safeParse(content);
-  if (!parsedOrg.success) throw new Error("Invalid organization.");
+  if (!parsedConversation.success) throw new Error("Invalid conversation.");
   if (!parsedContent.success) throw new Error(parsedContent.error.issues[0]?.message ?? "Invalid message.");
   const senderName = await currentSenderName();
-  const { message, conversation } = await support.sendPlatformMessage(parsedOrg.data, tenant.userId, senderName, parsedContent.data);
+  const { message, conversation } = await support.sendPlatformMessage(parsedConversation.data, tenant.userId, senderName, parsedContent.data);
   revalidatePath("/app/platform/support");
   return { message: toChatMessage(message), otherPartyReadAt: support.otherPartyReadAt(conversation, "PLATFORM") };
 }
 
-export async function pollPlatformSupportMessages(organizationId: string, sinceIso: string | null): Promise<{ messages: SupportChatMessage[]; online: boolean; otherPartyReadAt: string | null }> {
+export async function pollPlatformSupportMessages(conversationId: string, sinceIso: string | null): Promise<{ messages: SupportChatMessage[]; online: boolean; otherPartyReadAt: string | null }> {
   await requirePlatformOperatorTenant();
-  const parsedOrg = cuid.safeParse(organizationId);
-  if (!parsedOrg.success) throw new Error("Invalid organization.");
-  const { conversation, messages } = await support.listSupportMessages(parsedOrg.data, sinceIso ? new Date(sinceIso) : undefined);
-  const online = await support.isTenantOnline(parsedOrg.data);
+  const parsedConversation = cuid.safeParse(conversationId);
+  if (!parsedConversation.success) throw new Error("Invalid conversation.");
+  const { conversation, messages } = await support.listMessagesByConversationId(parsedConversation.data, sinceIso ? new Date(sinceIso) : undefined);
+  const online = conversation?.userId ? await support.isTenantOnline(conversation.userId) : false;
   return {
     messages: messages.map(toChatMessage),
     online,
@@ -58,18 +58,18 @@ export async function platformSupportHeartbeat(): Promise<void> {
   await support.recordHeartbeat(tenant.userId);
 }
 
-export async function markPlatformSupportRead(organizationId: string): Promise<void> {
+export async function markPlatformSupportRead(conversationId: string): Promise<void> {
   await requirePlatformOperatorTenant();
-  const parsedOrg = cuid.safeParse(organizationId);
-  if (!parsedOrg.success) throw new Error("Invalid organization.");
-  await support.markReadByPlatform(parsedOrg.data);
+  const parsedConversation = cuid.safeParse(conversationId);
+  if (!parsedConversation.success) throw new Error("Invalid conversation.");
+  await support.markReadByPlatform(parsedConversation.data);
   revalidatePath("/app/platform/support");
 }
 
-export async function setPlatformSupportStatus(organizationId: string, status: "OPEN" | "RESOLVED"): Promise<void> {
+export async function setPlatformSupportStatus(conversationId: string, status: "OPEN" | "RESOLVED"): Promise<void> {
   await requirePlatformOperatorTenant();
-  const parsedOrg = cuid.safeParse(organizationId);
-  if (!parsedOrg.success) throw new Error("Invalid organization.");
-  await support.setConversationStatus(parsedOrg.data, status);
+  const parsedConversation = cuid.safeParse(conversationId);
+  if (!parsedConversation.success) throw new Error("Invalid conversation.");
+  await support.setConversationStatus(parsedConversation.data, status);
   revalidatePath("/app/platform/support");
 }

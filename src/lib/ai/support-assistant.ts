@@ -197,15 +197,15 @@ export async function triggerAiReplyIfEligible(tenant: TenantContext): Promise<v
   if (await support.isPlatformOnline()) return;
   if (await support.isAiReplyRateLimited(tenant.organizationId)) return;
 
-  const { messages } = await support.listSupportMessages(tenant.organizationId);
-  if (messages.length === 0) return;
+  const { conversation, messages } = await support.listSupportMessages(tenant.organizationId, tenant.userId);
+  if (!conversation || messages.length === 0) return;
 
   const transcript: AssistantTranscriptMessage[] = messages.slice(-20).map((message) => ({
-    speaker: message.senderRole === "TENANT" ? "tenant" : message.senderRole === "PLATFORM" ? "platform" : "ai",
+    speaker: message.senderRole === "TENANT" ? "tenant" : message.senderRole === "PLATFORM" || message.senderRole === "ADMIN" ? "platform" : "ai",
     content: message.content,
   }));
 
   const reply = await getAssistantReply(tenant, transcript);
   if (!reply.ok) return;
-  await support.sendAiMessage(tenant.organizationId, reply.content);
+  await support.sendAiMessage(conversation.id, reply.content);
 }

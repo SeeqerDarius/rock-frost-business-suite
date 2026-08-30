@@ -87,7 +87,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const supportUnread = platformIdentity
     ? await getPlatformUnreadCount()
-    : await getTenantUnreadCount(tenant.organizationId);
+    : await getTenantUnreadCount(tenant.organizationId, tenant.userId);
 
   return (
     <OrganizationBrandingProvider branding={{ logoUrl: organization?.logoUrl ?? null, name: organization?.name ?? null }}>

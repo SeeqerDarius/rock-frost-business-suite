@@ -203,12 +203,13 @@ describe("Support assistant — triggerAiReplyIfEligible", () => {
     expect(mockSupportService.listSupportMessages).not.toHaveBeenCalled();
   });
 
-  it("sends the assistant's reply through support.sendAiMessage when every condition is met", async () => {
+  it("sends the assistant's reply through support.sendAiMessage, targeting the sender's own conversation, when every condition is met", async () => {
     vi.resetModules();
     process.env.GROQ_API_KEY = "test-key";
     mockSupportService.isPlatformOnline.mockResolvedValue(false);
     mockSupportService.isAiReplyRateLimited.mockResolvedValue(false);
     mockSupportService.listSupportMessages.mockResolvedValue({
+      conversation: { id: "conv-1" },
       messages: [{ senderRole: "TENANT", content: "How many students do we have?" }],
     });
     mockCreate.mockResolvedValueOnce({
@@ -216,9 +217,22 @@ describe("Support assistant — triggerAiReplyIfEligible", () => {
     });
 
     const { triggerAiReplyIfEligible } = await import("@/lib/ai/support-assistant");
+    const tenant = makeTenant({ permissions: ["ai.assistant.use"] });
+    await triggerAiReplyIfEligible(tenant);
+
+    expect(mockSupportService.listSupportMessages).toHaveBeenCalledWith(tenant.organizationId, tenant.userId);
+    expect(mockSupportService.sendAiMessage).toHaveBeenCalledWith("conv-1", "I can check that for you.");
+  });
+
+  it("does nothing when listSupportMessages reports no conversation yet for this sender", async () => {
+    const { triggerAiReplyIfEligible } = await import("@/lib/ai/support-assistant");
+    mockSupportService.isPlatformOnline.mockResolvedValue(false);
+    mockSupportService.isAiReplyRateLimited.mockResolvedValue(false);
+    mockSupportService.listSupportMessages.mockResolvedValue({ conversation: null, messages: [] });
+
     await triggerAiReplyIfEligible(makeTenant({ permissions: ["ai.assistant.use"] }));
 
-    expect(mockSupportService.sendAiMessage).toHaveBeenCalledWith("org-1", "I can check that for you.");
+    expect(mockSupportService.sendAiMessage).not.toHaveBeenCalled();
   });
 
   it("does not call sendAiMessage when the assistant fails to produce a reply", async () => {
