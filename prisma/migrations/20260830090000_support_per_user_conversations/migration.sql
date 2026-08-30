@@ -10,7 +10,10 @@ ALTER TABLE "SupportConversation" ADD COLUMN "userId" TEXT;
 ALTER TABLE "SupportConversation" ADD COLUMN "adminLastReadAt" TIMESTAMP(3);
 
 -- DropIndex
-ALTER TABLE "SupportConversation" DROP CONSTRAINT "SupportConversation_organizationId_key";
+-- The original migration (20260813040000_add_support_messaging) created this
+-- uniqueness rule as a plain CREATE UNIQUE INDEX, not a named table
+-- constraint, so it must be dropped as an index.
+DROP INDEX "SupportConversation_organizationId_key";
 
 -- CreateIndex
 CREATE UNIQUE INDEX "SupportConversation_organizationId_userId_key" ON "SupportConversation"("organizationId", "userId");
