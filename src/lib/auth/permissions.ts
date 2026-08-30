@@ -223,3 +223,19 @@ export function isFleetDriverRole(tenant: TenantContext): boolean {
     !hasPermission(tenant, PERMISSIONS.FLEET_VIEW)
   );
 }
+
+/**
+ * The seeded Vehicle Owner role is scoped to its own portfolio, unlike the
+ * seeded Investor role which also holds fleet-wide reporting. Same "narrow
+ * permission present, broader one absent" shape as isFleetDriverRole, so a
+ * custom role that deliberately also earns FLEET_REPORTS_VIEW isn't
+ * misclassified as owner-scoped.
+ */
+export function isFleetOwnerRole(tenant: TenantContext): boolean {
+  return (
+    tenant.role === "Vehicle Owner" &&
+    tenant.roleIsSystem &&
+    hasPermission(tenant, PERMISSIONS.FLEET_INVESTOR_VIEW) &&
+    !hasPermission(tenant, PERMISSIONS.FLEET_REPORTS_VIEW)
+  );
+}

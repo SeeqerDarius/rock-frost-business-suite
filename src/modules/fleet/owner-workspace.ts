@@ -4,7 +4,16 @@ import { db } from "@/lib/db";
 import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@/lib/trend-buckets";
 import { getFleetDriverObligations } from "@/modules/fleet/driver-obligations";
 
-const OPEN_MAINTENANCE = ["REPORTED", "MANAGER_REVIEWED", "OWNER_REVIEWED", "APPROVED", "ASSIGNED", "IN_PROGRESS"] as const;
+/**
+ * Matches FleetMaintenanceProgressStatus's real values — REVIEWING is the
+ * state a request sits in while awaiting the owner's own approval decision,
+ * the single most important thing for an owner to see on their own
+ * dashboard. The previous array referenced three values that never existed
+ * in the enum (MANAGER_REVIEWED, OWNER_REVIEWED, and a bare ASSIGNED before
+ * that status existed), so a request awaiting owner approval was silently
+ * excluded from this count.
+ */
+const OPEN_MAINTENANCE = ["REPORTED", "REVIEWING", "APPROVED", "IN_PROGRESS"] as const;
 
 export async function getFleetOwnerWorkspace(organizationId: string, userId: string, now = new Date()) {
   const owner = await db.fleetOwner.findFirst({

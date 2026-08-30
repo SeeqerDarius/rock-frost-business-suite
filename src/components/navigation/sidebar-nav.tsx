@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AnimatedIconHoverScope } from "@/components/icons/animated-icon-hover-context";
 import { getActiveNavigationHref } from "@/components/navigation/active-navigation";
+import { NotificationBadge } from "@/components/notifications/notification-badge";
 import type { ModuleNavItem } from "@/types/module";
 
 /** Icon chip for a nav item - same treatment IconBadge uses everywhere else, sized down for an inline row. Kept as one consistent accent color rather than a distinct color per item, per IconBadge's own "never hardcode a color inline" rule. */
@@ -64,6 +65,8 @@ export function SidebarNav({ items, collapsed = false, onNavigate, tourTargets =
           >
             <NavIcon active={isActive}>{item.icon}</NavIcon>
             {!collapsed ? <span className="truncate">{item.label}</span> : null}
+            {/* Notifications is the only nav item with a live unread count today - a generic badge field on ModuleNavItem would need threading through every module's own navigation builder for a count only this one item has. */}
+            {!collapsed && item.href === "/app/notifications" ? <NotificationBadge /> : null}
           </Link>
         );
 
