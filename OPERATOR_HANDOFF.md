@@ -11,6 +11,7 @@
 - **Important files**: `src/lib/accounting-integration.ts`, `src/app/app/fleet/maintenance/actions.ts`, `src/modules/fleet/service.ts` (`verifyMaintenanceCompletion` now returns `request`), `docs/FLEET_MODULE_IMPLEMENTATION.md`, `test/accounting-integration.test.ts`, `test/fleet-maintenance-attachments.test.ts`.
 - **Validation**: `npx tsc --noEmit` - passed. `npm run lint` - passed, zero warnings. `npm run test` - passed: 127 files, 995 tests (+10 net new: `postModuleExpense`/`reverseModuleExpense` behavioral coverage mirroring the existing revenue-posting tests, plus source-text-assertion coverage of the Action-layer wiring and the zero-cost skip). `npm run build` - passed.
 - **No migration required** - this phase adds no schema, so it carries none of D3/D4's migration-ordering risk; commit/push proceeds as a normal single unit.
+- **Deployed and verified in production**: deployment `dpl_9R4H9m4bruiF9n8gESFmHkmxfGtm`. `get_runtime_errors` (last 30m) reported zero errors. `/api/health` returned `{"ok":true,"database":"reachable"}`. An unauthenticated request to `/app/fleet/maintenance` correctly redirected to `/login`.
 - **Remaining**: D6 (final end-to-end regression test and docs consolidation) is next and closes out the 15-phase plan.
 
 ## 2026-08-30: Multiple maintenance photo/document attachments, Track D Phase D4 of 15
