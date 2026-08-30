@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SupportChat } from "@/components/support/support-chat";
+import { SupportConversationList } from "@/components/support/support-conversation-list";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import * as support from "@/lib/support/service";
@@ -60,14 +61,15 @@ export default async function OrganizationSupportInboxPage({ searchParams }: { s
         <EmptyState icon={LifeBuoy} title="No support conversations yet" description="When a member of your organization messages the Rock Frost team, it will appear here." />
       ) : (
         <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-          <div className="space-y-2">
-            {conversations.map((conversation) => {
+          <SupportConversationList
+            conversations={conversations}
+            searchPlaceholder="Search by name"
+            renderRow={(conversation) => {
               const lastMessage = conversation.messages[0];
               const isSelected = conversation.id === selected?.id;
               const participantLabel = conversation.kind === "LEGACY" ? "Shared history (legacy)" : conversation.user?.name || conversation.user?.email || "Former member";
               return (
                 <Link
-                  key={conversation.id}
                   href={`/app/support/inbox?conversation=${conversation.id}`}
                   className={cn(
                     "block rounded-lg border p-3 transition-colors",
@@ -88,8 +90,8 @@ export default async function OrganizationSupportInboxPage({ searchParams }: { s
                   </div>
                 </Link>
               );
-            })}
-          </div>
+            }}
+          />
 
           {selected ? (
             <SupportChat

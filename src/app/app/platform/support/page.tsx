@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SupportChat } from "@/components/support/support-chat";
+import { SupportConversationList } from "@/components/support/support-conversation-list";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
 import * as support from "@/lib/support/service";
 import { PLATFORM_SUPPORT_TEMPLATES } from "@/lib/support/templates";
@@ -48,14 +49,16 @@ export default async function PlatformSupportPage({ searchParams }: { searchPara
         <EmptyState icon={LifeBuoy} title="No support conversations yet" description="When a tenant sends a message, it will appear here." />
       ) : (
         <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-          <div className="space-y-2">
-            {conversations.map((conversation) => {
+          <SupportConversationList
+            conversations={conversations}
+            groupByOrganization
+            searchPlaceholder="Search by organization or name"
+            renderRow={(conversation) => {
               const lastMessage = conversation.messages[0];
               const isSelected = conversation.id === selected?.id;
               const participantLabel = conversation.kind === "LEGACY" ? "Shared history (legacy)" : conversation.user?.name || conversation.user?.email || "Former member";
               return (
                 <Link
-                  key={conversation.id}
                   href={`/app/platform/support?conversation=${conversation.id}`}
                   className={cn(
                     "block rounded-lg border p-3 transition-colors",
@@ -77,8 +80,8 @@ export default async function PlatformSupportPage({ searchParams }: { searchPara
                   </div>
                 </Link>
               );
-            })}
-          </div>
+            }}
+          />
 
           {selected ? (
             <div className="space-y-3">

@@ -54,6 +54,10 @@ An organization administrator who holds `PERMISSIONS.ORG_SETTINGS_MANAGE` — th
 
 Every Server Action in `src/app/app/(overview)/support/inbox/actions.ts` independently re-checks `hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)` via a shared `requireOrgSupportAdminTenant()` helper — never trusting the page-level guard alone, the same convention the platform inbox already follows. `listOrgSupportConversations(organizationId)` and `sendAdminMessage(organizationId, conversationId, ...)` both hard-filter and re-verify by that one `organizationId`, so a crafted `conversationId` from a different organization is refused (`SupportNotFoundError`), not silently accepted — this is what makes the admin inbox structurally impossible to leak across tenants, the same guarantee the platform inbox's own organization scoping already relies on.
 
+## Inbox search and grouping (platform and admin surfaces)
+
+Both the platform inbox and the organization admin inbox can now list many conversations where each once listed at most one, so both share `src/components/support/support-conversation-list.tsx` — a small client component wrapping a search box around whatever row markup the caller renders (`renderRow`), backed by pure, independently-tested filter/group functions in `src/lib/support/conversation-filtering.ts`. `matchesConversationSearch()` matches a query against organization name, tenant code, and participant name/email, case-insensitively; filtering runs entirely client-side against the already-fetched list, no extra request per keystroke. Only the platform inbox passes `groupByOrganization` — it spans many organizations, so `groupConversationsByOrganization()` clusters matching rows under an organization heading without re-sorting (a group's position follows wherever its most recently active conversation already sat in the incoming most-recent-first list). The organization admin inbox is always scoped to one organization and never needs grouping.
+
 An admin's reply is tagged `senderRole: "ADMIN"` and attributed with `"<name> (Organization admin)"`, rendered with a distinct "Admin" badge in `SupportChat` — never mislabeled as a genuine Rock Frost platform reply (`PLATFORM`) or as if the actual tenant participant sent it themselves (`TENANT`). An admin's own read position on a conversation (`adminLastReadAt`) is independent of the actual participant's `tenantLastReadAt`, so an admin reading a thread never marks it "read" for the person it actually belongs to.
 
 ## Presence ("online indicator")
@@ -124,6 +128,7 @@ This feature must never send anything to the owner's email or any tenant's email
 - Polling and heartbeats both respect `document.visibilityState`, avoiding wasted requests (and, on a laptop, wasted battery) on backgrounded tabs.
 - The floating bubble is keyboard-operable: a real `<button>` with `aria-expanded`/`aria-label` reflecting open/unread state, `Escape` closes the panel and returns focus to the bubble, and the panel is marked `role="dialog"` with an accessible label. It is deliberately *not* the only way to reach support — the dedicated full pages remain linked and functional for anyone who finds a small floating widget harder to use.
 - Templates are additive, not a constraint: choosing one only fills the composer, so a user who prefers to type their own message freely is never forced through a template.
+- A tenant viewer sees a one-line disclosure under the other party's name ("Private between you and the Rock Frost team") — the plain-language answer to "who else can see this" now that conversations are per-user rather than shared per-organization. Platform and admin viewers don't see this line; it's specifically reassurance aimed at the tenant participant.
 
 ## Known gaps
 

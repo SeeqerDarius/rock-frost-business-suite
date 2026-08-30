@@ -229,7 +229,12 @@ export function SupportChat({
             <AvatarFallback>{initialsFor(otherPartyLabel)}</AvatarFallback>
             <AvatarBadge aria-hidden="true" className={online ? "bg-emerald-500" : "bg-muted-foreground/50"} />
           </Avatar>
-          <p className="truncate text-sm font-medium">{otherPartyLabel}</p>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{otherPartyLabel}</p>
+            {viewerRole === "TENANT" ? (
+              <p className="truncate text-[11px] text-muted-foreground">Private between you and the Rock Frost team</p>
+            ) : null}
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
