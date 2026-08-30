@@ -88,9 +88,27 @@ describe("ownerDecisionMaintenanceRequest", () => {
 });
 
 describe("Full maintenance lifecycle (mocked)", () => {
-  it("walks REPORTED -> APPROVED -> ASSIGNED -> SCHEDULED -> IN_PROGRESS -> ON_HOLD -> IN_PROGRESS -> COMPLETED -> VERIFIED", async () => {
+  it("walks REPORTED -> AWAITING_OWNER_APPROVAL -> APPROVED -> ASSIGNED -> SCHEDULED -> IN_PROGRESS -> ON_HOLD -> IN_PROGRESS -> COMPLETED -> VERIFIED in one continuous pass (D6 end-to-end regression)", async () => {
+    // managerReviewMaintenanceRequest: REPORTED -> AWAITING_OWNER_APPROVAL (owner sign-off required)
+    mockDb.fleetMaintenanceRequest.findFirst.mockResolvedValue({
+      id: "r", progressStatus: "REPORTED", requestedById: null, vehicleId: "veh-1", vehicle: { plateNumber: "GR-1" },
+    });
+    await fleet.managerReviewMaintenanceRequest(ORG, "r", "actor", { approved: true, ownerApprovalRequired: true });
+    expect(mockDb.fleetMaintenanceRequest.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: { id: "r" }, data: expect.objectContaining({ progressStatus: "AWAITING_OWNER_APPROVAL", ownerApprovalStatus: "PENDING" }) }),
+    );
+
+    // ownerDecisionMaintenanceRequest: AWAITING_OWNER_APPROVAL -> APPROVED (owner sign-off, never advances further)
+    mockDb.fleetMaintenanceRequest.findFirst.mockResolvedValue({
+      id: "r", progressStatus: "AWAITING_OWNER_APPROVAL", ownerApprovalRequired: true, approvalStatus: "APPROVED", ownerApprovalStatus: "PENDING",
+      vehicle: { owner: { userId: "owner-user" } },
+    });
+    await fleet.ownerDecisionMaintenanceRequest(ORG, "r", "owner-user", true, null);
+    const ownerCall = mockDb.fleetMaintenanceRequest.update.mock.calls.at(-1)![0];
+    expect(ownerCall.data.progressStatus).toBe("APPROVED");
+
     // assignMaintenanceMechanic: APPROVED -> ASSIGNED
-    mockDb.fleetMaintenanceRequest.findFirst.mockResolvedValue({ id: "r", progressStatus: "APPROVED", approvalStatus: "APPROVED", ownerApprovalRequired: false });
+    mockDb.fleetMaintenanceRequest.findFirst.mockResolvedValue({ id: "r", progressStatus: "APPROVED", approvalStatus: "APPROVED", ownerApprovalRequired: true, ownerApprovalStatus: "APPROVED" });
     mockDb.fleetMechanic.findFirst.mockResolvedValue({ id: "mech-1", name: "Kojo" });
     await fleet.assignMaintenanceMechanic(ORG, "r", "actor", "mech-1");
     expect(mockDb.fleetMaintenanceRequest.update).toHaveBeenLastCalledWith({ where: { id: "r" }, data: { mechanicId: "mech-1", progressStatus: "ASSIGNED" } });
