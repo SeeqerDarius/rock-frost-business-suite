@@ -125,6 +125,94 @@ describe("postModuleRevenue", () => {
   });
 });
 
+describe("postModuleExpense", () => {
+  const baseInput = {
+    sourceModule: "fleet" as const,
+    sourceType: "FLEET_MAINTENANCE_REPAIR",
+    sourceId: "request-1",
+    postingPurpose: "VERIFIED",
+    amount: "450.00",
+    entryDate: new Date("2026-08-25"),
+    description: "Fleet maintenance repair verified: GR-1",
+    createdById: "user-1",
+    branchId: "branch-1",
+  };
+
+  it("no-ops without touching Accounting when the organization hasn't activated it — never blocks maintenance verification", async () => {
+    mockDb.organizationModule.findFirst.mockResolvedValue(null);
+    const result = await integration.postModuleExpense("org-1", baseInput);
+    expect(result).toEqual({ posted: false, reason: "accounting-not-enabled" });
+    expect(mockAccounting.postSourceJournalEntry).not.toHaveBeenCalled();
+    expect(mockDb.accountingAccount.create).not.toHaveBeenCalled();
+  });
+
+  it("posts a balanced debit-expense/credit-Cash entry — the reverse direction of postModuleRevenue", async () => {
+    mockDb.organizationModule.findFirst.mockResolvedValue({ id: "assignment-1" });
+    mockDb.subscription.findMany.mockResolvedValue([]);
+    mockAccounting.ensureDefaultAccounts.mockResolvedValue([CASH_ACCOUNT]);
+    mockDb.accountingAccount.findFirst.mockResolvedValue({ id: "acct-fleet-expense", code: "5100", name: "Fleet Maintenance Expense" });
+    mockAccounting.postSourceJournalEntry.mockResolvedValue({ id: "journal-1" });
+
+    const result = await integration.postModuleExpense("org-1", baseInput);
+
+    expect(result).toEqual({ posted: true, journalEntryId: "journal-1" });
+    expect(mockAccounting.postSourceJournalEntry).toHaveBeenCalledWith("org-1", expect.objectContaining({
+      sourceType: "FLEET_MAINTENANCE_REPAIR",
+      sourceModule: "fleet",
+      sourceId: "request-1",
+      postingPurpose: "VERIFIED",
+      branchId: "branch-1",
+      lines: [
+        { accountId: "acct-fleet-expense", debit: "450.00" },
+        { accountId: "acct-cash", credit: "450.00" },
+      ],
+    }));
+  });
+
+  it("creates the module's expense account on first use and reuses it afterwards", async () => {
+    mockDb.organizationModule.findFirst.mockResolvedValue({ id: "assignment-1" });
+    mockDb.subscription.findMany.mockResolvedValue([]);
+    mockAccounting.ensureDefaultAccounts.mockResolvedValue([CASH_ACCOUNT]);
+    mockDb.accountingAccount.findFirst.mockResolvedValueOnce(null);
+    mockDb.accountingAccount.create.mockResolvedValue({ id: "acct-fleet-expense", code: "5100", name: "Fleet Maintenance Expense" });
+    mockAccounting.postSourceJournalEntry.mockResolvedValue({ id: "journal-2" });
+
+    await integration.postModuleExpense("org-1", baseInput);
+
+    expect(mockDb.accountingAccount.create).toHaveBeenCalledWith({ data: { organizationId: "org-1", code: "5100", name: "Fleet Maintenance Expense", type: "EXPENSE", isSystem: true } });
+  });
+
+  it("never throws — a failure inside Accounting is caught and reported, not propagated to the caller", async () => {
+    mockDb.organizationModule.findFirst.mockResolvedValue({ id: "assignment-1" });
+    mockDb.subscription.findMany.mockResolvedValue([]);
+    mockAccounting.ensureDefaultAccounts.mockRejectedValue(new Error("db unavailable"));
+
+    await expect(integration.postModuleExpense("org-1", baseInput)).resolves.toEqual({ posted: false, reason: "error" });
+  });
+
+  it("labels every declared expense-source module", () => {
+    expect(integration.moduleExpenseLabel("fleet")).toBe("Fleet Maintenance Expense");
+  });
+});
+
+describe("reverseModuleExpense", () => {
+  it("delegates to the same identity-checked reversal as reverseModuleRevenue", async () => {
+    mockDb.accountingJournalEntry.findFirst.mockResolvedValue({ id: "journal-1" });
+    mockAccounting.reverseSourceJournalEntry.mockResolvedValue({ id: "journal-2" });
+
+    const result = await integration.reverseModuleExpense("org-1", { sourceType: "FLEET_MAINTENANCE_REPAIR", sourceId: "request-1", postingPurpose: "VERIFIED", reason: "corrected cost", actorId: "user-1" });
+
+    expect(result).toEqual({ posted: true, journalEntryId: "journal-2" });
+    expect(mockAccounting.reverseSourceJournalEntry).toHaveBeenCalledWith("org-1", "journal-1", expect.objectContaining({ reason: "corrected cost", actorId: "user-1", sourceType: "FLEET_MAINTENANCE_REPAIR", sourceId: "request-1", postingPurpose: "VERIFIED" }));
+  });
+
+  it("no-ops when nothing was ever posted for this source", async () => {
+    mockDb.accountingJournalEntry.findFirst.mockResolvedValue(null);
+    const result = await integration.reverseModuleExpense("org-1", { sourceType: "FLEET_MAINTENANCE_REPAIR", sourceId: "request-1", postingPurpose: "VERIFIED", reason: "corrected cost" });
+    expect(result).toEqual({ posted: false, reason: "accounting-not-enabled" });
+  });
+});
+
 describe("ensureRevenueAccountsForOrg", () => {
   /** Wires organizationModule.findFirst/subscription.findMany to answer per-module-code, matching isModuleActiveForOrg's real query shape. */
   function stubActiveModules(activeCodes: string[]) {

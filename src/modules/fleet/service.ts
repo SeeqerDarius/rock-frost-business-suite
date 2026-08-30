@@ -1262,6 +1262,7 @@ export async function verifyMaintenanceCompletion(organizationId: string, id: st
         },
       });
     }
+    return request;
   });
 }
 

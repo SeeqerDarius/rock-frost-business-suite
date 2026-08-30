@@ -84,7 +84,7 @@ The workflow is enforced as an 11-state machine (`FleetMaintenanceProgressStatus
 6. A Fleet Manager starts the repair (only once `SCHEDULED`) - the request moves to `IN_PROGRESS` and the vehicle moves to `MAINTENANCE`.
 7. A repair in progress can be put `ON_HOLD` (parts on order, workshop closed) and resumed back to `IN_PROGRESS` without losing its place in the workflow.
 8. Repair completion (`COMPLETED`) records cost and completion notes.
-9. A Fleet Manager verifies completion, moving the request to `VERIFIED` (replacing the old `completionVerified` boolean - a real terminal status, not a side flag).
+9. A Fleet Manager verifies completion, moving the request to `VERIFIED` (replacing the old `completionVerified` boolean - a real terminal status, not a side flag). If the repair carried a cost, verification also posts a Fleet Maintenance Expense entry to Accounting (see "Financial behavior" below) - `COMPLETED` alone never reaches the books, only `VERIFIED` does.
 10. The vehicle returns to `ASSIGNED` or `AVAILABLE`, the owner receives a notification, and the notification time is retained.
 
 A request can also be withdrawn (`CANCELLED`) any time before real repair work starts (any state up to and including `SCHEDULED`) - a genuinely new action, distinct from an explicit manager or owner decline (`REJECTED`). `REVIEWING` is retained in the enum forever (Postgres has no `DROP VALUE`) purely as a historical marker - every pre-expansion row was migrated to `AWAITING_OWNER_APPROVAL` and no row is ever written with `REVIEWING` again.
@@ -109,6 +109,7 @@ Every step writes an immutable `FleetMaintenanceEvent` containing actor, event t
 - Management reporting includes weekly remittances, verified payments, pending payments, documents due and repairs awaiting verification.
 - Manager approval and rejection are explicit submit actions. While a review is being processed, the chosen control is disabled and shows progress. A successful approval creates the verified Fleet payment and marks the driver submission approved in the same database transaction. The tenant audit event is attempted inside that transaction and commits with it when written. The page then confirms the outcome. Repeated or failed reviews return a visible error instead of appearing to do nothing.
 - Investor reporting shows each owner's vehicles, active agreements, contract value, remittances, outstanding balance, maintenance cost and net cash position.
+- Verifying a completed repair's cost (`verifyRepairCompletion`, `src/app/app/fleet/maintenance/actions.ts`) posts a debit-Fleet-Maintenance-Expense/credit-Cash entry through `postModuleExpense()` (`src/lib/accounting-integration.ts`) once `verifyMaintenanceCompletion()`'s own transaction has committed - mirroring the existing `postModuleRevenue()` call sites in shape (no-op-safe when Accounting isn't active, caught and logged, never thrown) but for an expense, debiting a new `5100 Fleet Maintenance Expense` account instead of crediting a revenue one. A repair with no cost (e.g. warranty work) posts nothing rather than a zero-amount entry. Idempotency and reversal use the same `organizationId+sourceType+sourceId+postingPurpose` identity as every other module posting (`sourceType: "FLEET_MAINTENANCE_REPAIR"`, `postingPurpose: "VERIFIED"`).
 
 ## Access control
 

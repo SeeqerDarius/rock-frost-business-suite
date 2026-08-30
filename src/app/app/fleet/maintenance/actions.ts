@@ -25,6 +25,7 @@ import {
 } from "@/modules/fleet/service";
 import { logAuditEvent } from "@/lib/audit";
 import { fleetMaintenancePhotoData } from "@/lib/fleet-maintenance-photo";
+import { postModuleExpense } from "@/lib/accounting-integration";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -216,11 +217,24 @@ export async function verifyRepairCompletion(formData: FormData): Promise<void> 
   const id = clean(formData.get("id"));
   if (!id) redirect("/app/fleet/maintenance?error=missing-fields");
   try {
-    await verifyMaintenanceCompletion(tenant.organizationId, id, userId);
+    const request = await verifyMaintenanceCompletion(tenant.organizationId, id, userId);
     await logAuditEvent({
       organizationId: tenant.organizationId, userId, module: "fleet",
       action: "fleet.maintenance.completion_verified", entityName: "FleetMaintenanceRequest", entityId: id,
     });
+    if (request.repairCost && !request.repairCost.isZero()) {
+      await postModuleExpense(tenant.organizationId, {
+        sourceModule: "fleet",
+        sourceType: "FLEET_MAINTENANCE_REPAIR",
+        sourceId: request.id,
+        postingPurpose: "VERIFIED",
+        amount: request.repairCost.toString(),
+        entryDate: request.completedAt ?? new Date(),
+        description: `Fleet maintenance repair verified: ${request.vehicle.plateNumber}`,
+        createdById: userId,
+        branchId: request.branchId,
+      });
+    }
   } catch (error) { workflowError(error); }
   revalidatePath("/app/fleet/maintenance");
   revalidatePath("/app/fleet/vehicles");

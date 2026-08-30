@@ -142,3 +142,27 @@ describe("Open-maintenance counters correctly exclude every terminal status (reg
     expect(service).toContain('!["COMPLETED", "VERIFIED", "REJECTED", "CANCELLED"].includes(request.progressStatus)');
   });
 });
+
+describe("Verified repair cost posts to Accounting (Phase D5)", () => {
+  const maintenanceActions = fs.readFileSync("src/app/app/fleet/maintenance/actions.ts", "utf8");
+
+  it("posts the verified repair's cost as a module expense, mirroring the payments action's postModuleRevenue call site", () => {
+    expect(maintenanceActions).toContain('import { postModuleExpense } from "@/lib/accounting-integration";');
+    expect(maintenanceActions).toContain("const request = await verifyMaintenanceCompletion(tenant.organizationId, id, userId);");
+    expect(maintenanceActions).toContain('sourceType: "FLEET_MAINTENANCE_REPAIR"');
+    expect(maintenanceActions).toContain('postingPurpose: "VERIFIED"');
+  });
+
+  it("skips posting entirely when there is no repair cost (e.g. warranty work) rather than posting a zero amount", () => {
+    expect(maintenanceActions).toContain("if (request.repairCost && !request.repairCost.isZero())");
+  });
+
+  it("verifyMaintenanceCompletion returns the request (repairCost/branchId/completedAt/vehicle) so the action layer can post after the transaction commits", () => {
+    const service = fs.readFileSync("src/modules/fleet/service.ts", "utf8");
+    expect(service).toContain("export async function verifyMaintenanceCompletion(organizationId: string, id: string, actorId: string) {");
+    const fnStart = service.indexOf("export async function verifyMaintenanceCompletion");
+    const fnBody = service.slice(fnStart, fnStart + 3000);
+    expect(fnBody).toContain("return db.$transaction(async (tx) => {");
+    expect(fnBody).toContain("return request;");
+  });
+});

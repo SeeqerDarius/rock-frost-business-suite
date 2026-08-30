@@ -58,6 +58,22 @@ export function moduleRevenueLabel(sourceModule: ModuleRevenueSource): string {
 }
 
 /**
+ * Expense-side counterpart to ModuleRevenueSource/MODULE_REVENUE_ACCOUNTS -
+ * a separate, narrower map since only Fleet posts a module-specific expense
+ * today (a verified maintenance repair cost). Generic enough for a future
+ * module to add its own entry without touching postModuleExpense itself.
+ */
+export type ModuleExpenseSource = "fleet";
+
+const MODULE_EXPENSE_ACCOUNTS: Record<ModuleExpenseSource, { code: string; name: string }> = {
+  fleet: { code: "5100", name: "Fleet Maintenance Expense" },
+};
+
+export function moduleExpenseLabel(sourceModule: ModuleExpenseSource): string {
+  return MODULE_EXPENSE_ACCOUNTS[sourceModule].name;
+}
+
+/**
  * Whether `moduleCode` is currently active for this organization: assigned
  * and enabled, the module itself not suspended platform-wide, and — if the
  * org has any subscription record for it at all — currently within an
@@ -96,6 +112,20 @@ async function getOrCreateModuleRevenueAccount(client: DbOrTx, organizationId: s
   if (existing) return existing;
   try {
     return await client.accountingAccount.create({ data: { organizationId, code: spec.code, name: spec.name, type: "REVENUE", isSystem: true } });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return client.accountingAccount.findFirstOrThrow({ where: { organizationId, code: spec.code } });
+    }
+    throw error;
+  }
+}
+
+async function getOrCreateModuleExpenseAccount(client: DbOrTx, organizationId: string, sourceModule: ModuleExpenseSource) {
+  const spec = MODULE_EXPENSE_ACCOUNTS[sourceModule];
+  const existing = await client.accountingAccount.findFirst({ where: { organizationId, code: spec.code } });
+  if (existing) return existing;
+  try {
+    return await client.accountingAccount.create({ data: { organizationId, code: spec.code, name: spec.name, type: "EXPENSE", isSystem: true } });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return client.accountingAccount.findFirstOrThrow({ where: { organizationId, code: spec.code } });
@@ -276,6 +306,71 @@ export async function reverseModuleRevenue(organizationId: string, input: { sour
     console.error("[accounting-integration] Failed to reverse module revenue:", { organizationId, sourceType: input.sourceType, sourceId: input.sourceId, postingPurpose: input.postingPurpose, error });
     return { posted: false, reason: "error" };
   }
+}
+
+export interface PostModuleExpenseInput {
+  sourceModule: ModuleExpenseSource;
+  /** A stable identifier for the kind of record posting (e.g. "FLEET_MAINTENANCE_REPAIR"). */
+  sourceType: string;
+  /** The originating record's own id — paired with sourceType+postingPurpose for idempotency. */
+  sourceId: string;
+  /** Distinguishes separate financial events for the same source record (e.g. "VERIFIED"). */
+  postingPurpose: string;
+  amount: string;
+  entryDate: Date;
+  description: string;
+  createdById?: string | null;
+  branchId?: string | null;
+}
+
+/**
+ * Records a module's cash-basis expense event in Accounting: debit that
+ * module's own expense sub-account, credit the shared Cash account - the
+ * reverse posting direction of postModuleRevenue (which debits Cash and
+ * credits Revenue). No-ops the same way ({posted:false,
+ * reason:"accounting-not-enabled"}) when this organization hasn't activated
+ * Accounting - a module's own expense-triggering action (e.g. verifying a
+ * repair) must never fail because of that.
+ */
+export async function postModuleExpense(organizationId: string, input: PostModuleExpenseInput): Promise<PostModuleRevenueResult> {
+  try {
+    if (!(await isModuleActiveForOrg(db, organizationId, "accounting"))) {
+      return { posted: false, reason: "accounting-not-enabled" };
+    }
+    const [defaultAccounts, expenseAccount] = await Promise.all([
+      ensureDefaultAccounts(organizationId),
+      getOrCreateModuleExpenseAccount(db, organizationId, input.sourceModule),
+    ]);
+    const cashAccount = defaultAccounts.find((account) => account.code === "1000");
+    if (!cashAccount) throw new Error("Default Cash account (1000) missing after ensureDefaultAccounts().");
+
+    const entry = await postSourceJournalEntry(organizationId, {
+      sourceModule: input.sourceModule,
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
+      postingPurpose: input.postingPurpose,
+      entryDate: input.entryDate,
+      description: input.description,
+      createdById: input.createdById,
+      branchId: input.branchId,
+      lines: [{ accountId: expenseAccount.id, debit: input.amount }, { accountId: cashAccount.id, credit: input.amount }],
+    });
+    return { posted: true, journalEntryId: entry.id };
+  } catch (error) {
+    console.error("[accounting-integration] Failed to post module expense:", { organizationId, sourceModule: input.sourceModule, sourceType: input.sourceType, sourceId: input.sourceId, postingPurpose: input.postingPurpose, error });
+    return { posted: false, reason: "error" };
+  }
+}
+
+/**
+ * Reverses a previously posted module-expense entry - identical identity
+ * lookup and reversal boundary as reverseModuleRevenue (the reversal itself
+ * doesn't care which direction the original entry posted in), kept as its
+ * own named export purely so a caller reversing an expense reads correctly
+ * at the call site rather than "reversing revenue".
+ */
+export async function reverseModuleExpense(organizationId: string, input: { sourceType: string; sourceId: string; postingPurpose: string; reason: string; actorId?: string | null }): Promise<PostModuleRevenueResult> {
+  return reverseModuleRevenue(organizationId, input);
 }
 
 /**
