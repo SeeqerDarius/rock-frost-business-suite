@@ -21,6 +21,8 @@ export const PERMISSIONS = {
   FLEET_PAYMENTS_MANAGE: "fleet.payments.manage",
   FLEET_REPORTS_VIEW: "fleet.reports.view",
   FLEET_INVESTOR_VIEW: "fleet.investor.view",
+  FLEET_MECHANICS_MANAGE: "fleet.mechanics.manage",
+  FLEET_MECHANIC_SELF_SERVICE: "fleet.mechanic.self_service",
   HIREPURCHASE_VIEW: "hirepurchase.view",
   HIREPURCHASE_CUSTOMERS_MANAGE: "hirepurchase.customers.manage",
   HIREPURCHASE_ACCOUNTS_MANAGE: "hirepurchase.accounts.manage",
@@ -238,4 +240,29 @@ export function isFleetOwnerRole(tenant: TenantContext): boolean {
     hasPermission(tenant, PERMISSIONS.FLEET_INVESTOR_VIEW) &&
     !hasPermission(tenant, PERMISSIONS.FLEET_REPORTS_VIEW)
   );
+}
+
+/**
+ * The seeded Mechanic is an assignment-scoped self-service role, same shape
+ * as isFleetDriverRole - a mechanic's own workspace is bounded to requests
+ * assigned to them, not the whole fleet's maintenance queue.
+ */
+export function isMechanicRole(tenant: TenantContext): boolean {
+  return (
+    tenant.role === "Mechanic" &&
+    tenant.roleIsSystem &&
+    hasPermission(tenant, PERMISSIONS.FLEET_MECHANIC_SELF_SERVICE) &&
+    !hasPermission(tenant, PERMISSIONS.FLEET_MAINTENANCE_MANAGE)
+  );
+}
+
+/**
+ * Every narrow, assignment-scoped Fleet self-service role - used at every
+ * nav/redirect/chrome-hiding call site that previously only checked
+ * isFleetDriverRole, so a Mechanic's workspace gets the same narrow
+ * treatment (no cross-module launcher, no org-wide Modules/Reports links)
+ * without hand-rolling the OR at each site.
+ */
+export function isNarrowFleetSelfServiceRole(tenant: TenantContext): boolean {
+  return isFleetDriverRole(tenant) || isMechanicRole(tenant);
 }

@@ -42,7 +42,7 @@ describe("Fleet driver remittance controls", () => {
     expect(page).toContain("Driver payment approved and added to the verified Fleet payment ledger.");
   });
 
-  it("keeps the exact Fleet Driver role out of organization-wide module navigation", () => {
+  it("keeps every narrow Fleet self-service role (Driver, Mechanic) out of organization-wide module navigation", () => {
     const permissions = read("src/lib/auth/permissions.ts");
     const navigation = read("src/platform/modules/workspace-navigation.tsx");
     const overviewLayout = read("src/app/app/(overview)/layout.tsx");
@@ -50,11 +50,14 @@ describe("Fleet driver remittance controls", () => {
     const modulesPage = read("src/app/app/(overview)/modules/page.tsx");
     const reportsPage = read("src/app/app/(overview)/reports/page.tsx");
     expect(permissions).toContain("export function isFleetDriverRole");
-    expect(navigation).toContain("if (!isFleetDriverRole(tenant))");
-    expect(overviewLayout).toContain("showModuleLauncher={!isFleetDriverRole(tenant)}");
-    expect(fleetLayout).toContain("showModuleLauncher={!isFleetDriverRole(tenant)}");
-    expect(modulesPage).toContain('if (isFleetDriverRole(tenant)) redirect("/app/dashboard")');
-    expect(reportsPage).toContain('if (isFleetDriverRole(tenant)) redirect("/app/dashboard")');
+    expect(permissions).toContain("export function isMechanicRole");
+    expect(permissions).toContain("export function isNarrowFleetSelfServiceRole");
+    expect(permissions).toContain("isFleetDriverRole(tenant) || isMechanicRole(tenant)");
+    expect(navigation).toContain("if (!isNarrowFleetSelfServiceRole(tenant))");
+    expect(overviewLayout).toContain("showModuleLauncher={!isNarrowFleetSelfServiceRole(tenant)}");
+    expect(fleetLayout).toContain("showModuleLauncher={!isNarrowFleetSelfServiceRole(tenant)}");
+    expect(modulesPage).toContain('if (isNarrowFleetSelfServiceRole(tenant)) redirect("/app/dashboard")');
+    expect(reportsPage).toContain('if (isNarrowFleetSelfServiceRole(tenant)) redirect("/app/dashboard")');
   });
 
   it("classifies vehicle remittances and Work & Pay submissions as verified fleet payments", () => {
@@ -106,12 +109,13 @@ describe("Fleet driver remittance controls", () => {
     expect(service).toContain("return { contract: finalContract, payment: ledgerPayment };");
   });
 
-  it("keeps the Driver role off the organization-wide dashboard and off the subscription-status badge", () => {
+  it("keeps every narrow Fleet self-service role off the organization-wide dashboard and off the subscription-status badge", () => {
     const dashboardPage = read("src/app/app/(overview)/dashboard/page.tsx");
     const appLayout = read("src/app/app/layout.tsx");
     const workspaceNavigation = read("src/platform/modules/workspace-navigation.tsx");
     expect(dashboardPage).toContain('if (isFleetDriverRole(tenant)) redirect("/app/fleet/driver-portal");');
-    expect(appLayout).toContain("!platformIdentity && !isFleetDriverRole(tenant)");
+    expect(dashboardPage).toContain('if (isMechanicRole(tenant)) redirect("/app/fleet/mechanic-portal");');
+    expect(appLayout).toContain("!platformIdentity && !isNarrowFleetSelfServiceRole(tenant)");
     expect(workspaceNavigation).not.toMatch(/\{ label: "Modules"[^}]*\},\s*\{ label: "Notifications"/);
   });
 

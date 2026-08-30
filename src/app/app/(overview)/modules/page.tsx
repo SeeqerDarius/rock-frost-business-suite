@@ -8,13 +8,13 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry";
 import { productGroupKeys } from "@/platform/modules/product-groups";
 import { requireCurrentTenant } from "@/lib/tenant";
-import { hasPermission, isFleetDriverRole, PERMISSIONS } from "@/lib/auth/permissions";
+import { hasPermission, isNarrowFleetSelfServiceRole, PERMISSIONS } from "@/lib/auth/permissions";
 
 /** The same icon-tile grid Overview's "Quick launch" used to show, moved
  * here as its own dedicated page: click a tile to open that module. */
 export default async function ModulesPage() {
   const tenant = await requireCurrentTenant();
-  if (isFleetDriverRole(tenant)) redirect("/app/dashboard");
+  if (isNarrowFleetSelfServiceRole(tenant)) redirect("/app/dashboard");
   const canRequestModules = hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE);
   const enabledModules = catalogueModuleRegistry.flatMap((mod) => {
     const accessibleKey = productGroupKeys(mod.key).find((key) => tenant.accessibleModuleKeys.includes(key));

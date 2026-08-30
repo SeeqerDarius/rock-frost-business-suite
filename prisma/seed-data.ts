@@ -34,6 +34,8 @@ export const PERMISSIONS = {
   FLEET_PAYMENTS_MANAGE: "fleet.payments.manage",
   FLEET_REPORTS_VIEW: "fleet.reports.view",
   FLEET_INVESTOR_VIEW: "fleet.investor.view",
+  FLEET_MECHANICS_MANAGE: "fleet.mechanics.manage",
+  FLEET_MECHANIC_SELF_SERVICE: "fleet.mechanic.self_service",
   HIREPURCHASE_VIEW: "hirepurchase.view",
   HIREPURCHASE_CUSTOMERS_MANAGE: "hirepurchase.customers.manage",
   HIREPURCHASE_ACCOUNTS_MANAGE: "hirepurchase.accounts.manage",
@@ -249,10 +251,11 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     PERMISSIONS.FLEET_WORKANDPAY_MANAGE,
     PERMISSIONS.FLEET_PAYMENTS_MANAGE,
     PERMISSIONS.FLEET_REPORTS_VIEW,
+    PERMISSIONS.FLEET_MECHANICS_MANAGE,
   ]),
   Driver: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.FLEET_DRIVER_SELF_SERVICE, PERMISSIONS.AI_ASSISTANT_USE],
   "Vehicle Owner": [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.FLEET_INVESTOR_VIEW, PERMISSIONS.AI_ASSISTANT_USE],
-  Mechanic: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.FLEET_VIEW, PERMISSIONS.FLEET_MAINTENANCE_MANAGE, PERMISSIONS.AI_ASSISTANT_USE],
+  Mechanic: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.FLEET_MECHANIC_SELF_SERVICE, PERMISSIONS.AI_ASSISTANT_USE],
   Investor: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.FLEET_INVESTOR_VIEW, PERMISSIONS.FLEET_REPORTS_VIEW, PERMISSIONS.AI_ASSISTANT_USE],
   "Hire Purchase Manager": moduleRolePermissions([
     PERMISSIONS.HIREPURCHASE_VIEW,
@@ -550,6 +553,19 @@ export async function seedPlatform(db: PrismaClient, options: { log?: boolean } 
   const fleetViewPermission = permissionByKey.get(PERMISSIONS.FLEET_VIEW);
   if (driverRole && fleetViewPermission) {
     await db.rolePermission.deleteMany({ where: { roleId: driverRole.id, permissionId: fleetViewPermission.id } });
+  }
+
+  // Mechanic self-service is intentionally assignment-scoped, same as
+  // Driver above. Remove the old organization-wide Fleet view and
+  // maintenance-manage grants from installations seeded before the
+  // dedicated mechanic portal was completed.
+  const mechanicRole = roles.find((role) => role.name === "Mechanic");
+  const fleetMaintenanceManagePermission = permissionByKey.get(PERMISSIONS.FLEET_MAINTENANCE_MANAGE);
+  if (mechanicRole && fleetViewPermission) {
+    await db.rolePermission.deleteMany({ where: { roleId: mechanicRole.id, permissionId: fleetViewPermission.id } });
+  }
+  if (mechanicRole && fleetMaintenanceManagePermission) {
+    await db.rolePermission.deleteMany({ where: { roleId: mechanicRole.id, permissionId: fleetMaintenanceManagePermission.id } });
   }
 
   // Preserve least-privilege access for tenant-defined roles created before

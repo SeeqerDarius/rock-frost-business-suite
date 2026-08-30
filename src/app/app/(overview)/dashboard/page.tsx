@@ -12,7 +12,7 @@ import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry"
 import { productGroupKeys } from "@/platform/modules/product-groups";
 import { dashboardWidgets } from "@/platform/modules/dashboard-widgets";
 import { getCurrentTenant } from "@/lib/tenant";
-import { isFleetDriverRole } from "@/lib/auth/permissions";
+import { isFleetDriverRole, isMechanicRole } from "@/lib/auth/permissions";
 import { getRevenueInsights } from "@/lib/accounting-integration";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -40,13 +40,14 @@ export default async function OrganizationDashboardPage({ searchParams }: { sear
       </div>
     );
   }
-  // A Driver has no business seeing organization-wide revenue - this page's
-  // own Revenue insights card sums every module's posted revenue with no
-  // role scoping. /app/fleet/driver-portal is that role's real home (already
-  // where /app/fleet itself redirects a Driver); redirecting here too closes
-  // the leak instead of just hiding the card, so "Overview" in the sidebar
-  // never dead-ends for a Driver the way /app/modules used to.
+  // A Driver or Mechanic has no business seeing organization-wide revenue -
+  // this page's own Revenue insights card sums every module's posted
+  // revenue with no role scoping. Their own portal page is that role's real
+  // home (already where /app/fleet itself redirects each); redirecting here
+  // too closes the leak instead of just hiding the card, so "Overview" in
+  // the sidebar never dead-ends the way /app/modules used to.
   if (isFleetDriverRole(tenant)) redirect("/app/fleet/driver-portal");
+  if (isMechanicRole(tenant)) redirect("/app/fleet/mechanic-portal");
   const enabledModules = catalogueModuleRegistry.flatMap((mod) => {
     const accessibleKey = productGroupKeys(mod.key).find((key) => tenant.accessibleModuleKeys.includes(key));
     const accessibleModule = accessibleKey ? getModule(accessibleKey) : null;

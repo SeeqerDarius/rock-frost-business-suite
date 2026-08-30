@@ -1,7 +1,7 @@
 import { LayoutGrid, Blocks, BarChart3, Bell, Building2, ShieldCheck, MessageSquarePlus, CreditCard } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 import type { TenantContext } from "@/lib/tenant";
-import { hasPermission, isFleetDriverRole, PERMISSIONS } from "@/lib/auth/permissions";
+import { hasPermission, isNarrowFleetSelfServiceRole, PERMISSIONS } from "@/lib/auth/permissions";
 
 /**
  * Top-level workspace navigation — organization scope, not tied to any one
@@ -25,12 +25,13 @@ export async function getWorkspaceNavigation(tenant: TenantContext): Promise<Mod
     { label: "Overview", href: "/app/dashboard", icon: <LayoutGrid className="size-4" /> },
   ];
 
-  // Modules and Reports both require organization-wide context a Driver
-  // never has - /app/modules and /app/reports already redirect the Driver
-  // role straight back to /app/dashboard (see those pages' own
-  // isFleetDriverRole checks), so showing either link here was previously a
-  // dead click, not a real destination.
-  if (!isFleetDriverRole(tenant)) {
+  // Modules and Reports both require organization-wide context a narrow
+  // Fleet self-service role (Driver, Mechanic) never has - /app/modules and
+  // /app/reports already redirect those roles straight back to
+  // /app/dashboard (see those pages' own isNarrowFleetSelfServiceRole
+  // checks), so showing either link here was previously a dead click, not a
+  // real destination.
+  if (!isNarrowFleetSelfServiceRole(tenant)) {
     items.push(
       { label: "Modules", href: "/app/modules", icon: <Blocks className="size-4" /> },
       { label: "Reports", href: "/app/reports", icon: <BarChart3 className="size-4" /> },

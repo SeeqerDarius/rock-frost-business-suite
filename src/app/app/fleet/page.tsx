@@ -12,6 +12,7 @@ export default async function FleetOverviewPage() {
   const tenant = await requireModuleAccess("fleet");
   if (!hasPermission(tenant, PERMISSIONS.FLEET_VIEW)) {
     if (hasPermission(tenant, PERMISSIONS.FLEET_DRIVER_SELF_SERVICE)) redirect("/app/fleet/driver-portal");
+    if (hasPermission(tenant, PERMISSIONS.FLEET_MECHANIC_SELF_SERVICE)) redirect("/app/fleet/mechanic-portal");
     if (hasPermission(tenant, PERMISSIONS.FLEET_INVESTOR_VIEW)) redirect("/app/fleet/investor");
     redirect("/app/dashboard");
   }

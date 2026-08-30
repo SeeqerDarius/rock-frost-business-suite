@@ -2,7 +2,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { getWorkspaceNavigation } from "@/platform/modules/workspace-navigation";
 import { getFullModuleNavigation } from "@/platform/modules/full-navigation";
 import { getCurrentTenant } from "@/lib/tenant";
-import { isFleetDriverRole, isPlatformOperator } from "@/lib/auth/permissions";
+import { isNarrowFleetSelfServiceRole, isPlatformOperator } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 
 export default async function OverviewLayout({ children }: { children: React.ReactNode }) {
@@ -26,7 +26,7 @@ export default async function OverviewLayout({ children }: { children: React.Rea
       moduleSections={getFullModuleNavigation(tenant)}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
-      showModuleLauncher={!isFleetDriverRole(tenant)}
+      showModuleLauncher={!isNarrowFleetSelfServiceRole(tenant)}
     >
       {children}
     </AppShell>

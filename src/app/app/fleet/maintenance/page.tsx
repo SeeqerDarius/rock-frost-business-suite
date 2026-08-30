@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listFleetActorVehicles, listFleetMaintenanceRequests, listFleetVehicles } from "@/modules/fleet/service";
+import { listFleetActorVehicles, listFleetMaintenanceRequests, listFleetMechanics, listFleetVehicles } from "@/modules/fleet/service";
 import { getServerAuthSession } from "@/lib/auth/session";
 import {
   createMaintenanceRequest, reviewMaintenanceRequest, ownerMaintenanceDecision,
@@ -72,6 +72,10 @@ export default async function FleetMaintenancePage({
   const requests = await listFleetMaintenanceRequests(
     tenant.organizationId,
     canViewAll ? undefined : vehicles.map((vehicle) => vehicle.id),
+  );
+  const mechanics = canManage ? await listFleetMechanics(tenant.organizationId) : [];
+  const mechanicItems: Record<string, string> = Object.fromEntries(
+    mechanics.filter((mechanic) => mechanic.status === "ACTIVE").map((mechanic) => [mechanic.id, mechanic.businessName ? `${mechanic.name} (${mechanic.businessName})` : mechanic.name]),
   );
 
   const vehicleItems: Record<string, string> = Object.fromEntries(
@@ -167,7 +171,7 @@ export default async function FleetMaintenancePage({
                 <TableCell className="text-muted-foreground">
                   {request.ownerApprovalRequired ? APPROVAL_LABELS[request.ownerApprovalStatus] : "Not required"}
                 </TableCell>
-                <TableCell className="text-muted-foreground">{request.mechanicAssigned ?? "-"}</TableCell>
+                <TableCell className="text-muted-foreground">{request.mechanic?.name ?? "-"}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex flex-wrap justify-end gap-1">
                   {request.photoAssetId ? (
@@ -220,13 +224,19 @@ export default async function FleetMaintenancePage({
                       <Button type="submit" size="sm" variant="ghost">Owner reject</Button>
                     </form>
                   ) : null}
-                  {canManage && request.progressStatus === "APPROVED" && !request.mechanicAssigned ? (
+                  {canManage && request.progressStatus === "APPROVED" && !request.mechanicId ? (
                     <EntityDialog trigger={<Button size="sm" variant="ghost">Assign mechanic</Button>} title="Assign mechanic" action={assignMechanic}>
                       <input type="hidden" name="id" value={request.id} />
-                      <div className="space-y-2"><Label htmlFor={`mechanic-${request.id}`}>Mechanic or workshop</Label><Input id={`mechanic-${request.id}`} name="mechanicAssigned" required /></div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`mechanic-${request.id}`}>Mechanic or workshop</Label>
+                        <Select name="mechanicId" items={mechanicItems}>
+                          <SelectTrigger id={`mechanic-${request.id}`} className="w-full"><SelectValue placeholder="Select a mechanic" /></SelectTrigger>
+                          <SelectContent>{Object.entries(mechanicItems).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
                     </EntityDialog>
                   ) : null}
-                  {canManage && request.progressStatus === "APPROVED" && request.mechanicAssigned ? (
+                  {canManage && request.progressStatus === "APPROVED" && request.mechanicId ? (
                     <form action={startRepair}><input type="hidden" name="id" value={request.id} /><Button type="submit" size="sm" variant="ghost">Start repair</Button></form>
                   ) : null}
                   {canManage && request.progressStatus === "IN_PROGRESS" ? (

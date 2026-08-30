@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireCurrentTenant } from "@/lib/tenant";
-import { isFleetDriverRole, isFleetOwnerRole } from "@/lib/auth/permissions";
+import { isFleetOwnerRole, isNarrowFleetSelfServiceRole } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { listFleetActorVehicles } from "@/modules/fleet/service";
 import { scopeBroadcastsToOwnedVehicles } from "@/modules/fleet/notification-scope";
@@ -38,7 +38,10 @@ export async function markAllNotificationsRead(): Promise<void> {
     where: {
       organizationId: tenant.organizationId,
       readAt: null,
-      OR: [{ userId }, { userId: null }],
+      // Mirrors the notifications page's own recipient scoping - a Driver
+      // or Mechanic's "mark all read" must never silently clear unread
+      // state on an org-wide broadcast they never saw in the first place.
+      ...(isNarrowFleetSelfServiceRole(tenant) ? { userId } : { OR: [{ userId }, { userId: null }] }),
     },
     select: { id: true, userId: true, metadata: true },
   });
@@ -73,7 +76,7 @@ export async function getNotificationUnreadCount(): Promise<number> {
     where: {
       organizationId: tenant.organizationId,
       readAt: null,
-      ...(isFleetDriverRole(tenant) ? { userId } : { OR: [{ userId }, { userId: null }] }),
+      ...(isNarrowFleetSelfServiceRole(tenant) ? { userId } : { OR: [{ userId }, { userId: null }] }),
     },
     select: { userId: true, metadata: true },
     orderBy: { createdAt: "desc" },

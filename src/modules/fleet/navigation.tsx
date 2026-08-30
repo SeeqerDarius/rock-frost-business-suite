@@ -1,5 +1,5 @@
 import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
-import { Truck, Users, UserRound, ShieldCheck, Wrench, Handshake, Receipt, BarChart3, Landmark, Gauge } from "lucide-react";
+import { Truck, Users, UserRound, ShieldCheck, Wrench, Handshake, Receipt, BarChart3, Landmark, Gauge, Hammer } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const fleetNavigation: ModuleNavItem[] = [
@@ -7,7 +7,9 @@ export const fleetNavigation: ModuleNavItem[] = [
   { label: "Vehicles", href: "/app/fleet/vehicles", icon: <Truck className="size-4" />, description: "Register vehicles with make, model, plate, and status, and assign an owner, driver, and remittance schedule." },
   { label: "Drivers", href: "/app/fleet/drivers", icon: <UserRound className="size-4" />, description: "Add and manage driver profiles, their licence details, employment status, and linked login." },
   { label: "Driver Workspace", href: "/app/fleet/driver-portal", icon: <Gauge className="size-4" />, description: "As a driver, view your assigned vehicles and contracts and submit remittance or instalment payments for review." },
+  { label: "Mechanic Workspace", href: "/app/fleet/mechanic-portal", icon: <Hammer className="size-4" />, description: "As a mechanic, view maintenance requests assigned to you and record scheduled and completed repairs." },
   { label: "Owners", href: "/app/fleet/owners", icon: <Users className="size-4" />, description: "Manage vehicle owners, link their portal login, and see their assigned vehicles and revenue." },
+  { label: "Mechanics", href: "/app/fleet/mechanics", icon: <Hammer className="size-4" />, description: "Maintain the roster of mechanics and workshops available for maintenance assignment." },
   { label: "Maintenance", href: "/app/fleet/maintenance", icon: <Wrench className="size-4" />, description: "Report vehicle faults and move repairs through review, approval, assignment, and completion." },
   { label: "Insurance & Roadworthy", href: "/app/fleet/insurance-roadworthy", icon: <ShieldCheck className="size-4" />, description: "Track each vehicle's insurance policy and roadworthy certificate expiry dates and renewal alerts." },
   { label: "Payments", href: "/app/fleet/payments", icon: <Receipt className="size-4" />, description: "Record and verify fleet payments such as remittances, owner payouts, and Work and Pay instalments." },

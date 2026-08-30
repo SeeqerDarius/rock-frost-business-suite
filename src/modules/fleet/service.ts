@@ -7,6 +7,7 @@ import type {
   FleetDriverStatus,
   FleetMaintenanceApprovalStatus,
   FleetMaintenanceProgressStatus,
+  FleetMechanicStatus,
   FleetPaymentStatus,
   FleetPaymentType,
   FleetSalesTargetPeriod,
@@ -200,6 +201,55 @@ export async function listAssignableDriverUsers(organizationId: string) {
 export async function listAssignableOwnerUsers(organizationId: string) {
   const memberships = await db.organizationMember.findMany({
     where: { organizationId, status: "ACTIVE", user: { status: "ACTIVE" }, role: { name: "Vehicle Owner" } },
+    select: { user: { select: { id: true, name: true, email: true } } },
+    orderBy: { user: { name: "asc" } },
+  });
+  return memberships.map(({ user }) => user);
+}
+
+// --- Mechanics ---
+
+export function listFleetMechanics(organizationId: string) {
+  return db.fleetMechanic.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+}
+
+export function createFleetMechanic(
+  organizationId: string,
+  data: {
+    name: string;
+    businessName?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    location?: string | null;
+    specialty?: string | null;
+    branchId?: string | null;
+    userId?: string | null;
+  }
+) {
+  return db.fleetMechanic.create({ data: { organizationId, ...data } });
+}
+
+export function updateFleetMechanic(
+  organizationId: string,
+  id: string,
+  data: {
+    name: string;
+    businessName?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    location?: string | null;
+    specialty?: string | null;
+    branchId?: string | null;
+    userId?: string | null;
+    status?: FleetMechanicStatus;
+  }
+) {
+  return db.fleetMechanic.update({ where: { id, organizationId }, data });
+}
+
+export async function listAssignableMechanicUsers(organizationId: string) {
+  const memberships = await db.organizationMember.findMany({
+    where: { organizationId, status: "ACTIVE", user: { status: "ACTIVE" }, role: { name: "Mechanic" } },
     select: { user: { select: { id: true, name: true, email: true } } },
     orderBy: { user: { name: "asc" } },
   });
@@ -819,6 +869,7 @@ export function listFleetMaintenanceRequests(organizationId: string, vehicleIds?
     include: {
       vehicle: { include: { owner: true, assignedDriver: true } },
       requestedBy: true,
+      mechanic: true,
       events: { include: { actor: true }, orderBy: { createdAt: "asc" } },
     },
     orderBy: { requestedAt: "desc" },
@@ -899,23 +950,6 @@ export function getFleetMaintenancePhoto(
     },
     select: { photoAsset: { select: { url: true, updatedAt: true } } },
   });
-}
-
-export function updateFleetMaintenanceRequest(
-  organizationId: string,
-  id: string,
-  data: {
-    approvalStatus?: FleetMaintenanceApprovalStatus;
-    fleetManagerReview?: string | null;
-    ownerApprovalStatus?: FleetMaintenanceApprovalStatus;
-    mechanicAssigned?: string | null;
-    progressStatus?: FleetMaintenanceProgressStatus;
-    repairCost?: string | null;
-    completionVerified?: boolean;
-    completedAt?: Date | null;
-  }
-) {
-  return db.fleetMaintenanceRequest.update({ where: { id, organizationId }, data });
 }
 
 export class InvalidMaintenanceTransitionError extends Error {}
@@ -1016,7 +1050,7 @@ export async function assignMaintenanceMechanic(
   organizationId: string,
   id: string,
   actorId: string,
-  mechanicAssigned: string,
+  mechanicId: string,
 ) {
   return db.$transaction(async (tx) => {
     const request = await tx.fleetMaintenanceRequest.findFirst({ where: { id, organizationId } });
@@ -1027,9 +1061,48 @@ export async function assignMaintenanceMechanic(
     if (request.progressStatus !== "APPROVED") {
       throw new InvalidMaintenanceTransitionError("The request must be approved before mechanic assignment.");
     }
-    await tx.fleetMaintenanceRequest.update({ where: { id }, data: { mechanicAssigned } });
+    const mechanic = await tx.fleetMechanic.findFirst({ where: { id: mechanicId, organizationId } });
+    if (!mechanic) throw new NotFoundError("Mechanic not found.");
+    await tx.fleetMaintenanceRequest.update({ where: { id }, data: { mechanicId } });
     await tx.fleetMaintenanceEvent.create({
-      data: { organizationId, requestId: id, actorId, eventType: "MECHANIC_ASSIGNED", fromStatus: request.progressStatus, toStatus: request.progressStatus, note: mechanicAssigned },
+      data: { organizationId, requestId: id, actorId, eventType: "MECHANIC_ASSIGNED", fromStatus: request.progressStatus, toStatus: request.progressStatus, note: mechanic.name },
+    });
+  });
+}
+
+/**
+ * A mechanic recording their own scheduled repair date for a request
+ * assigned to them - gated to the FleetMechanic profile linked to the
+ * caller's own userId, never any mechanicId the caller happens to pass.
+ * Deliberately does not advance progressStatus: the ASSIGNED/SCHEDULED
+ * states this action conceptually belongs to don't exist in
+ * FleetMaintenanceProgressStatus yet (see the plan's later enum expansion),
+ * so for now this only records the date and logs a REPAIR_SCHEDULED event -
+ * a mechanical follow-on activates the real transition once those values
+ * are added, not a rebuild of this action.
+ */
+export async function acceptMaintenanceAssignment(
+  organizationId: string,
+  id: string,
+  userId: string,
+  scheduledRepairAt: Date,
+) {
+  return db.$transaction(async (tx) => {
+    const mechanic = await tx.fleetMechanic.findFirst({ where: { organizationId, userId } });
+    if (!mechanic) throw new NotFoundError("Mechanic profile not found.");
+    const request = await tx.fleetMaintenanceRequest.findFirst({ where: { id, organizationId, mechanicId: mechanic.id } });
+    if (!request) throw new NotFoundError("Maintenance request not found.");
+    await tx.fleetMaintenanceRequest.update({ where: { id }, data: { scheduledRepairAt } });
+    await tx.fleetMaintenanceEvent.create({
+      data: {
+        organizationId,
+        requestId: id,
+        actorId: userId,
+        eventType: "REPAIR_SCHEDULED",
+        fromStatus: request.progressStatus,
+        toStatus: request.progressStatus,
+        note: `Repair scheduled for ${scheduledRepairAt.toISOString().slice(0, 10)}`,
+      },
     });
   });
 }
@@ -1038,7 +1111,7 @@ export async function startMaintenanceRepair(organizationId: string, id: string,
   return db.$transaction(async (tx) => {
     const request = await tx.fleetMaintenanceRequest.findFirst({ where: { id, organizationId } });
     if (!request) throw new NotFoundError("Maintenance request not found.");
-    if (request.progressStatus !== "APPROVED" || !request.mechanicAssigned) {
+    if (request.progressStatus !== "APPROVED" || !request.mechanicId) {
       throw new InvalidMaintenanceTransitionError("Assign a mechanic to an approved request before starting repair.");
     }
     await tx.fleetMaintenanceRequest.update({ where: { id }, data: { progressStatus: "IN_PROGRESS" } });

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/lib/db";
 import { requireCurrentTenant } from "@/lib/tenant";
-import { isFleetDriverRole, isFleetOwnerRole } from "@/lib/auth/permissions";
+import { isFleetOwnerRole, isNarrowFleetSelfServiceRole } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { listFleetActorVehicles } from "@/modules/fleet/service";
 import { scopeBroadcastsToOwnedVehicles } from "@/modules/fleet/notification-scope";
@@ -46,11 +46,12 @@ export default async function WorkspaceNotificationsPage({
       where: {
         organizationId: tenant.organizationId,
         ...(unreadOnly ? { readAt: null } : {}),
-        // A Driver only ever sees notifications addressed to them - payment
-        // and maintenance updates on their own submissions - never an
-        // org-wide broadcast (a document-renewal reminder, for example) that
-        // isn't theirs to act on. Every other role keeps seeing both.
-        ...(isFleetDriverRole(tenant) ? { userId } : { OR: [{ userId }, { userId: null }] }),
+        // A Driver or Mechanic only ever sees notifications addressed to
+        // them - payment and maintenance updates on their own submissions
+        // or assignments - never an org-wide broadcast (a document-renewal
+        // reminder, for example) that isn't theirs to act on. Every other
+        // role keeps seeing both.
+        ...(isNarrowFleetSelfServiceRole(tenant) ? { userId } : { OR: [{ userId }, { userId: null }] }),
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: take + 1,

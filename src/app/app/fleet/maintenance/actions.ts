@@ -150,9 +150,9 @@ export async function ownerMaintenanceDecision(formData: FormData): Promise<void
 export async function assignMechanic(formData: FormData): Promise<void> {
   const { tenant, userId } = await maintenanceContext(PERMISSIONS.FLEET_MAINTENANCE_MANAGE);
   const id = clean(formData.get("id"));
-  const mechanic = clean(formData.get("mechanicAssigned"));
-  if (!id || !mechanic) redirect("/app/fleet/maintenance?error=missing-fields");
-  try { await assignMaintenanceMechanic(tenant.organizationId, id, userId, mechanic); } catch (error) { workflowError(error); }
+  const mechanicId = clean(formData.get("mechanicId"));
+  if (!id || !mechanicId) redirect("/app/fleet/maintenance?error=missing-fields");
+  try { await assignMaintenanceMechanic(tenant.organizationId, id, userId, mechanicId); } catch (error) { workflowError(error); }
   revalidatePath("/app/fleet/maintenance");
   redirect("/app/fleet/maintenance?saved=1");
 }

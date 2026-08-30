@@ -48,6 +48,6 @@ describe("Notification recipient scoping wiring", () => {
   });
 
   it("leaves every other role's broadcast visibility unchanged", () => {
-    expect(page).toContain("isFleetDriverRole(tenant) ? { userId } : { OR: [{ userId }, { userId: null }] }");
+    expect(page).toContain("isNarrowFleetSelfServiceRole(tenant) ? { userId } : { OR: [{ userId }, { userId: null }] }");
   });
 });

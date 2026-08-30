@@ -5,11 +5,11 @@ import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Button } from "@/components/ui/button";
 import { requireCurrentTenant } from "@/lib/tenant";
-import { canAccessModule, isFleetDriverRole } from "@/lib/auth/permissions";
+import { canAccessModule, isNarrowFleetSelfServiceRole } from "@/lib/auth/permissions";
 
 export default async function WorkspaceReportsPage() {
   const tenant = await requireCurrentTenant();
-  if (isFleetDriverRole(tenant)) redirect("/app/dashboard");
+  if (isNarrowFleetSelfServiceRole(tenant)) redirect("/app/dashboard");
   const hasAnalytics = canAccessModule(tenant, "analytics");
 
   return (
