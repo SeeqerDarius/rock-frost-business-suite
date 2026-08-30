@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listFleetActorVehicles, listFleetMaintenanceRequests, listFleetMechanics, listFleetVehicles } from "@/modules/fleet/service";
+import { listFleetActorVehicles, listFleetMaintenanceRequests, listFleetMechanics, listFleetVehicles, MAX_FLEET_MAINTENANCE_ATTACHMENTS } from "@/modules/fleet/service";
 import { MAINTENANCE_PROGRESS_LABELS, MAINTENANCE_PROGRESS_BADGE } from "@/modules/fleet/maintenance-status";
 import { getServerAuthSession } from "@/lib/auth/session";
 import {
@@ -28,6 +28,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "approval-required": "Complete all required approvals before assigning a mechanic.",
   "invalid-cost": "Repair cost must be zero or greater.",
   "invalid-photo": "Use a JPEG, PNG, or WebP photo no larger than 1 MB.",
+  "too-many-photos": `Attach at most ${MAX_FLEET_MAINTENANCE_ATTACHMENTS} photos.`,
 };
 
 const APPROVAL_LABELS: Record<string, string> = { PENDING: "Pending", APPROVED: "Approved", REJECTED: "Rejected" };
@@ -108,9 +109,9 @@ export default async function FleetMaintenancePage({
               <Textarea id="faultDescription" name="faultDescription" rows={4} required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="photo">Photo (optional)</Label>
-              <Input id="photo" name="photo" type="file" accept="image/jpeg,image/png,image/webp" />
-              <p className="text-xs text-muted-foreground">JPEG, PNG, or WebP. Maximum 1 MB.</p>
+              <Label htmlFor="photo">Photos (optional)</Label>
+              <Input id="photo" name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple />
+              <p className="text-xs text-muted-foreground">JPEG, PNG, or WebP. Up to {MAX_FLEET_MAINTENANCE_ATTACHMENTS} photos, 1 MB each.</p>
             </div>
           </EntityDialog>
         ) : null}
@@ -159,11 +160,11 @@ export default async function FleetMaintenancePage({
                 <TableCell className="text-muted-foreground">{request.mechanic?.name ?? "-"}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex flex-wrap justify-end gap-1">
-                  {request.photoAssetId ? (
-                    <Button size="sm" variant="ghost" nativeButton={false} render={<a href={`/api/fleet/maintenance/${request.id}/photo`} target="_blank" rel="noreferrer" />}>
-                      View photo
+                  {request.attachments.map((attachment, index) => (
+                    <Button key={attachment.id} size="sm" variant="ghost" nativeButton={false} render={<a href={`/api/fleet/maintenance/attachments/${attachment.id}`} target="_blank" rel="noreferrer" />}>
+                      Photo {index + 1}
                     </Button>
-                  ) : null}
+                  ))}
                   {canManage && ["REPORTED", "AWAITING_OWNER_APPROVAL"].includes(request.progressStatus) && request.approvalStatus === "PENDING" ? (
                     <EntityDialog
                       trigger={

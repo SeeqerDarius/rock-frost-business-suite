@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { getFleetDriverWorkspace, getFleetDriverTrends } from "@/modules/fleet/service";
+import { getFleetDriverWorkspace, getFleetDriverTrends, MAX_FLEET_MAINTENANCE_ATTACHMENTS } from "@/modules/fleet/service";
 import { getFleetDriverObligations, type ObligationSummary } from "@/modules/fleet/driver-obligations";
 import { MAINTENANCE_PROGRESS_LABELS, MAINTENANCE_PROGRESS_BADGE } from "@/modules/fleet/maintenance-status";
 import { DriverCollectionForm } from "./collection-form";
@@ -40,6 +40,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "duplicate-period": "A pending or approved remittance already exists for that vehicle and payment period.",
   "not-found": "The selected vehicle or contract is no longer assigned to you.",
   "invalid-photo": "Use a JPEG, PNG, or WebP photo no larger than 1 MB.",
+  "too-many-photos": `Attach at most ${MAX_FLEET_MAINTENANCE_ATTACHMENTS} photos.`,
   "online-unavailable": "Online collections are not active. Pay the company using another method and record it below.",
   "online-failed": "Secure checkout could not be started. No payment was taken. Please try again.",
 };
@@ -394,9 +395,9 @@ export default async function DriverPortalPage({
                     <Textarea id="faultDescription" name="faultDescription" rows={4} required />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="photo">Photo (optional)</Label>
-                    <Input id="photo" name="photo" type="file" accept="image/jpeg,image/png,image/webp" />
-                    <p className="text-xs text-muted-foreground">JPEG, PNG, or WebP. Maximum 1 MB.</p>
+                    <Label htmlFor="photo">Photos (optional)</Label>
+                    <Input id="photo" name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple />
+                    <p className="text-xs text-muted-foreground">JPEG, PNG, or WebP. Up to {MAX_FLEET_MAINTENANCE_ATTACHMENTS} photos, 1 MB each.</p>
                   </div>
                 </EntityDialog>
               ) : null}
@@ -416,12 +417,12 @@ export default async function DriverPortalPage({
                       <p className="text-muted-foreground">{request.faultDescription}</p>
                       <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                         <span>Reported {request.requestedAt.toLocaleDateString()}</span>
-                        {request.photoAssetId ? (
-                          <>
+                        {request.attachments.map((attachment, index) => (
+                          <span key={attachment.id} className="contents">
                             <span aria-hidden="true">&middot;</span>
-                            <a className="underline underline-offset-2 hover:text-foreground" href={`/api/fleet/maintenance/${request.id}/photo`} target="_blank" rel="noreferrer">View photo</a>
-                          </>
-                        ) : null}
+                            <a className="underline underline-offset-2 hover:text-foreground" href={`/api/fleet/maintenance/attachments/${attachment.id}`} target="_blank" rel="noreferrer">Photo {index + 1}</a>
+                          </span>
+                        ))}
                       </p>
                     </div>
                     <Badge variant={MAINTENANCE_PROGRESS_BADGE[request.progressStatus]}>{MAINTENANCE_PROGRESS_LABELS[request.progressStatus]}</Badge>

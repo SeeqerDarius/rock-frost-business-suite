@@ -7,6 +7,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import {
   createFleetMaintenanceRequest,
+  MAX_FLEET_MAINTENANCE_ATTACHMENTS,
   managerReviewMaintenanceRequest,
   ownerDecisionMaintenanceRequest,
   assignMaintenanceMechanic,
@@ -55,9 +56,12 @@ export async function createMaintenanceRequest(formData: FormData): Promise<void
   ) {
     redirect("/app/fleet/maintenance?error=not-found");
   }
-  const photoFile = formData.get("photo");
+  const photoFiles = formData.getAll("photos").filter((entry): entry is File => entry instanceof File && entry.size > 0);
+  if (photoFiles.length > MAX_FLEET_MAINTENANCE_ATTACHMENTS) {
+    redirect("/app/fleet/maintenance?error=too-many-photos");
+  }
   try {
-    const photo = photoFile instanceof File ? await fleetMaintenancePhotoData(photoFile) : null;
+    const photos = await Promise.all(photoFiles.map((file) => fleetMaintenancePhotoData(file)));
     const request = await createFleetMaintenanceRequest(tenant.organizationId, {
       vehicleId,
       faultDescription,
@@ -65,7 +69,7 @@ export async function createMaintenanceRequest(formData: FormData): Promise<void
       ownerApprovalRequired:
         hasPermission(tenant, PERMISSIONS.FLEET_MAINTENANCE_MANAGE) &&
         formData.get("ownerApprovalRequired") === "on",
-      photo,
+      photos: photos.filter((photo): photo is NonNullable<typeof photo> => photo !== null),
     });
     await logAuditEvent({
       organizationId: tenant.organizationId,
@@ -74,7 +78,7 @@ export async function createMaintenanceRequest(formData: FormData): Promise<void
       action: "fleet.maintenance.submitted",
       entityName: "FleetMaintenanceRequest",
       entityId: request.id,
-      metadata: { vehicleId, hasPhoto: Boolean(photo) },
+      metadata: { vehicleId, photoCount: photos.length },
     });
   } catch (error) {
     if (error instanceof NotFoundError) redirect("/app/fleet/maintenance?error=not-found");

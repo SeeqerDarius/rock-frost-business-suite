@@ -22,6 +22,7 @@ export async function getFleetMechanicWorkspace(organizationId: string, userId: 
     where: { organizationId, mechanicId: mechanic.id },
     include: {
       vehicle: { include: { owner: true, assignedDriver: true } },
+      attachments: { select: { id: true }, orderBy: { createdAt: "asc" } },
       events: { orderBy: { createdAt: "asc" } },
     },
     orderBy: { requestedAt: "desc" },

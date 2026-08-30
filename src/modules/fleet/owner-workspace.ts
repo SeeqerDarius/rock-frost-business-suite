@@ -23,7 +23,10 @@ export async function getFleetOwnerWorkspace(organizationId: string, userId: str
         include: {
           assignedDriver: { select: { id: true, name: true, status: true } },
           documents: { orderBy: { insuranceExpiresAt: "asc" } },
-          maintenanceRequests: { include: { events: { orderBy: { createdAt: "asc" } } }, orderBy: { requestedAt: "desc" } },
+          maintenanceRequests: {
+            include: { events: { orderBy: { createdAt: "asc" } }, attachments: { select: { id: true }, orderBy: { createdAt: "asc" } } },
+            orderBy: { requestedAt: "desc" },
+          },
           workAndPayContracts: { orderBy: { createdAt: "desc" } },
           ownershipHistory: { orderBy: { changedAt: "desc" } },
         },

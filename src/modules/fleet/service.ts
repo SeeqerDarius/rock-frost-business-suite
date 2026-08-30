@@ -376,7 +376,11 @@ export async function getFleetDriverWorkspace(organizationId: string, userId: st
     include: {
       assignedVehicles: {
         include: {
-          maintenanceRequests: { orderBy: { requestedAt: "desc" }, take: 10 },
+          maintenanceRequests: {
+            include: { attachments: { select: { id: true }, orderBy: { createdAt: "asc" } } },
+            orderBy: { requestedAt: "desc" },
+            take: 10,
+          },
           workAndPayContracts: {
             where: { contractStatus: "ACTIVE", driver: { userId } },
             orderBy: { createdAt: "desc" },
@@ -863,6 +867,7 @@ export async function refreshFleetDocumentStatuses(organizationId: string) {
 
 // --- Maintenance requests ---
 
+/** Attachment metadata only - the underlying FileAsset (with its inline base64 data URL) is deliberately never eager-loaded into a list view; getFleetMaintenanceAttachment resolves one at a time for actual viewing. */
 export function listFleetMaintenanceRequests(organizationId: string, vehicleIds?: string[]) {
   return db.fleetMaintenanceRequest.findMany({
     where: { organizationId, ...(vehicleIds ? { vehicleId: { in: vehicleIds } } : {}) },
@@ -870,11 +875,14 @@ export function listFleetMaintenanceRequests(organizationId: string, vehicleIds?
       vehicle: { include: { owner: true, assignedDriver: true } },
       requestedBy: true,
       mechanic: true,
+      attachments: { select: { id: true, caption: true }, orderBy: { createdAt: "asc" } },
       events: { include: { actor: true }, orderBy: { createdAt: "asc" } },
     },
     orderBy: { requestedAt: "desc" },
   });
 }
+
+export const MAX_FLEET_MAINTENANCE_ATTACHMENTS = 5;
 
 export async function createFleetMaintenanceRequest(
   organizationId: string,
@@ -884,15 +892,15 @@ export async function createFleetMaintenanceRequest(
     requestedById?: string | null;
     branchId?: string | null;
     ownerApprovalRequired?: boolean;
-    photo?: { fileName: string; mimeType: string; size: number; dataUrl: string } | null;
+    photos?: { fileName: string; mimeType: string; size: number; dataUrl: string }[];
   }
 ) {
   const vehicle = await db.fleetVehicle.findFirst({ where: { id: data.vehicleId, organizationId } });
   if (!vehicle) throw new NotFoundError("Vehicle not found.");
   return db.$transaction(async (tx) => {
-    const { photo, ...requestData } = data;
+    const { photos, ...requestData } = data;
     const request = await tx.fleetMaintenanceRequest.create({ data: { organizationId, ...requestData } });
-    if (photo) {
+    for (const photo of photos ?? []) {
       const asset = await tx.fileAsset.create({
         data: {
           organizationId,
@@ -906,7 +914,9 @@ export async function createFleetMaintenanceRequest(
           metadata: { purpose: "fleet-maintenance-photo", requestId: request.id },
         },
       });
-      await tx.fleetMaintenanceRequest.update({ where: { id: request.id }, data: { photoAssetId: asset.id } });
+      await tx.fleetMaintenanceAttachment.create({
+        data: { organizationId, requestId: request.id, fileAssetId: asset.id, uploadedById: data.requestedById },
+      });
     }
     await tx.fleetMaintenanceEvent.create({
       data: {
@@ -936,19 +946,27 @@ export async function createFleetMaintenanceRequest(
   });
 }
 
-export function getFleetMaintenancePhoto(
+/**
+ * Scoped the same way the old single-photo lookup was (own-vehicle-or-
+ * manage-permission), now also recognizing the assigned mechanic - a real
+ * gap in the original scoping that only became visible once the mechanic
+ * portal gave mechanics a reason to view a request's attachments at all.
+ */
+export function getFleetMaintenanceAttachment(
   organizationId: string,
-  requestId: string,
+  attachmentId: string,
   userId: string,
   canViewAll: boolean,
 ) {
-  return db.fleetMaintenanceRequest.findFirst({
+  return db.fleetMaintenanceAttachment.findFirst({
     where: {
-      id: requestId,
+      id: attachmentId,
       organizationId,
-      ...(canViewAll ? {} : { vehicle: { OR: [{ assignedDriver: { userId } }, { owner: { userId } }] } }),
+      ...(canViewAll
+        ? {}
+        : { request: { OR: [{ vehicle: { OR: [{ assignedDriver: { userId } }, { owner: { userId } }] } }, { mechanic: { userId } }] } }),
     },
-    select: { photoAsset: { select: { url: true, updatedAt: true } } },
+    select: { fileAsset: { select: { url: true, updatedAt: true } } },
   });
 }
 
@@ -1471,8 +1489,8 @@ export async function getFleetSummary(organizationId: string) {
       db.fleetVehicle.groupBy({ by: ["status"], where: { organizationId }, _count: true }),
       db.fleetDriver.count({ where: { organizationId, status: "ACTIVE" } }),
       db.fleetOwner.count({ where: { organizationId } }),
-      db.fleetMaintenanceRequest.count({ where: { organizationId, progressStatus: { notIn: ["COMPLETED", "CANCELLED"] } } }),
-      db.fleetMaintenanceRequest.groupBy({ by: ["vehicleId"], where: { organizationId, progressStatus: { notIn: ["COMPLETED", "CANCELLED"] } } }),
+      db.fleetMaintenanceRequest.count({ where: { organizationId, progressStatus: { notIn: ["COMPLETED", "VERIFIED", "REJECTED", "CANCELLED"] } } }),
+      db.fleetMaintenanceRequest.groupBy({ by: ["vehicleId"], where: { organizationId, progressStatus: { notIn: ["COMPLETED", "VERIFIED", "REJECTED", "CANCELLED"] } } }),
       db.fleetWorkAndPayContract.count({ where: { organizationId, contractStatus: "ACTIVE" } }),
       db.fleetDriverPaymentSubmission.count({ where: { organizationId, status: "PENDING" } }),
       db.fleetVehicleDocument.count({
@@ -1615,7 +1633,7 @@ export async function getFleetDriverDashboardSummary(organizationId: string, use
   return {
     assignedVehicleCount: driver.assignedVehicles.length,
     openMaintenanceCount: driver.assignedVehicles.reduce(
-      (total, vehicle) => total + vehicle.maintenanceRequests.filter((request) => !["COMPLETED", "CANCELLED"].includes(request.progressStatus)).length,
+      (total, vehicle) => total + vehicle.maintenanceRequests.filter((request) => !["COMPLETED", "VERIFIED", "REJECTED", "CANCELLED"].includes(request.progressStatus)).length,
       0,
     ),
     pendingSubmissionCount: driver.paymentSubmissions.filter((submission) => submission.status === "PENDING").length,

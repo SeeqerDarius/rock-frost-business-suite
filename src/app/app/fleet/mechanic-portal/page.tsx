@@ -88,6 +88,15 @@ export default async function FleetMechanicPortalPage({
                       : "No repair date scheduled yet."}
                   </p>
                 )}
+                {request.attachments.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {request.attachments.map((attachment, index) => (
+                      <Button key={attachment.id} size="sm" variant="ghost" nativeButton={false} render={<a href={`/api/fleet/maintenance/attachments/${attachment.id}`} target="_blank" rel="noreferrer" />}>
+                        Photo {index + 1}
+                      </Button>
+                    ))}
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
           ))}
@@ -107,10 +116,19 @@ export default async function FleetMechanicPortalPage({
                   <Badge variant={MAINTENANCE_PROGRESS_BADGE[request.progressStatus]}>{MAINTENANCE_PROGRESS_LABELS[request.progressStatus]}</Badge>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
                 <p className="text-sm text-muted-foreground">
                   {request.completedAt ? `Completed ${request.completedAt.toLocaleDateString()}` : "No completion date recorded."}
                 </p>
+                {request.attachments.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {request.attachments.map((attachment, index) => (
+                      <Button key={attachment.id} size="sm" variant="ghost" nativeButton={false} render={<a href={`/api/fleet/maintenance/attachments/${attachment.id}`} target="_blank" rel="noreferrer" />}>
+                        Photo {index + 1}
+                      </Button>
+                    ))}
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
           ))}

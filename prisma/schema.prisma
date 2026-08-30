@@ -1435,7 +1435,6 @@ model FileAsset {
   organization           Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch                 Branch?                      @relation(fields: [branchId], references: [id], onDelete: SetNull)
   uploadedBy             User?                        @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
-  maintenancePhotos      FleetMaintenanceRequest[]
   maintenanceAttachments FleetMaintenanceAttachment[]
 
   @@index([organizationId])
@@ -1629,7 +1628,6 @@ model FleetMaintenanceRequest {
   vehicleId             String
   requestedById         String?
   faultDescription      String                         @db.Text
-  photoAssetId          String?
   approvalStatus        FleetMaintenanceApprovalStatus @default(PENDING)
   fleetManagerReview    String?                        @db.Text
   ownerApprovalStatus   FleetMaintenanceApprovalStatus @default(PENDING)
@@ -1648,7 +1646,6 @@ model FleetMaintenanceRequest {
   branch       Branch?                      @relation(fields: [branchId], references: [id], onDelete: SetNull)
   vehicle      FleetVehicle                 @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   requestedBy  User?                        @relation(fields: [requestedById], references: [id], onDelete: SetNull)
-  photoAsset   FileAsset?                   @relation(fields: [photoAssetId], references: [id], onDelete: SetNull)
   mechanic     FleetMechanic?               @relation(fields: [mechanicId], references: [id], onDelete: SetNull)
   events       FleetMaintenanceEvent[]
   attachments  FleetMaintenanceAttachment[]
@@ -1657,7 +1654,6 @@ model FleetMaintenanceRequest {
   @@index([branchId])
   @@index([vehicleId])
   @@index([requestedById])
-  @@index([photoAssetId])
   @@index([mechanicId])
 }
 
