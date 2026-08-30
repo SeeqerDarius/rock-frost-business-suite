@@ -166,7 +166,7 @@ describe("Support messaging service — per-user tenant conversations", () => {
     expect(mockDb.supportMessage.count).not.toHaveBeenCalled();
   });
 
-  it("getTenantUnreadCount counts PLATFORM, AI, and ADMIN messages newer than tenantLastReadAt, scoped to that user's own conversation", async () => {
+  it("getTenantUnreadCount counts PLATFORM, AI, ADMIN, and SYSTEM messages newer than tenantLastReadAt, scoped to that user's own conversation", async () => {
     const lastRead = new Date("2026-01-01");
     mockDb.supportConversation.findUnique.mockResolvedValue({ id: "conv-1", organizationId: ORG, userId: USER, tenantLastReadAt: lastRead });
     mockDb.supportMessage.count.mockResolvedValue(3);
@@ -176,7 +176,7 @@ describe("Support messaging service — per-user tenant conversations", () => {
     const call = mockDb.supportMessage.count.mock.calls[0][0];
     expect(call.where.organizationId).toBe(ORG);
     expect(call.where.conversationId).toBe("conv-1");
-    expect(call.where.senderRole).toEqual({ in: ["PLATFORM", "AI", "ADMIN"] });
+    expect(call.where.senderRole).toEqual({ in: ["PLATFORM", "AI", "ADMIN", "SYSTEM"] });
     expect(call.where.createdAt).toEqual({ gt: lastRead });
   });
 
@@ -276,6 +276,22 @@ describe("Support messaging service — per-user tenant conversations", () => {
     expect(createCall.data.senderName).toBe("Rock Frost AI Assistant");
 
     // An AI reply isn't a read acknowledgment from any human party.
+    const updateCall = mockDb.supportConversation.update.mock.calls[0][0];
+    expect(updateCall.data).toEqual({ status: "OPEN" });
+  });
+
+  it("sendSystemMessage creates a SYSTEM-role message with no sender account and bumps no read cursor, same as AI", async () => {
+    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValueOnce({ id: "conv-1", organizationId: ORG, userId: USER });
+    mockDb.supportMessage.create.mockResolvedValue({ id: "msg-1", createdAt: new Date("2026-01-01") });
+    mockDb.supportConversation.update.mockResolvedValue({});
+    mockDb.supportConversation.findUniqueOrThrow.mockResolvedValueOnce({ id: "conv-1", organizationId: ORG, userId: USER, tenantLastReadAt: null, platformLastReadAt: null });
+
+    await support.sendSystemMessage("conv-1", "Our automated assistant couldn't respond just now.");
+
+    const createCall = mockDb.supportMessage.create.mock.calls[0][0];
+    expect(createCall.data.senderRole).toBe("SYSTEM");
+    expect(createCall.data.senderId).toBeNull();
+
     const updateCall = mockDb.supportConversation.update.mock.calls[0][0];
     expect(updateCall.data).toEqual({ status: "OPEN" });
   });
@@ -397,6 +413,18 @@ describe("Support messaging — access-guard source coverage", () => {
       const source = read(file);
       expect(source, file).not.toMatch(/sendEmail|resend|@\/lib\/email/i);
     }
+  });
+
+  it("a SYSTEM failure notice never fakes a reply from any party, and offers a retry only to the tenant viewer", () => {
+    const chatSource = read("src/components/support/support-chat.tsx");
+    expect(chatSource).toContain('message.senderRole === "SYSTEM"');
+    expect(chatSource).toContain('isLatest && onRetry && viewerRole === "TENANT"');
+
+    for (const file of ["src/app/app/(overview)/support/actions.ts", "src/app/app/(overview)/support/page.tsx", "src/app/app/layout.tsx"]) {
+      expect(read(file), file).toContain("retryAiReply");
+    }
+    // The floating widget is a generic, reusable component — it takes onRetry as a prop rather than importing retryAiReply directly; layout.tsx is what actually wires the two together.
+    expect(read("src/components/support/floating-support-widget.tsx")).toContain("onRetry");
   });
 
   it("both viewer roles get an optional, editable quick-reply template set", () => {

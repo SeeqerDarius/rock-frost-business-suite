@@ -21,6 +21,7 @@ import {
   tenantSupportHeartbeat,
   markTenantSupportRead,
   getTenantSupportUnreadCount,
+  retryAiReply,
 } from "@/app/app/(overview)/support/actions";
 import { getPlatformSupportUnreadCount } from "@/app/app/platform/support/actions";
 
@@ -117,6 +118,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           onHeartbeat={tenantSupportHeartbeat}
           onMarkRead={markTenantSupportRead}
           onUnreadPoll={getTenantSupportUnreadCount}
+          onRetry={retryAiReply}
         />
       )}
     </OrganizationBrandingProvider>

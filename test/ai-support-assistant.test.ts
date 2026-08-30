@@ -27,6 +27,7 @@ const mockSupportService = {
   isAiReplyRateLimited: vi.fn(),
   listSupportMessages: vi.fn(),
   sendAiMessage: vi.fn(),
+  sendSystemMessage: vi.fn(),
 };
 vi.mock("@/lib/support/service", () => mockSupportService);
 
@@ -49,6 +50,14 @@ function makeTenant(overrides: Partial<TenantContext> = {}): TenantContext {
 }
 
 beforeEach(() => {
+  // getGroqClient() (src/lib/ai/client.ts) memoizes its result in a
+  // module-level variable computed from GROQ_API_KEY the first time it's
+  // called — resetting the module registry before every test (not just the
+  // ones that explicitly delete the key) guarantees each test's import sees
+  // a fresh, unmemoized client reflecting whatever this beforeEach just set
+  // process.env.GROQ_API_KEY to, rather than silently inheriting whatever
+  // an earlier test happened to cache.
+  vi.resetModules();
   vi.clearAllMocks();
   process.env.GROQ_API_KEY = "test-key";
 });
@@ -110,7 +119,7 @@ describe("Support assistant — getAssistantReply", () => {
 
     const result = await getAssistantReply(makeTenant(), [{ speaker: "tenant", content: "How many students do we have?" }]);
 
-    expect(result).toEqual({ ok: false, error: "AI assistant is not configured." });
+    expect(result).toEqual({ ok: false, reason: "not_configured", error: "AI assistant is not configured." });
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
@@ -178,24 +187,75 @@ describe("Support assistant — getAssistantReply", () => {
     expect(toolResultMessage.role).toBe("tool");
     expect(JSON.parse(toolResultMessage.content).error).toBeTruthy();
   });
+
+  it("returns reason 'empty_response' when the model returns no usable content and no tool calls", async () => {
+    vi.resetModules();
+    process.env.GROQ_API_KEY = "test-key";
+    mockCreate.mockResolvedValueOnce({ choices: [{ message: { role: "assistant", content: "   ", tool_calls: undefined } }] });
+
+    const { getAssistantReply } = await import("@/lib/ai/support-assistant");
+    const result = await getAssistantReply(makeTenant(), [{ speaker: "tenant", content: "Hi" }]);
+
+    expect(result).toEqual({ ok: false, reason: "empty_response", error: "AI assistant returned an empty response." });
+  });
+
+  it("returns reason 'provider_error' when the underlying API call throws", async () => {
+    vi.resetModules();
+    process.env.GROQ_API_KEY = "test-key";
+    mockCreate.mockRejectedValueOnce(new Error("network down"));
+
+    const { getAssistantReply } = await import("@/lib/ai/support-assistant");
+    const result = await getAssistantReply(makeTenant(), [{ speaker: "tenant", content: "Hi" }]);
+
+    expect(result).toEqual({ ok: false, reason: "provider_error", error: "AI assistant failed to respond." });
+  });
 });
 
 describe("Support assistant — triggerAiReplyIfEligible", () => {
-  it("does nothing when the sending user lacks the ai.assistant.use permission", async () => {
+  it("does nothing when the sending user lacks the ai.assistant.use permission — no_permission is silent, retrying can't help", async () => {
     const { triggerAiReplyIfEligible } = await import("@/lib/ai/support-assistant");
     await triggerAiReplyIfEligible(makeTenant({ permissions: [] }));
     expect(mockSupportService.listSupportMessages).not.toHaveBeenCalled();
     expect(mockSupportService.sendAiMessage).not.toHaveBeenCalled();
+    expect(mockSupportService.sendSystemMessage).not.toHaveBeenCalled();
   });
 
-  it("does nothing once the organization's hourly AI-reply cap is reached, without ever fetching messages", async () => {
+  it("does nothing when GROQ_API_KEY is unset — not_configured is silent, retrying can't help", async () => {
+    vi.resetModules();
+    delete process.env.GROQ_API_KEY;
     const { triggerAiReplyIfEligible } = await import("@/lib/ai/support-assistant");
-    mockSupportService.isAiReplyRateLimited.mockResolvedValue(true);
     await triggerAiReplyIfEligible(makeTenant({ permissions: ["ai.assistant.use"] }));
     expect(mockSupportService.listSupportMessages).not.toHaveBeenCalled();
+    expect(mockSupportService.sendSystemMessage).not.toHaveBeenCalled();
   });
 
-  it("does nothing when a Super Admin's heartbeat is currently pointed at this specific conversation — a human is already handling it", async () => {
+  it("does nothing when listSupportMessages reports no conversation yet for this sender", async () => {
+    const { triggerAiReplyIfEligible } = await import("@/lib/ai/support-assistant");
+    mockSupportService.listSupportMessages.mockResolvedValue({ conversation: null, messages: [] });
+
+    await triggerAiReplyIfEligible(makeTenant({ permissions: ["ai.assistant.use"] }));
+
+    expect(mockSupportService.isAiReplyRateLimited).not.toHaveBeenCalled();
+    expect(mockSupportService.isPlatformOnlineForConversation).not.toHaveBeenCalled();
+    expect(mockSupportService.sendAiMessage).not.toHaveBeenCalled();
+  });
+
+  it("once the organization's hourly AI-reply cap is reached, logs and sends a visible SYSTEM notice — the tenant is waiting and nothing resolves this on its own", async () => {
+    const { triggerAiReplyIfEligible } = await import("@/lib/ai/support-assistant");
+    mockSupportService.listSupportMessages.mockResolvedValue({
+      conversation: { id: "conv-1" },
+      messages: [{ senderRole: "TENANT", content: "Hi" }],
+    });
+    mockSupportService.isAiReplyRateLimited.mockResolvedValue(true);
+
+    await triggerAiReplyIfEligible(makeTenant({ permissions: ["ai.assistant.use"] }));
+
+    expect(mockSupportService.isPlatformOnlineForConversation).not.toHaveBeenCalled();
+    expect(mockSupportService.sendSystemMessage).toHaveBeenCalledWith("conv-1", expect.any(String));
+    expect(mockSupportService.sendAiMessage).not.toHaveBeenCalled();
+  });
+
+  it("does nothing (silently) when a Super Admin's heartbeat is currently pointed at this specific conversation — human_online is the correct, expected handoff", async () => {
     const { triggerAiReplyIfEligible } = await import("@/lib/ai/support-assistant");
     mockSupportService.isAiReplyRateLimited.mockResolvedValue(false);
     mockSupportService.listSupportMessages.mockResolvedValue({
@@ -208,6 +268,25 @@ describe("Support assistant — triggerAiReplyIfEligible", () => {
 
     expect(mockSupportService.isPlatformOnlineForConversation).toHaveBeenCalledWith("conv-1");
     expect(mockSupportService.sendAiMessage).not.toHaveBeenCalled();
+    expect(mockSupportService.sendSystemMessage).not.toHaveBeenCalled();
+  });
+
+  it("logs and sends a visible SYSTEM notice when the assistant itself fails (e.g. provider_error), never a fake reply", async () => {
+    vi.resetModules();
+    process.env.GROQ_API_KEY = "test-key";
+    mockSupportService.isAiReplyRateLimited.mockResolvedValue(false);
+    mockSupportService.isPlatformOnlineForConversation.mockResolvedValue(false);
+    mockSupportService.listSupportMessages.mockResolvedValue({
+      conversation: { id: "conv-1" },
+      messages: [{ senderRole: "TENANT", content: "Hi" }],
+    });
+    mockCreate.mockRejectedValueOnce(new Error("network down"));
+
+    const { triggerAiReplyIfEligible } = await import("@/lib/ai/support-assistant");
+    await triggerAiReplyIfEligible(makeTenant({ permissions: ["ai.assistant.use"] }));
+
+    expect(mockSupportService.sendAiMessage).not.toHaveBeenCalled();
+    expect(mockSupportService.sendSystemMessage).toHaveBeenCalledWith("conv-1", expect.any(String));
   });
 
   it("an operator viewing organization A's conversation never suppresses organization B's AI reply — the confirmed regression this phase fixes", async () => {
@@ -252,24 +331,28 @@ describe("Support assistant — triggerAiReplyIfEligible", () => {
     expect(mockSupportService.sendAiMessage).toHaveBeenCalledWith("conv-1", "I can check that for you.");
   });
 
-  it("does nothing when listSupportMessages reports no conversation yet for this sender", async () => {
-    const { triggerAiReplyIfEligible } = await import("@/lib/ai/support-assistant");
-    mockSupportService.isAiReplyRateLimited.mockResolvedValue(false);
-    mockSupportService.listSupportMessages.mockResolvedValue({ conversation: null, messages: [] });
-
-    await triggerAiReplyIfEligible(makeTenant({ permissions: ["ai.assistant.use"] }));
-
-    expect(mockSupportService.isPlatformOnlineForConversation).not.toHaveBeenCalled();
-    expect(mockSupportService.sendAiMessage).not.toHaveBeenCalled();
-  });
-
-  it("does not call sendAiMessage when the assistant fails to produce a reply", async () => {
+  it("a retry (a second call to the same eligibility pipeline) succeeds after a first failed attempt — the 'Try again' button's underlying contract", async () => {
     vi.resetModules();
-    delete process.env.GROQ_API_KEY;
+    process.env.GROQ_API_KEY = "test-key";
+    mockSupportService.isAiReplyRateLimited.mockResolvedValue(false);
+    mockSupportService.isPlatformOnlineForConversation.mockResolvedValue(false);
+    mockSupportService.listSupportMessages.mockResolvedValue({
+      conversation: { id: "conv-1" },
+      messages: [{ senderRole: "TENANT", content: "How many students do we have?" }],
+    });
 
     const { triggerAiReplyIfEligible } = await import("@/lib/ai/support-assistant");
-    await triggerAiReplyIfEligible(makeTenant({ permissions: ["ai.assistant.use"] }));
+    const tenant = makeTenant({ permissions: ["ai.assistant.use"] });
 
+    mockCreate.mockRejectedValueOnce(new Error("network down"));
+    await triggerAiReplyIfEligible(tenant);
     expect(mockSupportService.sendAiMessage).not.toHaveBeenCalled();
+    expect(mockSupportService.sendSystemMessage).toHaveBeenCalledTimes(1);
+
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { role: "assistant", content: "You have 482 active students.", tool_calls: undefined } }],
+    });
+    await triggerAiReplyIfEligible(tenant);
+    expect(mockSupportService.sendAiMessage).toHaveBeenCalledWith("conv-1", "You have 482 active students.");
   });
 });

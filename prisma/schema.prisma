@@ -6534,6 +6534,8 @@ enum SupportSenderRole {
   AI
   /** An organization admin replying from the org-scoped admin inbox — attributed distinctly from the actual tenant participant and from Rock Frost platform staff. */
   ADMIN
+  /** A persisted, visible notice about the AI assistant's own failure (e.g. rate-limited, provider error) — never a fake reply from any party. */
+  SYSTEM
 }
 
 /**

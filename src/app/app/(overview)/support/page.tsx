@@ -7,7 +7,7 @@ import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import * as support from "@/lib/support/service";
 import { TENANT_SUPPORT_TEMPLATES } from "@/lib/support/templates";
-import { sendTenantSupportMessage, pollTenantSupportMessages, tenantSupportHeartbeat, markTenantSupportRead } from "./actions";
+import { sendTenantSupportMessage, pollTenantSupportMessages, tenantSupportHeartbeat, markTenantSupportRead, retryAiReply } from "./actions";
 
 export default async function SupportPage() {
   const tenant = await requireCurrentTenant();
@@ -49,6 +49,7 @@ export default async function SupportPage() {
         onPoll={pollTenantSupportMessages}
         onHeartbeat={tenantSupportHeartbeat}
         onMarkRead={markTenantSupportRead}
+        onRetry={retryAiReply}
       />
     </div>
   );

@@ -15,9 +15,10 @@ import { getInventoryProcurementOverview } from "@/modules/inventory-procurement
 /**
  * The AI assistant that answers inside the existing tenant<->platform
  * support conversation (see docs/SUPPORT_MESSAGING.md). It only fires when
- * no human platform operator is currently online (support.isPlatformOnline())
- * — when one is, the human handles it, matching this feature's "hand off to
- * a real person" design. Every tool below is independently gated by the same
+ * no human platform operator is currently viewing this specific conversation
+ * (support.isPlatformOnlineForConversation()) — when one is, the human
+ * handles it, matching this feature's "hand off to a real person" design.
+ * Every tool below is independently gated by the same
  * permission the corresponding module's own dashboard page checks, and takes
  * zero tenant-identifying input from the model — the organization is always
  * the server-resolved caller's own, never something the model can pass in.
@@ -136,14 +137,39 @@ function transcriptToUserTurn(transcript: AssistantTranscriptMessage[]): string 
 
 const MAX_TOOL_ITERATIONS = 4;
 
-/** Never throws — degrades to a structured {ok, error} result, same contract as the email helper's send function. */
+/**
+ * Every way triggerAiReplyIfEligible or getAssistantReply can fail to
+ * produce a reply. Not every reason reaches the tenant as a visible
+ * message — see SYSTEM_MESSAGE_TEXT below for which ones do.
+ */
+export type AiFailureReason = "not_configured" | "human_online" | "rate_limited" | "no_permission" | "provider_error" | "empty_response" | "other";
+
+/**
+ * Only reasons where the tenant is actually waiting on something that
+ * won't resolve itself get a visible SYSTEM message and a "Try again"
+ * button. human_online is the correct, expected human handoff - not a
+ * failure worth announcing. not_configured and no_permission can't be
+ * fixed by retrying, so surfacing them would just be noise.
+ */
+const SYSTEM_MESSAGE_TEXT: Partial<Record<AiFailureReason, string>> = {
+  rate_limited: "Our automated assistant has answered as many messages as it can for now. The Rock Frost team will follow up here, or you can try again shortly.",
+  provider_error: "Our automated assistant couldn't respond just now. The Rock Frost team will follow up here, or you can try again.",
+  empty_response: "Our automated assistant didn't have a response for that. The Rock Frost team will follow up here, or you can try again.",
+  other: "Our automated assistant couldn't respond just now. The Rock Frost team will follow up here, or you can try again.",
+};
+
+function logAiSupportFailure(reason: AiFailureReason, context: { organizationId: string; conversationId?: string; error?: string }): void {
+  console.error(`[ai/support-assistant] reply failed (${reason})`, { organizationId: context.organizationId, conversationId: context.conversationId, error: context.error });
+}
+
+/** Never throws — degrades to a structured {ok, reason, error} result, same contract as the email helper's send function. */
 export async function getAssistantReply(
   tenant: TenantContext,
   transcript: AssistantTranscriptMessage[],
-): Promise<{ ok: true; content: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; content: string } | { ok: false; reason: AiFailureReason; error: string }> {
   const client = getGroqClient();
-  if (!client) return { ok: false, error: "AI assistant is not configured." };
-  if (transcript.length === 0) return { ok: false, error: "Nothing to respond to." };
+  if (!client) return { ok: false, reason: "not_configured", error: "AI assistant is not configured." };
+  if (transcript.length === 0) return { ok: false, reason: "other", error: "Nothing to respond to." };
 
   try {
     const messages: Groq.Chat.ChatCompletionMessageParam[] = [
@@ -160,11 +186,11 @@ export async function getAssistantReply(
       });
 
       const message = response.choices[0]?.message;
-      if (!message) return { ok: false, error: "AI assistant returned an empty response." };
+      if (!message) return { ok: false, reason: "empty_response", error: "AI assistant returned an empty response." };
 
       if (!message.tool_calls || message.tool_calls.length === 0) {
         const content = message.content?.trim();
-        return content ? { ok: true, content } : { ok: false, error: "AI assistant returned an empty response." };
+        return content ? { ok: true, content } : { ok: false, reason: "empty_response", error: "AI assistant returned an empty response." };
       }
 
       messages.push({ role: "assistant", content: message.content, tool_calls: message.tool_calls });
@@ -178,31 +204,47 @@ export async function getAssistantReply(
       }
     }
 
-    return { ok: false, error: "AI assistant could not complete a response." };
+    return { ok: false, reason: "other", error: "AI assistant could not complete a response." };
   } catch (error) {
     console.error("[ai/support-assistant] Failed:", error);
-    return { ok: false, error: "AI assistant failed to respond." };
+    return { ok: false, reason: "provider_error", error: "AI assistant failed to respond." };
   }
 }
 
 /**
  * Called after a tenant support message is sent (see actions.ts's use of
- * next/server's after()). Silently does nothing unless every condition is
- * met - no error ever surfaces to the tenant either way, the message just
- * sits for a human to answer exactly as it always has.
+ * next/server's after()), and also directly by the tenant-facing
+ * retryAiReply() action. Every failure is logged with a reason
+ * (logAiSupportFailure); only the reasons in SYSTEM_MESSAGE_TEXT also
+ * produce a visible SYSTEM message in the conversation - a genuinely
+ * successful reply is the only thing that ever looks like an answer.
  */
 export async function triggerAiReplyIfEligible(tenant: TenantContext): Promise<void> {
-  if (!hasPermission(tenant, PERMISSIONS.AI_ASSISTANT_USE)) return;
-  if (!getGroqClient()) return;
-  if (await support.isAiReplyRateLimited(tenant.organizationId)) return;
+  if (!hasPermission(tenant, PERMISSIONS.AI_ASSISTANT_USE)) {
+    logAiSupportFailure("no_permission", { organizationId: tenant.organizationId });
+    return;
+  }
+  if (!getGroqClient()) {
+    logAiSupportFailure("not_configured", { organizationId: tenant.organizationId });
+    return;
+  }
 
   const { conversation, messages } = await support.listSupportMessages(tenant.organizationId, tenant.userId);
   if (!conversation || messages.length === 0) return;
 
+  if (await support.isAiReplyRateLimited(tenant.organizationId)) {
+    logAiSupportFailure("rate_limited", { organizationId: tenant.organizationId, conversationId: conversation.id });
+    await support.sendSystemMessage(conversation.id, SYSTEM_MESSAGE_TEXT.rate_limited!);
+    return;
+  }
+
   // Scoped to this one conversation, not a platform-wide check — an
   // operator looking at a different organization's conversation must never
   // suppress this one's AI reply.
-  if (await support.isPlatformOnlineForConversation(conversation.id)) return;
+  if (await support.isPlatformOnlineForConversation(conversation.id)) {
+    logAiSupportFailure("human_online", { organizationId: tenant.organizationId, conversationId: conversation.id });
+    return;
+  }
 
   const transcript: AssistantTranscriptMessage[] = messages.slice(-20).map((message) => ({
     speaker: message.senderRole === "TENANT" ? "tenant" : message.senderRole === "PLATFORM" || message.senderRole === "ADMIN" ? "platform" : "ai",
@@ -210,6 +252,11 @@ export async function triggerAiReplyIfEligible(tenant: TenantContext): Promise<v
   }));
 
   const reply = await getAssistantReply(tenant, transcript);
-  if (!reply.ok) return;
+  if (!reply.ok) {
+    logAiSupportFailure(reply.reason, { organizationId: tenant.organizationId, conversationId: conversation.id, error: reply.error });
+    const systemMessage = SYSTEM_MESSAGE_TEXT[reply.reason];
+    if (systemMessage) await support.sendSystemMessage(conversation.id, systemMessage);
+    return;
+  }
   await support.sendAiMessage(conversation.id, reply.content);
 }

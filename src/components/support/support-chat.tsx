@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
-import { Send, X, ExternalLink, Sparkles, CheckCheck, Check, LoaderCircle } from "lucide-react";
+import { Send, X, ExternalLink, Sparkles, CheckCheck, Check, LoaderCircle, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -16,7 +16,7 @@ export interface SupportChatMessage {
   id: string;
   content: string;
   createdAt: string;
-  senderRole: "TENANT" | "PLATFORM" | "AI" | "ADMIN";
+  senderRole: "TENANT" | "PLATFORM" | "AI" | "ADMIN" | "SYSTEM";
   senderName: string;
 }
 
@@ -65,6 +65,8 @@ interface SupportChatProps {
   onPoll: (sinceIso: string | null) => Promise<PollResult>;
   onHeartbeat: () => Promise<void>;
   onMarkRead?: () => Promise<void>;
+  /** Tenant-only: re-runs the AI eligibility pipeline. Rendered as a "Try again" button under the latest message when it's a SYSTEM failure notice. */
+  onRetry?: () => Promise<void>;
   /** Optional quick-start messages the viewer can pick and edit before sending — never sent automatically. */
   templates?: SupportMessageTemplate[];
   /** Renders a close (X) button in the header — for embedding inside a floating widget panel. */
@@ -89,6 +91,7 @@ export function SupportChat({
   onPoll,
   onHeartbeat,
   onMarkRead,
+  onRetry,
   templates,
   onClose,
   expandHref,
@@ -101,6 +104,7 @@ export function SupportChat({
   const [pendingMessage, setPendingMessage] = useState<{ content: string; createdAt: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSending, startSendTransition] = useTransition();
+  const [isRetrying, startRetryTransition] = useTransition();
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const lastTimestampRef = useRef<string | null>(initialMessages.at(-1)?.createdAt ?? null);
@@ -221,6 +225,17 @@ export function SupportChat({
     inputRef.current?.focus();
   }
 
+  function handleRetry() {
+    if (!onRetry || isRetrying) return;
+    startRetryTransition(async () => {
+      try {
+        await onRetry();
+      } catch {
+        // The next poll tick will simply show nothing new — no separate error state needed for a background retry.
+      }
+    });
+  }
+
   return (
     <div className={cn("flex h-[32rem] min-h-0 flex-col overflow-hidden rounded-xl border bg-background", className)}>
       <div className="flex shrink-0 items-center justify-between gap-3 border-b px-3 py-2.5 sm:px-4 sm:py-3">
@@ -279,7 +294,21 @@ export function SupportChat({
                 : `No messages yet. ${viewerRole === "TENANT" ? "Send a message below and the Rock Frost team will reply here." : "Waiting for this organization to reach out."}`}
             </p>
           ) : (
-            messages.map((message) => {
+            messages.map((message, index) => {
+              if (message.senderRole === "SYSTEM") {
+                const isLatest = index === messages.length - 1;
+                return (
+                  <div key={message.id} className="mx-auto flex max-w-sm flex-col items-center gap-2 text-center">
+                    <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs leading-relaxed text-muted-foreground">{message.content}</p>
+                    {isLatest && onRetry && viewerRole === "TENANT" ? (
+                      <Button type="button" variant="outline" size="sm" onClick={handleRetry} disabled={isRetrying} className="h-7 text-xs">
+                        {isRetrying ? <LoaderCircle className="size-3.5 animate-spin" /> : <RotateCw className="size-3.5" />}
+                        Try again
+                      </Button>
+                    ) : null}
+                  </div>
+                );
+              }
               const isOwn = message.senderRole === viewerRole;
               const isAi = message.senderRole === "AI";
               const isAdmin = message.senderRole === "ADMIN";

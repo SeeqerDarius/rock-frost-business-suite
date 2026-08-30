@@ -21,6 +21,7 @@ interface FloatingSupportWidgetProps {
   onMarkRead: () => Promise<void>;
   /** Lightweight unread-count check, used only while the panel is closed — avoids fetching full message history just to keep the bubble badge fresh. */
   onUnreadPoll: () => Promise<number>;
+  onRetry: () => Promise<void>;
 }
 
 /**
@@ -45,6 +46,7 @@ export function FloatingSupportWidget({
   onHeartbeat,
   onMarkRead,
   onUnreadPoll,
+  onRetry,
 }: FloatingSupportWidgetProps) {
   const [open, setOpen] = useState(false);
   const [rendered, setRendered] = useState(false);
@@ -136,6 +138,7 @@ export function FloatingSupportWidget({
             onPoll={onPoll}
             onHeartbeat={onHeartbeat}
             onMarkRead={onMarkRead}
+            onRetry={onRetry}
             onClose={closePanel}
             className="h-full min-h-0 max-h-none"
           />

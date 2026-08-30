@@ -8,7 +8,7 @@ export class SupportNotFoundError extends Error {}
 /** Thrown when platform staff or an org admin try to reply into a pre-migration shared conversation — those are frozen read-only history, not addressable going forward. */
 export class LegacyConversationError extends Error {}
 
-export type SupportSenderRole = "TENANT" | "PLATFORM" | "AI" | "ADMIN";
+export type SupportSenderRole = "TENANT" | "PLATFORM" | "AI" | "ADMIN" | "SYSTEM";
 
 export interface SerializedSupportMessage {
   id: string;
@@ -141,6 +141,12 @@ export async function sendAiMessage(conversationId: string, content: string) {
   return appendMessage(conversation, { senderId: null, senderName: "Rock Frost AI Assistant", senderRole: "AI", content });
 }
 
+/** A persisted, visible notice about the AI assistant's own failure (e.g. rate-limited, provider error) — never a fake reply. No sender account, like AI; bumps no read cursor, same reasoning. */
+export async function sendSystemMessage(conversationId: string, content: string) {
+  const conversation = await db.supportConversation.findUniqueOrThrow({ where: { id: conversationId } });
+  return appendMessage(conversation, { senderId: null, senderName: "Rock Frost", senderRole: "SYSTEM", content });
+}
+
 /**
  * When did the OTHER side last read this conversation, from viewerRole's
  * perspective — the cursor a viewer's own sent messages must be compared
@@ -187,11 +193,11 @@ export async function getTenantUnreadCount(organizationId: string, userId: strin
     where: {
       organizationId,
       conversationId: conversation.id,
-      // AI and admin messages count toward the tenant's unread badge the
-      // same way a platform reply does — the tenant should still notice new
-      // content arrived, regardless of who inside Rock Frost or their own
-      // organization's admin surface produced it.
-      senderRole: { in: ["PLATFORM", "AI", "ADMIN"] },
+      // AI, admin, and SYSTEM messages count toward the tenant's unread
+      // badge the same way a platform reply does — the tenant should still
+      // notice new content arrived, whether that's a genuine reply or a
+      // persisted notice that the assistant couldn't answer.
+      senderRole: { in: ["PLATFORM", "AI", "ADMIN", "SYSTEM"] },
       createdAt: conversation.tenantLastReadAt ? { gt: conversation.tenantLastReadAt } : undefined,
     },
   });

@@ -60,3 +60,10 @@ export async function getTenantSupportUnreadCount(): Promise<number> {
   const tenant = await requireCurrentTenant();
   return support.getTenantUnreadCount(tenant.organizationId, tenant.userId);
 }
+
+/** Re-runs the same eligibility pipeline sendTenantSupportMessage's AI trigger uses - the "Try again" button on a SYSTEM failure notice. Awaited directly (not scheduled via after()), since the tenant explicitly asked for this and the UI's pending state should reflect it actually running. */
+export async function retryAiReply(): Promise<void> {
+  const tenant = await requireCurrentTenant();
+  await triggerAiReplyIfEligible(tenant);
+  revalidatePath("/app/support");
+}
