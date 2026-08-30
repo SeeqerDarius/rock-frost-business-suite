@@ -202,12 +202,26 @@ enum FleetMaintenanceApprovalStatus {
   REJECTED
 }
 
+/**
+ * REVIEWING is retained forever even though no row is ever written with it
+ * again after the 20260830160100 backfill (Postgres has no DROP VALUE) - its
+ * real meaning is renamed to AWAITING_OWNER_APPROVAL. CANCELLED's meaning
+ * changes the same way: every historical row was actually an explicit
+ * manager/owner decline (now REJECTED); CANCELLED itself is repurposed for
+ * withdrawMaintenanceRequest() going forward, a genuinely new action.
+ */
 enum FleetMaintenanceProgressStatus {
   REPORTED
   REVIEWING
+  AWAITING_OWNER_APPROVAL
   APPROVED
+  ASSIGNED
+  SCHEDULED
   IN_PROGRESS
+  ON_HOLD
   COMPLETED
+  VERIFIED
+  REJECTED
   CANCELLED
 }
 
@@ -219,9 +233,12 @@ enum FleetMaintenanceEventType {
   MECHANIC_ASSIGNED
   REPAIR_SCHEDULED
   REPAIR_STARTED
+  REPAIR_HELD
+  REPAIR_RESUMED
   REPAIR_COMPLETED
   COMPLETION_VERIFIED
   OWNER_NOTIFIED
+  REPAIR_WITHDRAWN
   CANCELLED
 }
 
@@ -1621,7 +1638,6 @@ model FleetMaintenanceRequest {
   scheduledRepairAt     DateTime?
   progressStatus        FleetMaintenanceProgressStatus @default(REPORTED)
   repairCost            Decimal?                       @db.Decimal(12, 2)
-  completionVerified    Boolean                        @default(false)
   ownerNotifiedAt       DateTime?
   requestedAt           DateTime                       @default(now())
   completedAt           DateTime?

@@ -23,7 +23,7 @@ describe("Vehicle Owner Workspace", () => {
   it("uses only verified collections and completed verified expenses", () => {
     expect(service).toContain('status: "VERIFIED"');
     expect(service).toContain("verified: true");
-    expect(service).toContain("request.completionVerified && request.repairCost");
+    expect(service).toContain('request.progressStatus === "VERIFIED" && request.repairCost');
     expect(workspace).toContain("Pending, rejected or reversed records are excluded.");
   });
 
@@ -43,7 +43,7 @@ describe("Vehicle Owner Workspace", () => {
     }
   });
 
-  it("counts a request awaiting owner approval (REVIEWING) in both openMaintenanceCount and ownerApprovalCount", async () => {
+  it("counts a request awaiting owner approval (AWAITING_OWNER_APPROVAL) in both openMaintenanceCount and ownerApprovalCount", async () => {
     mockDb.fleetOwner.findFirst.mockResolvedValue({
       id: "owner-1",
       name: "Ama Owusu",
@@ -61,10 +61,9 @@ describe("Vehicle Owner Workspace", () => {
           maintenanceRequests: [
             {
               id: "maint-1",
-              progressStatus: "REVIEWING",
+              progressStatus: "AWAITING_OWNER_APPROVAL",
               ownerApprovalRequired: true,
               ownerApprovalStatus: "PENDING",
-              completionVerified: false,
               repairCost: null,
               completedAt: null,
               requestedAt: new Date("2026-08-01"),

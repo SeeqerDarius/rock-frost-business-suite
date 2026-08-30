@@ -19,6 +19,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { getFleetDriverWorkspace, getFleetDriverTrends } from "@/modules/fleet/service";
 import { getFleetDriverObligations, type ObligationSummary } from "@/modules/fleet/driver-obligations";
+import { MAINTENANCE_PROGRESS_LABELS, MAINTENANCE_PROGRESS_BADGE } from "@/modules/fleet/maintenance-status";
 import { DriverCollectionForm } from "./collection-form";
 import { payFleetObligationOnline, reportMaintenanceFromDriverPortal } from "./actions";
 import { PaySubmitButton } from "./submit-button";
@@ -47,24 +48,6 @@ const TYPE_LABELS: Record<string, string> = {
   DAILY_SALES: "Daily vehicle remittance",
   WEEKLY_SALES: "Weekly vehicle remittance",
   WORK_AND_PAY: "Work & Pay instalment",
-};
-
-const PROGRESS_LABELS: Record<string, string> = {
-  REPORTED: "Reported",
-  REVIEWING: "Reviewing",
-  APPROVED: "Approved",
-  IN_PROGRESS: "In progress",
-  COMPLETED: "Completed",
-  CANCELLED: "Declined",
-};
-
-const PROGRESS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
-  REPORTED: "outline",
-  REVIEWING: "secondary",
-  APPROVED: "secondary",
-  IN_PROGRESS: "secondary",
-  COMPLETED: "default",
-  CANCELLED: "destructive",
 };
 
 const shortDate = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -138,7 +121,7 @@ export default async function DriverPortalPage({
     : null;
   const outstandingTotal = obligations.totals.dueNow + obligations.totals.overdueAmount;
   const openMaintenance = driver.assignedVehicles.flatMap((vehicle) =>
-    vehicle.maintenanceRequests.filter((request) => !["COMPLETED", "CANCELLED"].includes(request.progressStatus)).map((request) => ({ ...request, vehiclePlateNumber: vehicle.plateNumber })),
+    vehicle.maintenanceRequests.filter((request) => !["COMPLETED", "VERIFIED", "REJECTED", "CANCELLED"].includes(request.progressStatus)).map((request) => ({ ...request, vehiclePlateNumber: vehicle.plateNumber })),
   );
 
   const maintenanceRequests = driver.assignedVehicles
@@ -354,7 +337,7 @@ export default async function DriverPortalPage({
           ) : (
             driver.assignedVehicles.map((vehicle) => {
               const latestMaintenance = vehicle.maintenanceRequests[0] ?? null;
-              const vehicleOpenMaintenance = vehicle.maintenanceRequests.filter((r) => !["COMPLETED", "CANCELLED"].includes(r.progressStatus));
+              const vehicleOpenMaintenance = vehicle.maintenanceRequests.filter((r) => !["COMPLETED", "VERIFIED", "REJECTED", "CANCELLED"].includes(r.progressStatus));
               const vehicleObligation = obligations.vehicles.find((v) => v.vehicleId === vehicle.id)?.summary ?? null;
               return (
                 <Card key={vehicle.id}>
@@ -372,7 +355,7 @@ export default async function DriverPortalPage({
                     </div>
                     <div className="flex items-center justify-between rounded-lg border p-3">
                       <div className="flex items-center gap-2"><Wrench className="size-4 text-muted-foreground" aria-hidden="true" /><span>{vehicleOpenMaintenance.length} open maintenance issue{vehicleOpenMaintenance.length === 1 ? "" : "s"}</span></div>
-                      {latestMaintenance ? <Badge variant={PROGRESS_BADGE[latestMaintenance.progressStatus]}>{PROGRESS_LABELS[latestMaintenance.progressStatus]}</Badge> : null}
+                      {latestMaintenance ? <Badge variant={MAINTENANCE_PROGRESS_BADGE[latestMaintenance.progressStatus]}>{MAINTENANCE_PROGRESS_LABELS[latestMaintenance.progressStatus]}</Badge> : null}
                     </div>
                     <Button size="sm" variant="outline" nativeButton={false} render={<Link href="?tab=maintenance" />}>Report an issue</Button>
                   </CardContent>
@@ -441,7 +424,7 @@ export default async function DriverPortalPage({
                         ) : null}
                       </p>
                     </div>
-                    <Badge variant={PROGRESS_BADGE[request.progressStatus]}>{PROGRESS_LABELS[request.progressStatus]}</Badge>
+                    <Badge variant={MAINTENANCE_PROGRESS_BADGE[request.progressStatus]}>{MAINTENANCE_PROGRESS_LABELS[request.progressStatus]}</Badge>
                   </div>
                 ))}
               </div>
@@ -514,7 +497,7 @@ export default async function DriverPortalPage({
                 {maintenanceRequests.map((request) => (
                   <div key={request.id} className="flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm last:border-0">
                     <div><p className="font-medium">{request.vehiclePlateNumber}</p><p className="text-muted-foreground">{request.faultDescription}</p></div>
-                    <Badge variant={PROGRESS_BADGE[request.progressStatus]}>{PROGRESS_LABELS[request.progressStatus]}</Badge>
+                    <Badge variant={MAINTENANCE_PROGRESS_BADGE[request.progressStatus]}>{MAINTENANCE_PROGRESS_LABELS[request.progressStatus]}</Badge>
                   </div>
                 ))}
               </div>

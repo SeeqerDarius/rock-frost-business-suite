@@ -12,6 +12,7 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { getFleetMechanicWorkspace } from "@/modules/fleet/mechanic-workspace";
+import { MAINTENANCE_PROGRESS_LABELS, MAINTENANCE_PROGRESS_BADGE } from "@/modules/fleet/maintenance-status";
 import { scheduleAssignedRepair } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -19,22 +20,6 @@ const ERROR_MESSAGES: Record<string, string> = {
   "missing-fields": "A scheduled repair date is required.",
   "invalid-input": "Enter a valid date.",
   "not-found": "That request is no longer assigned to you.",
-};
-
-const PROGRESS_LABELS: Record<string, string> = {
-  REPORTED: "Reported",
-  REVIEWING: "Reviewing",
-  APPROVED: "Approved",
-  IN_PROGRESS: "In progress",
-  COMPLETED: "Completed",
-  CANCELLED: "Cancelled",
-};
-
-const PROGRESS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
-  APPROVED: "secondary",
-  IN_PROGRESS: "secondary",
-  COMPLETED: "default",
-  CANCELLED: "destructive",
 };
 
 export default async function FleetMechanicPortalPage({
@@ -83,23 +68,26 @@ export default async function FleetMechanicPortalPage({
                     <CardTitle>{request.vehicle.assetTag} - {request.vehicle.plateNumber}</CardTitle>
                     <CardDescription>{request.faultDescription}</CardDescription>
                   </div>
-                  <Badge variant={PROGRESS_BADGE[request.progressStatus]}>{PROGRESS_LABELS[request.progressStatus]}</Badge>
+                  <Badge variant={MAINTENANCE_PROGRESS_BADGE[request.progressStatus]}>{MAINTENANCE_PROGRESS_LABELS[request.progressStatus]}</Badge>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  {request.scheduledRepairAt
-                    ? `Scheduled for ${request.scheduledRepairAt.toLocaleDateString()}`
-                    : "No repair date scheduled yet."}
-                </p>
-                <form action={scheduleAssignedRepair} className="flex flex-wrap items-end gap-2">
-                  <input type="hidden" name="id" value={request.id} />
-                  <div className="space-y-1">
-                    <Label htmlFor={`scheduledRepairAt-${request.id}`}>Scheduled repair date</Label>
-                    <Input id={`scheduledRepairAt-${request.id}`} name="scheduledRepairAt" type="date" defaultValue={request.scheduledRepairAt ? request.scheduledRepairAt.toISOString().slice(0, 10) : ""} required />
-                  </div>
-                  <Button type="submit" size="sm">{request.scheduledRepairAt ? "Update date" : "Schedule repair"}</Button>
-                </form>
+                {request.progressStatus === "ASSIGNED" ? (
+                  <form action={scheduleAssignedRepair} className="flex flex-wrap items-end gap-2">
+                    <input type="hidden" name="id" value={request.id} />
+                    <div className="space-y-1">
+                      <Label htmlFor={`scheduledRepairAt-${request.id}`}>Scheduled repair date</Label>
+                      <Input id={`scheduledRepairAt-${request.id}`} name="scheduledRepairAt" type="date" required />
+                    </div>
+                    <Button type="submit" size="sm">Schedule repair</Button>
+                  </form>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {request.scheduledRepairAt
+                      ? `Scheduled for ${request.scheduledRepairAt.toLocaleDateString()}`
+                      : "No repair date scheduled yet."}
+                  </p>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -116,7 +104,7 @@ export default async function FleetMechanicPortalPage({
                     <CardTitle>{request.vehicle.assetTag} - {request.vehicle.plateNumber}</CardTitle>
                     <CardDescription>{request.faultDescription}</CardDescription>
                   </div>
-                  <Badge variant={PROGRESS_BADGE[request.progressStatus]}>{PROGRESS_LABELS[request.progressStatus]}</Badge>
+                  <Badge variant={MAINTENANCE_PROGRESS_BADGE[request.progressStatus]}>{MAINTENANCE_PROGRESS_LABELS[request.progressStatus]}</Badge>
                 </div>
               </CardHeader>
               <CardContent>

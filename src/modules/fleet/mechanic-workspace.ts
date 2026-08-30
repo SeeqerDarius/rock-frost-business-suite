@@ -2,8 +2,10 @@ import "server-only";
 
 import { db } from "@/lib/db";
 
-const OPEN_STATUSES = ["APPROVED", "IN_PROGRESS"] as const;
-const CLOSED_STATUSES = ["COMPLETED", "CANCELLED"] as const;
+// A request only ever carries a mechanicId once assignMaintenanceMechanic
+// has moved it to ASSIGNED, so plain APPROVED never appears here.
+const OPEN_STATUSES = ["ASSIGNED", "SCHEDULED", "IN_PROGRESS", "ON_HOLD"] as const;
+const CLOSED_STATUSES = ["COMPLETED", "VERIFIED", "REJECTED", "CANCELLED"] as const;
 
 /**
  * A mechanic's own workspace, scoped by construction to the FleetMechanic

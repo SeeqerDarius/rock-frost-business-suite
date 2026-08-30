@@ -33,9 +33,9 @@ describe("assignMaintenanceMechanic", () => {
     await fleet.assignMaintenanceMechanic(ORG, "req-1", "actor-1", "mech-1");
 
     expect(mockDb.fleetMechanic.findFirst).toHaveBeenCalledWith({ where: { id: "mech-1", organizationId: ORG } });
-    expect(mockDb.fleetMaintenanceRequest.update).toHaveBeenCalledWith({ where: { id: "req-1" }, data: { mechanicId: "mech-1" } });
+    expect(mockDb.fleetMaintenanceRequest.update).toHaveBeenCalledWith({ where: { id: "req-1" }, data: { mechanicId: "mech-1", progressStatus: "ASSIGNED" } });
     expect(mockDb.fleetMaintenanceEvent.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ eventType: "MECHANIC_ASSIGNED", note: "Kojo's Garage" }) }),
+      expect.objectContaining({ data: expect.objectContaining({ eventType: "MECHANIC_ASSIGNED", toStatus: "ASSIGNED", note: "Kojo's Garage" }) }),
     );
   });
 
@@ -79,7 +79,7 @@ describe("Fleet Mechanics roster wiring", () => {
 });
 
 describe("acceptMaintenanceAssignment", () => {
-  const assignedRequest = { id: "req-1", progressStatus: "APPROVED", mechanicId: "mech-1" };
+  const assignedRequest = { id: "req-1", progressStatus: "ASSIGNED", mechanicId: "mech-1" };
 
   it("records the scheduled repair date and logs a REPAIR_SCHEDULED event for the caller's own assignment", async () => {
     mockDb.fleetMechanic.findFirst.mockResolvedValue({ id: "mech-1", organizationId: ORG, userId: "user-1" });
@@ -90,9 +90,9 @@ describe("acceptMaintenanceAssignment", () => {
 
     expect(mockDb.fleetMechanic.findFirst).toHaveBeenCalledWith({ where: { organizationId: ORG, userId: "user-1" } });
     expect(mockDb.fleetMaintenanceRequest.findFirst).toHaveBeenCalledWith({ where: { id: "req-1", organizationId: ORG, mechanicId: "mech-1" } });
-    expect(mockDb.fleetMaintenanceRequest.update).toHaveBeenCalledWith({ where: { id: "req-1" }, data: { scheduledRepairAt } });
+    expect(mockDb.fleetMaintenanceRequest.update).toHaveBeenCalledWith({ where: { id: "req-1" }, data: { scheduledRepairAt, progressStatus: "SCHEDULED" } });
     expect(mockDb.fleetMaintenanceEvent.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ eventType: "REPAIR_SCHEDULED" }) }),
+      expect.objectContaining({ data: expect.objectContaining({ eventType: "REPAIR_SCHEDULED", toStatus: "SCHEDULED" }) }),
     );
   });
 

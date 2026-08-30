@@ -324,7 +324,7 @@ export async function getFleetDriverRosterSummary(organizationId: string): Promi
         ? allContracts.reduce((sum, c) => sum + toNumber(c.completionPercentage), 0) / allContracts.length
         : null;
       const openMaintenanceCount = driver.assignedVehicles.reduce(
-        (sum, v) => sum + v.maintenanceRequests.filter((r) => !["COMPLETED", "CANCELLED"].includes(r.progressStatus)).length,
+        (sum, v) => sum + v.maintenanceRequests.filter((r) => !["COMPLETED", "VERIFIED", "REJECTED", "CANCELLED"].includes(r.progressStatus)).length,
         0,
       );
       const paymentReadiness: PaymentReadiness = driver.assignedVehicles.length === 0

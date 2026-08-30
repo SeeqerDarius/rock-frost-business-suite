@@ -5,15 +5,15 @@ import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@
 import { getFleetDriverObligations } from "@/modules/fleet/driver-obligations";
 
 /**
- * Matches FleetMaintenanceProgressStatus's real values — REVIEWING is the
- * state a request sits in while awaiting the owner's own approval decision,
- * the single most important thing for an owner to see on their own
- * dashboard. The previous array referenced three values that never existed
- * in the enum (MANAGER_REVIEWED, OWNER_REVIEWED, and a bare ASSIGNED before
- * that status existed), so a request awaiting owner approval was silently
- * excluded from this count.
+ * Every FleetMaintenanceProgressStatus value that represents a request still
+ * somewhere in the active pipeline - not yet a terminal state (COMPLETED,
+ * VERIFIED, REJECTED, CANCELLED). AWAITING_OWNER_APPROVAL is the state a
+ * request sits in while awaiting the owner's own approval decision, the
+ * single most important thing for an owner to see on their own dashboard -
+ * an earlier version of this array referenced three values that never
+ * existed in the enum at all, silently excluding it from this count.
  */
-const OPEN_MAINTENANCE = ["REPORTED", "REVIEWING", "APPROVED", "IN_PROGRESS"] as const;
+const OPEN_MAINTENANCE = ["REPORTED", "AWAITING_OWNER_APPROVAL", "APPROVED", "ASSIGNED", "SCHEDULED", "IN_PROGRESS", "ON_HOLD"] as const;
 
 export async function getFleetOwnerWorkspace(organizationId: string, userId: string, now = new Date()) {
   const owner = await db.fleetOwner.findFirst({
@@ -60,7 +60,7 @@ export async function getFleetOwnerWorkspace(organizationId: string, userId: str
     const vehiclePayments = paymentForVehicle(vehicle.id, contractIdSet);
     const verifiedCollections = vehiclePayments.reduce((sum, payment) => sum + Number(payment.amount), 0);
     const verifiedExpenses = vehicle.maintenanceRequests
-      .filter((request) => request.completionVerified && request.repairCost)
+      .filter((request) => request.progressStatus === "VERIFIED" && request.repairCost)
       .reduce((sum, request) => sum + Number(request.repairCost), 0);
     const obligation = obligationByVehicle.get(vehicle.id) ?? null;
     const openMaintenance = vehicle.maintenanceRequests.filter((request) => OPEN_MAINTENANCE.includes(request.progressStatus as (typeof OPEN_MAINTENANCE)[number]));
@@ -87,7 +87,7 @@ export async function getFleetOwnerWorkspace(organizationId: string, userId: str
   const verifiedExpenses = vehicles.reduce((sum, vehicle) => sum + vehicle.verifiedExpenses, 0);
 
   const maintenanceForTrends = owner.vehicles.flatMap((vehicle) => vehicle.maintenanceRequests)
-    .filter((request) => request.completionVerified && request.completedAt && request.repairCost && request.completedAt >= widestTrendLookback());
+    .filter((request) => request.progressStatus === "VERIFIED" && request.completedAt && request.repairCost && request.completedAt >= widestTrendLookback());
   const collectionsForTrends = payments.filter((payment) => payment.date >= widestTrendLookback());
   const buildSeries = (granularity: TrendGranularity) => buildTrendBuckets(granularity).map((bucket) => {
     const collected = collectionsForTrends.filter((payment) => payment.date >= bucket.start && payment.date < bucket.end).reduce((sum, payment) => sum + Number(payment.amount), 0);

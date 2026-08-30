@@ -74,16 +74,20 @@ The Notifications sidebar item shows a live unread-count badge (`src/components/
 
 ## Maintenance workflow
 
-The workflow is enforced as a state machine:
+The workflow is enforced as an 11-state machine (`FleetMaintenanceProgressStatus`, expanded 2026-08-30 from the original 6 states):
 
-1. A driver or permitted fleet user submits a request.
-2. A Fleet Manager approves or rejects the request.
-3. If owner approval is required, only the login linked to the vehicle owner can approve or reject it.
-4. A Fleet Manager assigns a mechanic or workshop.
-5. Repair starts and the vehicle moves to `MAINTENANCE`.
-6. Repair completion records cost and completion notes.
-7. A Fleet Manager verifies completion.
-8. The vehicle returns to `ASSIGNED` or `AVAILABLE`, the owner receives a notification, and the notification time is retained.
+1. `REPORTED` - a driver or permitted fleet user submits a request.
+2. A Fleet Manager approves (`APPROVED`, or `AWAITING_OWNER_APPROVAL` when the vehicle owner must also sign off) or rejects (`REJECTED`) the request.
+3. If owner approval is required, only the login linked to the vehicle owner can approve (`APPROVED`) or reject (`REJECTED`) it - approval intentionally only ever reaches `APPROVED` here, never further ahead in the workflow; assigning a mechanic and running the repair are separate, later steps, and this is locked in by a regression test, not incidental.
+4. A Fleet Manager assigns a real mechanic from the roster, moving the request to `ASSIGNED`.
+5. The assigned mechanic records their own scheduled repair date from their self-service portal, moving the request to `SCHEDULED`.
+6. A Fleet Manager starts the repair (only once `SCHEDULED`) - the request moves to `IN_PROGRESS` and the vehicle moves to `MAINTENANCE`.
+7. A repair in progress can be put `ON_HOLD` (parts on order, workshop closed) and resumed back to `IN_PROGRESS` without losing its place in the workflow.
+8. Repair completion (`COMPLETED`) records cost and completion notes.
+9. A Fleet Manager verifies completion, moving the request to `VERIFIED` (replacing the old `completionVerified` boolean - a real terminal status, not a side flag).
+10. The vehicle returns to `ASSIGNED` or `AVAILABLE`, the owner receives a notification, and the notification time is retained.
+
+A request can also be withdrawn (`CANCELLED`) any time before real repair work starts (any state up to and including `SCHEDULED`) - a genuinely new action, distinct from an explicit manager or owner decline (`REJECTED`). `REVIEWING` is retained in the enum forever (Postgres has no `DROP VALUE`) purely as a historical marker - every pre-expansion row was migrated to `AWAITING_OWNER_APPROVAL` and no row is ever written with `REVIEWING` again.
 
 Every step writes an immutable `FleetMaintenanceEvent` containing actor, event type, status transition, note and timestamp.
 

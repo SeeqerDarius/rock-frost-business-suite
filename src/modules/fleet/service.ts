@@ -968,13 +968,13 @@ export async function managerReviewMaintenanceRequest(
   return db.$transaction(async (tx) => {
     const request = await tx.fleetMaintenanceRequest.findFirst({ where: { id, organizationId }, include: { vehicle: true } });
     if (!request) throw new NotFoundError("Maintenance request not found.");
-    if (!["REPORTED", "REVIEWING"].includes(request.progressStatus)) {
+    if (!["REPORTED", "AWAITING_OWNER_APPROVAL"].includes(request.progressStatus)) {
       throw new InvalidMaintenanceTransitionError("Only newly reported requests can be reviewed.");
     }
     const approvalStatus: FleetMaintenanceApprovalStatus = data.approved ? "APPROVED" : "REJECTED";
     const progressStatus: FleetMaintenanceProgressStatus = data.approved
-      ? data.ownerApprovalRequired ? "REVIEWING" : "APPROVED"
-      : "CANCELLED";
+      ? data.ownerApprovalRequired ? "AWAITING_OWNER_APPROVAL" : "APPROVED"
+      : "REJECTED";
     await tx.fleetMaintenanceRequest.update({
       where: { id },
       data: {
@@ -1031,7 +1031,11 @@ export async function ownerDecisionMaintenanceRequest(
       throw new InvalidMaintenanceTransitionError("This request is not awaiting owner approval.");
     }
     if (request.vehicle.owner?.userId !== actorId) throw new NotFoundError("Maintenance request not found.");
-    const progressStatus: FleetMaintenanceProgressStatus = approved ? "APPROVED" : "CANCELLED";
+    // Approval intentionally only ever reaches APPROVED here - never
+    // IN_PROGRESS/COMPLETED - matching this action's real scope (an owner
+    // signs off on the repair going ahead; assigning a mechanic and running
+    // the repair are separate, later steps). Locked in by a regression test.
+    const progressStatus: FleetMaintenanceProgressStatus = approved ? "APPROVED" : "REJECTED";
     await tx.fleetMaintenanceRequest.update({
       where: { id },
       data: { ownerApprovalStatus: approved ? "APPROVED" : "REJECTED", progressStatus },
@@ -1063,9 +1067,9 @@ export async function assignMaintenanceMechanic(
     }
     const mechanic = await tx.fleetMechanic.findFirst({ where: { id: mechanicId, organizationId } });
     if (!mechanic) throw new NotFoundError("Mechanic not found.");
-    await tx.fleetMaintenanceRequest.update({ where: { id }, data: { mechanicId } });
+    await tx.fleetMaintenanceRequest.update({ where: { id }, data: { mechanicId, progressStatus: "ASSIGNED" } });
     await tx.fleetMaintenanceEvent.create({
-      data: { organizationId, requestId: id, actorId, eventType: "MECHANIC_ASSIGNED", fromStatus: request.progressStatus, toStatus: request.progressStatus, note: mechanic.name },
+      data: { organizationId, requestId: id, actorId, eventType: "MECHANIC_ASSIGNED", fromStatus: "APPROVED", toStatus: "ASSIGNED", note: mechanic.name },
     });
   });
 }
@@ -1074,12 +1078,9 @@ export async function assignMaintenanceMechanic(
  * A mechanic recording their own scheduled repair date for a request
  * assigned to them - gated to the FleetMechanic profile linked to the
  * caller's own userId, never any mechanicId the caller happens to pass.
- * Deliberately does not advance progressStatus: the ASSIGNED/SCHEDULED
- * states this action conceptually belongs to don't exist in
- * FleetMaintenanceProgressStatus yet (see the plan's later enum expansion),
- * so for now this only records the date and logs a REPAIR_SCHEDULED event -
- * a mechanical follow-on activates the real transition once those values
- * are added, not a rebuild of this action.
+ * ASSIGNED -> SCHEDULED; can only run once per assignment (the ASSIGNED
+ * guard below fails once the request has already moved past it), matching
+ * the manager-facing "Start repair" action now requiring SCHEDULED.
  */
 export async function acceptMaintenanceAssignment(
   organizationId: string,
@@ -1092,15 +1093,18 @@ export async function acceptMaintenanceAssignment(
     if (!mechanic) throw new NotFoundError("Mechanic profile not found.");
     const request = await tx.fleetMaintenanceRequest.findFirst({ where: { id, organizationId, mechanicId: mechanic.id } });
     if (!request) throw new NotFoundError("Maintenance request not found.");
-    await tx.fleetMaintenanceRequest.update({ where: { id }, data: { scheduledRepairAt } });
+    if (request.progressStatus !== "ASSIGNED") {
+      throw new InvalidMaintenanceTransitionError("Only a newly assigned request can be scheduled.");
+    }
+    await tx.fleetMaintenanceRequest.update({ where: { id }, data: { scheduledRepairAt, progressStatus: "SCHEDULED" } });
     await tx.fleetMaintenanceEvent.create({
       data: {
         organizationId,
         requestId: id,
         actorId: userId,
         eventType: "REPAIR_SCHEDULED",
-        fromStatus: request.progressStatus,
-        toStatus: request.progressStatus,
+        fromStatus: "ASSIGNED",
+        toStatus: "SCHEDULED",
         note: `Repair scheduled for ${scheduledRepairAt.toISOString().slice(0, 10)}`,
       },
     });
@@ -1111,13 +1115,58 @@ export async function startMaintenanceRepair(organizationId: string, id: string,
   return db.$transaction(async (tx) => {
     const request = await tx.fleetMaintenanceRequest.findFirst({ where: { id, organizationId } });
     if (!request) throw new NotFoundError("Maintenance request not found.");
-    if (request.progressStatus !== "APPROVED" || !request.mechanicId) {
-      throw new InvalidMaintenanceTransitionError("Assign a mechanic to an approved request before starting repair.");
+    if (request.progressStatus !== "SCHEDULED") {
+      throw new InvalidMaintenanceTransitionError("The mechanic must schedule a repair date before it can start.");
     }
     await tx.fleetMaintenanceRequest.update({ where: { id }, data: { progressStatus: "IN_PROGRESS" } });
     await tx.fleetVehicle.update({ where: { id: request.vehicleId }, data: { status: "MAINTENANCE" } });
     await tx.fleetMaintenanceEvent.create({
-      data: { organizationId, requestId: id, actorId, eventType: "REPAIR_STARTED", fromStatus: "APPROVED", toStatus: "IN_PROGRESS" },
+      data: { organizationId, requestId: id, actorId, eventType: "REPAIR_STARTED", fromStatus: "SCHEDULED", toStatus: "IN_PROGRESS" },
+    });
+  });
+}
+
+/** IN_PROGRESS <-> ON_HOLD - a repair paused mid-way (parts on order, workshop closed, etc.) without losing its place in the workflow. */
+export async function holdMaintenanceRepair(organizationId: string, id: string, actorId: string, note?: string | null) {
+  return db.$transaction(async (tx) => {
+    const request = await tx.fleetMaintenanceRequest.findFirst({ where: { id, organizationId } });
+    if (!request) throw new NotFoundError("Maintenance request not found.");
+    if (request.progressStatus !== "IN_PROGRESS") {
+      throw new InvalidMaintenanceTransitionError("Only a repair in progress can be put on hold.");
+    }
+    await tx.fleetMaintenanceRequest.update({ where: { id }, data: { progressStatus: "ON_HOLD" } });
+    await tx.fleetMaintenanceEvent.create({
+      data: { organizationId, requestId: id, actorId, eventType: "REPAIR_HELD", fromStatus: "IN_PROGRESS", toStatus: "ON_HOLD", note },
+    });
+  });
+}
+
+export async function resumeMaintenanceRepair(organizationId: string, id: string, actorId: string) {
+  return db.$transaction(async (tx) => {
+    const request = await tx.fleetMaintenanceRequest.findFirst({ where: { id, organizationId } });
+    if (!request) throw new NotFoundError("Maintenance request not found.");
+    if (request.progressStatus !== "ON_HOLD") {
+      throw new InvalidMaintenanceTransitionError("Only a repair on hold can be resumed.");
+    }
+    await tx.fleetMaintenanceRequest.update({ where: { id }, data: { progressStatus: "IN_PROGRESS" } });
+    await tx.fleetMaintenanceEvent.create({
+      data: { organizationId, requestId: id, actorId, eventType: "REPAIR_RESUMED", fromStatus: "ON_HOLD", toStatus: "IN_PROGRESS" },
+    });
+  });
+}
+
+/** Withdraws a request before real repair work has started - gives CANCELLED its own real meaning, distinct from an explicit REJECTED decline. */
+export async function withdrawMaintenanceRequest(organizationId: string, id: string, actorId: string, note?: string | null) {
+  const WITHDRAWABLE_STATUSES = ["REPORTED", "AWAITING_OWNER_APPROVAL", "APPROVED", "ASSIGNED", "SCHEDULED"];
+  return db.$transaction(async (tx) => {
+    const request = await tx.fleetMaintenanceRequest.findFirst({ where: { id, organizationId } });
+    if (!request) throw new NotFoundError("Maintenance request not found.");
+    if (!WITHDRAWABLE_STATUSES.includes(request.progressStatus)) {
+      throw new InvalidMaintenanceTransitionError("A request already in progress or finished can no longer be withdrawn.");
+    }
+    await tx.fleetMaintenanceRequest.update({ where: { id }, data: { progressStatus: "CANCELLED" } });
+    await tx.fleetMaintenanceEvent.create({
+      data: { organizationId, requestId: id, actorId, eventType: "REPAIR_WITHDRAWN", fromStatus: request.progressStatus, toStatus: "CANCELLED", note },
     });
   });
 }
@@ -1139,7 +1188,7 @@ export async function completeMaintenanceRepair(
     }
     await tx.fleetMaintenanceRequest.update({
       where: { id },
-      data: { progressStatus: "COMPLETED", repairCost: cost.toFixed(2), completedAt: new Date(), completionVerified: false },
+      data: { progressStatus: "COMPLETED", repairCost: cost.toFixed(2), completedAt: new Date() },
     });
     await tx.fleetMaintenanceEvent.create({
       data: { organizationId, requestId: id, actorId, eventType: "REPAIR_COMPLETED", fromStatus: "IN_PROGRESS", toStatus: "COMPLETED", note },
@@ -1154,19 +1203,19 @@ export async function verifyMaintenanceCompletion(organizationId: string, id: st
       include: { vehicle: { include: { owner: true } } },
     });
     if (!request) throw new NotFoundError("Maintenance request not found.");
-    if (request.progressStatus !== "COMPLETED" || request.completionVerified) {
+    if (request.progressStatus !== "COMPLETED") {
       throw new InvalidMaintenanceTransitionError("Only an unverified completed repair can be verified.");
     }
     const now = new Date();
-    await tx.fleetMaintenanceRequest.update({ where: { id }, data: { completionVerified: true, ownerNotifiedAt: now } });
+    await tx.fleetMaintenanceRequest.update({ where: { id }, data: { progressStatus: "VERIFIED", ownerNotifiedAt: now } });
     await tx.fleetVehicle.update({
       where: { id: request.vehicleId },
       data: { status: request.vehicle.assignedDriverId ? "ASSIGNED" : "AVAILABLE", nextServiceDueAt: null },
     });
     await tx.fleetMaintenanceEvent.createMany({
       data: [
-        { organizationId, requestId: id, actorId, eventType: "COMPLETION_VERIFIED", fromStatus: "COMPLETED", toStatus: "COMPLETED" },
-        { organizationId, requestId: id, actorId, eventType: "OWNER_NOTIFIED", fromStatus: "COMPLETED", toStatus: "COMPLETED", note: request.vehicle.owner?.email ?? request.vehicle.owner?.phone ?? "In-app notification" },
+        { organizationId, requestId: id, actorId, eventType: "COMPLETION_VERIFIED", fromStatus: "COMPLETED", toStatus: "VERIFIED" },
+        { organizationId, requestId: id, actorId, eventType: "OWNER_NOTIFIED", fromStatus: "VERIFIED", toStatus: "VERIFIED", note: request.vehicle.owner?.email ?? request.vehicle.owner?.phone ?? "In-app notification" },
       ],
     });
     await tx.notification.create({
@@ -1621,7 +1670,7 @@ export async function getFleetInvestorSummary(organizationId: string, userId?: s
       outstanding,
       maintenanceCost,
       netCashPosition: amountCollected - maintenanceCost,
-      maintenanceOpenCount: maintenance.filter((request) => !request.completionVerified && request.progressStatus !== "CANCELLED").length,
+      maintenanceOpenCount: maintenance.filter((request) => !["VERIFIED", "REJECTED", "CANCELLED"].includes(request.progressStatus)).length,
     };
   });
 }
@@ -1645,6 +1694,6 @@ export async function getFleetManagementReport(organizationId: string) {
     verifiedCollections: payments.filter((payment) => payment.verified).reduce((sum, payment) => sum + Number(payment.amount), 0),
     pendingPaymentCount: payments.filter((payment) => payment.status === "PENDING").length,
     expiringDocumentCount: documents.filter((document) => document.renewalStatus !== "CLEAR").length,
-    unverifiedRepairCount: maintenance.filter((request) => request.progressStatus === "COMPLETED" && !request.completionVerified).length,
+    unverifiedRepairCount: maintenance.filter((request) => request.progressStatus === "COMPLETED").length,
   };
 }

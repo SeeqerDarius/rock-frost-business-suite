@@ -11,6 +11,9 @@ import {
   ownerDecisionMaintenanceRequest,
   assignMaintenanceMechanic,
   startMaintenanceRepair,
+  holdMaintenanceRepair,
+  resumeMaintenanceRepair,
+  withdrawMaintenanceRequest,
   completeMaintenanceRepair,
   verifyMaintenanceCompletion,
   NotFoundError,
@@ -164,6 +167,33 @@ export async function startRepair(formData: FormData): Promise<void> {
   try { await startMaintenanceRepair(tenant.organizationId, id, userId); } catch (error) { workflowError(error); }
   revalidatePath("/app/fleet/maintenance");
   revalidatePath("/app/fleet/vehicles");
+  redirect("/app/fleet/maintenance?saved=1");
+}
+
+export async function holdRepair(formData: FormData): Promise<void> {
+  const { tenant, userId } = await maintenanceContext(PERMISSIONS.FLEET_MAINTENANCE_MANAGE);
+  const id = clean(formData.get("id"));
+  if (!id) redirect("/app/fleet/maintenance?error=missing-fields");
+  try { await holdMaintenanceRepair(tenant.organizationId, id, userId, clean(formData.get("note"))); } catch (error) { workflowError(error); }
+  revalidatePath("/app/fleet/maintenance");
+  redirect("/app/fleet/maintenance?saved=1");
+}
+
+export async function resumeRepair(formData: FormData): Promise<void> {
+  const { tenant, userId } = await maintenanceContext(PERMISSIONS.FLEET_MAINTENANCE_MANAGE);
+  const id = clean(formData.get("id"));
+  if (!id) redirect("/app/fleet/maintenance?error=missing-fields");
+  try { await resumeMaintenanceRepair(tenant.organizationId, id, userId); } catch (error) { workflowError(error); }
+  revalidatePath("/app/fleet/maintenance");
+  redirect("/app/fleet/maintenance?saved=1");
+}
+
+export async function withdrawRequest(formData: FormData): Promise<void> {
+  const { tenant, userId } = await maintenanceContext(PERMISSIONS.FLEET_MAINTENANCE_MANAGE);
+  const id = clean(formData.get("id"));
+  if (!id) redirect("/app/fleet/maintenance?error=missing-fields");
+  try { await withdrawMaintenanceRequest(tenant.organizationId, id, userId, clean(formData.get("note"))); } catch (error) { workflowError(error); }
+  revalidatePath("/app/fleet/maintenance");
   redirect("/app/fleet/maintenance?saved=1");
 }
 

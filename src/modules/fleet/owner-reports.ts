@@ -51,7 +51,7 @@ export function buildFleetOwnerReport(workspace: OwnerWorkspace): OwnerReport {
 
   const expenses: OwnerReportLedgerLine[] = workspace.vehicles.flatMap((vehicle) =>
     vehicle.maintenanceRequests
-      .filter((request) => request.completionVerified && request.repairCost)
+      .filter((request) => request.progressStatus === "VERIFIED" && request.repairCost)
       .map((request) => ({
         date: request.completedAt ?? request.requestedAt,
         vehiclePlate: vehicle.plateNumber,

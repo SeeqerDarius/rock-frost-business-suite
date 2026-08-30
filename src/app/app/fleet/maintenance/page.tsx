@@ -13,10 +13,11 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listFleetActorVehicles, listFleetMaintenanceRequests, listFleetMechanics, listFleetVehicles } from "@/modules/fleet/service";
+import { MAINTENANCE_PROGRESS_LABELS, MAINTENANCE_PROGRESS_BADGE } from "@/modules/fleet/maintenance-status";
 import { getServerAuthSession } from "@/lib/auth/session";
 import {
   createMaintenanceRequest, reviewMaintenanceRequest, ownerMaintenanceDecision,
-  assignMechanic, startRepair, completeRepair, verifyRepairCompletion,
+  assignMechanic, startRepair, holdRepair, resumeRepair, withdrawRequest, completeRepair, verifyRepairCompletion,
 } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -29,25 +30,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-photo": "Use a JPEG, PNG, or WebP photo no larger than 1 MB.",
 };
 
-const PROGRESS_LABELS: Record<string, string> = {
-  REPORTED: "Reported",
-  REVIEWING: "Reviewing",
-  APPROVED: "Approved",
-  IN_PROGRESS: "In progress",
-  COMPLETED: "Completed",
-  CANCELLED: "Cancelled",
-};
-
 const APPROVAL_LABELS: Record<string, string> = { PENDING: "Pending", APPROVED: "Approved", REJECTED: "Rejected" };
 
-const PROGRESS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
-  REPORTED: "outline",
-  REVIEWING: "secondary",
-  APPROVED: "secondary",
-  IN_PROGRESS: "secondary",
-  COMPLETED: "default",
-  CANCELLED: "destructive",
-};
+const WITHDRAWABLE_STATUSES = ["REPORTED", "AWAITING_OWNER_APPROVAL", "APPROVED", "ASSIGNED", "SCHEDULED"];
 
 export default async function FleetMaintenancePage({
   searchParams,
@@ -165,7 +150,7 @@ export default async function FleetMaintenancePage({
                 <TableCell className="max-w-xs truncate text-muted-foreground">{request.faultDescription}</TableCell>
                 <TableCell className="text-muted-foreground">{request.requestedBy?.name ?? "-"}</TableCell>
                 <TableCell>
-                  <Badge variant={PROGRESS_BADGE[request.progressStatus]}>{PROGRESS_LABELS[request.progressStatus]}</Badge>
+                  <Badge variant={MAINTENANCE_PROGRESS_BADGE[request.progressStatus]}>{MAINTENANCE_PROGRESS_LABELS[request.progressStatus]}</Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground">{APPROVAL_LABELS[request.approvalStatus]}</TableCell>
                 <TableCell className="text-muted-foreground">
@@ -179,7 +164,7 @@ export default async function FleetMaintenancePage({
                       View photo
                     </Button>
                   ) : null}
-                  {canManage && ["REPORTED", "REVIEWING"].includes(request.progressStatus) && request.approvalStatus === "PENDING" ? (
+                  {canManage && ["REPORTED", "AWAITING_OWNER_APPROVAL"].includes(request.progressStatus) && request.approvalStatus === "PENDING" ? (
                     <EntityDialog
                       trigger={
                         <Button size="sm" variant="ghost">
@@ -203,7 +188,7 @@ export default async function FleetMaintenancePage({
                       </label>
                     </EntityDialog>
                   ) : null}
-                  {canManage && ["REPORTED", "REVIEWING"].includes(request.progressStatus) && request.approvalStatus === "PENDING" ? (
+                  {canManage && ["REPORTED", "AWAITING_OWNER_APPROVAL"].includes(request.progressStatus) && request.approvalStatus === "PENDING" ? (
                     <form action={reviewMaintenanceRequest}>
                       <input type="hidden" name="id" value={request.id} />
                       <input type="hidden" name="decision" value="reject" />
@@ -236,8 +221,17 @@ export default async function FleetMaintenancePage({
                       </div>
                     </EntityDialog>
                   ) : null}
-                  {canManage && request.progressStatus === "APPROVED" && request.mechanicId ? (
+                  {canManage && request.progressStatus === "SCHEDULED" ? (
                     <form action={startRepair}><input type="hidden" name="id" value={request.id} /><Button type="submit" size="sm" variant="ghost">Start repair</Button></form>
+                  ) : null}
+                  {canManage && request.progressStatus === "IN_PROGRESS" ? (
+                    <EntityDialog trigger={<Button size="sm" variant="ghost">Hold repair</Button>} title="Put repair on hold" action={holdRepair}>
+                      <input type="hidden" name="id" value={request.id} />
+                      <div className="space-y-2"><Label htmlFor={`hold-note-${request.id}`}>Reason (optional)</Label><Textarea id={`hold-note-${request.id}`} name="note" placeholder="e.g. waiting on parts" /></div>
+                    </EntityDialog>
+                  ) : null}
+                  {canManage && request.progressStatus === "ON_HOLD" ? (
+                    <form action={resumeRepair}><input type="hidden" name="id" value={request.id} /><Button type="submit" size="sm" variant="ghost">Resume repair</Button></form>
                   ) : null}
                   {canManage && request.progressStatus === "IN_PROGRESS" ? (
                     <EntityDialog trigger={<Button size="sm" variant="ghost">Complete repair</Button>} title="Record repair completion" action={completeRepair}>
@@ -246,8 +240,14 @@ export default async function FleetMaintenancePage({
                       <div className="space-y-2"><Label htmlFor={`completion-note-${request.id}`}>Completion notes</Label><Textarea id={`completion-note-${request.id}`} name="note" /></div>
                     </EntityDialog>
                   ) : null}
-                  {canManage && request.progressStatus === "COMPLETED" && !request.completionVerified ? (
+                  {canManage && request.progressStatus === "COMPLETED" ? (
                     <form action={verifyRepairCompletion}><input type="hidden" name="id" value={request.id} /><Button type="submit" size="sm">Verify & notify owner</Button></form>
+                  ) : null}
+                  {canManage && WITHDRAWABLE_STATUSES.includes(request.progressStatus) ? (
+                    <EntityDialog trigger={<Button size="sm" variant="ghost">Withdraw</Button>} title="Withdraw maintenance request" description="The request is closed without a repair. This cannot be undone." action={withdrawRequest}>
+                      <input type="hidden" name="id" value={request.id} />
+                      <div className="space-y-2"><Label htmlFor={`withdraw-note-${request.id}`}>Reason (optional)</Label><Textarea id={`withdraw-note-${request.id}`} name="note" /></div>
+                    </EntityDialog>
                   ) : null}
                   <details className="relative text-left">
                     <summary className="cursor-pointer list-none rounded-md px-3 py-2 text-sm hover:bg-muted">History</summary>
