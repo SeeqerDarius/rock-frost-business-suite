@@ -18,19 +18,19 @@ const industries = [
     icon: Truck,
     name: "Transportation & Logistics",
     description:
-      "Fleet operators managing vehicles, drivers, and owner relationships across multiple companies or branches, with maintenance, insurance, and work-and-pay contracts to track.",
+      "Coordinate managers, drivers, vehicle owners and internal or external mechanics. Track remittances, targets, maintenance approvals, documents, expenses and verified financial activity.",
   },
   {
     icon: Wallet,
     name: "Retail & Consumer Finance",
     description:
-      "Businesses selling on installment or layaway terms, tracking customer accounts, collections, product performance, and staff activity across a distributed sales team.",
+      "Connect POS, stock, procurement, installment accounts, collections and customer relationships, with verified activity flowing into the financial picture.",
   },
   {
     icon: Building2,
     name: "Multi-department organizations",
     description:
-      "Any organization running several distinct business functions that shouldn't share data or navigation, but do benefit from one shared login, one workspace, and consistent access control.",
+      "Give departments and external stakeholders the access they need, preserve clear data boundaries and manage the organization from one shared source of truth.",
   },
 ];
 

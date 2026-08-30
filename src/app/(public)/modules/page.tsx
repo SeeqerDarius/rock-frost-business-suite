@@ -9,7 +9,7 @@ import { PublicHero } from "@/components/marketing/public-hero";
 
 export const metadata = createPublicMetadata({
   title: "Business Software Modules",
-  description: "Explore modular business systems, including Hotel, School, and Pharmacy Management vertical suites.",
+  description: "Explore role-based ERP modules for finance, fleet, commerce, people and industry operations in Ghana.",
   path: "/modules",
   keywords: ["business software modules Ghana", "ERP modules Africa", "fleet CRM payroll inventory software"],
 });
@@ -17,7 +17,7 @@ export const metadata = createPublicMetadata({
 export default function PublicModulesPage() {
   return (
     <>
-      <PublicHero eyebrow="Rock Frost Business Suite" title="Independent business systems. One exceptional platform." description="Every module is a complete, self-contained operating system with its own data, navigation, permissions, and workflows. Activate only what your organization needs." />
+      <PublicHero eyebrow="Choose your ERP modules" title="Start focused. Connect more when you need it." description="Each module provides real workflows, permissions and reporting. Combine modules to connect operations with finance while keeping every role appropriately scoped." />
 
       <section className="public-section-tint">
         <div className="mx-auto max-w-6xl px-6 py-20">

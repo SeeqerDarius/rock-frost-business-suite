@@ -7,8 +7,8 @@ import { createPublicMetadata } from "@/lib/seo";
 import { PublicHero } from "@/components/marketing/public-hero";
 
 export const metadata = createPublicMetadata({
-  title: "Modular Business Software Solutions",
-  description: "Bring fleet, sales, finance, people, inventory, projects, and operations into one secure modular business platform without mixing their workflows or data.",
+  title: "Role-Based ERP Software Ghana",
+  description: "Connect fleet, sales, finance, people, inventory, projects and industry operations through secure role-based ERP workflows.",
   path: "/solutions",
   keywords: ["modular business software", "business operations platform Ghana", "multi-tenant business software"],
 });
@@ -16,21 +16,21 @@ export const metadata = createPublicMetadata({
 const pillars = [
   {
     icon: Layers,
-    title: "One workspace, every module",
+    title: "One platform, a workspace for every role",
     description:
-      "Sign in once and switch between the business systems your organization runs on, from Fleet and Installment Sales to CRM, Accounting, HR, Payroll, Inventory, POS, and more, without juggling separate logins.",
+      "Managers, accountants, drivers, vehicle owners, mechanics and frontline staff see the tasks, approvals and records that concern them, without juggling separate systems.",
   },
   {
     icon: Blocks,
-    title: "Modules stay independent",
+    title: "Operations connect to finance",
     description:
-      "Each module owns its own data, navigation, and workflows. Activating Installment Management never surfaces Fleet data, and vice versa: there's no bleed between unrelated parts of your business.",
+      "Verified sales, collections and operational expenses can reach Accounting through controlled, auditable postings while each module keeps its specialist workflow.",
   },
   {
     icon: ShieldCheck,
     title: "Built for real organizations",
     description:
-      "Multi-tenant from the ground up: your organization's data is isolated from every other organization on the platform, with role-based access control scoped per module.",
+      "Your organization's data is isolated from every other organization, with permissions, private support conversations, approval controls and audit history scoped to the right people.",
   },
   {
     icon: Building2,
@@ -43,7 +43,7 @@ const pillars = [
 export default function SolutionsPage() {
   return (
     <>
-      <PublicHero eyebrow="Solutions" title="Built to run your whole business, one module at a time." description="Rock Frost Business Suite is a modular business operating platform. Activate the systems your organization needs while the platform keeps their data boundaries clear." actions={<Button size="lg" nativeButton={false} render={<Link href="/contact" />}>Talk to us</Button>} />
+      <PublicHero eyebrow="Modular, role-based ERP" title="Your operation connected from action to accounts." description="Give every role a focused workspace, route work through the right approvals and turn verified activity into reliable business records." actions={<Button size="lg" nativeButton={false} render={<Link href="/pricing" />}>Explore plans</Button>} />
 
       <section className="public-section-tint">
         <div className="mx-auto max-w-6xl px-6 py-20">

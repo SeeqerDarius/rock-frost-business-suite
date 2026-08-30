@@ -86,9 +86,9 @@ export default async function HomePage() {
         description: DEFAULT_DESCRIPTION,
         provider: { "@id": `${SITE_URL}/#organization` },
       }} />
-      <PublicHero eyebrow="Rock Frost Business Suite" title="One platform. Every business system your organization runs on." description="Activate independent management modules, including fleet and installment sales, from a single, unified workspace, without mixing unrelated business data together." actions={<>
-            <Button size="lg" nativeButton={false} render={<Link href="/login" />}>Sign in</Button>
-            <Button size="lg" variant="outline" nativeButton={false} render={<Link href="/contact" />}>Request a demo</Button>
+      <PublicHero eyebrow="A role-based ERP built for Ghana" title="Run the work. See the money. Stay in control." description="Connect finance, fleet, sales, people, stock and industry operations in one secure platform. Every person gets the workspace, approvals and information their role requires." actions={<>
+            <Button size="lg" nativeButton={false} render={<Link href="/subscribe" />}>Start your subscription</Button>
+            <Button size="lg" variant="outline" nativeButton={false} render={<Link href="/pricing" />}>See pricing</Button>
           </>}>
         <ModuleBlocksIllustration className="mx-auto h-auto w-full max-w-sm" />
       </PublicHero>
@@ -106,9 +106,9 @@ export default async function HomePage() {
         <div className="mx-auto max-w-6xl px-6 py-20">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div className="max-w-2xl space-y-2">
-              <h2 className="text-2xl font-semibold tracking-tight">Modules</h2>
+              <h2 className="text-2xl font-semibold tracking-tight">Build the ERP your organization needs</h2>
               <p className="text-muted-foreground">
-                Each module is an independent business system with its own data, navigation, and workflows.
+                Start with one operational system or connect several. Confirmed business activity can flow into Accounting without giving every user access to everything.
               </p>
             </div>
             <Link href="/modules" className="text-sm font-medium underline underline-offset-4">
@@ -165,8 +165,8 @@ export default async function HomePage() {
       <section className="mx-auto max-w-6xl px-6 py-20">
         <div className="flex flex-col items-start justify-between gap-6 rounded-lg border p-8 sm:flex-row sm:items-center">
           <div className="space-y-1">
-            <h2 className="text-xl font-semibold">See how it fits your organization</h2>
-            <p className="text-muted-foreground">Read about the platform&apos;s approach, or tell us what you need.</p>
+            <h2 className="text-xl font-semibold">Ready for a clearer way to run your organization?</h2>
+            <p className="text-muted-foreground">Choose a module, combine a suite or talk to us about your workflow.</p>
           </div>
           <div className="flex gap-3">
             <Button variant="outline" nativeButton={false} render={<Link href="/solutions" />}>

@@ -7,6 +7,9 @@ describe("public subscription and support entry points", () => {
     const subscribe = readFileSync("src/app/(public)/subscribe/page.tsx", "utf8");
     expect(pricing).toContain("Subscribe to this module");
     expect(pricing).toContain("Subscribe to this suite");
+    expect(pricing).toContain("ERP pricing in Ghana cedis");
+    expect(pricing).toContain("For fleet teams, drivers, vehicle owners and maintenance workflows");
+    expect(pricing).toContain("Connected ERP suites");
     expect(subscribe).toContain("No platform-owner approval is required");
   });
 

@@ -1,5 +1,14 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-30: Public ERP positioning and pricing presentation refresh
+
+- **Scope**: updated the homepage, Solutions, Industries, Modules, Pricing and shared search/social description to describe the production platform accurately as a modular, role-based ERP for Ghana and Africa. The campaign now leads with role-specific workspaces, controlled approvals, operational-to-Accounting connections and stakeholder-aware Fleet workflows.
+- **Pricing safety**: retained every database-backed operator-approved module, suite, seat and enterprise amount. The Pricing page now explains who each module serves and presents bundles as connected ERP suites; this release changes product presentation, not commercial amounts or checkout calculations.
+- **Claims discipline**: copy is limited to implemented behavior. It does not claim fabricated customer results, universal Accounting posting, legal certification or settlement calculations that are not configured.
+- **Important files**: `src/app/(public)/page.tsx`, `src/app/(public)/pricing/page.tsx`, `src/app/(public)/solutions/page.tsx`, `src/app/(public)/industries/page.tsx`, `src/app/(public)/modules/page.tsx`, `src/lib/seo.ts`, `test/public-subscription-ui.test.ts`, `docs/BILLING_AND_SUBSCRIPTIONS.md`, `README.md`.
+- **Validation**: focused public marketing, pricing and SEO tests passed (4 files, 14 tests). TypeScript passed. ESLint passed with zero warnings. Full unit suite passed (128 files, 999 tests). Production build passed and generated 225 routes. Editorial punctuation coverage passed as part of the full suite. No schema change or database integration test was required.
+- **Release status**: implementation validation is complete. Production deployment evidence is recorded in the follow-up entry after verification.
+
 ## 2026-08-30: Regression consolidation and docs closure, Track D Phase D6 of 15 (final phase)
 
 - **Scope**: D6 - the plan's final phase, closing out all 15 phases across Tracks A-D (support chat privacy, AI support reliability, Vehicle Owner workspace/notifications, and the Fleet maintenance/Mechanic redesign). No new features - regression consolidation and a documentation consistency pass, mirroring this codebase's own established "final phase" precedent from prior multi-phase initiatives.

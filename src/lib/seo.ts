@@ -4,7 +4,7 @@ export const SITE_URL = "https://www.rockfrostgroup.com";
 export const SITE_NAME = "Rock Frost Business Suite";
 export const COMPANY_NAME = "Rock Frost Technologies";
 export const DEFAULT_DESCRIPTION =
-  "Modular business management software for organizations in Ghana and Africa. Manage fleet, installment sales, CRM, inventory, accounting, HR, payroll, POS, procurement, projects, and analytics in one secure platform.";
+  "A modular, role-based ERP for organizations in Ghana and Africa. Connect finance, fleet, sales, people, stock, projects and industry operations in one secure platform.";
 
 export function createPublicMetadata({
   title,
