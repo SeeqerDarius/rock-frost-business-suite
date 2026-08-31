@@ -11,7 +11,7 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listFleetPayments, listFleetDriverPaymentSubmissions, listFleetMaintenanceRequestsForPaymentLinking } from "@/modules/fleet/service";
-import { createPayment, verifyPayment } from "./actions";
+import { createPayment, verifyPayment, retryPaymentPosting } from "./actions";
 import { SubmissionReviewControls } from "./submission-review-controls";
 import { listOperationalPayments } from "@/lib/payments/operational";
 
@@ -23,6 +23,13 @@ const ERROR_MESSAGES: Record<string, string> = {
   "already-reviewed": "This driver payment has already been reviewed. Refresh the page to see its current status.",
   "review-failed": "The driver payment could not be reviewed. Please try again or contact support if the problem continues.",
   "not-found": "That maintenance request could not be found.",
+  "not-postable": "Only a verified payment can be posted to Accounting.",
+};
+
+const POSTING_STATUS_BADGE: Record<string, "default" | "outline" | "destructive"> = {
+  PENDING: "outline",
+  POSTED: "default",
+  FAILED: "destructive",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -186,6 +193,7 @@ export default async function FleetPaymentsPage({
               <TableHead>Type</TableHead>
               <TableHead>Amount ({tenant.organization.currency ?? "GHS"})</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Posting</TableHead>
               {canManage ? <TableHead /> : null}
             </TableRow>
           </TableHeader>
@@ -206,6 +214,16 @@ export default async function FleetPaymentsPage({
                 <TableCell>
                   <Badge variant={STATUS_BADGE[payment.status]}>{payment.status}</Badge>
                 </TableCell>
+                <TableCell>
+                  {payment.status === "VERIFIED" ? (
+                    <div className="space-y-0.5">
+                      <Badge variant={POSTING_STATUS_BADGE[payment.postingStatus]}>{payment.postingStatus}</Badge>
+                      {payment.receiptNumber ? <p className="text-xs text-muted-foreground">{payment.receiptNumber}</p> : null}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">-</span>
+                  )}
+                </TableCell>
                 {canManage ? (
                   <TableCell className="text-right">
                     {payment.status === "PENDING" ? (
@@ -225,6 +243,14 @@ export default async function FleetPaymentsPage({
                           </Button>
                         </form>
                       </div>
+                    ) : null}
+                    {payment.status === "VERIFIED" && payment.postingStatus === "FAILED" ? (
+                      <form action={retryPaymentPosting}>
+                        <input type="hidden" name="id" value={payment.id} />
+                        <Button type="submit" size="sm" variant="ghost">
+                          Retry posting
+                        </Button>
+                      </form>
                     ) : null}
                   </TableCell>
                 ) : null}

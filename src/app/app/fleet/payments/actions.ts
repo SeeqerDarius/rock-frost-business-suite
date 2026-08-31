@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createFleetPayment, updateFleetPaymentStatus, reviewFleetDriverPaymentSubmission, NotFoundError } from "@/modules/fleet/service";
+import { createFleetPayment, updateFleetPaymentStatus, reviewFleetDriverPaymentSubmission, getFleetPaymentForPostingRetry, NotFoundError, FleetPaymentNotPostableError } from "@/modules/fleet/service";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { reverseModuleRevenue } from "@/lib/accounting-integration";
 import { postVerifiedFleetPaymentRevenue } from "@/modules/fleet/accounting";
@@ -164,4 +164,46 @@ export async function reviewDriverSubmission(formData: FormData): Promise<void> 
   revalidatePath("/app/fleet/payments");
   revalidatePath("/app/fleet/driver-portal");
   redirect(`/app/fleet/payments?reviewed=${approved ? "approved" : "rejected"}`);
+}
+
+/**
+ * Manager-facing retry for a verified payment whose Accounting posting
+ * previously failed (postingStatus "FAILED") - mirrors
+ * retryOperationalPaymentReconciliation's shape (src/lib/payments/operational.ts):
+ * the same posting logic every other verification path already uses,
+ * exposed as an explicit action rather than only ever attempted once.
+ */
+export async function retryPaymentPosting(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("fleet");
+  if (!hasPermission(tenant, PERMISSIONS.FLEET_PAYMENTS_MANAGE)) {
+    redirect("/app/fleet/payments?error=forbidden");
+  }
+
+  const idRaw = clean(formData.get("id"));
+  if (!idRaw) redirect("/app/fleet/payments?error=invalid-input");
+  const parsedId = parseWithSchema(cuid, idRaw);
+  if (!parsedId.success) {
+    redirect("/app/fleet/payments?error=invalid-input");
+  }
+
+  let payment;
+  try {
+    payment = await getFleetPaymentForPostingRetry(tenant.organizationId, parsedId.data);
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/fleet/payments?error=not-found");
+    if (error instanceof FleetPaymentNotPostableError) redirect("/app/fleet/payments?error=not-postable");
+    throw error;
+  }
+
+  if (payment.postingStatus !== "POSTED") {
+    await postVerifiedFleetPaymentRevenue(
+      tenant.organizationId,
+      payment,
+      `Fleet payment posting retried: ${payment.reference} (${payment.type})`,
+      tenant.userId,
+    );
+  }
+
+  revalidatePath("/app/fleet/payments");
+  redirect("/app/fleet/payments?saved=1");
 }

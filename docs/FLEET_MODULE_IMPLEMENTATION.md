@@ -196,6 +196,12 @@ Every owner assignment change writes a `FleetVehicleOwnershipHistory` record wit
 
 Verified expenses feeding `operatingPosition`/settlement math now include vehicle expenses alongside verified maintenance repair costs everywhere that figure is shown - the Owner Workspace's per-vehicle and portfolio totals, its trend chart, its exportable statement's ledger, and the manager-facing Owner Portfolio Overview's per-owner cards and totals bar (`getFleetInvestorSummary()` gained a `vehicleExpenseCost` field alongside its existing `maintenanceCost`, both subtracted from `netCashPosition`).
 
+## Payment posting reliability (2026-08-31)
+
+Every verified Fleet payment now carries `postingStatus` (`PENDING | POSTED | FAILED`) and a `receiptNumber`, both written by `postVerifiedFleetPaymentRevenue()` (`src/modules/fleet/accounting.ts`) itself rather than by each of its 5 call sites individually - a posting failure (`postModuleRevenue` returning `{posted:false, reason:"error"}`) is no longer silently indistinguishable from a success, and every caller gets this visibility for free. `postingStatus` moves to `POSTED` both when the posting genuinely succeeds and when Accounting simply isn't active for the organization (`reason: "accounting-not-enabled"`) - there is nothing to retry in that case either way, mirroring the same convention `OperationalPayment.reconciliationStatus` already uses. The receipt number is generated once, the first time posting is attempted for a payment, regardless of whether that attempt succeeds - the payment was already verified and received either way - and a later retry reuses the same number rather than minting a new one.
+
+A manager can retry a `FAILED` payment's posting directly from the Payments page ("Retry posting", visible only on a verified, failed-to-post payment) via a new `retryPaymentPosting()` action, mirroring `retryOperationalPaymentReconciliation()`'s shape (`src/lib/payments/operational.ts`): the same posting logic every verification path already runs, exposed as an explicit action rather than attempted only once. `getFleetPaymentForPostingRetry()` (`src/modules/fleet/service.ts`) validates the payment exists in the caller's own organization and is `VERIFIED` before any retry is attempted.
+
 ## Production release checks
 
 - Prisma schema validation and client generation

@@ -277,6 +277,18 @@ enum FleetPaymentStatus {
   CANCELLED
 }
 
+/// Mirrors PaymentReconciliationStatus's shape for the Fleet ledger
+/// specifically: PENDING until a verified payment's revenue posting to
+/// Accounting is attempted, POSTED once postModuleRevenue actually succeeds
+/// (or Accounting isn't active for the org - nothing to retry either way),
+/// FAILED when the attempt itself errored, at which point it's visibly
+/// retryable rather than silently unposted.
+enum FleetPaymentPostingStatus {
+  PENDING
+  POSTED
+  FAILED
+}
+
 enum FleetSalesTargetPeriod {
   DAILY
   WEEKLY
@@ -1815,24 +1827,31 @@ model FleetMaintenanceEvent {
 }
 
 model FleetPayment {
-  id                   String             @id @default(cuid())
+  id                   String                    @id @default(cuid())
   organizationId       String
   branchId             String?
   reference            String
-  date                 DateTime           @default(now())
+  date                 DateTime                  @default(now())
   type                 FleetPaymentType
-  amount               Decimal            @db.Decimal(12, 2)
-  status               FleetPaymentStatus @default(PENDING)
+  amount               Decimal                   @db.Decimal(12, 2)
+  status               FleetPaymentStatus        @default(PENDING)
   relatedEntity        String?
   relatedEntityId      String?
   /// Structural link for MAINTENANCE-type payments specifically, replacing
   /// the free-text relatedEntity/relatedEntityId guessing for this one
   /// type; every other payment type still uses the generic pair unchanged.
   maintenanceRequestId String?
-  verified             Boolean            @default(false)
+  verified             Boolean                   @default(false)
+  /// Generated once, the first time postVerifiedFleetPaymentRevenue() runs
+  /// for this payment - regardless of whether that Accounting posting
+  /// attempt itself succeeds, since the payment was already verified and
+  /// received either way. A later retry reuses the same number rather than
+  /// generating a new one.
+  receiptNumber        String?
+  postingStatus        FleetPaymentPostingStatus @default(PENDING)
   metadata             Json?
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
 
   organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch             Branch?                  @relation(fields: [branchId], references: [id], onDelete: SetNull)
@@ -1843,6 +1862,7 @@ model FleetPayment {
   @@index([branchId])
   @@index([relatedEntity, relatedEntityId])
   @@index([maintenanceRequestId])
+  @@index([organizationId, postingStatus])
 }
 
 model FleetWorkAndPayContract {

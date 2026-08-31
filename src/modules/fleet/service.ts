@@ -1821,6 +1821,21 @@ export function updateFleetPaymentStatus(organizationId: string, id: string, sta
   return db.fleetPayment.update({ where: { id, organizationId }, data: { status, verified } });
 }
 
+export class FleetPaymentNotPostableError extends Error {}
+
+/**
+ * Validated lookup for the "Retry posting" action - only a verified payment
+ * can be (re)posted to Accounting at all, matching
+ * postVerifiedFleetPaymentRevenue's own precondition (it posts revenue for
+ * an already-verified collection, not a pending or rejected one).
+ */
+export async function getFleetPaymentForPostingRetry(organizationId: string, id: string) {
+  const payment = await db.fleetPayment.findFirst({ where: { id, organizationId } });
+  if (!payment) throw new NotFoundError("Payment not found.");
+  if (payment.status !== "VERIFIED") throw new FleetPaymentNotPostableError("Only a verified payment can be posted to Accounting.");
+  return payment;
+}
+
 // --- Vehicle expenses ---
 
 export function listFleetVehicleExpenses(organizationId: string, vehicleId?: string) {

@@ -1,7 +1,10 @@
 import "server-only";
 
+import { db } from "@/lib/db";
 import type { FleetVehicleExpenseType, Prisma } from "@prisma/client";
 import { postModuleRevenue, postModuleExpense, type ModuleExpenseSource } from "@/lib/accounting-integration";
+
+const fleetReceiptNumber = (id: string) => `RF-${new Date().getUTCFullYear()}-${id.slice(-10).toUpperCase()}`;
 
 /**
  * The one place every "a verified Fleet payment was collected" event posts
@@ -17,6 +20,16 @@ import { postModuleRevenue, postModuleExpense, type ModuleExpenseSource } from "
  * (postSourceJournalEntry is not composable inside a source module's own
  * db.$transaction - see src/lib/accounting-integration.ts's own doc
  * comment).
+ *
+ * Also the one place FleetPayment.postingStatus/receiptNumber get written -
+ * every call site above gets posting-failure visibility and a receipt
+ * number for free rather than needing its own bookkeeping. A posting
+ * failure ({posted:false, reason:"error"}) is never thrown or swallowed
+ * silently: it's recorded as postingStatus:"FAILED" so a manager can retry
+ * it explicitly (see retryPaymentPosting in
+ * src/app/app/fleet/payments/actions.ts). "accounting-not-enabled" counts
+ * as POSTED, not FAILED - there is nothing to retry when the organization
+ * hasn't activated Accounting at all.
  */
 export async function postVerifiedFleetPaymentRevenue(
   organizationId: string,
@@ -24,7 +37,7 @@ export async function postVerifiedFleetPaymentRevenue(
   description: string,
   createdById?: string | null,
 ) {
-  return postModuleRevenue(organizationId, {
+  const result = await postModuleRevenue(organizationId, {
     sourceModule: "fleet",
     sourceType: "FLEET_PAYMENT",
     sourceId: payment.id,
@@ -34,6 +47,15 @@ export async function postVerifiedFleetPaymentRevenue(
     description,
     createdById,
   });
+  const existing = await db.fleetPayment.findUnique({ where: { id: payment.id }, select: { receiptNumber: true } });
+  await db.fleetPayment.update({
+    where: { id: payment.id },
+    data: {
+      postingStatus: result.posted || result.reason === "accounting-not-enabled" ? "POSTED" : "FAILED",
+      receiptNumber: existing?.receiptNumber ?? fleetReceiptNumber(payment.id),
+    },
+  });
+  return result;
 }
 
 const VEHICLE_EXPENSE_SOURCE_MODULE: Record<FleetVehicleExpenseType, ModuleExpenseSource> = {
