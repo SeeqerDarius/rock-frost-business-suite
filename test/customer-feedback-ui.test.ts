@@ -23,6 +23,13 @@ describe("customer feedback", () => {
     expect(service).toContain("where: { id: feedbackId, organizationId, userId }");
   });
 
+  it("redirects anonymous page renders instead of throwing a tenant error", () => {
+    const page = read("src/app/app/(overview)/feedback/page.tsx");
+    expect(page).toContain("getCurrentTenant()");
+    expect(page).toContain('if (!tenant) redirect("/login")');
+    expect(page).not.toContain("requireCurrentTenant()");
+  });
+
   it("provides accessible, non-blocking feedback and motivation UI", () => {
     const moments = read("src/components/feedback/workspace-moments.tsx");
     expect(moments).toContain('aria-live="polite"');

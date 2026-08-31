@@ -1,5 +1,5 @@
 import { MessageSquareHeart } from "lucide-react";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { getCurrentTenant } from "@/lib/tenant";
 import { listMyFeedback } from "@/lib/customer-feedback";
 import { PageHeader } from "@/components/layout/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -16,7 +16,8 @@ import { redirect } from "next/navigation";
 const labels = { TESTIMONIAL: "Testimonial", SUGGESTION: "Suggestion", PROBLEM: "Problem", GENERAL: "General feedback" } as const;
 
 export default async function FeedbackPage({ searchParams }: { searchParams: Promise<{ submitted?: string; withdrawn?: string; error?: string }> }) {
-  const tenant = await requireCurrentTenant();
+  const tenant = await getCurrentTenant();
+  if (!tenant) redirect("/login");
   if (isPlatformOperator(tenant)) redirect("/app/platform/feedback");
   const [query, feedback] = await Promise.all([searchParams, listMyFeedback(tenant.organizationId, tenant.userId)]);
   return <div className="mx-auto max-w-4xl space-y-6">
