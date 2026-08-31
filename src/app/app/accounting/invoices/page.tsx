@@ -9,16 +9,18 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { EntityDialog } from "@/components/forms/entity-dialog";
+import { LineItemsEditor } from "@/components/forms/line-items-editor";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { formatMoney } from "@/lib/currency";
-import { listAccounts, listInvoices } from "@/modules/accounting/service";
+import { listAccounts, listInvoices, listContacts } from "@/modules/accounting/service";
 import { listTaxCodes } from "@/modules/accounting/tax-service";
 import { createNewInvoice, sendInvoice, payInvoice, voidExistingInvoice } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage invoices.",
   "missing-fields": "All required fields must be filled in.",
+  "invalid-lines": "Every line needs a description, a quantity greater than zero, and a non-negative unit price.",
   "invalid-state": "That action isn't valid for this invoice's current status.",
   "has-payment": "Cannot void an invoice that has already received payment.",
   "invalid-payment": "That payment amount is invalid or exceeds the remaining balance.",
@@ -44,8 +46,9 @@ export default async function AccountingInvoicesPage({
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_INVOICES_MANAGE);
   const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
   const canReceive = hasPermission(tenant, PERMISSIONS.ACCOUNTING_RECEIVABLES_MANAGE);
-  const [invoices, accounts, taxCodes] = await Promise.all([listInvoices(tenant.organizationId), listAccounts(tenant.organizationId), listTaxCodes(tenant.organizationId)]);
+  const [invoices, accounts, taxCodes, contacts] = await Promise.all([listInvoices(tenant.organizationId), listAccounts(tenant.organizationId), listTaxCodes(tenant.organizationId), listContacts(tenant.organizationId)]);
   const receivingAccounts = accounts.filter((account) => account.active && account.liquidityType !== "NONE");
+  const customerContacts = contacts.filter((contact) => contact.type === "CUSTOMER" || contact.type === "BOTH");
   const today = new Date().toISOString().slice(0, 10);
 
   return (
@@ -53,7 +56,16 @@ export default async function AccountingInvoicesPage({
       <div className="flex items-center justify-between gap-4">
         <PageHeader title="Invoices" description="Amounts owed to your organization by customers." />
         {canManage ? (
-          <EntityDialog trigger={<Button size="sm"><Plus />New invoice</Button>} title="New invoice" action={createNewInvoice}>
+          <EntityDialog trigger={<Button size="sm"><Plus />New invoice</Button>} title="New invoice" action={createNewInvoice} contentClassName="sm:max-w-2xl">
+            {customerContacts.length > 0 ? (
+              <div className="space-y-2">
+                <Label htmlFor="contactId">Contact (optional)</Label>
+                <select id="contactId" name="contactId" className="h-10 w-full rounded-md border bg-background px-3">
+                  <option value="">Enter details manually</option>
+                  {customerContacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.name}</option>)}
+                </select>
+              </div>
+            ) : null}
             <div className="space-y-2">
               <Label htmlFor="customerName">Customer name</Label>
               <Input id="customerName" name="customerName" required />
@@ -62,14 +74,15 @@ export default async function AccountingInvoicesPage({
               <Label htmlFor="customerEmail">Customer email</Label>
               <Input id="customerEmail" name="customerEmail" type="email" />
             </div>
+            <LineItemsEditor currency={tenant.organization.currency ?? "GHS"} />
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-              <Label htmlFor="amount">Taxable amount ({tenant.organization.currency})</Label>
-                <Input id="amount" name="amount" type="number" step="0.01" required />
-              </div>
               <div className="space-y-2">
                 <Label htmlFor="issueDate">Issue date</Label>
                 <Input id="issueDate" name="issueDate" type="date" defaultValue={today} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="dueDate">Due date</Label>
+                <Input id="dueDate" name="dueDate" type="date" required />
               </div>
             </div>
             <div className="space-y-2">
@@ -80,12 +93,8 @@ export default async function AccountingInvoicesPage({
               </select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="dueDate">Due date</Label>
-              <Input id="dueDate" name="dueDate" type="date" required />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
-              <Textarea id="description" name="description" rows={3} />
+              <Textarea id="description" name="description" rows={2} />
             </div>
           </EntityDialog>
         ) : null}
@@ -121,9 +130,19 @@ export default async function AccountingInvoicesPage({
             {invoices.map((invoice) => (
               <Fragment key={invoice.id}><TableRow>
                 <TableCell className="font-mono text-xs">{invoice.invoiceNumber}</TableCell>
-                <TableCell className="font-medium">{invoice.customerName}</TableCell>
+                <TableCell className="font-medium">
+                  {invoice.customerName}
+                  {invoice.lines.length > 0 ? (
+                    <details className="mt-1 text-xs font-normal text-muted-foreground">
+                      <summary className="cursor-pointer">{invoice.lines.length} line{invoice.lines.length === 1 ? "" : "s"}</summary>
+                      <div className="mt-1 space-y-0.5">
+                        {invoice.lines.map((line) => <p key={line.id}>{line.description}: {Number(line.quantity)} x {money(line.unitPrice)} = {money(line.lineTotal)}</p>)}
+                      </div>
+                    </details>
+                  ) : null}
+                </TableCell>
                 <TableCell className="text-muted-foreground"><div>{money(invoice.amount)}</div>{invoice.taxCode ? <div className="text-xs">Tax {money(Number(invoice.vatAmount) + Number(invoice.nhilAmount) + Number(invoice.getfundAmount))} ({invoice.taxCode.code})</div> : null}</TableCell>
-                <TableCell className="text-muted-foreground">{money(invoice.amountPaid)}</TableCell>
+                <TableCell className="text-muted-foreground">{money(invoice.amountPaid)}{Number(invoice.amountCredited) > 0 ? <div className="text-xs">+{money(invoice.amountCredited)} credited</div> : null}</TableCell>
                 <TableCell className="text-muted-foreground">{invoice.dueDate.toLocaleDateString()}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[invoice.status]}>{invoice.status}</Badge>
@@ -152,7 +171,7 @@ export default async function AccountingInvoicesPage({
                               name="amount"
                               type="number"
                               step="0.01"
-                              defaultValue={(Number(invoice.amount) - Number(invoice.amountPaid)).toFixed(2)}
+                              defaultValue={(Number(invoice.amount) - Number(invoice.amountPaid) - Number(invoice.amountCredited)).toFixed(2)}
                               required
                             />
                           </div>

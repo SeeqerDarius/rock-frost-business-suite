@@ -19,7 +19,7 @@ afterAll(async () => { await cleanupTestOrg(org); });
 
 describe("Ghana VAT foundation (real Postgres)", () => {
   it("posts output VAT, NHIL, and GETFund separately for a customer invoice", async () => {
-    const invoice = await accounting.createInvoice(org.organizationId, { customerName: "Taxable Customer", amount: "100.00", issueDate: new Date("2026-08-05"), dueDate: new Date("2026-08-31"), taxCodeId: standardTaxCodeId }, org.userId);
+    const invoice = await accounting.createInvoice(org.organizationId, { customerName: "Taxable Customer", lines: [{ description: "Taxable customer test line", quantity: "1", unitPrice: "100.00" }], issueDate: new Date("2026-08-05"), dueDate: new Date("2026-08-31"), taxCodeId: standardTaxCodeId }, org.userId);
     expect(invoice.taxableAmount.toFixed(2)).toBe("100.00");
     expect(invoice.amount.toFixed(2)).toBe("120.00");
     expect(invoice.vatAmount.toFixed(2)).toBe("15.00");

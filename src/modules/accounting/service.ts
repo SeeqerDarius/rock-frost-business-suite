@@ -496,7 +496,7 @@ async function generateInvoiceNumber(organizationId: string) {
 
 export async function listInvoices(organizationId: string) {
   await sweepOverdueInvoices(organizationId);
-  return db.accountingInvoice.findMany({ where: { organizationId }, include: { taxCode: true, payments: { include: { account: true, createdBy: true }, orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }] } }, orderBy: { createdAt: "desc" } });
+  return db.accountingInvoice.findMany({ where: { organizationId }, include: { taxCode: true, lines: { orderBy: { sortOrder: "asc" } }, payments: { include: { account: true, createdBy: true }, orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }] } }, orderBy: { createdAt: "desc" } });
 }
 
 export async function getReceivablesSummary(organizationId: string) {
@@ -506,7 +506,7 @@ export async function getReceivablesSummary(organizationId: string) {
   for (const invoice of invoices) {
     const key = invoice.customerEmail?.trim().toLowerCase() || `name:${invoice.customerName.trim().toLowerCase()}`;
     const current = customers.get(key) ?? { key, customerName: invoice.customerName, customerEmail: invoice.customerEmail, invoiced: new Prisma.Decimal(0), paid: new Prisma.Decimal(0), outstanding: new Prisma.Decimal(0), overdue: new Prisma.Decimal(0), invoices: [] };
-    const outstanding = invoice.status === "VOID" ? new Prisma.Decimal(0) : invoice.amount.minus(invoice.amountPaid);
+    const outstanding = invoice.status === "VOID" ? new Prisma.Decimal(0) : invoice.amount.minus(invoice.amountPaid).minus(invoice.amountCredited);
     current.invoiced = current.invoiced.plus(invoice.amount);
     current.paid = current.paid.plus(invoice.amountPaid);
     current.outstanding = current.outstanding.plus(outstanding);
@@ -517,21 +517,84 @@ export async function getReceivablesSummary(organizationId: string) {
   return [...customers.values()];
 }
 
+export class InvalidLineItemsError extends Error {}
+
+export interface LineItemInput {
+  description: string;
+  quantity: string;
+  unitPrice: string;
+}
+
+interface ComputedLine {
+  description: string;
+  quantity: Prisma.Decimal;
+  unitPrice: Prisma.Decimal;
+  lineTotal: Prisma.Decimal;
+  sortOrder: number;
+}
+
+/**
+ * Shared by Invoices, Bills, and Credit Notes - every document type built
+ * from freeform line items funnels through this one computation so a
+ * quantity/unit-price validation rule (or the rounding rule itself) only
+ * ever needs to change in one place. Returns the per-line breakdown plus
+ * the taxable total (sum of every line's lineTotal), which the caller then
+ * feeds to calculateTax() exactly as a document's single header amount
+ * used to be fed to it directly.
+ */
+export function computeLineItems(lines: LineItemInput[]): { lines: ComputedLine[]; taxableAmount: Prisma.Decimal } {
+  if (lines.length === 0) throw new InvalidLineItemsError("At least one line item is required.");
+  const computed = lines.map((line, index) => {
+    const description = line.description.trim();
+    if (!description) throw new InvalidLineItemsError(`Line ${index + 1}: description is required.`);
+    const quantity = new Prisma.Decimal(line.quantity || "0");
+    if (!quantity.isFinite() || quantity.lessThanOrEqualTo(0)) throw new InvalidLineItemsError(`Line ${index + 1}: quantity must be greater than zero.`);
+    const unitPrice = new Prisma.Decimal(line.unitPrice || "0");
+    if (!unitPrice.isFinite() || unitPrice.isNegative()) throw new InvalidLineItemsError(`Line ${index + 1}: unit price cannot be negative.`);
+    const lineTotal = quantity.times(unitPrice).toDecimalPlaces(2);
+    return { description, quantity, unitPrice, lineTotal, sortOrder: index };
+  });
+  const taxableAmount = computed.reduce((sum, line) => sum.plus(line.lineTotal), new Prisma.Decimal(0));
+  return { lines: computed, taxableAmount };
+}
+
 interface InvoiceInput {
+  contactId?: string | null;
   customerName: string;
   customerEmail?: string | null;
   description?: string | null;
-  amount: string;
+  lines: LineItemInput[];
   issueDate: Date;
   dueDate: Date;
   taxCodeId?: string | null;
 }
 
 export async function createInvoice(organizationId: string, data: InvoiceInput, createdById?: string | null) {
-  const tax = await calculateTax(organizationId, data.amount, data.taxCodeId, data.issueDate);
+  const { lines, taxableAmount } = computeLineItems(data.lines);
+  const tax = await calculateTax(organizationId, taxableAmount, data.taxCodeId, data.issueDate);
   return createWithUniqueRetry(async () => {
     const invoiceNumber = await generateInvoiceNumber(organizationId);
-    return db.accountingInvoice.create({ data: { organizationId, invoiceNumber, createdById, customerName: data.customerName, customerEmail: data.customerEmail, description: data.description, issueDate: data.issueDate, dueDate: data.dueDate, taxCodeId: tax.taxCode?.id, taxableAmount: tax.taxableAmount, vatAmount: tax.vatAmount, nhilAmount: tax.nhilAmount, getfundAmount: tax.getfundAmount, amount: tax.grossAmount } });
+    return db.accountingInvoice.create({
+      data: {
+        organizationId,
+        invoiceNumber,
+        createdById,
+        contactId: data.contactId,
+        customerName: data.customerName,
+        customerEmail: data.customerEmail,
+        description: data.description,
+        issueDate: data.issueDate,
+        dueDate: data.dueDate,
+        taxCodeId: tax.taxCode?.id,
+        taxableAmount: tax.taxableAmount,
+        vatAmount: tax.vatAmount,
+        nhilAmount: tax.nhilAmount,
+        getfundAmount: tax.getfundAmount,
+        amount: tax.grossAmount,
+        lines: { create: lines.map((line) => ({ description: line.description, quantity: line.quantity, unitPrice: line.unitPrice, lineTotal: line.lineTotal, sortOrder: line.sortOrder })) },
+      },
+      include: { lines: true },
+    });
   });
 }
 
@@ -580,7 +643,7 @@ export async function markInvoiceSent(organizationId: string, id: string) {
   });
 }
 
-type LockedInvoiceRow = { id: string; amount: Prisma.Decimal | string; amountPaid: Prisma.Decimal | string; status: string };
+type LockedInvoiceRow = { id: string; amount: Prisma.Decimal | string; amountPaid: Prisma.Decimal | string; amountCredited: Prisma.Decimal | string; status: string };
 
 /**
  * amountPaid is updated with an atomic increment, not a JS-computed
@@ -613,12 +676,12 @@ export async function recordInvoicePayment(organizationId: string, id: string, i
 
   const invoice = await db.accountingInvoice.findFirst({ where: { id, organizationId } });
   if (!invoice) throw new NotFoundError("Invoice not found.");
-  if (paymentAmount.greaterThan(new Prisma.Decimal(invoice.amount).minus(invoice.amountPaid))) throw new InvalidPaymentError("Payment exceeds the current outstanding balance.");
+  if (paymentAmount.greaterThan(new Prisma.Decimal(invoice.amount).minus(invoice.amountPaid).minus(invoice.amountCredited))) throw new InvalidPaymentError("Payment exceeds the current outstanding balance.");
   const [ar, legacyCash] = await Promise.all([getDefaultAccount(organizationId, "1100"), legacy ? getDefaultAccount(organizationId, "1000") : Promise.resolve(null)]);
 
   return db.$transaction(async (tx) => {
     const [locked] = await tx.$queryRaw<LockedInvoiceRow[]>`
-      SELECT id, amount, "amountPaid", status
+      SELECT id, amount, "amountPaid", "amountCredited", status
       FROM "AccountingInvoice"
       WHERE id = ${id} AND "organizationId" = ${organizationId}
       FOR UPDATE
@@ -628,7 +691,7 @@ export async function recordInvoicePayment(organizationId: string, id: string, i
       throw new InvoiceStateError("Only sent or overdue invoices can receive a payment.");
     }
 
-    const remaining = new Prisma.Decimal(locked.amount).minus(locked.amountPaid);
+    const remaining = new Prisma.Decimal(locked.amount).minus(locked.amountPaid).minus(locked.amountCredited);
     if (paymentAmount.greaterThan(remaining)) {
       throw new InvalidPaymentError(`Payment of ${formatMoney(paymentAmount)} exceeds the remaining balance of ${formatMoney(remaining)}.`);
     }
@@ -661,7 +724,7 @@ export async function recordInvoicePayment(organizationId: string, id: string, i
       data: { amountPaid: { increment: paymentAmount } },
     });
 
-    const isFullyPaid = new Prisma.Decimal(updated.amountPaid).greaterThanOrEqualTo(updated.amount);
+    const isFullyPaid = new Prisma.Decimal(updated.amountPaid).plus(updated.amountCredited).greaterThanOrEqualTo(updated.amount);
     const finalInvoice = isFullyPaid ? await tx.accountingInvoice.update({ where: { id }, data: { status: "PAID", paidAt: input.paymentDate } }) : updated;
     return { invoice: finalInvoice, payment };
   }, { timeout: 20_000 });
@@ -727,6 +790,417 @@ export async function voidInvoice(organizationId: string, id: string) {
 
     return tx.accountingInvoice.findUniqueOrThrow({ where: { id } });
   });
+}
+
+// --- Contacts ---
+
+export function listContacts(organizationId: string) {
+  return db.accountingContact.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+}
+
+interface ContactInput {
+  type: "CUSTOMER" | "SUPPLIER" | "BOTH";
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  taxIdentificationNumber?: string | null;
+  fleetOwnerId?: string | null;
+  procurementVendorId?: string | null;
+  crmContactId?: string | null;
+  branchId?: string | null;
+}
+
+export function createContact(organizationId: string, data: ContactInput, createdById?: string | null) {
+  return db.accountingContact.create({ data: { organizationId, createdById, ...data } });
+}
+
+export async function updateContact(organizationId: string, id: string, data: ContactInput) {
+  const existing = await db.accountingContact.findFirst({ where: { id, organizationId }, select: { id: true } });
+  if (!existing) throw new NotFoundError("Contact not found.");
+  return db.accountingContact.update({ where: { id }, data });
+}
+
+// --- Bills (payables) ---
+
+export class BillStateError extends Error {}
+
+const DEFAULT_BILL_NUMBER_PREFIX = "BILL";
+
+async function generateBillNumber(organizationId: string) {
+  const count = await db.accountingBill.count({ where: { organizationId } });
+  return `${DEFAULT_BILL_NUMBER_PREFIX}-${String(count + 1).padStart(4, "0")}`;
+}
+
+export function listBills(organizationId: string) {
+  return db.accountingBill.findMany({
+    where: { organizationId },
+    include: { taxCode: true, expenseAccount: true, lines: { orderBy: { sortOrder: "asc" } }, payments: { include: { account: true, createdBy: true }, orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }] } },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+interface BillInput {
+  contactId?: string | null;
+  supplierName: string;
+  supplierEmail?: string | null;
+  description?: string | null;
+  expenseAccountId: string;
+  lines: LineItemInput[];
+  billDate: Date;
+  dueDate: Date;
+  taxCodeId?: string | null;
+  branchId?: string | null;
+}
+
+export async function createBill(organizationId: string, data: BillInput, createdById?: string | null) {
+  const { lines, taxableAmount } = computeLineItems(data.lines);
+  const expenseAccount = await db.accountingAccount.findFirst({ where: { id: data.expenseAccountId, organizationId, type: "EXPENSE" } });
+  if (!expenseAccount) throw new NotFoundError("Expense account not found.");
+  const tax = await calculateTax(organizationId, taxableAmount, data.taxCodeId, data.billDate);
+  return createWithUniqueRetry(async () => {
+    const billNumber = await generateBillNumber(organizationId);
+    return db.accountingBill.create({
+      data: {
+        organizationId,
+        billNumber,
+        createdById,
+        branchId: data.branchId,
+        contactId: data.contactId,
+        supplierName: data.supplierName,
+        supplierEmail: data.supplierEmail,
+        description: data.description,
+        expenseAccountId: expenseAccount.id,
+        billDate: data.billDate,
+        dueDate: data.dueDate,
+        taxCodeId: tax.taxCode?.id,
+        taxableAmount: tax.taxableAmount,
+        vatAmount: tax.vatAmount,
+        nhilAmount: tax.nhilAmount,
+        getfundAmount: tax.getfundAmount,
+        amount: tax.grossAmount,
+        lines: { create: lines.map((line) => ({ description: line.description, quantity: line.quantity, unitPrice: line.unitPrice, lineTotal: line.lineTotal, sortOrder: line.sortOrder })) },
+      },
+      include: { lines: true },
+    });
+  });
+}
+
+/**
+ * Claims the bill (DRAFT -> APPROVED) with a guarded updateMany before
+ * posting anything, inside the same transaction, mirroring
+ * markInvoiceSent's exact double-post-prevention shape - reversed, since a
+ * bill is a payable: Debit the chosen expense account (+ recoverable input
+ * tax), Credit Accounts Payable.
+ */
+export async function approveBill(organizationId: string, id: string, actorId?: string | null) {
+  const bill = await db.accountingBill.findFirst({ where: { id, organizationId } });
+  if (!bill) throw new NotFoundError("Bill not found.");
+
+  const accounts = await ensureDefaultAccounts(organizationId);
+  const findAccount = (code: string) => { const account = accounts.find((candidate) => candidate.code === code); if (!account) throw new Error(`Default account ${code} missing.`); return account; };
+  const [payable, inputVat, inputNhil, inputGetfund] = [findAccount("2000"), findAccount("1300"), findAccount("1310"), findAccount("1320")];
+
+  return db.$transaction(async (tx) => {
+    const claimed = await tx.accountingBill.updateMany({ where: { id, status: "DRAFT" }, data: { status: "APPROVED" } });
+    if (claimed.count === 0) throw new BillStateError("Only draft bills can be approved.");
+
+    await postJournalEntry(tx, organizationId, {
+      entryDate: bill.billDate,
+      description: `Bill ${bill.billNumber} from ${bill.supplierName}`,
+      sourceModule: "accounting",
+      sourceType: "ACCOUNTING_BILL",
+      sourceId: bill.id,
+      postingPurpose: "APPROVED",
+      branchId: bill.branchId,
+      createdById: actorId,
+      lines: [
+        { accountId: bill.expenseAccountId, debit: bill.taxableAmount.toString() },
+        ...(bill.vatAmount.isPositive() ? [{ accountId: inputVat.id, debit: bill.vatAmount.toString() }] : []),
+        ...(bill.nhilAmount.isPositive() ? [{ accountId: inputNhil.id, debit: bill.nhilAmount.toString() }] : []),
+        ...(bill.getfundAmount.isPositive() ? [{ accountId: inputGetfund.id, debit: bill.getfundAmount.toString() }] : []),
+        { accountId: payable.id, credit: bill.amount.toString() },
+      ],
+    });
+    await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: bill.taxCodeId, direction: "INPUT", transactionDate: bill.billDate, sourceType: "ACCOUNTING_BILL", sourceId: bill.id, documentNumber: bill.billNumber, counterparty: bill.supplierName, taxableAmount: bill.taxableAmount, vatAmount: bill.vatAmount, nhilAmount: bill.nhilAmount, getfundAmount: bill.getfundAmount } });
+    return tx.accountingBill.findUniqueOrThrow({ where: { id } });
+  });
+}
+
+type LockedBillRow = { id: string; amount: Prisma.Decimal | string; amountPaid: Prisma.Decimal | string; status: string };
+
+/**
+ * Payable-side counterpart to recordInvoicePayment - same SELECT ... FOR
+ * UPDATE row lock and atomic amountPaid increment, reversed posting
+ * direction (Debit Accounts Payable / Credit the chosen cash/bank/mobile-
+ * money account).
+ */
+export async function recordBillPayment(organizationId: string, id: string, input: { amount: string; paymentDate: Date; accountId: string; paymentMethod: string; reference?: string | null; notes?: string | null; createdById?: string | null }) {
+  const paymentAmount = new Prisma.Decimal(input.amount);
+  if (!paymentAmount.isFinite() || paymentAmount.lessThanOrEqualTo(0)) {
+    throw new InvalidPaymentError("Payment amount must be a positive number.");
+  }
+
+  const bill = await db.accountingBill.findFirst({ where: { id, organizationId } });
+  if (!bill) throw new NotFoundError("Bill not found.");
+  if (paymentAmount.greaterThan(new Prisma.Decimal(bill.amount).minus(bill.amountPaid))) throw new InvalidPaymentError("Payment exceeds the current outstanding balance.");
+  const payable = await getDefaultAccount(organizationId, "2000");
+
+  return db.$transaction(async (tx) => {
+    const [locked] = await tx.$queryRaw<LockedBillRow[]>`
+      SELECT id, amount, "amountPaid", status
+      FROM "AccountingBill"
+      WHERE id = ${id} AND "organizationId" = ${organizationId}
+      FOR UPDATE
+    `;
+    if (!locked) throw new NotFoundError("Bill not found.");
+    if (locked.status !== "APPROVED" && locked.status !== "PARTIALLY_PAID") {
+      throw new BillStateError("Only an approved bill can receive a payment.");
+    }
+
+    const remaining = new Prisma.Decimal(locked.amount).minus(locked.amountPaid);
+    if (paymentAmount.greaterThan(remaining)) {
+      throw new InvalidPaymentError(`Payment of ${formatMoney(paymentAmount)} exceeds the remaining balance of ${formatMoney(remaining)}.`);
+    }
+
+    const payingAccount = await tx.accountingAccount.findFirst({ where: { id: input.accountId, organizationId, active: true, liquidityType: { in: ["CASH", "BANK", "MOBILE_MONEY"] } } });
+    if (!payingAccount) throw new InvalidPaymentError("Select an active cash, bank, or mobile-money account owned by this organization.");
+    if (!input.paymentMethod.trim()) throw new InvalidPaymentError("Payment method is required.");
+
+    const payment = await tx.accountingPayablePayment.create({ data: { organizationId, billId: bill.id, accountId: payingAccount.id, paymentMethod: input.paymentMethod.trim(), amount: paymentAmount, paymentDate: input.paymentDate, reference: input.reference?.trim() || null, notes: input.notes?.trim() || null, createdById: input.createdById } });
+
+    await postJournalEntry(tx, organizationId, {
+      entryDate: input.paymentDate,
+      description: `Payment made for bill ${bill.billNumber}`,
+      sourceModule: "accounting",
+      sourceType: "ACCOUNTING_PAYABLE_PAYMENT",
+      sourceId: payment.id,
+      postingPurpose: "PAID",
+      branchId: bill.branchId,
+      createdById: input.createdById,
+      lines: [
+        { accountId: payable.id, debit: input.amount },
+        { accountId: payingAccount.id, credit: input.amount },
+      ],
+    });
+
+    const updated = await tx.accountingBill.update({ where: { id }, data: { amountPaid: { increment: paymentAmount } } });
+    const isFullyPaid = new Prisma.Decimal(updated.amountPaid).greaterThanOrEqualTo(updated.amount);
+    const finalBill = await tx.accountingBill.update({ where: { id }, data: isFullyPaid ? { status: "PAID", paidAt: input.paymentDate } : { status: "PARTIALLY_PAID" } });
+    return { bill: finalBill, payment };
+  }, { timeout: 20_000 });
+}
+
+/**
+ * Voiding an APPROVED bill posts a reversing journal entry (the exact
+ * opposite of approveBill's own posting) instead of only flipping the
+ * status, mirroring voidInvoice's rationale exactly. A DRAFT bill never had
+ * anything posted, so voiding it needs no reversal.
+ */
+export async function voidBill(organizationId: string, id: string) {
+  const bill = await db.accountingBill.findFirst({ where: { id, organizationId } });
+  if (!bill) throw new NotFoundError("Bill not found.");
+  if (Number(bill.amountPaid) > 0) throw new BillStateError("Cannot void a bill that has already received a payment.");
+
+  const needsReversal = bill.status === "APPROVED";
+  const accounts = needsReversal ? await ensureDefaultAccounts(organizationId) : null;
+
+  return db.$transaction(async (tx) => {
+    const claimed = await tx.accountingBill.updateMany({ where: { id, status: { in: ["DRAFT", "APPROVED"] } }, data: { status: "VOID" } });
+    if (claimed.count === 0) throw new BillStateError("This bill can no longer be voided.");
+
+    if (accounts) {
+      const findAccount = (code: string) => { const account = accounts.find((candidate) => candidate.code === code); if (!account) throw new Error(`Default account ${code} missing.`); return account; };
+      const [payable, inputVat, inputNhil, inputGetfund] = [findAccount("2000"), findAccount("1300"), findAccount("1310"), findAccount("1320")];
+      await postJournalEntry(tx, organizationId, {
+        entryDate: new Date(),
+        description: `Void of bill ${bill.billNumber} (reversal)`,
+        sourceModule: "accounting",
+        sourceType: "ACCOUNTING_BILL_VOID",
+        sourceId: bill.id,
+        branchId: bill.branchId,
+        lines: [
+          { accountId: payable.id, debit: bill.amount.toString() },
+          { accountId: bill.expenseAccountId, credit: bill.taxableAmount.toString() },
+          ...(bill.vatAmount.isPositive() ? [{ accountId: inputVat.id, credit: bill.vatAmount.toString() }] : []),
+          ...(bill.nhilAmount.isPositive() ? [{ accountId: inputNhil.id, credit: bill.nhilAmount.toString() }] : []),
+          ...(bill.getfundAmount.isPositive() ? [{ accountId: inputGetfund.id, credit: bill.getfundAmount.toString() }] : []),
+        ],
+      });
+      await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: bill.taxCodeId, direction: "ADJUSTMENT", transactionDate: new Date(), sourceType: "ACCOUNTING_BILL_VOID", sourceId: bill.id, documentNumber: bill.billNumber, counterparty: bill.supplierName, taxableAmount: bill.taxableAmount.negated(), vatAmount: bill.vatAmount.negated(), nhilAmount: bill.nhilAmount.negated(), getfundAmount: bill.getfundAmount.negated(), notes: "Bill voided" } });
+    }
+
+    return tx.accountingBill.findUniqueOrThrow({ where: { id } });
+  });
+}
+
+// --- Credit notes ---
+
+export class CreditNoteStateError extends Error {}
+
+const DEFAULT_CREDIT_NOTE_NUMBER_PREFIX = "CN";
+
+async function generateCreditNoteNumber(organizationId: string) {
+  const count = await db.accountingCreditNote.count({ where: { organizationId } });
+  return `${DEFAULT_CREDIT_NOTE_NUMBER_PREFIX}-${String(count + 1).padStart(4, "0")}`;
+}
+
+export function listCreditNotes(organizationId: string) {
+  return db.accountingCreditNote.findMany({
+    where: { organizationId },
+    include: { taxCode: true, lines: { orderBy: { sortOrder: "asc" } }, invoice: { select: { id: true, invoiceNumber: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+interface CreditNoteInput {
+  contactId?: string | null;
+  customerName: string;
+  customerEmail?: string | null;
+  description?: string | null;
+  lines: LineItemInput[];
+  issueDate: Date;
+  taxCodeId?: string | null;
+  branchId?: string | null;
+}
+
+export async function createCreditNote(organizationId: string, data: CreditNoteInput, createdById?: string | null) {
+  const { lines, taxableAmount } = computeLineItems(data.lines);
+  const tax = await calculateTax(organizationId, taxableAmount, data.taxCodeId, data.issueDate);
+  return createWithUniqueRetry(async () => {
+    const creditNoteNumber = await generateCreditNoteNumber(organizationId);
+    return db.accountingCreditNote.create({
+      data: {
+        organizationId,
+        creditNoteNumber,
+        createdById,
+        branchId: data.branchId,
+        contactId: data.contactId,
+        customerName: data.customerName,
+        customerEmail: data.customerEmail,
+        description: data.description,
+        issueDate: data.issueDate,
+        taxCodeId: tax.taxCode?.id,
+        taxableAmount: tax.taxableAmount,
+        vatAmount: tax.vatAmount,
+        nhilAmount: tax.nhilAmount,
+        getfundAmount: tax.getfundAmount,
+        amount: tax.grossAmount,
+        lines: { create: lines.map((line) => ({ description: line.description, quantity: line.quantity, unitPrice: line.unitPrice, lineTotal: line.lineTotal, sortOrder: line.sortOrder })) },
+      },
+      include: { lines: true },
+    });
+  });
+}
+
+/**
+ * Reduces one specific invoice's outstanding balance: Debit Revenue (+
+ * reverse the tax payable lines) / Credit Accounts Receivable - exactly
+ * voidInvoice's reversal shape, but for a partial (credit-note-sized)
+ * amount rather than the whole invoice. Also increments the invoice's own
+ * amountCredited so recordInvoicePayment/getReceivablesSummary see the
+ * reduced balance immediately without a join back to credit notes.
+ */
+export async function applyCreditNoteToInvoice(organizationId: string, creditNoteId: string, invoiceId: string, actorId?: string | null) {
+  const [creditNote, invoice] = await Promise.all([
+    db.accountingCreditNote.findFirst({ where: { id: creditNoteId, organizationId } }),
+    db.accountingInvoice.findFirst({ where: { id: invoiceId, organizationId } }),
+  ]);
+  if (!creditNote) throw new NotFoundError("Credit note not found.");
+  if (!invoice) throw new NotFoundError("Invoice not found.");
+  if (creditNote.status !== "DRAFT") throw new CreditNoteStateError("Only a draft credit note can be applied.");
+  if (invoice.status !== "SENT" && invoice.status !== "OVERDUE") throw new CreditNoteStateError("Credit notes can only be applied to a sent or overdue invoice.");
+  const outstanding = new Prisma.Decimal(invoice.amount).minus(invoice.amountPaid).minus(invoice.amountCredited);
+  if (new Prisma.Decimal(creditNote.amount).greaterThan(outstanding)) {
+    throw new CreditNoteStateError(`Credit note of ${formatMoney(creditNote.amount)} exceeds the invoice's outstanding balance of ${formatMoney(outstanding)}.`);
+  }
+
+  const accounts = await ensureDefaultAccounts(organizationId);
+  const findAccount = (code: string) => { const account = accounts.find((candidate) => candidate.code === code); if (!account) throw new Error(`Default account ${code} missing.`); return account; };
+  const [ar, revenue, vatPayable, nhilPayable, getfundPayable] = [findAccount("1100"), findAccount("4000"), findAccount("2100"), findAccount("2110"), findAccount("2120")];
+
+  return db.$transaction(async (tx) => {
+    const claimed = await tx.accountingCreditNote.updateMany({ where: { id: creditNoteId, status: "DRAFT" }, data: { status: "APPLIED", invoiceId, settledAt: new Date() } });
+    if (claimed.count === 0) throw new CreditNoteStateError("This credit note can no longer be applied.");
+
+    await postJournalEntry(tx, organizationId, {
+      entryDate: new Date(),
+      description: `Credit note ${creditNote.creditNoteNumber} applied to invoice ${invoice.invoiceNumber}`,
+      sourceModule: "accounting",
+      sourceType: "ACCOUNTING_CREDIT_NOTE",
+      sourceId: creditNote.id,
+      postingPurpose: "APPLIED",
+      branchId: invoice.branchId,
+      createdById: actorId,
+      lines: [
+        { accountId: revenue.id, debit: creditNote.taxableAmount.toString() },
+        ...(creditNote.vatAmount.isPositive() ? [{ accountId: vatPayable.id, debit: creditNote.vatAmount.toString() }] : []),
+        ...(creditNote.nhilAmount.isPositive() ? [{ accountId: nhilPayable.id, debit: creditNote.nhilAmount.toString() }] : []),
+        ...(creditNote.getfundAmount.isPositive() ? [{ accountId: getfundPayable.id, debit: creditNote.getfundAmount.toString() }] : []),
+        { accountId: ar.id, credit: creditNote.amount.toString() },
+      ],
+    });
+
+    const updatedInvoice = await tx.accountingInvoice.update({ where: { id: invoiceId }, data: { amountCredited: { increment: creditNote.amount } } });
+    const isFullyPaid = new Prisma.Decimal(updatedInvoice.amountPaid).plus(updatedInvoice.amountCredited).greaterThanOrEqualTo(updatedInvoice.amount);
+    if (isFullyPaid) await tx.accountingInvoice.update({ where: { id: invoiceId }, data: { status: "PAID", paidAt: new Date() } });
+
+    return tx.accountingCreditNote.findUniqueOrThrow({ where: { id: creditNoteId } });
+  });
+}
+
+/**
+ * Settles a credit note with real cash leaving the business instead of
+ * reducing a specific invoice's balance: Debit Revenue (+ reverse the tax
+ * payable lines) / Credit the chosen cash/bank/mobile-money account.
+ */
+export async function refundCreditNote(organizationId: string, creditNoteId: string, accountId: string, actorId?: string | null) {
+  const creditNote = await db.accountingCreditNote.findFirst({ where: { id: creditNoteId, organizationId } });
+  if (!creditNote) throw new NotFoundError("Credit note not found.");
+  if (creditNote.status !== "DRAFT") throw new CreditNoteStateError("Only a draft credit note can be refunded.");
+
+  const [accounts, refundAccount] = await Promise.all([
+    ensureDefaultAccounts(organizationId),
+    db.accountingAccount.findFirst({ where: { id: accountId, organizationId, active: true, liquidityType: { in: ["CASH", "BANK", "MOBILE_MONEY"] } } }),
+  ]);
+  if (!refundAccount) throw new InvalidPaymentError("Select an active cash, bank, or mobile-money account owned by this organization.");
+  const findAccount = (code: string) => { const account = accounts.find((candidate) => candidate.code === code); if (!account) throw new Error(`Default account ${code} missing.`); return account; };
+  const [revenue, vatPayable, nhilPayable, getfundPayable] = [findAccount("4000"), findAccount("2100"), findAccount("2110"), findAccount("2120")];
+
+  return db.$transaction(async (tx) => {
+    const claimed = await tx.accountingCreditNote.updateMany({ where: { id: creditNoteId, status: "DRAFT" }, data: { status: "REFUNDED", settledAt: new Date() } });
+    if (claimed.count === 0) throw new CreditNoteStateError("This credit note can no longer be refunded.");
+
+    await postJournalEntry(tx, organizationId, {
+      entryDate: new Date(),
+      description: `Credit note ${creditNote.creditNoteNumber} refunded to ${creditNote.customerName}`,
+      sourceModule: "accounting",
+      sourceType: "ACCOUNTING_CREDIT_NOTE",
+      sourceId: creditNote.id,
+      postingPurpose: "REFUNDED",
+      branchId: creditNote.branchId,
+      createdById: actorId,
+      lines: [
+        { accountId: revenue.id, debit: creditNote.taxableAmount.toString() },
+        ...(creditNote.vatAmount.isPositive() ? [{ accountId: vatPayable.id, debit: creditNote.vatAmount.toString() }] : []),
+        ...(creditNote.nhilAmount.isPositive() ? [{ accountId: nhilPayable.id, debit: creditNote.nhilAmount.toString() }] : []),
+        ...(creditNote.getfundAmount.isPositive() ? [{ accountId: getfundPayable.id, debit: creditNote.getfundAmount.toString() }] : []),
+        { accountId: refundAccount.id, credit: creditNote.amount.toString() },
+      ],
+    });
+
+    return tx.accountingCreditNote.findUniqueOrThrow({ where: { id: creditNoteId } });
+  });
+}
+
+export async function voidCreditNote(organizationId: string, id: string) {
+  const updated = await db.accountingCreditNote.updateMany({ where: { id, organizationId, status: "DRAFT" }, data: { status: "VOID" } });
+  if (updated.count === 0) {
+    const exists = await db.accountingCreditNote.findFirst({ where: { id, organizationId } });
+    if (!exists) throw new NotFoundError("Credit note not found.");
+    throw new CreditNoteStateError("Only a draft credit note can be voided.");
+  }
+  return db.accountingCreditNote.findUniqueOrThrow({ where: { id } });
 }
 
 // --- Expenses ---

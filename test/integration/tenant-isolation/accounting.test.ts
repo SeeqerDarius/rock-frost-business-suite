@@ -36,7 +36,7 @@ beforeAll(async () => {
 
   const orgBInvoice = await accounting.createInvoice(orgB.organizationId, {
     customerName: "Org B Customer",
-    amount: "100.00",
+    lines: [{ description: "Org B test line", quantity: "1", unitPrice: "100.00" }],
     issueDate: new Date(),
     dueDate: new Date(),
   });
@@ -91,7 +91,7 @@ describe("Accounting tenant isolation (real Postgres)", () => {
   });
 
   it("recordInvoicePayment rejects another organization's receiving account", async () => {
-    const invoice = await accounting.createInvoice(orgA.organizationId, { customerName: "Org A Customer", amount: "25.00", issueDate: new Date(), dueDate: new Date() });
+    const invoice = await accounting.createInvoice(orgA.organizationId, { customerName: "Org A Customer", lines: [{ description: "Org A test line", quantity: "1", unitPrice: "25.00" }], issueDate: new Date(), dueDate: new Date() });
     await accounting.markInvoiceSent(orgA.organizationId, invoice.id);
     await expect(accounting.recordInvoicePayment(orgA.organizationId, invoice.id, { amount: "25.00", paymentDate: new Date(), accountId: orgBAccountId, paymentMethod: "CASH", reference: "CROSS-TENANT" })).rejects.toThrow(accounting.InvalidPaymentError);
     expect(await testDb.accountingReceivablePayment.count({ where: { invoiceId: invoice.id } })).toBe(0);

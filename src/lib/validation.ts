@@ -88,6 +88,27 @@ export const dateInput = z
   .transform((value) => new Date(`${value}T00:00:00`))
   .refine((date) => !Number.isNaN(date.getTime()), "Must be a valid date.");
 
+/**
+ * Parses `field[{index}][{subfield}]`-style indexed form fields (a dynamic
+ * add/remove row editor, e.g. LineItemsEditor's `lines[0][description]`,
+ * `lines[0][quantity]`) back into an ordered array of plain string-keyed
+ * objects, one per index actually present in the submitted FormData.
+ * Missing/blank subfields come back as empty strings rather than throwing -
+ * validate the resulting shape with a dedicated schema/computation function
+ * afterward, the same way any other field is validated post-parse.
+ */
+export function parseIndexedFormRows(formData: FormData, fieldName: string, subfields: readonly string[]): Record<string, string>[] {
+  const indices = new Set<number>();
+  const pattern = new RegExp(`^${fieldName}\\[(\\d+)\\]\\[`);
+  for (const key of formData.keys()) {
+    const match = pattern.exec(key);
+    if (match) indices.add(Number(match[1]));
+  }
+  return [...indices]
+    .sort((a, b) => a - b)
+    .map((index) => Object.fromEntries(subfields.map((subfield) => [subfield, String(formData.get(`${fieldName}[${index}][${subfield}]`) ?? "").trim()])));
+}
+
 /** Escapes text before it's interpolated into an HTML email template — prevents a submitted field from injecting markup/links into outbound mail. */
 export function escapeHtml(value: string): string {
   return value

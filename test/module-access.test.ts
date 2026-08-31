@@ -169,7 +169,8 @@ describe("module authorization source coverage", () => {
     // 121, up from 120: the Fleet Mechanics roster page, requireModuleAccess("fleet").
     // 122, up from 121: the Fleet Mechanic self-service portal page, requireModuleAccess("fleet").
     // 123, up from 122: the Fleet Vehicle Expenses page, requireModuleAccess("fleet").
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(123);
+    // 126, up from 123: Accounting Contacts, Bills, and Credit Notes each add one guarded page, requireModuleAccess("accounting").
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(126);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
     // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
     // all Hostel Server Actions, same shape as School's) joins the sweep
@@ -187,7 +188,8 @@ describe("module authorization source coverage", () => {
     // 62, up from 61: the Fleet Mechanics roster's actions.ts, requireModuleAccess("fleet").
     // 63, up from 62: the Fleet Mechanic self-service portal's actions.ts, requireModuleAccess("fleet").
     // 64, up from 63: the Fleet Vehicle Expenses page's actions.ts, requireModuleAccess("fleet").
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(64);
+    // 67, up from 64: Accounting Contacts, Bills, and Credit Notes each add one guarded actions.ts, requireModuleAccess("accounting").
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(67);
 
     for (const { moduleKey, filePath } of guardedFiles) {
       const source = readFileSync(filePath, "utf8");

@@ -418,6 +418,10 @@ model User {
   accountingInvoicesCreated       AccountingInvoice[]
   accountingExpensesCreated       AccountingExpense[]
   accountingJournalEntriesCreated AccountingJournalEntry[]
+  accountingContactsCreated       AccountingContact[]
+  accountingBillsCreated          AccountingBill[]
+  accountingPayablePayments       AccountingPayablePayment[]
+  accountingCreditNotesCreated    AccountingCreditNote[]
   accountingPettyCashFundsCreated AccountingPettyCashFund[]
   accountingPettyCashTxnsCreated  AccountingPettyCashTransaction[]
   hrEmployeeProfiles              HrEmployee[]
@@ -611,6 +615,10 @@ model Organization {
   accountingInvoices              AccountingInvoice[]
   accountingExpenses              AccountingExpense[]
   accountingJournalEntries        AccountingJournalEntry[]
+  accountingContacts              AccountingContact[]
+  accountingBills                 AccountingBill[]
+  accountingPayablePayments       AccountingPayablePayment[]
+  accountingCreditNotes           AccountingCreditNote[]
   accountingReconciliations       AccountingReconciliation[]
   accountingPeriods               AccountingPeriod[]
   accountingPettyCashFunds        AccountingPettyCashFund[]
@@ -866,6 +874,9 @@ model Branch {
   accountingInvoices       AccountingInvoice[]
   accountingExpenses       AccountingExpense[]
   accountingJournalEntries AccountingJournalEntry[]
+  accountingContacts       AccountingContact[]
+  accountingBills          AccountingBill[]
+  accountingCreditNotes    AccountingCreditNote[]
   accountingPlanLines      AccountingPlanLine[]
   hrEmployees              HrEmployee[]
   posRegisters             PosRegister[]
@@ -2522,6 +2533,34 @@ enum AccountingInvoiceStatus {
   VOID
 }
 
+enum AccountingContactType {
+  CUSTOMER
+  SUPPLIER
+  BOTH
+}
+
+enum AccountingBillStatus {
+  DRAFT
+  APPROVED
+  PARTIALLY_PAID
+  PAID
+  VOID
+}
+
+/// APPLIED and REFUNDED are alternative terminal actions from DRAFT, not
+/// sequential stages - a credit note is settled exactly one way. APPLIED
+/// reduces a specific invoice's outstanding balance (Debit Revenue / Credit
+/// Accounts Receivable); REFUNDED pays the customer real cash (Debit
+/// Revenue / Credit the chosen cash/bank account). See
+/// applyCreditNoteToInvoice / refundCreditNote in
+/// src/modules/accounting/service.ts.
+enum AccountingCreditNoteStatus {
+  DRAFT
+  APPLIED
+  REFUNDED
+  VOID
+}
+
 enum AccountingExpenseStatus {
   PENDING
   APPROVED
@@ -2604,6 +2643,8 @@ model AccountingAccount {
   pettyCashFund      AccountingPettyCashFund?
   supplierPayments   ProcurementSupplierPayment[]
   receivablePayments AccountingReceivablePayment[]
+  payablePayments    AccountingPayablePayment[]
+  bills              AccountingBill[]
   planLines          AccountingPlanLine[]
 
   @@unique([organizationId, code])
@@ -2715,6 +2756,7 @@ model AccountingInvoice {
   organizationId String
   branchId       String?
   invoiceNumber  String
+  contactId      String?
   customerName   String
   customerEmail  String?
   description    String?                 @db.Text
@@ -2725,6 +2767,11 @@ model AccountingInvoice {
   getfundAmount  Decimal                 @default(0) @db.Decimal(12, 2)
   taxCodeId      String?
   amountPaid     Decimal                 @default(0) @db.Decimal(12, 2)
+  /// Reduces outstanding balance the same way amountPaid does, but via an
+  /// applied AccountingCreditNote rather than cash - kept as its own column
+  /// (not folded into amountPaid) so cash-received figures never include a
+  /// non-cash credit. Outstanding balance = amount - amountPaid - amountCredited.
+  amountCredited Decimal                 @default(0) @db.Decimal(12, 2)
   issueDate      DateTime
   dueDate        DateTime
   status         AccountingInvoiceStatus @default(DRAFT)
@@ -2735,14 +2782,211 @@ model AccountingInvoice {
 
   organization Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch       Branch?                       @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  contact      AccountingContact?            @relation(fields: [contactId], references: [id], onDelete: SetNull)
   createdBy    User?                         @relation(fields: [createdById], references: [id], onDelete: SetNull)
   payments     AccountingReceivablePayment[]
   taxCode      AccountingTaxCode?            @relation(fields: [taxCodeId], references: [id], onDelete: Restrict)
+  lines        AccountingInvoiceLine[]
+  creditNotes  AccountingCreditNote[]
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, status])
   @@index([branchId])
   @@index([taxCodeId])
+  @@index([contactId])
+}
+
+/// A single line item on an invoice - lineTotal is quantity * unitPrice,
+/// cached at write time so it never has to be recomputed for display. The
+/// invoice header's own amount/taxableAmount/tax fields remain the
+/// authoritative aggregate total (recomputed from the sum of lines whenever
+/// they change) so every existing reader that only ever looked at the
+/// header keeps working unchanged - see createInvoice/updateInvoiceLines in
+/// src/modules/accounting/service.ts.
+model AccountingInvoiceLine {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  description String
+  quantity    Decimal @default(1) @db.Decimal(12, 2)
+  unitPrice   Decimal @db.Decimal(12, 2)
+  lineTotal   Decimal @db.Decimal(12, 2)
+  sortOrder   Int     @default(0)
+
+  invoice AccountingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+/// A generic customer/supplier party, shared across every Accounting
+/// document (invoices, bills, credit notes) instead of each document
+/// re-typing a freeform name/email pair. fleetOwnerId/procurementVendorId/
+/// crmContactId are deliberately plain, unenforced string references (not
+/// Prisma relations) to that other module's own party record - a
+/// convenience cross-reference for a manager who wants to note "this is
+/// the same party as X", not a forced migration of Fleet's or
+/// Procurement's own party models, which keep operating exactly as before.
+model AccountingContact {
+  id                      String                @id @default(cuid())
+  organizationId          String
+  branchId                String?
+  type                    AccountingContactType @default(CUSTOMER)
+  name                    String
+  email                   String?
+  phone                   String?
+  address                 String?               @db.Text
+  taxIdentificationNumber String?
+  fleetOwnerId            String?
+  procurementVendorId     String?
+  crmContactId            String?
+  createdById             String?
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?                @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  createdBy    User?                  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  invoices     AccountingInvoice[]
+  bills        AccountingBill[]
+  creditNotes  AccountingCreditNote[]
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([email])
+}
+
+model AccountingBill {
+  id               String               @id @default(cuid())
+  organizationId   String
+  branchId         String?
+  billNumber       String
+  contactId        String?
+  supplierName     String
+  supplierEmail    String?
+  description      String?              @db.Text
+  expenseAccountId String
+  amount           Decimal              @db.Decimal(12, 2)
+  taxableAmount    Decimal              @default(0) @db.Decimal(12, 2)
+  vatAmount        Decimal              @default(0) @db.Decimal(12, 2)
+  nhilAmount       Decimal              @default(0) @db.Decimal(12, 2)
+  getfundAmount    Decimal              @default(0) @db.Decimal(12, 2)
+  taxCodeId        String?
+  amountPaid       Decimal              @default(0) @db.Decimal(12, 2)
+  billDate         DateTime
+  dueDate          DateTime
+  status           AccountingBillStatus @default(DRAFT)
+  paidAt           DateTime?
+  createdById      String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  organization   Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch         Branch?                    @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  contact        AccountingContact?         @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  createdBy      User?                      @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  taxCode        AccountingTaxCode?         @relation(fields: [taxCodeId], references: [id], onDelete: Restrict)
+  expenseAccount AccountingAccount          @relation(fields: [expenseAccountId], references: [id], onDelete: Restrict)
+  lines          AccountingBillLine[]
+  payments       AccountingPayablePayment[]
+
+  @@unique([organizationId, billNumber])
+  @@index([organizationId, status])
+  @@index([branchId])
+  @@index([taxCodeId])
+  @@index([contactId])
+  @@index([expenseAccountId])
+}
+
+model AccountingBillLine {
+  id          String  @id @default(cuid())
+  billId      String
+  description String
+  quantity    Decimal @default(1) @db.Decimal(12, 2)
+  unitPrice   Decimal @db.Decimal(12, 2)
+  lineTotal   Decimal @db.Decimal(12, 2)
+  sortOrder   Int     @default(0)
+
+  bill AccountingBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@index([billId])
+}
+
+/// Payable-side counterpart to AccountingReceivablePayment - identical
+/// shape, opposite direction (reduces a Bill's outstanding balance instead
+/// of an Invoice's).
+model AccountingPayablePayment {
+  id             String   @id @default(cuid())
+  organizationId String
+  billId         String
+  accountId      String
+  paymentMethod  String
+  amount         Decimal  @db.Decimal(12, 2)
+  paymentDate    DateTime
+  reference      String?
+  notes          String?  @db.Text
+  createdById    String?
+  createdAt      DateTime @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bill         AccountingBill    @relation(fields: [billId], references: [id], onDelete: Cascade)
+  account      AccountingAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdBy    User?             @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, paymentDate])
+  @@index([billId, paymentDate])
+  @@index([accountId])
+}
+
+model AccountingCreditNote {
+  id               String                     @id @default(cuid())
+  organizationId   String
+  branchId         String?
+  creditNoteNumber String
+  contactId        String?
+  customerName     String
+  customerEmail    String?
+  description      String?                    @db.Text
+  amount           Decimal                    @db.Decimal(12, 2)
+  taxableAmount    Decimal                    @default(0) @db.Decimal(12, 2)
+  vatAmount        Decimal                    @default(0) @db.Decimal(12, 2)
+  nhilAmount       Decimal                    @default(0) @db.Decimal(12, 2)
+  getfundAmount    Decimal                    @default(0) @db.Decimal(12, 2)
+  taxCodeId        String?
+  invoiceId        String?
+  issueDate        DateTime
+  status           AccountingCreditNoteStatus @default(DRAFT)
+  settledAt        DateTime?
+  createdById      String?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?                    @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  contact      AccountingContact?         @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  invoice      AccountingInvoice?         @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  createdBy    User?                      @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  taxCode      AccountingTaxCode?         @relation(fields: [taxCodeId], references: [id], onDelete: Restrict)
+  lines        AccountingCreditNoteLine[]
+
+  @@unique([organizationId, creditNoteNumber])
+  @@index([organizationId, status])
+  @@index([branchId])
+  @@index([contactId])
+  @@index([invoiceId])
+  @@index([taxCodeId])
+}
+
+model AccountingCreditNoteLine {
+  id           String  @id @default(cuid())
+  creditNoteId String
+  description  String
+  quantity     Decimal @default(1) @db.Decimal(12, 2)
+  unitPrice    Decimal @db.Decimal(12, 2)
+  lineTotal    Decimal @db.Decimal(12, 2)
+  sortOrder    Int     @default(0)
+
+  creditNote AccountingCreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+
+  @@index([creditNoteId])
 }
 
 model AccountingTaxCode {
@@ -2767,6 +3011,8 @@ model AccountingTaxCode {
   transactions     AccountingTaxTransaction[]
   supplierInvoices ProcurementSupplierInvoice[]
   inventoryItems   InventoryItem[]
+  bills            AccountingBill[]
+  creditNotes      AccountingCreditNote[]
 
   @@unique([organizationId, code, effectiveFrom])
   @@index([organizationId, active, effectiveFrom])

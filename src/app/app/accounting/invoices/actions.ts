@@ -13,10 +13,12 @@ import {
   voidInvoice,
   InvoiceStateError,
   InvalidPaymentError,
+  InvalidLineItemsError,
   NotFoundError,
   AccountingPeriodLockedError,
+  type LineItemInput,
 } from "@/modules/accounting/service";
-import { moneyAmount, shortText, longText, email, cuid, dateInput, parseWithSchema } from "@/lib/validation";
+import { moneyAmount, shortText, longText, email, cuid, dateInput, parseIndexedFormRows, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
 
 function clean(value: FormDataEntryValue | null) {
@@ -25,10 +27,10 @@ function clean(value: FormDataEntryValue | null) {
 }
 
 const createInvoiceSchema = z.object({
+  contactId: cuid.nullable().optional(),
   customerName: shortText,
   customerEmail: email.nullable().optional(),
   description: longText.nullable().optional(),
-  amount: moneyAmount,
   issueDate: dateInput,
   dueDate: dateInput,
   taxCodeId: cuid.nullable().optional(),
@@ -41,10 +43,10 @@ export async function createNewInvoice(formData: FormData): Promise<void> {
   }
 
   const parsed = parseWithSchema(createInvoiceSchema, {
+    contactId: clean(formData.get("contactId")),
     customerName: clean(formData.get("customerName")),
     customerEmail: clean(formData.get("customerEmail")),
     description: clean(formData.get("description")),
-    amount: clean(formData.get("amount")),
     issueDate: clean(formData.get("issueDate")),
     dueDate: clean(formData.get("dueDate")),
     taxCodeId: clean(formData.get("taxCodeId")),
@@ -52,22 +54,29 @@ export async function createNewInvoice(formData: FormData): Promise<void> {
   if (!parsed.success) {
     redirect("/app/accounting/invoices?error=missing-fields");
   }
-  const { customerName, customerEmail, description, amount, issueDate, dueDate, taxCodeId } = parsed.data;
+  const { contactId, customerName, customerEmail, description, issueDate, dueDate, taxCodeId } = parsed.data;
+  const lines = parseIndexedFormRows(formData, "lines", ["description", "quantity", "unitPrice"]) as unknown as LineItemInput[];
 
   const session = await getServerAuthSession();
-  await createInvoice(
-    tenant.organizationId,
-    {
-      customerName,
-      customerEmail: customerEmail ?? null,
-      description: description ?? null,
-      amount,
-      issueDate,
-      dueDate,
-      taxCodeId: taxCodeId ?? null,
-    },
-    session?.user?.id ?? null,
-  );
+  try {
+    await createInvoice(
+      tenant.organizationId,
+      {
+        contactId: contactId ?? null,
+        customerName,
+        customerEmail: customerEmail ?? null,
+        description: description ?? null,
+        lines,
+        issueDate,
+        dueDate,
+        taxCodeId: taxCodeId ?? null,
+      },
+      session?.user?.id ?? null,
+    );
+  } catch (error) {
+    if (error instanceof InvalidLineItemsError) redirect("/app/accounting/invoices?error=invalid-lines");
+    throw error;
+  }
 
   revalidatePath("/app/accounting/invoices");
   redirect("/app/accounting/invoices?saved=1");

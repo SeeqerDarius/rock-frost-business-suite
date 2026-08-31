@@ -175,6 +175,7 @@ describe("Decimal-precision hygiene — exact arithmetic replacing JS Number/eps
       status: "SENT",
       amount: "100.10",
       amountPaid: "0.00",
+      amountCredited: "0.00",
       invoiceNumber: "INV-0001",
     });
     mockDb.accountingAccount.findMany.mockResolvedValue([
@@ -186,12 +187,12 @@ describe("Decimal-precision hygiene — exact arithmetic replacing JS Number/eps
       { id: "acct-exp", code: "5000" },
     ]);
     mockDb.accountingAccount.count.mockResolvedValue(2);
-    mockDb.accountingInvoice.update.mockResolvedValue({ id: "inv-1", amountPaid: "100.10", amount: "100.10" });
+    mockDb.accountingInvoice.update.mockResolvedValue({ id: "inv-1", amountPaid: "100.10", amount: "100.10", amountCredited: "0.00" });
     // The remaining-balance guard now runs against a row locked with
     // SELECT ... FOR UPDATE inside the transaction (see
     // docs/HARDENING_PLAN.md's Pass 4 section) rather than the
     // pre-transaction findFirst read above.
-    mockDb.$queryRaw.mockResolvedValue([{ id: "inv-1", status: "SENT", amount: "100.10", amountPaid: "0.00" }]);
+    mockDb.$queryRaw.mockResolvedValue([{ id: "inv-1", status: "SENT", amount: "100.10", amountPaid: "0.00", amountCredited: "0.00" }]);
 
     await expect(accounting.recordInvoicePayment(ORG, "inv-1", "100.10", new Date())).resolves.toBeDefined();
   });

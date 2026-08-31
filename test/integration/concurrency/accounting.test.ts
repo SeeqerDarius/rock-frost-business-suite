@@ -38,7 +38,7 @@ afterAll(async () => {
 async function createSentInvoice(organizationId: string, amount: string) {
   const invoice = await accounting.createInvoice(organizationId, {
     customerName: "Concurrency Test Customer",
-    amount,
+    lines: [{ description: "Concurrency test line", quantity: "1", unitPrice: amount }],
     issueDate: new Date("2026-01-01"),
     dueDate: new Date("2026-02-01"),
   });
@@ -96,7 +96,7 @@ describe("Accounting concurrency (real Postgres)", () => {
   it("two concurrent markInvoiceSent calls on the same DRAFT invoice: exactly one succeeds, exactly one journal entry posted", async () => {
     const invoice = await accounting.createInvoice(orgSend.organizationId, {
       customerName: "Send Race Customer",
-      amount: "75.00",
+      lines: [{ description: "Send race test line", quantity: "1", unitPrice: "75.00" }],
       issueDate: new Date("2026-01-01"),
       dueDate: new Date("2026-02-01"),
     });
@@ -124,7 +124,7 @@ describe("Accounting concurrency (real Postgres)", () => {
   it("two concurrent createInvoice calls both succeed with distinct invoice numbers", async () => {
     const invoiceInput = {
       customerName: "Invoice Number Race Customer",
-      amount: "20.00",
+      lines: [{ description: "Invoice number race test line", quantity: "1", unitPrice: "20.00" }],
       issueDate: new Date("2026-01-01"),
       dueDate: new Date("2026-02-01"),
     };
