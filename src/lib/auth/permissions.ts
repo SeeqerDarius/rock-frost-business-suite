@@ -61,6 +61,7 @@ export const PERMISSIONS = {
   ACCOUNTING_RECONCILIATIONS_MANAGE: "accounting.reconciliations.manage",
   ACCOUNTING_PERIODS_MANAGE: "accounting.periods.manage",
   ACCOUNTING_JOURNALS_REVERSE: "accounting.journals.reverse",
+  ACCOUNTING_JOURNAL_APPROVE: "accounting.journal.approve",
   ACCOUNTING_PLANS_VIEW: "accounting.plans.view",
   ACCOUNTING_PLANS_MANAGE: "accounting.plans.manage",
   ACCOUNTING_PLANS_APPROVE: "accounting.plans.approve",

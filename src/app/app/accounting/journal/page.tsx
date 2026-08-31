@@ -10,7 +10,7 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { formatMoney } from "@/lib/currency";
 import { listJournalEntries, listAccounts } from "@/modules/accounting/service";
-import { createJournalEntry, reverseJournalEntryAction } from "./actions";
+import { createJournalEntry, reverseJournalEntryAction, approveJournalEntryAction, rejectJournalEntryAction } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to post journal entries.",
@@ -21,17 +21,21 @@ const ERROR_MESSAGES: Record<string, string> = {
   "forbidden-reversal": "You do not have permission to reverse journal entries.",
   "invalid-reversal": "That journal entry cannot be reversed.",
   "period-closed": "The reversal date is in a closed accounting period.",
+  "forbidden-approval": "You do not have permission to approve journal entries.",
+  "invalid-approval": "That journal entry cannot be approved. It may have already been decided, or you submitted it yourself.",
+  "invalid-rejection": "That journal entry cannot be rejected. A reason is required.",
 };
 
 export default async function AccountingJournalPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string }>;
+  searchParams: Promise<{ saved?: string; submitted?: string; error?: string }>;
 }) {
-  const { saved, error } = await searchParams;
+  const { saved, submitted, error } = await searchParams;
   const tenant = await requireModuleAccess("accounting");
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_ACCOUNTS_MANAGE);
   const canReverse = hasPermission(tenant, PERMISSIONS.ACCOUNTING_JOURNALS_REVERSE);
+  const canApprove = hasPermission(tenant, PERMISSIONS.ACCOUNTING_JOURNAL_APPROVE);
   const [entries, accounts] = await Promise.all([
     listJournalEntries(tenant.organizationId),
     listAccounts(tenant.organizationId),
@@ -102,6 +106,11 @@ export default async function AccountingJournalPage({
           Saved.
         </div>
       ) : null}
+      {submitted ? (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-400">
+          Submitted for approval. It will not affect account balances until an approver reviews it.
+        </div>
+      ) : null}
       {error && ERROR_MESSAGES[error] ? (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {ERROR_MESSAGES[error]}
@@ -130,6 +139,24 @@ export default async function AccountingJournalPage({
               </div>
               {entry.sourceType !== "MANUAL" ? (
                 <p className="mt-3 text-xs text-muted-foreground">Managed by its source workflow. Corrections must be made in the originating module.</p>
+              ) : null}
+              {entry.status === "PENDING_APPROVAL" ? (
+                <p className="mt-3 text-xs text-amber-600 dark:text-amber-400">Awaiting approval. Not yet reflected in account balances.</p>
+              ) : null}
+              {entry.status === "REJECTED" ? (
+                <p className="mt-3 text-xs text-destructive">Rejected: {entry.rejectedReason}</p>
+              ) : null}
+              {canApprove && entry.status === "PENDING_APPROVAL" && entry.submittedById !== tenant.userId ? (
+                <div className="mt-3 flex justify-end gap-2">
+                  <form action={approveJournalEntryAction}>
+                    <input type="hidden" name="id" value={entry.id} />
+                    <Button size="sm" type="submit">Approve</Button>
+                  </form>
+                  <EntityDialog trigger={<Button size="sm" variant="outline">Reject</Button>} title="Reject journal entry" description="The entry stays in the ledger for the record, but never affects account balances." action={rejectJournalEntryAction}>
+                    <input type="hidden" name="id" value={entry.id} />
+                    <div className="space-y-2"><Label htmlFor={`reject-reason-${entry.id}`}>Reason</Label><Input id={`reject-reason-${entry.id}`} name="reason" required /></div>
+                  </EntityDialog>
+                </div>
               ) : null}
               {canReverse && entry.sourceType === "MANUAL" && entry.status === "POSTED" && !entry.reversalOfId ? <div className="mt-3 flex justify-end"><EntityDialog trigger={<Button size="sm" variant="outline">Reverse entry</Button>} title="Reverse journal entry" description="The original entry remains in the ledger. A new entry posts the opposite debit and credit lines." action={reverseJournalEntryAction}>
                 <input type="hidden" name="id" value={entry.id} />

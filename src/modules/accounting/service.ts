@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-import type { AccountingAccountType, AccountingInvoiceStatus, AccountingLiquidityType } from "@prisma/client";
+import type { AccountingAccountType, AccountingInvoiceStatus, AccountingJournalStatus, AccountingLiquidityType } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { formatMoney } from "@/lib/currency";
 import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@/lib/trend-buckets";
@@ -80,7 +80,7 @@ export async function listAccounts(organizationId: string) {
   await ensureDefaultAccounts(organizationId);
   const accounts = await db.accountingAccount.findMany({
     where: { organizationId },
-    include: { journalLines: true },
+    include: { journalLines: { where: { journalEntry: { status: { notIn: NON_POSTED_JOURNAL_STATUSES } } } } },
     orderBy: { code: "asc" },
   });
   return accounts.map((account) => ({
@@ -135,7 +135,7 @@ export async function postOpeningBalance(organizationId: string, accountId: stri
 export async function getCashbook(organizationId: string, accountId?: string | null) {
   const accounts = await db.accountingAccount.findMany({ where: { organizationId, liquidityType: { not: "NONE" }, ...(accountId ? { id: accountId } : {}) }, select: { id: true } });
   const ids = accounts.map((account) => account.id);
-  return db.accountingJournalLine.findMany({ where: { accountId: { in: ids }, account: { organizationId } }, include: { account: true, journalEntry: true }, orderBy: { journalEntry: { entryDate: "desc" } }, take: 500 });
+  return db.accountingJournalLine.findMany({ where: { accountId: { in: ids }, account: { organizationId }, journalEntry: { status: { notIn: NON_POSTED_JOURNAL_STATUSES } } }, include: { account: true, journalEntry: true }, orderBy: { journalEntry: { entryDate: "desc" } }, take: 500 });
 }
 
 export function listReconciliations(organizationId: string) {
@@ -190,6 +190,19 @@ export class JournalNotBalancedError extends Error {}
 export class NotFoundError extends Error {}
 export class AccountingPeriodLockedError extends Error {}
 export class JournalReversalError extends Error {}
+export class JournalApprovalError extends Error {}
+
+/**
+ * A journal entry in either of these statuses has no real ledger effect yet
+ * (never posted, or posted then withdrawn) - every balance-affecting read
+ * (account balances, trial balance, general ledger, cashbook, cash-flow)
+ * must exclude them so a manual entry awaiting approval cannot move a
+ * reported balance before anyone has approved it. POSTED and REVERSED are
+ * both included: a reversal leaves the original entry's lines in place and
+ * adds a new POSTED entry with the opposite signs, so the two together net
+ * to zero only if both remain in the sum.
+ */
+const NON_POSTED_JOURNAL_STATUSES: AccountingJournalStatus[] = ["PENDING_APPROVAL", "REJECTED"];
 
 async function assertEntryDateIsOpen(tx: TxClient, organizationId: string, entryDate: Date) {
   const locked = await tx.accountingPeriod.findFirst({
@@ -228,6 +241,8 @@ async function postJournalEntry(
     postingPurpose?: string | null;
     branchId?: string | null;
     createdById?: string | null;
+    status?: "POSTED" | "PENDING_APPROVAL";
+    submittedById?: string | null;
     lines: { accountId: string; debit?: string | number; credit?: string | number }[];
   },
 ) {
@@ -279,6 +294,8 @@ async function postJournalEntry(
       branchId: input.branchId,
       postingNumber: await nextPostingNumber(tx, organizationId),
       createdById: input.createdById,
+      status: input.status ?? "POSTED",
+      submittedById: input.status === "PENDING_APPROVAL" ? input.submittedById : null,
       lines: {
         create: input.lines.map((l) => ({ accountId: l.accountId, debit: l.debit ?? 0, credit: l.credit ?? 0 })),
       },
@@ -471,11 +488,57 @@ export async function createManualJournalEntry(
     reference?: string | null;
     createdById?: string | null;
     lines: { accountId: string; debit?: string; credit?: string }[];
+    /** Set by the caller from the actor's own ACCOUNTING_JOURNAL_APPROVE permission - the
+     * service layer has no permission context of its own. When true, the entry is created
+     * PENDING_APPROVAL instead of posting immediately, with no effect on account balances
+     * until approveJournalEntry() flips it to POSTED. */
+    requiresApproval?: boolean;
   },
 ) {
+  const { requiresApproval, ...rest } = data;
   return db.$transaction((tx) =>
-    postJournalEntry(tx, organizationId, { ...data, sourceModule: "accounting", sourceType: "MANUAL", sourceId: null }),
+    postJournalEntry(tx, organizationId, {
+      ...rest,
+      sourceModule: "accounting",
+      sourceType: "MANUAL",
+      sourceId: null,
+      status: requiresApproval ? "PENDING_APPROVAL" : "POSTED",
+      submittedById: requiresApproval ? data.createdById : null,
+    }),
   );
+}
+
+/** Submitter-cannot-approve-own-entry guard mirrors the Planning module's proven approval pattern. */
+export async function approveJournalEntry(organizationId: string, journalEntryId: string, actorId: string) {
+  return db.$transaction(async (tx) => {
+    const entry = await tx.accountingJournalEntry.findFirst({ where: { id: journalEntryId, organizationId } });
+    if (!entry) throw new NotFoundError("Journal entry not found.");
+    if (entry.status !== "PENDING_APPROVAL") throw new JournalApprovalError("This journal entry is not awaiting approval.");
+    if (entry.submittedById && entry.submittedById === actorId) {
+      throw new JournalApprovalError("The submitter cannot approve their own journal entry.");
+    }
+    const claimed = await tx.accountingJournalEntry.updateMany({
+      where: { id: journalEntryId, organizationId, status: "PENDING_APPROVAL" },
+      data: { status: "POSTED", approvedById: actorId, approvedAt: new Date() },
+    });
+    if (claimed.count === 0) throw new JournalApprovalError("This journal entry is not awaiting approval.");
+    return tx.accountingJournalEntry.findUniqueOrThrow({ where: { id: journalEntryId } });
+  });
+}
+
+export async function rejectJournalEntry(organizationId: string, journalEntryId: string, actorId: string, reason: string) {
+  if (!reason.trim()) throw new JournalApprovalError("A rejection reason is required.");
+  return db.$transaction(async (tx) => {
+    const entry = await tx.accountingJournalEntry.findFirst({ where: { id: journalEntryId, organizationId } });
+    if (!entry) throw new NotFoundError("Journal entry not found.");
+    if (entry.status !== "PENDING_APPROVAL") throw new JournalApprovalError("This journal entry is not awaiting approval.");
+    const claimed = await tx.accountingJournalEntry.updateMany({
+      where: { id: journalEntryId, organizationId, status: "PENDING_APPROVAL" },
+      data: { status: "REJECTED", approvedById: actorId, approvedAt: new Date(), rejectedReason: reason.trim() },
+    });
+    if (claimed.count === 0) throw new JournalApprovalError("This journal entry is not awaiting approval.");
+    return tx.accountingJournalEntry.findUniqueOrThrow({ where: { id: journalEntryId } });
+  });
 }
 
 // --- Invoices ---
@@ -1683,7 +1746,7 @@ export async function getTrialBalance(organizationId: string, asOfDate: Date = n
   await ensureDefaultAccounts(organizationId);
   const accounts = await db.accountingAccount.findMany({
     where: { organizationId },
-    include: { journalLines: { where: { journalEntry: { entryDate: { lte: asOfDate } } }, select: { debit: true, credit: true } } },
+    include: { journalLines: { where: { journalEntry: { entryDate: { lte: asOfDate }, status: { notIn: NON_POSTED_JOURNAL_STATUSES } } }, select: { debit: true, credit: true } } },
     orderBy: { code: "asc" },
   });
 
@@ -1727,7 +1790,7 @@ export async function getGeneralLedgerForAccount(organizationId: string, account
   if (!account) throw new NotFoundError("Account not found.");
 
   const journalLines = await db.accountingJournalLine.findMany({
-    where: { accountId, journalEntry: { organizationId } },
+    where: { accountId, journalEntry: { organizationId, status: { notIn: NON_POSTED_JOURNAL_STATUSES } } },
     include: { journalEntry: { select: { entryDate: true, description: true, reference: true, postingNumber: true, sourceModule: true, createdAt: true } } },
     orderBy: [{ journalEntry: { entryDate: "asc" } }, { journalEntry: { createdAt: "asc" } }],
   });
@@ -1863,11 +1926,11 @@ export async function getCashFlowStatement(organizationId: string, from: Date, t
 
   const [periodLines, priorLines] = await Promise.all([
     db.accountingJournalLine.findMany({
-      where: { accountId: { in: accountIds }, journalEntry: { entryDate: { gte: from, lte: to } } },
+      where: { accountId: { in: accountIds }, journalEntry: { entryDate: { gte: from, lte: to }, status: { notIn: NON_POSTED_JOURNAL_STATUSES } } },
       include: { journalEntry: { select: { sourceType: true } } },
     }),
     db.accountingJournalLine.findMany({
-      where: { accountId: { in: accountIds }, journalEntry: { entryDate: { lt: from } } },
+      where: { accountId: { in: accountIds }, journalEntry: { entryDate: { lt: from }, status: { notIn: NON_POSTED_JOURNAL_STATUSES } } },
       select: { debit: true, credit: true },
     }),
   ]);

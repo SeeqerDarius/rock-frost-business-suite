@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { AccountingPeriodLockedError, createManualJournalEntry, JournalNotBalancedError, JournalReversalError, NotFoundError, reverseJournalEntry } from "@/modules/accounting/service";
+import { AccountingPeriodLockedError, approveJournalEntry, createManualJournalEntry, JournalApprovalError, JournalNotBalancedError, JournalReversalError, NotFoundError, rejectJournalEntry, reverseJournalEntry } from "@/modules/accounting/service";
 import { moneyAmount, shortText, longText, cuid, dateInput, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
 
@@ -79,6 +79,7 @@ export async function createJournalEntry(formData: FormData): Promise<void> {
   }
 
   const session = await getServerAuthSession();
+  const requiresApproval = !hasPermission(tenant, PERMISSIONS.ACCOUNTING_JOURNAL_APPROVE);
 
   let entry;
   try {
@@ -87,6 +88,7 @@ export async function createJournalEntry(formData: FormData): Promise<void> {
       description,
       reference: reference ?? null,
       createdById: session?.user?.id ?? null,
+      requiresApproval,
       lines: [
         { accountId: debitAccountId, debit: amount },
         { accountId: creditAccountId, credit: amount },
@@ -116,7 +118,7 @@ export async function createJournalEntry(formData: FormData): Promise<void> {
     organizationId: tenant.organizationId,
     userId: session?.user?.id ?? null,
     module: "accounting",
-    action: "journal.posted",
+    action: requiresApproval ? "journal.submitted" : "journal.posted",
     entityName: "AccountingJournalEntry",
     entityId: entry.id,
     metadata: { lineCount: 2, description },
@@ -124,5 +126,51 @@ export async function createJournalEntry(formData: FormData): Promise<void> {
 
   revalidatePath("/app/accounting/journal");
   revalidatePath("/app/accounting/accounts");
+  redirect(requiresApproval ? "/app/accounting/journal?submitted=1" : "/app/accounting/journal?saved=1");
+}
+
+const journalDecisionSchema = z.object({ id: cuid });
+const journalRejectionSchema = z.object({ id: cuid, reason: longText });
+
+export async function approveJournalEntryAction(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("accounting");
+  if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_JOURNAL_APPROVE)) {
+    redirect("/app/accounting/journal?error=forbidden-approval");
+  }
+  const parsed = parseWithSchema(journalDecisionSchema, { id: clean(formData.get("id")) });
+  if (!parsed.success) redirect("/app/accounting/journal?error=invalid-approval");
+  const session = await getServerAuthSession();
+  if (!session?.user?.id) redirect("/login");
+  try {
+    const entry = await approveJournalEntry(tenant.organizationId, parsed.data.id, session.user.id);
+    await logAuditEvent({ organizationId: tenant.organizationId, userId: session.user.id, module: "accounting", action: "journal.approved", entityName: "AccountingJournalEntry", entityId: entry.id });
+  } catch (error) {
+    if (error instanceof JournalApprovalError) redirect("/app/accounting/journal?error=invalid-approval");
+    if (error instanceof NotFoundError) redirect("/app/accounting/journal?error=not-found");
+    throw error;
+  }
+  revalidatePath("/app/accounting/journal");
+  revalidatePath("/app/accounting/accounts");
+  redirect("/app/accounting/journal?saved=1");
+}
+
+export async function rejectJournalEntryAction(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("accounting");
+  if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_JOURNAL_APPROVE)) {
+    redirect("/app/accounting/journal?error=forbidden-approval");
+  }
+  const parsed = parseWithSchema(journalRejectionSchema, { id: clean(formData.get("id")), reason: clean(formData.get("reason")) });
+  if (!parsed.success) redirect("/app/accounting/journal?error=invalid-rejection");
+  const session = await getServerAuthSession();
+  if (!session?.user?.id) redirect("/login");
+  try {
+    const entry = await rejectJournalEntry(tenant.organizationId, parsed.data.id, session.user.id, parsed.data.reason);
+    await logAuditEvent({ organizationId: tenant.organizationId, userId: session.user.id, module: "accounting", action: "journal.rejected", entityName: "AccountingJournalEntry", entityId: entry.id, metadata: { reason: parsed.data.reason } });
+  } catch (error) {
+    if (error instanceof JournalApprovalError) redirect("/app/accounting/journal?error=invalid-rejection");
+    if (error instanceof NotFoundError) redirect("/app/accounting/journal?error=not-found");
+    throw error;
+  }
+  revalidatePath("/app/accounting/journal");
   redirect("/app/accounting/journal?saved=1");
 }

@@ -34,6 +34,7 @@ Permissions added by this foundation:
 
 - `accounting.periods.manage`
 - `accounting.journals.reverse`
+- `accounting.journal.approve`
 
 ## Module integration contract
 
@@ -114,3 +115,15 @@ No schema change - every report in this section is a pure read/compute over data
 **Ghana SME chart-of-accounts template.** `loadGhanaSmeChartOfAccounts()` (the "Load Ghana SME chart of accounts" button on the Chart of Accounts page, `accounting.accounts.manage`) upserts 21 additional Ghana-flavored accounts (Bank, Mobile Money, Prepaid Expenses, Property/Plant/Equipment, Withholding Tax Payable, Owner's Capital, Retained Earnings, Salaries and Wages, Rent, Utilities, and more) by code, skipping anything already present - deliberately non-overlapping with the 12 system accounts `ensureDefaultAccounts()` already creates for every organization, so the two never collide. Not `isSystem` - these are ordinary, editable/deletable accounts, just a convenient starting point. Idempotent by design: running it twice creates nothing extra the second time.
 
 All four new reports export to PDF/XLSX through one bespoke route (`/api/reports/accounting/[reportType]`), mirroring the Fleet owner statement's existing bespoke-route pattern rather than the generic `/api/reports/[moduleKey]` summary-card flatten every module's plain Reports page export uses - these reports have real per-row data (accounts, invoices, bills), not a handful of summary stats.
+
+# Journal entry approval workflow (2026-08-31)
+
+No new model. `AccountingJournalStatus` gains two additive values: `PENDING_APPROVAL` and `REJECTED`, alongside `AccountingJournalEntry`'s existing `POSTED`/`REVERSED`. A manual journal entry created by someone who holds `accounting.accounts.manage` but not the new `accounting.journal.approve` lands `PENDING_APPROVAL` (with `submittedById` set) instead of posting immediately; the Action layer decides which, since the service layer has no permission context of its own - `createManualJournalEntry()` just takes a `requiresApproval` boolean. An actor who already holds `accounting.journal.approve` still posts immediately, exactly as before this track.
+
+Every entry - pending, posted, rejected - is created with its full lines and a real posting number at submission time, not deferred to approval. What changes at approval is only the `status` column. This mirrors how a reversal already leaves the original entry's lines in place: the entry's rows are always real, and `status` alone decides whether they count.
+
+**Balances stay honest while a decision is pending.** Every account-balance-affecting read - `listAccounts()`, `getCashbook()`, `getTrialBalance()`, `getGeneralLedgerForAccount()`, and both queries inside `getCashFlowStatement()` - filters its journal lines to `status: { notIn: ["PENDING_APPROVAL", "REJECTED"] }`. `POSTED` and `REVERSED` both stay included: a reversal leaves the original entry's lines in place and adds a new `POSTED` entry with the opposite signs, so the two only net to zero if both remain in the sum. A single `NON_POSTED_JOURNAL_STATUSES` constant is the one place this list is defined, reused by every read site above.
+
+**Approve and reject** (`approveJournalEntry()` / `rejectJournalEntry()`, both `accounting.journal.approve`) mirror the Planning module's already-proven approval-state-machine (`transitionAccountingPlan()`): an optimistic `updateMany` scoped to `status: "PENDING_APPROVAL"` claims the transition, and a `count === 0` means someone else already decided it. Approving records `approvedById`/`approvedAt` and flips the entry to `POSTED`, at which point it is indistinguishable from an entry that posted immediately - the regression guard this track's tests check for. The submitter cannot approve their own entry (checked against `submittedById`, matching Planning's own guard); this restriction deliberately does not apply to rejecting your own submission, again mirroring Planning. Rejecting requires a non-empty reason, stored on `rejectedReason`; the entry stays in the ledger for the audit trail but never posts.
+
+The Journal page shows an amber "Awaiting approval" note on `PENDING_APPROVAL` entries and a "Rejected: {reason}" note on `REJECTED` ones. Approve/Reject controls are shown only to an approver who is not the entry's own submitter - both the UI and the service layer enforce this independently.

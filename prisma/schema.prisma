@@ -2576,6 +2576,8 @@ enum AccountingPeriodStatus {
 enum AccountingJournalStatus {
   POSTED
   REVERSED
+  PENDING_APPROVAL
+  REJECTED
 }
 
 enum AccountingTaxTreatment {
@@ -3130,6 +3132,10 @@ model AccountingJournalEntry {
   status         AccountingJournalStatus @default(POSTED)
   reversalOfId   String?                 @unique
   createdById    String?
+  submittedById  String?
+  approvedById   String?
+  approvedAt     DateTime?
+  rejectedReason String?                 @db.Text
   createdAt      DateTime                @default(now())
 
   organization          Organization                     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
