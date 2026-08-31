@@ -16,8 +16,9 @@ import { listFleetActorVehicles, listFleetMaintenanceRequests, listFleetMechanic
 import { MAINTENANCE_PROGRESS_LABELS, MAINTENANCE_PROGRESS_BADGE } from "@/modules/fleet/maintenance-status";
 import { getServerAuthSession } from "@/lib/auth/session";
 import {
-  createMaintenanceRequest, reviewMaintenanceRequest, ownerMaintenanceDecision,
-  assignMechanic, startRepair, holdRepair, resumeRepair, withdrawRequest, completeRepair, verifyRepairCompletion,
+  createMaintenanceRequest, reviewMaintenanceRequest, recordEstimate, ownerMaintenanceDecision,
+  assignMechanic, scheduleExternalRepair, startRepair, holdRepair, resumeRepair, withdrawRequest,
+  completeRepair, verifyRepairCompletion, correctRepairExpense,
 } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -29,11 +30,13 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-cost": "Repair cost must be zero or greater.",
   "invalid-photo": "Use a JPEG, PNG, or WebP photo no larger than 1 MB.",
   "too-many-photos": `Attach at most ${MAX_FLEET_MAINTENANCE_ATTACHMENTS} photos.`,
+  "mechanic-not-external": "This mechanic has a self-service portal login - they schedule their own repair date from the mechanic portal.",
 };
 
 const APPROVAL_LABELS: Record<string, string> = { PENDING: "Pending", APPROVED: "Approved", REJECTED: "Rejected" };
 
 const WITHDRAWABLE_STATUSES = ["REPORTED", "AWAITING_OWNER_APPROVAL", "APPROVED", "ASSIGNED", "SCHEDULED"];
+const ESTIMATE_EDITABLE_STATUSES = ["REPORTED", "AWAITING_OWNER_APPROVAL", "APPROVED", "ASSIGNED"];
 
 export default async function FleetMaintenancePage({
   searchParams,
@@ -196,8 +199,20 @@ export default async function FleetMaintenancePage({
                       <Button type="submit" size="sm" variant="ghost">Reject</Button>
                     </form>
                   ) : null}
+                  {canManage && ESTIMATE_EDITABLE_STATUSES.includes(request.progressStatus) ? (
+                    <EntityDialog
+                      trigger={<Button size="sm" variant="ghost">{request.estimatedCost ? "Update estimate" : "Add estimate"}</Button>}
+                      title="Record a repair-cost estimate"
+                      description="Shown to the vehicle owner while they decide - a real number instead of approving blind."
+                      action={recordEstimate}
+                    >
+                      <input type="hidden" name="id" value={request.id} />
+                      <div className="space-y-2"><Label htmlFor={`estimate-cost-${request.id}`}>Estimated cost</Label><Input id={`estimate-cost-${request.id}`} name="estimatedCost" type="number" min="0" step="0.01" defaultValue={request.estimatedCost?.toString() ?? ""} /></div>
+                      <div className="space-y-2"><Label htmlFor={`estimate-note-${request.id}`}>Note (optional)</Label><Textarea id={`estimate-note-${request.id}`} name="estimateNote" defaultValue={request.estimateNote ?? ""} placeholder="e.g. quote from workshop, parts breakdown" /></div>
+                    </EntityDialog>
+                  ) : null}
                   {canApproveAsOwner && request.vehicle.owner?.userId === session?.user?.id && request.ownerApprovalStatus === "PENDING" && request.approvalStatus === "APPROVED" ? (
-                    <EntityDialog trigger={<Button size="sm" variant="ghost">Owner decision</Button>} title="Owner maintenance approval" action={ownerMaintenanceDecision} submitLabel="Approve">
+                    <EntityDialog trigger={<Button size="sm" variant="ghost">Owner decision</Button>} title="Owner maintenance approval" description={request.estimatedCost ? `Estimated cost: ${tenant.organization.currency ?? "GHS"} ${Number(request.estimatedCost).toFixed(2)}${request.estimateNote ? `. ${request.estimateNote}` : ""}` : "No cost estimate recorded yet."} action={ownerMaintenanceDecision} submitLabel="Approve">
                       <input type="hidden" name="id" value={request.id} />
                       <input type="hidden" name="decision" value="approve" />
                       <div className="space-y-2"><Label htmlFor={`owner-note-${request.id}`}>Comment</Label><Textarea id={`owner-note-${request.id}`} name="note" /></div>
@@ -222,6 +237,17 @@ export default async function FleetMaintenancePage({
                       </div>
                     </EntityDialog>
                   ) : null}
+                  {canManage && request.progressStatus === "ASSIGNED" && request.mechanic && !request.mechanic.userId ? (
+                    <EntityDialog
+                      trigger={<Button size="sm" variant="ghost">Schedule externally</Button>}
+                      title="Schedule the external repair"
+                      description={`${request.mechanic.name} has no self-service portal login, so a manager records the repair date on their behalf.`}
+                      action={scheduleExternalRepair}
+                    >
+                      <input type="hidden" name="id" value={request.id} />
+                      <div className="space-y-2"><Label htmlFor={`schedule-${request.id}`}>Scheduled repair date</Label><Input id={`schedule-${request.id}`} name="scheduledRepairAt" type="date" required /></div>
+                    </EntityDialog>
+                  ) : null}
                   {canManage && request.progressStatus === "SCHEDULED" ? (
                     <form action={startRepair}><input type="hidden" name="id" value={request.id} /><Button type="submit" size="sm" variant="ghost">Start repair</Button></form>
                   ) : null}
@@ -238,11 +264,29 @@ export default async function FleetMaintenancePage({
                     <EntityDialog trigger={<Button size="sm" variant="ghost">Complete repair</Button>} title="Record repair completion" action={completeRepair}>
                       <input type="hidden" name="id" value={request.id} />
                       <div className="space-y-2"><Label htmlFor={`cost-${request.id}`}>Repair cost</Label><Input id={`cost-${request.id}`} name="repairCost" type="number" min="0" step="0.01" required /></div>
+                      <div className="space-y-2"><Label htmlFor={`invoice-${request.id}`}>Invoice reference (optional)</Label><Input id={`invoice-${request.id}`} name="invoiceReference" placeholder="e.g. workshop invoice number" /></div>
                       <div className="space-y-2"><Label htmlFor={`completion-note-${request.id}`}>Completion notes</Label><Textarea id={`completion-note-${request.id}`} name="note" /></div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`completion-photos-${request.id}`}>Completion evidence / invoice photos (optional)</Label>
+                        <Input id={`completion-photos-${request.id}`} name="completionPhotos" type="file" accept="image/jpeg,image/png,image/webp" multiple />
+                        <p className="text-xs text-muted-foreground">JPEG, PNG, or WebP. Up to {MAX_FLEET_MAINTENANCE_ATTACHMENTS} photos, 1 MB each.</p>
+                      </div>
                     </EntityDialog>
                   ) : null}
                   {canManage && request.progressStatus === "COMPLETED" ? (
                     <form action={verifyRepairCompletion}><input type="hidden" name="id" value={request.id} /><Button type="submit" size="sm">Verify & notify owner</Button></form>
+                  ) : null}
+                  {canManage && request.progressStatus === "VERIFIED" ? (
+                    <EntityDialog
+                      trigger={<Button size="sm" variant="ghost">Correct cost</Button>}
+                      title="Correct the verified repair cost"
+                      description={`Current cost: ${tenant.organization.currency ?? "GHS"} ${request.repairCost ? Number(request.repairCost).toFixed(2) : "0.00"}. Reverses the original Accounting entry and posts the corrected one.`}
+                      action={correctRepairExpense}
+                    >
+                      <input type="hidden" name="id" value={request.id} />
+                      <div className="space-y-2"><Label htmlFor={`new-cost-${request.id}`}>Corrected cost</Label><Input id={`new-cost-${request.id}`} name="newCost" type="number" min="0" step="0.01" required /></div>
+                      <div className="space-y-2"><Label htmlFor={`correction-reason-${request.id}`}>Reason</Label><Textarea id={`correction-reason-${request.id}`} name="reason" required placeholder="e.g. workshop revised the final invoice" /></div>
+                    </EntityDialog>
                   ) : null}
                   {canManage && WITHDRAWABLE_STATUSES.includes(request.progressStatus) ? (
                     <EntityDialog trigger={<Button size="sm" variant="ghost">Withdraw</Button>} title="Withdraw maintenance request" description="The request is closed without a repair. This cannot be undone." action={withdrawRequest}>

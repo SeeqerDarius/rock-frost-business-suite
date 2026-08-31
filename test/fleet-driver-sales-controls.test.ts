@@ -89,18 +89,25 @@ describe("Fleet driver remittance controls", () => {
   it("posts a driver-submitted remittance's revenue to Accounting once it's approved, and Work & Pay deposits/instalments too", () => {
     const paymentsActions = read("src/app/app/fleet/payments/actions.ts");
     const workAndPayActions = read("src/app/app/fleet/work-and-pay/actions.ts");
+    const accounting = read("src/modules/fleet/accounting.ts");
     const service = read("src/modules/fleet/service.ts");
     // Driver-submission approval: the code path that creates a VERIFIED
     // fleetPayment outside the office-verified verifyPayment() flow — this
     // used to update the Fleet dashboard total without ever reaching
     // Accounting.
     expect(paymentsActions).toContain("if (approved && submission.fleetPaymentId)");
-    expect(paymentsActions).toContain('sourceType: "FLEET_PAYMENT"');
+    expect(paymentsActions).toContain("await postVerifiedFleetPaymentRevenue(");
     // Work & Pay deposit at contract creation and office-recorded instalments
-    // are the other two silent gaps in the same class.
+    // are the other two silent gaps in the same class - all three, plus the
+    // Paystack reconciliation path, now go through one centralized helper
+    // (src/modules/fleet/accounting.ts) instead of 5 hand-duplicated
+    // {sourceModule:"fleet", sourceType:"FLEET_PAYMENT", postingPurpose:"COLLECTED"}
+    // payloads.
     expect(workAndPayActions).toContain("if (depositPayment)");
-    expect(workAndPayActions).toContain("postModuleRevenue(tenant.organizationId, {");
-    expect(workAndPayActions).toContain("payment.id");
+    expect(workAndPayActions).toContain("await postVerifiedFleetPaymentRevenue(");
+    expect(accounting).toContain("export async function postVerifiedFleetPaymentRevenue(");
+    expect(accounting).toContain('sourceType: "FLEET_PAYMENT"');
+    expect(accounting).toContain('postingPurpose: "COLLECTED"');
     // service.ts now surfaces the created payment row on all three paths so
     // the caller (which runs after the transaction commits, since
     // postModuleRevenue can't nest inside another module's own

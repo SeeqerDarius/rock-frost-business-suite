@@ -231,6 +231,7 @@ enum FleetMaintenanceEventType {
   OWNER_APPROVED
   OWNER_REJECTED
   MECHANIC_ASSIGNED
+  ESTIMATE_RECORDED
   REPAIR_SCHEDULED
   REPAIR_STARTED
   REPAIR_HELD
@@ -240,11 +241,24 @@ enum FleetMaintenanceEventType {
   OWNER_NOTIFIED
   REPAIR_WITHDRAWN
   CANCELLED
+  EXPENSE_CORRECTED
 }
 
 enum FleetMechanicStatus {
   ACTIVE
   INACTIVE
+}
+
+/// FAULT_REPORT is the default for every historical row (attachments could
+/// only ever be added at initial report time before this track). ESTIMATE
+/// and INVOICE are workshop-facing documents captured around the repair
+/// itself; COMPLETION_EVIDENCE is "after" photos captured when the repair is
+/// marked complete.
+enum FleetMaintenanceAttachmentKind {
+  FAULT_REPORT
+  ESTIMATE
+  INVOICE
+  COMPLETION_EVIDENCE
 }
 
 enum FleetPaymentType {
@@ -1527,13 +1541,14 @@ model FleetMechanic {
 }
 
 model FleetMaintenanceAttachment {
-  id             String   @id @default(cuid())
+  id             String                         @id @default(cuid())
   organizationId String
   requestId      String
   fileAssetId    String
   uploadedById   String?
   caption        String?
-  createdAt      DateTime @default(now())
+  kind           FleetMaintenanceAttachmentKind @default(FAULT_REPORT)
+  createdAt      DateTime                       @default(now())
 
   organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   request      FleetMaintenanceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
@@ -1665,7 +1680,10 @@ model FleetMaintenanceRequest {
   mechanicId            String?
   scheduledRepairAt     DateTime?
   progressStatus        FleetMaintenanceProgressStatus @default(REPORTED)
+  estimatedCost         Decimal?                       @db.Decimal(12, 2)
+  estimateNote          String?                        @db.Text
   repairCost            Decimal?                       @db.Decimal(12, 2)
+  invoiceReference      String?
   ownerNotifiedAt       DateTime?
   requestedAt           DateTime                       @default(now())
   completedAt           DateTime?
@@ -1679,6 +1697,7 @@ model FleetMaintenanceRequest {
   mechanic     FleetMechanic?               @relation(fields: [mechanicId], references: [id], onDelete: SetNull)
   events       FleetMaintenanceEvent[]
   attachments  FleetMaintenanceAttachment[]
+  payments     FleetPayment[]
 
   @@index([organizationId, progressStatus])
   @@index([branchId])
@@ -1709,28 +1728,34 @@ model FleetMaintenanceEvent {
 }
 
 model FleetPayment {
-  id              String             @id @default(cuid())
-  organizationId  String
-  branchId        String?
-  reference       String
-  date            DateTime           @default(now())
-  type            FleetPaymentType
-  amount          Decimal            @db.Decimal(12, 2)
-  status          FleetPaymentStatus @default(PENDING)
-  relatedEntity   String?
-  relatedEntityId String?
-  verified        Boolean            @default(false)
-  metadata        Json?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  id                   String             @id @default(cuid())
+  organizationId       String
+  branchId             String?
+  reference            String
+  date                 DateTime           @default(now())
+  type                 FleetPaymentType
+  amount               Decimal            @db.Decimal(12, 2)
+  status               FleetPaymentStatus @default(PENDING)
+  relatedEntity        String?
+  relatedEntityId      String?
+  /// Structural link for MAINTENANCE-type payments specifically, replacing
+  /// the free-text relatedEntity/relatedEntityId guessing for this one
+  /// type; every other payment type still uses the generic pair unchanged.
+  maintenanceRequestId String?
+  verified             Boolean            @default(false)
+  metadata             Json?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch             Branch?                  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  maintenanceRequest FleetMaintenanceRequest? @relation(fields: [maintenanceRequestId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, reference])
   @@index([organizationId, date])
   @@index([branchId])
   @@index([relatedEntity, relatedEntityId])
+  @@index([maintenanceRequestId])
 }
 
 model FleetWorkAndPayContract {

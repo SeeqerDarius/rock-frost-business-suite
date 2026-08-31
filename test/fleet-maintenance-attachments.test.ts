@@ -147,7 +147,8 @@ describe("Verified repair cost posts to Accounting (Phase D5)", () => {
   const maintenanceActions = fs.readFileSync("src/app/app/fleet/maintenance/actions.ts", "utf8");
 
   it("posts the verified repair's cost as a module expense, mirroring the payments action's postModuleRevenue call site", () => {
-    expect(maintenanceActions).toContain('import { postModuleExpense } from "@/lib/accounting-integration";');
+    expect(maintenanceActions).toContain("postModuleExpense");
+    expect(maintenanceActions).toContain('from "@/lib/accounting-integration"');
     expect(maintenanceActions).toContain("const request = await verifyMaintenanceCompletion(tenant.organizationId, id, userId);");
     expect(maintenanceActions).toContain('sourceType: "FLEET_MAINTENANCE_REPAIR"');
     expect(maintenanceActions).toContain('postingPurpose: "VERIFIED"');

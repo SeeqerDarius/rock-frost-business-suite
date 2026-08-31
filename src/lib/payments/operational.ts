@@ -8,7 +8,7 @@ import { buildTenantAppUrl, getAppOrigin } from "@/lib/app-url";
 import { initializeTransaction, createPaystackSubaccount, updatePaystackSubaccount, resolvePaystackAccount, isGatewayConfigured } from "@/lib/payments";
 import { isCurrencySupported } from "@/lib/payments/currencies";
 import { submitFleetDriverPayment, reviewFleetDriverPaymentSubmission } from "@/modules/fleet/service";
-import { postModuleRevenue } from "@/lib/accounting-integration";
+import { postVerifiedFleetPaymentRevenue } from "@/modules/fleet/accounting";
 import { ACTIVE_ORGANIZATION_STATUSES } from "@/lib/tenant";
 import type { BusinessModuleKey } from "@/platform/modules/registry";
 
@@ -214,7 +214,14 @@ async function reconcileOperationalPayment(payment: OperationalPayment) {
       ? currentSubmission
       : null;
   if (!submission) throw new OperationalPaymentError("Fleet payment obligation is not reconcilable.");
-  const accounting = submission.fleetPaymentId ? await postModuleRevenue(payment.organizationId, { sourceModule: "fleet", sourceType: "FLEET_PAYMENT", sourceId: submission.fleetPaymentId, postingPurpose: "COLLECTED", amount: payment.amount.toFixed(2), entryDate: payment.paidAt ?? new Date(), description: `Confirmed online Fleet collection ${payment.providerReference}`, createdById: payment.payerId }) : { posted: false as const, reason: "error" as const };
+  const accounting = submission.fleetPaymentId
+    ? await postVerifiedFleetPaymentRevenue(
+        payment.organizationId,
+        { id: submission.fleetPaymentId, amount: payment.amount, date: payment.paidAt ?? new Date() },
+        `Confirmed online Fleet collection ${payment.providerReference}`,
+        payment.payerId,
+      )
+    : { posted: false as const, reason: "error" as const };
   return db.operationalPayment.update({ where: { id: payment.id }, data: { reconciliationStatus: accounting.posted || accounting.reason === "accounting-not-enabled" ? "COMPLETE" : "NEEDS_RETRY", accountingEntryId: accounting.posted ? accounting.journalEntryId : null } });
 }
 

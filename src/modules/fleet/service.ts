@@ -1144,6 +1144,11 @@ export function getFleetMaintenanceAttachment(
 
 export class InvalidMaintenanceTransitionError extends Error {}
 export class MaintenanceApprovalRequiredError extends Error {}
+export class FleetMechanicNotExternalError extends Error {}
+
+/** An estimate is only meaningful before real repair work starts - once a
+ * repair is IN_PROGRESS or later, repairCost/completion is the real figure. */
+const ESTIMATE_EDITABLE_STATUSES = ["REPORTED", "AWAITING_OWNER_APPROVAL", "APPROVED", "ASSIGNED"];
 
 export async function managerReviewMaintenanceRequest(
   organizationId: string,
@@ -1201,6 +1206,45 @@ export async function managerReviewMaintenanceRequest(
         },
       });
     }
+  });
+}
+
+/**
+ * A manager-recorded repair-cost estimate, so an owner deciding on an
+ * AWAITING_OWNER_APPROVAL request sees a real number instead of approving
+ * blind - previously there was no way to capture a cost until the repair was
+ * already finished (repairCost, written only by completeMaintenanceRepair).
+ * Editable any time before real repair work starts; a later, later re-record
+ * (e.g. a manager revising it after getting a fuller quote) simply overwrites
+ * it - only the current value matters, so no separate history is kept for it
+ * the way driver/owner assignment changes are.
+ */
+export async function recordMaintenanceEstimate(
+  organizationId: string,
+  id: string,
+  actorId: string,
+  estimatedCost: string | null,
+  estimateNote?: string | null,
+) {
+  const cost = estimatedCost ? new Prisma.Decimal(estimatedCost) : null;
+  if (cost?.isNegative()) throw new InvalidPaymentAmountError("Estimated cost cannot be negative.");
+  return db.$transaction(async (tx) => {
+    const request = await tx.fleetMaintenanceRequest.findFirst({ where: { id, organizationId } });
+    if (!request) throw new NotFoundError("Maintenance request not found.");
+    if (!ESTIMATE_EDITABLE_STATUSES.includes(request.progressStatus)) {
+      throw new InvalidMaintenanceTransitionError("An estimate can only be recorded before the repair starts.");
+    }
+    await tx.fleetMaintenanceRequest.update({
+      where: { id },
+      data: { estimatedCost: cost?.toFixed(2), estimateNote },
+    });
+    await tx.fleetMaintenanceEvent.create({
+      data: {
+        organizationId, requestId: id, actorId, eventType: "ESTIMATE_RECORDED",
+        note: estimateNote, metadata: { estimatedCost: cost?.toFixed(2) ?? null },
+      },
+    });
+    return request;
   });
 }
 
@@ -1301,6 +1345,48 @@ export async function acceptMaintenanceAssignment(
   });
 }
 
+/**
+ * Manager-facing equivalent of acceptMaintenanceAssignment, for a request
+ * assigned to an external workshop (a FleetMechanic with no userId, so no
+ * self-service login exists to schedule it themselves) - previously the
+ * only path from ASSIGNED to SCHEDULED was mechanic self-service, so an
+ * external assignment was a permanent dead end, stuck at ASSIGNED until
+ * withdrawn. Refuses to run for an internal mechanic (one with a real
+ * login) - they keep scheduling their own repair date exactly as before,
+ * this action never overrides that.
+ */
+export async function scheduleExternalMaintenanceRepair(
+  organizationId: string,
+  id: string,
+  actorId: string,
+  scheduledRepairAt: Date,
+) {
+  return db.$transaction(async (tx) => {
+    const request = await tx.fleetMaintenanceRequest.findFirst({ where: { id, organizationId }, include: { mechanic: true } });
+    if (!request) throw new NotFoundError("Maintenance request not found.");
+    if (!request.mechanic) throw new NotFoundError("No mechanic is assigned to this request.");
+    if (request.mechanic.userId) {
+      throw new FleetMechanicNotExternalError("This mechanic has a self-service portal login - they schedule their own repair date.");
+    }
+    if (request.progressStatus !== "ASSIGNED") {
+      throw new InvalidMaintenanceTransitionError("Only a newly assigned request can be scheduled.");
+    }
+    await tx.fleetMaintenanceRequest.update({ where: { id }, data: { scheduledRepairAt, progressStatus: "SCHEDULED" } });
+    await tx.fleetMaintenanceEvent.create({
+      data: {
+        organizationId,
+        requestId: id,
+        actorId,
+        eventType: "REPAIR_SCHEDULED",
+        fromStatus: "ASSIGNED",
+        toStatus: "SCHEDULED",
+        note: `Repair scheduled for ${scheduledRepairAt.toISOString().slice(0, 10)} (external workshop, scheduled by manager)`,
+      },
+    });
+    return request;
+  });
+}
+
 export async function startMaintenanceRepair(organizationId: string, id: string, actorId: string) {
   return db.$transaction(async (tx) => {
     const request = await tx.fleetMaintenanceRequest.findFirst({ where: { id, organizationId } });
@@ -1367,6 +1453,8 @@ export async function completeMaintenanceRepair(
   actorId: string,
   repairCost: string,
   note?: string | null,
+  invoiceReference?: string | null,
+  attachments?: { fileName: string; mimeType: string; size: number; dataUrl: string; kind: "COMPLETION_EVIDENCE" | "INVOICE" }[],
 ) {
   const cost = new Prisma.Decimal(repairCost);
   if (cost.isNegative()) throw new InvalidPaymentAmountError("Repair cost cannot be negative.");
@@ -1378,8 +1466,28 @@ export async function completeMaintenanceRepair(
     }
     await tx.fleetMaintenanceRequest.update({
       where: { id },
-      data: { progressStatus: "COMPLETED", repairCost: cost.toFixed(2), completedAt: new Date() },
+      data: { progressStatus: "COMPLETED", repairCost: cost.toFixed(2), completedAt: new Date(), invoiceReference },
     });
+    // Completion evidence/invoice - previously an attachment could only ever
+    // be added at initial fault-report time, so there was no way to record
+    // "after" photos or a workshop invoice image when marking a repair done.
+    for (const attachment of attachments ?? []) {
+      const asset = await tx.fileAsset.create({
+        data: {
+          organizationId,
+          uploadedById: actorId,
+          fileName: attachment.fileName,
+          mimeType: attachment.mimeType,
+          size: attachment.size,
+          storagePath: `database://fleet-maintenance/${id}`,
+          url: attachment.dataUrl,
+          metadata: { purpose: "fleet-maintenance-photo", requestId: id, kind: attachment.kind },
+        },
+      });
+      await tx.fleetMaintenanceAttachment.create({
+        data: { organizationId, requestId: id, fileAssetId: asset.id, uploadedById: actorId, kind: attachment.kind },
+      });
+    }
     await tx.fleetMaintenanceEvent.create({
       data: { organizationId, requestId: id, actorId, eventType: "REPAIR_COMPLETED", fromStatus: "IN_PROGRESS", toStatus: "COMPLETED", note },
     });
@@ -1438,13 +1546,74 @@ export async function verifyMaintenanceCompletion(organizationId: string, id: st
   });
 }
 
+/**
+ * Corrects a verified repair's cost - previously a VERIFIED expense had no
+ * correction path at all (reverseModuleExpense existed but nothing ever
+ * called it). Only the DB-side change and audit trail happen here; the
+ * caller (the Action layer, matching every other accounting-posting call
+ * site's convention in this codebase) is responsible for reversing the
+ * original Accounting entry and posting the corrected one once this
+ * transaction has committed - see verifyRepairCompletion's own
+ * postModuleExpense call for the exact pattern this mirrors.
+ */
+export async function correctVerifiedMaintenanceExpense(
+  organizationId: string,
+  id: string,
+  actorId: string,
+  newCost: string,
+  reason: string,
+) {
+  const cost = new Prisma.Decimal(newCost);
+  if (cost.isNegative()) throw new InvalidPaymentAmountError("Repair cost cannot be negative.");
+  return db.$transaction(async (tx) => {
+    const request = await tx.fleetMaintenanceRequest.findFirst({
+      where: { id, organizationId },
+      include: { vehicle: true },
+    });
+    if (!request) throw new NotFoundError("Maintenance request not found.");
+    if (request.progressStatus !== "VERIFIED") {
+      throw new InvalidMaintenanceTransitionError("Only a verified repair's cost can be corrected.");
+    }
+    const previousCost = request.repairCost;
+    await tx.fleetMaintenanceRequest.update({ where: { id }, data: { repairCost: cost.toFixed(2) } });
+    await tx.fleetMaintenanceEvent.create({
+      data: {
+        organizationId,
+        requestId: id,
+        actorId,
+        eventType: "EXPENSE_CORRECTED",
+        fromStatus: "VERIFIED",
+        toStatus: "VERIFIED",
+        note: reason,
+        metadata: { previousCost: previousCost?.toFixed(2) ?? null, newCost: cost.toFixed(2) },
+      },
+    });
+    return { request: { ...request, repairCost: cost }, previousCost };
+  });
+}
+
 // --- Payments ---
 
 export function listFleetPayments(organizationId: string) {
-  return db.fleetPayment.findMany({ where: { organizationId }, orderBy: { date: "desc" } });
+  return db.fleetPayment.findMany({
+    where: { organizationId },
+    include: { maintenanceRequest: { select: { id: true, faultDescription: true, vehicle: { select: { plateNumber: true } } } } },
+    orderBy: { date: "desc" },
+  });
 }
 
-export function createFleetPayment(
+/** Every non-withdrawn/declined request, most recent first - the candidate
+ * list for linking a MAINTENANCE-type payment to a specific repair via
+ * FleetPayment.maintenanceRequestId instead of free-text guessing. */
+export function listFleetMaintenanceRequestsForPaymentLinking(organizationId: string) {
+  return db.fleetMaintenanceRequest.findMany({
+    where: { organizationId, progressStatus: { notIn: ["CANCELLED", "REJECTED"] } },
+    include: { vehicle: { select: { assetTag: true, plateNumber: true } } },
+    orderBy: { requestedAt: "desc" },
+  });
+}
+
+export async function createFleetPayment(
   organizationId: string,
   data: {
     reference: string;
@@ -1453,9 +1622,16 @@ export function createFleetPayment(
     amount: string;
     relatedEntity?: string | null;
     relatedEntityId?: string | null;
+    /** Structural link for MAINTENANCE-type payments - see
+     * FleetPayment.maintenanceRequestId's own schema comment. */
+    maintenanceRequestId?: string | null;
     branchId?: string | null;
   }
 ) {
+  if (data.maintenanceRequestId) {
+    const request = await db.fleetMaintenanceRequest.findFirst({ where: { id: data.maintenanceRequestId, organizationId }, select: { id: true } });
+    if (!request) throw new NotFoundError("Maintenance request not found.");
+  }
   return db.fleetPayment.create({ data: { organizationId, ...data } });
 }
 

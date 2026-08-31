@@ -7,7 +7,8 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createFleetPayment, updateFleetPaymentStatus, reviewFleetDriverPaymentSubmission, NotFoundError } from "@/modules/fleet/service";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { postModuleRevenue, reverseModuleRevenue } from "@/lib/accounting-integration";
+import { reverseModuleRevenue } from "@/lib/accounting-integration";
+import { postVerifiedFleetPaymentRevenue } from "@/modules/fleet/accounting";
 import { moneyAmount, shortText, longText, cuid, dateInput, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
@@ -24,6 +25,7 @@ const paymentSchema = z.object({
   date: dateInput.optional(),
   relatedEntity: longText.optional(),
   relatedEntityId: cuid.optional(),
+  maintenanceRequestId: cuid.optional(),
 });
 
 export async function createPayment(formData: FormData): Promise<void> {
@@ -47,6 +49,7 @@ export async function createPayment(formData: FormData): Promise<void> {
     date: clean(formData.get("date")) ?? undefined,
     relatedEntity: clean(formData.get("relatedEntity")) ?? undefined,
     relatedEntityId: clean(formData.get("relatedEntityId")) ?? undefined,
+    maintenanceRequestId: clean(formData.get("maintenanceRequestId")) ?? undefined,
   });
   if (!parsed.success) {
     redirect("/app/fleet/payments?error=invalid-input");
@@ -60,8 +63,10 @@ export async function createPayment(formData: FormData): Promise<void> {
       date: parsed.data.date ?? new Date(),
       relatedEntity: parsed.data.relatedEntity ?? null,
       relatedEntityId: parsed.data.relatedEntityId ?? null,
+      maintenanceRequestId: parsed.data.maintenanceRequestId ?? null,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/fleet/payments?error=not-found");
     redirect("/app/fleet/payments?error=duplicate");
   }
 
@@ -90,16 +95,12 @@ export async function verifyPayment(formData: FormData): Promise<void> {
     await reverseModuleRevenue(tenant.organizationId, { sourceType: "FLEET_PAYMENT", sourceId: id, postingPurpose: "COLLECTED", reason: "Fleet payment rejected after verification", actorId: tenant.userId });
   } else {
     const payment = await updateFleetPaymentStatus(tenant.organizationId, id, "VERIFIED", true);
-    await postModuleRevenue(tenant.organizationId, {
-      sourceModule: "fleet",
-      sourceType: "FLEET_PAYMENT",
-      sourceId: payment.id,
-      postingPurpose: "COLLECTED",
-      amount: payment.amount.toString(),
-      entryDate: payment.date,
-      description: `Fleet payment verified: ${payment.reference} (${payment.type})`,
-      createdById: tenant.userId,
-    });
+    await postVerifiedFleetPaymentRevenue(
+      tenant.organizationId,
+      payment,
+      `Fleet payment verified: ${payment.reference} (${payment.type})`,
+      tenant.userId,
+    );
   }
 
   revalidatePath("/app/fleet/payments");
@@ -139,16 +140,12 @@ export async function reviewDriverSubmission(formData: FormData): Promise<void> 
       clean(formData.get("rejectionReason")),
     );
     if (approved && submission.fleetPaymentId) {
-      await postModuleRevenue(tenant.organizationId, {
-        sourceModule: "fleet",
-        sourceType: "FLEET_PAYMENT",
-        sourceId: submission.fleetPaymentId,
-        postingPurpose: "COLLECTED",
-        amount: submission.amount.toString(),
-        entryDate: submission.paymentDate,
-        description: `Fleet driver remittance approved: ${submission.reference ?? submission.id} (${submission.submissionType})`,
-        createdById: session.user.id,
-      });
+      await postVerifiedFleetPaymentRevenue(
+        tenant.organizationId,
+        { id: submission.fleetPaymentId, amount: submission.amount, date: submission.paymentDate },
+        `Fleet driver remittance approved: ${submission.reference ?? submission.id} (${submission.submissionType})`,
+        session.user.id,
+      );
     }
   } catch (error) {
     if (error instanceof NotFoundError) {

@@ -9,23 +9,27 @@ import {
   createFleetMaintenanceRequest,
   MAX_FLEET_MAINTENANCE_ATTACHMENTS,
   managerReviewMaintenanceRequest,
+  recordMaintenanceEstimate,
   ownerDecisionMaintenanceRequest,
   assignMaintenanceMechanic,
+  scheduleExternalMaintenanceRepair,
   startMaintenanceRepair,
   holdMaintenanceRepair,
   resumeMaintenanceRepair,
   withdrawMaintenanceRequest,
   completeMaintenanceRepair,
   verifyMaintenanceCompletion,
+  correctVerifiedMaintenanceExpense,
   NotFoundError,
   InvalidMaintenanceTransitionError,
   MaintenanceApprovalRequiredError,
   InvalidPaymentAmountError,
+  FleetMechanicNotExternalError,
   canUserReportFleetVehicle,
 } from "@/modules/fleet/service";
 import { logAuditEvent } from "@/lib/audit";
 import { fleetMaintenancePhotoData } from "@/lib/fleet-maintenance-photo";
-import { postModuleExpense } from "@/lib/accounting-integration";
+import { postModuleExpense, reverseModuleExpense } from "@/lib/accounting-integration";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -139,8 +143,25 @@ function workflowError(error: unknown): never {
   if (error instanceof InvalidMaintenanceTransitionError) redirect("/app/fleet/maintenance?error=invalid-transition");
   if (error instanceof MaintenanceApprovalRequiredError) redirect("/app/fleet/maintenance?error=approval-required");
   if (error instanceof InvalidPaymentAmountError) redirect("/app/fleet/maintenance?error=invalid-cost");
+  if (error instanceof FleetMechanicNotExternalError) redirect("/app/fleet/maintenance?error=mechanic-not-external");
   if (error instanceof NotFoundError) redirect("/app/fleet/maintenance?error=not-found");
   throw error;
+}
+
+export async function recordEstimate(formData: FormData): Promise<void> {
+  const { tenant, userId } = await maintenanceContext(PERMISSIONS.FLEET_MAINTENANCE_MANAGE);
+  const id = clean(formData.get("id"));
+  if (!id) redirect("/app/fleet/maintenance?error=missing-fields");
+  try {
+    await recordMaintenanceEstimate(tenant.organizationId, id, userId, clean(formData.get("estimatedCost")), clean(formData.get("estimateNote")));
+    await logAuditEvent({
+      organizationId: tenant.organizationId, userId, module: "fleet",
+      action: "fleet.maintenance.estimate_recorded", entityName: "FleetMaintenanceRequest", entityId: id,
+    });
+  } catch (error) { workflowError(error); }
+  revalidatePath("/app/fleet/maintenance");
+  revalidatePath("/app/fleet/investor");
+  redirect("/app/fleet/maintenance?saved=1");
 }
 
 export async function ownerMaintenanceDecision(formData: FormData): Promise<void> {
@@ -161,6 +182,18 @@ export async function assignMechanic(formData: FormData): Promise<void> {
   const mechanicId = clean(formData.get("mechanicId"));
   if (!id || !mechanicId) redirect("/app/fleet/maintenance?error=missing-fields");
   try { await assignMaintenanceMechanic(tenant.organizationId, id, userId, mechanicId); } catch (error) { workflowError(error); }
+  revalidatePath("/app/fleet/maintenance");
+  redirect("/app/fleet/maintenance?saved=1");
+}
+
+export async function scheduleExternalRepair(formData: FormData): Promise<void> {
+  const { tenant, userId } = await maintenanceContext(PERMISSIONS.FLEET_MAINTENANCE_MANAGE);
+  const id = clean(formData.get("id"));
+  const scheduledRepairAt = clean(formData.get("scheduledRepairAt"));
+  if (!id || !scheduledRepairAt) redirect("/app/fleet/maintenance?error=missing-fields");
+  try {
+    await scheduleExternalMaintenanceRepair(tenant.organizationId, id, userId, new Date(`${scheduledRepairAt}T00:00:00.000Z`));
+  } catch (error) { workflowError(error); }
   revalidatePath("/app/fleet/maintenance");
   redirect("/app/fleet/maintenance?saved=1");
 }
@@ -207,7 +240,26 @@ export async function completeRepair(formData: FormData): Promise<void> {
   const id = clean(formData.get("id"));
   const repairCost = clean(formData.get("repairCost"));
   if (!id || repairCost === null) redirect("/app/fleet/maintenance?error=missing-fields");
-  try { await completeMaintenanceRepair(tenant.organizationId, id, userId, repairCost, clean(formData.get("note"))); } catch (error) { workflowError(error); }
+  const photoFiles = formData.getAll("completionPhotos").filter((entry): entry is File => entry instanceof File && entry.size > 0);
+  if (photoFiles.length > MAX_FLEET_MAINTENANCE_ATTACHMENTS) redirect("/app/fleet/maintenance?error=too-many-photos");
+  try {
+    const photos = await Promise.all(photoFiles.map((file) => fleetMaintenancePhotoData(file)));
+    const attachments = photos
+      .filter((photo): photo is NonNullable<typeof photo> => photo !== null)
+      .map((photo) => ({ ...photo, kind: "COMPLETION_EVIDENCE" as const }));
+    await completeMaintenanceRepair(
+      tenant.organizationId,
+      id,
+      userId,
+      repairCost,
+      clean(formData.get("note")),
+      clean(formData.get("invoiceReference")),
+      attachments,
+    );
+  } catch (error) {
+    if (error instanceof Error && error.message === "invalid-maintenance-photo") redirect("/app/fleet/maintenance?error=invalid-photo");
+    workflowError(error);
+  }
   revalidatePath("/app/fleet/maintenance");
   redirect("/app/fleet/maintenance?saved=1");
 }
@@ -231,6 +283,47 @@ export async function verifyRepairCompletion(formData: FormData): Promise<void> 
         amount: request.repairCost.toString(),
         entryDate: request.completedAt ?? new Date(),
         description: `Fleet maintenance repair verified: ${request.vehicle.plateNumber}`,
+        createdById: userId,
+        branchId: request.branchId,
+      });
+    }
+  } catch (error) { workflowError(error); }
+  revalidatePath("/app/fleet/maintenance");
+  revalidatePath("/app/fleet/vehicles");
+  revalidatePath("/app/fleet/investor");
+  redirect("/app/fleet/maintenance?saved=1");
+}
+
+export async function correctRepairExpense(formData: FormData): Promise<void> {
+  const { tenant, userId } = await maintenanceContext(PERMISSIONS.FLEET_MAINTENANCE_MANAGE);
+  const id = clean(formData.get("id"));
+  const newCost = clean(formData.get("newCost"));
+  const reason = clean(formData.get("reason"));
+  if (!id || newCost === null || !reason) redirect("/app/fleet/maintenance?error=missing-fields");
+  try {
+    const { request } = await correctVerifiedMaintenanceExpense(tenant.organizationId, id, userId, newCost, reason);
+    await logAuditEvent({
+      organizationId: tenant.organizationId, userId, module: "fleet",
+      action: "fleet.maintenance.expense_corrected", entityName: "FleetMaintenanceRequest", entityId: id,
+      metadata: { newCost, reason },
+    });
+    // reverseModuleExpense is a safe no-op if the original VERIFIED posting
+    // never happened (e.g. it was warranty work at zero cost); postModuleExpense
+    // is skipped below for the same zero-cost reason, keyed under a distinct
+    // postingPurpose so it never collides with the original entry's identity.
+    await reverseModuleExpense(tenant.organizationId, {
+      sourceType: "FLEET_MAINTENANCE_REPAIR", sourceId: id, postingPurpose: "VERIFIED",
+      reason: `Repair cost corrected: ${reason}`, actorId: userId,
+    });
+    if (!request.repairCost.isZero()) {
+      await postModuleExpense(tenant.organizationId, {
+        sourceModule: "fleet",
+        sourceType: "FLEET_MAINTENANCE_REPAIR",
+        sourceId: request.id,
+        postingPurpose: `VERIFIED_CORRECTED_${Date.now()}`,
+        amount: request.repairCost.toString(),
+        entryDate: new Date(),
+        description: `Fleet maintenance repair cost corrected: ${request.vehicle.plateNumber} (${reason})`,
         createdById: userId,
         branchId: request.branchId,
       });

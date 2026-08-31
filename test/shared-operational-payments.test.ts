@@ -46,16 +46,20 @@ describe("shared operational payments architecture", () => {
   it("posts Accounting only after provider confirmation and retains recovery state", () => {
     const confirmationBlock = service.slice(service.indexOf("export async function confirmOperationalPayment"));
     expect(confirmationBlock.indexOf("status: \"SUCCESS\"")).toBeLessThan(confirmationBlock.indexOf("reconcileOperationalPayment("));
-    expect(service).toContain("await postModuleRevenue");
+    // postVerifiedFleetPaymentRevenue (src/modules/fleet/accounting.ts) is the
+    // centralized wrapper every FLEET_PAYMENT/COLLECTED posting site now goes
+    // through, including this one - see test/fleet-driver-sales-controls.test.ts
+    // for the sibling assertions on the other 4 call sites it replaced.
+    expect(service).toContain("await postVerifiedFleetPaymentRevenue");
     expect(service).toContain('reconciliationStatus: "NEEDS_RETRY"');
     expect(service).toContain('reconciliationStatus: accounting.posted');
   });
 
   it("retries reconciliation through the same shared helper the webhook path uses, never a duplicate implementation", () => {
     const reconcileBody = service.slice(service.indexOf("async function reconcileOperationalPayment"), service.indexOf("export async function confirmOperationalPayment"));
-    expect(reconcileBody).toContain("await postModuleRevenue");
+    expect(reconcileBody).toContain("await postVerifiedFleetPaymentRevenue");
     const retryBlock = service.slice(service.indexOf("export async function retryOperationalPaymentReconciliation"));
     expect(retryBlock).toContain("await reconcileOperationalPayment(payment)");
-    expect(retryBlock).not.toContain("await postModuleRevenue");
+    expect(retryBlock).not.toContain("await postVerifiedFleetPaymentRevenue");
   });
 });

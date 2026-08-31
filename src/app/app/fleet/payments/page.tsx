@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listFleetPayments, listFleetDriverPaymentSubmissions } from "@/modules/fleet/service";
+import { listFleetPayments, listFleetDriverPaymentSubmissions, listFleetMaintenanceRequestsForPaymentLinking } from "@/modules/fleet/service";
 import { createPayment, verifyPayment } from "./actions";
 import { SubmissionReviewControls } from "./submission-review-controls";
 import { listOperationalPayments } from "@/lib/payments/operational";
@@ -22,6 +22,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-input": "Please check that the reference, amount, and type are valid.",
   "already-reviewed": "This driver payment has already been reviewed. Refresh the page to see its current status.",
   "review-failed": "The driver payment could not be reviewed. Please try again or contact support if the problem continues.",
+  "not-found": "That maintenance request could not be found.",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -71,7 +72,21 @@ export default async function FleetPaymentsPage({
       </div>
     );
   }
-  const [payments, driverSubmissions, onlinePayments] = await Promise.all([listFleetPayments(tenant.organizationId), listFleetDriverPaymentSubmissions(tenant.organizationId), listOperationalPayments(tenant.organizationId)]);
+  const [payments, driverSubmissions, onlinePayments, maintenanceRequests] = await Promise.all([
+    listFleetPayments(tenant.organizationId),
+    listFleetDriverPaymentSubmissions(tenant.organizationId),
+    listOperationalPayments(tenant.organizationId),
+    listFleetMaintenanceRequestsForPaymentLinking(tenant.organizationId),
+  ]);
+  const maintenanceRequestItems: Record<string, string> = {
+    "": "None",
+    ...Object.fromEntries(
+      maintenanceRequests.map((request) => [
+        request.id,
+        `${request.vehicle.assetTag} - ${request.vehicle.plateNumber}: ${request.faultDescription.slice(0, 40)}${request.faultDescription.length > 40 ? "…" : ""}`,
+      ]),
+    ),
+  };
 
   return (
     <div className="space-y-6">
@@ -123,6 +138,21 @@ export default async function FleetPaymentsPage({
               <Label htmlFor="relatedEntity">Related to (optional)</Label>
               <Input id="relatedEntity" name="relatedEntity" placeholder="e.g. FleetOwner, FleetDriver" />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="maintenanceRequestId">Linked maintenance request (optional, for Maintenance-type payments)</Label>
+              <Select name="maintenanceRequestId" defaultValue="" items={maintenanceRequestItems}>
+                <SelectTrigger id="maintenanceRequestId" className="w-full">
+                  <SelectValue placeholder="None" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(maintenanceRequestItems).map(([value, label]) => (
+                    <SelectItem key={value || "none"} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </EntityDialog>
         ) : null}
       </div>
@@ -162,7 +192,14 @@ export default async function FleetPaymentsPage({
           <TableBody>
             {payments.map((payment) => (
               <TableRow key={payment.id}>
-                <TableCell className="font-medium">{payment.reference}</TableCell>
+                <TableCell className="font-medium">
+                  {payment.reference}
+                  {payment.maintenanceRequest ? (
+                    <p className="text-xs font-normal text-muted-foreground">
+                      {payment.maintenanceRequest.vehicle.plateNumber}: {payment.maintenanceRequest.faultDescription.slice(0, 40)}
+                    </p>
+                  ) : null}
+                </TableCell>
                 <TableCell className="text-muted-foreground">{payment.date.toLocaleDateString()}</TableCell>
                 <TableCell className="text-muted-foreground">{TYPE_LABELS[payment.type]}</TableCell>
                 <TableCell className="text-muted-foreground">{tenant.organization.currency ?? "GHS"} {Number(payment.amount).toFixed(2)}</TableCell>
