@@ -15,8 +15,8 @@ import { buildTenantAppUrl } from "@/lib/app-url";
 import { logAuditEvent } from "@/lib/audit";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createFleetOwner, updateFleetOwner } from "@/modules/fleet/service";
-import { shortText, longText, email as emailSchema, parseWithSchema } from "@/lib/validation";
+import { createFleetOwner, updateFleetOwner, createFleetOwnerAgreement, NotFoundError } from "@/modules/fleet/service";
+import { shortText, longText, email as emailSchema, moneyAmountNonNegative, percent0to100, cuid, parseWithSchema } from "@/lib/validation";
 
 class PlatformOwnerTenantError extends Error {}
 
@@ -79,6 +79,63 @@ export async function upsertFleetOwner(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/app/fleet/owners");
+  redirect("/app/fleet/owners?saved=1");
+}
+
+const agreementSchema = z.object({
+  ownerId: cuid,
+  revenueSharePercent: z.preprocess((value) => (typeof value === "string" && value.trim() === "" ? undefined : value), percent0to100.optional()),
+  managementFeeFlat: z.preprocess((value) => (typeof value === "string" && value.trim() === "" ? undefined : value), moneyAmountNonNegative.optional()),
+  managementFeePercent: z.preprocess((value) => (typeof value === "string" && value.trim() === "" ? undefined : value), percent0to100.optional()),
+});
+
+/**
+ * Always creates a new agreement row rather than editing one in place -
+ * createFleetOwnerAgreement closes out whatever was previously open in the
+ * same (owner, portfolio-wide) scope as of today, so a settlement computed
+ * for a past period still resolves the terms that were actually in effect
+ * then. The dialog itself is pre-filled with the current terms, so from the
+ * manager's perspective this reads as "editing" even though it's really
+ * "superseding". Portfolio-wide only (vehicleId left unset) - per-vehicle
+ * overrides exist in the schema but aren't exposed from this page yet.
+ */
+export async function setOwnerAgreement(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("fleet");
+  if (!hasPermission(tenant, PERMISSIONS.FLEET_OWNERS_MANAGE)) {
+    redirect("/app/fleet/owners?error=forbidden");
+  }
+
+  const ownerId = clean(formData.get("ownerId"));
+  if (!ownerId) {
+    redirect("/app/fleet/owners?error=missing-fields");
+  }
+
+  const parsed = parseWithSchema(agreementSchema, {
+    ownerId,
+    revenueSharePercent: clean(formData.get("revenueSharePercent")) ?? undefined,
+    managementFeeFlat: clean(formData.get("managementFeeFlat")) ?? undefined,
+    managementFeePercent: clean(formData.get("managementFeePercent")) ?? undefined,
+  });
+  if (!parsed.success) {
+    redirect("/app/fleet/owners?error=invalid-agreement");
+  }
+
+  const session = await getServerAuthSession();
+  try {
+    await createFleetOwnerAgreement(tenant.organizationId, {
+      ownerId: parsed.data.ownerId,
+      revenueSharePercent: parsed.data.revenueSharePercent !== undefined ? String(parsed.data.revenueSharePercent) : null,
+      managementFeeFlat: parsed.data.managementFeeFlat ?? null,
+      managementFeePercent: parsed.data.managementFeePercent !== undefined ? String(parsed.data.managementFeePercent) : null,
+      createdById: session?.user?.id,
+    });
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/fleet/owners?error=not-found");
+    throw error;
+  }
+
+  revalidatePath("/app/fleet/owners");
+  revalidatePath("/app/fleet/investor");
   redirect("/app/fleet/owners?saved=1");
 }
 

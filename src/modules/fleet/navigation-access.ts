@@ -31,6 +31,7 @@ export function getFleetNavigationForTenant(tenant: TenantContext): ModuleNavIte
     ["/app/fleet/mechanics", hasPermission(tenant, PERMISSIONS.FLEET_MECHANICS_MANAGE)],
     ["/app/fleet/maintenance", hasPermission(tenant, PERMISSIONS.FLEET_MAINTENANCE_MANAGE) || hasPermission(tenant, PERMISSIONS.FLEET_VIEW) || hasPermission(tenant, PERMISSIONS.FLEET_DRIVER_SELF_SERVICE) || hasPermission(tenant, PERMISSIONS.FLEET_INVESTOR_VIEW)],
     ["/app/fleet/insurance-roadworthy", hasPermission(tenant, PERMISSIONS.FLEET_INSURANCE_MANAGE)],
+    ["/app/fleet/vehicle-expenses", hasPermission(tenant, PERMISSIONS.FLEET_VEHICLES_MANAGE)],
     ["/app/fleet/payments", hasPermission(tenant, PERMISSIONS.FLEET_PAYMENTS_MANAGE)],
     ["/app/fleet/work-and-pay", hasPermission(tenant, PERMISSIONS.FLEET_WORKANDPAY_MANAGE)],
     ["/app/fleet/reports", hasPermission(tenant, PERMISSIONS.FLEET_REPORTS_VIEW)],

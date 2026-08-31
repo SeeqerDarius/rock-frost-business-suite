@@ -29,6 +29,8 @@ const mockDb = {
   fleetMaintenanceRequest: { create: vi.fn(), findFirst: vi.fn() },
   fleetWorkAndPayContract: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   fleetPayment: { create: vi.fn() },
+  fleetVehicleExpense: { create: vi.fn() },
+  fileAsset: { create: vi.fn() },
   auditLog: { create: vi.fn() },
   $transaction: vi.fn(),
 };
@@ -329,5 +331,18 @@ describe("Fleet service — cross-tenant IDOR fixes and payment atomicity", () =
       }),
     ).rejects.toThrow(fleet.NotFoundError);
     expect(mockDb.fleetPayment.create).not.toHaveBeenCalled();
+  });
+
+  it("createFleetVehicleExpense rejects a vehicleId from another organization", async () => {
+    mockDb.fleetVehicle.findFirst.mockResolvedValue(null);
+    await expect(
+      fleet.createFleetVehicleExpense(ORG, {
+        vehicleId: "vehicle-foreign",
+        type: "FUEL",
+        amount: "150.00",
+        date: new Date(),
+      }),
+    ).rejects.toThrow(fleet.NotFoundError);
+    expect(mockDb.fleetVehicleExpense.create).not.toHaveBeenCalled();
   });
 });

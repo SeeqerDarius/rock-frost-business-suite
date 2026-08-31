@@ -3,8 +3,17 @@ import "server-only";
 import type { ReportExportInput } from "@/lib/reports/export";
 import { formatMoney } from "@/lib/currency";
 import type { getFleetOwnerWorkspace } from "@/modules/fleet/owner-workspace";
+import type { FleetOwnerSettlement } from "@/modules/fleet/service";
 
 type OwnerWorkspace = NonNullable<Awaited<ReturnType<typeof getFleetOwnerWorkspace>>>;
+
+const VEHICLE_EXPENSE_TYPE_LABELS: Record<string, string> = {
+  FUEL: "Fuel",
+  FINE: "Fine",
+  INSURANCE_PREMIUM: "Insurance premium",
+  LICENSING: "Licensing",
+  OTHER: "Vehicle expense",
+};
 
 export interface OwnerReportLedgerLine {
   date: Date;
@@ -28,7 +37,7 @@ export interface OwnerReport {
   totals: { verifiedCollections: number; verifiedExpenses: number; operatingPosition: number; vehicleCount: number };
   ledger: OwnerReportLedgerLine[];
   vehiclePerformance: OwnerReportVehiclePerformance[];
-  settlementConfigured: false;
+  settlement: FleetOwnerSettlement;
 }
 
 /**
@@ -49,8 +58,8 @@ export function buildFleetOwnerReport(workspace: OwnerWorkspace): OwnerReport {
     })),
   );
 
-  const expenses: OwnerReportLedgerLine[] = workspace.vehicles.flatMap((vehicle) =>
-    vehicle.maintenanceRequests
+  const expenses: OwnerReportLedgerLine[] = workspace.vehicles.flatMap((vehicle) => [
+    ...vehicle.maintenanceRequests
       .filter((request) => request.progressStatus === "VERIFIED" && request.repairCost)
       .map((request) => ({
         date: request.completedAt ?? request.requestedAt,
@@ -59,7 +68,14 @@ export function buildFleetOwnerReport(workspace: OwnerWorkspace): OwnerReport {
         description: request.faultDescription,
         amount: Number(request.repairCost),
       })),
-  );
+    ...vehicle.expenses.map((expense) => ({
+      date: expense.date,
+      vehiclePlate: vehicle.plateNumber,
+      kind: "EXPENSE" as const,
+      description: `${VEHICLE_EXPENSE_TYPE_LABELS[expense.type] ?? expense.type}${expense.note ? `: ${expense.note}` : ""}`,
+      amount: Number(expense.amount),
+    })),
+  ]);
 
   const ledger = [...collections, ...expenses].sort((a, b) => b.date.getTime() - a.date.getTime());
 
@@ -82,7 +98,7 @@ export function buildFleetOwnerReport(workspace: OwnerWorkspace): OwnerReport {
     },
     ledger,
     vehiclePerformance,
-    settlementConfigured: false,
+    settlement: workspace.settlement,
   };
 }
 
@@ -103,7 +119,12 @@ export function buildFleetOwnerReportExportInput(report: OwnerReport, currency: 
       { label: "Verified collections", value: formatMoney(report.totals.verifiedCollections, currency) },
       { label: "Verified expenses", value: formatMoney(report.totals.verifiedExpenses, currency) },
       { label: "Operating position", value: formatMoney(report.totals.operatingPosition, currency) },
-      { label: "Settlement", value: "Not configured - no approved owner agreement defines revenue share or fees" },
+      {
+        label: "Settlement",
+        value: report.settlement.settlementConfigured
+          ? `${formatMoney(report.settlement.totals.netSettlement, currency)} net (${formatMoney(report.settlement.totals.ownerRevenueShare, currency)} share, ${formatMoney(report.settlement.totals.managementFee, currency)} management fee)`
+          : "Not configured - no approved owner agreement defines revenue share or fees",
+      },
     ],
     columns: [
       { key: "date", header: "Date", width: 1 },

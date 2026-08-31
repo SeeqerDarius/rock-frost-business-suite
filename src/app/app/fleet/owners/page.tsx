@@ -11,7 +11,7 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listAssignableOwnerUsers, listFleetOwnersWithPortfolio } from "@/modules/fleet/service";
-import { upsertFleetOwner, inviteFleetOwner } from "./actions";
+import { upsertFleetOwner, inviteFleetOwner, setOwnerAgreement } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage owners.",
@@ -21,6 +21,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   "platform-owner": "That email belongs to a platform account and can't be invited.",
   "seat-limit": "No available seats for the Vehicle Owner role. Free up a seat or upgrade your plan.",
   "delivery-failed": "The owner was added but the invitation email failed to send. Use Resend from Administration.",
+  "invalid-agreement": "Please check that the revenue share and fee fields are valid percentages or amounts.",
+  "not-found": "That owner could not be found.",
 };
 
 export default async function FleetOwnersPage({
@@ -139,6 +141,7 @@ export default async function FleetOwnersPage({
               <TableHead>Email</TableHead>
               <TableHead>Vehicles</TableHead>
               <TableHead>Verified revenue</TableHead>
+              <TableHead>Settlement</TableHead>
               {canManage ? <TableHead /> : null}
             </TableRow>
           </TableHeader>
@@ -161,45 +164,82 @@ export default async function FleetOwnersPage({
                   </details>
                 </TableCell>
                 <TableCell className="text-muted-foreground">{tenant.organization.currency ?? "GHS"} {owner.revenue.toFixed(2)}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {owner.settlement.settlementConfigured ? (
+                    <span className="font-medium text-foreground">{tenant.organization.currency ?? "GHS"} {owner.settlement.totals.netSettlement.toFixed(2)}</span>
+                  ) : (
+                    "Not configured"
+                  )}
+                </TableCell>
                 {canManage ? (
                   <TableCell className="text-right">
-                    <EntityDialog
-                      trigger={
-                        <Button size="sm" variant="ghost">
-                          Edit
-                        </Button>
-                      }
-                      title="Edit owner"
-                      action={upsertFleetOwner}
-                      submitLabel="Save changes"
-                    >
-                      <input type="hidden" name="id" value={owner.id} />
-                      <div className="space-y-2">
-                        <Label htmlFor={`name-${owner.id}`}>Name</Label>
-                        <Input id={`name-${owner.id}`} name="name" defaultValue={owner.name} required />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor={`businessName-${owner.id}`}>Business name</Label>
-                        <Input id={`businessName-${owner.id}`} name="businessName" defaultValue={owner.businessName ?? ""} />
-                      </div>
-                      <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="flex justify-end gap-1">
+                      <EntityDialog
+                        trigger={
+                          <Button size="sm" variant="ghost">
+                            Agreement
+                          </Button>
+                        }
+                        title="Owner settlement agreement"
+                        description="Sets the portfolio-wide revenue share and management fee used to calculate this owner's settlement. Saving replaces the terms in effect today; earlier terms are kept for historical settlements."
+                        action={setOwnerAgreement}
+                        submitLabel="Save agreement"
+                      >
+                        <input type="hidden" name="ownerId" value={owner.id} />
                         <div className="space-y-2">
-                          <Label htmlFor={`phone-${owner.id}`}>Phone</Label>
-                          <Input id={`phone-${owner.id}`} name="phone" defaultValue={owner.phone ?? ""} />
+                          <Label htmlFor={`revenueSharePercent-${owner.id}`}>Owner&apos;s revenue share (%)</Label>
+                          <Input id={`revenueSharePercent-${owner.id}`} name="revenueSharePercent" type="number" min="0" max="100" step="0.01" placeholder="e.g. 70" defaultValue={owner.currentAgreement?.revenueSharePercent?.toString() ?? ""} />
+                          <p className="text-xs text-muted-foreground">Leave blank for the owner to receive 100% of verified collections.</p>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor={`managementFeeFlat-${owner.id}`}>Management fee, flat ({tenant.organization.currency ?? "GHS"})</Label>
+                            <Input id={`managementFeeFlat-${owner.id}`} name="managementFeeFlat" type="number" min="0" step="0.01" defaultValue={owner.currentAgreement?.managementFeeFlat?.toString() ?? ""} />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`managementFeePercent-${owner.id}`}>Management fee (%)</Label>
+                            <Input id={`managementFeePercent-${owner.id}`} name="managementFeePercent" type="number" min="0" max="100" step="0.01" defaultValue={owner.currentAgreement?.managementFeePercent?.toString() ?? ""} />
+                          </div>
+                        </div>
+                      </EntityDialog>
+                      <EntityDialog
+                        trigger={
+                          <Button size="sm" variant="ghost">
+                            Edit
+                          </Button>
+                        }
+                        title="Edit owner"
+                        action={upsertFleetOwner}
+                        submitLabel="Save changes"
+                      >
+                        <input type="hidden" name="id" value={owner.id} />
+                        <div className="space-y-2">
+                          <Label htmlFor={`name-${owner.id}`}>Name</Label>
+                          <Input id={`name-${owner.id}`} name="name" defaultValue={owner.name} required />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor={`email-${owner.id}`}>Email</Label>
-                          <Input id={`email-${owner.id}`} name="email" type="email" defaultValue={owner.email ?? ""} />
+                          <Label htmlFor={`businessName-${owner.id}`}>Business name</Label>
+                          <Input id={`businessName-${owner.id}`} name="businessName" defaultValue={owner.businessName ?? ""} />
                         </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor={`userId-${owner.id}`}>Owner portal login</Label>
-                        <Select name="userId" items={userItems} defaultValue={owner.userId ?? undefined}>
-                          <SelectTrigger id={`userId-${owner.id}`} className="w-full"><SelectValue placeholder="Link an organization user" /></SelectTrigger>
-                          <SelectContent>{Object.entries(userItems).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
-                        </Select>
-                      </div>
-                    </EntityDialog>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor={`phone-${owner.id}`}>Phone</Label>
+                            <Input id={`phone-${owner.id}`} name="phone" defaultValue={owner.phone ?? ""} />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`email-${owner.id}`}>Email</Label>
+                            <Input id={`email-${owner.id}`} name="email" type="email" defaultValue={owner.email ?? ""} />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`userId-${owner.id}`}>Owner portal login</Label>
+                          <Select name="userId" items={userItems} defaultValue={owner.userId ?? undefined}>
+                            <SelectTrigger id={`userId-${owner.id}`} className="w-full"><SelectValue placeholder="Link an organization user" /></SelectTrigger>
+                            <SelectContent>{Object.entries(userItems).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
+                      </EntityDialog>
+                    </div>
                   </TableCell>
                 ) : null}
               </TableRow>

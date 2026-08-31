@@ -11,6 +11,7 @@ import type {
   FleetPaymentStatus,
   FleetPaymentType,
   FleetSalesTargetPeriod,
+  FleetVehicleExpenseType,
   FleetVehicleStatus,
 } from "@prisma/client";
 import { Prisma } from "@prisma/client";
@@ -133,15 +134,27 @@ export async function listFleetOwners(organizationId: string) {
   return db.fleetOwner.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
 }
 
-export async function listFleetOwnersWithPortfolio(organizationId: string) {
+export async function listFleetOwnersWithPortfolio(organizationId: string, now = new Date()) {
   await Promise.all([backfillMissingFleetOwners(organizationId), ensureOrganizationFleetOwner(organizationId)]);
-  const [owners, payments] = await Promise.all([
+  const [owners, payments, agreements] = await Promise.all([
     db.fleetOwner.findMany({
       where: { organizationId },
-      include: { vehicles: { include: { workAndPayContracts: true } } },
+      include: {
+        vehicles: {
+          include: {
+            workAndPayContracts: true,
+            maintenanceRequests: { where: { progressStatus: "VERIFIED" }, select: { repairCost: true } },
+            expenses: { select: { amount: true } },
+          },
+        },
+      },
       orderBy: { name: "asc" },
     }),
     db.fleetPayment.findMany({ where: { organizationId, status: "VERIFIED" }, select: { amount: true, relatedEntity: true, relatedEntityId: true } }),
+    db.fleetOwnerAgreement.findMany({
+      where: { organizationId, effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: now } }] },
+      select: { ownerId: true, vehicleId: true, revenueSharePercent: true, managementFeeFlat: true, managementFeePercent: true, createdAt: true },
+    }),
   ]);
   return owners.map((owner) => {
     const vehicleIds = new Set(owner.vehicles.map((vehicle) => vehicle.id));
@@ -152,7 +165,24 @@ export async function listFleetOwnersWithPortfolio(organizationId: string) {
         (payment.relatedEntity === "FleetWorkAndPayContract" && payment.relatedEntityId && contractIds.has(payment.relatedEntityId));
       return belongsToOwner ? total + Number(payment.amount) : total;
     }, 0);
-    return { ...owner, vehicleCount: owner.vehicles.length, revenue };
+    const vehicleFinancials = owner.vehicles.map((vehicle) => {
+      const contractIdSet = new Set(vehicle.workAndPayContracts.map((contract) => contract.id));
+      const collections = payments
+        .filter((payment) =>
+          (payment.relatedEntity === "FleetVehicle" && payment.relatedEntityId === vehicle.id) ||
+          (payment.relatedEntity === "FleetWorkAndPayContract" && payment.relatedEntityId && contractIdSet.has(payment.relatedEntityId)),
+        )
+        .reduce((sum, payment) => sum + Number(payment.amount), 0);
+      const maintenanceExpense = vehicle.maintenanceRequests.reduce((sum, request) => sum + Number(request.repairCost ?? 0), 0);
+      const vehicleExpense = vehicle.expenses.reduce((sum, expense) => sum + Number(expense.amount), 0);
+      return { id: vehicle.id, plateNumber: vehicle.plateNumber, verifiedCollections: collections, verifiedExpenses: maintenanceExpense + vehicleExpense };
+    });
+    const ownerAgreements = agreements.filter((agreement) => agreement.ownerId === owner.id);
+    const settlement = computeFleetOwnerSettlement(vehicleFinancials, ownerAgreements);
+    const currentAgreement = ownerAgreements
+      .filter((agreement) => agreement.vehicleId === null)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
+    return { ...owner, vehicleCount: owner.vehicles.length, revenue, settlement, currentAgreement };
   });
 }
 
@@ -170,6 +200,158 @@ export function updateFleetOwner(
 ) {
   return db.fleetOwner.update({ where: { id, organizationId }, data });
 }
+
+// --- Owner agreements and settlement ---
+
+
+export async function createFleetOwnerAgreement(
+  organizationId: string,
+  data: {
+    ownerId: string;
+    vehicleId?: string | null;
+    revenueSharePercent?: string | null;
+    managementFeeFlat?: string | null;
+    managementFeePercent?: string | null;
+    effectiveFrom?: Date;
+    createdById?: string | null;
+  }
+) {
+  const owner = await db.fleetOwner.findFirst({ where: { id: data.ownerId, organizationId }, select: { id: true } });
+  if (!owner) throw new NotFoundError("Owner not found.");
+  if (data.vehicleId) {
+    const vehicle = await db.fleetVehicle.findFirst({ where: { id: data.vehicleId, organizationId, ownerId: data.ownerId }, select: { id: true } });
+    if (!vehicle) throw new NotFoundError("Vehicle not found for this owner.");
+  }
+  const effectiveFrom = data.effectiveFrom ?? new Date();
+  return db.$transaction(async (tx) => {
+    // Closes any currently-open agreement in the same (ownerId, vehicleId)
+    // scope as of the new one's start - superseded, not deleted, so a
+    // settlement computed for a past period still resolves the terms that
+    // were actually in effect then.
+    await tx.fleetOwnerAgreement.updateMany({
+      where: { organizationId, ownerId: data.ownerId, vehicleId: data.vehicleId ?? null, effectiveTo: null },
+      data: { effectiveTo: effectiveFrom },
+    });
+    return tx.fleetOwnerAgreement.create({
+      data: {
+        organizationId,
+        ownerId: data.ownerId,
+        vehicleId: data.vehicleId ?? null,
+        revenueSharePercent: data.revenueSharePercent ?? null,
+        managementFeeFlat: data.managementFeeFlat ?? null,
+        managementFeePercent: data.managementFeePercent ?? null,
+        effectiveFrom,
+        createdById: data.createdById,
+      },
+    });
+  });
+}
+
+export interface FleetOwnerSettlementVehicleLine {
+  vehicleId: string;
+  plateNumber: string;
+  verifiedCollections: number;
+  verifiedExpenses: number;
+  revenueSharePercent: number | null;
+  ownerRevenueShare: number;
+  managementFee: number;
+  netSettlement: number;
+}
+
+export type FleetOwnerSettlement =
+  | { settlementConfigured: false }
+  | {
+      settlementConfigured: true;
+      coveredVehicleCount: number;
+      uncoveredVehicleCount: number;
+      totals: { verifiedCollections: number; ownerRevenueShare: number; managementFee: number; verifiedExpenses: number; netSettlement: number };
+      vehicles: FleetOwnerSettlementVehicleLine[];
+    };
+
+interface AgreementTerms {
+  vehicleId: string | null;
+  revenueSharePercent: Prisma.Decimal | null;
+  managementFeeFlat: Prisma.Decimal | null;
+  managementFeePercent: Prisma.Decimal | null;
+  createdAt: Date;
+}
+
+/**
+ * Pure settlement math, deliberately taking already-computed per-vehicle
+ * verifiedCollections/verifiedExpenses rather than querying the database
+ * itself - getFleetOwnerWorkspace (self-service Owner Workspace) and
+ * getFleetOwnerSettlement (manager-facing Owners roster) each fetch that
+ * figure their own way (one is scoped by userId, the other by ownerId), but
+ * both funnel into this one calculation so the two views can never disagree
+ * about what a given collections/expenses figure settles to. A vehicle
+ * with no applicable agreement (no vehicle-specific override and no
+ * portfolio-wide agreement) is excluded from the totals but still counted
+ * in uncoveredVehicleCount, so a partially-configured owner doesn't look
+ * fully settled.
+ */
+export function computeFleetOwnerSettlement(
+  vehicles: { id: string; plateNumber: string; verifiedCollections: number; verifiedExpenses: number }[],
+  agreements: AgreementTerms[],
+): FleetOwnerSettlement {
+  const portfolioAgreement = agreements
+    .filter((agreement) => agreement.vehicleId === null)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
+  const vehicleAgreements = new Map<string, AgreementTerms>();
+  for (const agreement of agreements) {
+    if (!agreement.vehicleId) continue;
+    const existing = vehicleAgreements.get(agreement.vehicleId);
+    if (!existing || agreement.createdAt > existing.createdAt) vehicleAgreements.set(agreement.vehicleId, agreement);
+  }
+  if (!portfolioAgreement && vehicleAgreements.size === 0) {
+    return { settlementConfigured: false };
+  }
+
+  const lines: FleetOwnerSettlementVehicleLine[] = [];
+  let totalCollections = 0;
+  let totalOwnerShare = 0;
+  let totalManagementFee = 0;
+  let totalExpenses = 0;
+  let totalNet = 0;
+  let uncoveredVehicleCount = 0;
+
+  for (const vehicle of vehicles) {
+    const agreement = vehicleAgreements.get(vehicle.id) ?? portfolioAgreement;
+    if (!agreement) {
+      uncoveredVehicleCount += 1;
+      continue;
+    }
+    const revenueSharePercent = agreement.revenueSharePercent ? Number(agreement.revenueSharePercent) : null;
+    const ownerRevenueShare = revenueSharePercent !== null ? vehicle.verifiedCollections * (revenueSharePercent / 100) : vehicle.verifiedCollections;
+    const managementFee =
+      (agreement.managementFeeFlat ? Number(agreement.managementFeeFlat) : 0) +
+      (agreement.managementFeePercent ? vehicle.verifiedCollections * (Number(agreement.managementFeePercent) / 100) : 0);
+    const netSettlement = ownerRevenueShare - managementFee - vehicle.verifiedExpenses;
+    lines.push({
+      vehicleId: vehicle.id,
+      plateNumber: vehicle.plateNumber,
+      verifiedCollections: vehicle.verifiedCollections,
+      verifiedExpenses: vehicle.verifiedExpenses,
+      revenueSharePercent,
+      ownerRevenueShare,
+      managementFee,
+      netSettlement,
+    });
+    totalCollections += vehicle.verifiedCollections;
+    totalOwnerShare += ownerRevenueShare;
+    totalManagementFee += managementFee;
+    totalExpenses += vehicle.verifiedExpenses;
+    totalNet += netSettlement;
+  }
+
+  return {
+    settlementConfigured: true,
+    coveredVehicleCount: lines.length,
+    uncoveredVehicleCount,
+    totals: { verifiedCollections: totalCollections, ownerRevenueShare: totalOwnerShare, managementFee: totalManagementFee, verifiedExpenses: totalExpenses, netSettlement: totalNet },
+    vehicles: lines,
+  };
+}
+
 
 /**
  * Owner-portal and driver-login dropdowns must only offer people who can
@@ -1639,6 +1821,67 @@ export function updateFleetPaymentStatus(organizationId: string, id: string, sta
   return db.fleetPayment.update({ where: { id, organizationId }, data: { status, verified } });
 }
 
+// --- Vehicle expenses ---
+
+export function listFleetVehicleExpenses(organizationId: string, vehicleId?: string) {
+  return db.fleetVehicleExpense.findMany({
+    where: { organizationId, ...(vehicleId ? { vehicleId } : {}) },
+    include: { vehicle: { select: { assetTag: true, plateNumber: true } } },
+    orderBy: { date: "desc" },
+  });
+}
+
+export async function createFleetVehicleExpense(
+  organizationId: string,
+  data: {
+    vehicleId: string;
+    type: FleetVehicleExpenseType;
+    amount: string;
+    date: Date;
+    note?: string | null;
+    branchId?: string | null;
+    createdById?: string | null;
+    receipt?: { fileName: string; mimeType: string; size: number; dataUrl: string } | null;
+  }
+) {
+  const vehicle = await db.fleetVehicle.findFirst({ where: { id: data.vehicleId, organizationId }, select: { id: true } });
+  if (!vehicle) throw new NotFoundError("Vehicle not found.");
+  const amount = new Prisma.Decimal(data.amount);
+  if (amount.isNegative() || amount.isZero()) throw new InvalidPaymentAmountError("Expense amount must be greater than zero.");
+  return db.$transaction(async (tx) => {
+    let receiptFileAssetId: string | null = null;
+    if (data.receipt) {
+      const asset = await tx.fileAsset.create({
+        data: {
+          organizationId,
+          branchId: data.branchId,
+          uploadedById: data.createdById,
+          fileName: data.receipt.fileName,
+          mimeType: data.receipt.mimeType,
+          size: data.receipt.size,
+          storagePath: `database://fleet-vehicle-expense/${data.vehicleId}`,
+          url: data.receipt.dataUrl,
+          metadata: { purpose: "fleet-vehicle-expense-receipt", vehicleId: data.vehicleId },
+        },
+      });
+      receiptFileAssetId = asset.id;
+    }
+    return tx.fleetVehicleExpense.create({
+      data: {
+        organizationId,
+        vehicleId: data.vehicleId,
+        type: data.type,
+        amount: amount.toFixed(2),
+        date: data.date,
+        note: data.note ?? null,
+        branchId: data.branchId ?? null,
+        createdById: data.createdById ?? null,
+        receiptFileAssetId,
+      },
+    });
+  });
+}
+
 // --- Work & Pay contracts ---
 
 export function listFleetWorkAndPayContracts(organizationId: string) {
@@ -1999,6 +2242,7 @@ export async function getFleetInvestorSummary(organizationId: string, userId?: s
           include: {
             maintenanceRequests: true,
             workAndPayContracts: true,
+            expenses: { select: { amount: true } },
           },
         },
       },
@@ -2026,6 +2270,7 @@ export async function getFleetInvestorSummary(organizationId: string, userId?: s
     }, 0);
     const outstanding = contracts.reduce((sum, contract) => sum + Number(contract.outstandingBalance), 0);
     const maintenanceCost = maintenance.reduce((sum, request) => sum + Number(request.repairCost ?? 0), 0);
+    const vehicleExpenseCost = vehicles.flatMap((vehicle) => vehicle.expenses).reduce((sum, expense) => sum + Number(expense.amount), 0);
     return {
       owner,
       vehicleIds,
@@ -2036,7 +2281,8 @@ export async function getFleetInvestorSummary(organizationId: string, userId?: s
       amountCollected,
       outstanding,
       maintenanceCost,
-      netCashPosition: amountCollected - maintenanceCost,
+      vehicleExpenseCost,
+      netCashPosition: amountCollected - maintenanceCost - vehicleExpenseCost,
       maintenanceOpenCount: maintenance.filter((request) => !["VERIFIED", "REJECTED", "CANCELLED"].includes(request.progressStatus)).length,
     };
   });

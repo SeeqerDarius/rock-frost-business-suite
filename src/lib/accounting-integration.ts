@@ -59,14 +59,23 @@ export function moduleRevenueLabel(sourceModule: ModuleRevenueSource): string {
 
 /**
  * Expense-side counterpart to ModuleRevenueSource/MODULE_REVENUE_ACCOUNTS -
- * a separate, narrower map since only Fleet posts a module-specific expense
- * today (a verified maintenance repair cost). Generic enough for a future
- * module to add its own entry without touching postModuleExpense itself.
+ * a separate, narrower map since only Fleet posts module-specific expenses
+ * today. Fleet gets one entry per vehicle-expense category rather than a
+ * single "fleet" bucket - a fuel receipt and a repair invoice are different
+ * GL categories in a real chart of accounts (and different lines on a
+ * Ghana-SME P&L), even though both originate from the same Fleet module.
+ * Generic enough for a future module to add its own entry without touching
+ * postModuleExpense itself.
  */
-export type ModuleExpenseSource = "fleet";
+export type ModuleExpenseSource = "fleet" | "fleet-fuel" | "fleet-fine" | "fleet-insurance" | "fleet-licensing" | "fleet-other";
 
 const MODULE_EXPENSE_ACCOUNTS: Record<ModuleExpenseSource, { code: string; name: string }> = {
   fleet: { code: "5100", name: "Fleet Maintenance Expense" },
+  "fleet-fuel": { code: "5110", name: "Fleet Fuel Expense" },
+  "fleet-fine": { code: "5120", name: "Fleet Fines and Penalties" },
+  "fleet-insurance": { code: "5130", name: "Fleet Insurance Expense" },
+  "fleet-licensing": { code: "5140", name: "Fleet Licensing and Permits" },
+  "fleet-other": { code: "5150", name: "Fleet Other Vehicle Expense" },
 };
 
 export function moduleExpenseLabel(sourceModule: ModuleExpenseSource): string {

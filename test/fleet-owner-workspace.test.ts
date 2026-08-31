@@ -8,6 +8,7 @@ const vehicle = fs.readFileSync("src/app/app/fleet/investor/vehicles/[vehicleId]
 const mockDb = {
   fleetOwner: { findFirst: vi.fn() },
   fleetPayment: { findMany: vi.fn() },
+  fleetOwnerAgreement: { findMany: vi.fn() },
 };
 vi.mock("@/lib/db", () => ({ db: mockDb }));
 vi.mock("@/modules/fleet/driver-obligations", () => ({ getFleetDriverObligations: vi.fn().mockResolvedValue({ vehicles: [] }) }));
@@ -27,9 +28,10 @@ describe("Vehicle Owner Workspace", () => {
     expect(workspace).toContain("Pending, rejected or reversed records are excluded.");
   });
 
-  it("uses real daily or weekly obligations without inventing settlements", () => {
+  it("uses real daily or weekly obligations, and computes settlement from actual owner agreements rather than inventing one", () => {
     expect(service).toContain("getFleetDriverObligations");
-    expect(service).toContain("settlementConfigured: false as const");
+    expect(service).toContain("computeFleetOwnerSettlement");
+    expect(service).toContain("db.fleetOwnerAgreement.findMany");
     expect(workspace).toContain("Settlement calculation not configured");
     expect(vehicle).toContain("No daily or weekly remittance target is configured");
   });
@@ -72,10 +74,12 @@ describe("Vehicle Owner Workspace", () => {
           ],
           workAndPayContracts: [],
           ownershipHistory: [],
+          expenses: [],
         },
       ],
     });
     mockDb.fleetPayment.findMany.mockResolvedValue([]);
+    mockDb.fleetOwnerAgreement.findMany.mockResolvedValue([]);
 
     const { getFleetOwnerWorkspace } = await import("@/modules/fleet/owner-workspace");
     const result = await getFleetOwnerWorkspace("org-1", "user-1");

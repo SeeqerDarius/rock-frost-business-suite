@@ -3,6 +3,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@/lib/trend-buckets";
 import { getFleetDriverObligations } from "@/modules/fleet/driver-obligations";
+import { computeFleetOwnerSettlement } from "@/modules/fleet/service";
 
 /**
  * Every FleetMaintenanceProgressStatus value that represents a request still
@@ -29,12 +30,18 @@ export async function getFleetOwnerWorkspace(organizationId: string, userId: str
           },
           workAndPayContracts: { orderBy: { createdAt: "desc" } },
           ownershipHistory: { orderBy: { changedAt: "desc" } },
+          expenses: { orderBy: { date: "desc" } },
         },
         orderBy: { plateNumber: "asc" },
       },
     },
   });
   if (!owner) return null;
+
+  const agreements = await db.fleetOwnerAgreement.findMany({
+    where: { organizationId, ownerId: owner.id, effectiveFrom: { lte: now }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: now } }] },
+    select: { vehicleId: true, revenueSharePercent: true, managementFeeFlat: true, managementFeePercent: true, createdAt: true },
+  });
 
   const obligations = await getFleetDriverObligations(organizationId, owner.vehicles, now);
   const obligationByVehicle = new Map(obligations.vehicles.map((item) => [item.vehicleId, item.summary]));
@@ -62,9 +69,11 @@ export async function getFleetOwnerWorkspace(organizationId: string, userId: str
     const contractIdSet = new Set(vehicle.workAndPayContracts.map((contract) => contract.id));
     const vehiclePayments = paymentForVehicle(vehicle.id, contractIdSet);
     const verifiedCollections = vehiclePayments.reduce((sum, payment) => sum + Number(payment.amount), 0);
-    const verifiedExpenses = vehicle.maintenanceRequests
+    const maintenanceExpense = vehicle.maintenanceRequests
       .filter((request) => request.progressStatus === "VERIFIED" && request.repairCost)
       .reduce((sum, request) => sum + Number(request.repairCost), 0);
+    const vehicleExpenseTotal = vehicle.expenses.reduce((sum, expense) => sum + Number(expense.amount), 0);
+    const verifiedExpenses = maintenanceExpense + vehicleExpenseTotal;
     const obligation = obligationByVehicle.get(vehicle.id) ?? null;
     const openMaintenance = vehicle.maintenanceRequests.filter((request) => OPEN_MAINTENANCE.includes(request.progressStatus as (typeof OPEN_MAINTENANCE)[number]));
     const ownerApprovals = openMaintenance.filter((request) => request.ownerApprovalRequired && request.ownerApprovalStatus === "PENDING");
@@ -91,16 +100,25 @@ export async function getFleetOwnerWorkspace(organizationId: string, userId: str
 
   const maintenanceForTrends = owner.vehicles.flatMap((vehicle) => vehicle.maintenanceRequests)
     .filter((request) => request.progressStatus === "VERIFIED" && request.completedAt && request.repairCost && request.completedAt >= widestTrendLookback());
+  const vehicleExpensesForTrends = owner.vehicles.flatMap((vehicle) => vehicle.expenses).filter((expense) => expense.date >= widestTrendLookback());
   const collectionsForTrends = payments.filter((payment) => payment.date >= widestTrendLookback());
   const buildSeries = (granularity: TrendGranularity) => buildTrendBuckets(granularity).map((bucket) => {
     const collected = collectionsForTrends.filter((payment) => payment.date >= bucket.start && payment.date < bucket.end).reduce((sum, payment) => sum + Number(payment.amount), 0);
-    const expenses = maintenanceForTrends.filter((request) => request.completedAt! >= bucket.start && request.completedAt! < bucket.end).reduce((sum, request) => sum + Number(request.repairCost), 0);
+    const maintenanceExpenses = maintenanceForTrends.filter((request) => request.completedAt! >= bucket.start && request.completedAt! < bucket.end).reduce((sum, request) => sum + Number(request.repairCost), 0);
+    const vehicleExpenses = vehicleExpensesForTrends.filter((expense) => expense.date >= bucket.start && expense.date < bucket.end).reduce((sum, expense) => sum + Number(expense.amount), 0);
+    const expenses = maintenanceExpenses + vehicleExpenses;
     return { label: bucket.label, collected, expenses, operatingPosition: collected - expenses };
   });
+
+  const settlement = computeFleetOwnerSettlement(
+    vehicles.map((vehicle) => ({ id: vehicle.id, plateNumber: vehicle.plateNumber, verifiedCollections: vehicle.verifiedCollections, verifiedExpenses: vehicle.verifiedExpenses })),
+    agreements,
+  );
 
   return {
     owner: { id: owner.id, name: owner.name, businessName: owner.businessName, email: owner.email, phone: owner.phone },
     vehicles,
+    settlement,
     totals: {
       vehicleCount: vehicles.length,
       activeCount: vehicles.filter((vehicle) => ["AVAILABLE", "ASSIGNED"].includes(vehicle.status)).length,
@@ -115,7 +133,6 @@ export async function getFleetOwnerWorkspace(organizationId: string, userId: str
       attentionCount: vehicles.reduce((sum, vehicle) => sum + vehicle.attentionCount, 0),
     },
     trends: { days: buildSeries("days"), weeks: buildSeries("weeks"), months: buildSeries("months") },
-    settlementConfigured: false as const,
   };
 }
 
@@ -123,5 +140,5 @@ export async function getFleetOwnerVehicleWorkspace(organizationId: string, user
   const workspace = await getFleetOwnerWorkspace(organizationId, userId);
   if (!workspace) return null;
   const vehicle = workspace.vehicles.find((candidate) => candidate.id === vehicleId);
-  return vehicle ? { owner: workspace.owner, vehicle, settlementConfigured: workspace.settlementConfigured } : null;
+  return vehicle ? { owner: workspace.owner, vehicle, settlement: workspace.settlement } : null;
 }

@@ -282,6 +282,20 @@ enum FleetSalesTargetPeriod {
   WEEKLY
 }
 
+/// A vehicle-level operational cost that isn't a maintenance repair -
+/// fuel, traffic/regulatory fines, insurance premiums and licensing/permit
+/// fees each get their own GL expense account (see MODULE_EXPENSE_ACCOUNTS
+/// in src/lib/accounting-integration.ts) so a trial balance doesn't lump a
+/// fuel receipt in with a repair invoice. OTHER covers anything that
+/// doesn't fit the named categories.
+enum FleetVehicleExpenseType {
+  FUEL
+  FINE
+  INSURANCE_PREMIUM
+  LICENSING
+  OTHER
+}
+
 enum FleetDriverSubmissionType {
   DAILY_SALES
   WEEKLY_SALES
@@ -378,6 +392,8 @@ model User {
   hostelWardenAssignments         HostelWarden[]
   fleetOwnerProfiles              FleetOwner[]
   fleetMechanicProfiles           FleetMechanic[]
+  fleetVehicleExpensesRecorded    FleetVehicleExpense[]
+  fleetOwnerAgreementsCreated     FleetOwnerAgreement[]
   maintenanceRequests             FleetMaintenanceRequest[]
   fleetMaintenanceEvents          FleetMaintenanceEvent[]
   uploadedMaintenanceAttachments  FleetMaintenanceAttachment[]
@@ -547,6 +563,8 @@ model Organization {
   fleetVehicleOwnershipHistory    FleetVehicleOwnershipHistory[]
   fleetVehicleDriverHistory       FleetVehicleDriverHistory[]
   fleetVehicleDocuments           FleetVehicleDocument[]
+  fleetVehicleExpenses            FleetVehicleExpense[]
+  fleetOwnerAgreements            FleetOwnerAgreement[]
   maintenanceRequests             FleetMaintenanceRequest[]
   fleetMaintenanceEvents          FleetMaintenanceEvent[]
   fleetMaintenanceAttachments     FleetMaintenanceAttachment[]
@@ -821,6 +839,7 @@ model Branch {
   fleetDrivers             FleetDriver[]
   fleetVehicles            FleetVehicle[]
   fleetVehicleDocuments    FleetVehicleDocument[]
+  fleetVehicleExpenses     FleetVehicleExpense[]
   maintenanceRequests      FleetMaintenanceRequest[]
   fleetPayments            FleetPayment[]
   workAndPayContracts      FleetWorkAndPayContract[]
@@ -1455,6 +1474,7 @@ model FileAsset {
   branch                 Branch?                      @relation(fields: [branchId], references: [id], onDelete: SetNull)
   uploadedBy             User?                        @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   maintenanceAttachments FleetMaintenanceAttachment[]
+  vehicleExpenseReceipts FleetVehicleExpense[]
 
   @@index([organizationId])
   @@index([branchId])
@@ -1475,15 +1495,48 @@ model FleetOwner {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch       Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  user         User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?               @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  user         User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
   vehicles     FleetVehicle[]
+  agreements   FleetOwnerAgreement[]
 
   @@unique([organizationId, userId])
   @@index([organizationId])
   @@index([branchId])
   @@index([email])
+}
+
+/// The commercial terms behind an owner-settlement calculation - a
+/// vehicleId of null applies to the owner's whole portfolio; a set
+/// vehicleId overrides the portfolio terms for that one vehicle. Rows are
+/// never edited into a different time period once superseded - a changed
+/// arrangement closes the old row (effectiveTo) and adds a new one, so a
+/// settlement computed for a past period stays reconstructable. No
+/// settlement is calculated at all for an owner with zero rows here - see
+/// computeFleetOwnerSettlement's settlementConfigured:false path.
+model FleetOwnerAgreement {
+  id                   String    @id @default(cuid())
+  organizationId       String
+  ownerId              String
+  vehicleId            String?
+  revenueSharePercent  Decimal?  @db.Decimal(5, 2)
+  managementFeeFlat    Decimal?  @db.Decimal(12, 2)
+  managementFeePercent Decimal?  @db.Decimal(5, 2)
+  effectiveFrom        DateTime  @default(now())
+  effectiveTo          DateTime?
+  createdById          String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        FleetOwner    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  vehicle      FleetVehicle? @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  createdBy    User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([ownerId, effectiveFrom])
+  @@index([vehicleId])
 }
 
 model FleetDriver {
@@ -1592,6 +1645,8 @@ model FleetVehicle {
   paymentSubmissions  FleetDriverPaymentSubmission[]
   ownershipHistory    FleetVehicleOwnershipHistory[]
   driverHistory       FleetVehicleDriverHistory[]
+  expenses            FleetVehicleExpense[]
+  ownerAgreements     FleetOwnerAgreement[]
 
   @@unique([organizationId, assetTag])
   @@unique([organizationId, plateNumber])
@@ -1664,6 +1719,38 @@ model FleetVehicleDocument {
   @@index([organizationId])
   @@index([branchId])
   @@index([vehicleId])
+}
+
+/// A vehicle operating cost outside the maintenance-repair workflow - fuel,
+/// fines, insurance premiums, licensing/permit fees, or another one-off
+/// cost. Each recorded row posts once to Accounting (see
+/// postFleetVehicleExpense in src/modules/fleet/accounting.ts) under a GL
+/// account specific to its type, and feeds directly into owner-settlement
+/// and operating-position math alongside verified maintenance repair costs.
+model FleetVehicleExpense {
+  id                 String                  @id @default(cuid())
+  organizationId     String
+  branchId           String?
+  vehicleId          String
+  type               FleetVehicleExpenseType
+  amount             Decimal                 @db.Decimal(12, 2)
+  date               DateTime                @default(now())
+  note               String?                 @db.Text
+  receiptFileAssetId String?
+  createdById        String?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  vehicle      FleetVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  receiptFile  FileAsset?   @relation(fields: [receiptFileAssetId], references: [id], onDelete: SetNull)
+  createdBy    User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, date])
+  @@index([branchId])
+  @@index([vehicleId])
+  @@index([receiptFileAssetId])
 }
 
 model FleetMaintenanceRequest {

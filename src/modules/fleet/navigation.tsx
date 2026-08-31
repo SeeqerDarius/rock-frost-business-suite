@@ -1,5 +1,5 @@
 import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
-import { Truck, Users, UserRound, ShieldCheck, Wrench, Handshake, Receipt, BarChart3, Landmark, Gauge, Hammer } from "lucide-react";
+import { Truck, Users, UserRound, ShieldCheck, Wrench, Handshake, Receipt, BarChart3, Landmark, Gauge, Hammer, Fuel } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const fleetNavigation: ModuleNavItem[] = [
@@ -12,6 +12,7 @@ export const fleetNavigation: ModuleNavItem[] = [
   { label: "Mechanics", href: "/app/fleet/mechanics", icon: <Hammer className="size-4" />, description: "Maintain the roster of mechanics and workshops available for maintenance assignment." },
   { label: "Maintenance", href: "/app/fleet/maintenance", icon: <Wrench className="size-4" />, description: "Report vehicle faults and move repairs through review, approval, assignment, and completion." },
   { label: "Insurance & Roadworthy", href: "/app/fleet/insurance-roadworthy", icon: <ShieldCheck className="size-4" />, description: "Track each vehicle's insurance policy and roadworthy certificate expiry dates and renewal alerts." },
+  { label: "Vehicle Expenses", href: "/app/fleet/vehicle-expenses", icon: <Fuel className="size-4" />, description: "Record fuel, fines, insurance premiums, licensing and other vehicle running costs, posted straight to Accounting." },
   { label: "Payments", href: "/app/fleet/payments", icon: <Receipt className="size-4" />, description: "Record and verify fleet payments such as remittances, owner payouts, and Work and Pay instalments." },
   { label: "Work & Pay", href: "/app/fleet/work-and-pay", icon: <Handshake className="size-4" />, description: "Set up and manage Work and Pay contracts that let a driver buy their assigned vehicle through instalments." },
   { label: "Reports", href: "/app/fleet/reports", icon: <BarChart3 className="size-4" />, description: "View fleet-wide financial and operational summaries covering vehicles, maintenance, payments, and documents." },
