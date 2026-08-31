@@ -22,6 +22,7 @@ export interface TenantContext {
     industry: string | null;
     status: string;
     currency?: string;
+    timezone?: string;
   };
   role: string | null;
   roleId: string | null;
@@ -180,6 +181,7 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
       industry: membership.organization.industry,
       status: membership.organization.status,
       currency: membership.organization.currency,
+      timezone: membership.organization.timezone,
     },
     role: membership.role?.name ?? null,
     roleId: membership.roleId,

@@ -11,6 +11,7 @@ import { isNarrowFleetSelfServiceRole, isPlatformOperator } from "@/lib/auth/per
 import type { Metadata } from "next";
 import { getTrialDaysRemaining } from "@/platform/trials/service";
 import { AppNavigationLoader } from "@/components/feedback/app-navigation-loader";
+import { WorkspaceMoments } from "@/components/feedback/workspace-moments";
 import { FloatingSupportWidget } from "@/components/support/floating-support-widget";
 import { PlatformSupportBubbleLink } from "@/components/support/floating-support-link";
 import { TENANT_SUPPORT_TEMPLATES } from "@/lib/support/templates";
@@ -106,6 +107,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       ) : null}
       {children}
+      {!platformIdentity ? <WorkspaceMoments userId={tenant.userId} /> : null}
       {platformIdentity ? (
         <PlatformSupportBubbleLink initialUnread={supportUnread} onUnreadPoll={getPlatformSupportUnreadCount} />
       ) : (

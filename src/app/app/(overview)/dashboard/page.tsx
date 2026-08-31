@@ -14,6 +14,8 @@ import { dashboardWidgets } from "@/platform/modules/dashboard-widgets";
 import { getCurrentTenant } from "@/lib/tenant";
 import { isFleetDriverRole, isMechanicRole } from "@/lib/auth/permissions";
 import { getRevenueInsights } from "@/lib/accounting-integration";
+import { getServerAuthSession } from "@/lib/auth/session";
+import { workspaceGreeting } from "@/lib/workspace-moments";
 
 const ERROR_MESSAGES: Record<string, string> = {
   "no-organization-access": "Your account isn't assigned to an organization yet. Contact an administrator to be added to a workspace.",
@@ -53,12 +55,13 @@ export default async function OrganizationDashboardPage({ searchParams }: { sear
     const accessibleModule = accessibleKey ? getModule(accessibleKey) : null;
     return accessibleModule ? [{ definition: mod, accessibleModule }] : [];
   });
-  const revenueInsights = await getRevenueInsights(tenant.organizationId);
+  const [revenueInsights, session] = await Promise.all([getRevenueInsights(tenant.organizationId), getServerAuthSession()]);
+  const greeting = workspaceGreeting(new Date(), tenant.organization.timezone, null, session?.user?.name);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Overview"
+        title={greeting}
         description={`A summary of the modules enabled for ${tenant.organization.name}.`}
       />
       {revenueInsights ? (

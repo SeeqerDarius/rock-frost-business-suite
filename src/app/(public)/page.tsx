@@ -11,7 +11,6 @@ import { db } from "@/lib/db";
 import { PUBLIC_SHOWCASE_FILTER, readPublicShowcase } from "@/lib/public-showcase";
 import { CustomerShowcase } from "@/components/marketing/customer-showcase";
 import { findPlatformOrganizationMetadata, readPlatformMarketing, PUBLIC_MARKETING_CACHE_TAG } from "@/lib/platform-marketing";
-import { buildShowcaseCustomers } from "@/lib/showcase-composition";
 import { PublicHero } from "@/components/marketing/public-hero";
 import { ModuleBlocksIllustration } from "@/components/marketing/module-blocks-illustration";
 import { AccountingModuleShowcase } from "@/components/marketing/module-showcases/accounting";
@@ -19,6 +18,7 @@ import { FleetModuleShowcase } from "@/components/marketing/module-showcases/fle
 import { PharmacyModuleShowcase } from "@/components/marketing/module-showcases/pharmacy";
 import { WhyRockFrost } from "@/components/marketing/why-rock-frost";
 import { HomepageFaq } from "@/components/marketing/homepage-faq";
+import { listPublishedTestimonials } from "@/lib/customer-feedback";
 
 /** Tenant-side showcase opt-ins change rarely: cached for 5 minutes (Next's
  * Data Cache) rather than re-queried on every homepage view and crawl. See
@@ -45,9 +45,10 @@ export default async function HomePage() {
   // Public customer stories are database-backed and owner-controlled. Tie
   // rendering to the incoming request so builds never require database access.
   await connection();
-  const [showcaseOrganizations, platformOrganization] = await Promise.all([
+  const [showcaseOrganizations, platformOrganization, publishedTestimonials] = await Promise.all([
     readShowcaseOrganizations(),
     findPlatformOrganizationMetadata(),
+    listPublishedTestimonials(),
   ]);
   const marketing = readPlatformMarketing(platformOrganization?.metadata);
   const tenantCustomers = showcaseOrganizations.flatMap((organization) => {
@@ -72,7 +73,19 @@ export default async function HomePage() {
       quote: customer.quote,
       attribution: customer.attribution,
     }));
-  const { customers, hasDemoEntries } = buildShowcaseCustomers([...externalCustomers, ...tenantCustomers]);
+  const testimonialCustomers = publishedTestimonials.map((testimonial) => ({
+    id: `feedback-${testimonial.id}`,
+    name: testimonial.displayOrganization ? testimonial.organizationNameSnapshot : "Rock Frost customer",
+    industry: testimonial.displayOrganization ? testimonial.organization.industry : null,
+    logoUrl: testimonial.displayLogo ? testimonial.organization.logoUrl || "" : "",
+    quote: testimonial.publishedMessage || testimonial.message,
+    attribution: testimonial.displayPerson
+      ? `${testimonial.submitterNameSnapshot}${testimonial.jobTitleSnapshot ? `, ${testimonial.jobTitleSnapshot}` : ""}`
+      : "Verified customer",
+    rating: testimonial.rating,
+  }));
+  const managedCustomers = marketing.showcaseEnabled ? [...externalCustomers, ...tenantCustomers] : [];
+  const customers = [...testimonialCustomers, ...managedCustomers].slice(0, 12);
 
   return (
     <>
@@ -92,16 +105,6 @@ export default async function HomePage() {
           </>}>
         <ModuleBlocksIllustration className="mx-auto h-auto w-full max-w-sm" />
       </PublicHero>
-      {marketing.showcaseEnabled && customers.length > 0 ? (
-        <CustomerShowcase
-          customers={customers}
-          eyebrow={marketing.eyebrow}
-          headline={marketing.headline}
-          description={marketing.description}
-          showDemoDisclosure={hasDemoEntries}
-        />
-      ) : null}
-
       <section className="public-section-tint">
         <div className="mx-auto max-w-6xl px-6 py-20">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
@@ -161,6 +164,15 @@ export default async function HomePage() {
       <WhyRockFrost />
 
       <HomepageFaq />
+
+      {customers.length > 0 ? (
+        <CustomerShowcase
+          customers={customers}
+          eyebrow="Customer feedback"
+          headline="Trusted by growing organizations"
+          description="Approved experiences shared by customers using Rock Frost in their work."
+        />
+      ) : null}
 
       <section className="mx-auto max-w-6xl px-6 py-20">
         <div className="flex flex-col items-start justify-between gap-6 rounded-lg border p-8 sm:flex-row sm:items-center">

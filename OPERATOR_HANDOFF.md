@@ -1,5 +1,14 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-08-31: Customer feedback, testimonials, greetings and workspace moments
+
+- **Scope**: added private-by-default tenant feedback at `/app/feedback`, platform moderation at `/app/platform/feedback`, consent-bound public testimonials in the existing homepage customer carousel, server-rendered organization-timezone greetings and an infrequent local motivation card.
+- **Security and consent**: submitter reads and withdrawals require both `organizationId` and `userId`; only explicitly consented testimonials can reach `PUBLISHED`; name, organization and logo display remain independently bounded by submitted consent. Withdrawal clears public display state immediately. Every moderation transition is retained in `CustomerFeedbackEvent`; submission and moderation also write the existing audit log.
+- **Schema and migration**: `CustomerFeedbackCategory`, `CustomerFeedbackStatus`, `CustomerFeedback` and `CustomerFeedbackEvent`; migration `20260831090000_customer_feedback`.
+- **UX**: feedback uses a dedicated, non-interrupting form; the homepage no longer fills customer stories with demonstration testimonials; one/two testimonials remain stable while larger sets use the existing accessible non-autoplay carousel. Motivation is capped at once per four hours per user, avoids high-attention routes, dismisses immediately or after ten seconds and respects reduced motion.
+- **Important files**: `src/lib/customer-feedback.ts`, `src/lib/workspace-moments.ts`, `src/app/app/(overview)/feedback/`, `src/app/app/platform/feedback/`, `src/components/feedback/workspace-moments.tsx`, `src/components/marketing/customer-showcase.tsx`, `src/app/(public)/page.tsx`, `docs/CUSTOMER_FEEDBACK.md`.
+- **Validation**: focused UI, consent, greeting, motivation, showcase and editorial tests passed (5 files, 28 tests). TypeScript and ESLint passed. The migration and real tenant-isolation/publication/withdrawal integration test passed against the dedicated `rockfrost_test` Neon branch (1 file, 1 test). The full unit suite passed (130 files, 1,007 tests). The production build passed and generated 227 routes, including `/app/feedback` and `/app/platform/feedback`. Production deployment evidence follows after release verification.
+
 ## 2026-08-30: Public ERP positioning and pricing presentation refresh
 
 - **Scope**: updated the homepage, Solutions, Industries, Modules, Pricing and shared search/social description to describe the production platform accurately as a modular, role-based ERP for Ghana and Africa. The campaign now leads with role-specific workspaces, controlled approvals, operational-to-Accounting connections and stakeholder-aware Fleet workflows.

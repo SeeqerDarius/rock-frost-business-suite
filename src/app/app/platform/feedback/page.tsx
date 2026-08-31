@@ -1,0 +1,41 @@
+import { MessageSquareHeart, Star } from "lucide-react";
+import type { CustomerFeedbackCategory, CustomerFeedbackStatus, Prisma } from "@prisma/client";
+import { requirePlatformOperator } from "@/lib/auth/module-access";
+import { db } from "@/lib/db";
+import { PageHeader } from "@/components/layout/page-header";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { moderateFeedbackAction } from "./actions";
+
+const statuses: CustomerFeedbackStatus[] = ["SUBMITTED", "UNDER_REVIEW", "APPROVED", "PUBLISHED", "REJECTED", "HIDDEN"];
+const categories: CustomerFeedbackCategory[] = ["TESTIMONIAL", "SUGGESTION", "PROBLEM", "GENERAL"];
+
+export default async function PlatformFeedbackPage({ searchParams }: { searchParams: Promise<{ organization?: string; status?: string; category?: string; rating?: string; updated?: string; error?: string }> }) {
+  await requirePlatformOperator();
+  const query = await searchParams;
+  const status = statuses.includes(query.status as CustomerFeedbackStatus) ? query.status as CustomerFeedbackStatus : undefined;
+  const category = categories.includes(query.category as CustomerFeedbackCategory) ? query.category as CustomerFeedbackCategory : undefined;
+  const rating = /^[1-5]$/.test(query.rating || "") ? Number(query.rating) : undefined;
+  const where: Prisma.CustomerFeedbackWhereInput = {
+    ...(query.organization ? { organizationId: query.organization } : {}),
+    ...(status ? { status } : {}), ...(category ? { category } : {}), ...(rating ? { rating } : {}),
+  };
+  const [feedback, organizations] = await Promise.all([
+    db.customerFeedback.findMany({ where, include: { organization: { select: { name: true, logoUrl: true } }, events: { include: { actor: { select: { name: true, email: true } } }, orderBy: { createdAt: "desc" } } }, orderBy: { createdAt: "desc" }, take: 100 }),
+    db.organization.findMany({ where: { customerFeedback: { some: {} } }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+  ]);
+  return <div className="mx-auto max-w-6xl space-y-6">
+    <PageHeader title="Customer feedback" description="Review private product feedback separately from testimonials that customers have explicitly offered for publication." />
+    {query.updated ? <Alert><AlertTitle>Feedback updated</AlertTitle><AlertDescription>The moderation decision and audit history were saved.</AlertDescription></Alert> : null}
+    {query.error ? <Alert variant="destructive"><AlertTitle>Update failed</AlertTitle><AlertDescription>{query.error === "publication" ? "Only consented testimonials can be published, and withdrawn feedback cannot be changed." : "Check the submitted moderation fields."}</AlertDescription></Alert> : null}
+    <Card><CardContent className="pt-6"><form className="grid gap-3 sm:grid-cols-4"><select name="organization" defaultValue={query.organization ?? ""} className="h-10 rounded-md border bg-background px-3 text-sm"><option value="">All organizations</option>{organizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}</select><select name="category" defaultValue={category ?? ""} className="h-10 rounded-md border bg-background px-3 text-sm"><option value="">All categories</option>{categories.map((item) => <option key={item} value={item}>{item.replaceAll("_", " ")}</option>)}</select><select name="status" defaultValue={status ?? ""} className="h-10 rounded-md border bg-background px-3 text-sm"><option value="">All statuses</option>{statuses.map((item) => <option key={item} value={item}>{item.replaceAll("_", " ")}</option>)}</select><div className="flex gap-2"><select name="rating" defaultValue={rating ?? ""} className="h-10 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm"><option value="">All ratings</option>{[5,4,3,2,1].map((item) => <option key={item} value={item}>{item}/5</option>)}</select><Button variant="outline">Filter</Button></div></form></CardContent></Card>
+    {feedback.length === 0 ? <div className="rounded-xl border p-10 text-center"><MessageSquareHeart className="mx-auto size-8 text-muted-foreground" /><p className="mt-3 font-medium">No feedback matches these filters</p></div> : <div className="grid gap-5 lg:grid-cols-2">{feedback.map((item) => <Card key={item.id}><CardHeader><div className="flex flex-wrap items-start justify-between gap-2"><div><CardTitle className="text-lg">{item.title}</CardTitle><CardDescription>{item.organization.name} · {item.submitterNameSnapshot}{item.jobTitleSnapshot ? `, ${item.jobTitleSnapshot}` : ""}</CardDescription></div><Badge variant={item.status === "PUBLISHED" ? "default" : "outline"}>{item.status.replaceAll("_", " ")}</Badge></div><p className="flex items-center gap-1 text-sm"><Star className="size-4 fill-amber-400 text-amber-400" />{item.rating}/5 · {item.category.replaceAll("_", " ")}</p></CardHeader><CardContent className="space-y-5"><blockquote className="rounded-lg bg-muted/50 p-4 text-sm">“{item.message}”</blockquote><div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground"><span>Publish: {item.consentToPublish ? "Allowed" : "No"}</span><span>Name: {item.consentDisplayName ? "Allowed" : "No"}</span><span>Organization: {item.consentDisplayOrganization ? "Allowed" : "No"}</span><span>Logo: {item.consentDisplayLogo ? "Allowed" : "No"}</span></div>
+      {item.status !== "WITHDRAWN" ? <form action={moderateFeedbackAction} className="space-y-4 border-t pt-4"><input type="hidden" name="feedbackId" value={item.id} /><div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><Label>Status</Label><select name="status" defaultValue={item.status} className="h-10 w-full rounded-md border bg-background px-3 text-sm">{statuses.map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></div><div className="space-y-2"><Label htmlFor={`order-${item.id}`}>Publication order</Label><Input id={`order-${item.id}`} name="publicationOrder" type="number" min={0} max={9999} defaultValue={item.publicationOrder} /></div></div><div className="space-y-2"><Label htmlFor={`published-${item.id}`}>Public wording</Label><Textarea id={`published-${item.id}`} name="publishedMessage" maxLength={1200} defaultValue={item.publishedMessage || item.message} rows={3} /></div><div className="space-y-2"><Label htmlFor={`note-${item.id}`}>Internal moderation note</Label><Textarea id={`note-${item.id}`} name="moderationNote" maxLength={1000} defaultValue={item.moderationNote || ""} rows={2} /></div><div className="grid gap-2 text-sm sm:grid-cols-3"><label className="flex gap-2"><input type="checkbox" name="displayPerson" defaultChecked={item.displayPerson} disabled={!item.consentDisplayName} />Show person</label><label className="flex gap-2"><input type="checkbox" name="displayOrganization" defaultChecked={item.displayOrganization} disabled={!item.consentDisplayOrganization} />Show organization</label><label className="flex gap-2"><input type="checkbox" name="displayLogo" defaultChecked={item.displayLogo} disabled={!item.consentDisplayLogo} />Show logo</label></div><Button size="sm">Save moderation</Button></form> : <p className="rounded-md border p-3 text-sm text-muted-foreground">The submitter withdrew consent. This record is retained for audit purposes and cannot be published.</p>}
+      {item.events.length > 0 ? <details className="text-sm"><summary className="cursor-pointer font-medium">Moderation history ({item.events.length})</summary><ul className="mt-2 space-y-2 text-xs text-muted-foreground">{item.events.map((event) => <li key={event.id}>{event.createdAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Accra" })}: {event.fromStatus ? `${event.fromStatus} → ` : ""}{event.toStatus} by {event.actor?.name || event.actor?.email || "System"}{event.note ? ` · ${event.note}` : ""}</li>)}</ul></details> : null}</CardContent></Card>)}</div>}
+  </div>;
+}

@@ -52,6 +52,8 @@ All public marketing pages share an editorial hero system, fluid display typogra
 
 Every tenant can reach in-app Support via a responsive floating chat bubble available everywhere in the workspace, with an online indicator, read receipts, optimistic sending feedback, AI assistance, and human handoff; platform operators reply from a two-pane inbox (`/app/platform/support`) across every organization. Public pages also expose a floating Contact entry point, while Platform Settings controls the public sales email, support email, phone, and WhatsApp details. No email is sent by the authenticated chat feature. See `docs/SUPPORT_MESSAGING.md`.
 
+Authenticated users can submit private product feedback or explicitly consented testimonials from `/app/feedback`. Platform operators moderate publication from `/app/platform/feedback`; nothing is published automatically, attribution and logo display remain independently consent-bound, and consent withdrawal immediately removes a testimonial from the public feed. Approved testimonials reuse the accessible homepage customer carousel. Organization dashboards also show timezone-aware greetings, while infrequent, dismissible business motivation messages remain local to each user and avoid high-attention routes. See `docs/CUSTOMER_FEEDBACK.md`.
+
 ## Stack
 
 - **Next.js 16.2.12** (App Router, Turbopack) — see `AGENTS.md` before writing Next.js-specific code; this project pins a version with breaking changes from what most training data assumes.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Quote } from "lucide-react";
+import { ChevronLeft, ChevronRight, Quote, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,7 @@ export interface CustomerShowcaseItem {
   logoUrl: string;
   quote: string;
   attribution: string;
+  rating?: number;
   /** Fictional demonstration entry. See src/lib/demo-showcase-customers.ts. */
   isDemo?: boolean;
 }
@@ -106,7 +107,8 @@ function CustomerCard({ item, index, total }: { item: CustomerShowcaseItem; inde
       aria-label={`${index + 1} of ${total}: ${item.name}`}
       className={cn(
         "flex h-full shrink-0 snap-start flex-col gap-4 rounded-2xl border bg-background p-6 shadow-sm",
-        "basis-[86%] transition-shadow duration-200 hover:shadow-md sm:basis-[47%] lg:basis-[31.5%]",
+        "transition-shadow duration-200 hover:shadow-md",
+        total === 1 ? "basis-full" : total === 2 ? "basis-[86%] sm:basis-[calc(50%-0.625rem)]" : "basis-[86%] sm:basis-[47%] lg:basis-[31.5%]",
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -119,6 +121,8 @@ function CustomerCard({ item, index, total }: { item: CustomerShowcaseItem; inde
       </div>
 
       <Quote className="size-5 shrink-0 text-primary/40" aria-hidden="true" />
+
+      {item.rating ? <p className="flex items-center gap-1 text-sm" aria-label={`${item.rating} out of 5 stars`}>{Array.from({ length: 5 }, (_, index) => <Star key={index} className={cn("size-4", index < item.rating! ? "fill-amber-400 text-amber-400" : "text-muted")} aria-hidden="true" />)}</p> : null}
 
       <blockquote className="flex-1 text-balance text-[0.95rem] leading-relaxed text-foreground/90">
         “{item.quote}”

@@ -75,8 +75,9 @@ describe("demonstration entries are honestly disclosed, never presented as real 
     expect(component).toContain("Verified customer stories will replace sample content as");
   });
 
-  it("wires the disclosure flag from the real page composition, not a hardcoded true", () => {
-    expect(publicPage).toContain("showDemoDisclosure={hasDemoEntries}");
+  it("keeps demonstration entries off the live homepage testimonial feed", () => {
+    expect(publicPage).not.toContain("showDemoDisclosure={hasDemoEntries}");
+    expect(publicPage).not.toContain("buildShowcaseCustomers(");
   });
 
   it("keeps every demonstration fixture phrased as a product demonstration, not a real result or a real person's endorsement", () => {

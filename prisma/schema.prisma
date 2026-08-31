@@ -417,6 +417,9 @@ model User {
   offlineActivationCodes          OfflineActivationCode[]
   tourProgress                    UserTourProgress[]
   twoFactorOtpChallenges          TwoFactorOtpChallenge[]
+  feedbackSubmitted               CustomerFeedback[]               @relation("FeedbackSubmitted")
+  feedbackReviewed                CustomerFeedback[]               @relation("FeedbackReviewed")
+  feedbackEvents                  CustomerFeedbackEvent[]
 }
 
 enum TwoFactorMethod {
@@ -535,6 +538,7 @@ model Organization {
   fleetPayments                   FleetPayment[]
   workAndPayContracts             FleetWorkAndPayContract[]
   settlementProfile               SettlementProfile?
+  customerFeedback                CustomerFeedback[]
   operationalPayments             OperationalPayment[]
   hirePurchaseStaff               HirePurchaseStaff[]
   hirePurchaseStaffSalaryPayments HirePurchaseStaffSalaryPayment[]
@@ -5593,6 +5597,81 @@ model PharmacyStockMovement {
 
   @@index([organizationId, recordedAt])
   @@index([batchId])
+}
+
+enum CustomerFeedbackCategory {
+  TESTIMONIAL
+  SUGGESTION
+  PROBLEM
+  GENERAL
+}
+
+enum CustomerFeedbackStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  PUBLISHED
+  REJECTED
+  HIDDEN
+  WITHDRAWN
+}
+
+/**
+ * Product feedback is private by default. Public eligibility requires a
+ * testimonial category, explicit consent, and platform moderation.
+ */
+model CustomerFeedback {
+  id                         String                   @id @default(cuid())
+  organizationId             String
+  userId                     String
+  category                   CustomerFeedbackCategory
+  rating                     Int
+  title                      String
+  message                    String                   @db.Text
+  jobTitleSnapshot           String?
+  submitterNameSnapshot      String
+  organizationNameSnapshot   String
+  consentToPublish           Boolean                  @default(false)
+  consentDisplayName         Boolean                  @default(false)
+  consentDisplayOrganization Boolean                  @default(false)
+  consentDisplayLogo         Boolean                  @default(false)
+  status                     CustomerFeedbackStatus   @default(SUBMITTED)
+  publishedMessage           String?                  @db.Text
+  moderationNote             String?                  @db.Text
+  displayPerson              Boolean                  @default(false)
+  displayOrganization        Boolean                  @default(false)
+  displayLogo                Boolean                  @default(false)
+  publicationOrder           Int                      @default(0)
+  reviewedById               String?
+  reviewedAt                 DateTime?
+  publishedAt                DateTime?
+  withdrawnAt                DateTime?
+  createdAt                  DateTime                 @default(now())
+  updatedAt                  DateTime                 @updatedAt
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User                    @relation("FeedbackSubmitted", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy   User?                   @relation("FeedbackReviewed", fields: [reviewedById], references: [id], onDelete: SetNull)
+  events       CustomerFeedbackEvent[]
+
+  @@index([organizationId, createdAt])
+  @@index([userId, createdAt])
+  @@index([status, publicationOrder, publishedAt])
+}
+
+model CustomerFeedbackEvent {
+  id         String                  @id @default(cuid())
+  feedbackId String
+  actorId    String?
+  fromStatus CustomerFeedbackStatus?
+  toStatus   CustomerFeedbackStatus
+  note       String?                 @db.Text
+  createdAt  DateTime                @default(now())
+
+  feedback CustomerFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  actor    User?            @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([feedbackId, createdAt])
 }
 
 // =====================================================================
