@@ -1,4 +1,4 @@
-import { Users, Plus, Mail } from "lucide-react";
+import { Users, Plus, Mail, Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -31,6 +31,14 @@ export default async function FleetOwnersPage({
   const { saved, invited, error } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_OWNERS_MANAGE);
+  if (!canManage) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Owners" description="The roster of vehicle owners linked to the fleet." />
+        <EmptyState icon={Lock} title="You don't have access to this page" description="The owner roster is limited to roles with owner-management permissions." />
+      </div>
+    );
+  }
   const [owners, users] = await Promise.all([
     listFleetOwnersWithPortfolio(tenant.organizationId),
     listAssignableOwnerUsers(tenant.organizationId),

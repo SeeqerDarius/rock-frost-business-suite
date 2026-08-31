@@ -1,4 +1,4 @@
-import { Receipt, Plus } from "lucide-react";
+import { Receipt, Plus, Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -63,6 +63,14 @@ export default async function FleetPaymentsPage({
   const { saved, reviewed, error } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_PAYMENTS_MANAGE);
+  if (!canManage) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Payments" description="Driver remittances, Work & Pay instalments, owner payouts, and other fleet transactions." />
+        <EmptyState icon={Lock} title="You don't have access to this page" description="Fleet payments are limited to roles with payment-management permissions." />
+      </div>
+    );
+  }
   const [payments, driverSubmissions, onlinePayments] = await Promise.all([listFleetPayments(tenant.organizationId), listFleetDriverPaymentSubmissions(tenant.organizationId), listOperationalPayments(tenant.organizationId)]);
 
   return (

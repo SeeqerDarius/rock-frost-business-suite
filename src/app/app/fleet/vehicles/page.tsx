@@ -1,4 +1,4 @@
-import { Truck, Plus } from "lucide-react";
+import { Truck, Plus, Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -191,6 +191,14 @@ export default async function FleetVehiclesPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_VEHICLES_MANAGE);
+  if (!canManage) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Vehicles" description="Fleet vehicles, their owners, and assigned drivers." />
+        <EmptyState icon={Lock} title="You don't have access to this page" description="The vehicle registry is limited to roles with vehicle-management permissions." />
+      </div>
+    );
+  }
   const [vehicles, owners, activeDrivers] = await Promise.all([
     listFleetVehicles(tenant.organizationId),
     listFleetOwners(tenant.organizationId),

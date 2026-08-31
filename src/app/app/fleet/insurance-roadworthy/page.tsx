@@ -1,4 +1,4 @@
-import { ShieldCheck, Plus } from "lucide-react";
+import { ShieldCheck, Plus, Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -98,6 +98,14 @@ export default async function FleetInsuranceRoadworthyPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_INSURANCE_MANAGE);
+  if (!canManage) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Insurance & Roadworthy" description="Vehicle insurance and roadworthy certification records." />
+        <EmptyState icon={Lock} title="You don't have access to this page" description="Insurance and roadworthy records are limited to roles with insurance-management permissions." />
+      </div>
+    );
+  }
   const [documents, vehicles] = await Promise.all([
     listFleetVehicleDocuments(tenant.organizationId),
     listFleetVehicles(tenant.organizationId),

@@ -1,4 +1,4 @@
-import { Hammer, Plus } from "lucide-react";
+import { Hammer, Plus, Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -27,6 +27,14 @@ export default async function FleetMechanicsPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_MECHANICS_MANAGE);
+  if (!canManage) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Mechanics" description="The roster of mechanics and workshops available for maintenance assignment." />
+        <EmptyState icon={Lock} title="You don't have access to this page" description="The mechanic roster is limited to roles with mechanic-management permissions." />
+      </div>
+    );
+  }
   const [mechanics, users] = await Promise.all([
     listFleetMechanics(tenant.organizationId),
     listAssignableMechanicUsers(tenant.organizationId),

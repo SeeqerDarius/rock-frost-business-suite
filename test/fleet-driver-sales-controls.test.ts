@@ -115,6 +115,10 @@ describe("Fleet driver remittance controls", () => {
     const workspaceNavigation = read("src/platform/modules/workspace-navigation.tsx");
     expect(dashboardPage).toContain('if (isFleetDriverRole(tenant)) redirect("/app/fleet/driver-portal");');
     expect(dashboardPage).toContain('if (isMechanicRole(tenant)) redirect("/app/fleet/mechanic-portal");');
+    // Vehicle Owner was missing from this redirect until Track 3 of the
+    // Fleet/Accounting redesign - an external, portfolio-scoped stakeholder
+    // was landing on this same unscoped organization-wide dashboard.
+    expect(dashboardPage).toContain('if (isFleetOwnerRole(tenant)) redirect("/app/fleet/investor");');
     expect(appLayout).toContain("!platformIdentity && !isNarrowFleetSelfServiceRole(tenant)");
     expect(workspaceNavigation).not.toMatch(/\{ label: "Modules"[^}]*\},\s*\{ label: "Notifications"/);
   });

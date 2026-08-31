@@ -1,4 +1,4 @@
-import { Handshake, Plus } from "lucide-react";
+import { Handshake, Plus, Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -39,6 +39,14 @@ export default async function FleetWorkAndPayPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_WORKANDPAY_MANAGE);
+  if (!canManage) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Work & Pay" description="Work & Pay contracts linked to each vehicle's assigned driver." />
+        <EmptyState icon={Lock} title="You don't have access to this page" description="Work & Pay contracts are limited to roles with Work & Pay management permissions." />
+      </div>
+    );
+  }
   const currency = tenant.organization.currency ?? "GHS";
   const [contracts, vehicles] = await Promise.all([
     listFleetWorkAndPayContracts(tenant.organizationId),

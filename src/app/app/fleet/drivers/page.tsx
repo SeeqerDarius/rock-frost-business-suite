@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { UserRound, Plus, Mail, CircleAlert, CircleCheck, Search } from "lucide-react";
+import { UserRound, Plus, Mail, CircleAlert, CircleCheck, Search, Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -116,6 +116,14 @@ export default async function FleetDriversPage({
   const { saved, invited, error, q, readiness, status, maintenance } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_DRIVERS_MANAGE);
+  if (!canManage) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Drivers" description="The roster of drivers available for vehicle assignment." />
+        <EmptyState icon={Lock} title="You don't have access to this page" description="The driver roster is limited to roles with driver-management permissions." />
+      </div>
+    );
+  }
   const currency = tenant.organization.currency ?? "GHS";
   const [drivers, users, roster] = await Promise.all([
     listFleetDrivers(tenant.organizationId),

@@ -12,7 +12,7 @@ import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry"
 import { productGroupKeys } from "@/platform/modules/product-groups";
 import { dashboardWidgets } from "@/platform/modules/dashboard-widgets";
 import { getCurrentTenant } from "@/lib/tenant";
-import { isFleetDriverRole, isMechanicRole } from "@/lib/auth/permissions";
+import { isFleetDriverRole, isMechanicRole, isFleetOwnerRole } from "@/lib/auth/permissions";
 import { getRevenueInsights } from "@/lib/accounting-integration";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { workspaceGreeting } from "@/lib/workspace-moments";
@@ -42,14 +42,19 @@ export default async function OrganizationDashboardPage({ searchParams }: { sear
       </div>
     );
   }
-  // A Driver or Mechanic has no business seeing organization-wide revenue -
-  // this page's own Revenue insights card sums every module's posted
-  // revenue with no role scoping. Their own portal page is that role's real
-  // home (already where /app/fleet itself redirects each); redirecting here
-  // too closes the leak instead of just hiding the card, so "Overview" in
-  // the sidebar never dead-ends the way /app/modules used to.
+  // A Driver, Mechanic, or Vehicle Owner has no business seeing
+  // organization-wide revenue - this page's own Revenue insights card sums
+  // every module's posted revenue with no role scoping. Their own workspace
+  // page is that role's real home (already where /app/fleet itself
+  // redirects each); redirecting here too closes the leak instead of just
+  // hiding the card, so "Overview" in the sidebar never dead-ends the way
+  // /app/modules used to. Vehicle Owner was missing here until this fix -
+  // an external, portfolio-scoped stakeholder was landing on this same
+  // unscoped card despite the exact leak already being closed for the other
+  // two narrow roles.
   if (isFleetDriverRole(tenant)) redirect("/app/fleet/driver-portal");
   if (isMechanicRole(tenant)) redirect("/app/fleet/mechanic-portal");
+  if (isFleetOwnerRole(tenant)) redirect("/app/fleet/investor");
   const enabledModules = catalogueModuleRegistry.flatMap((mod) => {
     const accessibleKey = productGroupKeys(mod.key).find((key) => tenant.accessibleModuleKeys.includes(key));
     const accessibleModule = accessibleKey ? getModule(accessibleKey) : null;
