@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { postOpeningBalance, completeReconciliation, NotFoundError, InvalidPaymentError, InvoiceStateError, AccountingPeriodLockedError } from "@/modules/accounting/service";
+import { postOpeningBalance, completeReconciliation, createDraftReconciliation, NotFoundError, InvalidPaymentError, InvoiceStateError, AccountingPeriodLockedError, ReconciliationStateError } from "@/modules/accounting/service";
 import { logAuditEvent } from "@/lib/audit";
 
 const clean = (value: FormDataEntryValue | null) => String(value ?? "").trim() || null;
@@ -43,4 +43,20 @@ export async function reconcileAccount(formData: FormData): Promise<void> {
     await logAuditEvent({ organizationId: tenant.organizationId, userId, module: "accounting", action: "reconciliation.completed", entityName: "AccountingReconciliation", entityId: record.id, metadata: { accountId, difference: record.difference.toString() } });
   } catch (error) { if (error instanceof NotFoundError) redirect("/app/accounting/cashbook?error=not-found"); throw error; }
   revalidatePath("/app/accounting/cashbook"); redirect("/app/accounting/cashbook?reconciled=1");
+}
+
+export async function startBankStatementImport(formData: FormData): Promise<void> {
+  const { tenant, userId } = await context(PERMISSIONS.ACCOUNTING_RECONCILIATIONS_MANAGE);
+  const accountId = clean(formData.get("accountId")); const periodStart = clean(formData.get("periodStart")); const periodEnd = clean(formData.get("periodEnd"));
+  if (!accountId || !periodStart || !periodEnd) redirect("/app/accounting/cashbook?error=missing-fields");
+  let reconciliationId: string;
+  try {
+    const draft = await createDraftReconciliation(tenant.organizationId, { accountId, periodStart: new Date(`${periodStart}T00:00:00.000Z`), periodEnd: new Date(`${periodEnd}T23:59:59.999Z`) }, userId);
+    reconciliationId = draft.id;
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/accounting/cashbook?error=not-found");
+    if (error instanceof ReconciliationStateError) redirect("/app/accounting/cashbook?error=already-reconciled");
+    throw error;
+  }
+  redirect(`/app/accounting/reconciliations/${reconciliationId}`);
 }

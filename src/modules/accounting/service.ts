@@ -150,6 +150,187 @@ export async function completeReconciliation(organizationId: string, data: { acc
   return db.accountingReconciliation.create({ data: { organizationId, accountId: account.id, periodStart: data.periodStart, periodEnd: data.periodEnd, statementBalance, ledgerBalance, difference: statementBalance.minus(ledgerBalance), status: "COMPLETED", notes: data.notes, completedById: data.completedById, completedAt: new Date() } });
 }
 
+export class ReconciliationStateError extends Error {}
+
+const RECONCILIATION_MATCH_DATE_WINDOW_DAYS = 3;
+const RECONCILIATION_MATCH_AMOUNT_TOLERANCE = new Prisma.Decimal("0.01");
+
+/** The draft-and-import half of reconciliation: creates (or returns the existing)
+ * DRAFT reconciliation for this account/period, ready to receive an imported bank
+ * statement before completeDraftReconciliation() closes it out. completeReconciliation()
+ * above is untouched and still does the instant, no-import path in one step. */
+export async function createDraftReconciliation(organizationId: string, data: { accountId: string; periodStart: Date; periodEnd: Date }, actorId?: string | null) {
+  const account = (await listAccounts(organizationId)).find((item) => item.id === data.accountId && item.liquidityType !== "NONE");
+  if (!account) throw new NotFoundError("Cash or bank account not found.");
+  const existing = await db.accountingReconciliation.findFirst({
+    where: { organizationId, accountId: account.id, periodStart: data.periodStart, periodEnd: data.periodEnd, status: "DRAFT" },
+  });
+  if (existing) return existing;
+  try {
+    return await db.accountingReconciliation.create({
+      data: { organizationId, accountId: account.id, periodStart: data.periodStart, periodEnd: data.periodEnd, statementBalance: 0, ledgerBalance: 0, difference: 0, status: "DRAFT", completedById: actorId ?? null },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new ReconciliationStateError("This account and period already has a completed reconciliation.");
+    }
+    throw error;
+  }
+}
+
+async function requireDraftReconciliation(organizationId: string, reconciliationId: string) {
+  const reconciliation = await db.accountingReconciliation.findFirst({ where: { id: reconciliationId, organizationId } });
+  if (!reconciliation) throw new NotFoundError("Reconciliation not found.");
+  if (reconciliation.status !== "DRAFT") throw new ReconciliationStateError("This reconciliation is no longer a draft.");
+  return reconciliation;
+}
+
+export function getReconciliation(organizationId: string, reconciliationId: string) {
+  return db.accountingReconciliation.findFirst({ where: { id: reconciliationId, organizationId }, include: { account: true } });
+}
+
+export function listBankStatementLines(organizationId: string, reconciliationId: string) {
+  return db.accountingBankStatementLine.findMany({
+    where: { organizationId, reconciliationId },
+    include: { matchedJournalLine: { include: { journalEntry: true } } },
+    orderBy: [{ date: "asc" }, { sequenceInFile: "asc" }],
+  });
+}
+
+/** Inserts one AccountingBankStatementLine per row, keyed by its 0-indexed position in
+ * the source file - skipDuplicates makes re-importing the exact same file a no-op,
+ * since the same rows land on the same (reconciliationId, sequenceInFile) identities. */
+export async function importBankStatementLines(organizationId: string, reconciliationId: string, rows: { date: Date; description: string; amount: string }[]) {
+  await requireDraftReconciliation(organizationId, reconciliationId);
+  if (rows.length === 0) throw new Error("No statement rows to import.");
+  const result = await db.accountingBankStatementLine.createMany({
+    data: rows.map((row, index) => ({ organizationId, reconciliationId, sequenceInFile: index, date: row.date, description: row.description, amount: row.amount })),
+    skipDuplicates: true,
+  });
+  return { importedCount: result.count, skippedCount: rows.length - result.count };
+}
+
+export interface ReconciliationMatchSuggestion {
+  statementLineId: string;
+  journalLineId: string;
+  journalEntryDescription: string;
+  journalEntryDate: Date;
+  postingNumber: string;
+}
+
+/** For each UNMATCHED statement line, suggests the best unclaimed, POSTED journal line
+ * on the same account whose net debit-minus-credit exactly equals the statement line's
+ * signed amount (positive = money in, matching an asset account's debit-normal balance)
+ * within a small date window - computed fresh on every call rather than persisted, so a
+ * suggestion can never go stale against later matches or corrections. */
+export async function suggestReconciliationMatches(organizationId: string, reconciliationId: string): Promise<ReconciliationMatchSuggestion[]> {
+  const reconciliation = await db.accountingReconciliation.findFirst({ where: { id: reconciliationId, organizationId } });
+  if (!reconciliation) throw new NotFoundError("Reconciliation not found.");
+
+  const [statementLines, candidateLines] = await Promise.all([
+    db.accountingBankStatementLine.findMany({ where: { organizationId, reconciliationId, status: "UNMATCHED" } }),
+    db.accountingJournalLine.findMany({
+      where: {
+        accountId: reconciliation.accountId,
+        bankStatementMatch: null,
+        journalEntry: {
+          status: "POSTED",
+          entryDate: {
+            gte: new Date(reconciliation.periodStart.getTime() - RECONCILIATION_MATCH_DATE_WINDOW_DAYS * 86_400_000),
+            lte: new Date(reconciliation.periodEnd.getTime() + RECONCILIATION_MATCH_DATE_WINDOW_DAYS * 86_400_000),
+          },
+        },
+      },
+      include: { journalEntry: true },
+    }),
+  ]);
+
+  const suggestions: ReconciliationMatchSuggestion[] = [];
+  const claimed = new Set<string>();
+  for (const statementLine of statementLines) {
+    const net = new Prisma.Decimal(statementLine.amount);
+    let best: (typeof candidateLines)[number] | null = null;
+    let bestTier = Infinity;
+    let bestDateDiff = Infinity;
+    for (const candidate of candidateLines) {
+      if (claimed.has(candidate.id)) continue;
+      const candidateNet = new Prisma.Decimal(candidate.debit).minus(candidate.credit);
+      const difference = candidateNet.minus(net).abs();
+      // Tier 0: exact amount match, preferred whenever one exists. Tier 1: within a
+      // small tolerance (e.g. a bank fee shaving a few pesewas off the posted amount)
+      // - only considered when no exact match exists for this statement line.
+      const tier = difference.isZero() ? 0 : difference.lte(RECONCILIATION_MATCH_AMOUNT_TOLERANCE) ? 1 : null;
+      if (tier === null) continue;
+      const dateDiff = Math.abs(candidate.journalEntry.entryDate.getTime() - statementLine.date.getTime());
+      if (tier < bestTier || (tier === bestTier && dateDiff < bestDateDiff)) {
+        best = candidate;
+        bestTier = tier;
+        bestDateDiff = dateDiff;
+      }
+    }
+    if (best) {
+      claimed.add(best.id);
+      suggestions.push({
+        statementLineId: statementLine.id,
+        journalLineId: best.id,
+        journalEntryDescription: best.journalEntry.description,
+        journalEntryDate: best.journalEntry.entryDate,
+        postingNumber: best.journalEntry.postingNumber,
+      });
+    }
+  }
+  return suggestions;
+}
+
+export async function confirmReconciliationMatch(organizationId: string, reconciliationId: string, statementLineId: string, journalLineId: string) {
+  const reconciliation = await requireDraftReconciliation(organizationId, reconciliationId);
+  const [statementLine, journalLine] = await Promise.all([
+    db.accountingBankStatementLine.findFirst({ where: { id: statementLineId, organizationId, reconciliationId } }),
+    db.accountingJournalLine.findFirst({ where: { id: journalLineId, accountId: reconciliation.accountId } }),
+  ]);
+  if (!statementLine || !journalLine) throw new NotFoundError("Statement line or journal line not found.");
+  if (statementLine.status !== "UNMATCHED") throw new ReconciliationStateError("This statement line has already been decided.");
+  try {
+    return await db.accountingBankStatementLine.update({
+      where: { id: statementLineId },
+      data: { status: "MATCHED", matchedJournalLineId: journalLineId },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new ReconciliationStateError("That journal line is already matched to another statement line.");
+    }
+    throw error;
+  }
+}
+
+export async function ignoreReconciliationLine(organizationId: string, reconciliationId: string, statementLineId: string) {
+  await requireDraftReconciliation(organizationId, reconciliationId);
+  const result = await db.accountingBankStatementLine.updateMany({
+    where: { id: statementLineId, organizationId, reconciliationId, status: "UNMATCHED" },
+    data: { status: "IGNORED" },
+  });
+  if (result.count === 0) throw new ReconciliationStateError("This statement line has already been decided.");
+}
+
+/** Closes a draft reconciliation with the same ledgerBalance/difference math
+ * completeReconciliation() already uses - unmatched statement lines are never posted
+ * anywhere, so they simply remain visible as open items and correctly keep the
+ * difference non-zero until a human resolves them (post the missing entry, or ignore
+ * a bank-only line like an unbooked fee). */
+export async function completeDraftReconciliation(organizationId: string, reconciliationId: string, data: { statementBalance: string; notes?: string | null }, actorId?: string | null) {
+  const reconciliation = await requireDraftReconciliation(organizationId, reconciliationId);
+  const account = (await listAccounts(organizationId)).find((item) => item.id === reconciliation.accountId);
+  if (!account) throw new NotFoundError("Cash or bank account not found.");
+  const statementBalance = new Prisma.Decimal(data.statementBalance);
+  const ledgerBalance = new Prisma.Decimal(account.balance);
+  const claimed = await db.accountingReconciliation.updateMany({
+    where: { id: reconciliationId, organizationId, status: "DRAFT" },
+    data: { statementBalance, ledgerBalance, difference: statementBalance.minus(ledgerBalance), status: "COMPLETED", notes: data.notes, completedById: actorId ?? null, completedAt: new Date() },
+  });
+  if (claimed.count === 0) throw new ReconciliationStateError("This reconciliation is no longer a draft.");
+  return db.accountingReconciliation.findUniqueOrThrow({ where: { id: reconciliationId } });
+}
+
 export async function createAccount(organizationId: string, data: AccountInput) {
   try {
     return await db.accountingAccount.create({ data: { organizationId, ...data } });

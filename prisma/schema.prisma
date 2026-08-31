@@ -620,6 +620,7 @@ model Organization {
   accountingPayablePayments       AccountingPayablePayment[]
   accountingCreditNotes           AccountingCreditNote[]
   accountingReconciliations       AccountingReconciliation[]
+  accountingBankStatementLines    AccountingBankStatementLine[]
   accountingPeriods               AccountingPeriod[]
   accountingPettyCashFunds        AccountingPettyCashFund[]
   accountingPettyCashTransactions AccountingPettyCashTransaction[]
@@ -3180,8 +3181,9 @@ model AccountingJournalLine {
   debit          Decimal @default(0) @db.Decimal(12, 2)
   credit         Decimal @default(0) @db.Decimal(12, 2)
 
-  journalEntry AccountingJournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
-  account      AccountingAccount      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  journalEntry       AccountingJournalEntry       @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  account            AccountingAccount            @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  bankStatementMatch AccountingBankStatementLine?
 
   @@index([journalEntryId])
   @@index([accountId])
@@ -3213,11 +3215,46 @@ model AccountingReconciliation {
   createdAt        DateTime                       @default(now())
   updatedAt        DateTime                       @updatedAt
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  account      AccountingAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  organization   Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  account        AccountingAccount             @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  statementLines AccountingBankStatementLine[]
 
   @@unique([organizationId, accountId, periodStart, periodEnd])
   @@index([organizationId, status])
+}
+
+enum AccountingBankStatementLineStatus {
+  UNMATCHED
+  MATCHED
+  IGNORED
+}
+
+/**
+ * A single imported bank-statement row awaiting reconciliation against the ledger.
+ * sequenceInFile is the row's 0-indexed position in its source CSV - combined with
+ * reconciliationId in the unique constraint below, re-importing the exact same file
+ * maps every row to the same identity and skipDuplicates makes the re-import a no-op,
+ * while two genuinely distinct same-day/same-amount transactions within one import
+ * still get distinct identities.
+ */
+model AccountingBankStatementLine {
+  id                   String                            @id @default(cuid())
+  organizationId       String
+  reconciliationId     String
+  sequenceInFile       Int
+  date                 DateTime
+  description          String
+  amount               Decimal                           @db.Decimal(14, 2)
+  status               AccountingBankStatementLineStatus @default(UNMATCHED)
+  matchedJournalLineId String?                           @unique
+  createdAt            DateTime                          @default(now())
+
+  organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reconciliation     AccountingReconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+  matchedJournalLine AccountingJournalLine?   @relation(fields: [matchedJournalLineId], references: [id], onDelete: SetNull)
+
+  @@unique([reconciliationId, sequenceInFile])
+  @@index([organizationId, reconciliationId, status])
 }
 
 enum AccountingPettyCashFundStatus {
