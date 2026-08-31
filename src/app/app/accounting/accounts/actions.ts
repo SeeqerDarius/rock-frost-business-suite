@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createAccount, updateAccount, AccountCodeTakenError } from "@/modules/accounting/service";
+import { createAccount, updateAccount, loadGhanaSmeChartOfAccounts, AccountCodeTakenError } from "@/modules/accounting/service";
 import { shortText, cuid, parseWithSchema } from "@/lib/validation";
 
 function clean(value: FormDataEntryValue | null) {
@@ -60,4 +60,17 @@ export async function upsertAccount(formData: FormData): Promise<void> {
   revalidatePath("/app/accounting/accounts");
   revalidatePath("/app/accounting/cashbook");
   redirect("/app/accounting/accounts?saved=1");
+}
+
+export async function loadGhanaSmeChart(): Promise<void> {
+  const tenant = await requireModuleAccess("accounting");
+  if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_ACCOUNTS_MANAGE)) {
+    redirect("/app/accounting/accounts?error=forbidden");
+  }
+
+  const { addedCount } = await loadGhanaSmeChartOfAccounts(tenant.organizationId);
+
+  revalidatePath("/app/accounting/accounts");
+  revalidatePath("/app/accounting/general-ledger");
+  redirect(`/app/accounting/accounts?saved=1&added=${addedCount}`);
 }

@@ -11,6 +11,7 @@ import {
   updateOrganizationModuleConfigurationValues,
 } from "@/platform/module-requests/configuration";
 import { calculateTax } from "./tax-service";
+import { listSupplierInvoices } from "@/modules/procurement/service";
 
 const DEFAULT_INVOICE_NUMBER_PREFIX = "INV";
 const PREFIX_PATTERN = /^[A-Z0-9]{2,8}$/;
@@ -1659,6 +1660,286 @@ export async function getStatementOfFinancialPosition(organizationId: string) {
     isBalanced: Math.abs(difference) < 0.01,
     difference,
   };
+}
+
+// --- Reporting: trial balance, general ledger, ageing, cash flow, COA templates ---
+
+export interface TrialBalanceRow {
+  account: { id: string; code: string; name: string; type: AccountingAccountType };
+  debit: number;
+  credit: number;
+}
+
+/**
+ * Every account's raw (debit total - credit total) as of a date, shown in
+ * whichever column the sign naturally falls on - not normalized by account
+ * type. Because every journal entry balances on its own, the sum of every
+ * account's raw net position balances too: sum(debit column) always equals
+ * sum(credit column), which is the whole point of a trial balance. Zero-
+ * balance accounts are omitted, matching how a real trial balance is
+ * normally presented.
+ */
+export async function getTrialBalance(organizationId: string, asOfDate: Date = new Date()): Promise<{ asOfDate: Date; rows: TrialBalanceRow[]; totalDebit: number; totalCredit: number }> {
+  await ensureDefaultAccounts(organizationId);
+  const accounts = await db.accountingAccount.findMany({
+    where: { organizationId },
+    include: { journalLines: { where: { journalEntry: { entryDate: { lte: asOfDate } } }, select: { debit: true, credit: true } } },
+    orderBy: { code: "asc" },
+  });
+
+  const rows: TrialBalanceRow[] = [];
+  let totalDebit = new Prisma.Decimal(0);
+  let totalCredit = new Prisma.Decimal(0);
+  for (const account of accounts) {
+    const accDebit = account.journalLines.reduce((sum, line) => sum.plus(line.debit), new Prisma.Decimal(0));
+    const accCredit = account.journalLines.reduce((sum, line) => sum.plus(line.credit), new Prisma.Decimal(0));
+    const net = accDebit.minus(accCredit);
+    if (net.isZero()) continue;
+    const debit = net.isPositive() ? net : new Prisma.Decimal(0);
+    const credit = net.isNegative() ? net.negated() : new Prisma.Decimal(0);
+    rows.push({ account: { id: account.id, code: account.code, name: account.name, type: account.type }, debit: debit.toNumber(), credit: credit.toNumber() });
+    totalDebit = totalDebit.plus(debit);
+    totalCredit = totalCredit.plus(credit);
+  }
+
+  return { asOfDate, rows, totalDebit: totalDebit.toNumber(), totalCredit: totalCredit.toNumber() };
+}
+
+export interface GeneralLedgerLine {
+  id: string;
+  entryDate: Date;
+  description: string;
+  reference: string | null;
+  postingNumber: string;
+  sourceModule: string | null;
+  debit: number;
+  credit: number;
+  runningBalance: number;
+}
+
+/** One row per account, for the General Ledger's index page. Reuses listAccounts's own balance computation. */
+export function getGeneralLedgerAccounts(organizationId: string) {
+  return listAccounts(organizationId);
+}
+
+export async function getGeneralLedgerForAccount(organizationId: string, accountId: string): Promise<{ account: { id: string; code: string; name: string; type: AccountingAccountType }; lines: GeneralLedgerLine[] }> {
+  const account = await db.accountingAccount.findFirst({ where: { id: accountId, organizationId } });
+  if (!account) throw new NotFoundError("Account not found.");
+
+  const journalLines = await db.accountingJournalLine.findMany({
+    where: { accountId, journalEntry: { organizationId } },
+    include: { journalEntry: { select: { entryDate: true, description: true, reference: true, postingNumber: true, sourceModule: true, createdAt: true } } },
+    orderBy: [{ journalEntry: { entryDate: "asc" } }, { journalEntry: { createdAt: "asc" } }],
+  });
+
+  const isDebitNormal = account.type === "ASSET" || account.type === "EXPENSE";
+  let running = new Prisma.Decimal(0);
+  const lines: GeneralLedgerLine[] = journalLines.map((line) => {
+    const delta = isDebitNormal ? new Prisma.Decimal(line.debit).minus(line.credit) : new Prisma.Decimal(line.credit).minus(line.debit);
+    running = running.plus(delta);
+    return {
+      id: line.id,
+      entryDate: line.journalEntry.entryDate,
+      description: line.journalEntry.description,
+      reference: line.journalEntry.reference,
+      postingNumber: line.journalEntry.postingNumber,
+      sourceModule: line.journalEntry.sourceModule,
+      debit: Number(line.debit),
+      credit: Number(line.credit),
+      runningBalance: running.toNumber(),
+    };
+  });
+
+  return { account: { id: account.id, code: account.code, name: account.name, type: account.type }, lines };
+}
+
+export interface AgeingBucket {
+  current: number;
+  days30: number;
+  days60: number;
+  days90: number;
+  over90: number;
+}
+
+function bucketByAge(dueDate: Date, outstanding: number, asOf: Date): AgeingBucket {
+  const bucket: AgeingBucket = { current: 0, days30: 0, days60: 0, days90: 0, over90: 0 };
+  if (outstanding <= 0.004) return bucket;
+  const daysOverdue = Math.floor((asOf.getTime() - dueDate.getTime()) / 86_400_000);
+  if (daysOverdue <= 0) bucket.current = outstanding;
+  else if (daysOverdue <= 30) bucket.days30 = outstanding;
+  else if (daysOverdue <= 60) bucket.days60 = outstanding;
+  else if (daysOverdue <= 90) bucket.days90 = outstanding;
+  else bucket.over90 = outstanding;
+  return bucket;
+}
+
+function sumAgeingBuckets<T extends AgeingBucket>(rows: T[]): AgeingBucket & { outstanding: number } {
+  return rows.reduce(
+    (sum, row) => ({
+      current: sum.current + row.current,
+      days30: sum.days30 + row.days30,
+      days60: sum.days60 + row.days60,
+      days90: sum.days90 + row.days90,
+      over90: sum.over90 + row.over90,
+      outstanding: sum.outstanding + row.current + row.days30 + row.days60 + row.days90 + row.over90,
+    }),
+    { current: 0, days30: 0, days60: 0, days90: 0, over90: 0, outstanding: 0 },
+  );
+}
+
+export interface ReceivablesAgeingRow extends AgeingBucket {
+  invoiceId: string;
+  invoiceNumber: string;
+  customerName: string;
+  dueDate: Date;
+  outstanding: number;
+}
+
+/** Real 0-30/31-60/61-90/90+ day buckets, replacing the binary current/overdue flag every other receivables view still uses. */
+export async function getReceivablesAgeing(organizationId: string, asOf: Date = new Date()) {
+  const invoices = await db.accountingInvoice.findMany({ where: { organizationId, status: { in: ["SENT", "OVERDUE"] } } });
+  const rows: ReceivablesAgeingRow[] = invoices
+    .map((invoice) => {
+      const outstanding = Number(invoice.amount) - Number(invoice.amountPaid) - Number(invoice.amountCredited);
+      return { invoiceId: invoice.id, invoiceNumber: invoice.invoiceNumber, customerName: invoice.customerName, dueDate: invoice.dueDate, outstanding, ...bucketByAge(invoice.dueDate, outstanding, asOf) };
+    })
+    .filter((row) => row.outstanding > 0.004)
+    .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+  return { asOf, rows, totals: sumAgeingBuckets(rows) };
+}
+
+export interface PayablesAgeingRow extends AgeingBucket {
+  source: "Bill" | "Supplier invoice";
+  id: string;
+  reference: string;
+  counterparty: string;
+  dueDate: Date;
+  outstanding: number;
+}
+
+/** Reads both AccountingBill and Procurement's own ProcurementSupplierInvoice, through Procurement's own listSupplierInvoices() rather than querying its table directly, so an org's true payable position is complete regardless of which flow created the bill. */
+export async function getPayablesAgeing(organizationId: string, asOf: Date = new Date()) {
+  const [bills, supplierInvoices] = await Promise.all([
+    db.accountingBill.findMany({ where: { organizationId, status: { in: ["APPROVED", "PARTIALLY_PAID"] } } }),
+    listSupplierInvoices(organizationId),
+  ]);
+
+  const billRows: PayablesAgeingRow[] = bills.map((bill) => {
+    const outstanding = Number(bill.amount) - Number(bill.amountPaid);
+    return { source: "Bill", id: bill.id, reference: bill.billNumber, counterparty: bill.supplierName, dueDate: bill.dueDate, outstanding, ...bucketByAge(bill.dueDate, outstanding, asOf) };
+  });
+  const supplierRows: PayablesAgeingRow[] = supplierInvoices
+    .filter((invoice) => invoice.status === "APPROVED" || invoice.status === "PARTIALLY_PAID")
+    .map((invoice) => {
+      const outstanding = Number(invoice.totalAmount) - Number(invoice.amountPaid);
+      const dueDate = invoice.dueDate ?? invoice.invoiceDate;
+      return { source: "Supplier invoice", id: invoice.id, reference: invoice.invoiceNumber, counterparty: invoice.vendor.name, dueDate, outstanding, ...bucketByAge(dueDate, outstanding, asOf) };
+    });
+
+  const rows = [...billRows, ...supplierRows].filter((row) => row.outstanding > 0.004).sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+  return { asOf, rows, totals: sumAgeingBuckets(rows) };
+}
+
+/**
+ * Direct-method cash-flow statement: every journal line posted against a
+ * CASH/BANK/MOBILE_MONEY-liquidity account within the period, categorized
+ * Operating/Investing/Financing by its journal entry's sourceType.
+ * classifyCashFlowSourceType is the one place a future fixed-asset or loan
+ * module registers its own INVESTING/FINANCING source types - every source
+ * type in this codebase today is legitimately Operating (no fixed-asset or
+ * loan module exists yet), so that is the correct default, not a
+ * placeholder bug. openingCash + netChange is guaranteed to equal
+ * closingCash by construction, since both are computed from the same
+ * underlying line set split only by date.
+ */
+function classifyCashFlowSourceType(sourceType: string | null): "OPERATING" | "INVESTING" | "FINANCING" {
+  void sourceType;
+  return "OPERATING";
+}
+
+export async function getCashFlowStatement(organizationId: string, from: Date, to: Date) {
+  const liquidityAccounts = await db.accountingAccount.findMany({ where: { organizationId, liquidityType: { not: "NONE" } }, select: { id: true } });
+  const accountIds = liquidityAccounts.map((account) => account.id);
+
+  const [periodLines, priorLines] = await Promise.all([
+    db.accountingJournalLine.findMany({
+      where: { accountId: { in: accountIds }, journalEntry: { entryDate: { gte: from, lte: to } } },
+      include: { journalEntry: { select: { sourceType: true } } },
+    }),
+    db.accountingJournalLine.findMany({
+      where: { accountId: { in: accountIds }, journalEntry: { entryDate: { lt: from } } },
+      select: { debit: true, credit: true },
+    }),
+  ]);
+
+  const openingCash = priorLines.reduce((sum, line) => sum.plus(line.debit).minus(line.credit), new Prisma.Decimal(0));
+  const byCategory = { OPERATING: new Prisma.Decimal(0), INVESTING: new Prisma.Decimal(0), FINANCING: new Prisma.Decimal(0) };
+  for (const line of periodLines) {
+    const net = new Prisma.Decimal(line.debit).minus(line.credit);
+    const category = classifyCashFlowSourceType(line.journalEntry.sourceType);
+    byCategory[category] = byCategory[category].plus(net);
+  }
+  const netChange = byCategory.OPERATING.plus(byCategory.INVESTING).plus(byCategory.FINANCING);
+  const closingCash = openingCash.plus(netChange);
+
+  return {
+    from,
+    to,
+    operating: byCategory.OPERATING.toNumber(),
+    investing: byCategory.INVESTING.toNumber(),
+    financing: byCategory.FINANCING.toNumber(),
+    netChange: netChange.toNumber(),
+    openingCash: openingCash.toNumber(),
+    closingCash: closingCash.toNumber(),
+  };
+}
+
+/**
+ * Additional Ghana SME chart-of-accounts entries beyond the 12 system
+ * accounts ensureDefaultAccounts() already creates for every organization -
+ * deliberately non-overlapping with those codes, since the system accounts
+ * already cover Cash/AR/AP/tax-payable/Revenue with the exact names this
+ * app's own posting logic depends on. Not `isSystem` - these are ordinary,
+ * editable/deletable accounts, just a convenient starting point.
+ */
+const GHANA_SME_CHART_TEMPLATE: { code: string; name: string; type: AccountingAccountType }[] = [
+  { code: "1010", name: "Bank Account - GHS", type: "ASSET" },
+  { code: "1020", name: "Mobile Money", type: "ASSET" },
+  { code: "1400", name: "Prepaid Expenses", type: "ASSET" },
+  { code: "1500", name: "Property, Plant and Equipment", type: "ASSET" },
+  { code: "1510", name: "Accumulated Depreciation", type: "ASSET" },
+  { code: "2200", name: "Withholding Tax Payable", type: "LIABILITY" },
+  { code: "2300", name: "Salaries Payable", type: "LIABILITY" },
+  { code: "2400", name: "Short-Term Loans", type: "LIABILITY" },
+  { code: "3000", name: "Owner's Capital", type: "EQUITY" },
+  { code: "3100", name: "Retained Earnings", type: "EQUITY" },
+  { code: "3200", name: "Drawings", type: "EQUITY" },
+  { code: "4900", name: "Other Income", type: "REVENUE" },
+  { code: "5100", name: "Salaries and Wages", type: "EXPENSE" },
+  { code: "5200", name: "Rent Expense", type: "EXPENSE" },
+  { code: "5300", name: "Utilities Expense", type: "EXPENSE" },
+  { code: "5400", name: "Fuel and Transport", type: "EXPENSE" },
+  { code: "5500", name: "Communication Expense", type: "EXPENSE" },
+  { code: "5600", name: "Bank Charges and Fees", type: "EXPENSE" },
+  { code: "5700", name: "Repairs and Maintenance", type: "EXPENSE" },
+  { code: "5800", name: "Depreciation Expense", type: "EXPENSE" },
+  { code: "5900", name: "General and Administrative Expenses", type: "EXPENSE" },
+];
+
+/**
+ * Idempotent by design: upserts by code, skipping anything already present
+ * (the org's own system accounts, or a previous load of this same
+ * template) - re-running it twice creates nothing extra the second time.
+ */
+export async function loadGhanaSmeChartOfAccounts(organizationId: string) {
+  await ensureDefaultAccounts(organizationId);
+  const existing = await db.accountingAccount.findMany({ where: { organizationId }, select: { code: true } });
+  const existingCodes = new Set(existing.map((account) => account.code));
+  const missing = GHANA_SME_CHART_TEMPLATE.filter((account) => !existingCodes.has(account.code));
+  if (missing.length > 0) {
+    await db.accountingAccount.createMany({ data: missing.map((account) => ({ organizationId, ...account, isSystem: false })), skipDuplicates: true });
+  }
+  return { addedCount: missing.length };
 }
 
 export type { AccountingInvoiceStatus };

@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Plus, ListChecks } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { formatMoney } from "@/lib/currency";
 import { listAccounts } from "@/modules/accounting/service";
-import { upsertAccount } from "./actions";
+import { upsertAccount, loadGhanaSmeChart } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage the chart of accounts.",
@@ -74,9 +74,9 @@ function AccountFields({ account }: AccountFieldsProps) {
 export default async function AccountingAccountsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string }>;
+  searchParams: Promise<{ saved?: string; added?: string; error?: string }>;
 }) {
-  const { saved, error } = await searchParams;
+  const { saved, added, error } = await searchParams;
   const tenant = await requireModuleAccess("accounting");
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_ACCOUNTS_MANAGE);
   const accounts = await listAccounts(tenant.organizationId);
@@ -86,15 +86,23 @@ export default async function AccountingAccountsPage({
       <div className="flex items-center justify-between gap-4">
         <PageHeader title="Chart of Accounts" description="Every ledger account tracked for this organization." />
         {canManage ? (
-          <EntityDialog trigger={<Button size="sm"><Plus />New account</Button>} title="New account" action={upsertAccount}>
-            <AccountFields />
-          </EntityDialog>
+          <div className="flex gap-2">
+            <form action={loadGhanaSmeChart}>
+              <Button type="submit" size="sm" variant="outline">
+                <ListChecks />
+                Load Ghana SME chart of accounts
+              </Button>
+            </form>
+            <EntityDialog trigger={<Button size="sm"><Plus />New account</Button>} title="New account" action={upsertAccount}>
+              <AccountFields />
+            </EntityDialog>
+          </div>
         ) : null}
       </div>
 
       {saved ? (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
-          Saved.
+          Saved.{added !== undefined ? ` Added ${added} account${added === "1" ? "" : "s"} from the Ghana SME chart of accounts template.` : ""}
         </div>
       ) : null}
       {error && ERROR_MESSAGES[error] ? (
