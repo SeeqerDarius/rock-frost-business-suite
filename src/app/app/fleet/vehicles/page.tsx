@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listFleetVehicles, listFleetOwners, listFleetDrivers } from "@/modules/fleet/service";
+import { listFleetVehicles, listFleetOwners, listActiveDriversWithAssignments, filterEligibleDrivers } from "@/modules/fleet/service";
 import { MakeLogo } from "@/components/fleet/make-logo";
 import { VehicleMakeModelFields } from "./vehicle-make-model-fields";
 import { upsertFleetVehicle } from "./actions";
@@ -21,6 +21,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   duplicate: "A vehicle with that asset tag or plate number already exists.",
   "not-found": "That owner or driver could not be found.",
   "invalid-target": "Choose Daily or Weekly and enter a remittance amount greater than zero, or select No required remittance.",
+  "driver-assigned": "That driver is already assigned to another vehicle. Choose a different driver, or unassign them there first.",
+  "driver-ineligible": "Only an active driver can be assigned to a vehicle.",
 };
 
 const STATUS_OPTIONS: Record<string, string> = {
@@ -72,6 +74,7 @@ function VehicleFields({ vehicle, owners, drivers }: VehicleFieldsProps) {
     ...Object.fromEntries(owners.map((o) => [o.id, o.isOrganizationOwner ? `${o.name} (Organization)` : o.name])),
   };
   const driverItems: Record<string, string> = { "": "Unassigned", ...Object.fromEntries(drivers.map((d) => [d.id, d.name])) };
+  const noEligibleDrivers = drivers.length === 0;
 
   return (
     <>
@@ -144,6 +147,11 @@ function VehicleFields({ vehicle, owners, drivers }: VehicleFieldsProps) {
               ))}
             </SelectContent>
           </Select>
+          {noEligibleDrivers ? (
+            <p className="text-xs text-muted-foreground">
+              No unassigned active drivers available - every active driver is already assigned to a vehicle.
+            </p>
+          ) : null}
         </div>
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
@@ -183,11 +191,16 @@ export default async function FleetVehiclesPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("fleet");
   const canManage = hasPermission(tenant, PERMISSIONS.FLEET_VEHICLES_MANAGE);
-  const [vehicles, owners, drivers] = await Promise.all([
+  const [vehicles, owners, activeDrivers] = await Promise.all([
     listFleetVehicles(tenant.organizationId),
     listFleetOwners(tenant.organizationId),
-    listFleetDrivers(tenant.organizationId),
+    listActiveDriversWithAssignments(tenant.organizationId),
   ]);
+  // Eligible drivers for a brand-new vehicle: unassigned only. For editing
+  // an existing vehicle, filterEligibleDrivers also keeps that vehicle's own
+  // current driver selectable - computed per row below from this one fetch,
+  // not one query per dialog.
+  const eligibleForNewVehicle = filterEligibleDrivers(activeDrivers, null).map((d) => ({ id: d.id, name: d.name }));
 
   return (
     <div className="space-y-6">
@@ -204,7 +217,7 @@ export default async function FleetVehiclesPage({
             title="New vehicle"
             action={upsertFleetVehicle}
           >
-            <VehicleFields owners={owners} drivers={drivers} />
+            <VehicleFields owners={owners} drivers={eligibleForNewVehicle} />
           </EntityDialog>
         ) : null}
       </div>
@@ -294,7 +307,7 @@ export default async function FleetVehiclesPage({
                           salesTargetAmount: vehicle.salesTargetAmount?.toString() ?? null,
                         }}
                         owners={owners}
-                        drivers={drivers}
+                        drivers={filterEligibleDrivers(activeDrivers, vehicle.id).map((d) => ({ id: d.id, name: d.name }))}
                       />
                     </EntityDialog>
                   </TableCell>

@@ -130,4 +130,88 @@ describe("Fleet service — cross-tenant isolation against real Postgres", () =>
     expect(list.map((v) => v.id)).not.toContain(vehicleB.id);
     expect(list.map((v) => v.id)).toContain(vehicleA.id);
   });
+
+  it("assignDriverToVehicle rejects a driverId from another organization", async () => {
+    await expect(
+      fleet.assignDriverToVehicle(orgA.organizationId, vehicleA.id, null, driverB.id),
+    ).rejects.toThrow(fleet.NotFoundError);
+  });
+});
+
+/**
+ * Real-Postgres coverage for Track 1 of the Fleet/Accounting redesign: the
+ * DB-enforced "one active vehicle per driver" partial unique index
+ * (organizationId, assignedDriverId) WHERE assignedDriverId IS NOT NULL,
+ * added in migration 20260831120000_fleet_driver_assignment_integrity, and
+ * the concurrency behavior it backstops. Runs only against a disposable
+ * TEST_DATABASE_URL (see test/integration/setup/guard.ts) - never against
+ * production or the real dev database.
+ */
+describe("Fleet driver-vehicle assignment integrity against real Postgres", () => {
+  let org: TestOrg;
+  let activeDriver: Awaited<ReturnType<typeof fleet.createFleetDriver>>;
+  let inactiveDriver: Awaited<ReturnType<typeof fleet.createFleetDriver>>;
+  let vehicle1: Awaited<ReturnType<typeof fleet.createFleetVehicle>>;
+  let vehicle2: Awaited<ReturnType<typeof fleet.createFleetVehicle>>;
+
+  beforeAll(async () => {
+    org = await createTestOrg("fleet-driver-assignment");
+    activeDriver = await fleet.createFleetDriver(org.organizationId, { name: "Kwame Mensah", status: "ACTIVE" });
+    inactiveDriver = await fleet.createFleetDriver(org.organizationId, { name: "Ama Boateng", status: "INACTIVE" });
+    vehicle1 = await fleet.createFleetVehicle(org.organizationId, { assetTag: "GH-AT-1", plateNumber: "GR 1234-26" });
+    vehicle2 = await fleet.createFleetVehicle(org.organizationId, { assetTag: "GH-AT-2", plateNumber: "GR 5678-26" });
+  });
+
+  afterAll(async () => {
+    await cleanupTestOrg(org);
+  });
+
+  it("assigns an active, unassigned driver and preserves the assignment in history", async () => {
+    const updated = await fleet.assignDriverToVehicle(org.organizationId, vehicle1.id, org.userId, activeDriver.id);
+    expect(updated.assignedDriverId).toBe(activeDriver.id);
+  });
+
+  it("rejects assigning that same driver to a second vehicle - one active vehicle per driver", async () => {
+    await expect(
+      fleet.assignDriverToVehicle(org.organizationId, vehicle2.id, org.userId, activeDriver.id),
+    ).rejects.toThrow(fleet.FleetDriverAlreadyAssignedError);
+  });
+
+  it("rejects assigning an inactive driver", async () => {
+    await expect(
+      fleet.assignDriverToVehicle(org.organizationId, vehicle2.id, org.userId, inactiveDriver.id),
+    ).rejects.toThrow(fleet.FleetDriverNotEligibleError);
+  });
+
+  it("reassigning the driver away from vehicle1 frees them up for vehicle2", async () => {
+    await fleet.assignDriverToVehicle(org.organizationId, vehicle1.id, org.userId, null);
+    const updated = await fleet.assignDriverToVehicle(org.organizationId, vehicle2.id, org.userId, activeDriver.id);
+    expect(updated.assignedDriverId).toBe(activeDriver.id);
+    // Move back to vehicle1 for the concurrency test below, which needs the
+    // driver free again on a clean slate.
+    await fleet.assignDriverToVehicle(org.organizationId, vehicle2.id, org.userId, null);
+  });
+
+  it("under true concurrency, exactly one of two simultaneous assignments to the same driver succeeds and the other gets a clear conflict error", async () => {
+    const results = await Promise.allSettled([
+      fleet.assignDriverToVehicle(org.organizationId, vehicle1.id, org.userId, activeDriver.id),
+      fleet.assignDriverToVehicle(org.organizationId, vehicle2.id, org.userId, activeDriver.id),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(fleet.FleetDriverAlreadyAssignedError);
+
+    // The database's own partial unique index is the actual guarantee here,
+    // not just application-level luck - confirm only one vehicle ended up
+    // with the driver.
+    const [v1, v2] = await Promise.all([
+      fleet.listFleetVehicles(org.organizationId).then((list) => list.find((v) => v.id === vehicle1.id)),
+      fleet.listFleetVehicles(org.organizationId).then((list) => list.find((v) => v.id === vehicle2.id)),
+    ]);
+    const assignedCount = [v1?.assignedDriverId, v2?.assignedDriverId].filter((id) => id === activeDriver.id).length;
+    expect(assignedCount).toBe(1);
+  });
 });

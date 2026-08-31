@@ -4,7 +4,14 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { createFleetVehicle, updateFleetVehicle, NotFoundError, FleetSalesTargetError } from "@/modules/fleet/service";
+import {
+  createFleetVehicle,
+  updateFleetVehicle,
+  NotFoundError,
+  FleetSalesTargetError,
+  FleetDriverAlreadyAssignedError,
+  FleetDriverNotEligibleError,
+} from "@/modules/fleet/service";
 import type { FleetSalesTargetPeriod, FleetVehicleStatus } from "@prisma/client";
 import { logAuditEvent } from "@/lib/audit";
 
@@ -66,6 +73,8 @@ export async function upsertFleetVehicle(formData: FormData): Promise<void> {
   } catch (error) {
     if (error instanceof NotFoundError) redirect("/app/fleet/vehicles?error=not-found");
     if (error instanceof FleetSalesTargetError) redirect("/app/fleet/vehicles?error=invalid-target");
+    if (error instanceof FleetDriverAlreadyAssignedError) redirect("/app/fleet/vehicles?error=driver-assigned");
+    if (error instanceof FleetDriverNotEligibleError) redirect("/app/fleet/vehicles?error=driver-ineligible");
     redirect("/app/fleet/vehicles?error=duplicate");
   }
 

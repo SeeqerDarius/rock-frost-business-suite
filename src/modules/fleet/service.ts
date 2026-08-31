@@ -313,6 +313,39 @@ export async function listFleetDrivers(organizationId: string) {
   return db.fleetDriver.findMany({ where: { organizationId }, include: { user: true }, orderBy: { name: "asc" } });
 }
 
+/**
+ * One query for every active driver plus which vehicle(s) they currently
+ * hold, so a page rendering many vehicle-edit dialogs can compute each
+ * dialog's eligible-driver list in memory (filterEligibleDrivers) instead of
+ * querying once per vehicle.
+ */
+export async function listActiveDriversWithAssignments(organizationId: string) {
+  await backfillMissingFleetDrivers(organizationId);
+  return db.fleetDriver.findMany({
+    where: { organizationId, status: "ACTIVE" },
+    include: { assignedVehicles: { select: { id: true } } },
+    orderBy: { name: "asc" },
+  });
+}
+
+/**
+ * A driver is eligible for a given vehicle if they hold no assignment at
+ * all, or their only current assignment is that same vehicle (so editing a
+ * vehicle always keeps its own current driver selectable). Pure/in-memory -
+ * no DB access - so it can slice one fetched-once list per vehicle without
+ * an N+1 query.
+ */
+export function filterEligibleDrivers<T extends { assignedVehicles: { id: string }[] }>(
+  drivers: T[],
+  currentVehicleId?: string | null,
+): T[] {
+  return drivers.filter(
+    (driver) =>
+      driver.assignedVehicles.length === 0 ||
+      (currentVehicleId != null && driver.assignedVehicles.some((vehicle) => vehicle.id === currentVehicleId)),
+  );
+}
+
 export async function createFleetDriver(
   organizationId: string,
   data: {
@@ -398,6 +431,8 @@ export class FleetPaymentEvidenceError extends Error {}
 export class FleetPaymentDateError extends Error {}
 export class FleetDriverAssignmentError extends Error {}
 export class FleetDriverLoginConflictError extends Error {}
+export class FleetDriverAlreadyAssignedError extends Error {}
+export class FleetDriverNotEligibleError extends Error {}
 
 export const FLEET_REMITTANCE_METHODS = ["CASH", "MOBILE_MONEY", "BANK_TRANSFER", "CARD", "CHEQUE", "OTHER"] as const;
 export type FleetRemittanceMethod = (typeof FLEET_REMITTANCE_METHODS)[number];
@@ -682,18 +717,90 @@ export function listFleetActorVehicles(
   });
 }
 
-async function validateVehicleRefs(organizationId: string, data: { ownerId?: string | null; assignedDriverId?: string | null }) {
+/** Owner-only - driver validation moved into the write transaction (see
+ * validateDriverEligibility) since "is this driver already assigned
+ * elsewhere" can only be answered safely alongside the write, not before it. */
+async function validateVehicleOwnerRef(organizationId: string, data: { ownerId?: string | null }) {
   let owner: { id: string; name: string } | null = null;
-  let driver: { id: string; name: string } | null = null;
   if (data.ownerId) {
     owner = await db.fleetOwner.findFirst({ where: { id: data.ownerId, organizationId }, select: { id: true, name: true } });
     if (!owner) throw new NotFoundError("Owner not found.");
   }
-  if (data.assignedDriverId) {
-    driver = await db.fleetDriver.findFirst({ where: { id: data.assignedDriverId, organizationId }, select: { id: true, name: true } });
-    if (!driver) throw new NotFoundError("Driver not found.");
+  return { owner };
+}
+
+/**
+ * Validates a driver is real, belongs to the org, is ACTIVE, and (as a
+ * friendly pre-check) isn't already assigned to a different vehicle. Must
+ * run against the transaction client (tx), not the top-level db, so the
+ * check and the write it gates are atomic. The database's own partial
+ * unique index on (organizationId, assignedDriverId) - added in this same
+ * track's migration - is the actual concurrency backstop for the rare case
+ * where two requests pass this check in the same instant; the caller must
+ * catch that constraint's P2002 (see isDriverAssignmentConflict).
+ */
+async function validateDriverEligibility(
+  tx: TxClient,
+  organizationId: string,
+  driverId: string,
+  excludeVehicleId?: string,
+) {
+  const driver = await tx.fleetDriver.findFirst({
+    where: { id: driverId, organizationId },
+    select: { id: true, name: true, status: true },
+  });
+  if (!driver) throw new NotFoundError("Driver not found.");
+  if (driver.status !== "ACTIVE") {
+    throw new FleetDriverNotEligibleError("Only an active driver can be assigned to a vehicle.");
   }
-  return { owner, driver };
+  const conflict = await tx.fleetVehicle.findFirst({
+    where: {
+      organizationId,
+      assignedDriverId: driverId,
+      ...(excludeVehicleId ? { id: { not: excludeVehicleId } } : {}),
+    },
+    select: { id: true },
+  });
+  if (conflict) throw new FleetDriverAlreadyAssignedError("This driver is already assigned to another vehicle.");
+  return driver;
+}
+
+/** True when `error` is a P2002 unique-constraint violation from the driver
+ * partial-unique-index specifically, not FleetVehicle's assetTag/plateNumber
+ * uniques - so the two never get confused in a shared catch block. Uses a
+ * duck-typed check (mirrors src/modules/inventory/service.ts's convention)
+ * rather than `instanceof Prisma.PrismaClientKnownRequestError` so it stays
+ * easy to simulate in mocked-db tests without mocking the Prisma client. */
+function isDriverAssignmentConflict(error: unknown): boolean {
+  if (!(error instanceof Error) || !("code" in error) || error.code !== "P2002") return false;
+  const target = (error as { meta?: { target?: unknown } }).meta?.target;
+  const text = Array.isArray(target) ? target.join(",") : String(target ?? "");
+  return !text.includes("assetTag") && !text.includes("plateNumber");
+}
+
+/** Writes a FleetVehicleDriverHistory row only when the driver actually
+ * changed - a no-op resave (e.g. editing other vehicle fields without
+ * touching the driver) must not create a spurious history entry. */
+async function recordDriverAssignmentChange(
+  tx: TxClient,
+  organizationId: string,
+  vehicleId: string,
+  actorId: string | null | undefined,
+  previous: { id: string; name: string } | null,
+  next: { id: string; name: string } | null,
+) {
+  if ((previous?.id ?? null) === (next?.id ?? null)) return;
+  await tx.fleetVehicleDriverHistory.create({
+    data: {
+      organizationId,
+      vehicleId,
+      previousDriverId: previous?.id,
+      previousDriverName: previous?.name,
+      newDriverId: next?.id,
+      newDriverName: next?.name,
+      changedById: actorId,
+    },
+  });
 }
 
 type FleetVehicleInput = {
@@ -731,17 +838,29 @@ export async function createFleetVehicle(
   data: FleetVehicleInput,
   actorId?: string | null,
 ) {
-  const { owner } = await validateVehicleRefs(organizationId, data);
+  const { owner } = await validateVehicleOwnerRef(organizationId, data);
   const salesTarget = vehicleSalesTarget(data);
-  return db.$transaction(async (tx) => {
-    const vehicle = await tx.fleetVehicle.create({ data: { organizationId, ...data, ...salesTarget } });
-    if (owner) {
-      await tx.fleetVehicleOwnershipHistory.create({
-        data: { organizationId, vehicleId: vehicle.id, newOwnerId: owner.id, newOwnerName: owner.name, changedById: actorId },
-      });
+  try {
+    return await db.$transaction(async (tx) => {
+      let driver: { id: string; name: string } | null = null;
+      if (data.assignedDriverId) {
+        driver = await validateDriverEligibility(tx, organizationId, data.assignedDriverId);
+      }
+      const vehicle = await tx.fleetVehicle.create({ data: { organizationId, ...data, ...salesTarget } });
+      if (owner) {
+        await tx.fleetVehicleOwnershipHistory.create({
+          data: { organizationId, vehicleId: vehicle.id, newOwnerId: owner.id, newOwnerName: owner.name, changedById: actorId },
+        });
+      }
+      await recordDriverAssignmentChange(tx, organizationId, vehicle.id, actorId, null, driver);
+      return vehicle;
+    });
+  } catch (error) {
+    if (data.assignedDriverId && isDriverAssignmentConflict(error)) {
+      throw new FleetDriverAlreadyAssignedError("This driver was just assigned to another vehicle. Choose a different driver.");
     }
-    return vehicle;
-  });
+    throw error;
+  }
 }
 
 export async function updateFleetVehicle(
@@ -750,30 +869,83 @@ export async function updateFleetVehicle(
   data: FleetVehicleInput,
   actorId?: string | null,
 ) {
-  const { owner } = await validateVehicleRefs(organizationId, data);
+  const { owner } = await validateVehicleOwnerRef(organizationId, data);
   const salesTarget = vehicleSalesTarget(data);
-  return db.$transaction(async (tx) => {
-    const existing = await tx.fleetVehicle.findFirst({
-      where: { id, organizationId },
-      include: { owner: { select: { id: true, name: true } } },
-    });
-    if (!existing) throw new NotFoundError("Vehicle not found.");
-    const vehicle = await tx.fleetVehicle.update({ where: { id, organizationId }, data: { ...data, ...salesTarget } });
-    if ((existing.ownerId ?? null) !== (data.ownerId ?? null)) {
-      await tx.fleetVehicleOwnershipHistory.create({
-        data: {
-          organizationId,
-          vehicleId: id,
-          previousOwnerId: existing.ownerId,
-          previousOwnerName: existing.owner?.name,
-          newOwnerId: owner?.id,
-          newOwnerName: owner?.name,
-          changedById: actorId,
-        },
+  try {
+    return await db.$transaction(async (tx) => {
+      const existing = await tx.fleetVehicle.findFirst({
+        where: { id, organizationId },
+        include: { owner: { select: { id: true, name: true } }, assignedDriver: { select: { id: true, name: true } } },
       });
+      if (!existing) throw new NotFoundError("Vehicle not found.");
+
+      let driver: { id: string; name: string } | null = existing.assignedDriver;
+      const driverChanging = (existing.assignedDriverId ?? null) !== (data.assignedDriverId ?? null);
+      if (driverChanging) {
+        driver = data.assignedDriverId
+          ? await validateDriverEligibility(tx, organizationId, data.assignedDriverId, id)
+          : null;
+      }
+
+      const vehicle = await tx.fleetVehicle.update({ where: { id, organizationId }, data: { ...data, ...salesTarget } });
+      if ((existing.ownerId ?? null) !== (data.ownerId ?? null)) {
+        await tx.fleetVehicleOwnershipHistory.create({
+          data: {
+            organizationId,
+            vehicleId: id,
+            previousOwnerId: existing.ownerId,
+            previousOwnerName: existing.owner?.name,
+            newOwnerId: owner?.id,
+            newOwnerName: owner?.name,
+            changedById: actorId,
+          },
+        });
+      }
+      if (driverChanging) {
+        await recordDriverAssignmentChange(tx, organizationId, id, actorId, existing.assignedDriver, driver);
+      }
+      return vehicle;
+    });
+  } catch (error) {
+    if (data.assignedDriverId && isDriverAssignmentConflict(error)) {
+      throw new FleetDriverAlreadyAssignedError("This driver was just assigned to another vehicle. Choose a different driver.");
     }
-    return vehicle;
-  });
+    throw error;
+  }
+}
+
+/**
+ * Dedicated driver (re)assignment - the same validated, transactional,
+ * history-writing core createFleetVehicle/updateFleetVehicle route through,
+ * exposed directly for a standalone "assign/unassign driver" action rather
+ * than a full vehicle edit. Pass driverId: null to unassign.
+ */
+export async function assignDriverToVehicle(
+  organizationId: string,
+  vehicleId: string,
+  actorId: string | null | undefined,
+  driverId: string | null,
+) {
+  try {
+    return await db.$transaction(async (tx) => {
+      const vehicle = await tx.fleetVehicle.findFirst({
+        where: { id: vehicleId, organizationId },
+        include: { assignedDriver: { select: { id: true, name: true } } },
+      });
+      if (!vehicle) throw new NotFoundError("Vehicle not found.");
+      if ((vehicle.assignedDriverId ?? null) === (driverId ?? null)) return vehicle;
+
+      const driver = driverId ? await validateDriverEligibility(tx, organizationId, driverId, vehicleId) : null;
+      const updated = await tx.fleetVehicle.update({ where: { id: vehicleId }, data: { assignedDriverId: driverId } });
+      await recordDriverAssignmentChange(tx, organizationId, vehicleId, actorId, vehicle.assignedDriver, driver);
+      return updated;
+    });
+  } catch (error) {
+    if (isDriverAssignmentConflict(error)) {
+      throw new FleetDriverAlreadyAssignedError("This driver was just assigned to another vehicle. Choose a different driver.");
+    }
+    throw error;
+  }
 }
 
 // --- Vehicle documents (insurance & roadworthy) ---

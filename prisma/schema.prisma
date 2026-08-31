@@ -531,6 +531,7 @@ model Organization {
   fleetDriverPaymentSubmissions   FleetDriverPaymentSubmission[]
   fleetVehicles                   FleetVehicle[]
   fleetVehicleOwnershipHistory    FleetVehicleOwnershipHistory[]
+  fleetVehicleDriverHistory       FleetVehicleDriverHistory[]
   fleetVehicleDocuments           FleetVehicleDocument[]
   maintenanceRequests             FleetMaintenanceRequest[]
   fleetMaintenanceEvents          FleetMaintenanceEvent[]
@@ -1575,12 +1576,37 @@ model FleetVehicle {
   workAndPayContracts FleetWorkAndPayContract[]
   paymentSubmissions  FleetDriverPaymentSubmission[]
   ownershipHistory    FleetVehicleOwnershipHistory[]
+  driverHistory       FleetVehicleDriverHistory[]
 
   @@unique([organizationId, assetTag])
   @@unique([organizationId, plateNumber])
   @@index([branchId])
   @@index([ownerId])
+  // "One active vehicle per driver" is enforced by a partial unique index
+  // (organizationId, assignedDriverId) WHERE assignedDriverId IS NOT NULL,
+  // added via raw SQL in migration 20260831120000_fleet_driver_assignment_integrity
+  // - Prisma's schema DSL has no partial-index syntax, so it isn't declared
+  // here, only this plain index for query performance.
   @@index([assignedDriverId])
+}
+
+model FleetVehicleDriverHistory {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  vehicleId          String
+  previousDriverId   String?
+  previousDriverName String?
+  newDriverId        String?
+  newDriverName      String?
+  changedById        String?
+  changedAt          DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vehicle      FleetVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, changedAt])
+  @@index([vehicleId, changedAt])
+  @@index([newDriverId])
 }
 
 model FleetVehicleOwnershipHistory {
