@@ -19,6 +19,7 @@ import type { PrismaClient } from "@prisma/client";
 export const PERMISSIONS = {
   DASHBOARD_VIEW: "dashboard.view",
   ORG_SETTINGS_MANAGE: "org.settings.manage",
+  ORG_MEMBERS_MANAGE: "org.members.manage",
   ORG_DATA_EXPORT: "org.data.export",
   AI_ASSISTANT_USE: "ai.assistant.use",
   AUDIT_VIEW: "audit.view",
@@ -189,6 +190,7 @@ export const ALL_PERMISSIONS = Object.values(PERMISSIONS);
 export const SYSTEM_ROLES: { name: string; description: string }[] = [
   { name: "Super Admin", description: "Platform-level administrator role reserved for Rock Frost operators." },
   { name: "Organization Owner", description: "Tenant owner with organization administration privileges." },
+  { name: "Organization Admin", description: "Full cross-module management and approval role, excluding billing, organization settings, and backups." },
   { name: "Fleet Manager", description: "Operational fleet role for vehicles, drivers, maintenance, payments, and reports." },
   { name: "Driver", description: "Fleet driver role for assigned vehicle access and operational updates." },
   { name: "Vehicle Owner", description: "Fleet vehicle owner role limited to the linked portfolio, maintenance approvals, and owner reporting." },
@@ -241,6 +243,11 @@ function moduleRolePermissions(keys: (typeof ALL_PERMISSIONS)[number][]) {
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
   "Super Admin": ALL_PERMISSIONS,
   "Organization Owner": ALL_PERMISSIONS,
+  // Everything Organization Owner has except ORG_SETTINGS_MANAGE - Billing,
+  // Organization Settings, backups, module requests, and the support inbox
+  // stay Owner-only. Includes ORG_MEMBERS_MANAGE, so an Admin can still
+  // invite/manage members without touching billing.
+  "Organization Admin": ALL_PERMISSIONS.filter((key) => key !== PERMISSIONS.ORG_SETTINGS_MANAGE),
   "Fleet Manager": moduleRolePermissions([
     PERMISSIONS.FLEET_VIEW,
     PERMISSIONS.FLEET_VEHICLES_MANAGE,

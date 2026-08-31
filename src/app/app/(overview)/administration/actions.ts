@@ -44,7 +44,7 @@ async function getAssignableRole(organizationId: string, enabledModuleKeys: stri
 
 export async function inviteMember(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
-  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) {
+  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE) && !hasPermission(tenant, PERMISSIONS.ORG_MEMBERS_MANAGE)) {
     redirect("/app/administration?error=forbidden");
   }
 
@@ -68,6 +68,14 @@ export async function inviteMember(formData: FormData): Promise<void> {
 
   const role = await getAssignableRole(tenant.organizationId, tenant.enabledModuleKeys, roleId);
   if (!role) {
+    redirect("/app/administration?error=invalid-role");
+  }
+  // Granting Organization Owner is itself an owner-only power (it carries
+  // org.settings.manage, i.e. billing/settings/backups) - an Organization
+  // Admin invited via the narrower org.members.manage permission must never
+  // be able to hand out ownership, including to themselves via a second
+  // invited account.
+  if (role.name === "Organization Owner" && !hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) {
     redirect("/app/administration?error=invalid-role");
   }
 
@@ -144,12 +152,19 @@ export async function inviteMember(formData: FormData): Promise<void> {
 
 export async function changeMemberRole(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
-  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) redirect("/app/administration?error=forbidden");
+  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE) && !hasPermission(tenant, PERMISSIONS.ORG_MEMBERS_MANAGE)) redirect("/app/administration?error=forbidden");
 
   const parsed = parseWithSchema(z.object({ membershipId: z.string().cuid(), roleId: z.string().cuid() }), Object.fromEntries(formData));
   if (!parsed.success) redirect("/app/administration?error=missing-fields");
   const role = await getAssignableRole(tenant.organizationId, tenant.enabledModuleKeys, parsed.data.roleId);
   if (!role) redirect("/app/administration?error=invalid-role");
+  // Same owner-only restriction as inviteMember - an Organization Admin
+  // (org.members.manage without org.settings.manage) can change a member to
+  // any role except Organization Owner, including never promoting
+  // themselves into it.
+  if (role.name === "Organization Owner" && !hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) {
+    redirect("/app/administration?error=invalid-role");
+  }
 
   try {
     await db.$transaction(async (tx) => {
@@ -215,7 +230,7 @@ export async function changeMemberRole(formData: FormData): Promise<void> {
 
 export async function deactivateMember(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
-  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) redirect("/app/administration?error=forbidden");
+  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE) && !hasPermission(tenant, PERMISSIONS.ORG_MEMBERS_MANAGE)) redirect("/app/administration?error=forbidden");
   const membershipId = clean(formData.get("membershipId"));
   if (!membershipId) redirect("/app/administration?error=missing-fields");
   const currentMembership = await db.organizationMember.findUnique({
@@ -233,6 +248,10 @@ export async function deactivateMember(formData: FormData): Promise<void> {
       });
       if (!member) throw new Error("MEMBER_NOT_FOUND");
       if (member.role?.name === "Organization Owner") {
+        // An Organization Admin (org.members.manage without
+        // org.settings.manage) must never be able to lock the org's own
+        // owner out, only another Owner can deactivate an Owner.
+        if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) throw new Error("OWNER_PROTECTED");
         const owners = await tx.organizationMember.count({
           where: { organizationId: tenant.organizationId, status: "ACTIVE", role: { name: "Organization Owner" } },
         });
@@ -252,6 +271,7 @@ export async function deactivateMember(formData: FormData): Promise<void> {
     });
   } catch (error) {
     if (error instanceof Error && error.message === "LAST_OWNER") redirect("/app/administration?error=last-owner");
+    if (error instanceof Error && error.message === "OWNER_PROTECTED") redirect("/app/administration?error=owner-protected");
     if (error instanceof Error && error.message === "MEMBER_NOT_FOUND") redirect("/app/administration?error=not-found");
     throw error;
   }
@@ -262,7 +282,7 @@ export async function deactivateMember(formData: FormData): Promise<void> {
 
 export async function reactivateMember(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
-  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) redirect("/app/administration?error=forbidden");
+  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE) && !hasPermission(tenant, PERMISSIONS.ORG_MEMBERS_MANAGE)) redirect("/app/administration?error=forbidden");
   const membershipId = clean(formData.get("membershipId"));
   if (!membershipId) redirect("/app/administration?error=missing-fields");
   const candidate = await db.organizationMember.findFirst({
@@ -316,7 +336,7 @@ export async function reactivateMember(formData: FormData): Promise<void> {
 
 export async function resendMemberInvitation(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
-  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) {
+  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE) && !hasPermission(tenant, PERMISSIONS.ORG_MEMBERS_MANAGE)) {
     redirect("/app/administration?error=forbidden");
   }
 
@@ -362,7 +382,7 @@ export async function resendMemberInvitation(formData: FormData): Promise<void> 
 
 export async function revokeMemberInvitation(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
-  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) {
+  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE) && !hasPermission(tenant, PERMISSIONS.ORG_MEMBERS_MANAGE)) {
     redirect("/app/administration?error=forbidden");
   }
 
@@ -393,7 +413,7 @@ export async function revokeMemberInvitation(formData: FormData): Promise<void> 
 
 export async function removeMember(formData: FormData): Promise<void> {
   const tenant = await requireCurrentTenant();
-  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) {
+  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE) && !hasPermission(tenant, PERMISSIONS.ORG_MEMBERS_MANAGE)) {
     redirect("/app/administration?error=forbidden");
   }
   const membershipId = clean(formData.get("membershipId"));
@@ -403,6 +423,9 @@ export async function removeMember(formData: FormData): Promise<void> {
   });
   if (!member) redirect("/app/administration?error=not-found");
   if (member.userId === tenant.userId) redirect("/app/administration?error=self-remove");
+  if (member.role?.name === "Organization Owner" && !hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) {
+    redirect("/app/administration?error=owner-protected");
+  }
 
   if (member.role?.name === "Organization Owner" && member.status === "ACTIVE") {
     const owners = await db.organizationMember.count({

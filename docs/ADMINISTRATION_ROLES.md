@@ -1,0 +1,30 @@
+# Administration: roles and permissions
+
+## Model
+
+Every permission is a flat string key (`src/lib/auth/permissions.ts`'s `PERMISSIONS` object, ~170 keys), module-prefixed (`fleet.*`, `accounting.*`, `hr.*`, ...). A `Role` holds a set of `RolePermission` rows. `hasPermission(tenant, key)` checks both that the role holds the key *and* that the key's owning module is currently enabled for the organization - a role can retain a permission after its module is disabled without it doing anything (fails closed). `canAccessModule(tenant, moduleKey)` grants a module's shell to any permission under that module's prefix, not just a `.view` key, since some roles (e.g. Vehicle Owner) only ever hold a narrow permission.
+
+The permission-key list is intentionally duplicated in `prisma/seed-data.ts` (which can't import `src/lib/auth/permissions.ts` - that file has `import "server-only"`, unresolvable from a plain seed script). **Add a new permission key to both files.**
+
+## System roles
+
+`prisma/seed-data.ts`'s `SYSTEM_ROLES`/`ROLE_PERMISSIONS` define every org-assignable role (`isSystem: true`, `organizationId: null`), seeded idempotently by `seedPlatform()` on every deploy (`scripts/vercel-build.mjs` runs it after `prisma migrate deploy`, before `next build`). Two tiers sit above the module-scoped roles (Fleet Manager, Accounting Manager, ...):
+
+- **Super Admin** - Rock Frost's own platform operators. Gated by `isPlatformOperator(tenant)` on **role name**, not a permission - Super Admin and Organization Owner both hold `ALL_PERMISSIONS`, so the platform/tenant boundary can't be a permission check.
+- **Organization Owner** - holds `ALL_PERMISSIONS`. Cannot reach `/app/platform/*` (blocked by the same name-gated `isPlatformOperator` check, not a permission it happens to lack). Can be removed via `changeMemberRole`/`removeMember`, guarded by a last-active-owner check.
+- **Organization Admin** (added 2026-08-31) - `ALL_PERMISSIONS` minus `ORG_SETTINGS_MANAGE`. Full cross-module management and approval capability (Fleet, Accounting, HR, every operational module), including member invite/role-change/deactivate/reactivate/remove via the new `ORG_MEMBERS_MANAGE` permission - but not Billing, Organization Settings, backups, module requests, or the support inbox, which stay solely behind `ORG_SETTINGS_MANAGE`. `isOrganizationAdminRole(tenant)` (`src/lib/auth/permissions.ts`) is name+system-role gated like every other role-classification helper in this file, so a custom role someone names "Organization Admin" (`isSystem: false`) can never match it.
+
+`ORG_SETTINGS_MANAGE` and `ORG_MEMBERS_MANAGE` were one permission until this split - every other surface that permission gated (Billing, Organization Settings, backups, module requests, support inbox: roughly 30 call sites, none touched by this change) is untouched; only `src/app/app/(overview)/administration/{page.tsx,actions.ts}` now accepts either permission.
+
+### Preventing self-escalation through the new split
+
+Splitting member-management off billing/settings opened one real gap, closed in the same change: without an explicit guard, an Organization Admin (holding `ORG_MEMBERS_MANAGE` but not `ORG_SETTINGS_MANAGE`) could grant themselves - or anyone - the Organization Owner role through `changeMemberRole`/`inviteMember`, since nothing previously stopped an actor with member-management rights from assigning *any* assignable role, including one more powerful than their own. Fixed with two independent, redundant checks, each re-verified server-side (never trusting the page's option list alone):
+
+- **`inviteMember`/`changeMemberRole`**: assigning the `Organization Owner` role requires the actor to already hold `ORG_SETTINGS_MANAGE` themselves; otherwise redirects `?error=invalid-role`. The Administration page also drops "Organization Owner" from the role `<Select>` options for a viewer who lacks `ORG_SETTINGS_MANAGE`, so the UI doesn't offer a choice the server will reject.
+- **`deactivateMember`/`removeMember`**: deactivating or removing a member whose role is `Organization Owner` requires the same `ORG_SETTINGS_MANAGE` permission on the actor - an Admin must never be able to lock the organization's own owner out. Redirects `?error=owner-protected`.
+
+An Organization Owner's own existing rights (grant/remove Owner, subject to the pre-existing last-active-owner protection) are unchanged - these guards only constrain the *new*, narrower `ORG_MEMBERS_MANAGE` grant.
+
+## Role assignability
+
+`isRoleAssignableToOrganization()` (`src/lib/administration-roles.ts`) decides which roles appear in the Administration page's role selectors: `Super Admin` is never assignable; a custom (org-scoped) role must belong to the same organization; every other role's assignability is derived from whether every module its permissions touch is currently enabled for the org - except `Organization Owner` and `Organization Admin`, both special-cased to stay assignable regardless of enabled modules (broad, cross-module roles by design - deriving their module set from permissions the normal way would make them silently disappear from the dropdown for any organization not subscribed to every module).

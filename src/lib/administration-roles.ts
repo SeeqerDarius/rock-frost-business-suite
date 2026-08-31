@@ -18,7 +18,11 @@ export function isRoleAssignableToOrganization(
 ) {
   if (role.name === "Super Admin") return false;
   if (role.organizationId !== null && role.organizationId !== organizationId) return false;
-  if (role.name === "Organization Owner" && role.isSystem) return true;
+  // Organization Owner and Organization Admin are broad, cross-module roles
+  // by design - always assignable regardless of which modules are currently
+  // enabled, unlike every other role below whose module coverage is derived
+  // from its actual permission grants.
+  if ((role.name === "Organization Owner" || role.name === "Organization Admin") && role.isSystem) return true;
 
   const enabledModules = new Set(expandProductModuleKeys(enabledModuleKeys));
   const roleModuleKeys = (role.rolePermissions ?? []).flatMap(({ permission }) => {

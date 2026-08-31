@@ -26,6 +26,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "self-remove": "You cannot remove your own organization access.",
   "self-deactivate": "You cannot deactivate your own organization access.",
   "last-owner": "The last active Organization Owner cannot be removed.",
+  "owner-protected": "Only an Organization Owner can grant, deactivate, or remove the Organization Owner role.",
   "platform-owner": "A platform owner cannot be added to a tenant organization. Use a separate tenant-user email.",
   "seat-limit": "This role would exceed the subscribed user seats for one or more modules. Remove an unused member or ask Rock Frost to increase the subscription seats.",
 };
@@ -38,7 +39,9 @@ export default async function AdministrationPage({
   const { invited, revoked, removed, roleChanged, deactivated, reactivated, error } = await searchParams;
   const tenant = await requireCurrentTenant();
 
-  if (!hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE)) {
+  const canManageSettings = hasPermission(tenant, PERMISSIONS.ORG_SETTINGS_MANAGE);
+  const canManageMembers = canManageSettings || hasPermission(tenant, PERMISSIONS.ORG_MEMBERS_MANAGE);
+  if (!canManageMembers) {
     return (
       <div className="space-y-6">
         <PageHeader title="Administration" description="Users, roles, permissions, and audit logs for your organization." />
@@ -68,11 +71,14 @@ export default async function AdministrationPage({
     resolveAssignableModuleKeys(tenant.organizationId, tenant.enabledModuleKeys),
     getOrganizationSeatUsage(tenant.organizationId),
   ]);
-  const assignableRoles = roles.filter((role) => isRoleAssignableToOrganization(
-    role,
-    tenant.organizationId,
-    assignableModuleKeys,
-  ));
+  const assignableRoles = roles
+    .filter((role) => isRoleAssignableToOrganization(role, tenant.organizationId, assignableModuleKeys))
+    // Granting the Organization Owner role is itself an owner-only power -
+    // an Organization Admin (org.members.manage without org.settings.manage)
+    // can invite and manage members, but never hand out ownership itself.
+    // The Server Actions independently re-enforce this; filtering it out of
+    // the option list here just keeps the UI honest about what will happen.
+    .filter((role) => role.name !== "Organization Owner" || canManageSettings);
 
   const canViewAuditLog = hasPermission(tenant, PERMISSIONS.AUDIT_VIEW);
 
@@ -81,7 +87,9 @@ export default async function AdministrationPage({
       <div className="flex items-center justify-between gap-4">
         <PageHeader title="Administration" description="Users, roles, permissions, and audit logs for your organization." />
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/organization/settings" />}><Settings />Workspace settings</Button>
+          {canManageSettings ? (
+            <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/organization/settings" />}><Settings />Workspace settings</Button>
+          ) : null}
           {canViewAuditLog ? (
             <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/administration/audit-log" />}>
               <History />Audit log

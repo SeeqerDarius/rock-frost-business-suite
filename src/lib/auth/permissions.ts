@@ -6,6 +6,7 @@ import { getModule, moduleRegistry } from "@/platform/modules/registry";
 export const PERMISSIONS = {
   DASHBOARD_VIEW: "dashboard.view",
   ORG_SETTINGS_MANAGE: "org.settings.manage",
+  ORG_MEMBERS_MANAGE: "org.members.manage",
   ORG_DATA_EXPORT: "org.data.export",
   AI_ASSISTANT_USE: "ai.assistant.use",
   AUDIT_VIEW: "audit.view",
@@ -209,6 +210,18 @@ export function canAccessModule(tenant: TenantContext, moduleKey: string): boole
  */
 export function isPlatformOperator(tenant: TenantContext): boolean {
   return tenant.role === "Super Admin" && tenant.roleIsSystem && tenant.roleOrganizationId === null;
+}
+
+/**
+ * The seeded Organization Admin role: full cross-module management and
+ * approval capability (every permission except ORG_SETTINGS_MANAGE - Billing,
+ * Organization Settings, backups, module requests, and the support inbox
+ * stay Owner-only). Name+system-role gated like isPlatformOperator, so a
+ * custom role happening to be named "Organization Admin" (roleIsSystem:
+ * false) can never match this.
+ */
+export function isOrganizationAdminRole(tenant: TenantContext): boolean {
+  return tenant.role === "Organization Admin" && tenant.roleIsSystem;
 }
 
 /**
