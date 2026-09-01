@@ -3,15 +3,18 @@ import { describe, expect, it } from "vitest";
 import { getEnabledModuleTiles } from "@/platform/modules/enabled-module-tiles";
 
 /**
- * User request (after seeing a competitor ERP's sidebar): every activated
- * module should be visible in the sidebar at once, and clicking any one of
- * them - not just the module you're currently in - should expand its real
- * pages right there, no navigation required. AppShell now renders a true
- * accordion (ModuleAccordionNav) driven by getFullModuleNavigation(), which
- * computes every enabled module's own permission-filtered page list
- * server-side, reusing each module's own filtering function (Fleet,
- * Installment, HR+Payroll, Inventory+Procurement) so a role's real access
- * can never drift between the module's own layout and the sidebar.
+ * Every activated module should be visible in the sidebar at once: the
+ * module the current page belongs to shows its own real pages directly, and
+ * every other enabled module is a single flat link beneath it - no
+ * click-to-expand step is needed to see what's inside the module you're
+ * already in. AppShell renders this via ModuleSectionsNav, driven by
+ * getFullModuleNavigation(), which computes every enabled module's own
+ * permission-filtered page list server-side, reusing each module's own
+ * filtering function (Fleet, Installment, HR+Payroll,
+ * Inventory+Procurement) so a role's real access can never drift between
+ * the module's own layout and the sidebar. An earlier revision rendered
+ * this as a true click-to-expand accordion, one module open at a time;
+ * that was reverted back to this flatter, always-visible design.
  */
 describe("getEnabledModuleTiles", () => {
   it("returns only modules the organization has actually enabled", () => {
@@ -80,55 +83,47 @@ describe("navigation.tsx files stay free of @/lib/auth/permissions (registry.ts'
   });
 });
 
-describe("ModuleAccordionNav", () => {
-  const accordion = readFileSync("src/components/navigation/module-accordion-nav.tsx", "utf8");
+describe("ModuleSectionsNav", () => {
+  const sectionsNav = readFileSync("src/components/navigation/module-sections-nav.tsx", "utf8");
 
-  it("is a client component that only ever expands one module at a time", () => {
-    expect(accordion).toContain('"use client"');
-    expect(accordion).toContain("useState<string | null>");
+  it("is a client component with no open/closed state - the current section is derived fresh from the pathname every render", () => {
+    expect(sectionsNav).toContain('"use client"');
+    expect(sectionsNav).not.toContain("useState");
+    expect(sectionsNav).not.toContain("useEffect");
   });
 
   it("matches the current module by each item's own href, not only the section's routePrefix", () => {
     // HR and Inventory each combine a second route tree (Payroll,
     // Procurement) whose pages live under a different prefix entirely -
-    // matching on routePrefix alone would never auto-expand while on a
-    // Payroll or Procurement page.
-    expect(accordion).toContain("section.items.some((item) => pathBelongsTo(pathname, item.href))");
+    // matching on routePrefix alone would miss a Payroll or Procurement page.
+    expect(sectionsNav).toContain("section.items.some((item) => pathBelongsTo(pathname, item.href))");
   });
 
-  it("never uses an effect to sync open state with navigation - every module lives under its own layout.tsx, so a real navigation always remounts this component fresh", () => {
-    expect(accordion).not.toContain("useEffect");
+  it("renders the current section's real items directly, not behind a toggle", () => {
+    expect(sectionsNav).toContain("currentSection ? (");
+    expect(sectionsNav).toContain("<SidebarNav items={currentSection.items}");
   });
 
-  it("collapsed mode renders a plain navigation link per module, not an inline expand toggle", () => {
-    expect(accordion).toContain("<Link");
-    expect(accordion).toContain("collapsed ?");
-  });
-
-  it("moves the active module's section to the top of the list, keeping every other section's relative order", () => {
-    expect(accordion).toContain("const orderedSections = currentSectionKey");
-    expect(accordion).toContain("sections.find((section) => section.key === currentSectionKey)");
-    expect(accordion).toContain("sections.filter((section) => section.key !== currentSectionKey)");
-    // The render loop must map over the reordered list, not the raw prop,
-    // or the reordering above would be computed and then silently ignored.
-    expect(accordion).toContain("{orderedSections.map((section) => {");
+  it("renders every other enabled module as a single flat link grouped under one heading, not an inline expand toggle", () => {
+    expect(sectionsNav).toContain('group: "Other modules"');
+    expect(sectionsNav).not.toContain("ChevronDown");
   });
 });
 
-describe("AppShell: moduleSections prop and accordion wiring", () => {
+describe("AppShell: moduleSections prop and ModuleSectionsNav wiring", () => {
   const appShell = readFileSync("src/components/layout/app-shell.tsx", "utf8");
 
-  it("accepts moduleSections and renders it via ModuleAccordionNav in both the desktop sidebar and the mobile sheet", () => {
+  it("accepts moduleSections and renders it via ModuleSectionsNav in both the desktop sidebar and the mobile sheet", () => {
     expect(appShell).toContain("moduleSections?: ModuleNavSection[]");
-    const occurrences = appShell.split("<ModuleAccordionNav").length - 1;
+    const occurrences = appShell.split("<ModuleSectionsNav").length - 1;
     expect(occurrences).toBe(2);
   });
 
-  it("suppresses the flat navigation list inside a business module (already the accordion's own current section) to avoid showing the same pages twice", () => {
+  it("suppresses the flat navigation list inside a business module (already ModuleSectionsNav's own current section) to avoid showing the same pages twice", () => {
     expect(appShell).toContain("const showFlatNavigation = !moduleKey");
   });
 
-  it("stamps the onboarding tour's data-tour-nav targets on the accordion's current section only when the flat list isn't also rendering them", () => {
+  it("stamps the onboarding tour's data-tour-nav targets on the current section only when the flat list isn't also rendering them", () => {
     expect(appShell).toContain("tourTargets={!showFlatNavigation}");
   });
 });

@@ -8,7 +8,7 @@ import { ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { useOrganizationBranding } from "@/components/theme/organization-branding-context";
 import { SidebarNav } from "@/components/navigation/sidebar-nav";
-import { ModuleAccordionNav } from "@/components/navigation/module-accordion-nav";
+import { ModuleSectionsNav } from "@/components/navigation/module-sections-nav";
 import { ModuleLauncher } from "@/components/navigation/module-launcher";
 import { UserMenu } from "@/components/navigation/user-menu";
 import { OrganizationSwitcher } from "@/components/navigation/organization-switcher";
@@ -30,10 +30,12 @@ interface AppShellProps {
   /**
    * Every enabled module's own permission-filtered page list (see
    * src/platform/modules/full-navigation.tsx's getFullModuleNavigation),
-   * rendered as a click-to-expand accordion beneath (or, for organization
-   * scope, alongside) this shell's own `navigation`. Omit or pass an empty
-   * array to suppress it entirely (e.g. locked-down roles) - same intent
-   * `showModuleLauncher` already carries for the header launcher.
+   * shown beneath (or, for organization scope, alongside) this shell's own
+   * `navigation`: the module the current page belongs to shows its own
+   * pages directly, every other enabled module is a single flat link. Omit
+   * or pass an empty array to suppress it entirely (e.g. locked-down
+   * roles) - same intent `showModuleLauncher` already carries for the
+   * header launcher.
    */
   moduleSections?: ModuleNavSection[];
   homeHref?: string;
@@ -145,7 +147,7 @@ export function AppShell({
           {showFlatNavigation ? <SidebarNav items={navigation} collapsed={sidebarCollapsed} tourTargets /> : null}
           {moduleSections.length > 0 ? (
             <div className={!sidebarCollapsed && showFlatNavigation ? "mt-2 border-t pt-2" : undefined}>
-              <ModuleAccordionNav sections={moduleSections} collapsed={sidebarCollapsed} tourTargets={!showFlatNavigation} />
+              <ModuleSectionsNav sections={moduleSections} collapsed={sidebarCollapsed} tourTargets={!showFlatNavigation} />
             </div>
           ) : null}
         </div>
@@ -184,7 +186,7 @@ export function AppShell({
             {showFlatNavigation ? <SidebarNav items={navigation} onNavigate={() => setMobileNavOpen(false)} /> : null}
             {moduleSections.length > 0 ? (
               <div className={showFlatNavigation ? "mt-2 border-t pt-2" : undefined}>
-                <ModuleAccordionNav sections={moduleSections} onNavigate={() => setMobileNavOpen(false)} />
+                <ModuleSectionsNav sections={moduleSections} onNavigate={() => setMobileNavOpen(false)} />
               </div>
             ) : null}
           </div>
