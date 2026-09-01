@@ -1,4 +1,4 @@
-import { Contact, Plus } from "lucide-react";
+import { Contact, Plus, Upload } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -12,12 +12,17 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listContacts } from "@/modules/accounting/service";
-import { upsertContact } from "./actions";
+import { upsertContact, importContactsCsvAction } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage contacts.",
   "invalid-input": "Please check that the name and email are valid.",
   "not-found": "That contact could not be found.",
+  "missing-file": "Choose a CSV file to import.",
+  "file-too-large": "That file is larger than 1 MB.",
+  "invalid-csv": "That file could not be read as CSV.",
+  "unrecognized-columns": "Couldn't find a name column in that file's header row.",
+  "no-valid-rows": "No valid rows were found in that file.",
 };
 
 const TYPE_LABELS: Record<string, string> = { CUSTOMER: "Customer", SUPPLIER: "Supplier", BOTH: "Customer and supplier" };
@@ -72,9 +77,9 @@ function ContactFields({ contact }: { contact?: { id: string; type: string; name
 export default async function AccountingContactsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string }>;
+  searchParams: Promise<{ saved?: string; imported?: string; skipped?: string; error?: string }>;
 }) {
-  const { saved, error } = await searchParams;
+  const { saved, imported, skipped, error } = await searchParams;
   const tenant = await requireModuleAccess("accounting");
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_CONTACTS_MANAGE);
   const contacts = await listContacts(tenant.organizationId);
@@ -84,15 +89,21 @@ export default async function AccountingContactsPage({
       <div className="flex items-center justify-between gap-4">
         <PageHeader title="Contacts" description="Customers and suppliers you invoice and bill, shared across invoices, bills, and credit notes." />
         {canManage ? (
-          <EntityDialog trigger={<Button size="sm"><Plus />New contact</Button>} title="New contact" action={upsertContact}>
-            <ContactFields />
-          </EntityDialog>
+          <div className="flex gap-2">
+            <EntityDialog trigger={<Button size="sm" variant="outline"><Upload />Import CSV</Button>} title="Import contacts from CSV" description="A CSV with a name column and, optionally, type/email/phone/address/TIN columns. A row whose email matches an existing contact is skipped." action={importContactsCsvAction}>
+              <Input type="file" name="file" accept=".csv,text/csv" required />
+            </EntityDialog>
+            <EntityDialog trigger={<Button size="sm"><Plus />New contact</Button>} title="New contact" action={upsertContact}>
+              <ContactFields />
+            </EntityDialog>
+          </div>
         ) : null}
       </div>
 
       {saved ? (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
           Saved.
+          {imported !== undefined ? ` Imported ${imported} contact${imported === "1" ? "" : "s"}.${Number(skipped) > 0 ? ` Skipped ${skipped} duplicate or invalid row${skipped === "1" ? "" : "s"}.` : ""}` : ""}
         </div>
       ) : null}
       {error && ERROR_MESSAGES[error] ? (

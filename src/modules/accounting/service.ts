@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-import type { AccountingAccountType, AccountingInvoiceStatus, AccountingJournalStatus, AccountingLiquidityType, AccountingRecurringFrequency } from "@prisma/client";
+import type { AccountingAccountType, AccountingAttachmentEntityType, AccountingInvoiceStatus, AccountingJournalStatus, AccountingLiquidityType, AccountingRecurringFrequency } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { formatMoney } from "@/lib/currency";
 import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@/lib/trend-buckets";
@@ -2184,6 +2184,122 @@ export async function loadGhanaSmeChartOfAccounts(organizationId: string) {
     await db.accountingAccount.createMany({ data: missing.map((account) => ({ organizationId, ...account, isSystem: false })), skipDuplicates: true });
   }
   return { addedCount: missing.length };
+}
+
+export interface AccountImportRow {
+  code: string;
+  name: string;
+  type: AccountingAccountType;
+  liquidityType?: AccountingLiquidityType;
+}
+
+/** Bulk chart-of-accounts import via CSV. Reuses the same organizationId+code
+ * unique constraint loadGhanaSmeChartOfAccounts() already relies on: a row
+ * whose code already exists for this organization is skipped, not duplicated. */
+export async function importAccountsFromCsv(organizationId: string, rows: AccountImportRow[]) {
+  if (rows.length === 0) return { importedCount: 0, skippedCount: 0 };
+  const result = await db.accountingAccount.createMany({
+    data: rows.map((row) => ({ organizationId, code: row.code, name: row.name, type: row.type, liquidityType: row.liquidityType ?? "NONE", isSystem: false })),
+    skipDuplicates: true,
+  });
+  return { importedCount: result.count, skippedCount: rows.length - result.count };
+}
+
+export interface ContactImportRow {
+  type: "CUSTOMER" | "SUPPLIER" | "BOTH";
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  taxIdentificationNumber?: string | null;
+}
+
+/**
+ * Bulk contact import via CSV. AccountingContact has no unique business key
+ * today, so duplicate detection is application-level rather than a database
+ * constraint: a row whose normalized email already belongs to an existing
+ * contact - or to an earlier row in the same file - is skipped instead of
+ * creating a second contact for the same address. A row with no email is
+ * always created; there is no reliable key to dedupe it by.
+ */
+export async function importContactsFromCsv(organizationId: string, rows: ContactImportRow[], createdById?: string | null) {
+  if (rows.length === 0) return { importedCount: 0, skippedCount: 0 };
+  const existing = await db.accountingContact.findMany({ where: { organizationId, email: { not: null } }, select: { email: true } });
+  const seenEmails = new Set(existing.map((contact) => contact.email!.trim().toLowerCase()));
+  const toCreate: ContactImportRow[] = [];
+  for (const row of rows) {
+    const normalized = row.email?.trim().toLowerCase();
+    if (normalized) {
+      if (seenEmails.has(normalized)) continue;
+      seenEmails.add(normalized);
+    }
+    toCreate.push(row);
+  }
+  if (toCreate.length > 0) {
+    await db.accountingContact.createMany({
+      data: toCreate.map((row) => ({ organizationId, createdById, type: row.type, name: row.name, email: row.email ?? null, phone: row.phone ?? null, address: row.address ?? null, taxIdentificationNumber: row.taxIdentificationNumber ?? null })),
+    });
+  }
+  return { importedCount: toCreate.length, skippedCount: rows.length - toCreate.length };
+}
+
+// --- Attachments ---
+
+/**
+ * One generic attachment model covering every Accounting document type
+ * (JOURNAL_ENTRY | INVOICE | BILL | CREDIT_NOTE | EXPENSE), mirroring
+ * FleetMaintenanceAttachment's proven shape and storage pattern exactly - a
+ * FileAsset row holding the file as a data URI, with a thin join record on
+ * top. entityType/entityId is a plain polymorphic reference (not a Prisma
+ * relation) since it can point at five different tables.
+ */
+export function listAccountingAttachments(organizationId: string, entityType: AccountingAttachmentEntityType, entityId: string) {
+  return db.accountingAttachment.findMany({ where: { organizationId, entityType, entityId }, include: { fileAsset: true, uploadedBy: true }, orderBy: { createdAt: "desc" } });
+}
+
+/** One query for every attachment of a given type, for a list page that shows
+ * many entities at once (e.g. every Bill) - avoids an N+1 lookup per row. */
+export function listAccountingAttachmentsByType(organizationId: string, entityType: AccountingAttachmentEntityType) {
+  return db.accountingAttachment.findMany({ where: { organizationId, entityType }, include: { fileAsset: true, uploadedBy: true }, orderBy: { createdAt: "desc" } });
+}
+
+export async function createAccountingAttachment(
+  organizationId: string,
+  data: {
+    entityType: AccountingAttachmentEntityType;
+    entityId: string;
+    fileName: string;
+    mimeType: string;
+    size: number;
+    dataUrl: string;
+    caption?: string | null;
+    uploadedById?: string | null;
+    branchId?: string | null;
+  },
+) {
+  return db.$transaction(async (tx) => {
+    const asset = await tx.fileAsset.create({
+      data: {
+        organizationId,
+        branchId: data.branchId,
+        uploadedById: data.uploadedById,
+        fileName: data.fileName,
+        mimeType: data.mimeType,
+        size: data.size,
+        storagePath: `database://accounting/${data.entityType.toLowerCase()}`,
+        url: data.dataUrl,
+        metadata: { purpose: "accounting-attachment", entityType: data.entityType, entityId: data.entityId },
+      },
+    });
+    return tx.accountingAttachment.create({
+      data: { organizationId, entityType: data.entityType, entityId: data.entityId, fileAssetId: asset.id, caption: data.caption, uploadedById: data.uploadedById },
+    });
+  });
+}
+
+export async function deleteAccountingAttachment(organizationId: string, id: string) {
+  const result = await db.accountingAttachment.deleteMany({ where: { id, organizationId } });
+  if (result.count === 0) throw new NotFoundError("Attachment not found.");
 }
 
 // --- Recurring transactions ---

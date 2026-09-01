@@ -37,6 +37,28 @@ function defaultCellText(value: unknown): string {
   return String(value);
 }
 
+function csvCell(value: unknown, format?: (value: unknown) => string): string {
+  const text = format ? format(value) : defaultCellText(value);
+  const safe = safeExcelText(text);
+  return /[",\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+}
+
+/** Plain CSV alongside the PDF/XLSX exports above, reusing the exact same
+ * formula-injection guard (safeExcelText) that already protects the Excel
+ * export - a CSV opened in a spreadsheet app carries the identical risk. */
+export function buildReportCsv(input: ReportExportInput): string {
+  const lines: string[] = [];
+  if (input.summary?.length) {
+    for (const stat of input.summary) lines.push(`${csvCell(stat.label)},${csvCell(stat.value)}`);
+    lines.push("");
+  }
+  lines.push(input.columns.map((column) => csvCell(column.header)).join(","));
+  for (const row of input.rows) {
+    lines.push(input.columns.map((column) => csvCell(row[column.key], column.format)).join(","));
+  }
+  return lines.join("\n");
+}
+
 const BRAND_COLOR_ARGB = "FF1266D4";
 const BRAND_COLOR_HEX = "#1266D4";
 

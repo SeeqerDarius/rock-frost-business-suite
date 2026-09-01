@@ -466,6 +466,7 @@ model User {
   feedbackSubmitted               CustomerFeedback[]               @relation("FeedbackSubmitted")
   feedbackReviewed                CustomerFeedback[]               @relation("FeedbackReviewed")
   feedbackEvents                  CustomerFeedbackEvent[]
+  accountingAttachments           AccountingAttachment[]
 }
 
 enum TwoFactorMethod {
@@ -621,6 +622,7 @@ model Organization {
   accountingCreditNotes           AccountingCreditNote[]
   accountingReconciliations       AccountingReconciliation[]
   accountingBankStatementLines    AccountingBankStatementLine[]
+  accountingAttachments           AccountingAttachment[]
   accountingRecurringTemplates    AccountingRecurringTemplate[]
   accountingPeriods               AccountingPeriod[]
   accountingPettyCashFunds        AccountingPettyCashFund[]
@@ -879,6 +881,7 @@ model Branch {
   accountingContacts       AccountingContact[]
   accountingBills          AccountingBill[]
   accountingCreditNotes    AccountingCreditNote[]
+  accountingAttachments    AccountingAttachment[]
   accountingPlanLines      AccountingPlanLine[]
   hrEmployees              HrEmployee[]
   posRegisters             PosRegister[]
@@ -1500,6 +1503,7 @@ model FileAsset {
   uploadedBy             User?                        @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   maintenanceAttachments FleetMaintenanceAttachment[]
   vehicleExpenseReceipts FleetVehicleExpense[]
+  accountingAttachments  AccountingAttachment[]
 
   @@index([organizationId])
   @@index([branchId])
@@ -2638,6 +2642,40 @@ model AccountingRecurringTemplate {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, active, nextRunDate])
+}
+
+enum AccountingAttachmentEntityType {
+  JOURNAL_ENTRY
+  INVOICE
+  BILL
+  CREDIT_NOTE
+  EXPENSE
+}
+
+/**
+ * One generic attachment model covering every Accounting document type,
+ * mirroring FleetMaintenanceAttachment's proven shape - entityType/entityId
+ * is a plain polymorphic reference (not a Prisma relation) since it can point
+ * at five different tables, matching how AccountingContact's own optional
+ * cross-references to other modules' records are already handled.
+ */
+model AccountingAttachment {
+  id             String                         @id @default(cuid())
+  organizationId String
+  entityType     AccountingAttachmentEntityType
+  entityId       String
+  fileAssetId    String
+  caption        String?
+  uploadedById   String?
+  createdAt      DateTime                       @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fileAsset    FileAsset    @relation(fields: [fileAssetId], references: [id], onDelete: Cascade)
+  uploadedBy   User?        @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  branch       Branch?      @relation(fields: [branchId], references: [id])
+  branchId     String?
+
+  @@index([organizationId, entityType, entityId])
 }
 
 enum AccountingPlanKind {

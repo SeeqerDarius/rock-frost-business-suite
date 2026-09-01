@@ -13,9 +13,9 @@ import { LineItemsEditor } from "@/components/forms/line-items-editor";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { formatMoney } from "@/lib/currency";
-import { listAccounts, listBills, listContacts } from "@/modules/accounting/service";
+import { listAccounts, listBills, listContacts, listAccountingAttachmentsByType } from "@/modules/accounting/service";
 import { listTaxCodes } from "@/modules/accounting/tax-service";
-import { createNewBill, approveExistingBill, payBill, voidExistingBill } from "./actions";
+import { createNewBill, approveExistingBill, payBill, voidExistingBill, uploadBillAttachment, deleteBillAttachmentAction } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage bills.",
@@ -26,6 +26,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-payment": "That payment amount is invalid or exceeds the remaining balance.",
   "not-found": "That bill, expense account, or contact could not be found.",
   "period-closed": "The transaction date is in a closed accounting period.",
+  "missing-file": "Choose a file to attach.",
+  "invalid-attachment": "That file must be a JPEG, PNG, WEBP, or PDF under 3 MB.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
@@ -47,7 +49,13 @@ export default async function AccountingBillsPage({
   const canPay = hasPermission(tenant, PERMISSIONS.ACCOUNTING_PAYABLES_MANAGE);
   const currency = tenant.organization.currency ?? "GHS";
   const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, currency);
-  const [bills, accounts, taxCodes, contacts] = await Promise.all([listBills(tenant.organizationId), listAccounts(tenant.organizationId), listTaxCodes(tenant.organizationId), listContacts(tenant.organizationId)]);
+  const [bills, accounts, taxCodes, contacts, attachments] = await Promise.all([listBills(tenant.organizationId), listAccounts(tenant.organizationId), listTaxCodes(tenant.organizationId), listContacts(tenant.organizationId), listAccountingAttachmentsByType(tenant.organizationId, "BILL")]);
+  const attachmentsByBillId = new Map<string, typeof attachments>();
+  for (const attachment of attachments) {
+    const list = attachmentsByBillId.get(attachment.entityId) ?? [];
+    list.push(attachment);
+    attachmentsByBillId.set(attachment.entityId, list);
+  }
   const payingAccounts = accounts.filter((account) => account.active && account.liquidityType !== "NONE");
   const expenseAccounts = accounts.filter((account) => account.active && account.type === "EXPENSE");
   const supplierContacts = contacts.filter((contact) => contact.type === "SUPPLIER" || contact.type === "BOTH");
@@ -202,7 +210,34 @@ export default async function AccountingBillsPage({
                   </TableCell>
                 ) : null}
               </TableRow>
-              {bill.payments.length ? <TableRow><TableCell colSpan={7} className="bg-muted/30"><div className="space-y-1 text-xs"><p className="font-medium">Payment history</p>{bill.payments.map((payment) => <p key={payment.id} className="text-muted-foreground">{payment.paymentDate.toLocaleDateString()}: {money(payment.amount)} via {payment.paymentMethod.replaceAll("_", " ")} from {payment.account.name}{payment.reference ? `, reference ${payment.reference}` : ""}</p>)}</div></TableCell></TableRow> : null}</Fragment>
+              {bill.payments.length ? <TableRow><TableCell colSpan={7} className="bg-muted/30"><div className="space-y-1 text-xs"><p className="font-medium">Payment history</p>{bill.payments.map((payment) => <p key={payment.id} className="text-muted-foreground">{payment.paymentDate.toLocaleDateString()}: {money(payment.amount)} via {payment.paymentMethod.replaceAll("_", " ")} from {payment.account.name}{payment.reference ? `, reference ${payment.reference}` : ""}</p>)}</div></TableCell></TableRow> : null}
+              <TableRow><TableCell colSpan={7} className="bg-muted/30">
+                <div className="space-y-1 text-xs">
+                  <p className="font-medium">Attachments</p>
+                  {(attachmentsByBillId.get(bill.id) ?? []).map((attachment) => (
+                    <div key={attachment.id} className="flex items-center justify-between text-muted-foreground">
+                      <a href={attachment.fileAsset.url ?? "#"} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                        {attachment.fileAsset.fileName}{attachment.caption ? ` - ${attachment.caption}` : ""}
+                      </a>
+                      {canManage ? (
+                        <form action={deleteBillAttachmentAction}>
+                          <input type="hidden" name="id" value={attachment.id} />
+                          <Button type="submit" size="sm" variant="ghost">Remove</Button>
+                        </form>
+                      ) : null}
+                    </div>
+                  ))}
+                  {(attachmentsByBillId.get(bill.id) ?? []).length === 0 ? <p className="text-muted-foreground">None yet.</p> : null}
+                  {canManage ? (
+                    <EntityDialog trigger={<Button size="sm" variant="outline">Attach file</Button>} title={`Attach a file to ${bill.billNumber}`} description="JPEG, PNG, WEBP, or PDF, up to 3 MB." action={uploadBillAttachment}>
+                      <input type="hidden" name="billId" value={bill.id} />
+                      <Input type="file" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf" required />
+                      <div className="space-y-2"><Label htmlFor={`bill-attachment-caption-${bill.id}`}>Caption</Label><Input id={`bill-attachment-caption-${bill.id}`} name="caption" placeholder="Optional" /></div>
+                    </EntityDialog>
+                  ) : null}
+                </div>
+              </TableCell></TableRow>
+              </Fragment>
             ))}
           </TableBody>
         </Table>

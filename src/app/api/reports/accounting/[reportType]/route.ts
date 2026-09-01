@@ -10,7 +10,7 @@ import {
   NotFoundError,
 } from "@/modules/accounting/service";
 import { formatMoney } from "@/lib/currency";
-import { buildReportExcelWorkbook, buildReportPdf, type ReportExportInput } from "@/lib/reports/export";
+import { buildReportExcelWorkbook, buildReportPdf, buildReportCsv, type ReportExportInput } from "@/lib/reports/export";
 
 /**
  * One bespoke route for all four Track 8 reports, each with real per-row
@@ -28,8 +28,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ repo
   const { reportType } = await params;
   const url = new URL(request.url);
   const format = url.searchParams.get("format");
-  if (format !== "pdf" && format !== "xlsx") {
-    return NextResponse.json({ error: "format must be pdf or xlsx" }, { status: 400 });
+  if (format !== "pdf" && format !== "xlsx" && format !== "csv") {
+    return NextResponse.json({ error: "format must be pdf, xlsx, or csv" }, { status: 400 });
   }
 
   const currency = tenant.organization.currency ?? "GHS";
@@ -153,6 +153,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ repo
     filenameBase = `cash-flow-${generatedAt.toISOString().slice(0, 10)}`;
   } else {
     return NextResponse.json({ error: "Unknown report" }, { status: 404 });
+  }
+
+  if (format === "csv") {
+    const csv = buildReportCsv(input);
+    return new NextResponse(csv, {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${filenameBase}.csv"`,
+        "Cache-Control": "private, no-store",
+      },
+    });
   }
 
   if (format === "xlsx") {

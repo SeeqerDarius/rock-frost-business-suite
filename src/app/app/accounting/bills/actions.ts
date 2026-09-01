@@ -11,6 +11,8 @@ import {
   approveBill,
   recordBillPayment,
   voidBill,
+  createAccountingAttachment,
+  deleteAccountingAttachment,
   BillStateError,
   InvalidPaymentError,
   InvalidLineItemsError,
@@ -20,6 +22,7 @@ import {
 } from "@/modules/accounting/service";
 import { moneyAmount, shortText, longText, email, cuid, dateInput, parseIndexedFormRows, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
+import { accountingAttachmentFileData } from "@/lib/accounting-attachment-file";
 
 function clean(value: FormDataEntryValue | null) {
   const str = String(value ?? "").trim();
@@ -180,6 +183,58 @@ export async function voidExistingBill(formData: FormData): Promise<void> {
 
   await logAuditEvent({ organizationId: tenant.organizationId, userId: session?.user?.id ?? null, module: "accounting", action: "bill.voided", entityName: "AccountingBill", entityId: bill.id });
 
+  revalidatePath("/app/accounting/bills");
+  redirect("/app/accounting/bills?saved=1");
+}
+
+export async function uploadBillAttachment(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("accounting");
+  if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_BILLS_MANAGE)) {
+    redirect("/app/accounting/bills?error=forbidden");
+  }
+  const billId = clean(formData.get("billId"));
+  if (!billId) redirect("/app/accounting/bills?error=missing-fields");
+  const file = formData.get("file");
+  if (!(file instanceof File) || !file.size) redirect("/app/accounting/bills?error=missing-file");
+
+  const session = await getServerAuthSession();
+  try {
+    const fileData = await accountingAttachmentFileData(file);
+    if (!fileData) redirect("/app/accounting/bills?error=missing-file");
+    await createAccountingAttachment(tenant.organizationId, {
+      entityType: "BILL",
+      entityId: billId,
+      fileName: fileData.fileName,
+      mimeType: fileData.mimeType,
+      size: fileData.size,
+      dataUrl: fileData.dataUrl,
+      caption: clean(formData.get("caption")),
+      uploadedById: session?.user?.id ?? null,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "invalid-accounting-attachment") {
+      redirect("/app/accounting/bills?error=invalid-attachment");
+    }
+    throw error;
+  }
+
+  revalidatePath("/app/accounting/bills");
+  redirect("/app/accounting/bills?saved=1");
+}
+
+export async function deleteBillAttachmentAction(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("accounting");
+  if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_BILLS_MANAGE)) {
+    redirect("/app/accounting/bills?error=forbidden");
+  }
+  const parsed = parseWithSchema(idSchema, { id: clean(formData.get("id")) });
+  if (!parsed.success) return;
+  try {
+    await deleteAccountingAttachment(tenant.organizationId, parsed.data.id);
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/accounting/bills?error=not-found");
+    throw error;
+  }
   revalidatePath("/app/accounting/bills");
   redirect("/app/accounting/bills?saved=1");
 }

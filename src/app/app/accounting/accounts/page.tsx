@@ -1,4 +1,4 @@
-import { Plus, ListChecks } from "lucide-react";
+import { Plus, ListChecks, Upload } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -12,12 +12,17 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { formatMoney } from "@/lib/currency";
 import { listAccounts } from "@/modules/accounting/service";
-import { upsertAccount, loadGhanaSmeChart } from "./actions";
+import { upsertAccount, loadGhanaSmeChart, importAccountsCsvAction } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage the chart of accounts.",
   "missing-fields": "Code, name, and type are required.",
   "code-taken": "That account code is already in use.",
+  "missing-file": "Choose a CSV file to import.",
+  "file-too-large": "That file is larger than 1 MB.",
+  "invalid-csv": "That file could not be read as CSV.",
+  "unrecognized-columns": "Couldn't find code, name, and type columns in that file's header row.",
+  "no-valid-rows": "No valid rows were found in that file.",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -74,9 +79,9 @@ function AccountFields({ account }: AccountFieldsProps) {
 export default async function AccountingAccountsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; added?: string; error?: string }>;
+  searchParams: Promise<{ saved?: string; added?: string; imported?: string; skipped?: string; error?: string }>;
 }) {
-  const { saved, added, error } = await searchParams;
+  const { saved, added, imported, skipped, error } = await searchParams;
   const tenant = await requireModuleAccess("accounting");
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_ACCOUNTS_MANAGE);
   const accounts = await listAccounts(tenant.organizationId);
@@ -93,6 +98,9 @@ export default async function AccountingAccountsPage({
                 Load Ghana SME chart of accounts
               </Button>
             </form>
+            <EntityDialog trigger={<Button size="sm" variant="outline"><Upload />Import CSV</Button>} title="Import accounts from CSV" description="A CSV with code, name, and type columns (liquidity type is optional). Header names are matched automatically." action={importAccountsCsvAction}>
+              <Input type="file" name="file" accept=".csv,text/csv" required />
+            </EntityDialog>
             <EntityDialog trigger={<Button size="sm"><Plus />New account</Button>} title="New account" action={upsertAccount}>
               <AccountFields />
             </EntityDialog>
@@ -102,7 +110,9 @@ export default async function AccountingAccountsPage({
 
       {saved ? (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
-          Saved.{added !== undefined ? ` Added ${added} account${added === "1" ? "" : "s"} from the Ghana SME chart of accounts template.` : ""}
+          Saved.
+          {added !== undefined ? ` Added ${added} account${added === "1" ? "" : "s"} from the Ghana SME chart of accounts template.` : ""}
+          {imported !== undefined ? ` Imported ${imported} account${imported === "1" ? "" : "s"}.${Number(skipped) > 0 ? ` Skipped ${skipped} duplicate or invalid row${skipped === "1" ? "" : "s"}.` : ""}` : ""}
         </div>
       ) : null}
       {error && ERROR_MESSAGES[error] ? (
