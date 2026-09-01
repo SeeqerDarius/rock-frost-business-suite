@@ -3,7 +3,6 @@ import { Lock } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { getFleetNavigationForTenant } from "@/modules/fleet/navigation-access";
-import { getFullModuleNavigation } from "@/platform/modules/full-navigation";
 import { getCurrentTenant } from "@/lib/tenant";
 import { canAccessModule, isNarrowFleetSelfServiceRole } from "@/lib/auth/permissions";
 
@@ -34,7 +33,6 @@ export default async function FleetLayout({ children }: { children: React.ReactN
       sectionLabel="Fleet Management"
       moduleKey="fleet"
       navigation={navigation}
-      moduleSections={!isNarrowFleetSelfServiceRole(tenant) ? getFullModuleNavigation(tenant) : []}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
       showModuleLauncher={!isNarrowFleetSelfServiceRole(tenant)}

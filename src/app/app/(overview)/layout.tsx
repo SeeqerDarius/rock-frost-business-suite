@@ -1,6 +1,5 @@
 import { AppShell } from "@/components/layout/app-shell";
 import { getWorkspaceNavigation } from "@/platform/modules/workspace-navigation";
-import { getFullModuleNavigation } from "@/platform/modules/full-navigation";
 import { getCurrentTenant } from "@/lib/tenant";
 import { isNarrowFleetSelfServiceRole, isPlatformOperator } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
@@ -23,7 +22,6 @@ export default async function OverviewLayout({ children }: { children: React.Rea
     <AppShell
       sectionLabel="Workspace"
       navigation={await getWorkspaceNavigation(tenant)}
-      moduleSections={getFullModuleNavigation(tenant)}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
       showModuleLauncher={!isNarrowFleetSelfServiceRole(tenant)}

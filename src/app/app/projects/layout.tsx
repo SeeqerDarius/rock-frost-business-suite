@@ -2,7 +2,6 @@ import { Lock } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { projectsNavigation } from "@/modules/projects/navigation";
-import { getFullModuleNavigation } from "@/platform/modules/full-navigation";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { canAccessModule } from "@/lib/auth/permissions";
 
@@ -26,7 +25,6 @@ export default async function ProjectsLayout({ children }: { children: React.Rea
       sectionLabel="Project Management"
       moduleKey="projects"
       navigation={projectsNavigation}
-      moduleSections={getFullModuleNavigation(tenant)}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
     >

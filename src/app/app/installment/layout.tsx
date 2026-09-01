@@ -2,7 +2,6 @@ import { Lock } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { getInstallmentNavigationForTenant } from "@/modules/installment/navigation-access";
-import { getFullModuleNavigation } from "@/platform/modules/full-navigation";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { canAccessModule } from "@/lib/auth/permissions";
 
@@ -28,7 +27,6 @@ export default async function InstallmentLayout({ children }: { children: React.
       sectionLabel="Installment Management"
       moduleKey="installment"
       navigation={navigation}
-      moduleSections={getFullModuleNavigation(tenant)}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
     >

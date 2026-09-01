@@ -8,7 +8,6 @@ import { ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { useOrganizationBranding } from "@/components/theme/organization-branding-context";
 import { SidebarNav } from "@/components/navigation/sidebar-nav";
-import { ModuleSectionsNav } from "@/components/navigation/module-sections-nav";
 import { ModuleLauncher } from "@/components/navigation/module-launcher";
 import { UserMenu } from "@/components/navigation/user-menu";
 import { OrganizationSwitcher } from "@/components/navigation/organization-switcher";
@@ -18,7 +17,6 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { TourRunner } from "@/components/onboarding/tour-runner";
 import { cn } from "@/lib/utils";
 import { getModule } from "@/platform/modules/registry";
-import type { ModuleNavSection } from "@/platform/modules/full-navigation";
 import type { ModuleNavItem } from "@/types/module";
 
 interface AppShellProps {
@@ -27,17 +25,6 @@ interface AppShellProps {
   footerNavigation?: ModuleNavItem[];
   children: React.ReactNode;
   enabledModuleKeys?: string[];
-  /**
-   * Every enabled module's own permission-filtered page list (see
-   * src/platform/modules/full-navigation.tsx's getFullModuleNavigation),
-   * shown beneath (or, for organization scope, alongside) this shell's own
-   * `navigation`: the module the current page belongs to shows its own
-   * pages directly, every other enabled module is a single flat link. Omit
-   * or pass an empty array to suppress it entirely (e.g. locked-down
-   * roles) - same intent `showModuleLauncher` already carries for the
-   * header launcher.
-   */
-  moduleSections?: ModuleNavSection[];
   homeHref?: string;
   showModuleLauncher?: boolean;
   /** A business module key (e.g. "fleet") - when present, shows that
@@ -92,7 +79,6 @@ function getServerSidebarPreference() {
 export function AppShell({
   sectionLabel,
   navigation,
-  moduleSections = [],
   footerNavigation = [],
   children,
   enabledModuleKeys = [],
@@ -110,16 +96,6 @@ export function AppShell({
   const pathname = usePathname();
   const activeHref = getActiveNavigationHref(pathname, navigation);
   const currentItem = navigation.find((item) => item.href === activeHref);
-
-  /**
-   * Inside a business module (moduleKey set), that module's own page list is
-   * already the first section of the accordion below, so showing it again as
-   * a separate flat list would duplicate it - only the accordion renders. At
-   * organization/platform scope (moduleKey unset - Overview isn't itself a
-   * catalog module), the flat `navigation` list keeps showing Overview's own
-   * items, with the module accordion beneath it.
-   */
-  const showFlatNavigation = !moduleKey;
 
   function toggleSidebar() {
     window.localStorage.setItem("rf-sidebar-collapsed", String(!sidebarCollapsed));
@@ -144,12 +120,7 @@ export function AppShell({
         ) : null}
         {!sidebarCollapsed ? <p className="px-5 pb-2 pt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">{sectionLabel}</p> : null}
         <div data-tour="sidebar-nav" className="min-h-0 flex-1 overflow-y-auto py-1">
-          {showFlatNavigation ? <SidebarNav items={navigation} collapsed={sidebarCollapsed} tourTargets /> : null}
-          {moduleSections.length > 0 ? (
-            <div className={!sidebarCollapsed && showFlatNavigation ? "mt-2 border-t pt-2" : undefined}>
-              <ModuleSectionsNav sections={moduleSections} collapsed={sidebarCollapsed} tourTargets={!showFlatNavigation} />
-            </div>
-          ) : null}
+          <SidebarNav items={navigation} collapsed={sidebarCollapsed} tourTargets />
         </div>
         {footerNavigation.length > 0 ? (
           <div className="border-t py-2">
@@ -183,12 +154,7 @@ export function AppShell({
           ) : null}
           <p className="px-5 pt-4 pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{sectionLabel}</p>
           <div className="min-h-0 flex-1 overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom))] pt-1">
-            {showFlatNavigation ? <SidebarNav items={navigation} onNavigate={() => setMobileNavOpen(false)} /> : null}
-            {moduleSections.length > 0 ? (
-              <div className={showFlatNavigation ? "mt-2 border-t pt-2" : undefined}>
-                <ModuleSectionsNav sections={moduleSections} onNavigate={() => setMobileNavOpen(false)} />
-              </div>
-            ) : null}
+            <SidebarNav items={navigation} onNavigate={() => setMobileNavOpen(false)} />
           </div>
           {footerNavigation.length > 0 ? (
             <div className="border-t py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">

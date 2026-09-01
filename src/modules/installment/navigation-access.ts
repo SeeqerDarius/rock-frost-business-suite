@@ -5,10 +5,9 @@ import { installmentNavigation } from "@/modules/installment/navigation";
 
 /**
  * The single source of truth for which Installment pages the current
- * tenant can open, by permission - both Installment's own layout.tsx and
- * the sidebar's cross-module accordion
- * (src/platform/modules/full-navigation.tsx) call this, so a role's real
- * page access can never drift between the two.
+ * tenant can open, by permission - Installment's own layout.tsx calls this
+ * to build the sidebar's page list, so a role's real page access can never
+ * drift from a second, hand-maintained copy.
  *
  * Deliberately a separate file from src/modules/installment/navigation.tsx
  * (which only holds the plain installmentNavigation array) - see the

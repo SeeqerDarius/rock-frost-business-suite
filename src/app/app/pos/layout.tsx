@@ -2,7 +2,6 @@ import { Lock } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { posNavigation } from "@/modules/pos/navigation";
-import { getFullModuleNavigation } from "@/platform/modules/full-navigation";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { canAccessModule } from "@/lib/auth/permissions";
 
@@ -26,7 +25,6 @@ export default async function PosLayout({ children }: { children: React.ReactNod
       sectionLabel="Point of Sale"
       moduleKey="pos"
       navigation={posNavigation}
-      moduleSections={getFullModuleNavigation(tenant)}
       enabledModuleKeys={tenant.accessibleModuleKeys}
       organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }}
     >

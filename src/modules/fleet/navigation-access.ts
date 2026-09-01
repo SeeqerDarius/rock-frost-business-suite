@@ -5,9 +5,9 @@ import { fleetNavigation } from "@/modules/fleet/navigation";
 
 /**
  * The single source of truth for which Fleet pages the current tenant can
- * open, by permission - both Fleet's own layout.tsx and the sidebar's
- * cross-module accordion (src/platform/modules/full-navigation.tsx) call
- * this, so a role's real page access can never drift between the two.
+ * open, by permission - Fleet's own layout.tsx calls this to build the
+ * sidebar's page list, so a role's real page access can never drift from a
+ * second, hand-maintained copy.
  *
  * Deliberately a separate file from src/modules/fleet/navigation.tsx (which
  * only holds the plain fleetNavigation array): that file is imported by
