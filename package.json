@@ -13,6 +13,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:integration": "cross-env ALLOW_INTEGRATION_TESTS=1 vitest run --config vitest.integration.config.ts",
+    "test:pwa": "playwright test",
     "test:all": "npm run test && npm run test:integration",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset-platform": "tsx scripts/reset-platform.ts",
@@ -59,6 +60,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
@@ -69,6 +71,7 @@
     "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
+    "fake-indexeddb": "^6.2.5",
     "tailwindcss": "^4",
     "tsx": "^4.23.1",
     "typescript": "^5",

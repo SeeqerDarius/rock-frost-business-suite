@@ -12,8 +12,7 @@ import {
   enqueueSale,
   generateClientRequestId,
   listQueuedSales,
-  markQueuedSaleError,
-  removeQueuedSale,
+  synchronizeQueuedSales,
   type QueuedSale,
 } from "./offline-queue";
 
@@ -51,7 +50,7 @@ function appendPriceDigit(field: string, digit: string): string {
   return field + digit;
 }
 
-export function SaleCart({ items: initialItems, categories: initialCategories, organizationId, currency }: { items: PickerItem[]; categories: PickerCategory[]; organizationId: string; currency: string }) {
+export function SaleCart({ items: initialItems, categories: initialCategories, organizationId, userId, currency }: { items: PickerItem[]; categories: PickerCategory[]; organizationId: string; userId: string; currency: string }) {
   const [items, setItems] = useState(initialItems);
   const [categories, setCategories] = useState(initialCategories);
   const [nextKey, setNextKey] = useState(2);
@@ -63,39 +62,20 @@ export function SaleCart({ items: initialItems, categories: initialCategories, o
   const [payments, setPayments] = useState<Payment[]>([{ key: 1, method: "CASH", amount: "0.00", reference: "" }]);
   const [suspended, setSuspended] = useState(false);
   const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
-  const [pendingCount, setPendingCount] = useState(() => listQueuedSales(organizationId).length);
+  const [pendingCount, setPendingCount] = useState(0);
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const formRootRef = useRef<HTMLDivElement>(null);
   const total = useMemo(() => lines.reduce((sum, line) => sum + lineTotal(line), 0), [lines]);
 
-  function refreshPendingCount() {
-    setPendingCount(listQueuedSales(organizationId).length);
+  async function refreshPendingCount() {
+    setPendingCount((await listQueuedSales(organizationId, userId)).length);
   }
 
   async function syncQueuedSales() {
-    for (const entry of listQueuedSales(organizationId)) {
-      const formData = new FormData();
-      formData.set("sessionId", entry.sessionId);
-      formData.set("customerName", entry.customerName ?? "");
-      formData.set("mode", entry.mode);
-      formData.set("lines", JSON.stringify(entry.lines));
-      formData.set("payments", JSON.stringify(entry.payments));
-      formData.set("clientRequestId", entry.clientRequestId);
-      formData.set("occurredAt", entry.occurredAt);
-      try {
-        const result = await completeSale(formData);
-        if (result.ok) {
-          removeQueuedSale(organizationId, entry.clientRequestId);
-        } else {
-          markQueuedSaleError(organizationId, entry.clientRequestId, ERROR_MESSAGES[result.error] ?? result.error);
-        }
-      } catch {
-        break; // still offline — stop for now, the next trigger will pick up where this left off
-      }
-    }
-    refreshPendingCount();
+    try { await synchronizeQueuedSales(organizationId, userId); } catch { /* A later bounded trigger retries transient transport failures. */ }
+    await refreshPendingCount();
   }
 
   useEffect(() => {
@@ -122,7 +102,7 @@ export function SaleCart({ items: initialItems, categories: initialCategories, o
       form?.removeEventListener("submit", preventNativeSubmit);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [organizationId]);
+  }, [organizationId, userId]);
 
   function selectLine(key: number) {
     setSelectedKey(key);
@@ -235,11 +215,16 @@ export function SaleCart({ items: initialItems, categories: initialCategories, o
       } catch {
         // A thrown (not returned) failure is a real network/transport problem,
         // not a validation error the server actually evaluated — queue it.
-        enqueueSale(organizationId, queuedEntry);
-        refreshPendingCount();
-        resetCart();
-        setIsOnline(false);
-        setSubmitMessage("Saved offline. It will sync automatically once you're back online.");
+        try {
+          await enqueueSale(organizationId, userId, queuedEntry);
+          await refreshPendingCount();
+          resetCart();
+          setIsOnline(false);
+          setSubmitMessage("Recorded offline. Awaiting synchronization and server confirmation.");
+        } catch {
+          setIsOnline(false);
+          setSubmitError("Offline sales are not authorized on this device. Keep this cart open and reconnect before submitting.");
+        }
       }
     });
   }
@@ -251,7 +236,7 @@ export function SaleCart({ items: initialItems, categories: initialCategories, o
       <input type="hidden" name="mode" value={suspended ? "SUSPENDED" : "COMPLETED"} />
       {!isOnline || pendingCount > 0 ? (
         <div className="lg:col-span-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
-          <span className="flex items-center gap-2"><WifiOff className="size-4" />{!isOnline ? "You're offline. Sales are saved locally and will sync automatically." : `${pendingCount} sale${pendingCount === 1 ? "" : "s"} pending sync.`}</span>
+          <span className="flex items-center gap-2"><WifiOff className="size-4" />{!isOnline ? "You're offline. Sales can be recorded locally but remain unverified until synchronized." : `${pendingCount} sale${pendingCount === 1 ? "" : "s"} awaiting synchronization.`}</span>
           {pendingCount > 0 ? <Button type="button" size="sm" variant="outline" onClick={() => void syncQueuedSales()}>Sync now</Button> : null}
         </div>
       ) : null}

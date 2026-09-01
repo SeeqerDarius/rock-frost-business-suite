@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import type { Prisma } from "@prisma/client";
+import { logAuditEvent } from "@/lib/audit";
 
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BYTES = 1024 * 1024;
@@ -62,4 +63,25 @@ export async function uploadCompanyLogo(formData: FormData): Promise<void> {
   await db.organization.update({ where: { id: tenant.organizationId }, data: { logoUrl } });
   revalidatePath("/app");
   redirect("/app/organization/settings?saved=logo");
+}
+
+export async function updateOfflineAccessSettings(formData: FormData): Promise<void> {
+  const tenant = await authorizedTenant();
+  const leaseHours = Number(formData.get("offlineLeaseHours"));
+  const requestedModules = formData.getAll("offlineModule").map(String);
+  if (!Number.isInteger(leaseHours) || leaseHours < 1 || leaseHours > 24 || requestedModules.some((key) => !tenant.accessibleModuleKeys.includes(key))) {
+    redirect("/app/organization/settings?error=offline");
+  }
+  const organization = await db.organization.findUnique({ where: { id: tenant.organizationId }, select: { metadata: true } });
+  const metadata = objectMetadata(organization?.metadata);
+  metadata.offlineAccess = {
+    enabled: formData.get("offlineEnabled") === "on",
+    mutationKillSwitch: formData.get("offlineMutationEnabled") !== "on",
+    moduleKeys: [...new Set(requestedModules)],
+    leaseHours,
+  };
+  await db.organization.update({ where: { id: tenant.organizationId }, data: { metadata: metadata as Prisma.InputJsonValue } });
+  await logAuditEvent({ organizationId: tenant.organizationId, userId: tenant.userId, module: "administration", action: "offline_access.policy_updated", entityName: "Organization", entityId: tenant.organizationId, metadata: metadata.offlineAccess as Record<string, unknown> });
+  revalidatePath("/app");
+  redirect("/app/organization/settings?saved=offline");
 }

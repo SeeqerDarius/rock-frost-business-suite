@@ -25,6 +25,7 @@ import {
   retryAiReply,
 } from "@/app/app/(overview)/support/actions";
 import { getPlatformSupportUnreadCount } from "@/app/app/platform/support/actions";
+import { PwaProvider } from "@/components/pwa/pwa-provider";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false, nocache: true },
@@ -92,6 +93,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     : await getTenantUnreadCount(tenant.organizationId, tenant.userId);
 
   return (
+    <PwaProvider workspace={{
+      organizationId: tenant.organizationId,
+      organizationName: tenant.organization.name,
+      userId: tenant.userId,
+      role: tenant.role,
+      permissions: tenant.permissions,
+      moduleKeys: tenant.accessibleModuleKeys,
+      branch: tenant.branch,
+    }}>
     <OrganizationBrandingProvider branding={{ logoUrl: organization?.logoUrl ?? null, name: organization?.name ?? null }}>
       <OrganizationThemeSync theme={theme} />
       <Suspense fallback={null}>
@@ -124,5 +134,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         />
       )}
     </OrganizationBrandingProvider>
+    </PwaProvider>
   );
 }

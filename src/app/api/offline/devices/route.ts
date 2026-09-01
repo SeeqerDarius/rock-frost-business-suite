@@ -1,0 +1,65 @@
+import { createHash, randomUUID } from "node:crypto";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { db } from "@/lib/db";
+import { logAuditEvent } from "@/lib/audit";
+import { requireCurrentTenant } from "@/lib/tenant";
+import { resolveOfflinePolicy } from "@/lib/pwa/policy";
+
+const registrationSchema = z.object({
+  installationId: z.string().uuid(),
+  name: z.string().trim().min(1).max(100),
+  platform: z.string().trim().min(1).max(50),
+  moduleKeys: z.array(z.string().trim().min(1).max(50)).max(30),
+});
+
+function tokenHash() { return createHash("sha256").update(randomUUID()).digest("hex"); }
+
+export async function POST(request: Request) {
+  const tenant = await requireCurrentTenant();
+  const parsed = registrationSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: "invalid-request" }, { status: 400 });
+  const organization = await db.organization.findUnique({ where: { id: tenant.organizationId }, select: { metadata: true } });
+  const policy = resolveOfflinePolicy(organization?.metadata);
+  if (!policy.enabled) return NextResponse.json({ error: "offline-disabled" }, { status: 403 });
+  const moduleKeys = [...new Set(parsed.data.moduleKeys)].filter((key) => policy.moduleKeys.includes(key) && tenant.accessibleModuleKeys.includes(key));
+  if (!moduleKeys.length) return NextResponse.json({ error: "module-unavailable" }, { status: 403 });
+  const membership = await db.organizationMember.findUnique({
+    where: { organizationId_userId: { organizationId: tenant.organizationId, userId: tenant.userId } },
+    select: { id: true, status: true },
+  });
+  if (!membership || membership.status !== "ACTIVE") return NextResponse.json({ error: "membership-inactive" }, { status: 403 });
+  const existing = await db.offlineDevice.findUnique({
+    where: { organizationId_installationId: { organizationId: tenant.organizationId, installationId: parsed.data.installationId } },
+  });
+  if (existing && (existing.userId !== tenant.userId || existing.status === "REVOKED")) {
+    return NextResponse.json({ error: "device-unavailable" }, { status: 403 });
+  }
+  if (!existing && await db.offlineDevice.count({ where: { organizationId: tenant.organizationId, userId: tenant.userId, status: "ACTIVE" } }) >= 5) {
+    return NextResponse.json({ error: "device-limit" }, { status: 409 });
+  }
+  const now = new Date();
+  const offlineAccessUntil = new Date(now.getTime() + policy.leaseHours * 60 * 60 * 1000);
+  const tokenExpiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const device = existing ? await db.offlineDevice.update({
+    where: { id: existing.id },
+    data: { name: parsed.data.name, platform: `browser:${parsed.data.platform}`, moduleKeys, membershipId: membership.id, lastSeenAt: now, offlineAccessUntil, tokenExpiresAt },
+  }) : await db.offlineDevice.create({
+    data: { organizationId: tenant.organizationId, userId: tenant.userId, membershipId: membership.id, installationId: parsed.data.installationId, name: parsed.data.name, platform: `browser:${parsed.data.platform}`, tokenHash: tokenHash(), moduleKeys, lastSeenAt: now, offlineAccessUntil, tokenExpiresAt },
+  });
+  await logAuditEvent({ organizationId: tenant.organizationId, userId: tenant.userId, membershipId: membership.id, module: "administration", action: existing ? "offline_browser_device.refreshed" : "offline_browser_device.registered", entityName: "OfflineDevice", entityId: device.id, metadata: { moduleKeys, platform: parsed.data.platform } });
+  return NextResponse.json({ deviceId: device.id, organizationId: device.organizationId, userId: device.userId, moduleKeys: device.moduleKeys, offlineAccessUntil: device.offlineAccessUntil.toISOString(), mutationKillSwitch: policy.mutationKillSwitch });
+}
+
+export async function DELETE(request: Request) {
+  const tenant = await requireCurrentTenant();
+  const installationId = new URL(request.url).searchParams.get("installationId");
+  if (!installationId) return NextResponse.json({ error: "installation-required" }, { status: 400 });
+  const result = await db.offlineDevice.updateMany({
+    where: { organizationId: tenant.organizationId, userId: tenant.userId, installationId, status: "ACTIVE" },
+    data: { status: "REVOKED", revokedAt: new Date(), revokedById: tenant.userId },
+  });
+  if (!result.count) return NextResponse.json({ error: "not-found" }, { status: 404 });
+  await logAuditEvent({ organizationId: tenant.organizationId, userId: tenant.userId, module: "administration", action: "offline_browser_device.revoked", entityName: "OfflineDevice", entityId: installationId });
+  return NextResponse.json({ ok: true });
+}

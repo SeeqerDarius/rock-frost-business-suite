@@ -4,9 +4,10 @@ import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon"
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
-import { Compass, LogOut } from "lucide-react";
+import { CloudOff, Compass, LogOut } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { purgeOfflineDataForUser } from "@/lib/pwa/indexed-db";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -72,15 +73,24 @@ export function UserMenu() {
           Profile settings
         </DropdownMenuItem>
         {isPlatformOwner ? null : (
+          <>
+          <DropdownMenuItem render={<Link href="/app/account/offline" />}>
+            <CloudOff />
+            Offline access and sync
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => window.dispatchEvent(new Event("rf-tour-replay"))}>
             <Compass />
             Replay the tour
           </DropdownMenuItem>
+          </>
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           variant="destructive"
-          onClick={() => signOut({ callbackUrl: new URL("/login", window.location.origin).toString() })}
+          onClick={async () => {
+            await purgeOfflineDataForUser(session?.user?.id).catch(() => undefined);
+            await signOut({ callbackUrl: new URL("/login", window.location.origin).toString() });
+          }}
         >
           <LogOut />
           Sign out

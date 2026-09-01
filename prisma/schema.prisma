@@ -1184,24 +1184,28 @@ model OfflineActivationCode {
  * twice. Payloads are bounded and validated before persistence.
  */
 model OfflineMutation {
-  id             String                @id @default(cuid())
-  organizationId String
-  deviceId       String
-  userId         String
-  mutationId     String
-  moduleKey      String
-  entityType     String
-  entityId       String
-  operation      String
-  baseVersion    Int
-  payload        Json
-  status         OfflineMutationStatus @default(PROCESSING)
-  result         Json?
-  errorCode      String?
-  changedAt      DateTime
-  appliedAt      DateTime?
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
+  id                   String                @id @default(cuid())
+  organizationId       String
+  deviceId             String
+  userId               String
+  mutationId           String
+  idempotencyKey       String
+  moduleKey            String
+  entityType           String
+  entityId             String
+  operation            String
+  baseVersion          Int
+  payloadSchemaVersion Int                   @default(1)
+  attachmentReferences String[]              @default([])
+  dependencyIds        String[]              @default([])
+  payload              Json
+  status               OfflineMutationStatus @default(PROCESSING)
+  result               Json?
+  errorCode            String?
+  changedAt            DateTime
+  appliedAt            DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   device       OfflineDevice    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
@@ -1209,6 +1213,7 @@ model OfflineMutation {
   conflict     OfflineConflict?
 
   @@unique([organizationId, mutationId])
+  @@unique([organizationId, idempotencyKey])
   @@index([deviceId, createdAt])
   @@index([organizationId, moduleKey, createdAt])
   @@index([organizationId, status])

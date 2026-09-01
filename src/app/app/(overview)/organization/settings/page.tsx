@@ -1,4 +1,4 @@
-import { CheckCircle2, CreditCard, DatabaseBackup, ImageIcon, Lock, Palette, Receipt, TriangleAlert } from "lucide-react";
+import { CheckCircle2, CloudOff, CreditCard, DatabaseBackup, ImageIcon, Lock, Palette, Receipt, TriangleAlert } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
@@ -13,12 +13,13 @@ import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
-import { uploadCompanyLogo, updateWorkspaceSettings } from "./actions";
+import { updateOfflineAccessSettings, uploadCompanyLogo, updateWorkspaceSettings } from "./actions";
 import { getSettlementProfile, settlementStatusLabel } from "@/lib/payments/operational";
 
 const ERROR_MESSAGES: Record<string, string> = {
   image: "Choose a JPG, PNG, or WebP logo no larger than 1 MB.",
   invalid: "Check the settings and try again.",
+  offline: "Check the offline access policy and try again.",
 };
 
 type WorkspaceSettings = {
@@ -28,6 +29,8 @@ type WorkspaceSettings = {
   backupRetentionDays?: number;
   dataRecoveryEnabled?: boolean;
 };
+
+type OfflineSettings = { enabled?: boolean; mutationKillSwitch?: boolean; moduleKeys?: string[]; leaseHours?: number };
 
 export default async function OrganizationSettingsPage({ searchParams }: {
   searchParams: Promise<{ saved?: string; error?: string }>;
@@ -44,6 +47,9 @@ export default async function OrganizationSettingsPage({ searchParams }: {
   const settings = (metadata && typeof metadata === "object" && !Array.isArray(metadata)
     ? (metadata as Record<string, unknown>).workspaceSettings
     : {}) as WorkspaceSettings;
+  const offlineSettings = (metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? (metadata as Record<string, unknown>).offlineAccess
+    : {}) as OfflineSettings;
   const { saved, error } = await searchParams;
   const settlement = await getSettlementProfile(tenant.organizationId);
 
@@ -118,6 +124,23 @@ export default async function OrganizationSettingsPage({ searchParams }: {
               <Input id="logo" name="logo" type="file" accept="image/jpeg,image/png,image/webp" required className="max-w-xs" />
             </div>
             <Button type="submit" variant="outline">Upload</Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm">
+        <CardHeader>
+          <div className="flex items-center gap-2"><CloudOff className="size-5 text-muted-foreground" /><CardTitle>Offline access rollout</CardTitle></div>
+          <CardDescription>Authorize short-lived offline workspace access by module. Turning off new offline mutations does not discard work that is already waiting to synchronize.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form action={updateOfflineAccessSettings} className="space-y-4">
+            <SettingsToggleRow id="offlineEnabled" name="offlineEnabled" label="Allow registered browser devices to download authorized offline data" defaultChecked={offlineSettings.enabled ?? false} />
+            <SettingsToggleRow id="offlineMutationEnabled" name="offlineMutationEnabled" label="Allow new offline mutations" description="Turn this off as a kill switch. Previously queued work can still synchronize." defaultChecked={offlineSettings.mutationKillSwitch === false} />
+            <div className="max-w-xs space-y-2"><Label htmlFor="offlineLeaseHours" required>Offline authorization lease (hours)</Label><Input id="offlineLeaseHours" name="offlineLeaseHours" type="number" min={1} max={24} defaultValue={offlineSettings.leaseHours ?? 12} required /></div>
+            <fieldset className="space-y-2"><legend className="text-sm font-medium">Modules available offline</legend><div className="grid gap-2 sm:grid-cols-2">{tenant.accessibleModuleKeys.map((key) => <label key={key} className="flex items-center gap-2 rounded-md border p-3 text-sm"><input type="checkbox" name="offlineModule" value={key} defaultChecked={offlineSettings.moduleKeys?.includes(key) ?? false} />{key}</label>)}</div></fieldset>
+            <Alert><TriangleAlert /><AlertTitle>Server confirmation remains authoritative</AlertTitle><AlertDescription>Payments, stock, approvals, clinical work, reconciliation, and posting remain pending until the server accepts them.</AlertDescription></Alert>
+            <Button type="submit" size="sm">Save offline policy</Button>
           </form>
         </CardContent>
       </Card>
