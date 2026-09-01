@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getServerAuthSession } from "@/lib/auth/session";
-import { AccountingPeriodLockedError, approveJournalEntry, createManualJournalEntry, JournalApprovalError, JournalNotBalancedError, JournalReversalError, NotFoundError, rejectJournalEntry, reverseJournalEntry } from "@/modules/accounting/service";
+import { AccountingPeriodLockedError, approveJournalEntry, createManualJournalEntry, createRecurringTemplate, JournalApprovalError, JournalNotBalancedError, JournalReversalError, NotFoundError, rejectJournalEntry, reverseJournalEntry, runRecurringTemplateNow, setRecurringTemplateActive } from "@/modules/accounting/service";
 import { moneyAmount, shortText, longText, cuid, dateInput, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
 
@@ -172,5 +172,97 @@ export async function rejectJournalEntryAction(formData: FormData): Promise<void
     throw error;
   }
   revalidatePath("/app/accounting/journal");
+  redirect("/app/accounting/journal?saved=1");
+}
+
+const recurringJournalSchema = z.object({
+  name: shortText,
+  frequency: z.enum(["WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"]),
+  startDate: dateInput,
+  description: shortText,
+  debitAccountId: cuid,
+  creditAccountId: cuid,
+  amount: moneyAmount,
+  reference: longText.nullable().optional(),
+});
+
+export async function createRecurringJournalTemplate(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("accounting");
+  if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_ACCOUNTS_MANAGE)) {
+    redirect("/app/accounting/journal?error=forbidden");
+  }
+  const parsed = parseWithSchema(recurringJournalSchema, {
+    name: clean(formData.get("name")),
+    frequency: clean(formData.get("frequency")),
+    startDate: clean(formData.get("startDate")),
+    description: clean(formData.get("description")),
+    debitAccountId: clean(formData.get("debitAccountId")),
+    creditAccountId: clean(formData.get("creditAccountId")),
+    amount: clean(formData.get("amount")),
+    reference: clean(formData.get("reference")),
+  });
+  if (!parsed.success) redirect("/app/accounting/journal?error=missing-fields");
+  const { name, frequency, startDate, description, debitAccountId, creditAccountId, amount, reference } = parsed.data;
+  if (debitAccountId === creditAccountId) redirect("/app/accounting/journal?error=same-account");
+
+  const session = await getServerAuthSession();
+  const template = await createRecurringTemplate(tenant.organizationId, {
+    name,
+    frequency,
+    nextRunDate: startDate,
+    payload: {
+      type: "JOURNAL_ENTRY",
+      description,
+      reference: reference ?? null,
+      lines: [
+        { accountId: debitAccountId, debit: amount },
+        { accountId: creditAccountId, credit: amount },
+      ],
+    },
+    createdById: session?.user?.id ?? null,
+  });
+  await logAuditEvent({ organizationId: tenant.organizationId, userId: session?.user?.id ?? null, module: "accounting", action: "recurring_template.created", entityName: "AccountingRecurringTemplate", entityId: template.id, metadata: { frequency, name } });
+
+  revalidatePath("/app/accounting/journal");
+  redirect("/app/accounting/journal?saved=1");
+}
+
+export async function toggleRecurringTemplateAction(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("accounting");
+  if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_ACCOUNTS_MANAGE)) {
+    redirect("/app/accounting/journal?error=forbidden");
+  }
+  const templateId = clean(formData.get("templateId"));
+  const active = formData.get("active") === "true";
+  if (!templateId) redirect("/app/accounting/journal?error=missing-fields");
+  try {
+    await setRecurringTemplateActive(tenant.organizationId, templateId, active);
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/accounting/journal?error=not-found");
+    throw error;
+  }
+  revalidatePath("/app/accounting/journal");
+  redirect("/app/accounting/journal?saved=1");
+}
+
+export async function runRecurringTemplateNowAction(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("accounting");
+  if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_ACCOUNTS_MANAGE)) {
+    redirect("/app/accounting/journal?error=forbidden");
+  }
+  const templateId = clean(formData.get("templateId"));
+  if (!templateId) redirect("/app/accounting/journal?error=missing-fields");
+  const session = await getServerAuthSession();
+  try {
+    await runRecurringTemplateNow(tenant.organizationId, templateId);
+    await logAuditEvent({ organizationId: tenant.organizationId, userId: session?.user?.id ?? null, module: "accounting", action: "recurring_template.run_now", entityName: "AccountingRecurringTemplate", entityId: templateId });
+  } catch (error) {
+    if (error instanceof NotFoundError) redirect("/app/accounting/journal?error=not-found");
+    if (error instanceof JournalNotBalancedError) redirect("/app/accounting/journal?error=not-balanced");
+    if (error instanceof AccountingPeriodLockedError) redirect("/app/accounting/journal?error=period-closed");
+    throw error;
+  }
+  revalidatePath("/app/accounting/journal");
+  revalidatePath("/app/accounting/accounts");
   redirect("/app/accounting/journal?saved=1");
 }

@@ -621,6 +621,7 @@ model Organization {
   accountingCreditNotes           AccountingCreditNote[]
   accountingReconciliations       AccountingReconciliation[]
   accountingBankStatementLines    AccountingBankStatementLine[]
+  accountingRecurringTemplates    AccountingRecurringTemplate[]
   accountingPeriods               AccountingPeriod[]
   accountingPettyCashFunds        AccountingPettyCashFund[]
   accountingPettyCashTransactions AccountingPettyCashTransaction[]
@@ -2599,6 +2600,44 @@ enum AccountingTaxPeriodStatus {
   OPEN
   LOCKED
   FILED
+}
+
+enum AccountingRecurringType {
+  JOURNAL_ENTRY
+  INVOICE
+  BILL
+}
+
+enum AccountingRecurringFrequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+/**
+ * payload is a discriminated-by-type JSON document holding exactly the fields
+ * the matching create function needs (createManualJournalEntry/createInvoice/createBill),
+ * minus the date fields - entryDate/issueDate/billDate always comes from nextRunDate at
+ * generation time, so the template never drifts from its own schedule.
+ */
+model AccountingRecurringTemplate {
+  id              String                       @id @default(cuid())
+  organizationId  String
+  type            AccountingRecurringType
+  name            String
+  frequency       AccountingRecurringFrequency
+  nextRunDate     DateTime
+  payload         Json
+  active          Boolean                      @default(true)
+  lastGeneratedAt DateTime?
+  createdById     String?
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, active, nextRunDate])
 }
 
 enum AccountingPlanKind {

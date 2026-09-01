@@ -1,16 +1,27 @@
-import { ScrollText, Plus } from "lucide-react";
+import { ScrollText, Plus, Repeat } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { formatMoney } from "@/lib/currency";
-import { listJournalEntries, listAccounts } from "@/modules/accounting/service";
-import { createJournalEntry, reverseJournalEntryAction, approveJournalEntryAction, rejectJournalEntryAction } from "./actions";
+import { listJournalEntries, listAccounts, listRecurringTemplates } from "@/modules/accounting/service";
+import {
+  createJournalEntry,
+  reverseJournalEntryAction,
+  approveJournalEntryAction,
+  rejectJournalEntryAction,
+  createRecurringJournalTemplate,
+  toggleRecurringTemplateAction,
+  runRecurringTemplateNowAction,
+} from "./actions";
+
+const FREQUENCY_ITEMS: Record<string, string> = { WEEKLY: "Weekly", MONTHLY: "Monthly", QUARTERLY: "Quarterly", YEARLY: "Yearly" };
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to post journal entries.",
@@ -36,9 +47,10 @@ export default async function AccountingJournalPage({
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_ACCOUNTS_MANAGE);
   const canReverse = hasPermission(tenant, PERMISSIONS.ACCOUNTING_JOURNALS_REVERSE);
   const canApprove = hasPermission(tenant, PERMISSIONS.ACCOUNTING_JOURNAL_APPROVE);
-  const [entries, accounts] = await Promise.all([
+  const [entries, accounts, recurringTemplates] = await Promise.all([
     listJournalEntries(tenant.organizationId),
     listAccounts(tenant.organizationId),
+    listRecurringTemplates(tenant.organizationId),
   ]);
   const accountItems: Record<string, string> = Object.fromEntries(accounts.map((a) => [a.id, `${a.code} - ${a.name}`]));
   const today = new Date().toISOString().slice(0, 10);
@@ -48,6 +60,72 @@ export default async function AccountingJournalPage({
       <div className="flex items-center justify-between gap-4">
         <PageHeader title="Journal" description="Every posted transaction, automatic and manual." />
         {canManage ? (
+          <div className="flex gap-2">
+          <EntityDialog trigger={<Button size="sm" variant="outline"><Repeat />New recurring entry</Button>} title="New recurring journal entry" description="Generates automatically on the schedule below - each occurrence books on its own due date, never today's date." action={createRecurringJournalTemplate}>
+            <div className="space-y-2">
+              <Label htmlFor="recurring-name">Name</Label>
+              <Input id="recurring-name" name="name" placeholder="e.g. Monthly rent accrual" required />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="recurring-startDate">First run date</Label>
+                <Input id="recurring-startDate" name="startDate" type="date" defaultValue={today} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="recurring-frequency">Frequency</Label>
+                <Select name="frequency" items={FREQUENCY_ITEMS} defaultValue="MONTHLY">
+                  <SelectTrigger id="recurring-frequency" className="w-full">
+                    <SelectValue placeholder="Select a frequency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(FREQUENCY_ITEMS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="recurring-amount">Amount ({tenant.organization.currency})</Label>
+                <Input id="recurring-amount" name="amount" type="number" step="0.01" required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="recurring-reference">Reference</Label>
+                <Input id="recurring-reference" name="reference" placeholder="Optional" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="recurring-description">Description</Label>
+              <Input id="recurring-description" name="description" required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="recurring-debitAccountId">Debit account</Label>
+              <Select name="debitAccountId" items={accountItems}>
+                <SelectTrigger id="recurring-debitAccountId" className="w-full">
+                  <SelectValue placeholder="Select an account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(accountItems).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="recurring-creditAccountId">Credit account</Label>
+              <Select name="creditAccountId" items={accountItems}>
+                <SelectTrigger id="recurring-creditAccountId" className="w-full">
+                  <SelectValue placeholder="Select an account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(accountItems).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </EntityDialog>
           <EntityDialog trigger={<Button size="sm"><Plus />New entry</Button>} title="New manual journal entry" action={createJournalEntry}>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -98,6 +176,7 @@ export default async function AccountingJournalPage({
               <Input id="reference" name="reference" placeholder="Optional" />
             </div>
           </EntityDialog>
+          </div>
         ) : null}
       </div>
 
@@ -115,6 +194,36 @@ export default async function AccountingJournalPage({
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {ERROR_MESSAGES[error]}
         </div>
+      ) : null}
+
+      {canManage && recurringTemplates.length > 0 ? (
+        <section className="rounded-xl border p-5">
+          <h2 className="font-semibold">Recurring templates</h2>
+          <div className="mt-3 space-y-2">
+            {recurringTemplates.map((template) => (
+              <div key={template.id} className="flex items-center justify-between gap-3 border-b py-2 text-sm">
+                <div>
+                  <p className="font-medium">{template.name}</p>
+                  <p className="text-xs text-muted-foreground">{FREQUENCY_ITEMS[template.frequency]} · Next run {template.nextRunDate.toLocaleDateString()}{template.lastGeneratedAt ? ` · Last generated ${template.lastGeneratedAt.toLocaleDateString()}` : ""}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant={template.active ? "default" : "secondary"}>{template.active ? "Active" : "Paused"}</Badge>
+                  {template.active ? (
+                    <form action={runRecurringTemplateNowAction}>
+                      <input type="hidden" name="templateId" value={template.id} />
+                      <Button size="sm" variant="outline" type="submit">Run now</Button>
+                    </form>
+                  ) : null}
+                  <form action={toggleRecurringTemplateAction}>
+                    <input type="hidden" name="templateId" value={template.id} />
+                    <input type="hidden" name="active" value={(!template.active).toString()} />
+                    <Button size="sm" variant="outline" type="submit">{template.active ? "Pause" : "Resume"}</Button>
+                  </form>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       ) : null}
 
       {entries.length === 0 ? (

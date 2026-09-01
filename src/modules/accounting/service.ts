@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-import type { AccountingAccountType, AccountingInvoiceStatus, AccountingJournalStatus, AccountingLiquidityType } from "@prisma/client";
+import type { AccountingAccountType, AccountingInvoiceStatus, AccountingJournalStatus, AccountingLiquidityType, AccountingRecurringFrequency } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { formatMoney } from "@/lib/currency";
 import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@/lib/trend-buckets";
@@ -2184,6 +2184,172 @@ export async function loadGhanaSmeChartOfAccounts(organizationId: string) {
     await db.accountingAccount.createMany({ data: missing.map((account) => ({ organizationId, ...account, isSystem: false })), skipDuplicates: true });
   }
   return { addedCount: missing.length };
+}
+
+// --- Recurring transactions ---
+
+export class RecurringTemplateError extends Error {}
+
+interface RecurringJournalPayload {
+  description: string;
+  reference?: string | null;
+  lines: { accountId: string; debit?: string; credit?: string }[];
+}
+
+interface RecurringInvoicePayload {
+  contactId?: string | null;
+  customerName: string;
+  customerEmail?: string | null;
+  description?: string | null;
+  lines: LineItemInput[];
+  taxCodeId?: string | null;
+  dueInDays: number;
+}
+
+interface RecurringBillPayload {
+  contactId?: string | null;
+  supplierName: string;
+  supplierEmail?: string | null;
+  description?: string | null;
+  expenseAccountId: string;
+  lines: LineItemInput[];
+  taxCodeId?: string | null;
+  branchId?: string | null;
+  dueInDays: number;
+}
+
+export type RecurringTemplatePayload =
+  | ({ type: "JOURNAL_ENTRY" } & RecurringJournalPayload)
+  | ({ type: "INVOICE" } & RecurringInvoicePayload)
+  | ({ type: "BILL" } & RecurringBillPayload);
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function advanceByFrequency(date: Date, frequency: AccountingRecurringFrequency): Date {
+  const next = new Date(date);
+  switch (frequency) {
+    case "WEEKLY": next.setUTCDate(next.getUTCDate() + 7); break;
+    case "MONTHLY": next.setUTCMonth(next.getUTCMonth() + 1); break;
+    case "QUARTERLY": next.setUTCMonth(next.getUTCMonth() + 3); break;
+    case "YEARLY": next.setUTCFullYear(next.getUTCFullYear() + 1); break;
+  }
+  return next;
+}
+
+type RecurringTemplateRecord = Awaited<ReturnType<typeof db.accountingRecurringTemplate.findFirstOrThrow>>;
+
+/**
+ * The single generation path both the cron sweep and the manual "run now" action
+ * call, so the two are guaranteed to produce the same result. entryDate/issueDate/
+ * billDate always comes from the template's own nextRunDate, never "today" - a
+ * catch-up run for a template that fell behind still books on the date it was due,
+ * not the date someone happened to click the button.
+ */
+async function generateFromTemplate(template: RecurringTemplateRecord) {
+  const payload = template.payload as unknown as RecurringTemplatePayload;
+  if (payload.type !== template.type) throw new RecurringTemplateError("Recurring template payload does not match its declared type.");
+  switch (payload.type) {
+    case "JOURNAL_ENTRY":
+      return createManualJournalEntry(template.organizationId, {
+        entryDate: template.nextRunDate,
+        description: payload.description,
+        reference: payload.reference,
+        createdById: template.createdById,
+        lines: payload.lines,
+      });
+    case "INVOICE":
+      return createInvoice(template.organizationId, {
+        contactId: payload.contactId,
+        customerName: payload.customerName,
+        customerEmail: payload.customerEmail,
+        description: payload.description,
+        lines: payload.lines,
+        issueDate: template.nextRunDate,
+        dueDate: addDays(template.nextRunDate, payload.dueInDays),
+        taxCodeId: payload.taxCodeId,
+      }, template.createdById);
+    case "BILL":
+      return createBill(template.organizationId, {
+        contactId: payload.contactId,
+        supplierName: payload.supplierName,
+        supplierEmail: payload.supplierEmail,
+        description: payload.description,
+        expenseAccountId: payload.expenseAccountId,
+        lines: payload.lines,
+        billDate: template.nextRunDate,
+        dueDate: addDays(template.nextRunDate, payload.dueInDays),
+        taxCodeId: payload.taxCodeId,
+        branchId: payload.branchId,
+      }, template.createdById);
+  }
+}
+
+export function listRecurringTemplates(organizationId: string) {
+  return db.accountingRecurringTemplate.findMany({ where: { organizationId }, orderBy: { nextRunDate: "asc" } });
+}
+
+export function createRecurringTemplate(
+  organizationId: string,
+  data: { name: string; frequency: AccountingRecurringFrequency; nextRunDate: Date; payload: RecurringTemplatePayload; createdById?: string | null },
+) {
+  return db.accountingRecurringTemplate.create({
+    data: {
+      organizationId,
+      type: data.payload.type,
+      name: data.name,
+      frequency: data.frequency,
+      nextRunDate: data.nextRunDate,
+      payload: data.payload as unknown as Prisma.InputJsonValue,
+      createdById: data.createdById,
+    },
+  });
+}
+
+export async function setRecurringTemplateActive(organizationId: string, templateId: string, active: boolean) {
+  const result = await db.accountingRecurringTemplate.updateMany({ where: { id: templateId, organizationId }, data: { active } });
+  if (result.count === 0) throw new NotFoundError("Recurring template not found.");
+}
+
+/**
+ * Finds every active template due on or before `now`, generates its document, and
+ * advances nextRunDate by its frequency - in that order, so a failed generation
+ * never silently advances the schedule and skips a period. Runs across every
+ * organization: this is the cron sweep's entry point.
+ */
+export async function generateDueRecurringTransactions(now: Date = new Date()) {
+  const due = await db.accountingRecurringTemplate.findMany({ where: { active: true, nextRunDate: { lte: now } } });
+  let generated = 0;
+  const failures: { templateId: string; name: string; error: string }[] = [];
+  for (const template of due) {
+    try {
+      await generateFromTemplate(template);
+      await db.accountingRecurringTemplate.update({
+        where: { id: template.id },
+        data: { nextRunDate: advanceByFrequency(template.nextRunDate, template.frequency), lastGeneratedAt: now },
+      });
+      generated++;
+    } catch (error) {
+      failures.push({ templateId: template.id, name: template.name, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return { candidates: due.length, generated, failures };
+}
+
+/** Manual catch-up/testing path: generates one template immediately regardless of
+ * whether it is yet due, through the exact same generateFromTemplate() +
+ * advanceByFrequency() the cron sweep uses. */
+export async function runRecurringTemplateNow(organizationId: string, templateId: string) {
+  const template = await db.accountingRecurringTemplate.findFirst({ where: { id: templateId, organizationId, active: true } });
+  if (!template) throw new NotFoundError("Recurring template not found or inactive.");
+  await generateFromTemplate(template);
+  return db.accountingRecurringTemplate.update({
+    where: { id: templateId },
+    data: { nextRunDate: advanceByFrequency(template.nextRunDate, template.frequency), lastGeneratedAt: new Date() },
+  });
 }
 
 export type { AccountingInvoiceStatus };
