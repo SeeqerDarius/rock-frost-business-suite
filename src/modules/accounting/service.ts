@@ -52,6 +52,7 @@ const DEFAULT_ACCOUNTS: { code: string; name: string; type: AccountingAccountTyp
   { code: "2100", name: "VAT Payable", type: "LIABILITY" },
   { code: "2110", name: "NHIL Payable", type: "LIABILITY" },
   { code: "2120", name: "GETFund Levy Payable", type: "LIABILITY" },
+  { code: "2130", name: "Withholding Tax Payable", type: "LIABILITY" },
   { code: "4000", name: "Revenue", type: "REVENUE" },
   { code: "5000", name: "General Expenses", type: "EXPENSE" },
 ];
@@ -744,6 +745,16 @@ export async function listInvoices(organizationId: string) {
   return db.accountingInvoice.findMany({ where: { organizationId }, include: { taxCode: true, lines: { orderBy: { sortOrder: "asc" } }, payments: { include: { account: true, createdBy: true }, orderBy: [{ paymentDate: "desc" }, { createdAt: "desc" }] } }, orderBy: { createdAt: "desc" } });
 }
 
+/** Everything a printable invoice/bill needs in one call: the document's own
+ * lines and tax code, plus its contact's TIN when one is linked. */
+export function getInvoiceForPrint(organizationId: string, id: string) {
+  return db.accountingInvoice.findFirst({ where: { id, organizationId }, include: { lines: { orderBy: { sortOrder: "asc" } }, taxCode: true, contact: true } });
+}
+
+export function getBillForPrint(organizationId: string, id: string) {
+  return db.accountingBill.findFirst({ where: { id, organizationId }, include: { lines: { orderBy: { sortOrder: "asc" } }, taxCode: true, contact: true } });
+}
+
 export async function getReceivablesSummary(organizationId: string) {
   await sweepOverdueInvoices(organizationId);
   const invoices = await db.accountingInvoice.findMany({ where: { organizationId, status: { in: ["SENT", "OVERDUE", "PAID"] } }, include: { payments: { include: { account: true }, orderBy: { paymentDate: "asc" } } }, orderBy: [{ customerName: "asc" }, { issueDate: "asc" }] });
@@ -1186,10 +1197,16 @@ export async function recordBillPayment(organizationId: string, id: string, inpu
     throw new InvalidPaymentError("Payment amount must be a positive number.");
   }
 
-  const bill = await db.accountingBill.findFirst({ where: { id, organizationId } });
+  const bill = await db.accountingBill.findFirst({ where: { id, organizationId }, include: { taxCode: true } });
   if (!bill) throw new NotFoundError("Bill not found.");
   if (paymentAmount.greaterThan(new Prisma.Decimal(bill.amount).minus(bill.amountPaid))) throw new InvalidPaymentError("Payment exceeds the current outstanding balance.");
   const payable = await getDefaultAccount(organizationId, "2000");
+  // Withholding tax is deducted from the cash paid to the supplier and
+  // credited to a liability instead - zero for every bill whose tax code has
+  // no configured withholdingRate, which is every bill that existed before
+  // this feature, so their payments post exactly as they always have.
+  const withholdingRate = bill.taxCode ? new Prisma.Decimal(bill.taxCode.withholdingRate) : new Prisma.Decimal(0);
+  const withholdingTaxPayable = withholdingRate.greaterThan(0) ? await getDefaultAccount(organizationId, "2130") : null;
 
   return db.$transaction(async (tx) => {
     const [locked] = await tx.$queryRaw<LockedBillRow[]>`
@@ -1212,7 +1229,10 @@ export async function recordBillPayment(organizationId: string, id: string, inpu
     if (!payingAccount) throw new InvalidPaymentError("Select an active cash, bank, or mobile-money account owned by this organization.");
     if (!input.paymentMethod.trim()) throw new InvalidPaymentError("Payment method is required.");
 
-    const payment = await tx.accountingPayablePayment.create({ data: { organizationId, billId: bill.id, accountId: payingAccount.id, paymentMethod: input.paymentMethod.trim(), amount: paymentAmount, paymentDate: input.paymentDate, reference: input.reference?.trim() || null, notes: input.notes?.trim() || null, createdById: input.createdById } });
+    const withheld = withholdingRate.greaterThan(0) ? paymentAmount.mul(withholdingRate).div(100).toDecimalPlaces(2) : new Prisma.Decimal(0);
+    const cashPortion = paymentAmount.minus(withheld);
+
+    const payment = await tx.accountingPayablePayment.create({ data: { organizationId, billId: bill.id, accountId: payingAccount.id, paymentMethod: input.paymentMethod.trim(), amount: paymentAmount, withholdingTaxAmount: withheld, paymentDate: input.paymentDate, reference: input.reference?.trim() || null, notes: input.notes?.trim() || null, createdById: input.createdById } });
 
     await postJournalEntry(tx, organizationId, {
       entryDate: input.paymentDate,
@@ -1223,10 +1243,16 @@ export async function recordBillPayment(organizationId: string, id: string, inpu
       postingPurpose: "PAID",
       branchId: bill.branchId,
       createdById: input.createdById,
-      lines: [
-        { accountId: payable.id, debit: input.amount },
-        { accountId: payingAccount.id, credit: input.amount },
-      ],
+      lines: withheld.greaterThan(0)
+        ? [
+            { accountId: payable.id, debit: input.amount },
+            { accountId: payingAccount.id, credit: cashPortion.toFixed(2) },
+            { accountId: withholdingTaxPayable!.id, credit: withheld.toFixed(2) },
+          ]
+        : [
+            { accountId: payable.id, debit: input.amount },
+            { accountId: payingAccount.id, credit: input.amount },
+          ],
     });
 
     const updated = await tx.accountingBill.update({ where: { id }, data: { amountPaid: { increment: paymentAmount } } });
@@ -2139,12 +2165,17 @@ export async function getCashFlowStatement(organizationId: string, from: Date, t
 }
 
 /**
- * Additional Ghana SME chart-of-accounts entries beyond the 12 system
+ * Additional Ghana SME chart-of-accounts entries beyond the 13 system
  * accounts ensureDefaultAccounts() already creates for every organization -
  * deliberately non-overlapping with those codes, since the system accounts
- * already cover Cash/AR/AP/tax-payable/Revenue with the exact names this
- * app's own posting logic depends on. Not `isSystem` - these are ordinary,
- * editable/deletable accounts, just a convenient starting point.
+ * already cover Cash/AR/AP/tax-payable/Withholding-Tax-Payable/Revenue with
+ * the exact names this app's own posting logic depends on (Withholding Tax
+ * Payable moved here from this template to a guaranteed system account when
+ * withholding tax became a real, always-available feature rather than an
+ * optional template pick - a previously-loaded template's own row is
+ * untouched, this only changes what a future load creates). Not `isSystem` -
+ * these are ordinary, editable/deletable accounts, just a convenient
+ * starting point.
  */
 const GHANA_SME_CHART_TEMPLATE: { code: string; name: string; type: AccountingAccountType }[] = [
   { code: "1010", name: "Bank Account - GHS", type: "ASSET" },
@@ -2152,7 +2183,6 @@ const GHANA_SME_CHART_TEMPLATE: { code: string; name: string; type: AccountingAc
   { code: "1400", name: "Prepaid Expenses", type: "ASSET" },
   { code: "1500", name: "Property, Plant and Equipment", type: "ASSET" },
   { code: "1510", name: "Accumulated Depreciation", type: "ASSET" },
-  { code: "2200", name: "Withholding Tax Payable", type: "LIABILITY" },
   { code: "2300", name: "Salaries Payable", type: "LIABILITY" },
   { code: "2400", name: "Short-Term Loans", type: "LIABILITY" },
   { code: "3000", name: "Owner's Capital", type: "EQUITY" },

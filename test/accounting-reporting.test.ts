@@ -132,8 +132,12 @@ describe("getCashFlowStatement: reconciles to the actual cash-account balance ch
 });
 
 describe("loadGhanaSmeChartOfAccounts: idempotent", () => {
-  const SYSTEM_CODES = ["1000", "1100", "1200", "1300", "1310", "1320", "2000", "2100", "2110", "2120", "4000", "5000"];
-  const TEMPLATE_CODES = ["1010", "1020", "1400", "1500", "1510", "2200", "2300", "2400", "3000", "3100", "3200", "4900", "5100", "5200", "5300", "5400", "5500", "5600", "5700", "5800", "5900"];
+  // 2130 (Withholding Tax Payable) joined SYSTEM_CODES, up from 12 to 13 codes,
+  // when withholding tax became a real, always-available feature rather than an
+  // optional template pick - the template's own former 2200 entry was removed
+  // accordingly, so TEMPLATE_CODES drops from 21 to 20 entries.
+  const SYSTEM_CODES = ["1000", "1100", "1200", "1300", "1310", "1320", "2000", "2100", "2110", "2120", "2130", "4000", "5000"];
+  const TEMPLATE_CODES = ["1010", "1020", "1400", "1500", "1510", "2300", "2400", "3000", "3100", "3200", "4900", "5100", "5200", "5300", "5400", "5500", "5600", "5700", "5800", "5900"];
 
   it("creates nothing on a second run once every template code already exists", async () => {
     const allCodes = [...SYSTEM_CODES, ...TEMPLATE_CODES].map((code) => ({ code }));
@@ -157,7 +161,7 @@ describe("loadGhanaSmeChartOfAccounts: idempotent", () => {
 
     const result = await accounting.loadGhanaSmeChartOfAccounts(ORG);
 
-    expect(result.addedCount).toBe(21);
+    expect(result.addedCount).toBe(20);
     expect(mockDb.accountingAccount.createMany).toHaveBeenCalledWith(expect.objectContaining({ skipDuplicates: true }));
     const created = mockDb.accountingAccount.createMany.mock.calls[0][0].data as { code: string }[];
     expect(created.some((account) => account.code === "1010")).toBe(true);

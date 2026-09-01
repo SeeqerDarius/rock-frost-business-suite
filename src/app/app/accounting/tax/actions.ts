@@ -12,7 +12,7 @@ import { createTaxCode, createTaxPeriod, updateTaxPeriodStatus } from "@/modules
 
 function value(formData: FormData, key: string) { return String(formData.get(key) ?? "").trim(); }
 
-const taxCodeSchema = z.object({ code: shortText, name: shortText, jurisdiction: shortText, treatment: z.enum(["STANDARD", "ZERO_RATED", "EXEMPT", "RELIEVED", "OUT_OF_SCOPE"]), vatRate: moneyAmount, nhilRate: moneyAmount, getfundRate: moneyAmount, effectiveFrom: dateInput, effectiveTo: dateInput.nullable().optional() });
+const taxCodeSchema = z.object({ code: shortText, name: shortText, jurisdiction: shortText, treatment: z.enum(["STANDARD", "ZERO_RATED", "EXEMPT", "RELIEVED", "OUT_OF_SCOPE"]), vatRate: moneyAmount, nhilRate: moneyAmount, getfundRate: moneyAmount, withholdingRate: moneyAmount, withholdingCategory: z.enum(["GOODS", "SERVICES", "RENT"]).nullable().optional(), effectiveFrom: dateInput, effectiveTo: dateInput.nullable().optional() });
 const periodSchema = z.object({ name: shortText, jurisdiction: shortText, startDate: dateInput, endDate: dateInput, filingDueDate: dateInput });
 const stateSchema = z.object({ id: cuid, action: z.enum(["LOCK", "REOPEN", "FILE"]), filingReference: shortText.nullable().optional() });
 
@@ -24,7 +24,7 @@ async function context(permission: string) {
 
 export async function createTaxCodeAction(formData: FormData): Promise<void> {
   const { tenant, session } = await context(PERMISSIONS.ACCOUNTING_SETTINGS_MANAGE);
-  const parsed = parseWithSchema(taxCodeSchema, { code: value(formData, "code"), name: value(formData, "name"), jurisdiction: value(formData, "jurisdiction"), treatment: value(formData, "treatment"), vatRate: value(formData, "vatRate"), nhilRate: value(formData, "nhilRate"), getfundRate: value(formData, "getfundRate"), effectiveFrom: value(formData, "effectiveFrom"), effectiveTo: value(formData, "effectiveTo") || null });
+  const parsed = parseWithSchema(taxCodeSchema, { code: value(formData, "code"), name: value(formData, "name"), jurisdiction: value(formData, "jurisdiction"), treatment: value(formData, "treatment"), vatRate: value(formData, "vatRate"), nhilRate: value(formData, "nhilRate"), getfundRate: value(formData, "getfundRate"), withholdingRate: value(formData, "withholdingRate") || "0", withholdingCategory: value(formData, "withholdingCategory") || null, effectiveFrom: value(formData, "effectiveFrom"), effectiveTo: value(formData, "effectiveTo") || null });
   if (!parsed.success) redirect("/app/accounting/tax?error=invalid");
   try {
     const code = await createTaxCode(tenant.organizationId, parsed.data);

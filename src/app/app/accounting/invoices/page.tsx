@@ -1,9 +1,10 @@
-import { FileText, Plus } from "lucide-react";
+import { FileText, Plus, Printer } from "lucide-react";
 import { Fragment } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -150,6 +151,10 @@ export default async function AccountingInvoicesPage({
                 {canManage || canReceive ? (
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
+                      <a href={`/api/accounting/documents/invoice?id=${invoice.id}`} target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}>
+                        <Printer />
+                        Print
+                      </a>
                       {canManage && invoice.status === "DRAFT" ? (
                         <form action={sendInvoice}>
                           <input type="hidden" name="id" value={invoice.id} />

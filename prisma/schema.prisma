@@ -552,7 +552,7 @@ model Organization {
   email                      String?
   website                    String?
   logoUrl                    String?
-  currency                   String              @default("USD")
+  currency                   String              @default("GHS")
   defaultLanguage            String              @default("en")
   deletionRequestedAt        DateTime?
   deletionScheduledFor       DateTime?
@@ -2594,6 +2594,15 @@ enum AccountingTaxTreatment {
   OUT_OF_SCOPE
 }
 
+/// Ghana withholding-tax categories carry different GRA rates by nature of
+/// supply - editable per tax code, never hardcoded, since rates change and
+/// must be confirmed against current GRA guidance before use.
+enum AccountingWithholdingCategory {
+  GOODS
+  SERVICES
+  RENT
+}
+
 enum AccountingTaxDirection {
   OUTPUT
   INPUT
@@ -2845,6 +2854,12 @@ model AccountingInvoice {
   vatAmount      Decimal                 @default(0) @db.Decimal(12, 2)
   nhilAmount     Decimal                 @default(0) @db.Decimal(12, 2)
   getfundAmount  Decimal                 @default(0) @db.Decimal(12, 2)
+  /// When true, the line total entered is treated as gross (tax already
+  /// included) and taxableAmount is back-calculated from it via
+  /// calculateTaxInclusive() instead of calculateTax() adding tax on top -
+  /// false (the existing, unchanged behavior) for every invoice created
+  /// before this column existed.
+  taxInclusive   Boolean                 @default(false)
   taxCodeId      String?
   amountPaid     Decimal                 @default(0) @db.Decimal(12, 2)
   /// Reduces outstanding balance the same way amountPaid does, but via an
@@ -2949,6 +2964,8 @@ model AccountingBill {
   vatAmount        Decimal              @default(0) @db.Decimal(12, 2)
   nhilAmount       Decimal              @default(0) @db.Decimal(12, 2)
   getfundAmount    Decimal              @default(0) @db.Decimal(12, 2)
+  /// Same meaning as AccountingInvoice.taxInclusive.
+  taxInclusive     Boolean              @default(false)
   taxCodeId        String?
   amountPaid       Decimal              @default(0) @db.Decimal(12, 2)
   billDate         DateTime
@@ -2994,17 +3011,21 @@ model AccountingBillLine {
 /// shape, opposite direction (reduces a Bill's outstanding balance instead
 /// of an Invoice's).
 model AccountingPayablePayment {
-  id             String   @id @default(cuid())
-  organizationId String
-  billId         String
-  accountId      String
-  paymentMethod  String
-  amount         Decimal  @db.Decimal(12, 2)
-  paymentDate    DateTime
-  reference      String?
-  notes          String?  @db.Text
-  createdById    String?
-  createdAt      DateTime @default(now())
+  id                   String   @id @default(cuid())
+  organizationId       String
+  billId               String
+  accountId            String
+  paymentMethod        String
+  amount               Decimal  @db.Decimal(12, 2)
+  /// Portion of `amount` withheld from the supplier and credited to the
+  /// Withholding Tax Payable account instead of paid as cash - zero unless the
+  /// bill's tax code has a configured withholdingRate.
+  withholdingTaxAmount Decimal  @default(0) @db.Decimal(12, 2)
+  paymentDate          DateTime
+  reference            String?
+  notes                String?  @db.Text
+  createdById          String?
+  createdAt            DateTime @default(now())
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   bill         AccountingBill    @relation(fields: [billId], references: [id], onDelete: Cascade)
@@ -3070,21 +3091,28 @@ model AccountingCreditNoteLine {
 }
 
 model AccountingTaxCode {
-  id             String                 @id @default(cuid())
-  organizationId String
-  code           String
-  name           String
-  jurisdiction   String
-  treatment      AccountingTaxTreatment
-  vatRate        Decimal                @default(0) @db.Decimal(7, 4)
-  nhilRate       Decimal                @default(0) @db.Decimal(7, 4)
-  getfundRate    Decimal                @default(0) @db.Decimal(7, 4)
-  effectiveFrom  DateTime
-  effectiveTo    DateTime?
-  active         Boolean                @default(true)
-  isSystem       Boolean                @default(false)
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
+  id                  String                         @id @default(cuid())
+  organizationId      String
+  code                String
+  name                String
+  jurisdiction        String
+  treatment           AccountingTaxTreatment
+  vatRate             Decimal                        @default(0) @db.Decimal(7, 4)
+  nhilRate            Decimal                        @default(0) @db.Decimal(7, 4)
+  getfundRate         Decimal                        @default(0) @db.Decimal(7, 4)
+  /// Withholding tax deducted from a supplier at bill-payment time and remitted to
+  /// GRA on their behalf, credited to the "Withholding Tax Payable" default account
+  /// instead of paid out as cash - zero by default, so every existing tax code and
+  /// every bill payment made against one keeps posting exactly as it did before this
+  /// column existed.
+  withholdingRate     Decimal                        @default(0) @db.Decimal(7, 4)
+  withholdingCategory AccountingWithholdingCategory?
+  effectiveFrom       DateTime
+  effectiveTo         DateTime?
+  active              Boolean                        @default(true)
+  isSystem            Boolean                        @default(false)
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
 
   organization     Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoices         AccountingInvoice[]

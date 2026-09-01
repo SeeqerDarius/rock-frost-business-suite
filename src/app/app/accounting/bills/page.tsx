@@ -1,9 +1,10 @@
-import { FileSpreadsheet, Plus } from "lucide-react";
+import { FileSpreadsheet, Plus, Printer } from "lucide-react";
 import { Fragment } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -172,6 +173,10 @@ export default async function AccountingBillsPage({
                 {canManage || canPay ? (
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
+                      <a href={`/api/accounting/documents/bill?id=${bill.id}`} target="_blank" rel="noreferrer" className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}>
+                        <Printer />
+                        Print
+                      </a>
                       {canManage && bill.status === "DRAFT" ? (
                         <form action={approveExistingBill}>
                           <input type="hidden" name="id" value={bill.id} />
@@ -210,7 +215,7 @@ export default async function AccountingBillsPage({
                   </TableCell>
                 ) : null}
               </TableRow>
-              {bill.payments.length ? <TableRow><TableCell colSpan={7} className="bg-muted/30"><div className="space-y-1 text-xs"><p className="font-medium">Payment history</p>{bill.payments.map((payment) => <p key={payment.id} className="text-muted-foreground">{payment.paymentDate.toLocaleDateString()}: {money(payment.amount)} via {payment.paymentMethod.replaceAll("_", " ")} from {payment.account.name}{payment.reference ? `, reference ${payment.reference}` : ""}</p>)}</div></TableCell></TableRow> : null}
+              {bill.payments.length ? <TableRow><TableCell colSpan={7} className="bg-muted/30"><div className="space-y-1 text-xs"><p className="font-medium">Payment history</p>{bill.payments.map((payment) => <p key={payment.id} className="text-muted-foreground">{payment.paymentDate.toLocaleDateString()}: {money(payment.amount)} via {payment.paymentMethod.replaceAll("_", " ")} from {payment.account.name}{payment.reference ? `, reference ${payment.reference}` : ""}{Number(payment.withholdingTaxAmount) > 0 ? ` (includes ${money(payment.withholdingTaxAmount)} withheld)` : ""}</p>)}</div></TableCell></TableRow> : null}
               <TableRow><TableCell colSpan={7} className="bg-muted/30">
                 <div className="space-y-1 text-xs">
                   <p className="font-medium">Attachments</p>

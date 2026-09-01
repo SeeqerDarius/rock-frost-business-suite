@@ -28,11 +28,11 @@ export async function listTaxCodes(organizationId: string) {
   return db.accountingTaxCode.findMany({ where: { organizationId }, orderBy: [{ active: "desc" }, { effectiveFrom: "desc" }, { code: "asc" }] });
 }
 
-export async function createTaxCode(organizationId: string, data: { code: string; name: string; jurisdiction: string; treatment: AccountingTaxTreatment; vatRate: string; nhilRate: string; getfundRate: string; effectiveFrom: Date; effectiveTo?: Date | null }) {
-  const rates = [data.vatRate, data.nhilRate, data.getfundRate].map((rate) => new Prisma.Decimal(rate));
+export async function createTaxCode(organizationId: string, data: { code: string; name: string; jurisdiction: string; treatment: AccountingTaxTreatment; vatRate: string; nhilRate: string; getfundRate: string; withholdingRate?: string; withholdingCategory?: "GOODS" | "SERVICES" | "RENT" | null; effectiveFrom: Date; effectiveTo?: Date | null }) {
+  const rates = [data.vatRate, data.nhilRate, data.getfundRate, data.withholdingRate ?? "0"].map((rate) => new Prisma.Decimal(rate));
   if (rates.some((rate) => !rate.isFinite() || rate.isNegative() || rate.greaterThan(100))) throw new TaxConfigurationError("Tax rates must be between 0 and 100 percent.");
   if (data.effectiveTo && data.effectiveTo < data.effectiveFrom) throw new TaxConfigurationError("The effective end date cannot precede the start date.");
-  return db.accountingTaxCode.create({ data: { organizationId, ...data, code: data.code.trim().toUpperCase(), jurisdiction: data.jurisdiction.trim().toUpperCase(), name: data.name.trim() } });
+  return db.accountingTaxCode.create({ data: { organizationId, ...data, withholdingRate: data.withholdingRate ?? "0", code: data.code.trim().toUpperCase(), jurisdiction: data.jurisdiction.trim().toUpperCase(), name: data.name.trim() } });
 }
 
 export async function calculateTax(organizationId: string, taxableAmountInput: Prisma.Decimal.Value, taxCodeId?: string | null, transactionDate = new Date()) {
@@ -46,6 +46,43 @@ export async function calculateTax(organizationId: string, taxableAmountInput: P
   const getfundAmount = taxableAmount.mul(taxCode.getfundRate).div(100).toDecimalPlaces(2);
   const totalTax = vatAmount.plus(nhilAmount).plus(getfundAmount);
   return { taxCode, taxableAmount, vatAmount, nhilAmount, getfundAmount, totalTax, grossAmount: taxableAmount.plus(totalTax) };
+}
+
+/**
+ * The inclusive-mode counterpart to calculateTax(): back-calculates the tax
+ * component from a gross amount that already includes VAT/NHIL/GETFund,
+ * instead of adding tax on top of a taxable amount. getfundAmount absorbs
+ * whatever cent of rounding remains after taxableAmount is rounded, so
+ * taxableAmount + vatAmount + nhilAmount + getfundAmount always reconciles
+ * exactly to grossAmount - the invariant a balanced journal posting depends
+ * on. For the same underlying taxable amount, calculateTax()'s forward
+ * calculation and this function's inverse calculation on its resulting
+ * grossAmount agree exactly whenever the taxable amount was already rounded
+ * to the cent (the case for every real line total).
+ */
+export async function calculateTaxInclusive(organizationId: string, grossAmountInput: Prisma.Decimal.Value, taxCodeId?: string | null, transactionDate = new Date()) {
+  const grossAmount = new Prisma.Decimal(grossAmountInput);
+  if (!grossAmount.isFinite() || grossAmount.isNegative()) throw new TaxConfigurationError("Amount must be zero or greater.");
+  if (!taxCodeId) return { taxCode: null, taxableAmount: grossAmount, vatAmount: new Prisma.Decimal(0), nhilAmount: new Prisma.Decimal(0), getfundAmount: new Prisma.Decimal(0), totalTax: new Prisma.Decimal(0), grossAmount };
+  const taxCode = await db.accountingTaxCode.findFirst({ where: { id: taxCodeId, organizationId, active: true, effectiveFrom: { lte: transactionDate }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: transactionDate } }] } });
+  if (!taxCode) throw new TaxConfigurationError("The selected tax code is not active for the transaction date.");
+  const totalRate = new Prisma.Decimal(taxCode.vatRate).plus(taxCode.nhilRate).plus(taxCode.getfundRate);
+  const taxableAmount = grossAmount.div(totalRate.div(100).plus(1)).toDecimalPlaces(2);
+  const totalTax = grossAmount.minus(taxableAmount);
+  const vatAmount = taxableAmount.mul(taxCode.vatRate).div(100).toDecimalPlaces(2);
+  const nhilAmount = taxableAmount.mul(taxCode.nhilRate).div(100).toDecimalPlaces(2);
+  const getfundAmount = totalTax.minus(vatAmount).minus(nhilAmount);
+  return { taxCode, taxableAmount, vatAmount, nhilAmount, getfundAmount, totalTax, grossAmount };
+}
+
+/** A worked example (GHS 500 at Ghana's standard 15/2.5/2.5 rates) for callers
+ * that need to show a manager what withholding tax will deduct from a bill
+ * payment before they confirm it - not itself a posting function. */
+export function calculateWithholdingTax(baseAmountInput: Prisma.Decimal.Value, withholdingRate: Prisma.Decimal.Value) {
+  const baseAmount = new Prisma.Decimal(baseAmountInput);
+  const rate = new Prisma.Decimal(withholdingRate);
+  const withheld = rate.greaterThan(0) ? baseAmount.mul(rate).div(100).toDecimalPlaces(2) : new Prisma.Decimal(0);
+  return { withheld, netPayable: baseAmount.minus(withheld) };
 }
 
 export function listTaxPeriods(organizationId: string) {
