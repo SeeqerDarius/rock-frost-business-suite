@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { getCurrentTenant } from "@/lib/tenant";
 import { resolveOfflinePolicy } from "@/lib/pwa/policy";
 
 const registrationSchema = z.object({
@@ -16,7 +16,8 @@ const registrationSchema = z.object({
 function tokenHash() { return createHash("sha256").update(randomUUID()).digest("hex"); }
 
 export async function POST(request: Request) {
-  const tenant = await requireCurrentTenant();
+  const tenant = await getCurrentTenant();
+  if (!tenant) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const parsed = registrationSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "invalid-request" }, { status: 400 });
   const organization = await db.organization.findUnique({ where: { id: tenant.organizationId }, select: { metadata: true } });
@@ -52,7 +53,8 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const tenant = await requireCurrentTenant();
+  const tenant = await getCurrentTenant();
+  if (!tenant) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const installationId = new URL(request.url).searchParams.get("installationId");
   if (!installationId) return NextResponse.json({ error: "installation-required" }, { status: 400 });
   const result = await db.offlineDevice.updateMany({

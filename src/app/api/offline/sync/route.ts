@@ -4,7 +4,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { requireCurrentTenant } from "@/lib/tenant";
+import { getCurrentTenant, type TenantContext } from "@/lib/tenant";
 import { postModuleRevenue } from "@/lib/accounting-integration";
 import { createSale, InsufficientStockError, InvalidSaleInputError, NotFoundError, SaleStateError } from "@/modules/pos/service";
 
@@ -97,7 +97,7 @@ async function conflictMutation(ledgerId: string, operation: Operation, membersh
   return storedResult(record);
 }
 
-async function processOperation(operation: Operation, tenant: Awaited<ReturnType<typeof requireCurrentTenant>>, membershipId: string): Promise<SyncResult> {
+async function processOperation(operation: Operation, tenant: TenantContext, membershipId: string): Promise<SyncResult> {
   const existing = await db.offlineMutation.findFirst({ where: { organizationId: tenant.organizationId, OR: [{ mutationId: operation.operationId }, { idempotencyKey: operation.idempotencyKey }] } });
   if (existing) {
     if (existing.deviceId !== operation.deviceId || existing.userId !== tenant.userId || existing.mutationId !== operation.operationId || existing.idempotencyKey !== operation.idempotencyKey) throw new PermanentSyncError("idempotency-key-owned");
@@ -133,7 +133,8 @@ async function processOperation(operation: Operation, tenant: Awaited<ReturnType
 
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return NextResponse.json({ error: "cross-origin-request" }, { status: 403 });
-  const tenant = await requireCurrentTenant();
+  const tenant = await getCurrentTenant();
+  if (!tenant) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const parsed = requestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success || Buffer.byteLength(JSON.stringify(parsed.data), "utf8") > 1_000_000) return NextResponse.json({ error: "invalid-request" }, { status: 400 });
   const membership = await db.organizationMember.findUnique({ where: { organizationId_userId: { organizationId: tenant.organizationId, userId: tenant.userId } }, select: { id: true, status: true } });

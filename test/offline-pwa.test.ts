@@ -46,5 +46,7 @@ describe("PWA shell and security contract", () => {
     expect(route).toContain('status: "ACTIVE", platform: { startsWith: "browser:" }');
     expect(route).toContain("tenant.accessibleModuleKeys.includes(operation.module)");
     expect(route).toContain("PERMISSIONS.POS_SALES_MANAGE");
+    expect(route).toContain('error: "unauthorized" }, { status: 401');
+    expect(read("src/app/api/offline/devices/route.ts")).toContain('error: "unauthorized" }, { status: 401');
   });
 });
