@@ -89,3 +89,62 @@ export async function toggleOrganizationModule(formData: FormData): Promise<{ ok
   revalidatePath("/app/dashboard");
   return { ok: true };
 }
+
+const offlineAccessSchema = z.object({ organizationId: cuid });
+
+/**
+ * The platform-level gate for offline access: `/api/offline/devices` refuses
+ * to register a device at all unless `offlineAccessGranted` is true here,
+ * regardless of what the organization's own Owner has configured in their
+ * self-service offline settings (src/app/app/(overview)/organization/settings/actions.ts).
+ * Every organization defaults ungranted - this closes the gap between this
+ * feature's documented "closed by default, until an operator deliberately
+ * enables a tenant" release boundary and the tenant-only toggle that
+ * previously existed with no platform-owner visibility at all.
+ */
+export async function toggleOrganizationOfflineAccess(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const tenant = await requireCurrentTenant();
+  if (!isPlatformOperator(tenant)) {
+    return { ok: false, error: "You do not have permission to change offline access." };
+  }
+
+  const parsed = parseWithSchema(offlineAccessSchema, {
+    organizationId: String(formData.get("organizationId") ?? "").trim(),
+  });
+  if (!parsed.success) {
+    return { ok: false, error: "The organization selection is invalid." };
+  }
+  const { organizationId } = parsed.data;
+  const granted = formData.get("granted") === "true";
+
+  const [organization, session] = await Promise.all([
+    db.organization.findUnique({ where: { id: organizationId } }),
+    getServerAuthSession(),
+  ]);
+  if (!organization) {
+    return { ok: false, error: "The organization was not found." };
+  }
+
+  await db.organization.update({
+    where: { id: organizationId },
+    data: {
+      offlineAccessGranted: granted,
+      offlineAccessGrantedAt: granted ? new Date() : null,
+      offlineAccessGrantedById: granted ? session?.user?.id : null,
+    },
+  });
+
+  await logAuditEvent({
+    organizationId,
+    userId: session?.user?.id,
+    module: "platform",
+    action: granted ? "offline_access.platform_granted" : "offline_access.platform_revoked",
+    entityName: "Organization",
+    entityId: organizationId,
+    metadata: { organization: organization.name },
+  });
+
+  revalidatePath(`/app/platform/organizations/${organizationId}`);
+  revalidatePath("/app/platform/organizations");
+  return { ok: true };
+}

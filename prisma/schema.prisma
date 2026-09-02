@@ -560,6 +560,9 @@ model Organization {
   deletionScheduledFor       DateTime?
   deletionRequestedById      String?
   deletionPreviousStatus     OrganizationStatus?
+  offlineAccessGranted       Boolean             @default(false)
+  offlineAccessGrantedAt     DateTime?
+  offlineAccessGrantedById   String?
 
   members                         OrganizationMember[]
   invitations                     Invitation[]

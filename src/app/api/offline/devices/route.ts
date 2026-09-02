@@ -30,9 +30,14 @@ export async function POST(request: Request) {
   if (!tenant) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const parsed = registrationSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "invalid-request" }, { status: 400 });
-  const organization = await db.organization.findUnique({ where: { id: tenant.organizationId }, select: { metadata: true } });
+  const organization = await db.organization.findUnique({ where: { id: tenant.organizationId }, select: { metadata: true, offlineAccessGranted: true } });
   const policy = resolveOfflinePolicy(organization?.metadata);
-  if (!policy.enabled) return NextResponse.json({ error: "offline-disabled" }, { status: 403 });
+  // Platform-gated: a platform operator must grant this organization offline
+  // access before its own self-service policy can take effect at all - see
+  // toggleOrganizationOfflineAccess (src/app/app/platform/actions.ts). Every
+  // organization defaults to ungranted, matching this feature's own
+  // documented "closed by default" release boundary.
+  if (!organization?.offlineAccessGranted || !policy.enabled) return NextResponse.json({ error: "offline-disabled" }, { status: 403 });
   const moduleKeys = [...new Set(parsed.data.moduleKeys)].filter((key) => policy.moduleKeys.includes(key) && tenant.accessibleModuleKeys.includes(key));
   if (!moduleKeys.length) return NextResponse.json({ error: "module-unavailable" }, { status: 403 });
   const membership = await db.organizationMember.findUnique({

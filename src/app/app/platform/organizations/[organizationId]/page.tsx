@@ -16,7 +16,9 @@ import { readPublicShowcase } from "@/lib/public-showcase";
 import { MODULE_REQUEST_STATUS_LABELS, MODULE_REQUEST_TYPE_LABELS } from "@/platform/module-requests/constants";
 import { catalogueModuleKeys } from "@/platform/modules/registry";
 import { productGroupKeys } from "@/platform/modules/product-groups";
+import { resolveOfflinePolicy, OFFLINE_SUPPORTED_MODULES } from "@/lib/pwa/policy";
 import { ModuleToggle } from "../module-toggle";
+import { OfflineAccessToggle } from "../offline-access-toggle";
 import {
   permanentlyDeleteOrganization,
   resendOrganizationInvitation,
@@ -93,6 +95,7 @@ export default async function OrganizationDetailPage({
     organization.deletionScheduledFor && organization.deletionScheduledFor <= new Date(),
   );
   const publicShowcase = readPublicShowcase(organization.metadata);
+  const offlinePolicy = resolveOfflinePolicy(organization.metadata);
 
   return (
     <div className="space-y-6">
@@ -256,6 +259,37 @@ export default async function OrganizationDetailPage({
               </div>
             </div>
           ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Offline access</CardTitle>
+          <CardDescription>The master switch for this organization&apos;s browser offline capability. Granting access lets the organization&apos;s own Owner configure which modules, lease length, and mutation kill switch apply within their own settings - it does not turn offline on by itself.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+            <div>
+              <p className="text-sm font-medium">{organization.offlineAccessGranted ? "Granted" : "Not granted"}</p>
+              <p className="text-xs text-muted-foreground">
+                {organization.offlineAccessGranted && organization.offlineAccessGrantedAt
+                  ? `Granted ${organization.offlineAccessGrantedAt.toLocaleString()}`
+                  : "This organization cannot register an offline device until access is granted here."}
+              </p>
+            </div>
+            <OfflineAccessToggle organizationId={organization.id} granted={organization.offlineAccessGranted} />
+          </div>
+          <div className="rounded-md border p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Organization&apos;s own configuration</p>
+            <p className="mt-2 text-sm">
+              {offlinePolicy.enabled ? "Enabled by the organization" : "Not enabled by the organization"} · lease {offlinePolicy.leaseHours}h · mutation kill switch {offlinePolicy.mutationKillSwitch ? "on" : "off"}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {offlinePolicy.moduleKeys.length > 0
+                ? `Modules requested: ${offlinePolicy.moduleKeys.join(", ")}`
+                : `No modules requested yet (supported: ${OFFLINE_SUPPORTED_MODULES.join(", ")})`}
+            </p>
+          </div>
         </CardContent>
       </Card>
 

@@ -53,6 +53,16 @@ describe("PWA shell and security contract", () => {
     expect(read("src/app/api/offline/devices/route.ts")).toContain('error: "unauthorized" }, { status: 401');
   });
 
+  it("device registration refuses to proceed unless a platform operator has granted the organization offline access, independent of the org's own self-service policy", () => {
+    // Organization.offlineAccessGranted (src/app/app/platform/actions.ts's
+    // toggleOrganizationOfflineAccess) is the platform-level gate; the
+    // organization's own metadata.offlineAccess.enabled is a separate,
+    // tenant-configured setting that only takes effect once granted here.
+    const route = read("src/app/api/offline/devices/route.ts");
+    expect(route).toContain("organization?.offlineAccessGranted");
+    expect(route).toContain('error: "offline-disabled" }, { status: 403');
+  });
+
   it("supports protected module adapters without last-write-wins", () => {
     const adapters = read("src/lib/pwa/server-adapters.ts");
     expect(adapters).toContain("assertVersion(operation.baseServerVersion");
