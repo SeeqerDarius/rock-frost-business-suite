@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +17,7 @@ import { MODULE_REQUEST_STATUS_LABELS, MODULE_REQUEST_TYPE_LABELS } from "@/plat
 import { catalogueModuleKeys } from "@/platform/modules/registry";
 import { productGroupKeys } from "@/platform/modules/product-groups";
 import { resolveOfflinePolicy, OFFLINE_SUPPORTED_MODULES } from "@/lib/pwa/policy";
+import { getOrganizationHealthSnapshot } from "@/platform/organizations/health";
 import { ModuleToggle } from "../module-toggle";
 import { OfflineAccessToggle } from "../offline-access-toggle";
 import {
@@ -62,7 +63,7 @@ export default async function OrganizationDetailPage({
   const { organizationId } = await params;
   if (await isPlatformAnchorOrganization(organizationId)) notFound();
   const notices = await searchParams;
-  const [organization, modules] = await Promise.all([
+  const [organization, modules, health] = await Promise.all([
     db.organization.findUnique({
       where: { id: organizationId },
       include: {
@@ -87,6 +88,7 @@ export default async function OrganizationDetailPage({
       },
     }),
     db.module.findMany({ where: { status: "ACTIVE", code: { in: [...catalogueModuleKeys] } }, orderBy: { name: "asc" } }),
+    getOrganizationHealthSnapshot(organizationId),
   ]);
   if (!organization) notFound();
 
@@ -147,6 +149,29 @@ export default async function OrganizationDetailPage({
         <Metric label="Requests" value={organization._count.moduleRequests} />
         <Metric label="Audit events" value={organization._count.auditLogs} />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Usage &amp; health</CardTitle>
+          <CardDescription>Real signals already recorded elsewhere in the app, gathered here for a one-glance operational check.</CardDescription>
+          <CardAction>
+            <Button size="sm" variant="outline" nativeButton={false} render={<Link href={`/app/platform/billing?organizationId=${organization.id}`} />}>Payment history</Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <HealthStat label="Storage used" value={formatBytes(health.storageBytes)} />
+          <HealthStat
+            label="Last activity"
+            value={health.lastActivityAt ? health.lastActivityAt.toLocaleDateString() : "No activity recorded"}
+          />
+          <HealthStat
+            label="Failed Fleet postings"
+            value={String(health.failedFleetPostings)}
+            tone={health.failedFleetPostings > 0 ? "warning" : undefined}
+          />
+          <HealthStat label="Active offline devices" value={String(health.activeOfflineDevices)} />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader><CardTitle>Profile</CardTitle><CardDescription>Tenant identity, contact, location, and localization settings.</CardDescription></CardHeader>
@@ -341,6 +366,23 @@ export default async function OrganizationDetailPage({
 
 function Metric({ label, value }: { label: string; value: number }) {
   return <Card><CardContent className="pt-6 text-center"><p className="text-2xl font-semibold">{value}</p><p className="text-xs text-muted-foreground">{label}</p></CardContent></Card>;
+}
+
+function HealthStat({ label, value, tone }: { label: string; value: string; tone?: "warning" }) {
+  return (
+    <div className="rounded-md border p-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className={tone === "warning" ? "mt-1 text-lg font-semibold text-destructive" : "mt-1 text-lg font-semibold"}>{value}</p>
+    </div>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** exponent;
+  return `${exponent === 0 ? value : value.toFixed(1)} ${units[exponent]}`;
 }
 
 function Field({ label, name, defaultValue, type = "text", required }: { label: string; name: string; defaultValue: string; type?: string; required?: boolean }) {

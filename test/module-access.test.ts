@@ -209,7 +209,7 @@ describe("module authorization source coverage", () => {
       expect(source, widgetPath).toContain(`requireModuleAccess("${moduleKey}")`);
     }
 
-    for (const pageName of ["dashboard", "organizations", "modules", "activity", "subscriptions"]) {
+    for (const pageName of ["dashboard", "organizations", "modules", "activity", "subscriptions", "billing", "trials"]) {
       const pagePath = path.join(process.cwd(), "src", "app", "app", "platform", pageName, "page.tsx");
       expect(readFileSync(pagePath, "utf8"), pagePath).toContain("requirePlatformOperator()");
     }
