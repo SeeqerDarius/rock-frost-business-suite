@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { greetingForHour, hourInTimezone, safeFirstName, shouldShowMotivation, workspaceGreeting, MOTIVATION_INTERVAL_MS } from "@/lib/workspace-moments";
 
@@ -30,5 +31,18 @@ describe("motivation frequency", () => {
     expect(shouldShowMotivation(null, now)).toBe(true);
     expect(shouldShowMotivation(now - MOTIVATION_INTERVAL_MS + 1, now)).toBe(false);
     expect(shouldShowMotivation(now - MOTIVATION_INTERVAL_MS, now)).toBe(true);
+  });
+});
+
+describe("floating feedback button position", () => {
+  it("clears the sidebar's own bottom-left collapse control on desktop, where the sidebar is a persistent column", () => {
+    // Regression guard: a bug report screenshot showed this button sitting
+    // directly on top of AppShell's "Collapse sidebar" button, since both
+    // anchor to the same fixed bottom-left corner. lg:left-72 (18rem) clears
+    // the sidebar's own max width (w-64/16rem) in either its expanded or
+    // collapsed state; below lg the sidebar is a slide-out sheet instead of
+    // a persistent column, so the original left-4 corner is safe there.
+    const component = readFileSync("src/components/feedback/workspace-moments.tsx", "utf8");
+    expect(component).toContain("lg:left-72");
   });
 });

@@ -63,6 +63,26 @@ describe("PWA shell and security contract", () => {
     expect(route).toContain('error: "offline-disabled" }, { status: 403');
   });
 
+  it("never mistakes the expected 'offline-disabled' 403 (every organization not yet granted access, effectively all of them) for a genuine session expiry", () => {
+    // Regression guard for a real production bug: a bug report screenshot
+    // showed a permanent, undismissable "Offline session expired" banner
+    // covering the account menu for every user. The client's device
+    // registration used to treat 401 and 403 identically as session
+    // expiry, but this same endpoint's 403 also covers the completely
+    // ordinary "offline not granted for this org" case (see the guard
+    // above) - only a genuine 401 (no valid session at all) should trip
+    // the session-expired state.
+    const provider = read("src/components/pwa/pwa-provider.tsx");
+    expect(provider).toContain('if (response.status === 401) {');
+    expect(provider).not.toContain('response.status === 401 || response.status === 403');
+  });
+
+  it("stays silent when fully online with nothing to report, instead of permanently occupying the header's own top-right corner", () => {
+    const provider = read("src/components/pwa/pwa-provider.tsx");
+    expect(provider).toContain('const showBadge = state !== "online" || Boolean(installPrompt);');
+    expect(provider).toContain("{showBadge ? (");
+  });
+
   it("supports protected module adapters without last-write-wins", () => {
     const adapters = read("src/lib/pwa/server-adapters.ts");
     expect(adapters).toContain("assertVersion(operation.baseServerVersion");
