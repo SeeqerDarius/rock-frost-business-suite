@@ -6,6 +6,13 @@ import { db } from "@/lib/db";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
 import { catalogueModuleKeys, getModule } from "@/platform/modules/registry";
 import { primaryProductKey } from "@/platform/modules/product-groups";
+import { ModuleAvailabilityToggle } from "./module-availability-toggle";
+
+const STATUS_BADGE = {
+  ACTIVE: { label: "Available", variant: "default" as const },
+  COMING_SOON: { label: "Coming soon", variant: "outline" as const },
+  INACTIVE: { label: "Unavailable", variant: "destructive" as const },
+};
 
 export default async function PlatformModulesPage() {
   await requirePlatformOperator();
@@ -27,23 +34,24 @@ export default async function PlatformModulesPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Products" description="Every customer-facing product registered on the platform and its current build status." />
+      <PageHeader title="Products" description="Every customer-facing product registered on the platform, its current status, and whether it's offered to new customers." />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {modules.map((mod) => (
           <Card key={mod.id}>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <Blocks className="size-5 text-muted-foreground" />
-                <Badge variant={mod.status === "ACTIVE" ? "default" : "outline"}>
-                  {mod.status === "ACTIVE" ? "Available" : "Coming soon"}
-                </Badge>
+                <Badge variant={STATUS_BADGE[mod.status].variant}>{STATUS_BADGE[mod.status].label}</Badge>
               </div>
               <CardTitle className="mt-3">{mod.name}</CardTitle>
               <CardDescription>
                 {mod.organizationCount} organization{mod.organizationCount === 1 ? "" : "s"} enabled
               </CardDescription>
             </CardHeader>
-            <CardContent className="text-xs text-muted-foreground">Product key: {mod.code}</CardContent>
+            <CardContent className="flex items-end justify-between gap-3">
+              <p className="text-xs text-muted-foreground">Product key: {mod.code}</p>
+              <ModuleAvailabilityToggle moduleId={mod.id} available={mod.status === "ACTIVE"} />
+            </CardContent>
           </Card>
         ))}
       </div>
