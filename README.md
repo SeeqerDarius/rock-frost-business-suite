@@ -101,7 +101,7 @@ Accounting Insights includes the branded Rock Frost Business Assistant. Assistan
 
 ## Documentation
 
-- `docs/OFFLINE_PWA.md` - current browser PWA cache, storage, security, lifecycle, and release-acceptance rules. The multi-phase offline rollout is still in progress.
+- `docs/OFFLINE_PWA.md` - browser PWA architecture, signed synchronization, local-data security, work packs, attachment staging, retention, and release-acceptance rules. The expanded multi-module implementation remains feature-flagged until its production acceptance gate passes.
 - `docs/OFFLINE_CAPABILITY_MATRIX.md` - current per-module offline support and protected conflict rules.
 - `docs/OFFLINE_OPERATIONS_RUNBOOK.md` - installation, feature-flag rollout, kill switch, rollback, and disaster recovery.
 

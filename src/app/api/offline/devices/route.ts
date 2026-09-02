@@ -11,11 +11,21 @@ const registrationSchema = z.object({
   name: z.string().trim().min(1).max(100),
   platform: z.string().trim().min(1).max(50),
   moduleKeys: z.array(z.string().trim().min(1).max(50)).max(30),
+  signingPublicKey: z.object({
+    kty: z.literal("EC"),
+    crv: z.literal("P-256"),
+    x: z.string().min(1).max(200),
+    y: z.string().min(1).max(200),
+    ext: z.boolean().optional(),
+    key_ops: z.array(z.string()).optional(),
+  }),
 });
 
 function tokenHash() { return createHash("sha256").update(randomUUID()).digest("hex"); }
+function sameOrigin(request: Request) { const origin = request.headers.get("origin"); return !origin || origin === new URL(request.url).origin; }
 
 export async function POST(request: Request) {
+  if (!sameOrigin(request)) return NextResponse.json({ error: "cross-origin-request" }, { status: 403 });
   const tenant = await getCurrentTenant();
   if (!tenant) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const parsed = registrationSchema.safeParse(await request.json().catch(() => null));
@@ -44,15 +54,16 @@ export async function POST(request: Request) {
   const tokenExpiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
   const device = existing ? await db.offlineDevice.update({
     where: { id: existing.id },
-    data: { name: parsed.data.name, platform: `browser:${parsed.data.platform}`, moduleKeys, membershipId: membership.id, lastSeenAt: now, offlineAccessUntil, tokenExpiresAt },
+    data: { name: parsed.data.name, platform: `browser:${parsed.data.platform}`, moduleKeys, membershipId: membership.id, signingPublicKey: parsed.data.signingPublicKey, lastSeenAt: now, offlineAccessUntil, tokenExpiresAt },
   }) : await db.offlineDevice.create({
-    data: { organizationId: tenant.organizationId, userId: tenant.userId, membershipId: membership.id, installationId: parsed.data.installationId, name: parsed.data.name, platform: `browser:${parsed.data.platform}`, tokenHash: tokenHash(), moduleKeys, lastSeenAt: now, offlineAccessUntil, tokenExpiresAt },
+    data: { organizationId: tenant.organizationId, userId: tenant.userId, membershipId: membership.id, installationId: parsed.data.installationId, name: parsed.data.name, platform: `browser:${parsed.data.platform}`, tokenHash: tokenHash(), signingPublicKey: parsed.data.signingPublicKey, moduleKeys, lastSeenAt: now, offlineAccessUntil, tokenExpiresAt },
   });
   await logAuditEvent({ organizationId: tenant.organizationId, userId: tenant.userId, membershipId: membership.id, module: "administration", action: existing ? "offline_browser_device.refreshed" : "offline_browser_device.registered", entityName: "OfflineDevice", entityId: device.id, metadata: { moduleKeys, platform: parsed.data.platform } });
   return NextResponse.json({ deviceId: device.id, organizationId: device.organizationId, userId: device.userId, moduleKeys: device.moduleKeys, offlineAccessUntil: device.offlineAccessUntil.toISOString(), mutationKillSwitch: policy.mutationKillSwitch });
 }
 
 export async function DELETE(request: Request) {
+  if (!sameOrigin(request)) return NextResponse.json({ error: "cross-origin-request" }, { status: 403 });
   const tenant = await getCurrentTenant();
   if (!tenant) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const installationId = new URL(request.url).searchParams.get("installationId");

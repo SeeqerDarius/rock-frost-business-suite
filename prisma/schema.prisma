@@ -459,6 +459,8 @@ model User {
   offlineDevices                  OfflineDevice[]                  @relation("OfflineDeviceUser")
   offlineDevicesRevoked           OfflineDevice[]                  @relation("OfflineDeviceRevokedBy")
   offlineMutations                OfflineMutation[]
+  offlineAttachmentUploads        OfflineAttachmentUpload[]
+  offlineDrafts                   OfflineDraft[]
   offlineConflictsResolved        OfflineConflict[]
   offlineActivationCodes          OfflineActivationCode[]
   tourProgress                    UserTourProgress[]
@@ -570,6 +572,8 @@ model Organization {
   fileAssets                      FileAsset[]
   offlineDevices                  OfflineDevice[]
   offlineMutations                OfflineMutation[]
+  offlineAttachmentUploads        OfflineAttachmentUpload[]
+  offlineDrafts                   OfflineDraft[]
   offlineConflicts                OfflineConflict[]
   offlineActivationCodes          OfflineActivationCode[]
   fleetOwners                     FleetOwner[]
@@ -1132,6 +1136,7 @@ model OfflineDevice {
   platform           String
   installationId     String
   tokenHash          String              @unique
+  signingPublicKey   Json?
   status             OfflineDeviceStatus @default(ACTIVE)
   moduleKeys         String[]
   tokenExpiresAt     DateTime
@@ -1143,12 +1148,13 @@ model OfflineDevice {
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 
-  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User               @relation("OfflineDeviceUser", fields: [userId], references: [id], onDelete: Cascade)
-  membership   OrganizationMember @relation(fields: [membershipId], references: [id], onDelete: Cascade)
-  revokedBy    User?              @relation("OfflineDeviceRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User                      @relation("OfflineDeviceUser", fields: [userId], references: [id], onDelete: Cascade)
+  membership   OrganizationMember        @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  revokedBy    User?                     @relation("OfflineDeviceRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
   mutations    OfflineMutation[]
   conflicts    OfflineConflict[]
+  attachments  OfflineAttachmentUpload[]
 
   @@unique([organizationId, installationId])
   @@index([organizationId, status])
@@ -1246,6 +1252,66 @@ model OfflineConflict {
 
   @@index([organizationId, status, createdAt])
   @@index([deviceId, status])
+}
+
+enum OfflineAttachmentStatus {
+  STAGED
+  CONSUMED
+  REJECTED
+}
+
+/**
+ * Short-lived attachment staging. Blobs are validated before persistence and
+ * must be consumed by an authorized dependent offline mutation.
+ */
+model OfflineAttachmentUpload {
+  id             String                  @id @default(cuid())
+  organizationId String
+  userId         String
+  deviceId       String
+  clientId       String
+  moduleKey      String
+  fileName       String
+  mimeType       String
+  size           Int
+  sha256         String
+  data           Bytes
+  status         OfflineAttachmentStatus @default(STAGED)
+  consumedAt     DateTime?
+  expiresAt      DateTime
+  createdAt      DateTime                @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device       OfflineDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, clientId])
+  @@index([deviceId, status, expiresAt])
+  @@index([organizationId, moduleKey, createdAt])
+}
+
+/**
+ * Server-side result of a safe offline draft. These records are never posted,
+ * approved, paid, verified, reconciled, dispensed, or clinically finalized.
+ */
+model OfflineDraft {
+  id               String   @id @default(cuid())
+  organizationId   String
+  userId           String
+  moduleKey        String
+  entityType       String
+  entityId         String
+  title            String
+  payload          Json
+  sourceMutationId String   @unique
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, moduleKey, createdAt])
+  @@index([userId, createdAt])
 }
 
 /**
@@ -2500,13 +2566,14 @@ model InventoryCount {
 }
 
 model InventoryCountLine {
-  id               String  @id @default(cuid())
+  id               String   @id @default(cuid())
   countId          String
   itemId           String
   expectedQuantity Int
   countedQuantity  Int?
   variance         Int?
-  notes            String? @db.Text
+  notes            String?  @db.Text
+  updatedAt        DateTime @updatedAt
 
   count InventoryCount @relation(fields: [countId], references: [id], onDelete: Cascade)
   item  InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)

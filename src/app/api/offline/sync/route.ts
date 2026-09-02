@@ -7,6 +7,8 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getCurrentTenant, type TenantContext } from "@/lib/tenant";
 import { postModuleRevenue } from "@/lib/accounting-integration";
 import { createSale, InsufficientStockError, InvalidSaleInputError, NotFoundError, SaleStateError } from "@/modules/pos/service";
+import { verifyOfflineRequestSignature } from "@/lib/pwa/signed-request";
+import { applyOfflineModuleOperation, OfflinePermanentError, OfflineProtectedConflict } from "@/lib/pwa/server-adapters";
 
 const money = z.string().regex(/^\d+(?:\.\d{1,2})?$/);
 const operationSchema = z.object({
@@ -84,12 +86,12 @@ async function rejectMutation(ledgerId: string, operation: Operation, membership
   return storedResult(record);
 }
 
-async function conflictMutation(ledgerId: string, operation: Operation, membershipId: string, code: string): Promise<SyncResult> {
+async function conflictMutation(ledgerId: string, operation: Operation, membershipId: string, code: string, cloudSnapshot?: unknown, cloudVersion?: number): Promise<SyncResult> {
   const record = await db.$transaction(async (tx) => {
     const conflict = await tx.offlineConflict.upsert({
       where: { mutationId: ledgerId },
       update: {},
-      create: { organizationId: operation.organizationId, deviceId: operation.deviceId, mutationId: ledgerId, conflictType: code, allowedResolutions: ["KEEP_SERVER", "MANAGER_REVIEW"] },
+      create: { organizationId: operation.organizationId, deviceId: operation.deviceId, mutationId: ledgerId, conflictType: code, cloudSnapshot: cloudSnapshot as Prisma.InputJsonValue | undefined, cloudVersion, allowedResolutions: ["KEEP_SERVER", "MANAGER_REVIEW"] },
     });
     return tx.offlineMutation.update({ where: { id: ledgerId }, data: { status: "CONFLICT", errorCode: code, result: { conflictId: conflict.id, message: code, allowedResolutions: conflict.allowedResolutions } } });
   });
@@ -114,19 +116,24 @@ async function processOperation(operation: Operation, tenant: TenantContext, mem
     }
   }
   try {
-    if (operation.module !== "pos") throw new PermanentSyncError("unsupported-module");
-    if (!hasPermission(tenant, PERMISSIONS.POS_SALES_MANAGE)) throw new PermanentSyncError("permission-revoked");
-    const result = await applyPosSale(operation, tenant.userId);
-    const applied = await db.offlineMutation.update({ where: { id: ledger.id }, data: { status: "APPLIED", result, appliedAt: new Date(), errorCode: null } });
-    await logAuditEvent({ organizationId: operation.organizationId, userId: operation.userId, membershipId, module: operation.module, action: "offline_mutation.applied", entityName: operation.entityType, entityId: result.id, correlationId: operation.operationId, metadata: { deviceId: operation.deviceId, saleNumber: result.saleNumber } });
+    let result: Record<string, unknown>;
+    if (operation.module === "pos") {
+      if (!hasPermission(tenant, PERMISSIONS.POS_SALES_MANAGE)) throw new PermanentSyncError("permission-revoked");
+      result = await applyPosSale(operation, tenant.userId);
+    } else result = await applyOfflineModuleOperation(operation, tenant, ledger.id);
+    const applied = await db.offlineMutation.update({ where: { id: ledger.id }, data: { status: "APPLIED", result: result as Prisma.InputJsonValue, appliedAt: new Date(), errorCode: null } });
+    await logAuditEvent({ organizationId: operation.organizationId, userId: operation.userId, membershipId, module: operation.module, action: "offline_mutation.applied", entityName: operation.entityType, entityId: typeof result.id === "string" ? result.id : operation.entityId, correlationId: operation.operationId, metadata: { deviceId: operation.deviceId, resultStatus: typeof result.status === "string" ? result.status : undefined } });
     return storedResult(applied);
   } catch (error) {
     if (error instanceof PermanentSyncError) return rejectMutation(ledger.id, operation, membershipId, error.code);
+    if (error instanceof OfflinePermanentError || error instanceof z.ZodError) return rejectMutation(ledger.id, operation, membershipId, error instanceof OfflinePermanentError ? error.code : "invalid-payload");
+    if (error instanceof OfflineProtectedConflict) return conflictMutation(ledger.id, operation, membershipId, error.code, error.cloudSnapshot, error.cloudVersion);
     if (error instanceof InsufficientStockError) return conflictMutation(ledger.id, operation, membershipId, "stale-stock");
     if (error instanceof SaleStateError) return conflictMutation(ledger.id, operation, membershipId, "stale-register-session");
     if (error instanceof NotFoundError) return conflictMutation(ledger.id, operation, membershipId, "stale-reference");
     if (error instanceof InvalidSaleInputError) return rejectMutation(ledger.id, operation, membershipId, "invalid-payload");
     if (error instanceof ProtectedConflictError) return conflictMutation(ledger.id, operation, membershipId, error.code);
+    if (error instanceof Error && ["FleetDuplicateSubmissionError", "FleetSalesTargetError", "FleetPaymentDateError", "InventoryCountStateError", "SchoolStateError", "SchoolNotFoundError", "HotelStateError", "HotelNotFoundError", "NotFoundError"].includes(error.constructor.name)) return conflictMutation(ledger.id, operation, membershipId, error.constructor.name, { message: error.message });
     throw error;
   }
 }
@@ -135,7 +142,8 @@ export async function POST(request: Request) {
   if (!sameOrigin(request)) return NextResponse.json({ error: "cross-origin-request" }, { status: 403 });
   const tenant = await getCurrentTenant();
   if (!tenant) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const parsed = requestSchema.safeParse(await request.json().catch(() => null));
+  const rawBody = await request.text();
+  const parsed = requestSchema.safeParse((() => { try { return JSON.parse(rawBody); } catch { return null; } })());
   if (!parsed.success || Buffer.byteLength(JSON.stringify(parsed.data), "utf8") > 1_000_000) return NextResponse.json({ error: "invalid-request" }, { status: 400 });
   const membership = await db.organizationMember.findUnique({ where: { organizationId_userId: { organizationId: tenant.organizationId, userId: tenant.userId } }, select: { id: true, status: true } });
   if (!membership || membership.status !== "ACTIVE") return NextResponse.json({ error: "membership-inactive" }, { status: 403 });
@@ -143,6 +151,8 @@ export async function POST(request: Request) {
   if (deviceIds.length !== 1) return NextResponse.json({ error: "single-device-required" }, { status: 400 });
   const device = await db.offlineDevice.findFirst({ where: { id: deviceIds[0], organizationId: tenant.organizationId, userId: tenant.userId, membershipId: membership.id, status: "ACTIVE", platform: { startsWith: "browser:" } } });
   if (!device) return NextResponse.json({ error: "device-revoked" }, { status: 403 });
+  if (!await verifyOfflineRequestSignature(request, rawBody, device.signingPublicKey)) return NextResponse.json({ error: "invalid-device-signature" }, { status: 403 });
+  if (device.tokenExpiresAt <= new Date() || device.offlineAccessUntil <= new Date()) return NextResponse.json({ error: "offline-lease-expired" }, { status: 403 });
   const operationsById = new Map(parsed.data.operations.map((operation) => [operation.operationId, operation]));
   const externalDependencyIds = [...new Set(parsed.data.operations.flatMap((operation) => operation.dependencyIds).filter((dependency) => !operationsById.has(dependency)))];
   const priorDependencies = externalDependencyIds.length ? await db.offlineMutation.findMany({ where: { organizationId: tenant.organizationId, userId: tenant.userId, deviceId: device.id, mutationId: { in: externalDependencyIds }, status: "APPLIED" }, select: { mutationId: true } }) : [];

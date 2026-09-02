@@ -1,44 +1,60 @@
 # Offline Progressive Web App
 
-## Current implementation status
+## Current status
 
-The browser PWA rollout is in progress and is not yet a complete offline product. The current implementation provides an installable manifest, a controlled service-worker lifecycle, a public offline fallback, tenant-and-user-partitioned IndexedDB, registered browser devices, organization feature flags, a Sync Center, and a session-authenticated synchronization API. POS sales are the first connected mutation type. All other mutation types remain unavailable until their module-specific adapters and conflict tests ship.
+The browser offline platform is implemented behind organization and module feature flags. The previously released POS phase remains production-active only where an operator enables it. The expanded multi-module release candidate must pass the disposable-database, browser, build, deployment, and production acceptance gates before it can be called production-complete.
 
-Do not describe an action as posted, paid, verified, approved, reconciled, or otherwise server-confirmed until its synchronization response is authoritative.
+Server confirmation is authoritative. An offline action is never described as posted, paid, verified, approved, reconciled, dispensed, fulfilled, or finalized.
 
-## Cache policy
+## Architecture and cache policy
+
+The public service worker provides a versioned application shell. It never writes authenticated HTML, React Server Component responses, API responses, or tenant data to CacheStorage. Operational data lives in IndexedDB and is partitioned by organization, user, module, and device.
 
 | Resource category | Policy | Reason |
 | --- | --- | --- |
-| Service worker | Network, never HTTP-cached | Updates must be checked on every registration. |
-| Manifest and icons | Cache first in the versioned shell cache | Public, immutable enough for offline installation UI. |
-| Offline fallback | Cache first after installation | Provides a safe restart target without connectivity. |
-| Authenticated HTML and React Server Component responses | Network only | Prevents shared CacheStorage from retaining personalized or cross-tenant content. |
-| API and mutation requests | Network only | Server authorization and authoritative state must remain current. |
-| Workspace identity, permissions, module navigation, and future work packs | IndexedDB, partitioned by organization and user | Keeps operational data out of shared CacheStorage and supports targeted purge. |
+| Service worker | Network, no HTTP storage | Every registration checks for an update. |
+| Manifest, icons, offline fallback | Precached in the versioned shell cache | Public restart shell and installation assets. |
+| Next.js static chunks and fonts | Same-origin cache first after a successful response | Lets the public offline shell start after a browser restart. |
+| Authenticated HTML and RSC responses | Network only | Prevents shared personalized or cross-tenant cache entries. |
+| API and mutation responses | Network only | Current authorization and authoritative data are required. |
+| Workspace snapshots, work packs, references, outbox, attachments, attempts, conflicts, device metadata | IndexedDB | Supports bounded partitioning, expiry, purge, and offline reopening. |
 
-## Service-worker lifecycle and rollback
+A replacement worker precaches its complete shell before installation succeeds. It waits until the user chooses Update, then receives `ACTIVATE_UPDATE`. A failed installation becomes redundant and the previously active worker remains in control. Activation deletes only older `rf-pwa-*` caches.
 
-The worker precaches the public shell during installation. A new worker remains waiting while the existing worker continues controlling the app. The UI exposes an update action which sends `ACTIVATE_UPDATE`; only then does the new worker call `skipWaiting`. Failed or redundant installations are surfaced as an offline-support error. Activation removes older Rock Frost shell-cache versions and claims clients. The service-worker response is served with `no-cache, no-store` and a restricted CSP.
+## Local data and security model
 
-## Local storage boundaries
+IndexedDB version 2 has stores for workspaces, operations, reference records, work packs, attachments, synchronization attempts, conflicts, and metadata. Every operation contains its globally unique ID, organization, user, device, module, entity, action, client timestamp, base server version, idempotency key, payload schema version, attachment references, and dependency IDs.
 
-The IndexedDB database is versioned and contains separate stores for workspace snapshots, offline operations, and metadata. Workspace records use an `organizationId:userId` partition key. Operations also carry organization, user, module, entity, device, idempotency, base-version, schema-version, attachment, and dependency fields.
+Browser storage is not a secure hardware vault. Origin isolation and an optional platform biometric or device-PIN WebAuthn gate reduce casual access, but they do not defeat a device administrator, a compromised operating-system account, malicious extensions, XSS, browser-profile extraction, or physical access to an unlocked browser. Authentication secrets, payment credentials, TOTP secrets, unrestricted clinical histories, and raw gateway data are prohibited.
 
-The current browser storage is not encrypted at rest. Browser origin isolation reduces casual exposure but does not protect a compromised operating-system account, malicious browser extension, XSS, device administrator, or a user who can inspect their own browser profile. Authentication secrets, payment credentials, TOTP secrets, and unrestricted clinical data must never be stored there. Offline leases currently expire workspace snapshots after 12 hours.
+Each browser generates an ECDSA P-256 signing key pair. The server stores only the public key. The private key remains inside the account-and-organization IndexedDB partition. Synchronization and attachment staging sign the timestamp and exact body. The server requires a current same-origin authenticated session and rejects stale timestamps, invalid signatures, expired leases, revoked devices, inactive memberships, removed subscriptions, and revoked permissions.
 
-Signing out invokes a user-scoped IndexedDB purge before the NextAuth sign-out request. A user may clear local data or revoke the current registered browser in the Sync Center. The synchronization endpoint rechecks the active session, membership, browser device, module subscription/access, module permission, payload, dependency order, and idempotency ownership. Role-change polling, remote-session-revocation push purge, organization-switch purge, attachments, and non-POS conflict interfaces remain required.
+Signing out purges the user's stores. A rejected registration caused by revocation or access removal also purges the user partition. Organization switching uses separate keys. A device may be revoked from the Sync Center. Offline leases last 1 to 24 hours. The organization kill switch blocks new local mutations while retaining safe replay of work already queued.
+
+## Work packs and module rules
+
+Work packs are explicit downloads limited by record count and a 5 MB serialized response. They contain only the user's authorized subset and expire after 12 hours. Accounting data is read-only and timestamped. Pharmacy and Hospital downloads are minimized and visibly stale. Clinical finalization, dispensing, controlled-drug approval, verified laboratory or imaging results, diagnosis finalization, medication fulfilment, and room or bed occupancy changes remain online-only.
+
+See `docs/OFFLINE_CAPABILITY_MATRIX.md` for the authoritative operation list.
 
 ## Synchronization API
 
-`POST /api/offline/sync` accepts at most 100 operations and a 1 MB request. Requests must be same-origin and use the current authenticated session. One request may contain operations for only one registered browser device. POS replays delegate to the existing transactional `createSale` service, which revalidates register state, catalog references, payments, current stock, and the organization-scoped request identifier. Applied, rejected, and conflicted outcomes are persisted and audited. Dependencies must already be applied or become applied earlier in the submitted batch; failed, missing, and cyclic dependencies do not run.
+`POST /api/offline/sync` accepts one signed browser-device batch, at most 100 operations and 1 MB. It authenticates the session, confirms active membership and device state, verifies the lease and ECDSA signature, checks module access and operation ownership, then evaluates dependencies. Missing, failed, or cyclic dependencies never execute.
 
-`POST /api/offline/devices` registers or refreshes the current browser only when the organization has explicitly enabled offline access for at least one module available to the user. `DELETE /api/offline/devices` revokes the current user-owned installation. The local authorization record is not an authentication secret and cannot substitute for a live session during synchronization.
+POS delegates to the existing transactional sale service. Fleet driver declarations, fault reports, and owner maintenance decisions delegate to Fleet services. Inventory count lines, School attendance, and Hotel housekeeping delegate to their authoritative services. Accounting, Pharmacy, Hospital, Hostel, and other permitted safe captures become server-side `OfflineDraft` records that cannot enter posted or finalized states.
 
-## Retention
+Every accepted operation has a tenant-scoped idempotency ledger. Protected version mismatches create an `OfflineConflict` with the local payload, cloud snapshot, timestamps, workflow, and allowed resolution choices. The Conflict Center permits keeping the authoritative server value or requesting manager review. It never offers unrestricted overwrite.
 
-Workspace snapshots expire at the offline lease boundary, currently configurable from 1 to 24 hours. Applied POS operations are removed locally after the authoritative response. Rejected and conflicted operations remain visible for review. Server mutation and audit ledgers are retained under the organization data-retention policy. Blob attachment retention is not implemented yet, so attachments are not accepted by the current POS adapter.
+`POST /api/offline/attachments` accepts signed attachment staging before dependent replay. JPEG, PNG, WebP, and PDF files are limited to 5 MB and checked by MIME type and file signature. Successful operations remove local blobs. Server staging expires after seven days; consumed blobs are deleted opportunistically after 24 hours.
+
+`GET /api/offline/work-packs` returns bounded no-store snapshots. `GET` and `POST /api/offline/conflicts` provide user-scoped review and permitted resolutions. `POST` and `DELETE /api/offline/devices` register, renew, and revoke browser installations.
+
+## Storage, retry, and retention
+
+Expired work packs and references are evicted before new writes. Capture fails closed when projected use exceeds 80 percent of the browser-reported quota. Applied operations and their local blobs are removed only after an authoritative response. Conflicts and permanent failures remain visible. Retryable failures use bounded exponential backoff capped at 60 seconds. Permanent validation, permission, revocation, and conflict outcomes are not retried forever. Web Locks serialize synchronization across tabs, and BroadcastChannel announces completion.
+
+Server mutation, conflict, draft, and audit ledgers follow organization retention and deletion policy. A browser is never a backup or authoritative recovery source.
 
 ## Release acceptance
 
-This work must not be called a complete offline PWA until the production installation has been reopened after a browser restart with the network disabled, queued records have replayed idempotently after reconnection, protected conflicts have been demonstrated, and tenant and user isolation have been verified in real browsers and guarded disposable PostgreSQL tests.
+The implementation must not be called a complete production offline PWA until an installed production build is reopened after a real browser restart with networking disabled, authorized records are created and replayed idempotently after reconnection, a protected conflict is demonstrated without overwrite, and tenant and user isolation pass both real-browser and disposable-PostgreSQL tests.

@@ -108,7 +108,7 @@ describe("POS offline server-confirmation safeguards", () => {
     expect(source).toContain("Recorded offline. Awaiting synchronization");
     expect(source).toContain('window.addEventListener("online", handleOnline)');
     expect(source).toContain("synchronizeQueuedSales(organizationId, userId)");
-    expect(read("src/app/app/pos/sell/offline-queue.ts")).toContain('fetch("/api/offline/sync"');
+    expect(read("src/app/app/pos/sell/offline-queue.ts")).toContain("synchronizeOfflineOperations(organizationId, userId)");
   });
 
   it("keeps new catalogue writes unavailable offline", () => {

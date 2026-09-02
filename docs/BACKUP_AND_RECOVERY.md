@@ -20,3 +20,6 @@ This adapts the single-tenant GLV export/restore workflow rather than copying it
 Customer-facing Human Resources & Payroll and Inventory & Procurement entitlements expand to both internal backup scopes. Existing JSON restore compatibility is preserved because the internal scope keys remain `hr`, `payroll`, `inventory`, and `procurement`; no tables or historical backup identifiers are renamed.
 
 Application JSON backups and Excel exports complement, but do not replace, Neon branch/PITR and provider backup controls. Physical database recovery remains an operator-only incident procedure. Preview database branches are disposable deployment environments and are not production backups.
+# Offline device recovery boundary
+
+Offline browser data is a temporary operational queue, not a backup or recovery authority. Database recovery must preserve offline mutation idempotency, conflict, draft, attachment, and audit ledgers so reconnecting devices cannot duplicate accepted work. During recovery, disable new offline mutations, verify the restored migration and device state, replay a non-financial canary, then prove duplicate and protected-conflict handling before reopening tenant capture. The step-by-step procedure and rollback triggers are in `docs/OFFLINE_OPERATIONS_RUNBOOK.md`.

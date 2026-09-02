@@ -1,6 +1,7 @@
 /* Rock Frost production service worker. Personalized HTML and API data are never put in CacheStorage. */
-const VERSION = "rf-pwa-2026-09-01-1";
+const VERSION = "rf-pwa-2026-09-01-2";
 const SHELL_CACHE = `${VERSION}-shell`;
+const ASSET_CACHE = `${VERSION}-assets`;
 const SHELL = ["/offline", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -29,5 +30,15 @@ self.addEventListener("fetch", (event) => {
   }
   if (SHELL.includes(url.pathname)) {
     event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
+    return;
+  }
+  if (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/fonts/")) {
+    event.respondWith(caches.open(ASSET_CACHE).then(async (cache) => {
+      const cached = await cache.match(request);
+      if (cached) return cached;
+      const response = await fetch(request);
+      if (response.ok && (response.type === "basic" || response.type === "cors")) await cache.put(url.pathname, response.clone());
+      return response;
+    }));
   }
 });

@@ -7,6 +7,7 @@ import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import type { Prisma } from "@prisma/client";
 import { logAuditEvent } from "@/lib/audit";
+import { OFFLINE_SUPPORTED_MODULES } from "@/lib/pwa/policy";
 
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BYTES = 1024 * 1024;
@@ -69,7 +70,7 @@ export async function updateOfflineAccessSettings(formData: FormData): Promise<v
   const tenant = await authorizedTenant();
   const leaseHours = Number(formData.get("offlineLeaseHours"));
   const requestedModules = formData.getAll("offlineModule").map(String);
-  if (!Number.isInteger(leaseHours) || leaseHours < 1 || leaseHours > 24 || requestedModules.some((key) => !tenant.accessibleModuleKeys.includes(key))) {
+  if (!Number.isInteger(leaseHours) || leaseHours < 1 || leaseHours > 24 || requestedModules.some((key) => !tenant.accessibleModuleKeys.includes(key) || !(OFFLINE_SUPPORTED_MODULES as readonly string[]).includes(key))) {
     redirect("/app/organization/settings?error=offline");
   }
   const organization = await db.organization.findUnique({ where: { id: tenant.organizationId }, select: { metadata: true } });

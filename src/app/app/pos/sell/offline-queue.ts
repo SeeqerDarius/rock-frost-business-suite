@@ -2,6 +2,7 @@
 
 import { enqueueOfflineOperation, getOfflineDeviceRegistration, listOfflineOperations, putOfflineOperation, removeOfflineOperation } from "@/lib/pwa/indexed-db";
 import type { OfflineOperation } from "@/lib/pwa/types";
+import { synchronizeOfflineOperations } from "@/lib/pwa/sync-client";
 
 export interface QueuedSaleLine { itemId: string | null; description: string; quantity: number; unitPrice: string }
 export interface QueuedSalePayment { method: string; amount: string; reference: string | null }
@@ -96,18 +97,7 @@ export async function markQueuedSaleError(organizationId: string, userId: string
 }
 
 export async function synchronizeQueuedSales(organizationId: string, userId: string) {
-  const operations = (await listOfflineOperations(organizationId, userId)).filter((operation) => operation.module === "pos" && operation.entityType === "pos.sale" && operation.status === "pending" && Date.parse(operation.nextAttemptAt) <= Date.now());
-  if (!operations.length) return [];
-  const response = await fetch("/api/offline/sync", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ operations }) });
-  if (!response.ok) throw new Error(`Offline synchronization failed with HTTP ${response.status}.`);
-  const payload = await response.json() as { results: Array<{ operationId: string; status: "applied" | "rejected" | "conflict" | "synchronizing"; errorCode?: string }> };
-  for (const result of payload.results) {
-    const operation = operations.find((entry) => entry.operationId === result.operationId);
-    if (!operation) continue;
-    if (result.status === "applied") await removeOfflineOperation(result.operationId);
-    else if (result.status === "rejected" || result.status === "conflict") await putOfflineOperation({ ...operation, status: result.status, attempts: operation.attempts + 1, lastError: result.errorCode ?? result.status });
-  }
-  return payload.results;
+  return synchronizeOfflineOperations(organizationId, userId);
 }
 
 export function generateClientRequestId(): string {

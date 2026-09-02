@@ -1,12 +1,17 @@
 "use client";
 
-import type { OfflineDeviceRegistration, OfflineOperation, OfflineWorkspaceSnapshot } from "@/lib/pwa/types";
+import type { OfflineAttachment, OfflineConflictRecord, OfflineDeviceRegistration, OfflineLockConfig, OfflineOperation, OfflineReferenceRecord, OfflineSyncAttempt, OfflineWorkPack, OfflineWorkspaceSnapshot } from "@/lib/pwa/types";
 
 const DATABASE_NAME = "rock-frost-offline-v1";
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const WORKSPACES = "workspaces";
 const OPERATIONS = "operations";
 const META = "meta";
+const RECORDS = "records";
+const WORK_PACKS = "workPacks";
+const ATTACHMENTS = "attachments";
+const SYNC_ATTEMPTS = "syncAttempts";
+const CONFLICTS = "conflicts";
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -32,6 +37,29 @@ export function openOfflineDatabase(): Promise<IDBDatabase> {
         store.createIndex("status", "status");
       }
       if (!database.objectStoreNames.contains(META)) database.createObjectStore(META, { keyPath: "key" });
+      if (!database.objectStoreNames.contains(RECORDS)) {
+        const store = database.createObjectStore(RECORDS, { keyPath: "key" });
+        store.createIndex("partition", ["organizationId", "userId", "module"]);
+        store.createIndex("expiresAt", "expiresAt");
+      }
+      if (!database.objectStoreNames.contains(WORK_PACKS)) {
+        const store = database.createObjectStore(WORK_PACKS, { keyPath: "key" });
+        store.createIndex("partition", ["organizationId", "userId", "module"]);
+        store.createIndex("expiresAt", "expiresAt");
+      }
+      if (!database.objectStoreNames.contains(ATTACHMENTS)) {
+        const store = database.createObjectStore(ATTACHMENTS, { keyPath: "attachmentId" });
+        store.createIndex("partition", ["organizationId", "userId"]);
+        store.createIndex("operationId", "operationId");
+      }
+      if (!database.objectStoreNames.contains(SYNC_ATTEMPTS)) {
+        const store = database.createObjectStore(SYNC_ATTEMPTS, { keyPath: "attemptId" });
+        store.createIndex("partition", ["organizationId", "userId"]);
+      }
+      if (!database.objectStoreNames.contains(CONFLICTS)) {
+        const store = database.createObjectStore(CONFLICTS, { keyPath: "conflictId" });
+        store.createIndex("partition", ["organizationId", "userId"]);
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("Could not open offline storage."));
@@ -86,6 +114,66 @@ export async function listOfflineOperations(organizationId: string, userId: stri
   }
 }
 
+async function listByPartition<T>(storeName: string, organizationId: string, userId: string): Promise<T[]> {
+  const database = await openOfflineDatabase();
+  try {
+    const transaction = database.transaction(storeName, "readonly");
+    const index = transaction.objectStore(storeName).index("partition");
+    return await requestResult(index.getAll(IDBKeyRange.only([organizationId, userId]))) as T[];
+  } finally { database.close(); }
+}
+
+export async function putOfflineReferenceRecord(record: OfflineReferenceRecord) {
+  await withStore(RECORDS, "readwrite", (store) => store.put(record));
+}
+
+export async function putOfflineWorkPack(workPack: OfflineWorkPack) {
+  await withStore(WORK_PACKS, "readwrite", (store) => store.put(workPack));
+}
+
+export async function listOfflineWorkPacks(organizationId: string, userId: string, module?: string): Promise<OfflineWorkPack[]> {
+  const database = await openOfflineDatabase();
+  try {
+    const store = database.transaction(WORK_PACKS, "readonly").objectStore(WORK_PACKS);
+    const records = module
+      ? await requestResult(store.index("partition").getAll(IDBKeyRange.only([organizationId, userId, module])))
+      : await requestResult(store.getAll());
+    return (records as OfflineWorkPack[]).filter((record) => record.organizationId === organizationId && record.userId === userId && Date.parse(record.expiresAt) > Date.now());
+  } finally { database.close(); }
+}
+
+export async function putOfflineAttachment(attachment: OfflineAttachment) {
+  await withStore(ATTACHMENTS, "readwrite", (store) => store.put(attachment));
+}
+
+export async function listOfflineAttachments(organizationId: string, userId: string): Promise<OfflineAttachment[]> {
+  return listByPartition<OfflineAttachment>(ATTACHMENTS, organizationId, userId);
+}
+
+export async function removeOfflineAttachment(attachmentId: string) {
+  await withStore(ATTACHMENTS, "readwrite", (store) => store.delete(attachmentId));
+}
+
+export async function putOfflineSyncAttempt(attempt: OfflineSyncAttempt) {
+  await withStore(SYNC_ATTEMPTS, "readwrite", (store) => store.put(attempt));
+}
+
+export async function listOfflineSyncAttempts(organizationId: string, userId: string): Promise<OfflineSyncAttempt[]> {
+  return listByPartition<OfflineSyncAttempt>(SYNC_ATTEMPTS, organizationId, userId);
+}
+
+export async function putOfflineConflict(conflict: OfflineConflictRecord) {
+  await withStore(CONFLICTS, "readwrite", (store) => store.put(conflict));
+}
+
+export async function listOfflineConflicts(organizationId: string, userId: string): Promise<OfflineConflictRecord[]> {
+  return listByPartition<OfflineConflictRecord>(CONFLICTS, organizationId, userId);
+}
+
+export async function removeOfflineConflict(conflictId: string) {
+  await withStore(CONFLICTS, "readwrite", (store) => store.delete(conflictId));
+}
+
 export async function purgeOfflineDataForUser(userId?: string) {
   if (!userId) {
     await new Promise<void>((resolve, reject) => {
@@ -98,7 +186,7 @@ export async function purgeOfflineDataForUser(userId?: string) {
   }
   const database = await openOfflineDatabase();
   try {
-    for (const storeName of [WORKSPACES, OPERATIONS, META]) {
+    for (const storeName of [WORKSPACES, OPERATIONS, META, RECORDS, WORK_PACKS, ATTACHMENTS, SYNC_ATTEMPTS, CONFLICTS]) {
       const transaction = database.transaction(storeName, "readwrite");
       const store = transaction.objectStore(storeName);
       const request = store.openCursor();
@@ -117,9 +205,51 @@ export async function purgeOfflineDataForUser(userId?: string) {
   }
 }
 
+export async function purgeOfflineModuleData(organizationId: string, userId: string, module: string) {
+  const database = await openOfflineDatabase();
+  try {
+    for (const storeName of [OPERATIONS, RECORDS, WORK_PACKS, ATTACHMENTS, CONFLICTS]) {
+      const transaction = database.transaction(storeName, "readwrite");
+      const request = transaction.objectStore(storeName).openCursor();
+      await new Promise<void>((resolve, reject) => {
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) return resolve();
+          const value = cursor.value as { organizationId?: string; userId?: string; module?: string };
+          if (value.organizationId === organizationId && value.userId === userId && value.module === module) cursor.delete();
+          cursor.continue();
+        };
+        request.onerror = () => reject(request.error);
+      });
+    }
+  } finally { database.close(); }
+}
+
 export async function estimateOfflineStorage() {
   if (!navigator.storage?.estimate) return null;
   return navigator.storage.estimate();
+}
+
+export async function purgeExpiredOfflineData() {
+  const database = await openOfflineDatabase();
+  try {
+    for (const storeName of [RECORDS, WORK_PACKS]) {
+      const transaction = database.transaction(storeName, "readwrite");
+      const request = transaction.objectStore(storeName).index("expiresAt").openCursor(IDBKeyRange.upperBound(new Date().toISOString()));
+      await new Promise<void>((resolve, reject) => {
+        request.onsuccess = () => { const cursor = request.result; if (!cursor) return resolve(); cursor.delete(); cursor.continue(); };
+        request.onerror = () => reject(request.error);
+      });
+    }
+  } finally { database.close(); }
+}
+
+export async function ensureOfflineCapacity(requiredBytes = 0) {
+  await purgeExpiredOfflineData();
+  const estimate = await estimateOfflineStorage();
+  if (estimate?.quota && (estimate.usage ?? 0) + requiredBytes > estimate.quota * 0.8) {
+    throw new Error("Offline storage is nearly full. Remove downloaded work packs or synchronize pending work before saving more.");
+  }
 }
 
 export async function saveOfflineDeviceRegistration(registration: OfflineDeviceRegistration) {
@@ -128,4 +258,12 @@ export async function saveOfflineDeviceRegistration(registration: OfflineDeviceR
 
 export async function getOfflineDeviceRegistration(organizationId: string, userId: string): Promise<OfflineDeviceRegistration | null> {
   return (await withStore(META, "readonly", (store) => store.get(`device:${organizationId}:${userId}`)) as OfflineDeviceRegistration | undefined) ?? null;
+}
+
+export async function saveOfflineLockConfig(config: OfflineLockConfig) {
+  await withStore(META, "readwrite", (store) => store.put(config));
+}
+
+export async function getOfflineLockConfig(organizationId: string, userId: string): Promise<OfflineLockConfig | null> {
+  return (await withStore(META, "readonly", (store) => store.get(`lock:${organizationId}:${userId}`)) as OfflineLockConfig | undefined) ?? null;
 }

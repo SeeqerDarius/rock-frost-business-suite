@@ -15,6 +15,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
 import { updateOfflineAccessSettings, uploadCompanyLogo, updateWorkspaceSettings } from "./actions";
 import { getSettlementProfile, settlementStatusLabel } from "@/lib/payments/operational";
+import { OFFLINE_SUPPORTED_MODULES } from "@/lib/pwa/policy";
 
 const ERROR_MESSAGES: Record<string, string> = {
   image: "Choose a JPG, PNG, or WebP logo no larger than 1 MB.",
@@ -138,7 +139,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
             <SettingsToggleRow id="offlineEnabled" name="offlineEnabled" label="Allow registered browser devices to download authorized offline data" defaultChecked={offlineSettings.enabled ?? false} />
             <SettingsToggleRow id="offlineMutationEnabled" name="offlineMutationEnabled" label="Allow new offline mutations" description="Turn this off as a kill switch. Previously queued work can still synchronize." defaultChecked={offlineSettings.mutationKillSwitch === false} />
             <div className="max-w-xs space-y-2"><Label htmlFor="offlineLeaseHours" required>Offline authorization lease (hours)</Label><Input id="offlineLeaseHours" name="offlineLeaseHours" type="number" min={1} max={24} defaultValue={offlineSettings.leaseHours ?? 12} required /></div>
-            <fieldset className="space-y-2"><legend className="text-sm font-medium">Modules available offline</legend><div className="grid gap-2 sm:grid-cols-2">{tenant.accessibleModuleKeys.map((key) => <label key={key} className="flex items-center gap-2 rounded-md border p-3 text-sm"><input type="checkbox" name="offlineModule" value={key} defaultChecked={offlineSettings.moduleKeys?.includes(key) ?? false} />{key}</label>)}</div></fieldset>
+            <fieldset className="space-y-2"><legend className="text-sm font-medium">Modules available offline</legend><div className="grid gap-2 sm:grid-cols-2">{tenant.accessibleModuleKeys.filter((key) => (OFFLINE_SUPPORTED_MODULES as readonly string[]).includes(key)).map((key) => <label key={key} className="flex items-center gap-2 rounded-md border p-3 text-sm"><input type="checkbox" name="offlineModule" value={key} defaultChecked={offlineSettings.moduleKeys?.includes(key) ?? false} />{key}</label>)}</div></fieldset>
             <Alert><TriangleAlert /><AlertTitle>Server confirmation remains authoritative</AlertTitle><AlertDescription>Payments, stock, approvals, clinical work, reconciliation, and posting remain pending until the server accepts them.</AlertDescription></Alert>
             <Button type="submit" size="sm">Save offline policy</Button>
           </form>

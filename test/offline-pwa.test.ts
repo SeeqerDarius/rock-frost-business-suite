@@ -28,8 +28,9 @@ describe("PWA shell and security contract", () => {
     const worker = read("public/sw.js");
     expect(worker).toContain('const SHELL = ["/offline"');
     expect(worker).toContain('if (request.mode === "navigate")');
-    expect(worker).not.toContain("caches.put(request");
+    expect(worker).not.toContain('cache.put("/app');
     expect(worker).not.toContain("/api/");
+    expect(worker).toContain('url.pathname.startsWith("/_next/static/")');
   });
 
   it("uses waiting-worker activation and cleans only versioned Rock Frost caches", () => {
@@ -46,7 +47,40 @@ describe("PWA shell and security contract", () => {
     expect(route).toContain('status: "ACTIVE", platform: { startsWith: "browser:" }');
     expect(route).toContain("tenant.accessibleModuleKeys.includes(operation.module)");
     expect(route).toContain("PERMISSIONS.POS_SALES_MANAGE");
+    expect(route).toContain("verifyOfflineRequestSignature");
+    expect(route).toContain("device.offlineAccessUntil <= new Date()");
     expect(route).toContain('error: "unauthorized" }, { status: 401');
     expect(read("src/app/api/offline/devices/route.ts")).toContain('error: "unauthorized" }, { status: 401');
+  });
+
+  it("supports protected module adapters without last-write-wins", () => {
+    const adapters = read("src/lib/pwa/server-adapters.ts");
+    expect(adapters).toContain("assertVersion(operation.baseServerVersion");
+    expect(adapters).toContain('"stale-vehicle-assignment"');
+    expect(adapters).toContain('"stale-stock-count"');
+    expect(adapters).toContain('"attendance-changed"');
+    expect(adapters).toContain('"housekeeping-task-unavailable"');
+    expect(adapters).toContain('offlineStatus: "DRAFT_REQUIRES_SERVER_REVIEW"');
+  });
+
+  it("uploads validated attachments before dependent operations and coordinates tabs", () => {
+    const client = read("src/lib/pwa/sync-client.ts");
+    const attachments = read("src/app/api/offline/attachments/route.ts");
+    expect(client.indexOf("uploadDependencies")).toBeLessThan(client.indexOf('signedOfflineFetch(organizationId, userId, "/api/offline/sync"'));
+    expect(client).toContain("navigator.locks.request");
+    expect(client).toContain('new BroadcastChannel("rock-frost-offline-sync")');
+    expect(attachments).toContain("hasValidSignature");
+    expect(attachments).toContain("MAX_ATTACHMENT_BYTES");
+  });
+
+  it("exposes explicit local and server conflict values", () => {
+    const route = read("src/app/api/offline/conflicts/route.ts");
+    const center = read("src/app/app/(overview)/account/offline/sync-center.tsx");
+    expect(route).toContain("localValue");
+    expect(route).toContain("serverValue");
+    expect(route).toContain("serverChangedAt");
+    expect(route).toContain("allowedResolutions");
+    expect(center).toContain("Compare values");
+    expect(center).toContain("Request manager review");
   });
 });
