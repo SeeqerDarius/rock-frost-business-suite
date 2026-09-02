@@ -58,7 +58,12 @@ function assertVersion(baseVersion: number, updatedAt: Date, snapshot: unknown) 
 
 export async function applyOfflineModuleOperation(operation: AdapterOperation, tenant: TenantContext, ledgerId: string) {
   const attachments = await stagedAttachments(operation);
-  let result: Record<string, unknown>;
+  // Every branch below sets at least `status` - a bare `Record<string,
+  // unknown>` annotation would type-check the same but loses that literal
+  // shape entirely on the `{ ...result, serverTimestamp }` spread below
+  // (TypeScript drops a plain index signature when inferring an object
+  // spread's type), so callers lose access to `.status` on the return value.
+  let result: { status: string } & Record<string, unknown>;
 
   if (operation.module === "fleet" && operation.entityType === "fleet.driver-payment" && operation.operationType === "declare") {
     requirePermission(tenant, PERMISSIONS.FLEET_DRIVER_SELF_SERVICE);
