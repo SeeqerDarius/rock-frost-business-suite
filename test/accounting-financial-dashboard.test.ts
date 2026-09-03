@@ -122,7 +122,7 @@ describe("getFinancialBenchmarks: ratio formulas against a hand-computed fixture
     const byKey = Object.fromEntries(result.gauges.map((g) => [g.key, g]));
 
     expect(byKey.netProfitMargin.value).toBeNull();
-    expect(byKey.netProfitMargin.displayValue).toBe("—");
+    expect(byKey.netProfitMargin.displayValue).toBe("Not available");
     expect(byKey.netProfitMargin.tone).toBe("neutral");
     expect(byKey.debtToEquity.value).toBeNull();
     expect(byKey.averageDebtorDays.value).toBeNull();
