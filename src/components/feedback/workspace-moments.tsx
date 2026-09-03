@@ -38,7 +38,14 @@ export function WorkspaceMoments({ userId }: { userId: string }) {
   }, [message]);
 
   return (
-    <div className="pointer-events-none fixed bottom-5 left-4 z-40 flex max-w-[calc(100vw-2rem)] flex-col items-start gap-2 sm:left-6">
+    // lg:left-72 clears the sidebar's own footer controls (its "Collapse
+    // sidebar" button sits in that same bottom-left corner on desktop,
+    // where the sidebar is always present - AppShell's sidebar is up to
+    // w-64/16rem wide, so 72/18rem gives clearance in either its expanded
+    // or collapsed width). Below lg, the sidebar is a slide-out sheet
+    // instead of a persistent column, so there's nothing there to collide
+    // with and the original corner position is fine.
+    <div className="pointer-events-none fixed bottom-5 left-4 z-40 flex max-w-[calc(100vw-2rem)] flex-col items-start gap-2 sm:left-6 lg:left-72">
       {message ? (
         <aside className="pointer-events-auto flex max-w-sm items-start gap-3 rounded-xl border bg-background/95 p-4 shadow-lg backdrop-blur motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2" aria-live="polite">
           <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />

@@ -74,7 +74,15 @@ export function PwaProvider({ workspace, children }: PwaProviderProps) {
       body: JSON.stringify({ installationId, name: navigator.userAgent.slice(0, 100), platform: navigator.platform || "web", moduleKeys: workspace.moduleKeys, signingPublicKey }),
       }).then(async (response) => ({ response, signingPrivateKey }));
     }).then(async ({ response, signingPrivateKey }) => {
-      if (response.status === 401 || response.status === 403) {
+      if (response.status === 401) {
+        // A genuine invalid session - distinct from 403, which this endpoint
+        // also returns for "offline-disabled" (the default, expected state
+        // for every organization the platform owner hasn't granted offline
+        // access - see toggleOrganizationOfflineAccess). Treating that 403
+        // as a session problem showed every user, in every organization
+        // that has never been granted offline access (effectively all of
+        // them today), a permanent "session expired" banner with no way to
+        // clear it.
         setSessionExpired(true);
         await purgeOfflineDataForUser(workspace.userId).catch(() => undefined);
         return;
@@ -158,14 +166,24 @@ export function PwaProvider({ workspace, children }: PwaProviderProps) {
   if (!lockChecked) return <div className="grid min-h-screen place-items-center p-6"><p role="status">Checking offline device security...</p></div>;
   if (locked) return <div className="grid min-h-screen place-items-center p-6"><div className="w-full max-w-sm space-y-4 rounded-xl border bg-background p-6 text-center shadow"><h1 className="text-xl font-semibold">Unlock offline access</h1><p className="text-sm text-muted-foreground">Use this device&apos;s biometric or PIN check before viewing locally stored Rock Frost data.</p>{unlockError ? <p role="alert" className="text-sm text-destructive">{unlockError}</p> : null}<Button onClick={unlock}>Unlock</Button></div></div>;
 
+  // Silent in the common case: nothing to report when fully online with no
+  // pending sync, no conflict, no update, and no real session problem. A
+  // permanent pill sitting over the header at all times - even saying
+  // "Online" - was pure noise and collided with the header's own controls
+  // (the account menu sits in the same top-right corner). Only surface this
+  // when there's actually something the user or an install prompt needs.
+  const showBadge = state !== "online" || Boolean(installPrompt);
+
   return (
     <>
-      <div className="fixed right-3 top-3 z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-full border bg-background/95 px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur" role="status" aria-live="polite">
-        {state === "online" ? <Cloud className="size-3.5 text-emerald-600" /> : state === "offline" ? <CloudOff className="size-3.5 text-amber-600" /> : <TriangleAlert className="size-3.5 text-amber-600" />}
-        <span>{state === "online" ? "Online" : state === "offline" ? "Offline. Server confirmation is unavailable." : state === "update-available" ? "Update available" : state === "synchronizing" ? "Synchronizing" : state === "partially-synchronized" ? "Actions are waiting to synchronize" : state === "conflict" ? "Conflict requires attention" : state === "session-expired" ? "Offline session expired. Local access was cleared." : "Offline synchronization failed"}</span>
-        {installPrompt ? <Button size="sm" variant="ghost" className="h-6 gap-1 px-1.5" onClick={install}><Download className="size-3" /> Install</Button> : null}
-        {waitingWorker ? <Button size="sm" variant="ghost" className="h-6 gap-1 px-1.5" onClick={() => waitingWorker.postMessage({ type: "ACTIVATE_UPDATE" })}><RefreshCw className="size-3" /> Update</Button> : null}
-      </div>
+      {showBadge ? (
+        <div className="fixed right-3 top-3 z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-full border bg-background/95 px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur" role="status" aria-live="polite">
+          {state === "online" ? <Cloud className="size-3.5 text-emerald-600" /> : state === "offline" ? <CloudOff className="size-3.5 text-amber-600" /> : <TriangleAlert className="size-3.5 text-amber-600" />}
+          <span>{state === "online" ? "Online" : state === "offline" ? "Offline. Server confirmation is unavailable." : state === "update-available" ? "Update available" : state === "synchronizing" ? "Synchronizing" : state === "partially-synchronized" ? "Actions are waiting to synchronize" : state === "conflict" ? "Conflict requires attention" : state === "session-expired" ? "Offline session expired. Local access was cleared." : "Offline synchronization failed"}</span>
+          {installPrompt ? <Button size="sm" variant="ghost" className="h-6 gap-1 px-1.5" onClick={install}><Download className="size-3" /> Install</Button> : null}
+          {waitingWorker ? <Button size="sm" variant="ghost" className="h-6 gap-1 px-1.5" onClick={() => waitingWorker.postMessage({ type: "ACTIVATE_UPDATE" })}><RefreshCw className="size-3" /> Update</Button> : null}
+        </div>
+      ) : null}
       {iosGuidance ? <aside className="fixed bottom-3 left-3 z-40 max-w-sm rounded-lg border bg-background/95 p-3 text-sm shadow backdrop-blur" aria-label="Install Rock Frost"><p className="font-medium">Install on iPhone or iPad</p><p className="text-muted-foreground">Open Safari&apos;s Share menu, then choose Add to Home Screen.</p></aside> : null}
       {children}
     </>
