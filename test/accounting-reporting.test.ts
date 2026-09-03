@@ -168,3 +168,43 @@ describe("loadGhanaSmeChartOfAccounts: idempotent", () => {
     expect(created.some((account) => account.code === "1000")).toBe(false);
   });
 });
+
+describe("getAccountBalancesAsOf: point-in-time snapshot, unlike listAccounts's unbounded balance", () => {
+  it("excludes a journal entry dated after the asOf date", async () => {
+    const asOf = new Date("2026-01-31T23:59:59.999Z");
+    // ensureDefaultAccounts() reads accountingAccount.findMany twice (its own
+    // existing-check, then its final re-read) before this function's own read.
+    mockDb.accountingAccount.findMany.mockResolvedValueOnce([{ code: "1000" }]);
+    mockDb.accountingAccount.findMany.mockResolvedValueOnce([{ code: "1000" }]);
+    mockDb.accountingAccount.findMany.mockResolvedValueOnce([
+      { id: "acct-cash", code: "1000", name: "Cash", type: "ASSET", liquidityType: "CASH", journalLines: [{ debit: "500.00", credit: "0.00" }] },
+    ]);
+
+    const rows = await accounting.getAccountBalancesAsOf(ORG, asOf);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].balance).toBe(500);
+    // The include's own where clause is the actual point-in-time filter -
+    // confirm it was built with an entryDate upper bound, not left unbounded.
+    const includeArg = mockDb.accountingAccount.findMany.mock.calls[2][0].include.journalLines.where.journalEntry.entryDate;
+    expect(includeArg).toEqual({ lte: asOf });
+  });
+});
+
+describe("getCashFlowStatement: gross cashReceived/cashSpent alongside the existing net figures", () => {
+  it("returns the gross debit and credit totals, not just their net", async () => {
+    mockDb.accountingAccount.findMany.mockResolvedValue([{ id: "acct-cash" }]);
+    mockDb.accountingJournalLine.findMany
+      .mockResolvedValueOnce([
+        { debit: "1000.00", credit: "0.00", journalEntry: { sourceType: "FLEET_PAYMENT" } },
+        { debit: "0.00", credit: "300.00", journalEntry: { sourceType: "ACCOUNTING_PAYABLE_PAYMENT" } },
+      ])
+      .mockResolvedValueOnce([]);
+
+    const report = await accounting.getCashFlowStatement(ORG, new Date("2026-08-01"), new Date("2026-08-31"));
+
+    expect(report.cashReceived).toBeCloseTo(1000, 2);
+    expect(report.cashSpent).toBeCloseTo(300, 2);
+    expect(report.netChange).toBeCloseTo(700, 2); // unchanged: still the net of the two
+  });
+});

@@ -1,4 +1,8 @@
+import sharp from "sharp";
+
 export const MAX_SCHOOL_PHOTO_BYTES = 1024 * 1024;
+export const MIN_SCHOOL_PHOTO_DIMENSION = 128;
+export const MAX_SCHOOL_PHOTO_DIMENSION = 8000;
 
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -15,6 +19,19 @@ export async function schoolPhotoImageData(file: File) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (!hasValidSignature(bytes, file.type)) throw new Error("invalid-photo");
   return `data:${file.type};base64,${Buffer.from(bytes).toString("base64")}`;
+}
+
+export async function schoolStudentPhotoImages(file: File, cropFocus: "attention" | "centre" | "north" | "south" = "attention") {
+  const original = await schoolPhotoImageData(file);
+  if (!original) return null;
+  const bytes = Buffer.from(await file.arrayBuffer());
+  let metadata;
+  try { metadata = await sharp(bytes).metadata(); } catch { throw new Error("invalid-photo"); }
+  const width = metadata.width ?? 0;
+  const height = metadata.height ?? 0;
+  if (width < MIN_SCHOOL_PHOTO_DIMENSION || height < MIN_SCHOOL_PHOTO_DIMENSION || width > MAX_SCHOOL_PHOTO_DIMENSION || height > MAX_SCHOOL_PHOTO_DIMENSION) throw new Error("invalid-photo");
+  const optimized = await sharp(bytes).rotate().resize(512, 512, { fit: "cover", position: cropFocus }).webp({ quality: 84 }).toBuffer();
+  return { original, optimized: `data:image/webp;base64,${optimized.toString("base64")}`, width, height };
 }
 
 export function parseSchoolPhotoImage(data: string) {

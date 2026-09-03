@@ -7,8 +7,10 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import { cuid, shortText, longText, dateInput, moneyAmountPositive, parseWithSchema } from "@/lib/validation";
 import { createSchoolCampus, createSchoolAcademicYear, closeSchoolAcademicYear, deleteSchoolAcademicYear, createSchoolTerm, admitSchoolStudent, createSchoolGuardian, linkSchoolGuardian, createSchoolClass, updateSchoolClassCapacity, assignSchoolClassTeacher, removeSchoolClassTeacher, createSchoolSubject, enrollSchoolStudent, recordSchoolAttendanceBulk, createSchoolFeeInvoice, recordSchoolFeePayment, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, upsertSchoolSettings, transitionSchoolStudent, createSchoolFeeStructure, issueSchoolFeeStructure, updateSchoolStudentPhoto, updateSchoolGuardianPhoto, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
-import { schoolPhotoImageData } from "@/lib/school-photo-image";
+import { schoolPhotoImageData, schoolStudentPhotoImages } from "@/lib/school-photo-image";
 import { postModuleRevenue } from "@/lib/accounting-integration";
+import { getSurfaceOrigins } from "@/lib/app-surfaces";
+import { createSchoolConductRecord, issueSchoolDigitalId, revokeSchoolDigitalId, recordSchoolIdPrint } from "@/modules/school/student-profile-service";
 
 const clean=(value:FormDataEntryValue|null)=>{const text=String(value??"").trim();return text||null};
 async function auth(permission:string,path:string){const tenant=await requireModuleAccess("school");if(!hasPermission(tenant,permission))redirect(`${path}?error=forbidden`);return tenant;}
@@ -176,15 +178,19 @@ export async function updateStudentPhotoAction(f: FormData) {
   if (!studentId) redirect(`${path}?error=invalid`);
   const removePhoto = f.get("removePhoto") === "on";
   const photoFile = f.get("photo");
+  const cropFocus = z.enum(["attention", "centre", "north", "south"]).catch("attention").parse(clean(f.get("photoCropFocus")));
   let photoData: string | null | undefined;
+  let photoOriginalData: string | null | undefined;
   try {
-    photoData = photoFile instanceof File ? (await schoolPhotoImageData(photoFile)) ?? undefined : undefined;
+    const images = photoFile instanceof File ? await schoolStudentPhotoImages(photoFile, cropFocus) : null;
+    photoData = images?.optimized;
+    photoOriginalData = images?.original;
   } catch {
     redirect(`${path}?error=invalid`);
   }
-  if (removePhoto && !photoData) photoData = null;
+  if (removePhoto && !photoData) { photoData = null; photoOriginalData = null; }
   if (photoData === undefined) redirect(`${path}?error=invalid`);
-  try { await updateSchoolStudentPhoto(t.organizationId, studentId, photoData); }
+  try { await updateSchoolStudentPhoto(t.organizationId, studentId, photoData, photoOriginalData); }
   catch (e) { fail(path, e); }
   revalidatePath(path);
   redirect(`${path}?saved=1`);
@@ -209,6 +215,50 @@ export async function updateGuardianPhotoAction(f: FormData) {
   catch (e) { fail(path, e); }
   revalidatePath(path);
   redirect(`${path}?saved=1`);
+}
+
+export async function issueStudentIdAction(studentId: string, f: FormData) {
+  const path = `/app/school/students/${studentId}?section=passport`;
+  const tenant = await auth(PERMISSIONS.SCHOOL_DIGITAL_ID_MANAGE, path);
+  const parsed = z.object({ reissuedFromId: cuid.nullable() }).safeParse({ reissuedFromId: clean(f.get("reissuedFromId")) });
+  if (!parsed.success) redirect(`${path}&error=invalid`);
+  try { await issueSchoolDigitalId(tenant.organizationId, studentId, tenant.userId, getSurfaceOrigins().tenant, parsed.data.reissuedFromId ?? undefined); }
+  catch (error) { fail(path, error); }
+  revalidatePath(`/app/school/students/${studentId}`);
+  redirect(`${path}&saved=id-issued`);
+}
+
+export async function revokeStudentIdAction(studentId: string, f: FormData) {
+  const path = `/app/school/students/${studentId}?section=passport`;
+  const tenant = await auth(PERMISSIONS.SCHOOL_DIGITAL_ID_MANAGE, path);
+  const parsed = z.object({ cardId: cuid, reason: shortText }).safeParse({ cardId: clean(f.get("cardId")), reason: clean(f.get("reason")) });
+  if (!parsed.success) redirect(`${path}&error=invalid`);
+  try { await revokeSchoolDigitalId(tenant.organizationId, parsed.data.cardId, tenant.userId, parsed.data.reason); }
+  catch (error) { fail(path, error); }
+  revalidatePath(`/app/school/students/${studentId}`);
+  redirect(`${path}&saved=id-revoked`);
+}
+
+export async function recordStudentIdPrintAction(studentId: string, f: FormData) {
+  const path = `/app/school/students/${studentId}?section=passport`;
+  const tenant = await auth(PERMISSIONS.SCHOOL_DIGITAL_ID_MANAGE, path);
+  const cardId = clean(f.get("cardId"));
+  if (!cardId) redirect(`${path}&error=invalid`);
+  try { await recordSchoolIdPrint(tenant.organizationId, cardId, tenant.userId); }
+  catch (error) { fail(path, error); }
+  revalidatePath(`/app/school/students/${studentId}`);
+  redirect(`${path}&saved=id-printed`);
+}
+
+export async function createConductRecordAction(studentId: string, f: FormData) {
+  const path = `/app/school/students/${studentId}?section=attendance`;
+  const tenant = await auth(PERMISSIONS.SCHOOL_CONDUCT_MANAGE, path);
+  const parsed = parseWithSchema(z.object({ campusId: cuid, occurredAt: dateInput, category: shortText, classification: z.enum(["POSITIVE", "NEGATIVE"]), severity: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]), description: longText, assignedReviewerId: cuid.nullable(), followUpDate: dateInput.nullable() }), { campusId: clean(f.get("campusId")) ?? "", occurredAt: clean(f.get("occurredAt")), category: clean(f.get("category")) ?? "", classification: clean(f.get("classification")), severity: clean(f.get("severity")), description: clean(f.get("description")) ?? "", assignedReviewerId: clean(f.get("assignedReviewerId")), followUpDate: clean(f.get("followUpDate")) });
+  if (!parsed.success) redirect(`${path}&error=invalid`);
+  try { await createSchoolConductRecord(tenant.organizationId, tenant.userId, { ...parsed.data, studentId }); }
+  catch (error) { fail(path, error); }
+  revalidatePath(`/app/school/students/${studentId}`);
+  redirect(`${path}&saved=conduct`);
 }
 
 export async function createFeeStructureAction(f: FormData) {

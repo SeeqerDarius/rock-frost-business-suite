@@ -1,9 +1,10 @@
 import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
-import { LayoutGrid, BookOpen, FileText, Receipt, ScrollText, BarChart3, Landmark, Wallet, CalendarRange, Sparkles, UsersRound, BadgePercent, ChartNoAxesCombined, Contact, FileMinus2, FileSpreadsheet, Scale, BookOpenText, CalendarClock, Waves } from "lucide-react";
+import { LayoutGrid, BookOpen, FileText, Receipt, ScrollText, BarChart3, Landmark, Wallet, CalendarRange, Sparkles, UsersRound, BadgePercent, ChartNoAxesCombined, Contact, FileMinus2, FileSpreadsheet, Scale, BookOpenText, CalendarClock, Waves, Gauge } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const accountingNavigation: ModuleNavItem[] = [
   { label: "Accounting Overview", href: "/app/accounting", icon: <LayoutGrid className="size-4" />, description: "See your cash balance, outstanding invoices, pending expenses, and net income in one glance." },
+  { label: "Financial Dashboard", href: "/app/accounting/dashboard", icon: <Gauge className="size-4" />, description: "Revenue and profit trends, financial-ratio benchmarks, and period comparison tables." },
   { label: "Insights", href: "/app/accounting/insights", icon: <Sparkles className="size-4" />, description: "Review revenue and expense trends, revenue by source, and items needing attention, plus ask the AI assistant about your finances." },
   { label: "Chart of Accounts", href: "/app/accounting/accounts", icon: <BookOpen className="size-4" />, description: "Create and manage every ledger account, including its type, active status, and cash or bank classification." },
   { label: "Contacts", href: "/app/accounting/contacts", icon: <Contact className="size-4" />, description: "Manage the customers and suppliers you invoice and bill, shared across invoices, bills, and credit notes." },

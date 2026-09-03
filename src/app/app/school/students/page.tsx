@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { ImageIcon, Link2, Plus, UserPlus, Users } from "lucide-react";
 import type { SchoolStudentStatus } from "@prisma/client";
 import { PageHeader } from "@/components/layout/page-header";
@@ -6,6 +7,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhotoInputPreview } from "@/components/school/photo-input-preview";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
@@ -237,11 +239,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
                                   <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="removePhoto" />Remove current photo</label>
                                 </div>
                               ) : null}
-                              <div className="space-y-1.5">
-                                <Label htmlFor={`student-photo-${student.id}`}>Photo</Label>
-                                <Input id={`student-photo-${student.id}`} name="photo" type="file" accept="image/jpeg,image/png,image/webp" />
-                                <p className="text-xs text-muted-foreground">Optional JPG, PNG, or WebP, up to 1 MB.</p>
-                              </div>
+                              <PhotoInputPreview id={`student-photo-${student.id}`} />
                             </EntityDialog>
                           ) : (
                             <PhotoThumb hasPhoto={hasPhoto} src={`/api/school/students/${student.id}/photo`} alt={`${student.firstName} ${student.lastName}`} />
@@ -249,7 +247,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
                         </TableCell>
                         <TableCell className="font-mono text-xs">{student.admissionNumber}</TableCell>
                         <TableCell>
-                          <span className="font-medium">{student.firstName} {student.lastName}</span>
+                          <Link className="font-medium underline-offset-4 hover:underline" href={`/app/school/students/${student.id}`}>{student.firstName} {student.lastName}</Link>
                           <span className="block text-xs text-muted-foreground md:hidden">{student.campus.name}</span>
                           {student.dateOfBirth ? <span className="block text-xs text-muted-foreground">Born {formatDate(student.dateOfBirth)}</span> : null}
                         </TableCell>

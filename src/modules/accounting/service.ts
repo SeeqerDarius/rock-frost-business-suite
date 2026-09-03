@@ -384,7 +384,7 @@ export class JournalApprovalError extends Error {}
  * adds a new POSTED entry with the opposite signs, so the two together net
  * to zero only if both remain in the sum.
  */
-const NON_POSTED_JOURNAL_STATUSES: AccountingJournalStatus[] = ["PENDING_APPROVAL", "REJECTED"];
+export const NON_POSTED_JOURNAL_STATUSES: AccountingJournalStatus[] = ["PENDING_APPROVAL", "REJECTED"];
 
 async function assertEntryDateIsOpen(tx: TxClient, organizationId: string, entryDate: Date) {
   const locked = await tx.accountingPeriod.findFirst({
@@ -1934,6 +1934,40 @@ export async function getStatementOfFinancialPosition(organizationId: string) {
 
 // --- Reporting: trial balance, general ledger, ageing, cash flow, COA templates ---
 
+export interface AccountBalanceAsOf {
+  id: string;
+  code: string;
+  name: string;
+  type: AccountingAccountType;
+  liquidityType: AccountingLiquidityType;
+  balance: number;
+}
+
+/**
+ * Same signed-balance computation as listAccounts(), but scoped to journal
+ * entries dated on or before `asOf` - listAccounts() has no date filter at
+ * all, so it can only ever answer "what is the balance right now." This is
+ * the one building block anything needing a point-in-time snapshot (period-
+ * start/period-end balances for average AR/AP, prior-period balance sheet
+ * figures) uses instead of re-deriving the query.
+ */
+export async function getAccountBalancesAsOf(organizationId: string, asOf: Date): Promise<AccountBalanceAsOf[]> {
+  await ensureDefaultAccounts(organizationId);
+  const accounts = await db.accountingAccount.findMany({
+    where: { organizationId },
+    include: { journalLines: { where: { journalEntry: { entryDate: { lte: asOf }, status: { notIn: NON_POSTED_JOURNAL_STATUSES } } } } },
+    orderBy: { code: "asc" },
+  });
+  return accounts.map((account) => ({
+    id: account.id,
+    code: account.code,
+    name: account.name,
+    type: account.type,
+    liquidityType: account.liquidityType,
+    balance: computeBalance(account.type, account.journalLines),
+  }));
+}
+
 export interface TrialBalanceRow {
   account: { id: string; code: string; name: string; type: AccountingAccountType };
   debit: number;
@@ -2144,10 +2178,14 @@ export async function getCashFlowStatement(organizationId: string, from: Date, t
 
   const openingCash = priorLines.reduce((sum, line) => sum.plus(line.debit).minus(line.credit), new Prisma.Decimal(0));
   const byCategory = { OPERATING: new Prisma.Decimal(0), INVESTING: new Prisma.Decimal(0), FINANCING: new Prisma.Decimal(0) };
+  let cashReceived = new Prisma.Decimal(0);
+  let cashSpent = new Prisma.Decimal(0);
   for (const line of periodLines) {
     const net = new Prisma.Decimal(line.debit).minus(line.credit);
     const category = classifyCashFlowSourceType(line.journalEntry.sourceType);
     byCategory[category] = byCategory[category].plus(net);
+    cashReceived = cashReceived.plus(line.debit);
+    cashSpent = cashSpent.plus(line.credit);
   }
   const netChange = byCategory.OPERATING.plus(byCategory.INVESTING).plus(byCategory.FINANCING);
   const closingCash = openingCash.plus(netChange);
@@ -2161,6 +2199,11 @@ export async function getCashFlowStatement(organizationId: string, from: Date, t
     netChange: netChange.toNumber(),
     openingCash: openingCash.toNumber(),
     closingCash: closingCash.toNumber(),
+    // Gross inflow/outflow across every cash/bank/mobile-money account in the
+    // period - netChange nets these against each other, which hides the true
+    // "cash received" vs "cash spent" figures a Cash summary card needs.
+    cashReceived: cashReceived.toNumber(),
+    cashSpent: cashSpent.toNumber(),
   };
 }
 

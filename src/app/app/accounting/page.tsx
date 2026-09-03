@@ -1,5 +1,8 @@
-import { Wallet, FileText, Receipt, TrendingUp } from "lucide-react";
+import Link from "next/link";
+import { Wallet, FileText, Receipt, TrendingUp, Gauge } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -29,7 +32,11 @@ export default async function AccountingOverviewPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Accounting Overview" description="Cash position, receivables, payables, and profitability at a glance." />
+      <PageHeader
+        title="Accounting Overview"
+        description="Cash position, receivables, payables, and profitability at a glance."
+        actions={<Link href="/app/accounting/dashboard" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}><Gauge className="size-4" />Financial Dashboard</Link>}
+      />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => <OverviewMetricCard key={stat.label} {...stat} />)}
       </div>

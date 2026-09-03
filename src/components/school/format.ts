@@ -9,11 +9,10 @@ import type { Prisma } from "@prisma/client";
  * setting yet — see docs/SCHOOL_UI_CUSTOMER_READINESS.md.
  */
 
-const currency = new Intl.NumberFormat("en-GH", { style: "currency", currency: "GHS" });
 const dateOnly = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 
-export function formatMoney(value: Prisma.Decimal | number | string) {
-  return currency.format(Number(value));
+export function formatMoney(value: Prisma.Decimal | number | string, currencyCode = "GHS") {
+  return new Intl.NumberFormat("en-GH", { style: "currency", currency: currencyCode }).format(Number(value));
 }
 
 export function formatDate(value: Date | null | undefined) {

@@ -17,7 +17,7 @@ The public marketing site has a generated sitemap and robots policy, unique cano
 ## Vertical suites
 
 - **Hotel Management:** rooms, guests, reservations, stay lifecycle, folios and payments, housekeeping, reporting, restaurant, channels, and enforced property settings for currency/timezone, stay policy, charges, numbering, settlement, and room-readiness workflow.
-- **School Management:** student/guardian administration with optional profile photos, academic periods, classes, enrollment, attendance, fees and reporting, followed by examinations, grading, timetables, transport, library, campus services and education-specific payroll integration.
+- **School Management:** tenant-scoped student and guardian administration, a permission-aware 360-degree learner profile, validated and optimized passport photos, signed and revocable digital IDs with public QR verification and wallet-size PDF output, academic periods, classes, enrollment, attendance, conduct, fees and Accounting integration, examinations, grading, timetables, transport, library, conditional Hostel integration, campus services, payroll integration, and an operational dashboard.
 - **Hostel Management:** a separately subscribed companion to School Management for schools with boarding facilities. Buildings, rooms and beds (bed labels generated automatically from room capacity), student allocations, warden assignments per building, and hostel fee structures, invoices, and payments — see `docs/HOSTEL_MODULE.md`.
 - **Inventory & Procurement:** tenant-isolated item/category/warehouse catalogues, optional item images and barcodes, controlled physical counts, immutable movements, multi-line requisitions, purchasing approvals, purchase orders, numbered goods receipts, supplier-invoice matching and maker-checker approval, due dates, partial supplier payments, outstanding payable balances, low-stock alerts, reporting, POS integration, and automatic Accounting liability, recoverable-input-tax, and settlement journals when Accounting is active.
 - **Human Resources & Payroll:** employee records, onboarding, leave, performance reviews, controlled maker-checker termination and reinstatement, offboarding, access and final-pay coordination, compensation, payroll runs, payslips, settings, and reporting in one product and subscription.
@@ -27,12 +27,15 @@ The public marketing site has a generated sitemap and robots policy, unique cano
 - **Pharmacy Management:** tenant-isolated medicines, licensed suppliers, batch/expiry and FEFO stock, barcode lookup for medicines and batches, patients and prescribers, a simplified prescription-led dispensing counter that fills the patient and prescribed lines automatically, a separate over-the-counter sale path, optional two-person maker-checker approval for controlled drugs, an append-only stock-reconciliation ledger (count, adjustment, write-off, supplier return, patient return), the controlled-medicine register, safety alerts, reports, settings, backups, and subscription seats.
 - **Hospital Management (merged to `main` and live in production since 2026-08-12):** patient registration with organization-unique MRN and an inline duplicate-patient advisory, appointments, encounters with vitals/notes/diagnoses/care plans, admissions/wards/beds, laboratory and imaging with immutable verified results, split entry/verify permissions with maker-checker enforcement and a rejection workflow, a versioned Hospital-owned medication-order contract that never touches Pharmacy's tables directly, billing/invoicing/insurance claims, nursing tasks, and clinical alerts/referrals/consent. Operational record-keeping software, not a medical device or diagnosis engine. See `docs/HOSPITAL_MODULE.md`.
 
-School is undergoing an active customer-readiness expansion. The first tranche
-adds explicit student lifecycle history, reusable fee structures with
-idempotent bulk billing, enforced attendance correction windows, and
-campus-specific receipt numbering. See
-`docs/SCHOOL_CUSTOMER_READINESS.md` for delivered scope, remaining work, and
-release gates.
+School customer-readiness is delivered in guarded tranches. The lifecycle and
+fee-control tranche adds explicit status history, reusable fee structures,
+idempotent bulk billing, attendance correction windows, and campus receipt
+numbering. The student-profile tranche adds sensitive-field query boundaries,
+digital identity lifecycle controls, an explicit Hostel-owned read service,
+and permission-adaptive operational KPIs. See
+`docs/SCHOOL_CUSTOMER_READINESS.md`,
+`docs/SCHOOL_STUDENT_PROFILE_AND_DIGITAL_ID.md`, and
+`docs/DASHBOARD_KPI_STANDARD.md` for scope and release gates.
 
 See `docs/HOTEL_AND_SCHOOL_MODULES.md` for boundaries, invariants, roles, integrations, and completion gates. Both modules now have tenant routes and unique RBAC prefixes.
 

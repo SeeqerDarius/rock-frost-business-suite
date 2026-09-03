@@ -262,8 +262,8 @@ export async function getSchoolStudentPhoto(organizationId: string, id: string) 
   return db.schoolStudent.findFirst({ where: { id, organizationId }, select: { photoData: true, updatedAt: true } });
 }
 
-export async function updateSchoolStudentPhoto(organizationId: string, id: string, photoData: string | null) {
-  const result = await db.schoolStudent.updateMany({ where: { id, organizationId }, data: { photoData } });
+export async function updateSchoolStudentPhoto(organizationId: string, id: string, photoData: string | null, photoOriginalData?: string | null) {
+  const result = await db.schoolStudent.updateMany({ where: { id, organizationId }, data: { photoData, ...(photoOriginalData !== undefined ? { photoOriginalData } : {}) } });
   if (result.count === 0) throw new SchoolNotFoundError("Student not found.");
 }
 

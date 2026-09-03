@@ -1,0 +1,10 @@
+import { BadgeCheck, ShieldX } from "lucide-react";
+import { verifySchoolDigitalId } from "@/modules/school/student-profile-service";
+
+export default async function StudentIdVerificationPage({ params, searchParams }: { params: Promise<{ publicId: string }>; searchParams: Promise<{ token?: string }> }) {
+  const [{ publicId }, query] = await Promise.all([params, searchParams]);
+  const identity = query.token ? await verifySchoolDigitalId(publicId, query.token) : null;
+  if (!identity) return <main className="mx-auto grid min-h-screen max-w-lg place-content-center gap-4 px-6 text-center"><ShieldX className="mx-auto size-12 text-destructive" aria-hidden="true" /><h1 className="text-2xl font-semibold">Student ID not valid</h1><p className="text-muted-foreground">This identity card is invalid, expired, revoked, or the verification link was changed.</p></main>;
+  const approved = identity.approved;
+  return <main className="mx-auto grid min-h-screen max-w-lg place-content-center gap-5 px-6"><div className="rounded-2xl border bg-card p-6 shadow-sm"><BadgeCheck className="mb-4 size-12 text-emerald-600" aria-hidden="true" /><p className="text-sm font-medium text-emerald-700">Verified student identity</p><h1 className="mt-1 text-2xl font-semibold">{String(approved.studentName)}</h1><dl className="mt-6 grid gap-3 text-sm">{[["School", approved.schoolName], ["Student ID", approved.studentId], ["Campus", approved.campus], ["Class", approved.className], ["Academic year", approved.academicYear], ["Status", approved.enrollmentStatus], ["Date of birth", approved.dateOfBirth], ["Emergency contact", approved.emergencyContact]].filter(([, value]) => value).map(([label, value]) => <div key={String(label)} className="grid grid-cols-[8rem_1fr] gap-3 border-t pt-3"><dt className="text-muted-foreground">{String(label)}</dt><dd className="font-medium">{String(value)}</dd></div>)}</dl><p className="mt-6 text-xs text-muted-foreground">Valid until {new Intl.DateTimeFormat("en-GH", { dateStyle: "long" }).format(identity.expiryDate)}</p></div></main>;
+}

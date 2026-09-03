@@ -469,6 +469,11 @@ model User {
   feedbackReviewed                CustomerFeedback[]               @relation("FeedbackReviewed")
   feedbackEvents                  CustomerFeedbackEvent[]
   accountingAttachments           AccountingAttachment[]
+  schoolIdCardsIssued             SchoolDigitalIdCard[]            @relation("SchoolIdCardIssuedBy")
+  schoolIdCardsRevoked            SchoolDigitalIdCard[]            @relation("SchoolIdCardRevokedBy")
+  schoolIdCardsPrinted            SchoolDigitalIdCard[]            @relation("SchoolIdCardPrintedBy")
+  schoolConductReported           SchoolConductRecord[]            @relation("SchoolConductReportedBy")
+  schoolConductReviewed           SchoolConductRecord[]            @relation("SchoolConductReviewedBy")
 }
 
 enum TwoFactorMethod {
@@ -718,6 +723,9 @@ model Organization {
   schoolLibraryLoans              SchoolLibraryLoan[]
   schoolPayrollAdjustments        SchoolPayrollAdjustment[]
   schoolSettings                  SchoolSettings[]
+  schoolDigitalIdCards            SchoolDigitalIdCard[]
+  schoolConductRecords            SchoolConductRecord[]
+  schoolStudentDocuments          SchoolStudentDocument[]
   hostelBuildings                 HostelBuilding[]
   hostelRooms                     HostelRoom[]
   hostelBeds                      HostelBed[]
@@ -5144,6 +5152,31 @@ enum SchoolLibraryLoanStatus {
   DAMAGED
 }
 
+enum SchoolDigitalIdStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum SchoolConductClassification {
+  POSITIVE
+  NEGATIVE
+}
+
+enum SchoolConductSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum SchoolConductResolutionStatus {
+  OPEN
+  FOLLOW_UP
+  RESOLVED
+  CLOSED
+}
+
 model SchoolCampus {
   id             String   @id @default(cuid())
   organizationId String
@@ -5157,16 +5190,17 @@ model SchoolCampus {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch          Branch?                @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  classes         SchoolClass[]
-  students        SchoolStudent[]
-  enrollments     SchoolEnrollment[]
-  timetable       SchoolTimetableEntry[]
-  routes          SchoolTransportRoute[]
-  settings        SchoolSettings?
-  feeStructures   SchoolFeeStructure[]
-  hostelBuildings HostelBuilding[]
+  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch               Branch?                @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  classes              SchoolClass[]
+  students             SchoolStudent[]
+  enrollments          SchoolEnrollment[]
+  timetable            SchoolTimetableEntry[]
+  routes               SchoolTransportRoute[]
+  settings             SchoolSettings?
+  feeStructures        SchoolFeeStructure[]
+  hostelBuildings      HostelBuilding[]
+  schoolConductRecords SchoolConductRecord[]
 
   @@unique([organizationId, code])
   @@index([organizationId, active])
@@ -5243,20 +5277,27 @@ model SchoolGuardian {
 }
 
 model SchoolStudent {
-  id              String              @id @default(cuid())
-  organizationId  String
-  campusId        String
-  admissionNumber String
-  firstName       String
-  lastName        String
-  dateOfBirth     DateTime?
-  gender          String?
-  status          SchoolStudentStatus @default(APPLICANT)
-  admissionDate   DateTime?
-  medicalNotes    String?             @db.Text
-  photoData       String?             @db.Text
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  id                 String              @id @default(cuid())
+  organizationId     String
+  campusId           String
+  admissionNumber    String
+  firstName          String
+  lastName           String
+  dateOfBirth        DateTime?
+  gender             String?
+  status             SchoolStudentStatus @default(APPLICANT)
+  admissionDate      DateTime?
+  medicalNotes       String?             @db.Text
+  nationality        String?
+  bloodGroup         String?
+  address            String?             @db.Text
+  allergies          String?             @db.Text
+  accessibilityNotes String?             @db.Text
+  boardingStatus     String?             @default("DAY")
+  photoData          String?             @db.Text
+  photoOriginalData  String?             @db.Text
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   organization      Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   campus            SchoolCampus                  @relation(fields: [campusId], references: [id], onDelete: Restrict)
@@ -5272,6 +5313,9 @@ model SchoolStudent {
   hostelAllocations HostelAllocation[]
   hostelFeeInvoices HostelFeeInvoice[]
   hostelFeePayments HostelFeePayment[]
+  digitalIdCards    SchoolDigitalIdCard[]
+  conductRecords    SchoolConductRecord[]
+  documents         SchoolStudentDocument[]
 
   @@unique([organizationId, admissionNumber])
   @@index([organizationId, status])
@@ -5478,6 +5522,88 @@ model SchoolStudentLifecycleEvent {
   @@index([studentId, createdAt])
 }
 
+model SchoolDigitalIdCard {
+  id                 String                @id @default(cuid())
+  organizationId     String
+  studentId          String
+  publicId           String                @unique
+  tokenHash          String                @unique
+  status             SchoolDigitalIdStatus @default(ACTIVE)
+  issueDate          DateTime
+  expiryDate         DateTime
+  issuedById         String
+  revokedAt          DateTime?
+  revokedById        String?
+  revocationReason   String?               @db.Text
+  reissuedFromId     String?
+  printedAt          DateTime?
+  printedById        String?
+  printCount         Int                   @default(0)
+  approvedPublicData Json
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      SchoolStudent         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  issuedBy     User                  @relation("SchoolIdCardIssuedBy", fields: [issuedById], references: [id], onDelete: Restrict)
+  revokedBy    User?                 @relation("SchoolIdCardRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+  printedBy    User?                 @relation("SchoolIdCardPrintedBy", fields: [printedById], references: [id], onDelete: SetNull)
+  reissuedFrom SchoolDigitalIdCard?  @relation("SchoolIdCardReissue", fields: [reissuedFromId], references: [id], onDelete: SetNull)
+  reissues     SchoolDigitalIdCard[] @relation("SchoolIdCardReissue")
+
+  @@index([organizationId, studentId, status])
+  @@index([expiryDate, status])
+}
+
+model SchoolConductRecord {
+  id                 String                        @id @default(cuid())
+  organizationId     String
+  campusId           String
+  studentId          String
+  occurredAt         DateTime
+  category           String
+  classification     SchoolConductClassification
+  severity           SchoolConductSeverity
+  description        String                        @db.Text
+  reporterId         String
+  assignedReviewerId String?
+  actionTaken        String?                       @db.Text
+  followUpDate       DateTime?
+  resolution         String?                       @db.Text
+  resolutionStatus   SchoolConductResolutionStatus @default(OPEN)
+  attachmentMetadata Json?
+  createdAt          DateTime                      @default(now())
+  updatedAt          DateTime                      @updatedAt
+
+  organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campus           SchoolCampus  @relation(fields: [campusId], references: [id], onDelete: Restrict)
+  student          SchoolStudent @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  reporter         User          @relation("SchoolConductReportedBy", fields: [reporterId], references: [id], onDelete: Restrict)
+  assignedReviewer User?         @relation("SchoolConductReviewedBy", fields: [assignedReviewerId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, occurredAt])
+  @@index([campusId, resolutionStatus])
+  @@index([studentId, occurredAt])
+}
+
+model SchoolStudentDocument {
+  id             String   @id @default(cuid())
+  organizationId String
+  studentId      String
+  category       String
+  title          String
+  mimeType       String
+  sizeBytes      Int
+  storageKey     String
+  uploadedById   String
+  createdAt      DateTime @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      SchoolStudent @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, studentId, category])
+}
+
 model SchoolFeePayment {
   id             String             @id @default(cuid())
   organizationId String
@@ -5663,15 +5789,19 @@ model SchoolPayrollAdjustment {
 }
 
 model SchoolSettings {
-  id                  String   @id @default(cuid())
-  organizationId      String
-  campusId            String   @unique
-  gradingScale        Json?
-  attendanceCloseDays Int      @default(7)
-  receiptPrefix       String   @default("SCH")
-  allowRanking        Boolean  @default(false)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                         String   @id @default(cuid())
+  organizationId             String
+  campusId                   String   @unique
+  gradingScale               Json?
+  attendanceCloseDays        Int      @default(7)
+  receiptPrefix              String   @default("SCH")
+  allowRanking               Boolean  @default(false)
+  idCardShowDateOfBirth      Boolean  @default(false)
+  idCardShowEmergencyContact Boolean  @default(false)
+  idCardValidityMonths       Int      @default(12)
+  idCardPublicFields         Json?
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   campus       SchoolCampus @relation(fields: [campusId], references: [id], onDelete: Cascade)

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as school from "@/modules/school/service";
+import * as studentProfile from "@/modules/school/student-profile-service";
 import { cleanupTestOrg, createTestOrg, type TestOrg } from "../setup/fixtures";
 import { testDb } from "../setup/db";
 
@@ -23,6 +24,35 @@ afterAll(async () => {
 });
 
 describe("School service — real tenant isolation and customer-readiness guards", () => {
+  it("issues, verifies, revokes, and tenant-isolates a digital student ID", async () => {
+    process.env.AUTH_SECRET = "integration-only-school-id-signing-secret";
+    const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Digital", lastName: "Identity" });
+    const issued = await studentProfile.issueSchoolDigitalId(orgA.organizationId, student.id, orgA.userId, "https://app.example.test");
+    const url = new URL(issued.verificationUrl);
+    const token = url.searchParams.get("token");
+    expect(token).toBeTruthy();
+    expect(await studentProfile.verifySchoolDigitalId(issued.card.publicId, token!)).toMatchObject({ approved: { studentName: "Digital Identity" } });
+    await expect(studentProfile.getSchoolDigitalIdPresentation(orgB.organizationId, issued.card.id, "https://app.example.test")).rejects.toThrow(school.SchoolNotFoundError);
+    await studentProfile.revokeSchoolDigitalId(orgA.organizationId, issued.card.id, orgA.userId, "Integration verification");
+    expect(await studentProfile.verifySchoolDigitalId(issued.card.publicId, token!)).toBeNull();
+  });
+
+  it("reissues a digital ID and keeps sensitive profile queries permission-bound", async () => {
+    process.env.AUTH_SECRET = "integration-only-school-id-signing-secret";
+    const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Private", lastName: "Learner", medicalNotes: "Restricted note" });
+    const first = await studentProfile.issueSchoolDigitalId(orgA.organizationId, student.id, orgA.userId, "https://app.example.test");
+    const replacement = await studentProfile.issueSchoolDigitalId(orgA.organizationId, student.id, orgA.userId, "https://app.example.test", first.card.id);
+    const cards = await testDb.schoolDigitalIdCard.findMany({ where: { studentId: student.id }, orderBy: { createdAt: "asc" } });
+    expect(cards.map((card) => card.status)).toEqual(["REVOKED", "ACTIVE"]);
+    expect(replacement.card.reissuedFromId).toBe(first.card.id);
+    const restricted = await studentProfile.getSchoolStudentProfile(orgA.organizationId, student.id, orgA.userId, { medical: false, academic: false, finance: false, attendance: false, conduct: false, digitalId: false });
+    expect(restricted.medicalNotes).toBeNull();
+    expect(restricted.digitalIdCards).toEqual([]);
+    const authorized = await studentProfile.getSchoolStudentProfile(orgA.organizationId, student.id, orgA.userId, { medical: true, academic: false, finance: false, attendance: false, conduct: false, digitalId: true });
+    expect(authorized.medicalNotes).toBe("Restricted note");
+    expect(authorized.digitalIdCards).toHaveLength(2);
+  });
+
   it("rejects creating a student under another tenant campus", async () => {
     await expect(school.createSchoolStudent(orgA.organizationId, { campusId: campusB.id, firstName: "Bad", lastName: "Reference" })).rejects.toThrow(school.SchoolNotFoundError);
   });

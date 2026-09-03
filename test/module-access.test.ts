@@ -171,8 +171,8 @@ describe("module authorization source coverage", () => {
     // 123, up from 122: the Fleet Vehicle Expenses page, requireModuleAccess("fleet").
     // 126, up from 123: Accounting Contacts, Bills, and Credit Notes each add one guarded page, requireModuleAccess("accounting").
     // 131, up from 126: Accounting Trial Balance, General Ledger (index + per-account), AR/AP Ageing, and Cash Flow each add one guarded page, requireModuleAccess("accounting").
-    // 132, up from 131: the bank-reconciliation workspace page, requireModuleAccess("accounting").
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(132);
+    // 134 adds the School student profile and Accounting financial dashboard.
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(134);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
     // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
     // all Hostel Server Actions, same shape as School's) joins the sweep

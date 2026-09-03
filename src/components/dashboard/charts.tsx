@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { Area, AreaChart, Bar, BarChart, Cell, Legend, Line, LineChart, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, Bar, BarChart, Cell, ComposedChart, Legend, Line, LineChart, Pie, PieChart, PolarAngleAxis, RadialBar, RadialBarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/currency";
 import type { TrendGranularity } from "@/lib/trend-buckets";
@@ -220,6 +220,159 @@ export function BreakdownDonutChart({
         columns={["Value", "Share"]}
         rows={data.map((d) => ({ label: d.label, values: [formatValue(d.value), `${Math.round((d.value / total) * 100)}%`] }))}
       />
+    </div>
+  );
+}
+
+type GaugeUnit = "percent" | "ratio" | "days" | "money";
+type GaugeTone = "red" | "amber" | "green" | "neutral";
+
+/** Not CSS variables like CHART_COLORS - a gauge's color carries semantic meaning (red/amber/green), not theme identity, so it must render the same hue in both themes rather than following the theme's own accent palette. */
+const GAUGE_TONE_COLORS: Record<GaugeTone, string> = {
+  red: "var(--destructive)",
+  amber: "#f59e0b",
+  green: "#10b981",
+  neutral: "var(--muted-foreground)",
+};
+
+function formatGaugeBound(value: number, unit: GaugeUnit, currency?: string | null) {
+  if (unit === "percent") return `${value.toFixed(0)}%`;
+  if (unit === "ratio") return `${value.toFixed(1)}x`;
+  if (unit === "days") return `${value.toFixed(0)}d`;
+  return formatMoney(value, currency);
+}
+
+/**
+ * A semicircular benchmark gauge: value's own fill color (red/amber/green)
+ * carries the tone, rather than a multi-color band drawn behind it - simpler
+ * to build correctly and reads just as clearly as a colored-zone track.
+ */
+export function GaugeChart({
+  value,
+  displayValue,
+  min,
+  max,
+  unit,
+  currency,
+  tone,
+  label,
+  formula,
+  interpretation,
+}: {
+  value: number | null;
+  displayValue: string;
+  min: number;
+  max: number;
+  unit: GaugeUnit;
+  currency?: string | null;
+  tone: GaugeTone;
+  label: string;
+  formula: string;
+  interpretation: string;
+}) {
+  const clamped = value === null ? min : Math.min(max, Math.max(min, value));
+  const color = GAUGE_TONE_COLORS[tone];
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border p-4">
+      <p className="text-sm font-medium">{label}</p>
+      <div className="relative h-[100px] w-full" role="img" aria-label={`${label}: ${displayValue}`}>
+        <ResponsiveContainer width="100%" height="100%">
+          <RadialBarChart cx="50%" cy="95%" innerRadius="70%" outerRadius="100%" barSize={12} data={[{ value: clamped }]} startAngle={180} endAngle={0}>
+            <PolarAngleAxis type="number" domain={[min, max]} angleAxisId={0} tick={false} />
+            <RadialBar background={{ fill: "var(--muted)" }} dataKey="value" cornerRadius={6} fill={color} isAnimationActive={false} />
+          </RadialBarChart>
+        </ResponsiveContainer>
+        <div className="pointer-events-none absolute inset-x-3 bottom-0 flex items-end justify-between text-[10px] text-muted-foreground">
+          <span>{formatGaugeBound(min, unit, currency)}</span>
+          <span>{formatGaugeBound(max, unit, currency)}</span>
+        </div>
+        <div className="pointer-events-none absolute inset-x-0 top-1/2 text-center text-lg font-semibold tabular-nums" style={{ color }}>
+          {displayValue}
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">{formula}</p>
+      <p className="text-xs text-muted-foreground">{interpretation}</p>
+    </div>
+  );
+}
+
+/** N bars + one overlaid line on a shared category axis - Recharts's ComposedChart, following the same color/tooltip/a11y conventions as TrendChart. */
+export function ComposedTrendChart({
+  data,
+  bars,
+  line,
+  currency,
+}: {
+  data: Record<string, string | number>[];
+  bars: { key: string; label: string }[];
+  line: { key: string; label: string };
+  currency?: string | null;
+}) {
+  const hasData = data.length > 0 && data.some((row) => [...bars.map((b) => b.key), line.key].some((key) => row[key] !== undefined && row[key] !== null && Number.isFinite(Number(row[key]))));
+  if (!hasData) return <NoData label="No activity yet for this period." />;
+  const compactMoney = (value: number) => `${currency ?? "GHS"} ${Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
+
+  return (
+    <div className="space-y-3">
+      <div role="img" aria-label="Income, expenses, and profit chart" className="h-[220px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
+            <XAxis dataKey="label" interval="preserveStartEnd" minTickGap={24} tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
+            <YAxis width={72} tickFormatter={compactMoney} tickLine={false} axisLine={false} fontSize={11} stroke="var(--muted-foreground)" />
+            <Tooltip labelFormatter={(label) => `Period: ${label}`} contentStyle={tooltipStyle} formatter={((value: number, name: string) => [formatMoney(value, currency), name]) as (...args: unknown[]) => [string, string]} />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            {bars.map((bar, i) => <Bar key={bar.key} dataKey={bar.key} name={bar.label} fill={CHART_COLORS[i % CHART_COLORS.length]} radius={[4, 4, 0, 0]} isAnimationActive={false} />)}
+            <Line type="monotone" dataKey={line.key} name={line.label} stroke={CHART_COLORS[bars.length % CHART_COLORS.length]} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} isAnimationActive={false} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+      <ChartDataTable
+        caption={`Trend data: ${[...bars.map((b) => b.label), line.label].join(", ")}`}
+        columns={[...bars.map((b) => b.label), line.label]}
+        rows={data.map((row) => ({ label: String(row.label), values: [...bars.map((b) => formatMoney(Number(row[b.key]), currency)), formatMoney(Number(row[line.key]), currency)] }))}
+      />
+    </div>
+  );
+}
+
+/** Wraps ComposedTrendChart with the same day/week/month period switcher as PeriodicTrendChart, duplicated rather than generalizing the already-shipped component - zero blast radius on its existing call sites. */
+export function PeriodicComposedTrendChart({
+  data,
+  bars,
+  line,
+  currency,
+  defaultPeriod = "months",
+}: {
+  data: Record<TrendGranularity, Record<string, string | number>[]>;
+  bars: { key: string; label: string }[];
+  line: { key: string; label: string };
+  currency?: string | null;
+  defaultPeriod?: TrendGranularity;
+}) {
+  const [period, setPeriod] = useState<TrendGranularity>(defaultPeriod);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <div className="inline-flex rounded-lg bg-muted p-0.5 text-xs">
+          {(Object.keys(PERIOD_LABELS) as TrendGranularity[]).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPeriod(p)}
+              aria-pressed={period === p}
+              className={cn(
+                "rounded-md px-2.5 py-1 font-medium transition-colors",
+                period === p ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {PERIOD_LABELS[p]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <ComposedTrendChart data={data[period]} bars={bars} line={line} currency={currency} />
     </div>
   );
 }
