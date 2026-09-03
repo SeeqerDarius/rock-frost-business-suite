@@ -108,7 +108,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <AppNavigationLoader />
       </Suspense>
       {!platformIdentity && !isNarrowFleetSelfServiceRole(tenant) ? (
-        <div className="fixed right-24 top-4 z-40 hidden rounded-full border bg-background/95 px-3 py-1 text-xs font-medium shadow-sm backdrop-blur sm:block">
+        // Positioned below the sticky header (h-16) rather than at the
+        // viewport's own top edge, so it never overlaps the header's own
+        // top-right account menu.
+        <div className="fixed right-24 top-20 z-40 hidden rounded-full border bg-background/95 px-3 py-1 text-xs font-medium shadow-sm backdrop-blur sm:block">
           {organization?.status === "TRIAL"
             ? `Trial workspace · ${trialDaysRemaining} day${trialDaysRemaining === 1 ? "" : "s"} remaining`
             : organization?.status === "ACTIVE"
