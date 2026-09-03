@@ -1,5 +1,3 @@
-import sharp from "sharp";
-
 export const MAX_SCHOOL_PHOTO_BYTES = 1024 * 1024;
 export const MIN_SCHOOL_PHOTO_DIMENSION = 128;
 export const MAX_SCHOOL_PHOTO_DIMENSION = 8000;
@@ -22,6 +20,7 @@ export async function schoolPhotoImageData(file: File) {
 }
 
 export async function schoolStudentPhotoImages(file: File, cropFocus: "attention" | "centre" | "north" | "south" = "attention") {
+  const { default: sharp } = await import("sharp");
   const original = await schoolPhotoImageData(file);
   if (!original) return null;
   const bytes = Buffer.from(await file.arrayBuffer());

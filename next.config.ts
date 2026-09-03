@@ -29,6 +29,10 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  outputFileTracingIncludes: {
+    "/app/school/**/*": ["node_modules/@img/sharp*/**/*"],
+    "/api/school/**/*": ["node_modules/@img/sharp*/**/*"],
+  },
   async redirects() {
     return [
       { source: "/modules/payroll", destination: "/modules/hr", permanent: true },
