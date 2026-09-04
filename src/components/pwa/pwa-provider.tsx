@@ -177,7 +177,11 @@ export function PwaProvider({ workspace, children }: PwaProviderProps) {
   return (
     <>
       {showBadge ? (
-        <div className="fixed right-3 top-3 z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-full border bg-background/95 px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur" role="status" aria-live="polite">
+        // Positioned below the sticky header (h-16) rather than at the
+        // viewport's own top edge, so it never overlaps the header's own
+        // top-right controls (the account menu) regardless of what else is
+        // showing there (module launcher, trial/subscription pill).
+        <div className="fixed right-3 top-20 z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-2 rounded-full border bg-background/95 px-3 py-1.5 text-xs font-medium shadow-sm backdrop-blur" role="status" aria-live="polite">
           {state === "online" ? <Cloud className="size-3.5 text-emerald-600" /> : state === "offline" ? <CloudOff className="size-3.5 text-amber-600" /> : <TriangleAlert className="size-3.5 text-amber-600" />}
           <span>{state === "online" ? "Online" : state === "offline" ? "Offline. Server confirmation is unavailable." : state === "update-available" ? "Update available" : state === "synchronizing" ? "Synchronizing" : state === "partially-synchronized" ? "Actions are waiting to synchronize" : state === "conflict" ? "Conflict requires attention" : state === "session-expired" ? "Offline session expired. Local access was cleared." : "Offline synchronization failed"}</span>
           {installPrompt ? <Button size="sm" variant="ghost" className="h-6 gap-1 px-1.5" onClick={install}><Download className="size-3" /> Install</Button> : null}
