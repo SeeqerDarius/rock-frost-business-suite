@@ -1,5 +1,5 @@
 import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
-import { LayoutGrid, FolderKanban, ListTodo, Flag, BarChart3 } from "lucide-react";
+import { LayoutGrid, FolderKanban, ListTodo, Flag, BarChart3, Users } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const projectsNavigation: ModuleNavItem[] = [
@@ -8,5 +8,6 @@ export const projectsNavigation: ModuleNavItem[] = [
   { label: "Tasks", href: "/app/projects/tasks", icon: <ListTodo className="size-4" />, description: "Create tasks under a project or milestone, assign them to a teammate, set priority, and move them through to do, in progress, in review, and done." },
   { label: "Milestones", href: "/app/projects/milestones", icon: <Flag className="size-4" />, description: "Add milestones to a project with a due date and mark them complete once every task under them is done." },
   { label: "Reports", href: "/app/projects/reports", icon: <BarChart3 className="size-4" />, description: "Review project and task counts by status plus each teammate's open task workload, and export the report." },
+  { label: "Team", href: "/app/projects/staff", icon: <Users className="size-4" />, description: "Invite Project staff, assign their role, and manage access." },
   { label: "Projects Settings", href: "/app/projects/settings", icon: <AnimatedSettingsIcon size={16} />, description: "Set the prefix used to number new project codes, such as turning PRJ into PRJ-0001." },
 ];

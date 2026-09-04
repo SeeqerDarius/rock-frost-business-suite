@@ -1,5 +1,5 @@
 import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
-import { LayoutGrid, Package, Warehouse, Layers, ArrowLeftRight, BarChart3, Building2, FileText, PackageCheck, ClipboardCheck, ReceiptText, FileCheck2 } from "lucide-react";
+import { LayoutGrid, Package, Warehouse, Layers, ArrowLeftRight, BarChart3, Building2, FileText, PackageCheck, ClipboardCheck, ReceiptText, FileCheck2, UsersRound } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 /**
@@ -36,6 +36,7 @@ const INVENTORY_ITEMS: ModuleNavItem[] = [
   { label: "Stock Counts", group: "Inventory", href: "/app/inventory/counts", icon: <ClipboardCheck className="size-4" />, description: "Record physical counts, review variances, and post approved stock adjustments." },
   { label: "Movements", group: "Inventory", href: "/app/inventory/movements", icon: <ArrowLeftRight className="size-4" />, description: "Record stock receipts, issues, adjustments, and transfers between warehouses." },
   { label: "Inventory Reports", group: "Inventory", href: "/app/inventory/reports", icon: <BarChart3 className="size-4" />, description: "View total stock value, active item counts, and items that are low on stock." },
+  { label: "Inventory Team", group: "Inventory", href: "/app/inventory/staff", icon: <UsersRound className="size-4" />, description: "Invite Inventory staff, assign their role, and manage access." },
   { label: "Inventory Settings", group: "Inventory", href: "/app/inventory/settings", icon: <AnimatedSettingsIcon size={16} />, description: "Set the default reorder point used to flag items as low stock, and manage categories." },
 ];
 
@@ -46,6 +47,7 @@ const PROCUREMENT_ITEMS: ModuleNavItem[] = [
   { label: "Goods Receipts", group: "Procurement", href: "/app/procurement/receipts", icon: <ReceiptText className="size-4" />, description: "View the immutable record of quantities received against each purchase order." },
   { label: "Supplier Invoices", group: "Procurement", href: "/app/procurement/invoices", icon: <FileCheck2 className="size-4" />, description: "Create invoices from received order lines, approve or reject them, and record supplier payments." },
   { label: "Procurement Reports", group: "Procurement", href: "/app/procurement/reports", icon: <BarChart3 className="size-4" />, description: "View request and order activity, including open order value, and export the summaries." },
+  { label: "Procurement Team", group: "Procurement", href: "/app/procurement/staff", icon: <UsersRound className="size-4" />, description: "Invite Procurement staff, assign their role, and manage access." },
   { label: "Procurement Settings", group: "Procurement", href: "/app/procurement/settings", icon: <AnimatedSettingsIcon size={16} />, description: "Set the purchase order numbering prefix and default receiving warehouse." },
 ];
 

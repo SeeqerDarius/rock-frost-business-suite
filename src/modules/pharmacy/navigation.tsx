@@ -11,5 +11,6 @@ export const pharmacyNavigation: ModuleNavItem[] = [
   { label: "Dispensing", href: "/app/pharmacy/dispensing", icon: <ShoppingBag className="size-4" />, description: "Dispense medicine against a prescription or over the counter using FEFO stock, and approve or reject pending controlled-drug requests." },
   { label: "Restricted Register", href: "/app/pharmacy/restricted", icon: <ShieldAlert className="size-4" />, description: "View the append-only log of every controlled-medicine dispensing entry with patient and prescriber details." },
   { label: "Reports", href: "/app/pharmacy/reports", icon: <BarChart3 className="size-4" />, description: "Review expiring and expired stock, low-stock medicines, and other priority alerts." },
+  { label: "Team", href: "/app/pharmacy/staff", icon: <Users className="size-4" />, description: "Invite pharmacy staff, assign clinical roles, and manage access." },
   { label: "Pharmacy Settings", href: "/app/pharmacy/settings", icon: <AnimatedSettingsIcon size={16} />, description: "Configure licence details, receipt numbering, prescription validity, and controlled-drug safety controls." },
 ];

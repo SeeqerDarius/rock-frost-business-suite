@@ -24,5 +24,6 @@ export const accountingNavigation: ModuleNavItem[] = [
   { label: "General Ledger", href: "/app/accounting/general-ledger", icon: <BookOpenText className="size-4" />, description: "Open any account to see its full chronological transaction history and running balance." },
   { label: "AR/AP Ageing", href: "/app/accounting/ageing", icon: <CalendarClock className="size-4" />, description: "Receivables and payables broken down into current, 1-30, 31-60, 61-90, and 90+ day buckets." },
   { label: "Cash Flow", href: "/app/accounting/cash-flow", icon: <Waves className="size-4" />, description: "Direct-method cash movement by operating, investing, and financing activity over a date range." },
+  { label: "Team", href: "/app/accounting/staff", icon: <UsersRound className="size-4" />, description: "Invite Accounting staff, assign their role, and manage access." },
   { label: "Accounting Settings", href: "/app/accounting/settings", icon: <AnimatedSettingsIcon size={16} />, description: "Set your invoice numbering prefix and manage expense categories." },
 ];
