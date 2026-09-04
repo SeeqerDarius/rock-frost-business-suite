@@ -142,6 +142,7 @@ export const PERMISSIONS = {
   SCHOOL_PAYROLL_MANAGE: "school.payroll.manage",
   SCHOOL_REPORTS_VIEW: "school.reports.view",
   SCHOOL_SETTINGS_MANAGE: "school.settings.manage",
+  SCHOOL_STAFF_MANAGE: "school.staff.manage",
   SCHOOL_STUDENT_PROFILE_VIEW: "school.student_profile.view",
   SCHOOL_STUDENT_MEDICAL_VIEW: "school.student_medical.view",
   SCHOOL_ACADEMIC_PERFORMANCE_VIEW: "school.academic_performance.view",

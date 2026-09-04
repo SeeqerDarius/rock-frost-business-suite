@@ -1,5 +1,5 @@
 import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
-import { LayoutDashboard, School, Users, CalendarRange, Shapes, ClipboardCheck, Receipt, GraduationCap, CalendarClock, Bus, Library, Banknote, BarChart3 } from "lucide-react";
+import { LayoutDashboard, School, Users, CalendarRange, Shapes, ClipboardCheck, Receipt, GraduationCap, CalendarClock, Bus, Library, Banknote, BarChart3, UserRoundCog } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const schoolNavigation: ModuleNavItem[] = [
@@ -15,6 +15,7 @@ export const schoolNavigation: ModuleNavItem[] = [
   { label: "Transport", group: "Services", href: "/app/school/transport", icon: <Bus className="size-4" />, description: "Create bus routes with stops and drivers, and assign students to a route and boarding stop." },
   { label: "Library", group: "Services", href: "/app/school/library", icon: <Library className="size-4" />, description: "Add books to the catalogue and issue or return loans to students, tracking overdue items." },
   { label: "Campuses", group: "Administration", href: "/app/school/campuses", icon: <School className="size-4" />, description: "Create and manage the physical school sites that students, classes, and fees are tied to." },
+  { label: "Staff", group: "Administration", href: "/app/school/staff", icon: <UserRoundCog className="size-4" />, description: "Invite teachers and other school staff, assign their school role, review class assignments, and manage access status." },
   { label: "Reports", group: "Administration", href: "/app/school/reports", icon: <BarChart3 className="size-4" />, description: "View live enrollment, attendance, and fee-collection indicators and export school reports." },
   { label: "School Settings", shortLabel: "Settings", group: "Administration", href: "/app/school/settings", icon: <AnimatedSettingsIcon size={16} />, description: "Configure per-campus attendance correction windows, receipt numbering, and grading scales." },
 ];

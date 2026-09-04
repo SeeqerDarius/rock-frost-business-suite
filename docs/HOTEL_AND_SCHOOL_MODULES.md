@@ -99,6 +99,18 @@ can edit guardian contact, occupation, and address details from the Guardians
 tab without breaking existing student relationships. Name-plus-phone duplicate
 checks remain organization-scoped and cross-tenant IDs are rejected.
 
+The School Staff page is the School Administrator's staff directory and
+onboarding workspace. It can invite teachers, Admissions Officers, Academic
+Heads, Bursars, Librarians, Transport Managers, and other School
+Administrators; change an existing School staff member's School role; suspend
+or restore access; and show assigned classes. The dedicated
+`school.staff.manage` permission belongs to the seeded School Administrator
+role. Every write rechecks the permission and organization boundary, allows
+only the fixed School role set, enforces subscribed seat limits, writes an
+audit event, and synchronizes active members to the shared HR employee record.
+The invitation acceptance lifecycle remains responsible for activating new
+accounts and creating their HR link, so staff identities are not duplicated.
+
 ### Release S2 — teaching, assessment, and communication
 
 - Curriculum/syllabus, subject assignments, teacher allocations, lesson plans,
