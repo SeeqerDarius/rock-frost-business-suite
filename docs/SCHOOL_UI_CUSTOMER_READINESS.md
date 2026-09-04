@@ -17,7 +17,7 @@ No file in that set was modified here.
 ## 2026-09-04 focused workflow update
 
 - Students and Guardians now use separate tabs on the existing route. The student list has an explicit, keyboard-focusable **View profile** action instead of relying on hover discovery.
-- Student admission can select an existing guardian or create and link a new guardian in the same transaction. Reuse requires the same organization, name, and phone; a missing or foreign selected guardian aborts the whole admission.
+- Student admission is one unified workflow with a required primary-guardian step. Staff explicitly choose Select existing or Create new inside the admission dialog; both records and their primary relationship are committed in one transaction. Matching organization, name, and phone details reuse an existing guardian, while a missing or foreign selection aborts the whole admission.
 - Classes and Subjects now use separate tabs while retaining the existing class capacity, teacher assignment, and subject workflows.
 - Reports now provide Overview, Trends, and Comparison tabs with campus, class, and date filters. Attendance and fee collection use real tenant-scoped time-series data, class comparisons, prior-period deltas, accessible chart tables, and explicit loading, empty, and error states.
 - Attendance is a phone-first class/date roster shaped by current Ghanaian school workflows: every learner defaults to Present, staff can mark all Present, change an exception with one tap among Present, Absent, Late, or Excused, use the controls by keyboard, see live status totals and unsaved-change feedback, then save the full roster in one server action.

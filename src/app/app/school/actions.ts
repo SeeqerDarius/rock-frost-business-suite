@@ -46,16 +46,16 @@ export async function createStudentAction(f:FormData){
   if(!p.success)redirect(`${path}?error=invalid`);
 
   const existingGuardianId = clean(f.get("existingGuardianId"));
+  const guardianMode = clean(f.get("guardianMode"));
   const guardianFirstName = clean(f.get("guardianFirstName"));
   const guardianLastName = clean(f.get("guardianLastName"));
   const guardianPhone = clean(f.get("guardianPhone"));
   const guardianRelationship = clean(f.get("guardianRelationship"));
-  const hasGuardianInput = Boolean(guardianFirstName || guardianLastName || guardianPhone || guardianRelationship);
   let guardianData: Parameters<typeof admitSchoolStudent>[2] = null;
-  if (existingGuardianId) {
+  if (guardianMode === "existing" && existingGuardianId) {
     if (!guardianRelationship) redirect(`${path}?error=invalid`);
     guardianData = { guardianId: existingGuardianId, relationship: guardianRelationship };
-  } else if (hasGuardianInput) {
+  } else if (guardianMode === "new") {
     const gp = z.object({
       firstName: shortText,
       lastName: shortText,
@@ -75,6 +75,8 @@ export async function createStudentAction(f:FormData){
     });
     if (!gp.success) redirect(`${path}?error=invalid`);
     guardianData = gp.data;
+  } else {
+    redirect(`${path}?error=invalid`);
   }
 
   try{await admitSchoolStudent(t.organizationId,p.data,guardianData)}catch(e){fail(path,e)}

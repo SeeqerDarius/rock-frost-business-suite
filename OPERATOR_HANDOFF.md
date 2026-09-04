@@ -1,5 +1,12 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-09-04: Unified student and guardian admission
+
+- **Scope**: replaced the visually fragmented Admit student, Add guardian, and Link guardian header actions with one Admit student workflow. The admission dialog now contains a required Primary guardian step with two explicit modes: Select existing or Create new. New-guardian mode includes name, phone, relationship, email, occupation, and address; existing-guardian mode requires the guardian and relationship. The Guardians tab remains the canonical guardian directory.
+- **Behavior and safety**: the server action rejects admissions without a valid guardian mode and complete required guardian fields. The existing `admitSchoolStudent` transaction remains the write boundary, so the student, guardian reuse or creation, and primary relationship either all succeed or all roll back. Existing tenant checks and name-plus-phone duplicate reuse remain unchanged. No schema or migration change.
+- **Important files**: `src/app/app/school/students/student-guardian-fields.tsx`, `src/app/app/school/students/page.tsx`, `src/app/app/school/actions.ts`, `src/modules/school/service.ts`, and `test/school-ux-upgrade.test.ts`.
+- **Validation before release**: TypeScript and affected-file ESLint passed. Focused School UX and editorial-punctuation tests passed 4/4. The full unit suite passed 161 files and 1,239 tests. Full lint passed with zero errors and only the two established PWA hook warnings in `sync-center.tsx` and `pwa-provider.tsx`. The production build passed TypeScript, compilation, and generation of all 245 routes. Production evidence will be added after deployment.
+
 ## 2026-09-04: Redesigned the admin login page (split-screen, animated illustration, real 2FA field)
 
 - **Scope**: user asked for an animated login page for `admin.rockfrostgroup.com` with a 3D illustration on the left and a functional Email/Password form on the right. This went through several rounds first as a standalone HTML mockup (delivered as an Artifact and a downloadable file) to nail the design, using real values pulled from this codebase - the app's actual `oklch()` color tokens, its actual font (Geist, used for every heading and body element via `--font-heading: var(--font-sans)`), the actual 2FA field markup from the real login form, and the real module registry for the module-name chips - rather than inventing a palette or a module list. The user then asked to deploy it, i.e. make this the real `/login` page rather than a separate mockup.

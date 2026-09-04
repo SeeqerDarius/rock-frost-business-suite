@@ -99,12 +99,10 @@ export function createSchoolStudent(organizationId: string, data: { campusId: st
 }
 
 /**
- * Admits a student and, when guardian details are supplied, creates and
- * links that guardian in the same transaction - so admitting a student's
- * first guardian no longer requires the separate "Add guardian" then "Link
- * guardian" round trip. A student with an existing guardian (a sibling
- * already on record) still uses createSchoolStudent + linkSchoolGuardian
- * against the existing guardian, unchanged.
+ * Admits a student and creates or selects the primary guardian in the same
+ * transaction. The action layer requires guardianData for the unified
+ * admission form. This nullable service parameter remains for internal and
+ * backwards-compatible callers that intentionally create an unlinked record.
  */
 export function admitSchoolStudent(
   organizationId: string,
