@@ -1,0 +1,153 @@
+/* Illustration-panel visuals for the sign-in page: gradient ground, a
+   layered CSS-3D "scene" (perspective + rotateX/Y + translateZ), and the
+   module-name chips that fade in and out on their own independent
+   schedules. Kept as a CSS module (rather than Tailwind utilities) because
+   the keyframes and per-tile 3D transforms are easier to read and maintain
+   as real CSS than as long arbitrary-value class strings. */
+
+.illustrationPanel {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(155deg, oklch(0.32 0.17 258) 0%, oklch(0.5 0.2 255) 58%, oklch(0.62 0.19 250) 100%);
+}
+:global(.dark) .illustrationPanel {
+  background: linear-gradient(155deg, oklch(0.12 0.05 258) 0%, oklch(0.28 0.13 255) 58%, oklch(0.4 0.17 250) 100%);
+}
+
+.blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(50px);
+  background: color-mix(in oklch, white 55%, transparent);
+}
+.blobA { width: 22rem; height: 22rem; top: -4rem; right: -5rem; opacity: 0.28; }
+.blobB { width: 16rem; height: 16rem; bottom: -3rem; left: -3rem; opacity: 0.16; }
+
+.sceneWrap { position: relative; perspective: 1600px; }
+.scene {
+  position: relative;
+  width: min(30rem, 90%);
+  height: 22rem;
+  margin: 0 auto;
+  transform-style: preserve-3d;
+  animation: sceneDrift 9s ease-in-out infinite;
+}
+
+.tile {
+  position: absolute;
+  border-radius: 20px;
+  transform-style: preserve-3d;
+  box-shadow: 0 30px 60px -18px oklch(0.145 0 0 / 16%), 0 2px 0 rgba(255, 255, 255, 0.06) inset;
+  opacity: 0;
+  transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(var(--tz, 0px));
+  animation: tileIn 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) var(--delay, 0s) forwards, tileFloat var(--float-duration, 6s) ease-in-out var(--float-delay, 1.3s) infinite;
+}
+:global(.dark) .tile { box-shadow: 0 30px 60px -18px oklch(0 0 0 / 45%), 0 2px 0 rgba(255, 255, 255, 0.06) inset; }
+
+.tileMain {
+  left: 6%;
+  top: 16%;
+  width: 15.5rem;
+  height: 11rem;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(6px);
+  padding: 1.15rem 1.25rem;
+}
+.dots { display: flex; gap: 0.3rem; margin-bottom: 1rem; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, 0.5); }
+.bars { display: flex; align-items: flex-end; gap: 0.5rem; height: 4.6rem; }
+.bar {
+  display: block;
+  width: 1.15rem;
+  border-radius: 5px 5px 2px 2px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.5));
+  transform-origin: bottom;
+  transform: scaleY(0);
+  animation: growBar 0.7s cubic-bezier(0.3, 1, 0.4, 1) var(--bar-delay, 0.75s) forwards;
+}
+
+.tileLock {
+  right: 2%;
+  top: 2%;
+  width: 6.4rem;
+  height: 6.4rem;
+  background: linear-gradient(155deg, oklch(0.7 0.19 250), oklch(0.32 0.17 258));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.tileCheck {
+  right: 12%;
+  bottom: 12%;
+  width: 5rem;
+  height: 5rem;
+  border-radius: 50%;
+  background: color-mix(in oklch, white 96%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: oklch(0.5 0.2 255);
+}
+:global(.dark) .tileCheck { color: oklch(0.4 0.17 250); }
+
+.moduleChip {
+  position: absolute;
+  padding: 0.45rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  backdrop-filter: blur(4px);
+  color: white;
+  opacity: 0;
+  transform: translateZ(70px);
+  animation: chipIn 0.8s ease var(--delay, 0.95s) forwards, tileFloat var(--float-duration, 5.6s) ease-in-out var(--float-delay, 1.9s) infinite;
+}
+.chipA { left: -2%; bottom: 16%; }
+.chipB { left: 34%; bottom: -6%; }
+.chipC { right: -6%; top: 44%; }
+.chipText { display: inline-block; transition: opacity 0.35s ease, transform 0.35s ease; }
+.chipSwapping { opacity: 0; transform: translateY(4px); }
+
+.panelCopy { opacity: 0; animation: fadeUp 0.8s ease-out 0.3s forwards; }
+
+.formField { opacity: 0; animation: fadeUp 0.6s ease-out forwards; }
+
+@keyframes tileIn {
+  from { opacity: 0; transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(var(--tz, 0px)) translateY(24px) scale(0.92); }
+  to { opacity: 1; }
+}
+@keyframes chipIn {
+  from { opacity: 0; transform: translateZ(70px) translateY(20px) scale(0.94); }
+  to { opacity: 1; transform: translateZ(70px); }
+}
+@keyframes tileFloat {
+  0%, 100% { transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(var(--tz, 0px)) translateY(0); }
+  50% { transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(var(--tz, 0px)) translateY(-10px); }
+}
+@keyframes sceneDrift {
+  0%, 100% { transform: rotateY(-4deg); }
+  50% { transform: rotateY(4deg); }
+}
+@keyframes growBar { to { transform: scaleY(1); } }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .scene, .tile, .moduleChip, .panelCopy, .formField, .bar {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
