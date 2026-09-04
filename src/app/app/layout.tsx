@@ -108,10 +108,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <AppNavigationLoader />
       </Suspense>
       {!platformIdentity && !isNarrowFleetSelfServiceRole(tenant) ? (
-        // Positioned below the sticky header (h-16) rather than at the
-        // viewport's own top edge, so it never overlaps the header's own
-        // top-right account menu.
-        <div className="fixed right-24 top-20 z-40 hidden rounded-full border bg-background/95 px-3 py-1 text-xs font-medium shadow-sm backdrop-blur sm:block">
+        // Anchored a fixed 9rem left of the viewport's horizontal center
+        // (not the top-right corner) so it never overlaps the header's own
+        // right-side controls (module launcher, account avatar), and sits
+        // clear of the connectivity/install badge, which centers itself
+        // (see PwaProvider) - the 9rem gap comfortably fits that badge's
+        // widest realistic state text.
+        <div className="fixed right-[calc(50%_+_9rem)] top-3 z-40 hidden rounded-full border bg-background/95 px-3 py-1 text-xs font-medium shadow-sm backdrop-blur sm:block">
           {organization?.status === "TRIAL"
             ? `Trial workspace · ${trialDaysRemaining} day${trialDaysRemaining === 1 ? "" : "s"} remaining`
             : organization?.status === "ACTIVE"
