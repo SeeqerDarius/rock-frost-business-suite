@@ -5,9 +5,10 @@ import { createContext, useContext } from "react";
 export interface OrganizationBranding {
   logoUrl: string | null;
   name: string | null;
+  workspaceStatusLabel: string | null;
 }
 
-const OrganizationBrandingContext = createContext<OrganizationBranding>({ logoUrl: null, name: null });
+const OrganizationBrandingContext = createContext<OrganizationBranding>({ logoUrl: null, name: null, workspaceStatusLabel: null });
 
 /**
  * Makes the current organization's uploaded logo (Organization Settings >

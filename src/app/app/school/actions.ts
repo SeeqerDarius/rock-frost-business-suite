@@ -6,7 +6,7 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import { cuid, shortText, longText, dateInput, moneyAmountPositive, parseWithSchema } from "@/lib/validation";
-import { createSchoolCampus, createSchoolAcademicYear, closeSchoolAcademicYear, deleteSchoolAcademicYear, createSchoolTerm, admitSchoolStudent, createSchoolGuardian, linkSchoolGuardian, createSchoolClass, updateSchoolClassCapacity, assignSchoolClassTeacher, removeSchoolClassTeacher, createSchoolSubject, enrollSchoolStudent, recordSchoolAttendanceBulk, createSchoolFeeInvoice, recordSchoolFeePayment, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, upsertSchoolSettings, transitionSchoolStudent, createSchoolFeeStructure, issueSchoolFeeStructure, updateSchoolStudentPhoto, updateSchoolGuardianPhoto, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
+import { createSchoolCampus, createSchoolAcademicYear, closeSchoolAcademicYear, deleteSchoolAcademicYear, createSchoolTerm, admitSchoolStudent, createSchoolGuardian, updateSchoolGuardian, linkSchoolGuardian, createSchoolClass, updateSchoolClassCapacity, assignSchoolClassTeacher, removeSchoolClassTeacher, createSchoolSubject, enrollSchoolStudent, recordSchoolAttendanceBulk, createSchoolFeeInvoice, recordSchoolFeePayment, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, upsertSchoolSettings, transitionSchoolStudent, createSchoolFeeStructure, issueSchoolFeeStructure, updateSchoolStudentPhoto, updateSchoolGuardianPhoto, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
 import { schoolPhotoImageData, schoolStudentPhotoImages } from "@/lib/school-photo-image";
 import { postModuleRevenue } from "@/lib/accounting-integration";
 import { getSurfaceOrigins } from "@/lib/app-surfaces";
@@ -46,16 +46,16 @@ export async function createStudentAction(f:FormData){
   if(!p.success)redirect(`${path}?error=invalid`);
 
   const existingGuardianId = clean(f.get("existingGuardianId"));
+  const guardianMode = clean(f.get("guardianMode"));
   const guardianFirstName = clean(f.get("guardianFirstName"));
   const guardianLastName = clean(f.get("guardianLastName"));
   const guardianPhone = clean(f.get("guardianPhone"));
   const guardianRelationship = clean(f.get("guardianRelationship"));
-  const hasGuardianInput = Boolean(guardianFirstName || guardianLastName || guardianPhone || guardianRelationship);
   let guardianData: Parameters<typeof admitSchoolStudent>[2] = null;
-  if (existingGuardianId) {
+  if (guardianMode === "existing" && existingGuardianId) {
     if (!guardianRelationship) redirect(`${path}?error=invalid`);
     guardianData = { guardianId: existingGuardianId, relationship: guardianRelationship };
-  } else if (hasGuardianInput) {
+  } else if (guardianMode === "new") {
     const gp = z.object({
       firstName: shortText,
       lastName: shortText,
@@ -75,6 +75,8 @@ export async function createStudentAction(f:FormData){
     });
     if (!gp.success) redirect(`${path}?error=invalid`);
     guardianData = gp.data;
+  } else {
+    redirect(`${path}?error=invalid`);
   }
 
   try{await admitSchoolStudent(t.organizationId,p.data,guardianData)}catch(e){fail(path,e)}
@@ -82,6 +84,7 @@ export async function createStudentAction(f:FormData){
   redirect(`${path}?saved=1`);
 }
 export async function createGuardianAction(f:FormData){const path="/app/school/students",t=await auth(PERMISSIONS.SCHOOL_STUDENTS_MANAGE,path);const p=z.object({firstName:shortText,lastName:shortText,email:z.string().email().nullable(),phone:shortText,address:longText.nullable(),occupation:shortText.nullable()}).safeParse({firstName:clean(f.get("firstName")),lastName:clean(f.get("lastName")),email:clean(f.get("email")),phone:clean(f.get("phone")),address:clean(f.get("address")),occupation:clean(f.get("occupation"))});if(!p.success)redirect(`${path}?error=invalid`);await createSchoolGuardian(t.organizationId,p.data);revalidatePath(path);redirect(`${path}?saved=1`)}
+export async function updateGuardianAction(f:FormData){const path="/app/school/students",t=await auth(PERMISSIONS.SCHOOL_STUDENTS_MANAGE,path);const p=z.object({guardianId:cuid,firstName:shortText,lastName:shortText,email:z.string().email().nullable(),phone:shortText,address:longText.nullable(),occupation:shortText.nullable()}).safeParse({guardianId:clean(f.get("guardianId")),firstName:clean(f.get("firstName")),lastName:clean(f.get("lastName")),email:clean(f.get("email")),phone:clean(f.get("phone")),address:clean(f.get("address")),occupation:clean(f.get("occupation"))});if(!p.success)redirect(`${path}?error=invalid`);const{guardianId,...data}=p.data;try{await updateSchoolGuardian(t.organizationId,guardianId,data)}catch(e){fail(path,e)}revalidatePath(path);redirect(`${path}?saved=guardian`)}
 export async function linkGuardianAction(f:FormData){const path="/app/school/students",t=await auth(PERMISSIONS.SCHOOL_STUDENTS_MANAGE,path);const p=z.object({studentId:cuid,guardianId:cuid,relationship:shortText,primary:z.boolean()}).safeParse({studentId:clean(f.get("studentId")),guardianId:clean(f.get("guardianId")),relationship:clean(f.get("relationship")),primary:f.get("primary")==="on"});if(!p.success)redirect(`${path}?error=invalid`);try{await linkSchoolGuardian(t.organizationId,p.data.studentId,p.data.guardianId,p.data.relationship,p.data.primary)}catch(e){fail(path,e)}revalidatePath(path);redirect(`${path}?saved=1`)}
 export async function createClassAction(f:FormData){const path="/app/school/classes",t=await auth(PERMISSIONS.SCHOOL_ACADEMICS_MANAGE,path);const p=z.object({campusId:cuid,code:shortText,name:shortText,gradeLevel:shortText.nullable(),capacity:z.coerce.number().int().positive().max(10000).nullable()}).safeParse({campusId:clean(f.get("campusId")),code:clean(f.get("code")),name:clean(f.get("name")),gradeLevel:clean(f.get("gradeLevel")),capacity:clean(f.get("capacity"))?clean(f.get("capacity")):null});if(!p.success)redirect(`${path}?error=invalid`);await createSchoolClass(t.organizationId,p.data);revalidatePath(path);redirect(`${path}?saved=1`)}
 export async function updateClassCapacityAction(f:FormData){const path="/app/school/classes",t=await auth(PERMISSIONS.SCHOOL_ACADEMICS_MANAGE,path);const p=z.object({classId:cuid,capacity:z.coerce.number().int().positive().max(10000).nullable()}).safeParse({classId:clean(f.get("classId")),capacity:clean(f.get("capacity"))?clean(f.get("capacity")):null});if(!p.success)redirect(`${path}?error=invalid`);try{await updateSchoolClassCapacity(t.organizationId,p.data.classId,p.data.capacity)}catch(e){fail(path,e)}revalidatePath(path);redirect(`${path}?saved=1`)}

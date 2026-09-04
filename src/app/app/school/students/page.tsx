@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Eye, ImageIcon, Link2, Plus, UserPlus, Users } from "lucide-react";
+import { Eye, ImageIcon, Pencil, Plus, Users } from "lucide-react";
 import type { SchoolStudentStatus } from "@prisma/client";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { FormFeedback, ReadOnlyNotice } from "@/components/school/form-feedback";
-import { CheckboxField, FieldGrid, SelectField, TextField } from "@/components/school/form-fields";
+import { FieldGrid, SelectField, TextField } from "@/components/school/form-fields";
 import { PrerequisiteNotice, SectionCard } from "@/components/school/section-card";
 import { RecordSearch } from "@/components/school/record-search";
 import { StatusBadge } from "@/components/school/status-badge";
@@ -21,7 +21,8 @@ import { formatDate, humanizeStatus } from "@/components/school/format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listSchoolCampuses, listSchoolGuardians, listSchoolStudents, listSchoolStudentPhotoIds, listSchoolGuardianPhotoIds } from "@/modules/school/service";
-import { createGuardianAction, createStudentAction, linkGuardianAction, transitionStudentAction, updateStudentPhotoAction, updateGuardianPhotoAction } from "../actions";
+import { createStudentAction, transitionStudentAction, updateStudentPhotoAction, updateGuardianAction, updateGuardianPhotoAction } from "../actions";
+import { StudentGuardianFields } from "./student-guardian-fields";
 
 function PhotoThumb({ hasPhoto, src, alt }: { hasPhoto: boolean; src: string; alt: string }) {
   return hasPhoto ? (
@@ -71,14 +72,13 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
   });
 
   const campusOptions = campuses.map((campus) => ({ value: campus.id, label: campus.name }));
-  const studentOptions = students.map((student) => ({ value: student.id, label: `${student.lastName}, ${student.firstName} (${student.admissionNumber})` }));
   const guardianOptions = guardians.map((guardian) => ({ value: guardian.id, label: `${guardian.lastName}, ${guardian.firstName} (${guardian.guardianNumber})` }));
 
   const newStudentDialog = (
     <EntityDialog
       trigger={<Button size="sm"><Plus />Admit student</Button>}
       title="Admit a student"
-      description="An admission number is generated automatically. The student starts with an Active record."
+      description="Add the student and primary guardian together. Both records are saved only when the complete admission is valid."
       action={createStudentAction}
       submitLabel="Admit student"
     >
@@ -97,60 +97,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
         <Textarea id="student-medical-notes" name="medicalNotes" rows={3} maxLength={5000} />
         <p className="text-xs leading-relaxed text-muted-foreground">Optional. Allergies, conditions, or safeguarding notes staff must know.</p>
       </div>
-      <div className="space-y-3 rounded-lg border border-dashed p-3">
-        <div>
-          <p className="text-sm font-medium">Guardian (optional)</p>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            Choose an existing guardian or create one now. Duplicate phone and name matches are reused automatically to prevent repeated guardian records.
-          </p>
-        </div>
-        {guardians.length > 0 ? (
-          <SelectField id="student-existing-guardian" name="existingGuardianId" label="Existing guardian" options={guardianOptions} emptyHint="Add a new guardian below" hint="Choose a guardian already on record" />
-        ) : null}
-        <FieldGrid>
-          <TextField id="student-guardian-first-name" name="guardianFirstName" label="First name" maxLength={200} />
-          <TextField id="student-guardian-last-name" name="guardianLastName" label="Last name" maxLength={200} />
-        </FieldGrid>
-        <FieldGrid>
-          <TextField id="student-guardian-phone" name="guardianPhone" label="Phone" type="tel" maxLength={200} />
-          <TextField id="student-guardian-relationship" name="guardianRelationship" label="Relationship" placeholder="Mother, Father, Aunt…" maxLength={200} />
-        </FieldGrid>
-        <TextField id="student-guardian-email" name="guardianEmail" label="Email" type="email" hint="Optional." />
-      </div>
-    </EntityDialog>
-  );
-
-  const newGuardianDialog = (
-    <EntityDialog
-      trigger={<Button size="sm" variant="outline"><UserPlus />Add guardian</Button>}
-      title="Add a guardian"
-      description="Create the guardian record first, then link them to one or more students."
-      action={createGuardianAction}
-      submitLabel="Add guardian"
-    >
-      <FieldGrid>
-        <TextField id="guardian-first-name" name="firstName" label="First name" required maxLength={200} />
-        <TextField id="guardian-last-name" name="lastName" label="Last name" required maxLength={200} />
-      </FieldGrid>
-      <TextField id="guardian-phone" name="phone" label="Phone" type="tel" required maxLength={200} hint="Primary contact number for emergencies." />
-      <TextField id="guardian-email" name="email" label="Email" type="email" hint="Optional." />
-      <TextField id="guardian-occupation" name="occupation" label="Occupation" maxLength={200} hint="Optional." />
-      <TextField id="guardian-address" name="address" label="Address" hint="Optional." />
-    </EntityDialog>
-  );
-
-  const linkGuardianDialog = (
-    <EntityDialog
-      trigger={<Button size="sm" variant="outline"><Link2 />Link guardian</Button>}
-      title="Link a guardian to a student"
-      description="Linking again with a different relationship updates the existing link."
-      action={linkGuardianAction}
-      submitLabel="Link guardian"
-    >
-      <SelectField id="link-student" name="studentId" label="Student" required options={studentOptions} emptyHint="Admit a student first." />
-      <SelectField id="link-guardian" name="guardianId" label="Guardian" required options={guardianOptions} emptyHint="Add a guardian first." />
-      <TextField id="link-relationship" name="relationship" label="Relationship" placeholder="Mother, Father, Aunt…" required maxLength={200} />
-      <CheckboxField id="link-primary" name="primary" label="Primary guardian" hint="The first point of contact. Any existing primary guardian for this student is replaced." />
+      <StudentGuardianFields guardianOptions={guardianOptions} />
     </EntityDialog>
   );
 
@@ -159,7 +106,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
       <PageHeader
         title="Students & Guardians"
         description="Admissions, student records, family relationships, and safeguarding contacts."
-        actions={canManage ? <>{newStudentDialog}{newGuardianDialog}{students.length > 0 && guardians.length > 0 ? linkGuardianDialog : null}</> : undefined}
+        actions={canManage ? newStudentDialog : undefined}
       />
 
       <FormFeedback
@@ -320,7 +267,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
           <SectionCard title="Guardians" description={`${guardians.length} guardian${guardians.length === 1 ? "" : "s"} on record.`}>
             {guardians.length === 0 ? (
               <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-                No guardians yet. Add a guardian, then link them to a student for emergency contact and fee correspondence.
+                No guardians yet. A primary guardian is created automatically during the first student admission.
               </p>
             ) : (
               <Table>
@@ -332,6 +279,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
                     <TableHead>Phone</TableHead>
                     <TableHead className="hidden md:table-cell">Email</TableHead>
                     <TableHead className="hidden lg:table-cell">Occupation</TableHead>
+                    {canManage ? <TableHead className="text-right">Actions</TableHead> : null}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -369,6 +317,29 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
                         <TableCell className="text-muted-foreground">{guardian.phone}</TableCell>
                         <TableCell className="hidden text-muted-foreground md:table-cell">{guardian.email ?? "-"}</TableCell>
                         <TableCell className="hidden text-muted-foreground lg:table-cell">{guardian.occupation ?? "-"}</TableCell>
+                        {canManage ? (
+                          <TableCell className="text-right">
+                            <EntityDialog
+                              trigger={<Button size="sm" variant="outline"><Pencil />Edit details</Button>}
+                              title={`Edit ${guardian.firstName} ${guardian.lastName}`}
+                              description="Update this guardian's contact and personal details. Linked students are preserved."
+                              action={updateGuardianAction}
+                              submitLabel="Save guardian"
+                            >
+                              <input type="hidden" name="guardianId" value={guardian.id} />
+                              <FieldGrid>
+                                <TextField id={`guardian-first-${guardian.id}`} name="firstName" label="First name" required defaultValue={guardian.firstName} maxLength={200} />
+                                <TextField id={`guardian-last-${guardian.id}`} name="lastName" label="Last name" required defaultValue={guardian.lastName} maxLength={200} />
+                              </FieldGrid>
+                              <FieldGrid>
+                                <TextField id={`guardian-phone-${guardian.id}`} name="phone" label="Phone" type="tel" required defaultValue={guardian.phone} maxLength={200} />
+                                <TextField id={`guardian-email-${guardian.id}`} name="email" label="Email" type="email" defaultValue={guardian.email ?? ""} maxLength={320} />
+                              </FieldGrid>
+                              <TextField id={`guardian-occupation-${guardian.id}`} name="occupation" label="Occupation" defaultValue={guardian.occupation ?? ""} maxLength={200} />
+                              <div className="space-y-1.5"><Label htmlFor={`guardian-address-${guardian.id}`}>Address</Label><Textarea id={`guardian-address-${guardian.id}`} name="address" rows={3} defaultValue={guardian.address ?? ""} maxLength={5000} /></div>
+                            </EntityDialog>
+                          </TableCell>
+                        ) : null}
                       </TableRow>
                     );
                   })}

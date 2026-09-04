@@ -92,6 +92,13 @@ than querying its tables directly.
   refunds, allocations, statements, arrears, and receipt numbering.
 - Enrollment, attendance, collection, outstanding-fee, and demographic reports.
 
+Student admission and primary-guardian capture are one transaction: staff can
+select an existing tenant guardian or create one in the admission form, and no
+student is admitted if guardian validation or linking fails. Authorized staff
+can edit guardian contact, occupation, and address details from the Guardians
+tab without breaking existing student relationships. Name-plus-phone duplicate
+checks remain organization-scoped and cross-tenant IDs are rejected.
+
 ### Release S2 — teaching, assessment, and communication
 
 - Curriculum/syllabus, subject assignments, teacher allocations, lesson plans,

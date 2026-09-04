@@ -146,11 +146,13 @@ export function PeriodicTrendChart({
   data,
   series,
   currency,
+  valueFormat = "money",
   defaultPeriod = "months",
 }: {
   data: Record<TrendGranularity, Record<string, string | number>[]>;
   series: { key: string; label: string }[];
   currency?: string | null;
+  valueFormat?: "money" | "count" | "percentage";
   defaultPeriod?: TrendGranularity;
 }) {
   const [period, setPeriod] = useState<TrendGranularity>(defaultPeriod);
@@ -175,7 +177,7 @@ export function PeriodicTrendChart({
           ))}
         </div>
       </div>
-      <TrendChart data={data[period]} series={series} currency={currency} />
+      <TrendChart data={data[period]} series={series} currency={currency} valueFormat={valueFormat} />
     </div>
   );
 }

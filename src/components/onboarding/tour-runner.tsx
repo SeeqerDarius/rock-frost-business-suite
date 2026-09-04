@@ -15,7 +15,7 @@ const Joyride = dynamic(() => import("react-joyride").then((mod) => mod.Joyride)
  * own breakpoint rather than risk spotlighting a hidden element. */
 const MIN_TOUR_VIEWPORT_WIDTH = 1024;
 
-type QueuedTour = { key: string; steps: TourStep[] };
+type QueuedTour = { key: string; steps: TourStep[]; runId: number };
 
 function toJoyrideSteps(steps: TourStep[]): Step[] {
   return steps.map((step) => ({
@@ -40,11 +40,13 @@ export function TourRunner({
   showModuleLauncher: boolean;
 }) {
   const [queue, setQueue] = useState<QueuedTour[]>([]);
+  const [replayMessage, setReplayMessage] = useState("");
 
   const buildCandidateTours = useCallback((): QueuedTour[] => {
-    const tours: QueuedTour[] = [{ key: GENERAL_TOUR_KEY, steps: buildGeneralTourSteps(showModuleLauncher) }];
+    const runId = Date.now();
+    const tours: QueuedTour[] = [{ key: GENERAL_TOUR_KEY, steps: buildGeneralTourSteps(showModuleLauncher), runId }];
     if (moduleKey) {
-      tours.push({ key: moduleKey, steps: buildModuleTourSteps(sectionLabel, moduleDescription, navigation) });
+      tours.push({ key: moduleKey, steps: buildModuleTourSteps(sectionLabel, moduleDescription, navigation), runId });
     }
     return tours
       .map((tour) => ({ ...tour, steps: tour.steps.filter((step) => document.querySelector(step.target)) }))
@@ -70,8 +72,14 @@ export function TourRunner({
 
   useEffect(() => {
     function handleReplay() {
-      if (window.innerWidth < MIN_TOUR_VIEWPORT_WIDTH) return;
-      setQueue(buildCandidateTours());
+      if (window.innerWidth < MIN_TOUR_VIEWPORT_WIDTH) {
+        setReplayMessage("The guided tour is available on a wider screen. Open this page on a desktop or enlarge the window.");
+        return;
+      }
+      setReplayMessage("");
+      // Let the account menu close before Joyride measures its targets. A
+      // fresh run id guarantees a remount even when the same tour is active.
+      window.setTimeout(() => setQueue(buildCandidateTours()), 0);
     }
     window.addEventListener("rf-tour-replay", handleReplay);
     return () => window.removeEventListener("rf-tour-replay", handleReplay);
@@ -86,11 +94,11 @@ export function TourRunner({
     setQueue((remaining) => remaining.slice(1));
   }
 
-  if (!current) return null;
+  if (!current) return replayMessage ? <p role="status" className="fixed bottom-20 right-4 z-50 max-w-sm rounded-lg border bg-background p-3 text-sm shadow-lg">{replayMessage}</p> : null;
 
   return (
     <Joyride
-      key={current.key}
+      key={`${current.key}-${current.runId}`}
       steps={toJoyrideSteps(current.steps)}
       run
       continuous

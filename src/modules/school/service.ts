@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma, type HotelPaymentMethod, type SchoolAttendanceStatus, type SchoolStudentStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
+import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@/lib/trend-buckets";
 
 export class SchoolStateError extends Error {
   constructor(message: string, readonly code = "blocked") {
@@ -98,12 +99,10 @@ export function createSchoolStudent(organizationId: string, data: { campusId: st
 }
 
 /**
- * Admits a student and, when guardian details are supplied, creates and
- * links that guardian in the same transaction - so admitting a student's
- * first guardian no longer requires the separate "Add guardian" then "Link
- * guardian" round trip. A student with an existing guardian (a sibling
- * already on record) still uses createSchoolStudent + linkSchoolGuardian
- * against the existing guardian, unchanged.
+ * Admits a student and creates or selects the primary guardian in the same
+ * transaction. The action layer requires guardianData for the unified
+ * admission form. This nullable service parameter remains for internal and
+ * backwards-compatible callers that intentionally create an unlinked record.
  */
 export function admitSchoolStudent(
   organizationId: string,
@@ -204,6 +203,27 @@ export async function transitionSchoolStudent(
 
 export function createSchoolGuardian(organizationId: string, data: { firstName: string; lastName: string; email?: string | null; phone: string; address?: string | null; occupation?: string | null }) {
   return createWithUniqueRetry(async () => db.schoolGuardian.create({ data: { organizationId, guardianNumber: await nextCode(organizationId, "GRD", () => db.schoolGuardian.count({ where: { organizationId } })), ...data } }));
+}
+
+export async function updateSchoolGuardian(
+  organizationId: string,
+  guardianId: string,
+  data: { firstName: string; lastName: string; email?: string | null; phone: string; address?: string | null; occupation?: string | null },
+) {
+  const guardian = await db.schoolGuardian.findFirst({ where: { id: guardianId, organizationId }, select: { id: true } });
+  if (!guardian) throw new SchoolNotFoundError("Guardian not found.");
+  const duplicate = await db.schoolGuardian.findFirst({
+    where: {
+      organizationId,
+      id: { not: guardianId },
+      phone: data.phone,
+      firstName: { equals: data.firstName, mode: "insensitive" },
+      lastName: { equals: data.lastName, mode: "insensitive" },
+    },
+    select: { id: true },
+  });
+  if (duplicate) throw new SchoolStateError("A guardian with this name and phone already exists.", "guardian-duplicate");
+  return db.schoolGuardian.update({ where: { id: guardian.id }, data });
 }
 
 export async function linkSchoolGuardian(organizationId: string, studentId: string, guardianId: string, relationship: string, primary = false) {
@@ -687,4 +707,67 @@ export async function getSchoolSummary(organizationId: string) {
   ]);
   const outstanding = invoices.reduce((total, invoice) => total.plus(invoice.amount.minus(invoice.discount).minus(invoice.payments.filter((p) => !p.refundedAt).reduce((sum, p) => sum.plus(p.amount), new Prisma.Decimal(0)))), new Prisma.Decimal(0));
   return { activeStudents: students, activeClasses: classes, attendance: Object.fromEntries(attendance.map((item) => [item.status, item._count])), collections: payments._sum.amount ?? new Prisma.Decimal(0), outstanding, overdueLoans, activeRoutes: routes };
+}
+
+export async function getSchoolReportAnalytics(
+  organizationId: string,
+  filters: { campusId?: string; classId?: string; from: Date; to: Date },
+) {
+  const from = new Date(filters.from);
+  const toExclusive = new Date(filters.to);
+  toExclusive.setDate(toExclusive.getDate() + 1);
+  const durationMs = Math.max(toExclusive.getTime() - from.getTime(), 86_400_000);
+  const previousFrom = new Date(from.getTime() - durationMs);
+  const lookback = new Date(Math.min(widestTrendLookback().getTime(), previousFrom.getTime()));
+  const queryEnd = new Date(Math.max(toExclusive.getTime(), Date.now() + 86_400_000));
+  const classWhere = filters.classId
+    ? { id: filters.classId, organizationId, ...(filters.campusId ? { campusId: filters.campusId } : {}) }
+    : filters.campusId
+      ? { organizationId, campusId: filters.campusId }
+      : { organizationId };
+  const studentWhere = filters.campusId || filters.classId
+    ? { ...(filters.campusId ? { campusId: filters.campusId } : {}), ...(filters.classId ? { enrollments: { some: { classId: filters.classId } } } : {}) }
+    : undefined;
+
+  const [attendance, payments, classes] = await Promise.all([
+    db.schoolAttendance.findMany({
+      where: { organizationId, date: { gte: lookback, lt: queryEnd }, ...(filters.classId ? { classId: filters.classId } : {}), ...(filters.campusId ? { class: { campusId: filters.campusId } } : {}) },
+      select: { date: true, status: true, classId: true },
+    }),
+    db.schoolFeePayment.findMany({
+      where: { organizationId, refundedAt: null, receivedAt: { gte: lookback, lt: queryEnd }, ...(studentWhere ? { student: studentWhere } : {}) },
+      select: { receivedAt: true, amount: true },
+    }),
+    db.schoolClass.findMany({ where: classWhere, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+  ]);
+
+  const inRange = (date: Date, start: Date, end: Date) => date >= start && date < end;
+  const summarize = (start: Date, end: Date) => {
+    const marks = attendance.filter((record) => inRange(record.date, start, end));
+    const healthy = marks.filter((record) => record.status === "PRESENT" || record.status === "LATE").length;
+    return {
+      attendanceRate: marks.length > 0 ? Math.round((healthy / marks.length) * 100) : null,
+      absent: marks.filter((record) => record.status === "ABSENT").length,
+      marked: marks.length,
+      collections: payments.filter((payment) => inRange(payment.receivedAt, start, end)).reduce((sum, payment) => sum + Number(payment.amount), 0),
+    };
+  };
+  const current = summarize(from, toExclusive);
+  const previous = summarize(previousFrom, from);
+  const makeTrends = (granularity: TrendGranularity) => buildTrendBuckets(granularity).map((bucket) => {
+    const period = summarize(bucket.start, bucket.end);
+    return { label: bucket.label, attendanceRate: period.attendanceRate ?? 0, collections: period.collections };
+  });
+  const classAttendance = classes.map((schoolClass) => {
+    const marks = attendance.filter((record) => record.classId === schoolClass.id && inRange(record.date, from, toExclusive));
+    const healthy = marks.filter((record) => record.status === "PRESENT" || record.status === "LATE").length;
+    return { label: schoolClass.name, value: marks.length > 0 ? Math.round((healthy / marks.length) * 100) : 0, marked: marks.length };
+  });
+
+  return {
+    current,
+    previous,
+    classAttendance,
+    trends: { days: makeTrends("days"), weeks: makeTrends("weeks"), months: makeTrends("months") },
+  };
 }

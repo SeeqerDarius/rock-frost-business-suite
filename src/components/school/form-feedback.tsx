@@ -28,6 +28,7 @@ const STATE_REASONS: Record<string, string> = {
   "marks-out-of-range": "Marks must be between zero and the exam's total marks.",
   "book-unavailable": "No copy of that book is currently available.",
   "stale-record": "The record changed in another request. Refresh and try again.",
+  "guardian-duplicate": "A guardian with this name and phone already exists. Use the existing guardian record instead.",
 };
 
 const GENERIC: Record<SchoolErrorCode, { title: string; description: string }> = {

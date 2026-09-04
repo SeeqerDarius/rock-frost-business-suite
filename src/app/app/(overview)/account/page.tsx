@@ -9,6 +9,10 @@ import { getServerAuthSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { changePassword, updateProfile } from "./actions";
 import { ProfilePhotoForm } from "./profile-photo-form";
+import { requireCurrentTenant } from "@/lib/tenant";
+import { roleDisplayName } from "@/lib/administration-roles";
+import { getRoleQuickGuide } from "@/lib/auth/role-quick-guide";
+import { ReplayTourButton } from "@/components/account/replay-tour-button";
 
 const ERRORS: Record<string, string> = {
   "invalid-profile": "Enter a valid name and email address.",
@@ -26,19 +30,34 @@ export default async function AccountPage({
 }) {
   const session = await getServerAuthSession();
   if (!session?.user?.id) redirect("/login");
-  const user = await db.user.findUnique({
+  const [user, tenant] = await Promise.all([db.user.findUnique({
     where: { id: session.user.id },
     select: { name: true, email: true, phone: true, image: true },
-  });
+  }), requireCurrentTenant()]);
   if (!user) redirect("/login");
   const { error, saved } = await searchParams;
   const securityHref = session.user.role === "Super Admin" ? "/app/platform/account/security" : "/app/account/security";
+  const roleGuide = getRoleQuickGuide(tenant.role, tenant.accessibleModuleKeys);
 
   return (
     <div className="space-y-6">
       <PageHeader title="Your profile" description="Manage your identity, photo, email, and password." />
       {error && ERRORS[error] ? <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{ERRORS[error]}</p> : null}
       {saved ? <p className="rounded-md bg-emerald-500/10 p-3 text-sm text-emerald-600">Your changes were saved.</p> : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Your role guide: {tenant.role ? roleDisplayName(tenant.role) : "Member"}</CardTitle>
+          <CardDescription>{roleGuide.summary}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <ol className="list-decimal space-y-2 pl-5 text-sm">
+            {roleGuide.steps.map((step) => <li key={step}>{step}</li>)}
+          </ol>
+          <p className="text-sm text-muted-foreground">Your access follows your assigned role. If your duties or access look wrong, contact an organization administrator.</p>
+          <ReplayTourButton />
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

@@ -105,17 +105,18 @@ Theming reads CSS custom properties directly (`var(--primary)`,
 the tour automatically matches the organization's light/dark theme setting
 (`OrganizationThemeSync`) without separate light/dark logic.
 
-## Mobile is explicitly out of scope for v1
+## Mobile behavior
 
-`TourRunner` skips entirely below `1024px` (`MIN_TOUR_VIEWPORT_WIDTH`,
+`TourRunner` skips the spotlight tour below `1024px` (`MIN_TOUR_VIEWPORT_WIDTH`,
 matching the sidebar's own `lg:` breakpoint) rather than trying to spotlight
 elements inside the mobile `Sheet` nav. The mobile sheet renders the same
 nav items as the desktop sidebar in a separate DOM subtree; targeting both
 with the same `data-tour` selector risks Joyride finding the wrong (hidden)
 element. `data-tour` attributes are therefore only present on the desktop
 `<aside>` block in `AppShell`, not the mobile `Sheet` block. A mobile user
-simply never sees an onboarding tour today - stated here plainly, not
-silently absorbed. The same reasoning applies to per-item targets:
+who selects Replay guided tour receives an explicit message to open the page
+on a desktop or enlarge the window, instead of a silent no-op. The same
+reasoning applies to per-item targets:
 `SidebarNav` accepts a `tourTargets` prop (stamping each link with
 `data-tour-nav="<href>"`) that `AppShell` passes only to its desktop
 `SidebarNav` instance, never the mobile one, so a module tour's per-page
@@ -139,13 +140,15 @@ fails a real test rather than silently shipping an under-taught step.
 
 ## Replaying a tour
 
-The account menu (`UserMenu`, hidden for platform operators) has a "Replay
-the tour" item that dispatches a plain `window` custom event
+The account menu (`UserMenu`, hidden for platform operators) and the role guide
+on the user's profile have a replay action that dispatches a plain `window` event
 (`rf-tour-replay`) - the same lightweight cross-component signaling
 `AppShell` already uses for its own sidebar-collapse preference
 (`rf-sidebar-change`), not a new state-management dependency. `TourRunner`
 listens for it and rebuilds its queue from scratch, ignoring completion
-state, so a user can always re-run either tour without a database write.
+state. Replay waits until the account menu has closed and assigns a fresh run
+identifier to every Joyride instance, so replaying the current tour forces a
+real remount instead of retaining a completed widget.
 
 ## Honestly unverified
 
