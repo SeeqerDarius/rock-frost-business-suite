@@ -94,6 +94,7 @@ export function AppShell({
     getServerSidebarPreference,
   );
   const pathname = usePathname();
+  const branding = useOrganizationBranding();
   const activeHref = getActiveNavigationHref(pathname, navigation);
   const currentItem = navigation.find((item) => item.href === activeHref);
 
@@ -173,7 +174,12 @@ export function AppShell({
             <p className="truncate text-sm font-semibold">{currentItem?.shortLabel ?? currentItem?.label ?? sectionLabel}</p>
             <p className="hidden truncate text-xs text-muted-foreground sm:block">{sectionLabel}</p>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1">
+            {branding.workspaceStatusLabel ? (
+              <span className="mr-2 hidden max-w-64 truncate rounded-full border bg-background px-3 py-1 text-xs font-medium shadow-sm xl:inline-flex">
+                {branding.workspaceStatusLabel}
+              </span>
+            ) : null}
             {showModuleLauncher ? <ModuleLauncher enabledModuleKeys={enabledModuleKeys} /> : null}
             <UserMenu />
           </div>

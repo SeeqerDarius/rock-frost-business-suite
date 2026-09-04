@@ -1,5 +1,14 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-09-04: Header subscription placement, guardian editing, role guide, and tour replay
+
+- **Scope**: moved the subscription status from an independent fixed pill into the right side of the shared header, before the module launcher and account avatar. Online and install status remains independently centered at the top. Added an Edit details action to every guardian row for authorized School staff. Added a role-specific operating guide to each tenant user's profile and exposed Replay guided tour there as well as in the account menu.
+- **Behavior and safety**: guardian edits are permission-gated, organization-scoped, preserve existing student relationships, reject foreign IDs, and reject a same-name-and-phone duplicate inside the organization. The profile guide is generated from the current membership role on every request, so role reassignment changes the guide without copying instructions into user data. Tour replay now waits for the account menu to close, uses a new run identifier to remount Joyride, and gives narrow-screen users an explicit desktop-width message instead of doing nothing.
+- **Important files**: `src/app/app/layout.tsx`, `src/components/layout/app-shell.tsx`, `src/components/theme/organization-branding-context.tsx`, `src/modules/school/service.ts`, `src/app/app/school/actions.ts`, `src/app/app/school/students/page.tsx`, `src/lib/auth/role-quick-guide.ts`, `src/app/app/(overview)/account/page.tsx`, and `src/components/onboarding/tour-runner.tsx`.
+- **Schema and environment**: no schema, migration, or environment-variable change.
+- **Validation before release**: TypeScript and affected-file ESLint passed. Focused School, role-guide, onboarding-tour, and editorial tests passed 20/20. The full unit suite passed 162 files and 1,241 tests. Full lint passed with zero errors and only the two established PWA hook warnings in `sync-center.tsx` and `pwa-provider.tsx`. The disposable Neon `rockfrost_test` database had all 97 migrations current, and the focused School integration suite passed 14/14 in 134.91 seconds, including guardian editing and rejection of a foreign guardian ID. The production build passed TypeScript, compilation, and generation of all 245 routes.
+- **Production release**: pending commit, push, deployment, route checks, authenticated canary, and log review.
+
 ## 2026-09-04: Unified student and guardian admission
 
 - **Scope**: replaced the visually fragmented Admit student, Add guardian, and Link guardian header actions with one Admit student workflow. The admission dialog now contains a required Primary guardian step with two explicit modes: Select existing or Create new. New-guardian mode includes name, phone, relationship, email, occupation, and address; existing-guardian mode requires the guardian and relationship. The Guardians tab remains the canonical guardian directory.

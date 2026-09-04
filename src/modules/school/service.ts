@@ -205,6 +205,27 @@ export function createSchoolGuardian(organizationId: string, data: { firstName: 
   return createWithUniqueRetry(async () => db.schoolGuardian.create({ data: { organizationId, guardianNumber: await nextCode(organizationId, "GRD", () => db.schoolGuardian.count({ where: { organizationId } })), ...data } }));
 }
 
+export async function updateSchoolGuardian(
+  organizationId: string,
+  guardianId: string,
+  data: { firstName: string; lastName: string; email?: string | null; phone: string; address?: string | null; occupation?: string | null },
+) {
+  const guardian = await db.schoolGuardian.findFirst({ where: { id: guardianId, organizationId }, select: { id: true } });
+  if (!guardian) throw new SchoolNotFoundError("Guardian not found.");
+  const duplicate = await db.schoolGuardian.findFirst({
+    where: {
+      organizationId,
+      id: { not: guardianId },
+      phone: data.phone,
+      firstName: { equals: data.firstName, mode: "insensitive" },
+      lastName: { equals: data.lastName, mode: "insensitive" },
+    },
+    select: { id: true },
+  });
+  if (duplicate) throw new SchoolStateError("A guardian with this name and phone already exists.", "guardian-duplicate");
+  return db.schoolGuardian.update({ where: { id: guardian.id }, data });
+}
+
 export async function linkSchoolGuardian(organizationId: string, studentId: string, guardianId: string, relationship: string, primary = false) {
   const [student, guardian] = await Promise.all([db.schoolStudent.findFirst({ where: { id: studentId, organizationId } }), db.schoolGuardian.findFirst({ where: { id: guardianId, organizationId } })]);
   if (!student || !guardian) throw new SchoolNotFoundError("Student or guardian not found.");

@@ -102,26 +102,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       moduleKeys: tenant.accessibleModuleKeys,
       branch: tenant.branch,
     }}>
-    <OrganizationBrandingProvider branding={{ logoUrl: organization?.logoUrl ?? null, name: organization?.name ?? null }}>
+    <OrganizationBrandingProvider branding={{
+      logoUrl: organization?.logoUrl ?? null,
+      name: organization?.name ?? null,
+      workspaceStatusLabel: !platformIdentity && !isNarrowFleetSelfServiceRole(tenant)
+        ? organization?.status === "TRIAL"
+          ? `Trial workspace · ${trialDaysRemaining} day${trialDaysRemaining === 1 ? "" : "s"} remaining`
+          : organization?.status === "ACTIVE"
+            ? "Subscribed workspace"
+            : "Subscription inactive"
+        : null,
+    }}>
       <OrganizationThemeSync theme={theme} />
       <Suspense fallback={null}>
         <AppNavigationLoader />
       </Suspense>
-      {!platformIdentity && !isNarrowFleetSelfServiceRole(tenant) ? (
-        // Anchored a fixed 9rem left of the viewport's horizontal center
-        // (not the top-right corner) so it never overlaps the header's own
-        // right-side controls (module launcher, account avatar), and sits
-        // clear of the connectivity/install badge, which centers itself
-        // (see PwaProvider) - the 9rem gap comfortably fits that badge's
-        // widest realistic state text.
-        <div className="fixed right-[calc(50%_+_9rem)] top-3 z-40 hidden rounded-full border bg-background/95 px-3 py-1 text-xs font-medium shadow-sm backdrop-blur sm:block">
-          {organization?.status === "TRIAL"
-            ? `Trial workspace · ${trialDaysRemaining} day${trialDaysRemaining === 1 ? "" : "s"} remaining`
-            : organization?.status === "ACTIVE"
-              ? "Subscribed workspace"
-              : "Subscription inactive"}
-        </div>
-      ) : null}
       {children}
       {!platformIdentity ? <WorkspaceMoments userId={tenant.userId} /> : null}
       {platformIdentity ? (

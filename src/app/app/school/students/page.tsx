@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Eye, ImageIcon, Plus, Users } from "lucide-react";
+import { Eye, ImageIcon, Pencil, Plus, Users } from "lucide-react";
 import type { SchoolStudentStatus } from "@prisma/client";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
@@ -21,7 +21,7 @@ import { formatDate, humanizeStatus } from "@/components/school/format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listSchoolCampuses, listSchoolGuardians, listSchoolStudents, listSchoolStudentPhotoIds, listSchoolGuardianPhotoIds } from "@/modules/school/service";
-import { createStudentAction, transitionStudentAction, updateStudentPhotoAction, updateGuardianPhotoAction } from "../actions";
+import { createStudentAction, transitionStudentAction, updateStudentPhotoAction, updateGuardianAction, updateGuardianPhotoAction } from "../actions";
 import { StudentGuardianFields } from "./student-guardian-fields";
 
 function PhotoThumb({ hasPhoto, src, alt }: { hasPhoto: boolean; src: string; alt: string }) {
@@ -279,6 +279,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
                     <TableHead>Phone</TableHead>
                     <TableHead className="hidden md:table-cell">Email</TableHead>
                     <TableHead className="hidden lg:table-cell">Occupation</TableHead>
+                    {canManage ? <TableHead className="text-right">Actions</TableHead> : null}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -316,6 +317,29 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
                         <TableCell className="text-muted-foreground">{guardian.phone}</TableCell>
                         <TableCell className="hidden text-muted-foreground md:table-cell">{guardian.email ?? "-"}</TableCell>
                         <TableCell className="hidden text-muted-foreground lg:table-cell">{guardian.occupation ?? "-"}</TableCell>
+                        {canManage ? (
+                          <TableCell className="text-right">
+                            <EntityDialog
+                              trigger={<Button size="sm" variant="outline"><Pencil />Edit details</Button>}
+                              title={`Edit ${guardian.firstName} ${guardian.lastName}`}
+                              description="Update this guardian's contact and personal details. Linked students are preserved."
+                              action={updateGuardianAction}
+                              submitLabel="Save guardian"
+                            >
+                              <input type="hidden" name="guardianId" value={guardian.id} />
+                              <FieldGrid>
+                                <TextField id={`guardian-first-${guardian.id}`} name="firstName" label="First name" required defaultValue={guardian.firstName} maxLength={200} />
+                                <TextField id={`guardian-last-${guardian.id}`} name="lastName" label="Last name" required defaultValue={guardian.lastName} maxLength={200} />
+                              </FieldGrid>
+                              <FieldGrid>
+                                <TextField id={`guardian-phone-${guardian.id}`} name="phone" label="Phone" type="tel" required defaultValue={guardian.phone} maxLength={200} />
+                                <TextField id={`guardian-email-${guardian.id}`} name="email" label="Email" type="email" defaultValue={guardian.email ?? ""} maxLength={320} />
+                              </FieldGrid>
+                              <TextField id={`guardian-occupation-${guardian.id}`} name="occupation" label="Occupation" defaultValue={guardian.occupation ?? ""} maxLength={200} />
+                              <div className="space-y-1.5"><Label htmlFor={`guardian-address-${guardian.id}`}>Address</Label><Textarea id={`guardian-address-${guardian.id}`} name="address" rows={3} defaultValue={guardian.address ?? ""} maxLength={5000} /></div>
+                            </EntityDialog>
+                          </TableCell>
+                        ) : null}
                       </TableRow>
                     );
                   })}
