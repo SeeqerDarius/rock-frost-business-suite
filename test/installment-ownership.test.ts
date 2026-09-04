@@ -250,7 +250,12 @@ describe("Installment staff login linkage", () => {
       { id: "user-1", name: "Collector", email: "collector@example.com" },
     ]);
     expect(mockDb.organizationMember.findMany).toHaveBeenCalledWith({
-      where: { organizationId: ORG, status: "ACTIVE", user: { status: "ACTIVE" } },
+      where: {
+        organizationId: ORG,
+        status: "ACTIVE",
+        user: { status: "ACTIVE" },
+        role: { rolePermissions: { some: { permission: { key: { startsWith: "hirepurchase." } } } } },
+      },
       select: { user: { select: { id: true, name: true, email: true } } },
       orderBy: { user: { name: "asc" } },
     });
