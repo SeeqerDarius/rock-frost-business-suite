@@ -53,6 +53,28 @@ describe("School service — real tenant isolation and customer-readiness guards
     expect(authorized.digitalIdCards).toHaveLength(2);
   });
 
+  it("reuses an existing guardian record and links it atomically when admitting a student", async () => {
+    const phone = "+233200000001";
+    const guardian = await school.createSchoolGuardian(orgA.organizationId, { firstName: "Grace", lastName: "Adjei", phone });
+    const student = await school.admitSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Ama", lastName: "Boateng" }, { firstName: "Grace", lastName: "Adjei", phone, relationship: "Mother" });
+
+    const count = await testDb.schoolGuardian.count({ where: { organizationId: orgA.organizationId, firstName: "Grace", lastName: "Adjei", phone } });
+    const link = await testDb.schoolStudentGuardian.findFirst({ where: { studentId: student.id, guardianId: guardian.id } });
+    expect(count).toBe(1);
+    expect(link).not.toBeNull();
+    expect(link?.relationship).toBe("Mother");
+  });
+
+  it("rejects an existing guardian from another tenant during student admission", async () => {
+    const foreignGuardian = await school.createSchoolGuardian(orgB.organizationId, { firstName: "Foreign", lastName: "Guardian", phone: "+233200000099" });
+
+    await expect(
+      school.admitSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Tenant", lastName: "Safe" }, { guardianId: foreignGuardian.id, relationship: "Parent" }),
+    ).rejects.toThrow(school.SchoolNotFoundError);
+
+    expect(await testDb.schoolStudent.count({ where: { organizationId: orgA.organizationId, firstName: "Tenant", lastName: "Safe" } })).toBe(0);
+  });
+
   it("rejects creating a student under another tenant campus", async () => {
     await expect(school.createSchoolStudent(orgA.organizationId, { campusId: campusB.id, firstName: "Bad", lastName: "Reference" })).rejects.toThrow(school.SchoolNotFoundError);
   });

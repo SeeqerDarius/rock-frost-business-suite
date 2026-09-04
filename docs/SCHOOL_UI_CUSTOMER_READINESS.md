@@ -14,6 +14,19 @@ No file in that set was modified here.
 
 ---
 
+## 2026-09-04 focused workflow update
+
+- Students and Guardians now use separate tabs on the existing route. The student list has an explicit, keyboard-focusable **View profile** action instead of relying on hover discovery.
+- Student admission can select an existing guardian or create and link a new guardian in the same transaction. Reuse requires the same organization, name, and phone; a missing or foreign selected guardian aborts the whole admission.
+- Classes and Subjects now use separate tabs while retaining the existing class capacity, teacher assignment, and subject workflows.
+- Reports now separate summary metrics from visual analysis. Accessible client-side breakdown charts show attendance outcomes and collected versus outstanding fees, with text and screen-reader table equivalents.
+- The existing bulk attendance roster remains the primary attendance workflow: staff choose term, class, and date once, everyone defaults to Present, and only exceptions need editing before one bulk save.
+- The workspace subscription badge has returned to the top-right header position. The PWA connection badge remains top-center so the two indicators do not obscure each other or header controls.
+
+No schema or migration change was required for this update.
+
+---
+
 ## 1. Pages inspected
 
 All 14 School routes were read in full and rewritten. Each was reviewed for

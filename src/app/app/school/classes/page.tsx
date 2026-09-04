@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { FormFeedback, ReadOnlyNotice } from "@/components/school/form-feedback";
 import { FieldGrid, SelectField, TextField } from "@/components/school/form-fields";
@@ -140,139 +141,150 @@ export default async function SchoolClassesPage({ searchParams }: { searchParams
         ]}
       />
 
-      {classes.length === 0 ? (
-        <EmptyState
-          icon={Shapes}
-          title="No classes yet"
-          description="Create classes and subjects before enrolling students. Enrollment links a student to a class for one academic year."
-          action={canManageAcademics && campuses.length > 0 ? newClassDialog : undefined}
-        />
-      ) : (
-        <SectionCard title="Classes" description={`${classes.length} class${classes.length === 1 ? "" : "es"} across ${campuses.length} campus${campuses.length === 1 ? "" : "es"}.`}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Code</TableHead>
-                <TableHead>Class</TableHead>
-                <TableHead className="hidden md:table-cell">Campus</TableHead>
-                <TableHead className="hidden lg:table-cell">Grade level</TableHead>
-                <TableHead>Enrolled</TableHead>
-                <TableHead className="hidden lg:table-cell">Teachers</TableHead>
-                {canManageAcademics ? <TableHead><span className="sr-only">Actions</span></TableHead> : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {classes.map((schoolClass) => {
-                const enrolled = schoolClass.enrollments.length;
-                const isFull = schoolClass.capacity !== null && enrolled >= schoolClass.capacity;
-                const assignedTeachers = teachersByClass.get(schoolClass.id) ?? [];
-                return (
-                  <TableRow key={schoolClass.id}>
-                    <TableCell className="font-mono text-xs">{schoolClass.code}</TableCell>
-                    <TableCell>
-                      <span className="font-medium">{schoolClass.name}</span>
-                      <span className="block text-xs text-muted-foreground md:hidden">{schoolClass.campus.name}</span>
-                    </TableCell>
-                    <TableCell className="hidden text-muted-foreground md:table-cell">{schoolClass.campus.name}</TableCell>
-                    <TableCell className="hidden text-muted-foreground lg:table-cell">{schoolClass.gradeLevel ?? "-"}</TableCell>
-                    <TableCell>
-                      <span className="tabular-nums">{enrolled}{schoolClass.capacity ? ` / ${schoolClass.capacity}` : ""}</span>
-                      {isFull ? <Badge variant="destructive" className="ml-2">Full</Badge> : null}
-                      {schoolClass.capacity === null ? <span className="ml-2 text-xs text-muted-foreground">No limit</span> : null}
-                    </TableCell>
-                    <TableCell className="hidden text-muted-foreground lg:table-cell">
-                      {assignedTeachers.length > 0 ? assignedTeachers.map((assignment) => assignment.user.name ?? assignment.user.email).join(", ") : "Unassigned"}
-                    </TableCell>
-                    {canManageAcademics ? (
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Dialog>
-                            <DialogTrigger render={<Button size="icon" variant="ghost" aria-label={`Edit capacity for ${schoolClass.name}`} />}>
-                              <Settings2 />
-                            </DialogTrigger>
-                            <DialogContent className="sm:max-w-sm">
-                              <DialogHeader>
-                                <DialogTitle>Edit capacity: {schoolClass.name}</DialogTitle>
-                                <DialogDescription>{enrolled} student{enrolled === 1 ? "" : "s"} currently enrolled. Capacity cannot be set below that.</DialogDescription>
-                              </DialogHeader>
-                              <form action={updateClassCapacityAction} className="space-y-4">
-                                <input type="hidden" name="classId" value={schoolClass.id} />
-                                <TextField id={`capacity-${schoolClass.id}`} name="capacity" label="Capacity" type="number" min="1" max="10000" defaultValue={schoolClass.capacity ?? undefined} hint="Leave blank for no limit." />
-                                <Button type="submit" className="w-full">Save capacity</Button>
-                              </form>
-                            </DialogContent>
-                          </Dialog>
-                          <Dialog>
-                            <DialogTrigger render={<Button size="icon" variant="ghost" aria-label={`Manage teachers for ${schoolClass.name}`} />}>
-                              <UserCog />
-                            </DialogTrigger>
-                            <DialogContent className="sm:max-w-md">
-                              <DialogHeader>
-                                <DialogTitle>Teachers: {schoolClass.name}</DialogTitle>
-                                <DialogDescription>Assigning a teacher restricts them to recording attendance and exam results only for this class (and any others they&apos;re assigned to).</DialogDescription>
-                              </DialogHeader>
-                              <div className="space-y-3">
-                                {assignedTeachers.length === 0 ? (
-                                  <p className="text-sm text-muted-foreground">No teacher assigned yet. Unassigned staff with School permissions can still act on any class.</p>
-                                ) : (
-                                  <ul className="space-y-2">
-                                    {assignedTeachers.map((assignment) => (
-                                      <li key={assignment.id} className="flex items-center justify-between rounded-lg border p-2 text-sm">
-                                        <span>{assignment.user.name ?? assignment.user.email}</span>
-                                        <form action={removeClassTeacherAction}>
-                                          <input type="hidden" name="classId" value={schoolClass.id} />
-                                          <input type="hidden" name="userId" value={assignment.userId} />
-                                          <Button type="submit" size="icon-sm" variant="ghost" aria-label={`Remove ${assignment.user.name ?? assignment.user.email}`}><X /></Button>
-                                        </form>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                                <form action={assignClassTeacherAction} className="flex items-end gap-2">
-                                  <input type="hidden" name="classId" value={schoolClass.id} />
-                                  <SelectField id={`assign-teacher-${schoolClass.id}`} name="userId" label="Assign teacher" options={staffOptions} emptyHint="No active staff to assign." className="flex-1" />
-                                  <Button type="submit">Assign</Button>
-                                </form>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-                        </div>
-                      </TableCell>
-                    ) : null}
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </SectionCard>
-      )}
+      <Tabs defaultValue="classes" className="space-y-4">
+        <TabsList className="w-full justify-start overflow-x-auto">
+          <TabsTrigger value="classes">Classes</TabsTrigger>
+          <TabsTrigger value="subjects">Subjects</TabsTrigger>
+        </TabsList>
 
-      <SectionCard title="Subjects" description={`${subjects.length} active subject${subjects.length === 1 ? "" : "s"} available to timetables and exams.`}>
-        {subjects.length === 0 ? (
-          <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-            No subjects yet. Timetables and exams both require a subject.
-          </p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Code</TableHead>
-                <TableHead>Subject</TableHead>
-                <TableHead className="hidden md:table-cell">Description</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {subjects.map((subject) => (
-                <TableRow key={subject.id}>
-                  <TableCell className="font-mono text-xs">{subject.code}</TableCell>
-                  <TableCell className="font-medium">{subject.name}</TableCell>
-                  <TableCell className="hidden text-muted-foreground md:table-cell">{subject.description ?? "-"}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </SectionCard>
+        <TabsContent value="classes" className="space-y-6">
+          {classes.length === 0 ? (
+            <EmptyState
+              icon={Shapes}
+              title="No classes yet"
+              description="Create classes and subjects before enrolling students. Enrollment links a student to a class for one academic year."
+              action={canManageAcademics && campuses.length > 0 ? newClassDialog : undefined}
+            />
+          ) : (
+            <SectionCard title="Classes" description={`${classes.length} class${classes.length === 1 ? "" : "es"} across ${campuses.length} campus${campuses.length === 1 ? "" : "es"}.`}>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Code</TableHead>
+                    <TableHead>Class</TableHead>
+                    <TableHead className="hidden md:table-cell">Campus</TableHead>
+                    <TableHead className="hidden lg:table-cell">Grade level</TableHead>
+                    <TableHead>Enrolled</TableHead>
+                    <TableHead className="hidden lg:table-cell">Teachers</TableHead>
+                    {canManageAcademics ? <TableHead><span className="sr-only">Actions</span></TableHead> : null}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {classes.map((schoolClass) => {
+                    const enrolled = schoolClass.enrollments.length;
+                    const isFull = schoolClass.capacity !== null && enrolled >= schoolClass.capacity;
+                    const assignedTeachers = teachersByClass.get(schoolClass.id) ?? [];
+                    return (
+                      <TableRow key={schoolClass.id}>
+                        <TableCell className="font-mono text-xs">{schoolClass.code}</TableCell>
+                        <TableCell>
+                          <span className="font-medium">{schoolClass.name}</span>
+                          <span className="block text-xs text-muted-foreground md:hidden">{schoolClass.campus.name}</span>
+                        </TableCell>
+                        <TableCell className="hidden text-muted-foreground md:table-cell">{schoolClass.campus.name}</TableCell>
+                        <TableCell className="hidden text-muted-foreground lg:table-cell">{schoolClass.gradeLevel ?? "-"}</TableCell>
+                        <TableCell>
+                          <span className="tabular-nums">{enrolled}{schoolClass.capacity ? ` / ${schoolClass.capacity}` : ""}</span>
+                          {isFull ? <Badge variant="destructive" className="ml-2">Full</Badge> : null}
+                          {schoolClass.capacity === null ? <span className="ml-2 text-xs text-muted-foreground">No limit</span> : null}
+                        </TableCell>
+                        <TableCell className="hidden text-muted-foreground lg:table-cell">
+                          {assignedTeachers.length > 0 ? assignedTeachers.map((assignment) => assignment.user.name ?? assignment.user.email).join(", ") : "Unassigned"}
+                        </TableCell>
+                        {canManageAcademics ? (
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Dialog>
+                                <DialogTrigger render={<Button size="icon" variant="ghost" aria-label={`Edit capacity for ${schoolClass.name}`} />}>
+                                  <Settings2 />
+                                </DialogTrigger>
+                                <DialogContent className="sm:max-w-sm">
+                                  <DialogHeader>
+                                    <DialogTitle>Edit capacity: {schoolClass.name}</DialogTitle>
+                                    <DialogDescription>{enrolled} student{enrolled === 1 ? "" : "s"} currently enrolled. Capacity cannot be set below that.</DialogDescription>
+                                  </DialogHeader>
+                                  <form action={updateClassCapacityAction} className="space-y-4">
+                                    <input type="hidden" name="classId" value={schoolClass.id} />
+                                    <TextField id={`capacity-${schoolClass.id}`} name="capacity" label="Capacity" type="number" min="1" max="10000" defaultValue={schoolClass.capacity ?? undefined} hint="Leave blank for no limit." />
+                                    <Button type="submit" className="w-full">Save capacity</Button>
+                                  </form>
+                                </DialogContent>
+                              </Dialog>
+                              <Dialog>
+                                <DialogTrigger render={<Button size="icon" variant="ghost" aria-label={`Manage teachers for ${schoolClass.name}`} />}>
+                                  <UserCog />
+                                </DialogTrigger>
+                                <DialogContent className="sm:max-w-md">
+                                  <DialogHeader>
+                                    <DialogTitle>Teachers: {schoolClass.name}</DialogTitle>
+                                    <DialogDescription>Assigning a teacher restricts them to recording attendance and exam results only for this class (and any others they&apos;re assigned to).</DialogDescription>
+                                  </DialogHeader>
+                                  <div className="space-y-3">
+                                    {assignedTeachers.length === 0 ? (
+                                      <p className="text-sm text-muted-foreground">No teacher assigned yet. Unassigned staff with School permissions can still act on any class.</p>
+                                    ) : (
+                                      <ul className="space-y-2">
+                                        {assignedTeachers.map((assignment) => (
+                                          <li key={assignment.id} className="flex items-center justify-between rounded-lg border p-2 text-sm">
+                                            <span>{assignment.user.name ?? assignment.user.email}</span>
+                                            <form action={removeClassTeacherAction}>
+                                              <input type="hidden" name="classId" value={schoolClass.id} />
+                                              <input type="hidden" name="userId" value={assignment.userId} />
+                                              <Button type="submit" size="icon-sm" variant="ghost" aria-label={`Remove ${assignment.user.name ?? assignment.user.email}`}><X /></Button>
+                                            </form>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                    <form action={assignClassTeacherAction} className="flex items-end gap-2">
+                                      <input type="hidden" name="classId" value={schoolClass.id} />
+                                      <SelectField id={`assign-teacher-${schoolClass.id}`} name="userId" label="Assign teacher" options={staffOptions} emptyHint="No active staff to assign." className="flex-1" />
+                                      <Button type="submit">Assign</Button>
+                                    </form>
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
+                            </div>
+                          </TableCell>
+                        ) : null}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </SectionCard>
+          )}
+        </TabsContent>
+
+        <TabsContent value="subjects" className="space-y-6">
+          <SectionCard title="Subjects" description={`${subjects.length} active subject${subjects.length === 1 ? "" : "s"} available to timetables and exams.`}>
+            {subjects.length === 0 ? (
+              <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                No subjects yet. Timetables and exams both require a subject.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Code</TableHead>
+                    <TableHead>Subject</TableHead>
+                    <TableHead className="hidden md:table-cell">Description</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {subjects.map((subject) => (
+                    <TableRow key={subject.id}>
+                      <TableCell className="font-mono text-xs">{subject.code}</TableCell>
+                      <TableCell className="font-medium">{subject.name}</TableCell>
+                      <TableCell className="hidden text-muted-foreground md:table-cell">{subject.description ?? "-"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </SectionCard>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
