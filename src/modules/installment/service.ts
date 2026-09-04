@@ -306,12 +306,27 @@ export class StaffLoginAlreadyLinkedError extends Error {}
 export class StaffHasOperationalHistoryError extends Error {}
 export class StaffHasPayrollHistoryError extends Error {}
 
+/**
+ * Active org members who can actually be linked as a hire-purchase staff
+ * login - only those whose role carries an Installment permission, not
+ * every active member of the organization (which previously let e.g. a
+ * Fleet driver or Hospital radiology staffer show up as a linkable staff
+ * login). This link isn't cosmetic: resolveInstallmentAccessScope() grants
+ * the linked user "staff" self-service scope over their own customers and
+ * accounts, so an unrelated member linked here would gain Installment data
+ * access they were never granted through their actual role. There's no
+ * single canonical "staff" permission the way Fleet has one exact
+ * permission for driver self-service, so this uses a `startsWith` match on
+ * the permission key, same as School's and Hostel's assignable-staff
+ * lists.
+ */
 export async function listAssignableStaffUsers(organizationId: string) {
   const memberships = await db.organizationMember.findMany({
     where: {
       organizationId,
       status: "ACTIVE",
       user: { status: "ACTIVE" },
+      role: { rolePermissions: { some: { permission: { key: { startsWith: "hirepurchase." } } } } },
     },
     select: {
       user: { select: { id: true, name: true, email: true } },

@@ -1,8 +1,28 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import bcrypt from "bcryptjs";
 import * as installment from "@/modules/installment/service";
 import { createTestOrg, cleanupTestOrg, type TestOrg } from "../setup/fixtures";
+import { testDb } from "../setup/db";
 
 const ORGANIZATION_SCOPE = { kind: "organization" } as const;
+
+async function addMemberWithRole(org: TestOrg, roleName: string, label: string) {
+  const runId = `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const user = await testDb.user.create({
+    data: {
+      name: `Integration Test User ${runId}`,
+      email: `itest-${runId}@example.invalid`,
+      passwordHash: await bcrypt.hash("not-a-real-password", 4),
+      status: "ACTIVE",
+    },
+  });
+  const role = await testDb.role.findFirst({ where: { organizationId: null, name: roleName } });
+  if (!role) throw new Error(`"${roleName}" system role not found — ensurePlatformSeeded() should have created it.`);
+  await testDb.organizationMember.create({
+    data: { organizationId: org.organizationId, userId: user.id, roleId: role.id, status: "ACTIVE", joinedAt: new Date() },
+  });
+  return user;
+}
 
 /**
  * Real-Postgres equivalent of the mocked IDOR coverage for
@@ -14,6 +34,7 @@ const ORGANIZATION_SCOPE = { kind: "organization" } as const;
 
 let orgA: TestOrg;
 let orgB: TestOrg;
+const extraUserIds: string[] = [];
 
 let productA: Awaited<ReturnType<typeof installment.createProduct>>;
 let staffA: Awaited<ReturnType<typeof installment.createStaff>>;
@@ -45,6 +66,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  for (const userId of extraUserIds) await testDb.user.delete({ where: { id: userId } }).catch(() => {});
   await cleanupTestOrg(orgA);
   await cleanupTestOrg(orgB);
 });
@@ -125,5 +147,18 @@ describe("Installment service — cross-tenant isolation against real Postgres",
     const list = await installment.listStaff(orgA.organizationId);
     expect(list.map((s) => s.id)).not.toContain(staffB.id);
     expect(list.map((s) => s.id)).toContain(staffA.id);
+  });
+
+  it("offers only members with Installment access as linkable staff logins, not every active org member", async () => {
+    const hirePurchaseStaff = await addMemberWithRole(orgA, "Hire Purchase Staff", "assignable-staff-login");
+    const driver = await addMemberWithRole(orgA, "Driver", "assignable-driver");
+    extraUserIds.push(hirePurchaseStaff.id, driver.id);
+
+    const assignable = await installment.listAssignableStaffUsers(orgA.organizationId);
+    const userIds = assignable.map((user) => user.id);
+
+    expect(userIds).toContain(hirePurchaseStaff.id);
+    expect(userIds).toContain(orgA.userId); // Organization Owner holds every permission, Installment included.
+    expect(userIds).not.toContain(driver.id);
   });
 });
