@@ -1,14 +1,34 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import bcrypt from "bcryptjs";
 import * as school from "@/modules/school/service";
 import * as studentProfile from "@/modules/school/student-profile-service";
 import { cleanupTestOrg, createTestOrg, type TestOrg } from "../setup/fixtures";
 import { testDb } from "../setup/db";
+
+async function addMemberWithRole(org: TestOrg, roleName: string, label: string) {
+  const runId = `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const user = await testDb.user.create({
+    data: {
+      name: `Integration Test User ${runId}`,
+      email: `itest-${runId}@example.invalid`,
+      passwordHash: await bcrypt.hash("not-a-real-password", 4),
+      status: "ACTIVE",
+    },
+  });
+  const role = await testDb.role.findFirst({ where: { organizationId: null, name: roleName } });
+  if (!role) throw new Error(`"${roleName}" system role not found — ensurePlatformSeeded() should have created it.`);
+  await testDb.organizationMember.create({
+    data: { organizationId: org.organizationId, userId: user.id, roleId: role.id, status: "ACTIVE", joinedAt: new Date() },
+  });
+  return user;
+}
 
 let orgA: TestOrg;
 let orgB: TestOrg;
 let campusA: Awaited<ReturnType<typeof school.createSchoolCampus>>;
 let campusB: Awaited<ReturnType<typeof school.createSchoolCampus>>;
 let studentB: Awaited<ReturnType<typeof school.createSchoolStudent>>;
+const extraUserIds: string[] = [];
 
 beforeAll(async () => {
   orgA = await createTestOrg("orgA-school");
@@ -19,6 +39,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  for (const userId of extraUserIds) await testDb.user.delete({ where: { id: userId } }).catch(() => {});
   await cleanupTestOrg(orgA);
   await cleanupTestOrg(orgB);
 });
@@ -95,6 +116,19 @@ describe("School service — real tenant isolation and customer-readiness guards
     const list = await school.listSchoolCampuses(orgA.organizationId);
     expect(list.map((campus) => campus.id)).toContain(campusA.id);
     expect(list.map((campus) => campus.id)).not.toContain(campusB.id);
+  });
+
+  it("offers only members with School access as assignable class teachers, not every active org member", async () => {
+    const teacher = await addMemberWithRole(orgA, "Teacher", "assignable-teacher");
+    const driver = await addMemberWithRole(orgA, "Driver", "assignable-driver");
+    extraUserIds.push(teacher.id, driver.id);
+
+    const assignable = await school.listAssignableTeacherUsers(orgA.organizationId);
+    const userIds = assignable.map((member) => member.userId);
+
+    expect(userIds).toContain(teacher.id);
+    expect(userIds).toContain(orgA.userId); // Organization Owner holds every permission, School included.
+    expect(userIds).not.toContain(driver.id);
   });
 
   it("records valid student lifecycle transitions and closes terminal enrollments", async () => {

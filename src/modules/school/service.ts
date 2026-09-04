@@ -260,9 +260,27 @@ export function listSchoolClassTeacherAssignments(organizationId: string) {
   return db.schoolClassTeacher.findMany({ where: { organizationId }, include: { class: true, user: true }, orderBy: { createdAt: "asc" } });
 }
 
-/** Active org members eligible to be assigned as a class teacher - any active member, not filtered to a "Teacher"-named role, since scoping is by explicit assignment. */
-export function listOrganizationStaffForAssignment(organizationId: string) {
-  return db.organizationMember.findMany({ where: { organizationId, status: "ACTIVE" }, include: { user: true, role: true }, orderBy: { user: { name: "asc" } } });
+/**
+ * Active org members who can actually be assigned as a class teacher - only
+ * those whose role carries a School permission, not every active member of
+ * the organization (which previously let e.g. a Fleet driver or Hospital
+ * radiology staffer show up in the teacher picker). There's no single
+ * canonical "teacher" permission the way Fleet has one for driver
+ * self-service, so any permission under the school.* prefix counts as
+ * evidence this member has School access - the same prefix test
+ * canAccessModule() uses to gate the module itself. Mirrors the fix already
+ * applied to Fleet's driver/owner/mechanic assignment lists.
+ */
+export function listAssignableTeacherUsers(organizationId: string) {
+  return db.organizationMember.findMany({
+    where: {
+      organizationId,
+      status: "ACTIVE",
+      role: { rolePermissions: { some: { permission: { key: { startsWith: "school." } } } } },
+    },
+    include: { user: true, role: true },
+    orderBy: { user: { name: "asc" } },
+  });
 }
 
 export function createSchoolSubject(organizationId: string, data: { code: string; name: string; description?: string | null }) {

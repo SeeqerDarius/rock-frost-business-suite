@@ -14,7 +14,7 @@ import { FieldGrid, SelectField, TextField } from "@/components/school/form-fiel
 import { PrerequisiteNotice, SectionCard } from "@/components/school/section-card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getSchoolAcademicSetup, listOrganizationStaffForAssignment, listSchoolCampuses, listSchoolClassTeacherAssignments, listSchoolStudents } from "@/modules/school/service";
+import { getSchoolAcademicSetup, listAssignableTeacherUsers, listSchoolCampuses, listSchoolClassTeacherAssignments, listSchoolStudents } from "@/modules/school/service";
 import { assignClassTeacherAction, createClassAction, createSubjectAction, enrollStudentAction, removeClassTeacherAction, updateClassCapacityAction } from "../actions";
 
 export default async function SchoolClassesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
@@ -26,7 +26,7 @@ export default async function SchoolClassesPage({ searchParams }: { searchParams
     listSchoolCampuses(tenant.organizationId),
     listSchoolStudents(tenant.organizationId),
     listSchoolClassTeacherAssignments(tenant.organizationId),
-    listOrganizationStaffForAssignment(tenant.organizationId),
+    listAssignableTeacherUsers(tenant.organizationId),
   ]);
 
   const campusOptions = campuses.map((campus) => ({ value: campus.id, label: campus.name }));
