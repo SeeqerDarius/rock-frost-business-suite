@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma, type HotelPaymentMethod, type SchoolAttendanceStatus, type SchoolStudentStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
+import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@/lib/trend-buckets";
 
 export class SchoolStateError extends Error {
   constructor(message: string, readonly code = "blocked") {
@@ -669,4 +670,67 @@ export async function getSchoolSummary(organizationId: string) {
   ]);
   const outstanding = invoices.reduce((total, invoice) => total.plus(invoice.amount.minus(invoice.discount).minus(invoice.payments.filter((p) => !p.refundedAt).reduce((sum, p) => sum.plus(p.amount), new Prisma.Decimal(0)))), new Prisma.Decimal(0));
   return { activeStudents: students, activeClasses: classes, attendance: Object.fromEntries(attendance.map((item) => [item.status, item._count])), collections: payments._sum.amount ?? new Prisma.Decimal(0), outstanding, overdueLoans, activeRoutes: routes };
+}
+
+export async function getSchoolReportAnalytics(
+  organizationId: string,
+  filters: { campusId?: string; classId?: string; from: Date; to: Date },
+) {
+  const from = new Date(filters.from);
+  const toExclusive = new Date(filters.to);
+  toExclusive.setDate(toExclusive.getDate() + 1);
+  const durationMs = Math.max(toExclusive.getTime() - from.getTime(), 86_400_000);
+  const previousFrom = new Date(from.getTime() - durationMs);
+  const lookback = new Date(Math.min(widestTrendLookback().getTime(), previousFrom.getTime()));
+  const queryEnd = new Date(Math.max(toExclusive.getTime(), Date.now() + 86_400_000));
+  const classWhere = filters.classId
+    ? { id: filters.classId, organizationId, ...(filters.campusId ? { campusId: filters.campusId } : {}) }
+    : filters.campusId
+      ? { organizationId, campusId: filters.campusId }
+      : { organizationId };
+  const studentWhere = filters.campusId || filters.classId
+    ? { ...(filters.campusId ? { campusId: filters.campusId } : {}), ...(filters.classId ? { enrollments: { some: { classId: filters.classId } } } : {}) }
+    : undefined;
+
+  const [attendance, payments, classes] = await Promise.all([
+    db.schoolAttendance.findMany({
+      where: { organizationId, date: { gte: lookback, lt: queryEnd }, ...(filters.classId ? { classId: filters.classId } : {}), ...(filters.campusId ? { class: { campusId: filters.campusId } } : {}) },
+      select: { date: true, status: true, classId: true },
+    }),
+    db.schoolFeePayment.findMany({
+      where: { organizationId, refundedAt: null, receivedAt: { gte: lookback, lt: queryEnd }, ...(studentWhere ? { student: studentWhere } : {}) },
+      select: { receivedAt: true, amount: true },
+    }),
+    db.schoolClass.findMany({ where: classWhere, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+  ]);
+
+  const inRange = (date: Date, start: Date, end: Date) => date >= start && date < end;
+  const summarize = (start: Date, end: Date) => {
+    const marks = attendance.filter((record) => inRange(record.date, start, end));
+    const healthy = marks.filter((record) => record.status === "PRESENT" || record.status === "LATE").length;
+    return {
+      attendanceRate: marks.length > 0 ? Math.round((healthy / marks.length) * 100) : null,
+      absent: marks.filter((record) => record.status === "ABSENT").length,
+      marked: marks.length,
+      collections: payments.filter((payment) => inRange(payment.receivedAt, start, end)).reduce((sum, payment) => sum + Number(payment.amount), 0),
+    };
+  };
+  const current = summarize(from, toExclusive);
+  const previous = summarize(previousFrom, from);
+  const makeTrends = (granularity: TrendGranularity) => buildTrendBuckets(granularity).map((bucket) => {
+    const period = summarize(bucket.start, bucket.end);
+    return { label: bucket.label, attendanceRate: period.attendanceRate ?? 0, collections: period.collections };
+  });
+  const classAttendance = classes.map((schoolClass) => {
+    const marks = attendance.filter((record) => record.classId === schoolClass.id && inRange(record.date, from, toExclusive));
+    const healthy = marks.filter((record) => record.status === "PRESENT" || record.status === "LATE").length;
+    return { label: schoolClass.name, value: marks.length > 0 ? Math.round((healthy / marks.length) * 100) : 0, marked: marks.length };
+  });
+
+  return {
+    current,
+    previous,
+    classAttendance,
+    trends: { days: makeTrends("days"), weeks: makeTrends("weeks"), months: makeTrends("months") },
+  };
 }

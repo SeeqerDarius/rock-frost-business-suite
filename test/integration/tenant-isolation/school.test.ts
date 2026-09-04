@@ -209,4 +209,26 @@ describe("School service — real tenant isolation and customer-readiness guards
       school.recordSchoolAttendanceBulk(orgA.organizationId, orgA.userId, { termId: term.id, classId: schoolClass.id, date: oldDate, entries: [{ studentId: student.id, status: "PRESENT" }] }),
     ).rejects.toThrow("correction window has closed");
   });
+
+  it("builds tenant-scoped attendance and collection report analytics", async () => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: `Analytics ${Date.now()}`, startDate: new Date(now.getFullYear(), 0, 1), endDate: new Date(now.getFullYear(), 11, 31) });
+    const term = await school.createSchoolTerm(orgA.organizationId, { academicYearId: year.id, name: "Analytics", startDate: new Date(now.getFullYear(), 0, 1), endDate: new Date(now.getFullYear(), 11, 31) });
+    const schoolClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `AN${Date.now()}`, name: "Analytics Class" });
+    const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Report", lastName: "Student" });
+    await school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: year.id, studentId: student.id, classId: schoolClass.id });
+    await school.recordSchoolAttendance(orgA.organizationId, orgA.userId, { termId: term.id, classId: schoolClass.id, studentId: student.id, date: now, status: "PRESENT" });
+    const invoice = await school.createSchoolFeeInvoice(orgA.organizationId, { academicYearId: year.id, termId: term.id, studentId: student.id, description: "Analytics fee", amount: "50" });
+    await school.recordSchoolFeePayment(orgA.organizationId, invoice.id, { amount: "25", method: "CASH" });
+
+    const analytics = await school.getSchoolReportAnalytics(orgA.organizationId, { campusId: campusA.id, classId: schoolClass.id, from: now, to: now });
+    expect(analytics.current).toMatchObject({ attendanceRate: 100, absent: 0, marked: 1 });
+    expect(analytics.current.collections).toBeGreaterThanOrEqual(25);
+    expect(analytics.classAttendance.find((row) => row.label === "Analytics Class")).toMatchObject({ value: 100, marked: 1 });
+    expect(analytics.trends.days).toHaveLength(6);
+
+    const isolated = await school.getSchoolReportAnalytics(orgB.organizationId, { campusId: campusA.id, from: now, to: now });
+    expect(isolated.current).toEqual({ attendanceRate: null, absent: 0, marked: 0, collections: 0 });
+  });
 });

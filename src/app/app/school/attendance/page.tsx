@@ -2,7 +2,6 @@ import { ClipboardCheck } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FormFeedback, ReadOnlyNotice } from "@/components/school/form-feedback";
@@ -10,10 +9,10 @@ import { PrerequisiteNotice, SectionCard } from "@/components/school/section-car
 import { RecordSearch } from "@/components/school/record-search";
 import { StatusBadge } from "@/components/school/status-badge";
 import { formatDate, humanizeStatus } from "@/components/school/format";
+import { AttendanceRosterForm } from "./attendance-roster-form";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getSchoolAcademicSetup, getSchoolAttendanceRoster, listSchoolAttendance } from "@/modules/school/service";
-import { recordAttendanceBulkAction } from "../actions";
 
 const PATH = "/app/school/attendance";
 const STATUSES = ["PRESENT", "ABSENT", "LATE", "EXCUSED"] as const;
@@ -127,43 +126,7 @@ export default async function SchoolAttendancePage({
               ) : isFuture || windowClosed ? (
                 <ReadOnlyNotice>{isFuture ? "Attendance cannot be recorded for a future date." : "The attendance correction window for this date has already closed."}</ReadOnlyNotice>
               ) : (
-                <form action={recordAttendanceBulkAction} className="space-y-4">
-                  <input type="hidden" name="termId" value={selectedTermId} />
-                  <input type="hidden" name="classId" value={selectedClass.id} />
-                  <input type="hidden" name="date" value={selectedDate} />
-                  <div className="overflow-x-auto rounded-lg border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Student</TableHead>
-                          <TableHead className="w-40">Status</TableHead>
-                          <TableHead>Reason</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {roster.entries.map((entry) => (
-                          <TableRow key={entry.studentId}>
-                            <TableCell>
-                              <span className="font-medium">{entry.lastName}, {entry.firstName}</span>
-                              <span className="block font-mono text-xs text-muted-foreground">{entry.admissionNumber}</span>
-                            </TableCell>
-                            <TableCell>
-                              <label htmlFor={`status-${entry.studentId}`} className="sr-only">Status for {entry.firstName} {entry.lastName}</label>
-                              <select id={`status-${entry.studentId}`} name={`status_${entry.studentId}`} defaultValue={entry.status ?? "PRESENT"} className={SELECT_CLASS}>
-                                {STATUSES.map((status) => <option key={status} value={status}>{humanizeStatus(status)}</option>)}
-                              </select>
-                            </TableCell>
-                            <TableCell>
-                              <label htmlFor={`reason-${entry.studentId}`} className="sr-only">Reason for {entry.firstName} {entry.lastName}</label>
-                              <Input id={`reason-${entry.studentId}`} name={`reason_${entry.studentId}`} defaultValue={entry.reason ?? ""} maxLength={200} placeholder="Optional" />
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  <Button type="submit">Save attendance ({roster.entries.length} student{roster.entries.length === 1 ? "" : "s"})</Button>
-                </form>
+                <AttendanceRosterForm termId={selectedTermId!} classId={selectedClass.id} date={selectedDate} entries={roster.entries} />
               )
             ) : (
               <p className="text-sm text-muted-foreground">Choose a term, class, and date, then load the roster to mark attendance.</p>
