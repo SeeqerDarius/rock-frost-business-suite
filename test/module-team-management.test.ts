@@ -33,4 +33,21 @@ describe("shared module team management", () => {
     expect(combined).toContain("/app/inventory/staff");
     expect(combined).toContain("/app/procurement/staff");
   });
+
+  it("renders the Team page inside that module's own AppShell, not the bare authenticated layout", () => {
+    // The [moduleKey] route segment had no layout.tsx of its own when this shared
+    // Team page shipped, so it rendered directly under src/app/app/layout.tsx (auth
+    // and providers only, no AppShell) - losing the sidebar entirely and stretching
+    // full-width, the exact symptom reported for /app/pos/staff. A module-specific
+    // page never has this bug because its own layout.tsx always wraps it in AppShell;
+    // this dynamic route needs the same layout.tsx, just resolving which module's
+    // navigation/sectionLabel to use from the moduleKey param instead of a fixed one.
+    const layout = readFileSync(resolve(root, "src/app/app/[moduleKey]/layout.tsx"), "utf8");
+    expect(layout).toContain("<AppShell");
+    expect(layout).toContain("requireCurrentTenant");
+    expect(layout).toContain("canAccessModule(tenant, config.key)");
+    for (const moduleKey of Object.keys(MODULE_TEAM_CONFIGS)) {
+      expect(layout, `missing sidebar chrome for "${moduleKey}"`).toContain(`case "${moduleKey}"`);
+    }
+  });
 });
