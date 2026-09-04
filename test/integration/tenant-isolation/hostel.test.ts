@@ -1,8 +1,27 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import bcrypt from "bcryptjs";
 import * as hostel from "@/modules/hostel/service";
 import * as school from "@/modules/school/service";
 import { cleanupTestOrg, createTestOrg, type TestOrg } from "../setup/fixtures";
 import { testDb } from "../setup/db";
+
+async function addMemberWithRole(org: TestOrg, roleName: string, label: string) {
+  const runId = `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const user = await testDb.user.create({
+    data: {
+      name: `Integration Test User ${runId}`,
+      email: `itest-${runId}@example.invalid`,
+      passwordHash: await bcrypt.hash("not-a-real-password", 4),
+      status: "ACTIVE",
+    },
+  });
+  const role = await testDb.role.findFirst({ where: { organizationId: null, name: roleName } });
+  if (!role) throw new Error(`"${roleName}" system role not found — ensurePlatformSeeded() should have created it.`);
+  await testDb.organizationMember.create({
+    data: { organizationId: org.organizationId, userId: user.id, roleId: role.id, status: "ACTIVE", joinedAt: new Date() },
+  });
+  return user;
+}
 
 let orgA: TestOrg;
 let orgB: TestOrg;
@@ -12,6 +31,7 @@ let studentB: Awaited<ReturnType<typeof school.createSchoolStudent>>;
 let yearA: Awaited<ReturnType<typeof school.createSchoolAcademicYear>>;
 let buildingA: Awaited<ReturnType<typeof hostel.createHostelBuilding>>;
 let buildingB: Awaited<ReturnType<typeof hostel.createHostelBuilding>>;
+const extraUserIds: string[] = [];
 
 beforeAll(async () => {
   orgA = await createTestOrg("orgA-hostel");
@@ -26,6 +46,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  for (const userId of extraUserIds) await testDb.user.delete({ where: { id: userId } }).catch(() => {});
   await cleanupTestOrg(orgA);
   await cleanupTestOrg(orgB);
 });
@@ -35,6 +56,19 @@ describe("Hostel service — real tenant isolation and end-to-end guards", () =>
     const list = await hostel.listHostelBuildings(orgA.organizationId);
     expect(list.map((b) => b.id)).toContain(buildingA.id);
     expect(list.map((b) => b.id)).not.toContain(buildingB.id);
+  });
+
+  it("offers only members with Hostel access as assignable wardens, not every active org member", async () => {
+    const warden = await addMemberWithRole(orgA, "Warden", "assignable-warden");
+    const driver = await addMemberWithRole(orgA, "Driver", "assignable-driver");
+    extraUserIds.push(warden.id, driver.id);
+
+    const assignable = await hostel.listAssignableHostelUsers(orgA.organizationId);
+    const userIds = assignable.map((user) => user.id);
+
+    expect(userIds).toContain(warden.id);
+    expect(userIds).toContain(orgA.userId); // Organization Owner holds every permission, Hostel included.
+    expect(userIds).not.toContain(driver.id);
   });
 
   it("rejects creating a room under another tenant's building", async () => {

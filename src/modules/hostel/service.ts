@@ -135,9 +135,21 @@ export function listHostelWardens(organizationId: string) {
   return db.hostelWarden.findMany({ where: { organizationId }, include: { building: true, user: true }, orderBy: { createdAt: "desc" } });
 }
 
+/**
+ * Active org members who can actually be assigned as a hostel warden - only
+ * those whose role carries a Hostel permission, not every active member of
+ * the organization (which previously let e.g. a Fleet driver or Hospital
+ * radiology staffer show up in the warden picker). Mirrors the same fix
+ * applied to Fleet's driver/owner/mechanic lists and School's teacher list.
+ */
 export function listAssignableHostelUsers(organizationId: string) {
   return db.organizationMember.findMany({
-    where: { organizationId, status: "ACTIVE", user: { status: "ACTIVE" } },
+    where: {
+      organizationId,
+      status: "ACTIVE",
+      user: { status: "ACTIVE" },
+      role: { rolePermissions: { some: { permission: { key: { startsWith: "hostel." } } } } },
+    },
     select: { user: { select: { id: true, name: true, email: true } } },
     orderBy: { user: { name: "asc" } },
   }).then((memberships) => memberships.map(({ user }) => user));
