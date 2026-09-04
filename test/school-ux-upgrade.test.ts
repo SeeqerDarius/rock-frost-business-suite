@@ -22,6 +22,7 @@ describe("School UX upgrade", () => {
     expect(roster).toContain("aria-pressed={selected}");
     expect(roster).toContain("Unsaved attendance changes");
     expect(reports).toContain("PeriodicTrendChart");
+    expect(reports).toContain('valueFormat="percentage"');
     expect(reports).toContain("Period comparison");
     expect(read("src/app/app/school/reports/loading.tsx")).toContain("Loading School reports");
     expect(read("src/app/app/school/reports/error.tsx")).toContain("School reports could not load");
