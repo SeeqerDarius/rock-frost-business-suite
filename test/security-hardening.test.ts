@@ -20,7 +20,7 @@ describe("security hardening", () => {
   });
 
   it("protects public contact and authentication forms with Turnstile", async () => {
-    const [contactAction, loginPage, resetPage] = await Promise.all(["src/app/(public)/contact/actions.ts", "src/app/(auth)/login/page.tsx", "src/app/(auth)/forgot-password/page.tsx"].map(read));
+    const [contactAction, loginPage, resetPage] = await Promise.all(["src/app/(public)/contact/actions.ts", "src/app/(auth-login)/login/page.tsx", "src/app/(auth)/forgot-password/page.tsx"].map(read));
     expect(contactAction).toContain("verifyBotProtection");
     expect(loginPage).toContain("TurnstileWidget");
     expect(resetPage).toContain("TurnstileWidget");
