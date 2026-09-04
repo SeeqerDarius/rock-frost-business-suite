@@ -1,12 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ImageIcon, Link2, Plus, UserPlus, Users } from "lucide-react";
+import { Eye, ImageIcon, Link2, Plus, UserPlus, Users } from "lucide-react";
 import type { SchoolStudentStatus } from "@prisma/client";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PhotoInputPreview } from "@/components/school/photo-input-preview";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -100,9 +101,12 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
         <div>
           <p className="text-sm font-medium">Guardian (optional)</p>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            Fill this in to add and link a guardian in the same step, instead of using &quot;Add guardian&quot; and &quot;Link guardian&quot; separately. Leave blank if the guardian already exists - link them afterwards instead.
+            Choose an existing guardian or create one now. Duplicate phone and name matches are reused automatically to prevent repeated guardian records.
           </p>
         </div>
+        {guardians.length > 0 ? (
+          <SelectField id="student-existing-guardian" name="existingGuardianId" label="Existing guardian" options={guardianOptions} emptyHint="Add a new guardian below" hint="Choose a guardian already on record" />
+        ) : null}
         <FieldGrid>
           <TextField id="student-guardian-first-name" name="guardianFirstName" label="First name" maxLength={200} />
           <TextField id="student-guardian-last-name" name="guardianLastName" label="Last name" maxLength={200} />
@@ -174,190 +178,206 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
           description="Admitted students appear here with their campus, status, and guardian contacts."
           action={canManage && campuses.length > 0 ? newStudentDialog : undefined}
         />
-      ) : (
-        <SectionCard title="Students" description={`${students.length} student${students.length === 1 ? "" : "s"} on record.`}>
-          <div className="space-y-4">
-            <RecordSearch
-              action={PATH}
-              label="Search students"
-              placeholder="Name or admission number"
-              defaultValue={query.q}
-              isFiltered={Boolean(query.q || statusFilter)}
-              resultSummary={`Showing ${visible.length} of ${students.length}`}
-              filters={
-                <div className="w-40 space-y-1.5">
-                  <Label htmlFor="student-status-filter">Status</Label>
-                  <select
-                    id="student-status-filter"
-                    name="status"
-                    defaultValue={statusFilter ?? ""}
-                    className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-base outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
-                  >
-                    <option value="">All statuses</option>
-                    {STATUS_FILTERS.map((status) => <option key={status} value={status}>{humanizeStatus(status)}</option>)}
-                  </select>
-                </div>
-              }
-            />
+      ) : null}
 
-            {visible.length === 0 ? (
-              <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">No students match this search.</p>
+      <Tabs defaultValue="students" className="space-y-4">
+        <TabsList className="w-full justify-start overflow-x-auto">
+          <TabsTrigger value="students">Students</TabsTrigger>
+          <TabsTrigger value="guardians">Guardians</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="students" className="space-y-6">
+          <SectionCard title="Students" description={`${students.length} student${students.length === 1 ? "" : "s"} on record.`}>
+            <div className="space-y-4">
+              <RecordSearch
+                action={PATH}
+                label="Search students"
+                placeholder="Name or admission number"
+                defaultValue={query.q}
+                isFiltered={Boolean(query.q || statusFilter)}
+                resultSummary={`Showing ${visible.length} of ${students.length}`}
+                filters={
+                  <div className="w-40 space-y-1.5">
+                    <Label htmlFor="student-status-filter">Status</Label>
+                    <select
+                      id="student-status-filter"
+                      name="status"
+                      defaultValue={statusFilter ?? ""}
+                      className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-base outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
+                    >
+                      <option value="">All statuses</option>
+                      {STATUS_FILTERS.map((status) => <option key={status} value={status}>{humanizeStatus(status)}</option>)}
+                    </select>
+                  </div>
+                }
+              />
+
+              {visible.length === 0 ? (
+                <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">No students match this search.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead><span className="sr-only">Photo</span></TableHead>
+                      <TableHead>Admission no.</TableHead>
+                      <TableHead>Student</TableHead>
+                      <TableHead className="hidden md:table-cell">Campus</TableHead>
+                      <TableHead className="hidden lg:table-cell">Class</TableHead>
+                      <TableHead className="hidden lg:table-cell">Primary guardian</TableHead>
+                      <TableHead>Status</TableHead>
+                      {canManage ? <TableHead><span className="sr-only">Actions</span></TableHead> : null}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {visible.map((student) => {
+                      const primaryGuardian = student.guardians.find((link) => link.primary) ?? student.guardians[0];
+                      const activeEnrollment = student.enrollments.find((enrollment) => enrollment.status === "ACTIVE");
+                      const transitions = ALLOWED_TRANSITIONS[student.status];
+                      const hasPhoto = studentPhotoIds.has(student.id);
+                      return (
+                        <TableRow key={student.id}>
+                          <TableCell>
+                            {canManage ? (
+                              <EntityDialog
+                                trigger={<button type="button" className="cursor-pointer"><PhotoThumb hasPhoto={hasPhoto} src={`/api/school/students/${student.id}/photo`} alt={`${student.firstName} ${student.lastName}`} /></button>}
+                                title={`${hasPhoto ? "Replace" : "Add"} photo for ${student.firstName} ${student.lastName}`}
+                                action={updateStudentPhotoAction}
+                                submitLabel="Save photo"
+                              >
+                                <input type="hidden" name="studentId" value={student.id} />
+                                {hasPhoto ? (
+                                  <div className="flex items-center gap-3 rounded-md border p-2">
+                                    <Image src={`/api/school/students/${student.id}/photo`} alt="" width={56} height={56} unoptimized className="size-14 rounded-md object-cover" />
+                                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="removePhoto" />Remove current photo</label>
+                                  </div>
+                                ) : null}
+                                <PhotoInputPreview id={`student-photo-${student.id}`} />
+                              </EntityDialog>
+                            ) : (
+                              <PhotoThumb hasPhoto={hasPhoto} src={`/api/school/students/${student.id}/photo`} alt={`${student.firstName} ${student.lastName}`} />
+                            )}
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">{student.admissionNumber}</TableCell>
+                          <TableCell>
+                            <div className="space-y-1.5">
+                              <span className="block font-medium">{student.firstName} {student.lastName}</span>
+                              <Link href={`/app/school/students/${student.id}`} className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" aria-label={`View profile for ${student.firstName} ${student.lastName}`}>
+                                <Eye className="size-3.5" /> View profile
+                              </Link>
+                              <span className="block text-xs text-muted-foreground md:hidden">{student.campus.name}</span>
+                              {student.dateOfBirth ? <span className="block text-xs text-muted-foreground">Born {formatDate(student.dateOfBirth)}</span> : null}
+                            </div>
+                          </TableCell>
+                          <TableCell className="hidden text-muted-foreground md:table-cell">{student.campus.name}</TableCell>
+                          <TableCell className="hidden text-muted-foreground lg:table-cell">
+                            {activeEnrollment ? `${activeEnrollment.class.name} · ${activeEnrollment.academicYear.name}` : "Not enrolled"}
+                          </TableCell>
+                          <TableCell className="hidden text-muted-foreground lg:table-cell">
+                            {primaryGuardian ? `${primaryGuardian.guardian.firstName} ${primaryGuardian.guardian.lastName} · ${primaryGuardian.guardian.phone}` : "None linked"}
+                          </TableCell>
+                          <TableCell><StatusBadge status={student.status} /></TableCell>
+                          {canManage ? (
+                            <TableCell className="text-right">
+                              {transitions.length > 0 ? (
+                                <EntityDialog
+                                  trigger={<Button size="sm" variant="ghost">Change status</Button>}
+                                  title={`Change status for ${student.firstName} ${student.lastName}`}
+                                  description={`Currently ${humanizeStatus(student.status).toLowerCase()}. Withdrawing or graduating a student also closes their active enrollments.`}
+                                  action={transitionStudentAction}
+                                  submitLabel="Change status"
+                                >
+                                  <input type="hidden" name="studentId" value={student.id} />
+                                  <SelectField
+                                    id={`transition-${student.id}`}
+                                    name="toStatus"
+                                    label="New status"
+                                    required
+                                    placeholder="Select a new status…"
+                                    options={transitions.map((status) => ({ value: status, label: humanizeStatus(status) }))}
+                                  />
+                                  <div className="space-y-1.5">
+                                    <Label htmlFor={`transition-reason-${student.id}`}>Reason</Label>
+                                    <Textarea id={`transition-reason-${student.id}`} name="reason" rows={3} maxLength={5000} />
+                                    <p className="text-xs leading-relaxed text-muted-foreground">Optional, but recorded permanently in the student&apos;s lifecycle history.</p>
+                                  </div>
+                                </EntityDialog>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Final</span>
+                              )}
+                            </TableCell>
+                          ) : null}
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          </SectionCard>
+        </TabsContent>
+
+        <TabsContent value="guardians" className="space-y-6">
+          <SectionCard title="Guardians" description={`${guardians.length} guardian${guardians.length === 1 ? "" : "s"} on record.`}>
+            {guardians.length === 0 ? (
+              <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                No guardians yet. Add a guardian, then link them to a student for emergency contact and fee correspondence.
+              </p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead><span className="sr-only">Photo</span></TableHead>
-                    <TableHead>Admission no.</TableHead>
-                    <TableHead>Student</TableHead>
-                    <TableHead className="hidden md:table-cell">Campus</TableHead>
-                    <TableHead className="hidden lg:table-cell">Class</TableHead>
-                    <TableHead className="hidden lg:table-cell">Primary guardian</TableHead>
-                    <TableHead>Status</TableHead>
-                    {canManage ? <TableHead><span className="sr-only">Actions</span></TableHead> : null}
+                    <TableHead>Guardian no.</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead className="hidden md:table-cell">Email</TableHead>
+                    <TableHead className="hidden lg:table-cell">Occupation</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {visible.map((student) => {
-                    const primaryGuardian = student.guardians.find((link) => link.primary) ?? student.guardians[0];
-                    const activeEnrollment = student.enrollments.find((enrollment) => enrollment.status === "ACTIVE");
-                    const transitions = ALLOWED_TRANSITIONS[student.status];
-                    const hasPhoto = studentPhotoIds.has(student.id);
+                  {guardians.map((guardian) => {
+                    const hasPhoto = guardianPhotoIds.has(guardian.id);
                     return (
-                      <TableRow key={student.id}>
+                      <TableRow key={guardian.id}>
                         <TableCell>
                           {canManage ? (
                             <EntityDialog
-                              trigger={<button type="button" className="cursor-pointer"><PhotoThumb hasPhoto={hasPhoto} src={`/api/school/students/${student.id}/photo`} alt={`${student.firstName} ${student.lastName}`} /></button>}
-                              title={`${hasPhoto ? "Replace" : "Add"} photo for ${student.firstName} ${student.lastName}`}
-                              action={updateStudentPhotoAction}
+                              trigger={<button type="button" className="cursor-pointer"><PhotoThumb hasPhoto={hasPhoto} src={`/api/school/guardians/${guardian.id}/photo`} alt={`${guardian.firstName} ${guardian.lastName}`} /></button>}
+                              title={`${hasPhoto ? "Replace" : "Add"} photo for ${guardian.firstName} ${guardian.lastName}`}
+                              action={updateGuardianPhotoAction}
                               submitLabel="Save photo"
                             >
-                              <input type="hidden" name="studentId" value={student.id} />
+                              <input type="hidden" name="guardianId" value={guardian.id} />
                               {hasPhoto ? (
                                 <div className="flex items-center gap-3 rounded-md border p-2">
-                                  <Image src={`/api/school/students/${student.id}/photo`} alt="" width={56} height={56} unoptimized className="size-14 rounded-md object-cover" />
+                                  <Image src={`/api/school/guardians/${guardian.id}/photo`} alt="" width={56} height={56} unoptimized className="size-14 rounded-md object-cover" />
                                   <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="removePhoto" />Remove current photo</label>
                                 </div>
                               ) : null}
-                              <PhotoInputPreview id={`student-photo-${student.id}`} />
+                              <div className="space-y-1.5">
+                                <Label htmlFor={`guardian-photo-${guardian.id}`}>Photo</Label>
+                                <Input id={`guardian-photo-${guardian.id}`} name="photo" type="file" accept="image/jpeg,image/png,image/webp" />
+                                <p className="text-xs text-muted-foreground">Optional JPG, PNG, or WebP, up to 1 MB.</p>
+                              </div>
                             </EntityDialog>
                           ) : (
-                            <PhotoThumb hasPhoto={hasPhoto} src={`/api/school/students/${student.id}/photo`} alt={`${student.firstName} ${student.lastName}`} />
+                            <PhotoThumb hasPhoto={hasPhoto} src={`/api/school/guardians/${guardian.id}/photo`} alt={`${guardian.firstName} ${guardian.lastName}`} />
                           )}
                         </TableCell>
-                        <TableCell className="font-mono text-xs">{student.admissionNumber}</TableCell>
-                        <TableCell>
-                          <Link className="font-medium underline-offset-4 hover:underline" href={`/app/school/students/${student.id}`}>{student.firstName} {student.lastName}</Link>
-                          <span className="block text-xs text-muted-foreground md:hidden">{student.campus.name}</span>
-                          {student.dateOfBirth ? <span className="block text-xs text-muted-foreground">Born {formatDate(student.dateOfBirth)}</span> : null}
-                        </TableCell>
-                        <TableCell className="hidden text-muted-foreground md:table-cell">{student.campus.name}</TableCell>
-                        <TableCell className="hidden text-muted-foreground lg:table-cell">
-                          {activeEnrollment ? `${activeEnrollment.class.name} · ${activeEnrollment.academicYear.name}` : "Not enrolled"}
-                        </TableCell>
-                        <TableCell className="hidden text-muted-foreground lg:table-cell">
-                          {primaryGuardian ? `${primaryGuardian.guardian.firstName} ${primaryGuardian.guardian.lastName} · ${primaryGuardian.guardian.phone}` : "None linked"}
-                        </TableCell>
-                        <TableCell><StatusBadge status={student.status} /></TableCell>
-                        {canManage ? (
-                          <TableCell className="text-right">
-                            {transitions.length > 0 ? (
-                              <EntityDialog
-                                trigger={<Button size="sm" variant="ghost">Change status</Button>}
-                                title={`Change status for ${student.firstName} ${student.lastName}`}
-                                description={`Currently ${humanizeStatus(student.status).toLowerCase()}. Withdrawing or graduating a student also closes their active enrollments.`}
-                                action={transitionStudentAction}
-                                submitLabel="Change status"
-                              >
-                                <input type="hidden" name="studentId" value={student.id} />
-                                <SelectField
-                                  id={`transition-${student.id}`}
-                                  name="toStatus"
-                                  label="New status"
-                                  required
-                                  placeholder="Select a new status…"
-                                  options={transitions.map((status) => ({ value: status, label: humanizeStatus(status) }))}
-                                />
-                                <div className="space-y-1.5">
-                                  <Label htmlFor={`transition-reason-${student.id}`}>Reason</Label>
-                                  <Textarea id={`transition-reason-${student.id}`} name="reason" rows={3} maxLength={5000} />
-                                  <p className="text-xs leading-relaxed text-muted-foreground">Optional, but recorded permanently in the student&apos;s lifecycle history.</p>
-                                </div>
-                              </EntityDialog>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">Final</span>
-                            )}
-                          </TableCell>
-                        ) : null}
+                        <TableCell className="font-mono text-xs">{guardian.guardianNumber}</TableCell>
+                        <TableCell className="font-medium">{guardian.firstName} {guardian.lastName}</TableCell>
+                        <TableCell className="text-muted-foreground">{guardian.phone}</TableCell>
+                        <TableCell className="hidden text-muted-foreground md:table-cell">{guardian.email ?? "-"}</TableCell>
+                        <TableCell className="hidden text-muted-foreground lg:table-cell">{guardian.occupation ?? "-"}</TableCell>
                       </TableRow>
                     );
                   })}
                 </TableBody>
               </Table>
             )}
-          </div>
-        </SectionCard>
-      )}
-
-      <SectionCard title="Guardians" description={`${guardians.length} guardian${guardians.length === 1 ? "" : "s"} on record.`}>
-        {guardians.length === 0 ? (
-          <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-            No guardians yet. Add a guardian, then link them to a student for emergency contact and fee correspondence.
-          </p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead><span className="sr-only">Photo</span></TableHead>
-                <TableHead>Guardian no.</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead className="hidden md:table-cell">Email</TableHead>
-                <TableHead className="hidden lg:table-cell">Occupation</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {guardians.map((guardian) => {
-                const hasPhoto = guardianPhotoIds.has(guardian.id);
-                return (
-                  <TableRow key={guardian.id}>
-                    <TableCell>
-                      {canManage ? (
-                        <EntityDialog
-                          trigger={<button type="button" className="cursor-pointer"><PhotoThumb hasPhoto={hasPhoto} src={`/api/school/guardians/${guardian.id}/photo`} alt={`${guardian.firstName} ${guardian.lastName}`} /></button>}
-                          title={`${hasPhoto ? "Replace" : "Add"} photo for ${guardian.firstName} ${guardian.lastName}`}
-                          action={updateGuardianPhotoAction}
-                          submitLabel="Save photo"
-                        >
-                          <input type="hidden" name="guardianId" value={guardian.id} />
-                          {hasPhoto ? (
-                            <div className="flex items-center gap-3 rounded-md border p-2">
-                              <Image src={`/api/school/guardians/${guardian.id}/photo`} alt="" width={56} height={56} unoptimized className="size-14 rounded-md object-cover" />
-                              <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="removePhoto" />Remove current photo</label>
-                            </div>
-                          ) : null}
-                          <div className="space-y-1.5">
-                            <Label htmlFor={`guardian-photo-${guardian.id}`}>Photo</Label>
-                            <Input id={`guardian-photo-${guardian.id}`} name="photo" type="file" accept="image/jpeg,image/png,image/webp" />
-                            <p className="text-xs text-muted-foreground">Optional JPG, PNG, or WebP, up to 1 MB.</p>
-                          </div>
-                        </EntityDialog>
-                      ) : (
-                        <PhotoThumb hasPhoto={hasPhoto} src={`/api/school/guardians/${guardian.id}/photo`} alt={`${guardian.firstName} ${guardian.lastName}`} />
-                      )}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{guardian.guardianNumber}</TableCell>
-                    <TableCell className="font-medium">{guardian.firstName} {guardian.lastName}</TableCell>
-                    <TableCell className="text-muted-foreground">{guardian.phone}</TableCell>
-                    <TableCell className="hidden text-muted-foreground md:table-cell">{guardian.email ?? "-"}</TableCell>
-                    <TableCell className="hidden text-muted-foreground lg:table-cell">{guardian.occupation ?? "-"}</TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
-      </SectionCard>
+          </SectionCard>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

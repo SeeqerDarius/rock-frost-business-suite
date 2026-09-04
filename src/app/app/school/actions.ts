@@ -45,18 +45,17 @@ export async function createStudentAction(f:FormData){
   const p=parseWithSchema(z.object({campusId:cuid,firstName:shortText,lastName:shortText,dateOfBirth:dateInput.nullable(),gender:shortText.nullable(),admissionDate:dateInput.nullable(),medicalNotes:longText.nullable()}),{campusId:clean(f.get("campusId"))??"",firstName:clean(f.get("firstName"))??"",lastName:clean(f.get("lastName"))??"",dateOfBirth:clean(f.get("dateOfBirth")),gender:clean(f.get("gender")),admissionDate:clean(f.get("admissionDate")),medicalNotes:clean(f.get("medicalNotes"))});
   if(!p.success)redirect(`${path}?error=invalid`);
 
-  // Guardian fields are optional on this form: admitting a student's first
-  // guardian no longer requires the separate "Add guardian" + "Link
-  // guardian" round trip. First/last name and phone together signal intent
-  // to add one; relationship is required alongside them so the link is
-  // meaningful.
+  const existingGuardianId = clean(f.get("existingGuardianId"));
   const guardianFirstName = clean(f.get("guardianFirstName"));
   const guardianLastName = clean(f.get("guardianLastName"));
   const guardianPhone = clean(f.get("guardianPhone"));
   const guardianRelationship = clean(f.get("guardianRelationship"));
   const hasGuardianInput = Boolean(guardianFirstName || guardianLastName || guardianPhone || guardianRelationship);
   let guardianData: Parameters<typeof admitSchoolStudent>[2] = null;
-  if (hasGuardianInput) {
+  if (existingGuardianId) {
+    if (!guardianRelationship) redirect(`${path}?error=invalid`);
+    guardianData = { guardianId: existingGuardianId, relationship: guardianRelationship };
+  } else if (hasGuardianInput) {
     const gp = z.object({
       firstName: shortText,
       lastName: shortText,

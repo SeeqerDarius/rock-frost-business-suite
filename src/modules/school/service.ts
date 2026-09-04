@@ -108,7 +108,10 @@ export function createSchoolStudent(organizationId: string, data: { campusId: st
 export function admitSchoolStudent(
   organizationId: string,
   studentData: { campusId: string; firstName: string; lastName: string; dateOfBirth?: Date | null; gender?: string | null; admissionDate?: Date | null; medicalNotes?: string | null },
-  guardianData?: { firstName: string; lastName: string; phone: string; relationship: string; email?: string | null; occupation?: string | null; address?: string | null } | null,
+  guardianData?: (
+    | { guardianId: string; relationship: string }
+    | { firstName: string; lastName: string; phone: string; relationship: string; email?: string | null; occupation?: string | null; address?: string | null }
+  ) | null,
 ) {
   return createWithUniqueRetry(async () => {
     const campus = await db.schoolCampus.findFirst({ where: { id: studentData.campusId, organizationId, active: true } });
@@ -116,19 +119,50 @@ export function admitSchoolStudent(
     return db.$transaction(async (tx) => {
       const student = await tx.schoolStudent.create({ data: { organizationId, admissionNumber: await nextCode(organizationId, "STU", () => tx.schoolStudent.count({ where: { organizationId } })), status: "ACTIVE", ...studentData } });
       if (guardianData) {
-        const guardian = await tx.schoolGuardian.create({
-          data: {
-            organizationId,
-            guardianNumber: await nextCode(organizationId, "GRD", () => tx.schoolGuardian.count({ where: { organizationId } })),
-            firstName: guardianData.firstName,
-            lastName: guardianData.lastName,
-            phone: guardianData.phone,
-            email: guardianData.email ?? null,
-            occupation: guardianData.occupation ?? null,
-            address: guardianData.address ?? null,
-          },
+        const relationship = guardianData.relationship.trim();
+        if (!relationship) throw new SchoolStateError("Guardian relationship is required.");
+
+        let guardian;
+        if ("guardianId" in guardianData) {
+          guardian = await tx.schoolGuardian.findFirst({ where: { id: guardianData.guardianId, organizationId } });
+          if (!guardian) throw new SchoolNotFoundError("Guardian not found.");
+        } else {
+          const firstName = guardianData.firstName.trim();
+          const lastName = guardianData.lastName.trim();
+          const phone = guardianData.phone.trim();
+          if (!firstName || !lastName || !phone) throw new SchoolStateError("Guardian name and phone are required.");
+
+          guardian = await tx.schoolGuardian.findFirst({
+            where: {
+              organizationId,
+              phone,
+              firstName: { equals: firstName, mode: "insensitive" },
+              lastName: { equals: lastName, mode: "insensitive" },
+            },
+          });
+
+          if (!guardian) {
+            guardian = await tx.schoolGuardian.create({
+              data: {
+                organizationId,
+                guardianNumber: await nextCode(organizationId, "GRD", () => tx.schoolGuardian.count({ where: { organizationId } })),
+                firstName,
+                lastName,
+                phone,
+                email: guardianData.email ?? null,
+                occupation: guardianData.occupation ?? null,
+                address: guardianData.address ?? null,
+              },
+            });
+          }
+        }
+
+        await tx.schoolStudentGuardian.updateMany({ where: { organizationId, studentId: student.id, primary: true }, data: { primary: false } });
+        await tx.schoolStudentGuardian.upsert({
+          where: { studentId_guardianId: { studentId: student.id, guardianId: guardian.id } },
+          update: { relationship, primary: true },
+          create: { organizationId, studentId: student.id, guardianId: guardian.id, relationship, primary: true },
         });
-        await tx.schoolStudentGuardian.create({ data: { organizationId, studentId: student.id, guardianId: guardian.id, relationship: guardianData.relationship, primary: true } });
       }
       return student;
     });
