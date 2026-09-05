@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Wallet, FileText, Receipt, TrendingUp, Gauge } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
-import { buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { cn } from "@/lib/utils";
 import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
