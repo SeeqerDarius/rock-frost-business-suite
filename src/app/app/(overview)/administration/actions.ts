@@ -156,6 +156,17 @@ export async function changeMemberRole(formData: FormData): Promise<void> {
 
   const parsed = parseWithSchema(z.object({ membershipId: z.string().cuid(), roleId: z.string().cuid() }), Object.fromEntries(formData));
   if (!parsed.success) redirect("/app/administration?error=missing-fields");
+
+  // Re-saving a member's own current role must never fail, even if that role
+  // is no longer assignable to a *different* member from here (e.g. the
+  // org's module subscription changed since this member was granted it) -
+  // only an actual role change needs the full assignability check below.
+  const existingMember = await db.organizationMember.findFirst({
+    where: { id: parsed.data.membershipId, organizationId: tenant.organizationId, status: { not: "REMOVED" } },
+    select: { roleId: true },
+  });
+  if (existingMember?.roleId === parsed.data.roleId) redirect("/app/administration?roleChanged=1");
+
   const role = await getAssignableRole(tenant.organizationId, tenant.enabledModuleKeys, parsed.data.roleId);
   if (!role) redirect("/app/administration?error=invalid-role");
   // Same owner-only restriction as inviteMember - an Organization Admin

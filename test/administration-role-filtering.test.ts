@@ -33,3 +33,32 @@ describe("administration role filtering", () => {
     expect(filtering).toContain('role.name === "Organization Owner"');
   });
 });
+
+/**
+ * Regression test for a live production bug (reported with a screenshot): a
+ * member's Role dropdown showed a raw database id (e.g. "cms1cozex002dc...")
+ * instead of a role name. Root cause: a member can hold a role that's since
+ * fallen out of `assignableRoles` (e.g. the org's module subscription
+ * changed after the role was granted), and the Select's `items` map - which
+ * SelectValue uses to look up the display label for the current value - was
+ * built from `assignableRoles` alone, with no entry for that member's actual
+ * role. Fixed by including each member's own current role in its row's
+ * option list even when it isn't otherwise assignable, and by no-op'ing a
+ * changeMemberRole submission that resubmits a member's own unchanged role
+ * instead of re-validating it as a fresh grant.
+ */
+describe("a member's current role is never dropped from its own row, even if no longer assignable", () => {
+  it("computes a per-row role list that always includes the member's own current role", () => {
+    expect(page).toContain("rowRoles");
+    expect(page).toContain("!assignableRoles.some((role) => role.id === member.role!.id)");
+    expect(page).toContain("[...assignableRoles, member.role]");
+    // The Select's `items` map and its rendered <SelectItem> options must
+    // both be built from the per-row list, not the page-wide assignable list.
+    expect(page).toContain("items={Object.fromEntries(rowRoles.map(");
+    expect(page).toContain("{rowRoles.map((role) => <SelectItem");
+  });
+
+  it("changeMemberRole never re-validates a resubmission of a member's own unchanged role", () => {
+    expect(actions).toContain("if (existingMember?.roleId === parsed.data.roleId) redirect(\"/app/administration?roleChanged=1\")");
+  });
+});

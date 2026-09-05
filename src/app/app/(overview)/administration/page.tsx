@@ -143,6 +143,16 @@ export default async function AdministrationPage({
               {members.map((member) => {
                 const invitation = member.invitation;
                 const canManageInvite = member.status === "INVITED" && invitation?.status === "PENDING";
+                // A member can hold a role that's no longer in `assignableRoles`
+                // (e.g. the org's module subscription changed since it was
+                // granted) - without it in the option list, the Select has no
+                // label to show for the current value and falls back to
+                // rendering the raw role id. Include it so the dropdown always
+                // shows a real name; changeMemberRole still refuses to grant
+                // this exact same role to a different member from here.
+                const rowRoles = member.role && !assignableRoles.some((role) => role.id === member.role!.id)
+                  ? [...assignableRoles, member.role]
+                  : assignableRoles;
 
                 return (
                   <TableRow key={member.id}>
@@ -152,10 +162,10 @@ export default async function AdministrationPage({
                       {member.status !== "REMOVED" ? (
                         <form action={changeMemberRole} className="flex min-w-52 items-center gap-2">
                           <input type="hidden" name="membershipId" value={member.id} />
-                          <Select name="roleId" defaultValue={member.roleId ?? undefined} items={Object.fromEntries(assignableRoles.map((role) => [role.id, roleDisplayName(role.name)]))}>
+                          <Select name="roleId" defaultValue={member.roleId ?? undefined} items={Object.fromEntries(rowRoles.map((role) => [role.id, roleDisplayName(role.name)]))}>
                             <SelectTrigger className="h-8 min-w-36"><SelectValue placeholder="Select role" /></SelectTrigger>
                             <SelectContent align="start" alignItemWithTrigger={false} className="max-h-72">
-                              {assignableRoles.map((role) => <SelectItem key={role.id} value={role.id}>{roleDisplayName(role.name)}</SelectItem>)}
+                              {rowRoles.map((role) => <SelectItem key={role.id} value={role.id}>{roleDisplayName(role.name)}</SelectItem>)}
                             </SelectContent>
                           </Select>
                           <Button type="submit" size="sm" variant="outline">Save</Button>
