@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { verifyTransaction } from "@/lib/payments";
-import { activateSubscriptionFromGateway } from "@/platform/subscriptions/service";
+import { activateSubscriptionFromGateway, resetAbandonedCheckout } from "@/platform/subscriptions/service";
 
 /**
  * Where Flutterwave's hosted checkout returns the browser to. Same
@@ -22,28 +22,42 @@ export default async function FlutterwaveCallbackPage({
   const tenant = await requireCurrentTenant();
   const { tx_ref: ref, status } = await searchParams;
 
-  let outcome: "success" | "failed" | "not-found" = "not-found";
-  if (ref && status !== "cancelled") {
+  let outcome: "success" | "failed" | "cancelled" | "not-found" = "not-found";
+  if (ref) {
     const subscription = await db.subscription.findFirst({
       where: { paymentReference: ref, gatewayProvider: "FLUTTERWAVE", organizationId: tenant.organizationId },
     });
     if (subscription) {
-      try {
-        const verification = await verifyTransaction("FLUTTERWAVE", ref);
-        if (verification.success) {
-          await activateSubscriptionFromGateway({
-            reference: ref,
-            provider: "FLUTTERWAVE",
-            verifiedAmount: verification.amount,
-            verifiedCurrency: verification.currency,
-          });
-          outcome = "success";
-        } else {
+      if (status === "cancelled") {
+        // The customer cancelled at Flutterwave's checkout page - Flutterwave
+        // reports this directly via the status param, no verification call
+        // needed. Reset the never-paid attempt so it doesn't linger as
+        // "pending payment" and block a retry.
+        await resetAbandonedCheckout(subscription.id, tenant.organizationId);
+        outcome = "cancelled";
+      } else {
+        try {
+          const verification = await verifyTransaction("FLUTTERWAVE", ref);
+          if (verification.success) {
+            await activateSubscriptionFromGateway({
+              reference: ref,
+              provider: "FLUTTERWAVE",
+              verifiedAmount: verification.amount,
+              verifiedCurrency: verification.currency,
+            });
+            outcome = "success";
+          } else {
+            // A definitive failed transaction (e.g. card declined) - reset the
+            // never-paid attempt. A thrown verification error below is left
+            // alone since the payment might still complete and the webhook
+            // should catch it up.
+            await resetAbandonedCheckout(subscription.id, tenant.organizationId);
+            outcome = "failed";
+          }
+        } catch (error) {
+          console.error("[billing] Flutterwave callback verification failed:", error);
           outcome = "failed";
         }
-      } catch (error) {
-        console.error("[billing] Flutterwave callback verification failed:", error);
-        outcome = "failed";
       }
     }
   }
@@ -55,6 +69,11 @@ export default async function FlutterwaveCallbackPage({
         <Alert>
           <AlertTitle>Payment confirmed</AlertTitle>
           <AlertDescription>Your module access has been activated.</AlertDescription>
+        </Alert>
+      ) : outcome === "cancelled" ? (
+        <Alert>
+          <AlertTitle>Checkout cancelled</AlertTitle>
+          <AlertDescription>No charge was made. You can try again anytime from Billing.</AlertDescription>
         </Alert>
       ) : outcome === "failed" ? (
         <Alert variant="destructive">

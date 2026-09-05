@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
 import { cuid, dateInput, longText, moneyAmountNonNegative, parseWithSchema, positiveInt, shortText } from "@/lib/validation";
-import { activateSubscription, cancelSubscription, createSubscription } from "@/platform/subscriptions/service";
+import { activateSubscription, cancelSubscription, createSubscription, PaystackRenewalNotRegisteredError } from "@/platform/subscriptions/service";
 import { SeatLimitExceededError, updateSubscriptionSeatLimit } from "@/platform/subscriptions/seats";
 
 const createSchema = z.object({
@@ -91,7 +91,13 @@ export async function cancelSubscriptionAction(formData: FormData): Promise<void
   const tenant = await requirePlatformOperator();
   const id = cuid.safeParse(String(formData.get("subscriptionId") ?? ""));
   if (!id.success) redirect("/app/platform/subscriptions?error=invalid");
-  await cancelSubscription({ subscriptionId: id.data, actorId: tenant.userId });
+  try {
+    await cancelSubscription({ subscriptionId: id.data, actorId: tenant.userId });
+  } catch (error) {
+    console.error("[platform] Failed to cancel subscription:", error);
+    if (error instanceof PaystackRenewalNotRegisteredError) redirect("/app/platform/subscriptions?error=cancel-paystack-unregistered");
+    redirect("/app/platform/subscriptions?error=cancel");
+  }
   revalidatePath("/app/platform/subscriptions");
   revalidatePath("/app/modules");
   redirect("/app/platform/subscriptions?cancelled=1");

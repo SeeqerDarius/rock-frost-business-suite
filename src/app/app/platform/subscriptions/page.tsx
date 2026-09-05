@@ -23,6 +23,10 @@ const ERROR_MESSAGES: Record<string, string> = {
   "price-not-found": "That module price could not be found.",
   "invalid-bundle": "Enter a valid suite name and monthly price.",
   "bundle-not-found": "That suite price could not be found.",
+  create: "The subscription could not be created.",
+  activate: "The subscription could not be activated.",
+  cancel: "The subscription could not be cancelled.",
+  "cancel-paystack-unregistered": "Automatic renewal isn't fully registered with Paystack yet. Cancel it directly from Paystack's dashboard first, then cancel local access.",
 };
 const SAVED_MESSAGES: Record<string, string> = { price: "Module price updated.", bundle: "Suite price updated." };
 
