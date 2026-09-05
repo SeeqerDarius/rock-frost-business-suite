@@ -1103,6 +1103,72 @@ never actually executed on GitHub's infrastructure (this environment can't
 trigger one). Worth confirming on the next real push before relying on it as
 a merge gate.
 
+### 2026-09-05 Centralized rate limiting (API routes and Server Actions)
+
+Before this change, rate limiting existed only per-feature: login lockout,
+invitation resend cooldown, the public contact form cooldown, customer
+feedback cooldown, and the AI support-assistant reply cap. There was no
+generic throttle covering the app's API routes or Server Actions as a whole.
+
+`src/proxy.ts` (Next.js's request-interception file, which in this Next 16
+release defaults to the Node.js runtime rather than Edge, so Prisma can run
+directly inside it) now checks every request to `/api/*` (any method) and
+every non-GET/HEAD request to any other path, since a Server Action
+invocation is itself a POST to the page route that calls it. Identity is the
+signed-in user's id from the NextAuth JWT (no DB hit to resolve it), or the
+caller's IP when unauthenticated. Two fixed windows, tracked in a new
+`RateLimitBucket` table via a single atomic `INSERT ... ON CONFLICT DO
+UPDATE`:
+
+- `auth` (5 min / 30 requests): `/api/auth/*` and non-GET requests to
+  `/login`, `/forgot-password`, `/reset-password`, `/invite`. This is a
+  second, IP-keyed layer on top of the existing per-account
+  `failedLoginAttempts` lockout, which does nothing to slow a
+  credential-stuffing pass spread across many accounts from one IP.
+- `general` (60 sec / 300 requests): everything else in scope. The cap
+  was set from the app's actual measured polling load (support chat and
+  notification-badge polling top out around 50 to 70 requests per minute
+  across a few open tabs for one signed-in user), leaving 4 to 6x headroom
+  before it engages.
+
+Exempt entirely (matched by path prefix, never written to the bucket
+table): the Paystack and Flutterwave webhook routes (signature-verified,
+called from provider-shared IP pools, and rate limiting must never read
+their request body ahead of the downstream raw-body signature check); the
+cron routes (already gated by a `CRON_SECRET` check and fired at most a
+handful of times per day); `/api/health` (an external uptime probe, where a
+false 429 becomes a false downtime alert); and the offline-sync routes
+(device-signature authenticated, where a warehouse's device fleet
+legitimately bursts many sequential requests after reconnecting).
+
+The check fails open: if it throws for any reason (a DB hiccup, a
+connection blip), the request is logged and allowed through rather than
+blocked. This is a deliberate exception to this document's general
+fail-closed bias (see line 15 above, on login and password-reset). It is
+justified here because this is defense-in-depth, not the app's primary
+security boundary the way tenant scoping and the login lockout are; failing
+closed would mean a single transient database error takes down every API
+route and every Server Action at once. This mirrors the existing stated
+"never throws" behavior of audit logging (Pass 4, Milestone C above).
+
+On a blocked request: a JSON `429` for `/api/*` routes, and a `429` with a
+`text/plain` body for Server Actions (matched to the exact response shape
+Next.js's installed client code needs to surface the message on the thrown
+error rather than a generic fallback). Either way, `src/app/app/error.tsx`
+catches the resulting error, so the user sees a normal error boundary, not
+a crash.
+
+Validated locally: `tsc --noEmit`, lint, and the full test suite (165 files,
+1257 tests, including 9 new unit tests against the rate limiter and the
+updated `proxy-host-routing` tests) all pass, and `npm run build` succeeds.
+The new migration was verified with a schema-only `prisma migrate diff`
+run (no live database available in this sandbox); it still needs CI's
+real-Postgres `integration` job to confirm it applies cleanly, and the
+exact `Content-Type: text/plain` behavior is worth a quick post-deploy
+sanity check in case an intermediate layer appends a charset (the fallback
+in that case is still just a less specific message inside the same error
+boundary, not a failure).
+
 ---
 
 ## Billing / Subscriptions
