@@ -1566,6 +1566,18 @@ model TwoFactorOtpChallenge {
   @@index([userId, purpose, consumedAt, createdAt])
 }
 
+/// Fixed-window request counter backing centralized rate limiting in src/proxy.ts.
+/// One row per distinct rate-limit key (tier + identity); count resets when
+/// windowStart is older than the tier's window length. See src/lib/rate-limit.ts.
+model RateLimitBucket {
+  key         String   @id
+  windowStart DateTime
+  count       Int      @default(1)
+  updatedAt   DateTime @updatedAt
+
+  @@index([windowStart])
+}
+
 model FileAsset {
   id             String   @id @default(cuid())
   organizationId String

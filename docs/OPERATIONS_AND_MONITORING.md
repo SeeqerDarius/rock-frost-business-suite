@@ -17,6 +17,13 @@ strings, SQL errors, hostnames, or credentials. Configure an uptime monitor to
 request `https://www.rockfrostgroup.com/api/health` at least every five
 minutes and alert on two consecutive failures.
 
+`/api/health` is deliberately exempt from the centralized rate limiting in
+`src/proxy.ts` (see `docs/HARDENING_PLAN.md`'s 2026-09-05 section), so a
+five-minute polling schedule, or a tighter one, never risks a false 429
+reading as a downtime alert. The cron routes below are exempt for the same
+reason: they are already gated by `CRON_SECRET` and fire only a handful of
+times per day, so an IP-based limit would add no protection.
+
 ## Trial-expiry cron
 
 Vercel invokes `GET /api/cron/expire-trials` daily at 01:15 UTC from

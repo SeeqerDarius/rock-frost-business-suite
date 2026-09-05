@@ -8,7 +8,7 @@ One Next.js deployment serves three host-separated surfaces:
 - `admin.rockfrostgroup.com`: Rock Frost platform control plane.
 - `app.rockfrostgroup.com`: customer tenant workspaces.
 
-`src/proxy.ts` performs origin routing before rendering. `src/lib/app-surfaces.ts` is the shared host/origin policy used by Proxy, NextAuth, login, server layouts, email links, and payment callbacks. Authentication cookies remain host-only; never configure them for `.rockfrostgroup.com`, because doing so would make owner and tenant logins overwrite each other again.
+`src/proxy.ts` performs origin routing before rendering, then enforces centralized rate limiting (see `src/lib/rate-limit.ts`) on every API route and every Server Action, using the Node.js runtime that Proxy defaults to in this Next.js version so the check can query Postgres directly. `src/lib/app-surfaces.ts` is the shared host/origin policy used by Proxy, NextAuth, login, server layouts, email links, and payment callbacks. Authentication cookies remain host-only; never configure them for `.rockfrostgroup.com`, because doing so would make owner and tenant logins overwrite each other again.
 
 ## Folder structure
 
