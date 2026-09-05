@@ -40,6 +40,18 @@ describe("dashboard and Accounting overview trend widgets", () => {
     expect(accountingIntegration).toContain('if (!(await isModuleActiveForOrg(db, organizationId, "accounting"))) return null;');
   });
 
+  it("regression: never fetches org-wide Revenue insights for anyone but Organization Owner/Admin", () => {
+    // A Teacher, Nurse, Cashier, or any other operational role landed on this
+    // same generic dashboard and saw organization-wide posted revenue,
+    // because the fetch was gated only on whether Accounting was active for
+    // the org, never on the viewer's own role. Fleet's own narrow roles
+    // (Driver/Mechanic/Vehicle Owner) already redirect away before reaching
+    // this point since they have a dedicated workspace; everyone else must
+    // instead have the fetch itself conditioned on being Owner/Admin.
+    expect(dashboard).toContain("isOrganizationOwnerRole(tenant) || isOrganizationAdminRole(tenant)");
+    expect(dashboard).toMatch(/canViewOrgRevenue\s*\?\s*getRevenueInsights\(tenant\.organizationId\)\s*:\s*Promise\.resolve\(null\)/);
+  });
+
   it("keeps the sidebar's icon treatment to one consistent accent color rather than a distinct color per item", () => {
     // Matching IconBadge's own stated rule elsewhere in this codebase: one
     // RF-blue treatment everywhere an icon represents something, not a

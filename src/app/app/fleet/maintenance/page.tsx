@@ -58,9 +58,16 @@ export default async function FleetMaintenancePage({
         driver: canDriverSubmit,
         owner: canApproveAsOwner,
       });
+  // A driver with no manage/owner permission only ever sees requests they
+  // personally filed - vehicle scope alone isn't enough, since a vehicle's
+  // driver assignment is reassignable and would otherwise surface a previous
+  // driver's report. Owners/investors keep seeing every driver's requests on
+  // vehicles they own; managers see everything.
+  const isDriverOnlyActor = !canViewAll && !canApproveAsOwner && canDriverSubmit;
   const requests = await listFleetMaintenanceRequests(
     tenant.organizationId,
     canViewAll ? undefined : vehicles.map((vehicle) => vehicle.id),
+    isDriverOnlyActor ? session.user.id : undefined,
   );
   const mechanics = canManage ? await listFleetMechanics(tenant.organizationId) : [];
   const mechanicItems: Record<string, string> = Object.fromEntries(

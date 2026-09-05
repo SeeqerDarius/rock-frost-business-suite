@@ -585,6 +585,13 @@ export async function updateFleetDriver(
   }
 }
 
+/**
+ * maintenanceRequests is filtered to requestedById: userId, not just the
+ * vehicle - FleetVehicle.assignedDriverId is reassignable, so an unfiltered
+ * include would surface a previous driver's fault description, requester
+ * identity, and photo attachments to whoever the vehicle is handed to next.
+ * A driver only ever needs to see the issues they themselves reported.
+ */
 export async function getFleetDriverWorkspace(organizationId: string, userId: string) {
   return db.fleetDriver.findFirst({
     where: { organizationId, userId, status: "ACTIVE" },
@@ -592,6 +599,7 @@ export async function getFleetDriverWorkspace(organizationId: string, userId: st
       assignedVehicles: {
         include: {
           maintenanceRequests: {
+            where: { requestedById: userId },
             include: { attachments: { select: { id: true }, orderBy: { createdAt: "asc" } } },
             orderBy: { requestedAt: "desc" },
             take: 10,
@@ -1221,10 +1229,25 @@ export async function refreshFleetDocumentStatuses(organizationId: string) {
 
 // --- Maintenance requests ---
 
-/** Attachment metadata only - the underlying FileAsset (with its inline base64 data URL) is deliberately never eager-loaded into a list view; getFleetMaintenanceAttachment resolves one at a time for actual viewing. */
-export function listFleetMaintenanceRequests(organizationId: string, vehicleIds?: string[]) {
+/**
+ * Attachment metadata only - the underlying FileAsset (with its inline base64
+ * data URL) is deliberately never eager-loaded into a list view;
+ * getFleetMaintenanceAttachment resolves one at a time for actual viewing.
+ *
+ * requestedById is a further narrowing on top of vehicleIds, for a
+ * driver-only caller (no manage/owner permission) - vehicleIds alone scopes
+ * to the driver's currently assigned vehicle(s), but since a vehicle's driver
+ * assignment is reassignable, that would still surface a previous driver's
+ * report on the same vehicle. Managers and owners never pass this, since
+ * they legitimately see every reporter's requests within their scope.
+ */
+export function listFleetMaintenanceRequests(organizationId: string, vehicleIds?: string[], requestedById?: string) {
   return db.fleetMaintenanceRequest.findMany({
-    where: { organizationId, ...(vehicleIds ? { vehicleId: { in: vehicleIds } } : {}) },
+    where: {
+      organizationId,
+      ...(vehicleIds ? { vehicleId: { in: vehicleIds } } : {}),
+      ...(requestedById ? { requestedById } : {}),
+    },
     include: {
       vehicle: { include: { owner: true, assignedDriver: true } },
       requestedBy: true,
@@ -1301,10 +1324,10 @@ export async function createFleetMaintenanceRequest(
 }
 
 /**
- * Scoped the same way the old single-photo lookup was (own-vehicle-or-
- * manage-permission), now also recognizing the assigned mechanic - a real
- * gap in the original scoping that only became visible once the mechanic
- * portal gave mechanics a reason to view a request's attachments at all.
+ * Scoped by who actually reported the request (or manages/owns/is assigned
+ * to it), not by who currently drives the vehicle - a vehicle's driver
+ * assignment is reassignable, so checking "current driver of this vehicle"
+ * let a newly assigned driver open a previous driver's uploaded photo.
  */
 export function getFleetMaintenanceAttachment(
   organizationId: string,
@@ -1318,7 +1341,7 @@ export function getFleetMaintenanceAttachment(
       organizationId,
       ...(canViewAll
         ? {}
-        : { request: { OR: [{ vehicle: { OR: [{ assignedDriver: { userId } }, { owner: { userId } }] } }, { mechanic: { userId } }] } }),
+        : { request: { OR: [{ requestedById: userId }, { vehicle: { owner: { userId } } }, { mechanic: { userId } }] } }),
     },
     select: { fileAsset: { select: { url: true, updatedAt: true } } },
   });

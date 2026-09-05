@@ -308,6 +308,54 @@ describe("Fleet driver remittances and owner access (real Postgres)", () => {
     await testDb.user.delete({ where: { id: linkedUser.id } });
   });
 
+  it("never surfaces a predecessor driver's maintenance report to whoever the vehicle is reassigned to next", async () => {
+    const [firstUser, secondUser] = await Promise.all([
+      testDb.user.create({ data: { name: "First Reassignment Driver", email: `reassign-1-${org.organizationId}@example.invalid`, status: "ACTIVE" } }),
+      testDb.user.create({ data: { name: "Second Reassignment Driver", email: `reassign-2-${org.organizationId}@example.invalid`, status: "ACTIVE" } }),
+    ]);
+    const [firstDriver, secondDriver] = await Promise.all([
+      fleet.createFleetDriver(org.organizationId, { name: "First Reassignment Driver", userId: firstUser.id }),
+      fleet.createFleetDriver(org.organizationId, { name: "Second Reassignment Driver", userId: secondUser.id }),
+    ]);
+    const vehicle = await fleet.createFleetVehicle(org.organizationId, {
+      assetTag: "DRV-REASSIGN-1",
+      plateNumber: "DRV-5005",
+      assignedDriverId: firstDriver.id,
+      status: "ASSIGNED",
+      salesTargetPeriod: "DAILY",
+      salesTargetAmount: "150.00",
+    }, org.userId);
+
+    const request = await fleet.createFleetMaintenanceRequest(org.organizationId, {
+      vehicleId: vehicle.id,
+      faultDescription: "Brake pads worn - first driver's private report",
+      requestedById: firstUser.id,
+    });
+
+    // Reassign the same vehicle to a different driver, exactly like a Fleet
+    // Manager would when a driver leaves or moves vehicles.
+    await testDb.fleetVehicle.update({ where: { id: vehicle.id }, data: { assignedDriverId: secondDriver.id } });
+
+    const secondWorkspace = await fleet.getFleetDriverWorkspace(org.organizationId, secondUser.id);
+    const secondDriverVehicle = secondWorkspace?.assignedVehicles.find((v) => v.id === vehicle.id);
+    expect(secondDriverVehicle).toBeDefined();
+    expect(secondDriverVehicle?.maintenanceRequests).toEqual([]);
+
+    const scopedRequests = await fleet.listFleetMaintenanceRequests(org.organizationId, [vehicle.id], secondUser.id);
+    expect(scopedRequests).toEqual([]);
+
+    const canSecondDriverViewAttachmentIfAny = await fleet.getFleetMaintenanceAttachment(org.organizationId, "nonexistent", secondUser.id, false);
+    expect(canSecondDriverViewAttachmentIfAny).toBeNull();
+
+    // The report is still there for anyone with real oversight - a manager
+    // viewing unscoped, or the original requester by id - only "whoever
+    // currently drives this vehicle" is excluded.
+    const unscopedRequests = await fleet.listFleetMaintenanceRequests(org.organizationId, [vehicle.id]);
+    expect(unscopedRequests.map((r) => r.id)).toContain(request.id);
+
+    await testDb.user.deleteMany({ where: { id: { in: [firstUser.id, secondUser.id] } } });
+  });
+
   it("seeds a least-privilege Vehicle Owner role and removes organization-wide Fleet view from Driver", async () => {
     const roles = await testDb.role.findMany({
       where: { organizationId: null, name: { in: ["Driver", "Vehicle Owner"] } },

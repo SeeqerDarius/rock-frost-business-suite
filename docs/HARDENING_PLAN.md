@@ -1169,6 +1169,115 @@ sanity check in case an intermediate layer appends a charset (the fallback
 in that case is still just a less specific message inside the same error
 boundary, not a failure).
 
+### 2026-09-05 Fleet maintenance-request scoping: vehicle reassignment leaked a predecessor driver's report
+
+User report: a different driver could see another driver's reported
+maintenance issue in their own workspace. Root cause: every place that
+surfaces a driver's maintenance history scoped by *vehicle*
+(`FleetVehicle.assignedDriverId`), never by *requester*
+(`FleetMaintenanceRequest.requestedById`). Since a vehicle's driver
+assignment is reassignable, whoever a vehicle was handed to next inherited
+every maintenance request ever filed against it, including a predecessor's
+fault description, requester identity, and uploaded photos. Three
+independently reachable surfaces of the same defect, all fixed:
+
+- `getFleetDriverWorkspace()` (`src/modules/fleet/service.ts`) - the query
+  backing the driver-portal's "My reports"/"Maintenance activity" sections
+  and the offline sync work-pack route now filters
+  `maintenanceRequests: { where: { requestedById: userId } }`, instead of
+  every request ever filed on the driver's currently assigned vehicle(s).
+- `listFleetMaintenanceRequests()` gained an optional `requestedById`
+  parameter. The shared `/app/fleet/maintenance` page (reachable by
+  managers, owners, and drivers alike) now passes the current user's id when
+  the viewer holds only `FLEET_DRIVER_SELF_SERVICE` (no manage/owner
+  permission) - a driver-only viewer's "Reported by" column can no longer
+  show a stranger's name. Managers and owners are unaffected: they still see
+  every requester's requests within their scope, since real oversight is the
+  point of their role.
+- `getFleetMaintenanceAttachment()` no longer grants access via "currently
+  drives this vehicle" (`vehicle.assignedDriver.userId`); it checks the
+  request's actual `requestedById` instead, alongside the existing
+  vehicle-owner and assigned-mechanic grants. A reassigned driver can no
+  longer open a predecessor's uploaded photo via the attachment route.
+
+A second, related complaint - a newly invited driver seeing every vehicle in
+the "Report an issue" dropdown, not just their own - was investigated
+thoroughly (both the driver-portal and shared-maintenance-page dropdowns,
+the seeded Driver role's permission grants, `hasPermission()`'s fail-closed
+behavior, and every `listFleetVehicles`/`listFleetActorVehicles` call site)
+and does not reproduce against current `main`: every path is already
+correctly scoped to `assignedDriver: { userId }`, confirmed by a passing
+real-Postgres integration test
+(`test/integration/tenant-isolation/fleet-driver-sales.test.ts`). No app
+feature can grant a Driver role broader permissions than the seeded
+`[DASHBOARD_VIEW, FLEET_DRIVER_SELF_SERVICE, AI_ASSISTANT_USE]` set
+(`prisma/seed-data.ts`) short of a direct database edit. If this recurs,
+the next report should include which specific organization and driver
+account saw it, so the affected role's actual stored permissions can be
+inspected directly.
+
+Validated: `tsc --noEmit`, lint, and the full test suite pass, including new
+unit tests for the query-shape fix in all three functions and a new
+real-Postgres integration test reproducing the exact reassignment scenario
+end to end (`test/integration/tenant-isolation/fleet-driver-sales.test.ts`) -
+not yet run against real Postgres in this sandbox (no `TEST_DATABASE_URL`
+available); it will run for real in CI's `integration` job.
+
+### 2026-09-05 Dashboard revenue-insights leak: any non-admin role saw organization-wide posted revenue
+
+User report: a Teacher could see "the organization overview," which should
+be restricted to the Organization Owner or Administrator. Root cause:
+`/app/dashboard`'s Revenue insights card (`getRevenueInsights()`, summing
+every module's posted revenue) was gated only on whether Accounting was
+active for the organization, never on the viewer's own role - the exact
+same class of bug as the earlier "Dashboard / module permission leak" fix
+above, but for a widget that fix never covered since it isn't a per-module
+widget. The three narrow Fleet roles (Driver, Mechanic, Vehicle Owner)
+already redirect away from this page entirely before reaching that card,
+since each has its own dedicated workspace to land on instead - but no
+equivalent workspace exists for a Teacher, Nurse, Cashier, or any other
+narrow operational role in a non-Fleet module, so they all fell through to
+this same unscoped card. `isOrganizationAdminRole()`
+(`src/lib/auth/permissions.ts`) already existed for exactly this class of
+check and had zero call sites anywhere in the codebase before this fix.
+
+Fix: added a sibling `isOrganizationOwnerRole()` helper (identical
+name+system-role gating), and the dashboard now only fetches
+`getRevenueInsights()` when `isOrganizationOwnerRole(tenant) ||
+isOrganizationAdminRole(tenant)` - never fetched, never rendered, for
+anyone else. This is a "fetch never happens" fix rather than a "hide the
+card" fix, so there's no risk of the data reaching the client and only
+being hidden by CSS.
+
+Validated: `tsc --noEmit`, lint, and the full test suite pass, including a
+new regression test asserting the conditional gate exists in the page
+source.
+
+### 2026-09-05 Button loading feedback: submit buttons gave zero visual feedback while pending
+
+User report: clicking a button that's submitting shows no loading
+indication at all, inviting repeated clicks - a real double-submission risk,
+not just a polish gap. Audit found only 5 files in the whole codebase used
+`useFormStatus`/`useTransition` for this, against 228 files importing the
+shared `Button` component and 113 files with a raw `<Button
+type="submit">` - 106 of those had no pending handling whatsoever. Fixed
+centrally in `Button` itself (`src/components/ui/button.tsx`) rather than
+per call site: see `docs/DESIGN_SYSTEM.md`'s Component conventions section
+for the exact mechanism (auto-detected via `useFormStatus()`, never
+double-applied to a caller already managing its own `disabled`/pending UI).
+`EntityDialog` (`src/components/forms/entity-dialog.tsx`, ~80+ callers
+across every module) dropped its own bespoke implementation of the same
+thing in favor of this, so its callers keep working unchanged while gaining
+the same behavior from one place.
+
+Validated: `tsc --noEmit`, lint, and the full test suite pass, plus manual
+verification against the real dev server with a throwaway probe route
+(deleted before finishing) and Playwright - confirmed a plain, previously
+unhandled `<Button type="submit">` now auto-disables, sets `aria-busy`, and
+shows a spinner with a fallback `aria-label="Loading"` the instant a slow
+Server Action starts, and confirmed the pre-existing custom-pending login
+button (which passes its own `disabled`) is completely unaffected.
+
 ---
 
 ## Billing / Subscriptions
