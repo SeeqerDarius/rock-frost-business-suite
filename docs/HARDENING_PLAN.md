@@ -1216,6 +1216,36 @@ the next report should include which specific organization and driver
 account saw it, so the affected role's actual stored permissions can be
 inspected directly.
 
+**2026-09-05, re-checked a second time** after the report recurred. Re-read
+`getFleetDriverWorkspace()`, `canUserReportFleetVehicle()`, and
+`listFleetActorVehicles()` against the code actually on `main` today (post
+the reassignment-leak fix above): the driver-portal's "Report an issue"
+dropdown builds its options solely from `driver.assignedVehicles`
+(`src/app/app/fleet/driver-portal/page.tsx`), and the shared
+`/app/fleet/maintenance` page's dropdown builds its options from
+`listFleetActorVehicles(..., { driver: canDriverSubmit, owner: ... })`
+(`src/app/app/fleet/maintenance/page.tsx`) - both trace back to
+`assignedDriver: { userId }` with no other path in. `FleetVehicle` also
+carries a partial unique index on `(organizationId, assignedDriverId)`, so a
+driver can be the current assignee of at most one vehicle at the database
+level - "every vehicle" cannot come from a legitimate multi-assignment
+either. Separately confirmed the Driver role's permission grants can't be
+the cause here: the retroactive `FLEET_VIEW` removal in `seedPlatform()`
+(`prisma/seed-data.ts`, commit `edbc84e`, 2026-08-31) re-runs on every
+production build (`scripts/vercel-build.mjs` runs `prisma/seed.ts` before
+`next build` when `VERCEL_ENV=production`), so it was already live in
+production before this report came in - it isn't an unapplied fix. Also
+pulled the last 7 days of production runtime errors for
+`/app/fleet/driver-portal`, `/app/fleet/maintenance`, and `/app/fleet/drivers`
+via Vercel: the only errors on file are two `completionVerified` column
+P2022 errors from 2026-07-26 and 2026-08-30, both against a stale prior
+deployment (`dpl_7J5pZqAKgDRx5rdfHCy8Fo2ed1Sz`) whose migration lag was
+already superseded by later deploys - nothing recent, nothing on the
+current deployment. Still does not reproduce. The ask from the first
+investigation stands: a recurrence report needs the specific organization
+and driver account, since the code path itself has no gap left to find by
+static review alone.
+
 Validated: `tsc --noEmit`, lint, and the full test suite pass, including new
 unit tests for the query-shape fix in all three functions and a new
 real-Postgres integration test reproducing the exact reassignment scenario
