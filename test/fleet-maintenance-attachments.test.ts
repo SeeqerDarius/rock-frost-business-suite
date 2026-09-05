@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockDb = {
   fleetVehicle: { findFirst: vi.fn() },
-  fleetMaintenanceRequest: { create: vi.fn() },
+  fleetDriver: { findFirst: vi.fn() },
+  fleetMaintenanceRequest: { create: vi.fn(), findMany: vi.fn() },
   fleetMaintenanceAttachment: { findFirst: vi.fn(), create: vi.fn() },
   fileAsset: { create: vi.fn() },
   fleetMaintenanceEvent: { create: vi.fn() },
@@ -76,7 +77,7 @@ describe("getFleetMaintenanceAttachment scoping", () => {
     });
   });
 
-  it("scopes to the caller's own vehicle assignment/ownership or their own mechanic assignment when not privileged", async () => {
+  it("scopes to who actually reported the request, the vehicle's owner, or the assigned mechanic when not privileged", async () => {
     mockDb.fleetMaintenanceAttachment.findFirst.mockResolvedValue(null);
 
     await fleet.getFleetMaintenanceAttachment(ORG, "att-1", "user-1", false);
@@ -85,10 +86,51 @@ describe("getFleetMaintenanceAttachment scoping", () => {
       where: {
         id: "att-1",
         organizationId: ORG,
-        request: { OR: [{ vehicle: { OR: [{ assignedDriver: { userId: "user-1" } }, { owner: { userId: "user-1" } }] } }, { mechanic: { userId: "user-1" } }] },
+        request: { OR: [{ requestedById: "user-1" }, { vehicle: { owner: { userId: "user-1" } } }, { mechanic: { userId: "user-1" } }] },
       },
       select: { fileAsset: { select: { url: true, updatedAt: true } } },
     });
+  });
+
+  it("regression: never grants access by 'currently drives this vehicle' alone - a driver reassigned onto a vehicle can't open a previous driver's photo", async () => {
+    mockDb.fleetMaintenanceAttachment.findFirst.mockResolvedValue(null);
+
+    await fleet.getFleetMaintenanceAttachment(ORG, "att-1", "new-driver", false);
+
+    const [{ where }] = mockDb.fleetMaintenanceAttachment.findFirst.mock.calls[0];
+    const requestClause = JSON.stringify(where.request);
+    expect(requestClause).not.toContain("assignedDriver");
+  });
+});
+
+describe("getFleetDriverWorkspace maintenance-request scoping", () => {
+  it("only ever includes maintenance requests the driver themselves filed, never a predecessor's on a reassigned vehicle", async () => {
+    mockDb.fleetDriver.findFirst.mockResolvedValue(null);
+
+    await fleet.getFleetDriverWorkspace(ORG, "driver-1");
+
+    const [{ include }] = mockDb.fleetDriver.findFirst.mock.calls[0];
+    expect(include.assignedVehicles.include.maintenanceRequests.where).toEqual({ requestedById: "driver-1" });
+  });
+});
+
+describe("listFleetMaintenanceRequests requestedById scoping", () => {
+  it("narrows to a single requester when requestedById is passed, for a driver-only viewer of the shared maintenance page", async () => {
+    mockDb.fleetMaintenanceRequest.findMany.mockResolvedValue([]);
+
+    await fleet.listFleetMaintenanceRequests(ORG, ["veh-1"], "driver-1");
+
+    const [{ where }] = mockDb.fleetMaintenanceRequest.findMany.mock.calls[0];
+    expect(where).toMatchObject({ organizationId: ORG, vehicleId: { in: ["veh-1"] }, requestedById: "driver-1" });
+  });
+
+  it("omits requestedById entirely when not passed, so a manager/owner still sees every requester's requests", async () => {
+    mockDb.fleetMaintenanceRequest.findMany.mockResolvedValue([]);
+
+    await fleet.listFleetMaintenanceRequests(ORG, ["veh-1"]);
+
+    const [{ where }] = mockDb.fleetMaintenanceRequest.findMany.mock.calls[0];
+    expect(where).not.toHaveProperty("requestedById");
   });
 });
 

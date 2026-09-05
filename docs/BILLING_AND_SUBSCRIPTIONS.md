@@ -142,10 +142,47 @@ check.
 (see `OPERATOR_HANDOFF.md`'s Hardening Pass 4 section): the webhook routes
 and the full checkout round-trip are written carefully against each
 provider's documented API shape and are `tsc`-clean, but have not been
-exercised against a real Paystack/Flutterwave sandbox from this environment —
+exercised against a real Paystack/Flutterwave sandbox from this environment -
 there's no way to receive an inbound webhook call here. Run a real sandbox
 transaction through both providers and confirm the webhook actually lands
 before relying on this in production.
+
+**Cancelling checkout resets, it does not park at pending payment
+(2026-09-05).** Before this fix, cancelling at the gateway (or a declined
+card) left the freshly created `Subscription` row stuck at
+`PENDING_PAYMENT` forever - `createSelfServiceSubscription()` and its
+cart/bundle variants block a repurchase attempt for the same product while
+any non-`CANCELLED`/`EXPIRED` row exists, so the customer's very next
+attempt failed with a confusing "already has an active or pending
+subscription" error, even though they were never charged. Both gateway
+callback pages (`/app/organization/billing/callback/{paystack,flutterwave}`)
+now call `resetAbandonedCheckout()` (`src/platform/subscriptions/service.ts`)
+whenever the gateway's own verification is a definitive non-success (the
+customer cancelled, or the card was declined) - Flutterwave's callback
+additionally recognizes its own `status=cancelled` query parameter directly,
+without needing a verification round trip. `resetAbandonedCheckout()` only
+ever deletes a subscription that is exactly `PENDING_PAYMENT` with no
+`activatedById` and no `paidAt` - so a `PAST_DUE` subscription retrying a
+renewal payment, or anything that has ever been `ACTIVE`, is never touched,
+even if that same retry is cancelled. A thrown verification error (as
+opposed to a definitive non-success result) is left alone, since the payment
+might still complete and the webhook should be left to catch it up.
+
+**Platform-operator cancellation now surfaces its own business rule
+instead of crashing (2026-09-05).** `cancelSubscription()` has always
+refused to cancel local access for an auto-renewing Paystack subscription
+until its Paystack-side subscription is fully registered
+(`paystackSubscriptionCode`/`paystackEmailToken` both present), throwing to
+force the operator to cancel it directly in Paystack first. `cancelSubscriptionAction`
+(`src/app/app/platform/subscriptions/actions.ts`) never wrapped that call in
+a `try`/`catch` the way every sibling action in the same file already does,
+so this legitimate, expected error reached Next.js unhandled and crashed the
+request with a 500 instead of showing the operator anything. The error is
+now `PaystackRenewalNotRegisteredError`, a named class the action catches
+and redirects on with a specific, actionable message; the platform
+subscriptions page's `ERROR_MESSAGES` map also gained the `create`,
+`activate`, and `cancel` entries it was missing, which previously failed
+silently with no visible feedback at all.
 
 ## Access and expiry
 

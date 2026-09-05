@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, type ReactElement, type ReactNode } from "react";
-import { useFormStatus } from "react-dom";
-import { Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -16,22 +14,6 @@ interface EntityDialogProps {
   submitLabel?: string;
   /** Overrides the dialog's default `sm:max-w-lg` width for forms with more fields than the usual short entity form. */
   contentClassName?: string;
-}
-
-/**
- * Must be a child of the <form> it submits, not rendered alongside it -
- * useFormStatus only reports the nearest parent form's pending state when
- * called from a descendant component, never the component that renders the
- * <form> element itself.
- */
-function SubmitButton({ submitLabel }: { submitLabel: string }) {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" className="w-full" disabled={pending} aria-busy={pending}>
-      {pending ? <Loader2 className="size-4 animate-spin" /> : null}
-      {pending ? "Saving..." : submitLabel}
-    </Button>
-  );
 }
 
 /**
@@ -54,7 +36,7 @@ export function EntityDialog({ trigger, title, description, action, children, su
         </DialogHeader>
         <form action={action} className="space-y-4">
           {children}
-          <SubmitButton submitLabel={submitLabel} />
+          <Button type="submit" className="w-full">{submitLabel}</Button>
         </form>
       </DialogContent>
     </Dialog>

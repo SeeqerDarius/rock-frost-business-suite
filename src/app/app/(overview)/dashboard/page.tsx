@@ -12,7 +12,7 @@ import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry"
 import { productGroupKeys } from "@/platform/modules/product-groups";
 import { dashboardWidgets } from "@/platform/modules/dashboard-widgets";
 import { getCurrentTenant } from "@/lib/tenant";
-import { isFleetDriverRole, isMechanicRole, isFleetOwnerRole } from "@/lib/auth/permissions";
+import { isFleetDriverRole, isMechanicRole, isFleetOwnerRole, isOrganizationAdminRole, isOrganizationOwnerRole } from "@/lib/auth/permissions";
 import { getRevenueInsights } from "@/lib/accounting-integration";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { workspaceGreeting } from "@/lib/workspace-moments";
@@ -60,7 +60,20 @@ export default async function OrganizationDashboardPage({ searchParams }: { sear
     const accessibleModule = accessibleKey ? getModule(accessibleKey) : null;
     return accessibleModule ? [{ definition: mod, accessibleModule }] : [];
   });
-  const [revenueInsights, session] = await Promise.all([getRevenueInsights(tenant.organizationId), getServerAuthSession()]);
+  // Revenue insights sums every module's posted revenue org-wide - a Teacher,
+  // Nurse, Cashier, or any other operational, non-admin role has no business
+  // seeing that, the same reasoning that already sends the three narrow
+  // Fleet roles above to their own workspace instead. Those Fleet roles get a
+  // redirect since they have a dedicated workspace to land on instead; every
+  // other narrow role across every other module has no equivalent page, so
+  // the fix here is to simply never fetch (and never render) this card for
+  // anyone but Organization Owner/Admin, rather than adding a redirect per
+  // role per module.
+  const canViewOrgRevenue = isOrganizationOwnerRole(tenant) || isOrganizationAdminRole(tenant);
+  const [revenueInsights, session] = await Promise.all([
+    canViewOrgRevenue ? getRevenueInsights(tenant.organizationId) : Promise.resolve(null),
+    getServerAuthSession(),
+  ]);
   const greeting = workspaceGreeting(new Date(), tenant.organization.timezone, null, session?.user?.name);
 
   return (

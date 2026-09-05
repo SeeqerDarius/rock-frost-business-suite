@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
 
 const tx = {
-  subscription: { findFirst: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn(), findMany: vi.fn(() => []) },
+  subscription: { findFirst: vi.fn(), findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn(), findMany: vi.fn(() => []) },
   subscriptionPayment: { findUnique: vi.fn(), upsert: vi.fn() },
+  module: { findMany: vi.fn(() => []) },
   organization: { update: vi.fn() },
   // organizationModule.findFirst defaults to null so ensureRevenueAccountsForOrg's
   // own isModuleActiveForOrg("accounting") check no-ops immediately — these
@@ -16,18 +17,24 @@ const tx = {
   $executeRaw: vi.fn(),
 };
 const mockDb = {
-  subscription: { findFirst: vi.fn(), updateMany: vi.fn() },
+  subscription: { findFirst: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), delete: vi.fn() },
   user: { findUnique: vi.fn() },
   $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
 };
 const mockLogAuditEvent = vi.fn();
 const mockInitializeTransaction = vi.fn();
+const mockDisablePaystackSubscription = vi.fn();
 
 vi.mock("@/lib/db", () => ({ db: mockDb }));
 vi.mock("@/lib/audit", () => ({ logAuditEvent: mockLogAuditEvent }));
 vi.mock("@/lib/payments", () => ({ initializeTransaction: mockInitializeTransaction }));
+vi.mock("@/lib/payments/paystack", () => ({
+  createPlan: vi.fn(),
+  disableSubscription: mockDisablePaystackSubscription,
+  getSubscriptionManagementLink: vi.fn(),
+}));
 
-const { initiateGatewayPayment, activateSubscriptionFromGateway } = await import("@/platform/subscriptions/service");
+const { initiateGatewayPayment, activateSubscriptionFromGateway, resetAbandonedCheckout, cancelSubscription, PaystackRenewalNotRegisteredError } = await import("@/platform/subscriptions/service");
 
 function baseSubscription(overrides: Record<string, unknown> = {}) {
   return {
@@ -196,5 +203,88 @@ describe("activateSubscriptionFromGateway", () => {
         verifiedCurrency: "GHS",
       }),
     ).rejects.toThrow(/not found/);
+  });
+});
+
+describe("resetAbandonedCheckout", () => {
+  it("deletes a never-activated PENDING_PAYMENT subscription and logs the abandonment", async () => {
+    mockDb.subscription.findFirst.mockResolvedValue(
+      baseSubscription({ activatedById: null, paidAt: null, gatewayProvider: "PAYSTACK", paymentReference: "sub_subscription-1_xyz" }),
+    );
+
+    await resetAbandonedCheckout("subscription-1", "org-1");
+
+    expect(mockDb.subscription.delete).toHaveBeenCalledWith({ where: { id: "subscription-1" } });
+    expect(mockLogAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "org-1",
+      action: "subscription.checkout_abandoned",
+      entityId: "subscription-1",
+    }));
+  });
+
+  it("never deletes a PAST_DUE subscription retrying a renewal payment", async () => {
+    mockDb.subscription.findFirst.mockResolvedValue(baseSubscription({ status: "PAST_DUE" }));
+
+    await resetAbandonedCheckout("subscription-1", "org-1");
+
+    expect(mockDb.subscription.delete).not.toHaveBeenCalled();
+    expect(mockLogAuditEvent).not.toHaveBeenCalled();
+  });
+
+  it("never deletes an already-ACTIVE subscription", async () => {
+    mockDb.subscription.findFirst.mockResolvedValue(baseSubscription({ status: "ACTIVE" }));
+
+    await resetAbandonedCheckout("subscription-1", "org-1");
+
+    expect(mockDb.subscription.delete).not.toHaveBeenCalled();
+  });
+
+  it("never deletes a PENDING_PAYMENT subscription that already has an activation or payment recorded", async () => {
+    mockDb.subscription.findFirst.mockResolvedValue(baseSubscription({ activatedById: "user-1" }));
+    await resetAbandonedCheckout("subscription-1", "org-1");
+    expect(mockDb.subscription.delete).not.toHaveBeenCalled();
+
+    mockDb.subscription.findFirst.mockResolvedValue(baseSubscription({ paidAt: new Date() }));
+    await resetAbandonedCheckout("subscription-1", "org-1");
+    expect(mockDb.subscription.delete).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when the subscription doesn't belong to the caller's organization", async () => {
+    mockDb.subscription.findFirst.mockResolvedValue(null);
+
+    await resetAbandonedCheckout("subscription-1", "org-2");
+
+    expect(mockDb.subscription.delete).not.toHaveBeenCalled();
+    expect(mockLogAuditEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("cancelSubscription", () => {
+  it("throws PaystackRenewalNotRegisteredError, not a generic Error, when auto-renew is on but Paystack never finished registering the subscription", async () => {
+    mockDb.subscription.findUnique.mockResolvedValue(
+      baseSubscription({ autoRenew: true, gatewayProvider: "PAYSTACK", paystackSubscriptionCode: null, paystackEmailToken: null }),
+    );
+
+    await expect(cancelSubscription({ subscriptionId: "subscription-1", actorId: "operator-1" })).rejects.toThrow(PaystackRenewalNotRegisteredError);
+    expect(mockDisablePaystackSubscription).not.toHaveBeenCalled();
+    expect(mockDb.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("disables the Paystack subscription and cancels locally when auto-renew is fully registered", async () => {
+    mockDb.subscription.findUnique.mockResolvedValue(
+      baseSubscription({ autoRenew: true, gatewayProvider: "PAYSTACK", paystackSubscriptionCode: "SUB_1", paystackEmailToken: "token" }),
+    );
+    tx.subscription.findUnique.mockResolvedValueOnce(baseSubscription({ entitledModuleKeys: [] }));
+    tx.subscription.findFirst.mockResolvedValueOnce(null);
+    tx.subscription.update.mockResolvedValue({ id: "subscription-1", status: "CANCELLED" });
+
+    await cancelSubscription({ subscriptionId: "subscription-1", actorId: "operator-1" });
+
+    expect(mockDisablePaystackSubscription).toHaveBeenCalledWith("SUB_1", "token");
+    expect(tx.subscription.update).toHaveBeenCalledWith({ where: { id: "subscription-1" }, data: { status: "CANCELLED", autoRenew: false } });
+    expect(tx.organizationModule.updateMany).toHaveBeenCalledWith({
+      where: { organizationId: "org-1", moduleId: { in: ["module-1"] } },
+      data: { enabled: false },
+    });
   });
 });

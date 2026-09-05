@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/lib/db";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { verifyTransaction } from "@/lib/payments";
-import { activateSubscriptionFromGateway } from "@/platform/subscriptions/service";
+import { activateSubscriptionFromGateway, resetAbandonedCheckout } from "@/platform/subscriptions/service";
 import { getModule } from "@/platform/modules/registry";
 
 type PaymentDetails = {
@@ -75,6 +75,12 @@ export default async function PaystackCallbackPage({
             outcome = "failed";
           }
         } else {
+          // A definitive non-success verification (the customer cancelled at
+          // Paystack, or the card was declined) - reset the never-paid
+          // attempt so it doesn't linger as "pending payment" and block a
+          // retry. A thrown verification error below is left alone since the
+          // payment might still complete and the webhook should catch it up.
+          await resetAbandonedCheckout(pending.id, tenant.organizationId);
           outcome = "failed";
         }
       } catch (error) {

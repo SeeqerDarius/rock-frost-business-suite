@@ -39,6 +39,7 @@ async function subscriptionModuleIds(tx: Tx, subscription: Pick<SubscriptionRow,
 }
 
 export class SelfServiceSubscriptionExistsError extends Error {}
+export class PaystackRenewalNotRegisteredError extends Error {}
 
 export async function createSelfServiceSubscription(input: {
   organizationId: string;
@@ -524,6 +525,36 @@ export async function initiateGatewayPayment(input: {
 }
 
 /**
+ * Called from the gateway return callback pages when a self-service checkout
+ * definitively did not succeed - the customer cancelled at the gateway, or
+ * the gateway's own verification reports the transaction as failed/abandoned
+ * (never on a thrown/ambiguous verification error, where the payment might
+ * still complete and the webhook should be left to catch it up).
+ *
+ * Only ever deletes a subscription that has never been activated: exactly
+ * PENDING_PAYMENT with no activatedById and no paidAt. That excludes PAST_DUE
+ * (an existing, already-active-at-some-point subscription retrying a renewal
+ * payment) and anything already ACTIVE, so a cancelled renewal attempt can
+ * never destroy an existing subscription's access or history - only a
+ * same-checkout, never-paid attempt is reset. Deletes rather than marking
+ * CANCELLED so the abandoned attempt leaves no trace and the organization can
+ * immediately try again without tripping SelfServiceSubscriptionExistsError.
+ */
+export async function resetAbandonedCheckout(subscriptionId: string, organizationId: string): Promise<void> {
+  const current = await db.subscription.findFirst({ where: { id: subscriptionId, organizationId } });
+  if (!current || current.status !== "PENDING_PAYMENT" || current.activatedById || current.paidAt) return;
+  await db.subscription.delete({ where: { id: current.id } });
+  await logAuditEvent({
+    organizationId,
+    module: "platform",
+    action: "subscription.checkout_abandoned",
+    entityName: "Subscription",
+    entityId: current.id,
+    metadata: { moduleId: current.moduleId, gatewayProvider: current.gatewayProvider, paymentReference: current.paymentReference },
+  });
+}
+
+/**
  * Confirms and activates a subscription once a gateway has verified the
  * payment server-to-server. Called from both the webhook route (the
  * authoritative path) and the browser-return callback page (a fast-UX
@@ -787,7 +818,7 @@ export async function cancelSubscription(input: { subscriptionId: string; actorI
   if (!gatewaySubscription) throw new Error("Subscription not found.");
   if (gatewaySubscription.autoRenew && gatewaySubscription.gatewayProvider === "PAYSTACK") {
     if (!gatewaySubscription.paystackSubscriptionCode || !gatewaySubscription.paystackEmailToken) {
-      throw new Error("Paystack automatic renewal is not fully registered. Cancel it from Paystack before cancelling local access.");
+      throw new PaystackRenewalNotRegisteredError("Paystack automatic renewal is not fully registered. Cancel it from Paystack before cancelling local access.");
     }
     await disablePaystackSubscription(gatewaySubscription.paystackSubscriptionCode, gatewaySubscription.paystackEmailToken);
   }

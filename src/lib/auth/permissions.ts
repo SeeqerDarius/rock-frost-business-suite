@@ -241,6 +241,15 @@ export function isOrganizationAdminRole(tenant: TenantContext): boolean {
 }
 
 /**
+ * The seeded Organization Owner role - name+system-role gated the same way
+ * as isOrganizationAdminRole, so a custom role happening to be named
+ * "Organization Owner" (roleIsSystem: false) can never match this.
+ */
+export function isOrganizationOwnerRole(tenant: TenantContext): boolean {
+  return tenant.role === "Organization Owner" && tenant.roleIsSystem;
+}
+
+/**
  * The seeded Fleet Driver is an assignment-scoped self-service role. Keep its
  * workspace focused on its own vehicle, remittances, and maintenance tasks.
  * Custom roles are not classified by name alone, so administrators can still
