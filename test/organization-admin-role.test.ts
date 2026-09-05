@@ -293,6 +293,33 @@ describe("Organization Admin can otherwise manage members", () => {
     expect(mocks.dbOrganizationMemberUpdate).toHaveBeenCalledWith({ where: { id: "member-1" }, data: { roleId: "role-fleet-manager" } });
   });
 
+  it("changeMemberRole treats re-submitting a member's own current role as a no-op success, even if that role is no longer assignable to a different member", async () => {
+    mocks.requireCurrentTenant.mockResolvedValue(adminTenant());
+    mocks.dbOrganizationMemberFindFirst.mockResolvedValue({
+      id: "member-1",
+      roleId: "clzzzzzzzzzzzzzzzzzzzzzzzz",
+      role: { name: "Legacy Module Role" },
+      status: "ACTIVE",
+      userId: "user-1",
+      branchId: null,
+      joinedAt: new Date(),
+    });
+    // A stricter mock than the real isRoleAssignableToOrganization would be
+    // in this scenario: this role would be REJECTED as no-longer-assignable
+    // if this codepath actually re-validated it, since the org's module
+    // subscription changed since it was granted. The no-op short-circuit
+    // must succeed without ever reaching that check.
+    mocks.isRoleAssignableToOrganization.mockReturnValue(false);
+
+    const formData = new FormData();
+    formData.set("membershipId", "clxxxxxxxxxxxxxxxxxxxxxxxx");
+    formData.set("roleId", "clzzzzzzzzzzzzzzzzzzzzzzzz");
+
+    await expectRedirect(changeMemberRole(formData), "/app/administration?roleChanged=1");
+    expect(mocks.dbRoleFindFirst).not.toHaveBeenCalled();
+    expect(mocks.dbOrganizationMemberUpdate).not.toHaveBeenCalled();
+  });
+
   it("deactivateMember allows an Admin to deactivate a non-Owner member", async () => {
     mocks.requireCurrentTenant.mockResolvedValue(adminTenant());
     mocks.dbOrganizationMemberFindUnique.mockResolvedValue({ id: "actor-membership" });
