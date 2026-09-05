@@ -50,37 +50,39 @@ export default async function PlatformSupportPage({ searchParams }: { searchPara
       ) : (
         <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
           <SupportConversationList
-            conversations={conversations}
             groupByOrganization
             searchPlaceholder="Search by organization or name"
-            renderRow={(conversation) => {
+            rows={conversations.map((conversation) => {
               const lastMessage = conversation.messages[0];
               const isSelected = conversation.id === selected?.id;
               const participantLabel = conversation.kind === "LEGACY" ? "Shared history (legacy)" : conversation.user?.name || conversation.user?.email || "Former member";
-              return (
-                <Link
-                  href={`/app/platform/support?conversation=${conversation.id}`}
-                  className={cn(
-                    "block rounded-lg border p-3 transition-colors",
-                    isSelected ? "border-primary bg-primary/5" : "hover:bg-muted/50",
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="truncate text-sm font-medium">{conversation.organization.name}</p>
-                    {conversation.unreadCount > 0 ? <Badge className="shrink-0 text-[10px]">{conversation.unreadCount}</Badge> : null}
-                  </div>
-                  <p className="truncate text-xs text-muted-foreground">{participantLabel}</p>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                    {lastMessage ? `${lastMessage.senderRole === "PLATFORM" ? "You: " : ""}${lastMessage.content}` : "No messages yet"}
-                  </p>
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <Badge variant="outline" className="text-[10px]">{conversation.status}</Badge>
-                    {conversation.kind === "LEGACY" ? <Badge variant="outline" className="text-[10px]">Legacy · read-only</Badge> : null}
-                    {lastMessage ? <span className="text-[10px] text-muted-foreground">{relativeTime(lastMessage.createdAt)}</span> : null}
-                  </div>
-                </Link>
-              );
-            }}
+              return {
+                conversation,
+                node: (
+                  <Link
+                    href={`/app/platform/support?conversation=${conversation.id}`}
+                    className={cn(
+                      "block rounded-lg border p-3 transition-colors",
+                      isSelected ? "border-primary bg-primary/5" : "hover:bg-muted/50",
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="truncate text-sm font-medium">{conversation.organization.name}</p>
+                      {conversation.unreadCount > 0 ? <Badge className="shrink-0 text-[10px]">{conversation.unreadCount}</Badge> : null}
+                    </div>
+                    <p className="truncate text-xs text-muted-foreground">{participantLabel}</p>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {lastMessage ? `${lastMessage.senderRole === "PLATFORM" ? "You: " : ""}${lastMessage.content}` : "No messages yet"}
+                    </p>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <Badge variant="outline" className="text-[10px]">{conversation.status}</Badge>
+                      {conversation.kind === "LEGACY" ? <Badge variant="outline" className="text-[10px]">Legacy · read-only</Badge> : null}
+                      {lastMessage ? <span className="text-[10px] text-muted-foreground">{relativeTime(lastMessage.createdAt)}</span> : null}
+                    </div>
+                  </Link>
+                ),
+              };
+            })}
           />
 
           {selected ? (

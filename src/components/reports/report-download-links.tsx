@@ -1,5 +1,5 @@
 import { FileDown, FileSpreadsheet, FileText } from "lucide-react";
-import { buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { cn } from "@/lib/utils";
 
 /** Same shape as ReportExportLinks, but for a bespoke export route (with its own query params) rather than the generic /api/reports/[moduleKey] summary-card export. */

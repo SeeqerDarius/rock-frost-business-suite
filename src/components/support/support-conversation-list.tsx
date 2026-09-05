@@ -6,11 +6,11 @@ import { Input } from "@/components/ui/input";
 import { filterConversations, groupConversationsByOrganization, type FilterableConversation } from "@/lib/support/conversation-filtering";
 
 interface SupportConversationListProps<T extends FilterableConversation> {
-  conversations: T[];
+  /** Each conversation paired with its already-rendered row - the caller (a Server Component) renders the row's JSX up front, since a render function can't cross the server-to-client boundary as a prop. */
+  rows: { conversation: T; node: ReactNode }[];
   /** Clusters filtered results by organization, in order of each organization's most recent activity. Only meaningful for the cross-organization platform inbox — the single-organization admin inbox never needs it. */
   groupByOrganization?: boolean;
   searchPlaceholder?: string;
-  renderRow: (conversation: T) => ReactNode;
   emptyLabel?: string;
 }
 
@@ -19,16 +19,18 @@ interface SupportConversationListProps<T extends FilterableConversation> {
  * admin inbox — both list many conversations now that support chat split
  * from one-per-organization to one-per-(organization, user). Filtering runs
  * client-side against the already-fetched list (no extra round trip); only
- * the row's own visuals differ between the two surfaces, via `renderRow`.
+ * the row's own visuals differ between the two surfaces, pre-rendered by the
+ * caller and passed in via `rows`.
  */
 export function SupportConversationList<T extends FilterableConversation>({
-  conversations,
+  rows,
   groupByOrganization = false,
   searchPlaceholder = "Search by name or organization",
-  renderRow,
   emptyLabel = "No conversations match your search.",
 }: SupportConversationListProps<T>) {
   const [query, setQuery] = useState("");
+  const conversations = useMemo(() => rows.map((row) => row.conversation), [rows]);
+  const nodeById = useMemo(() => new Map(rows.map((row) => [row.conversation.id, row.node])), [rows]);
   const filtered = useMemo(() => filterConversations(conversations, query), [conversations, query]);
   const groups = useMemo(
     () => (groupByOrganization ? groupConversationsByOrganization(filtered) : null),
@@ -62,7 +64,7 @@ export function SupportConversationList<T extends FilterableConversation>({
               <p className="px-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{group.organizationName}</p>
               <div className="space-y-2">
                 {group.conversations.map((conversation) => (
-                  <div key={conversation.id}>{renderRow(conversation)}</div>
+                  <div key={conversation.id}>{nodeById.get(conversation.id)}</div>
                 ))}
               </div>
             </div>
@@ -71,7 +73,7 @@ export function SupportConversationList<T extends FilterableConversation>({
       ) : (
         <div className="space-y-2">
           {filtered.map((conversation) => (
-            <div key={conversation.id}>{renderRow(conversation)}</div>
+            <div key={conversation.id}>{nodeById.get(conversation.id)}</div>
           ))}
         </div>
       )}

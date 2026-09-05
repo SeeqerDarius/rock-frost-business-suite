@@ -89,3 +89,30 @@ describe("Support inbox search/grouping — source coverage", () => {
     expect(source).toMatch(/viewerRole === "TENANT"[\s\S]{0,80}Private between you and the Rock Frost team/);
   });
 });
+
+/**
+ * Regression test for a live production crash: both inbox pages are Server
+ * Components that passed an inline arrow function as the `renderRow` prop to
+ * the "use client" SupportConversationList. A plain function (anything not a
+ * "use server" action) can't cross the server-to-client boundary as a prop,
+ * so every visit threw "Functions cannot be passed directly to Client
+ * Components" and the page never rendered. Fixed by having each page
+ * pre-render every row's JSX itself and pass `rows: { conversation, node }[]`
+ * instead - already-rendered React elements are safe to pass as children.
+ */
+describe("SupportConversationList takes pre-rendered rows, not a render function", () => {
+  const component = read("src/components/support/support-conversation-list.tsx");
+
+  it("accepts rows of { conversation, node } instead of a renderRow callback", () => {
+    expect(component).toContain("rows: { conversation: T; node: ReactNode }[]");
+    expect(component).not.toMatch(/renderRow/);
+  });
+
+  it("both inbox pages pass pre-rendered rows instead of an inline renderRow function", () => {
+    for (const file of ["src/app/app/platform/support/page.tsx", "src/app/app/(overview)/support/inbox/page.tsx"]) {
+      const source = read(file);
+      expect(source, file).not.toMatch(/renderRow=/);
+      expect(source, file).toContain("rows={conversations.map(");
+    }
+  });
+});
