@@ -55,9 +55,32 @@ Twitter card data.
 
 The public layout publishes truthful `Organization` and `WebSite` JSON-LD.
 The home page and module pages publish `SoftwareApplication` JSON-LD, and
-module pages also publish breadcrumbs. Do not add fabricated pricing, ratings,
-reviews, physical addresses, or social profiles. Add those fields only when
-the underlying public business information is confirmed.
+module pages also publish breadcrumbs. The Fleet, Inventory, Human Resources
+and Payroll, Hotel, and School landing pages additionally publish visible
+audience, outcome, workflow, and FAQ content for their Ghana-focused commercial
+search intent. Their FAQ JSON-LD is generated from the same questions and
+answers visible on the page, so structured data cannot drift from page copy.
+Do not add fabricated pricing, ratings, reviews, physical addresses, or social
+profiles. Add those fields only when the underlying public business information
+is confirmed.
+
+## Search visibility baseline and priority pages
+
+The first connected Search Console baseline, settled through 2026-09-03,
+showed a technically indexable site with very low discovery volume. The
+homepage led the preceding 28 days with 23 impressions and 4 clicks. Hotel and
+the retired Payroll URL had impressions around average positions 66 and 64,
+while several other module pages had too little data for a stable ranking
+conclusion. Treat movements based on one to four impressions as early signals,
+not durable ranking changes.
+
+The first content-depth sprint therefore targets Fleet, Inventory, Human
+Resources and Payroll, Hotel, and School. `src/lib/seo.ts` is the single source
+for each page's Ghana-focused title, summary, outcomes, workflows, and FAQs;
+`src/app/(public)/modules/[moduleKey]/page.tsx` renders those fields. Future
+content must remain specific to implemented product behavior. Regulatory,
+certification, customer-result, and automated-compliance claims require direct
+evidence before publication.
 
 `src/app/opengraph-image.tsx` provides the 1200×630 social-sharing image.
 `src/app/sitemap.ts` and `src/app/robots.ts` generate their production

@@ -43,6 +43,18 @@ export default async function ModuleLandingPage({
   if (!seo || !module_) notFound();
 
   const related = catalogueModuleRegistry.filter((item) => item.key !== moduleKey).slice(0, 3);
+  const content = "content" in seo ? seo.content : undefined;
+  const faqSchema = content
+    ? {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: content.faqs.map((faq) => ({
+          "@type": "Question",
+          name: faq.question,
+          acceptedAnswer: { "@type": "Answer", text: faq.answer },
+        })),
+      }
+    : null;
 
   return (
     <>
@@ -67,6 +79,7 @@ export default async function ModuleLandingPage({
             { "@type": "ListItem", position: 3, name: module_.name, item: `${SITE_URL}/modules/${moduleKey}` },
           ],
         },
+        ...(faqSchema ? [faqSchema] : []),
       ]} />
       <PublicHero eyebrow="Rock Frost Business Suite module" title={seo.shortName} description={seo.description} actions={<>
             <Button size="lg" nativeButton={false} render={<Link href={`/contact?intent=demo&module=${moduleKey}`} />}>
@@ -78,6 +91,26 @@ export default async function ModuleLandingPage({
           </>} />
 
       <ModuleShowcase moduleKey={moduleKey} />
+
+      {content ? (
+        <section className="mx-auto max-w-6xl px-6 py-20">
+          <div className="max-w-3xl space-y-4">
+            <p className="public-eyebrow">Built for real operations</p>
+            <h2 className="text-3xl font-semibold tracking-tight">Who this software is for</h2>
+            <p className="text-lg leading-8 text-muted-foreground">{content.audience}</p>
+          </div>
+          <div className="mt-10 grid gap-5 md:grid-cols-3">
+            {content.outcomes.map((outcome) => (
+              <Card key={outcome.title}>
+                <CardContent className="space-y-3 p-6">
+                  <h3 className="text-lg font-semibold">{outcome.title}</h3>
+                  <p className="leading-7 text-muted-foreground">{outcome.description}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="public-section-tint">
         <div className="mx-auto max-w-6xl px-6 py-20">
@@ -94,6 +127,37 @@ export default async function ModuleLandingPage({
           </div>
         </div>
       </section>
+
+      {content ? (
+        <section className="mx-auto max-w-6xl px-6 py-20">
+          <div className="grid gap-12 lg:grid-cols-2">
+            <div>
+              <p className="public-eyebrow">Connected workflow</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight">How your team can use it</h2>
+              <ol className="mt-6 space-y-4">
+                {content.workflows.map((workflow, index) => (
+                  <li key={workflow} className="flex gap-4">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">{index + 1}</span>
+                    <span className="pt-1 leading-7 text-muted-foreground">{workflow}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+            <div>
+              <p className="public-eyebrow">Questions and answers</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight">Frequently asked questions</h2>
+              <div className="mt-6 space-y-6">
+                {content.faqs.map((faq) => (
+                  <div key={faq.question}>
+                    <h3 className="font-semibold">{faq.question}</h3>
+                    <p className="mt-2 leading-7 text-muted-foreground">{faq.answer}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="mx-auto max-w-6xl px-6 py-20">
         <div className="grid gap-10 lg:grid-cols-[1.3fr_1fr]">
