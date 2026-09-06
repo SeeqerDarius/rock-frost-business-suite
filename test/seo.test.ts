@@ -43,6 +43,21 @@ describe("public SEO", () => {
     expect(metadata.twitter).toMatchObject({ card: "summary_large_image", title: "Example" });
   });
 
+  it("publishes deeper search content for priority Ghana module queries", () => {
+    for (const key of ["fleet", "inventory", "hr", "hotel", "school"] as const) {
+      const seo = MODULE_SEO[key];
+      expect(seo.shortName).toContain("Ghana");
+      expect(seo.content.outcomes).toHaveLength(3);
+      expect(seo.content.workflows.length).toBeGreaterThanOrEqual(5);
+      expect(seo.content.faqs).toHaveLength(3);
+    }
+
+    const modulePage = readFileSync("src/app/(public)/modules/[moduleKey]/page.tsx", "utf8");
+    expect(modulePage).toContain('"@type": "FAQPage"');
+    expect(modulePage).toContain("Who this software is for");
+    expect(modulePage).toContain("How your team can use it");
+  });
+
   it("returns permanent HTTP redirects for retired companion product pages", async () => {
     const redirects = await nextConfig.redirects?.();
     expect(redirects).toEqual(expect.arrayContaining([
