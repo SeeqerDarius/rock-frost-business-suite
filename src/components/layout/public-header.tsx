@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Logo } from "@/components/layout/logo";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 
 const primaryLinks = [
   { label: "Solutions", href: "/solutions" },
@@ -24,6 +25,7 @@ export function PublicHeader() {
           ))}
         </nav>
         <div className="flex items-center gap-3">
+          <ThemeToggle />
           <Button variant="ghost" nativeButton={false} render={<Link href="/login" />}>
             Sign in
           </Button>
