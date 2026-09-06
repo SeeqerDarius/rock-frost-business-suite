@@ -10,6 +10,7 @@ import { useOrganizationBranding } from "@/components/theme/organization-brandin
 import { SidebarNav } from "@/components/navigation/sidebar-nav";
 import { ModuleLauncher } from "@/components/navigation/module-launcher";
 import { UserMenu } from "@/components/navigation/user-menu";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { OrganizationSwitcher } from "@/components/navigation/organization-switcher";
 import { getActiveNavigationHref } from "@/components/navigation/active-navigation";
 import { Button } from "@/components/ui/button";
@@ -181,6 +182,7 @@ export function AppShell({
               </span>
             ) : null}
             {showModuleLauncher ? <ModuleLauncher enabledModuleKeys={enabledModuleKeys} /> : null}
+            <ThemeToggle />
             <UserMenu />
           </div>
         </header>
