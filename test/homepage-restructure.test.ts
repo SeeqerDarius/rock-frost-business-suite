@@ -15,10 +15,10 @@ describe("homepage restructure", () => {
   const whyRockFrost = readFileSync(resolve("src/components/marketing/why-rock-frost.tsx"), "utf8");
   const faq = readFileSync(resolve("src/components/marketing/homepage-faq.tsx"), "utf8");
 
-  it("adds feature-spotlight sections for three distinct modules, alternating layout for visual rhythm", () => {
-    expect(homepage).toContain("<AccountingModuleShowcase />");
-    expect(homepage).toContain("<FleetModuleShowcase reverse />");
-    expect(homepage).toContain("<PharmacyModuleShowcase />");
+  it("adds real product screenshot spotlights for three distinct modules", () => {
+    expect(homepage).toContain('<ModuleShowcase moduleKey="accounting" />');
+    expect(homepage).toContain('<ModuleShowcase moduleKey="fleet" />');
+    expect(homepage).toContain('<ModuleShowcase moduleKey="pharmacy" />');
     expect(homepage).toContain('href="/modules/accounting"');
     expect(homepage).toContain('href="/modules/fleet"');
     expect(homepage).toContain('href="/modules/pharmacy"');

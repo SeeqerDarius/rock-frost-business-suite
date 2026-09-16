@@ -13,9 +13,7 @@ import { CustomerShowcase } from "@/components/marketing/customer-showcase";
 import { findPlatformOrganizationMetadata, readPlatformMarketing, PUBLIC_MARKETING_CACHE_TAG } from "@/lib/platform-marketing";
 import { PublicHero } from "@/components/marketing/public-hero";
 import { ModuleBlocksIllustration } from "@/components/marketing/module-blocks-illustration";
-import { AccountingModuleShowcase } from "@/components/marketing/module-showcases/accounting";
-import { FleetModuleShowcase } from "@/components/marketing/module-showcases/fleet";
-import { PharmacyModuleShowcase } from "@/components/marketing/module-showcases/pharmacy";
+import { ModuleShowcase } from "@/components/marketing/module-showcase";
 import { WhyRockFrost } from "@/components/marketing/why-rock-frost";
 import { HomepageFaq } from "@/components/marketing/homepage-faq";
 import { listPublishedTestimonials } from "@/lib/customer-feedback";
@@ -127,9 +125,9 @@ export default async function HomePage() {
                   <CardDescription>{mod.description}</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <span className="text-xs font-medium text-muted-foreground">
-                    {mod.status === "available" ? "Available" : "Coming soon"}
-                  </span>
+                  <Link href={`/modules/${mod.key}`} className="text-sm font-medium text-primary underline-offset-4 hover:underline">
+                    See real screen and walkthrough
+                  </Link>
                 </CardContent>
               </Card>
             ))}
@@ -137,27 +135,30 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <div className="mx-auto max-w-6xl space-y-24 px-6 py-20">
-        <div className="space-y-3">
-          <p className="public-eyebrow">Accounting</p>
-          <AccountingModuleShowcase />
+      <div className="space-y-8 py-8">
+        <div>
+          <ModuleShowcase moduleKey="accounting" />
+          <div className="mx-auto max-w-6xl px-6">
           <Link href="/modules/accounting" className="inline-block text-sm font-medium underline underline-offset-4">
             Explore Accounting
           </Link>
+          </div>
         </div>
-        <div className="space-y-3">
-          <p className="public-eyebrow">Fleet Management</p>
-          <FleetModuleShowcase reverse />
+        <div>
+          <ModuleShowcase moduleKey="fleet" />
+          <div className="mx-auto max-w-6xl px-6">
           <Link href="/modules/fleet" className="inline-block text-sm font-medium underline underline-offset-4">
             Explore Fleet Management
           </Link>
+          </div>
         </div>
-        <div className="space-y-3">
-          <p className="public-eyebrow">Pharmacy Management</p>
-          <PharmacyModuleShowcase />
+        <div>
+          <ModuleShowcase moduleKey="pharmacy" />
+          <div className="mx-auto max-w-6xl px-6">
           <Link href="/modules/pharmacy" className="inline-block text-sm font-medium underline underline-offset-4">
             Explore Pharmacy Management
           </Link>
+          </div>
         </div>
       </div>
 

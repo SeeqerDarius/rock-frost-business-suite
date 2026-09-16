@@ -34,13 +34,13 @@ Trial workspaces may have at most three customer-facing products enabled at once
 
 The public acquisition and platform-operator workflows share one record chain:
 
-Fleet has a focused assisted-acquisition path. `/modules/fleet` leads with a
-Fleet walkthrough and visible pricing link, explains the 14-day assisted pilot,
-and sends the prospect to `/contact?intent=demo&module=fleet`. That contact
-state removes redundant product, industry, country, and expected-user fields,
-while keeping the required identity and reply details. A successful submission
+Every catalogue module has a focused assisted-acquisition path. Its public
+module page leads with a walkthrough and direct pricing link, explains the
+14-day assisted pilot, and sends the prospect to a module-specific contact URL.
+That contact state removes redundant product, industry, country, and
+expected-user fields while keeping the required identity and reply details. A successful submission
 still creates the same `ContactSubmission` and operator notifications described
-below. Consent-enabled Vercel Analytics records the Fleet acquisition CTA and
+below. Consent-enabled Vercel Analytics records the module acquisition CTA and
 completed enquiry, while visitors who choose essential cookies only are not
 sent custom marketing events.
 
