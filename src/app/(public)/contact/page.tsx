@@ -13,6 +13,7 @@ import { createContactFormProof } from "@/lib/contact-form-protection";
 import { getPublicContactDetails } from "@/lib/public-contact";
 import Link from "next/link";
 import { Mail, MessageCircle, Phone } from "lucide-react";
+import { ConversionComplete } from "@/components/marketing/conversion-link";
 
 export const metadata = createPublicMetadata({
   title: "Request a Business Software Demo",
@@ -37,6 +38,7 @@ export default async function ContactPage({
   const { sent, error, intent, module: moduleCode } = await searchParams;
   const initialIntent = intent === "module" ? "MODULE" : intent === "demo" ? "DEMO" : intent === "legal" ? "LEGAL" : "GENERAL";
   const selectedModule = catalogueModuleRegistry.find((item) => item.key === moduleCode);
+  const isFleetDemo = initialIntent === "DEMO" && selectedModule?.key === "fleet";
   const turnstileConfigured = isBotProtectionConfigured();
   const contactProof = turnstileConfigured
     ? null
@@ -45,7 +47,8 @@ export default async function ContactPage({
 
   return (
     <>
-      <PublicHero centered eyebrow="Start a conversation" title="Tell us what you need technology to accomplish." description="Share your organization, operational challenge, or product idea. We will help define the right platform, website, integration, or bespoke solution." />
+      {sent && selectedModule ? <ConversionComplete eventName="Acquisition Enquiry" eventProperties={{ module: selectedModule.key, intent: initialIntent.toLowerCase() }} /> : null}
+      <PublicHero centered eyebrow={isFleetDemo ? "Fleet walkthrough" : "Start a conversation"} title={isFleetDemo ? "Show us how your fleet operates." : "Tell us what you need technology to accomplish."} description={isFleetDemo ? "Tell us about your vehicles and the operational problem you want to solve. We will arrange a focused walkthrough and help you decide whether an assisted pilot is worthwhile." : "Share your organization, operational challenge, or product idea. We will help define the right platform, website, integration, or bespoke solution."} />
       <section className="mx-auto grid max-w-6xl gap-8 px-6 py-20 lg:grid-cols-[0.75fr_1.25fr]">
         <div className="space-y-4">
           <h2 className="text-2xl font-semibold">Quick enquiries</h2>
@@ -58,8 +61,8 @@ export default async function ContactPage({
         </div>
         <Card id="contact-form" className="public-panel scroll-mt-24">
         <CardHeader>
-          <CardTitle>Get in touch</CardTitle>
-          <CardDescription>We typically respond within one business day.</CardDescription>
+          <CardTitle>{isFleetDemo ? "Book your Fleet walkthrough" : "Get in touch"}</CardTitle>
+          <CardDescription>{isFleetDemo ? "No payment is required. We typically respond within one business day." : "We typically respond within one business day."}</CardDescription>
         </CardHeader>
         <CardContent>
           {sent ? (
@@ -78,6 +81,14 @@ export default async function ContactPage({
               <Label htmlFor="website">Website</Label>
               <Input id="website" name="website" tabIndex={-1} autoComplete="off" />
             </div>
+            {isFleetDemo ? (
+              <>
+                <input type="hidden" name="intent" value="DEMO" />
+                <input type="hidden" name="moduleCode" value="fleet" />
+                <input type="hidden" name="industry" value="Transport / Logistics" />
+                <input type="hidden" name="country" value="Ghana" />
+              </>
+            ) : null}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="name">Full name</Label>
@@ -106,7 +117,7 @@ export default async function ContactPage({
                 </select>
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            {isFleetDemo ? null : <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="intent">Request</Label>
                 <select id="intent" name="intent" defaultValue={initialIntent} className="h-9 w-full rounded-md border bg-transparent px-3 text-sm">
@@ -125,19 +136,19 @@ export default async function ContactPage({
                   {catalogueModuleRegistry.map((item) => <option key={item.key} value={item.key}>{item.name}</option>)}
                 </select>
               </div>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-3">
+            </div>}
+            {isFleetDemo ? null : <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2"><Label htmlFor="expectedUsers">Expected users</Label><Input id="expectedUsers" name="expectedUsers" type="number" min="1" /></div>
               <div className="space-y-2"><Label htmlFor="industry">Industry</Label><Input id="industry" name="industry" /></div>
               <div className="space-y-2"><Label htmlFor="country">Country</Label><Input id="country" name="country" /></div>
-            </div>
+            </div>}
             <div className="space-y-2">
-              <Label htmlFor="message">Message</Label>
-              <Textarea id="message" name="message" rows={4} placeholder="Tell us a bit about your organization and what you&apos;re looking for." />
+              <Label htmlFor="message">{isFleetDemo ? "What should we focus on?" : "Message"}</Label>
+              <Textarea id="message" name="message" rows={4} placeholder={isFleetDemo ? "For example: 12 vehicles, weekly driver payments, maintenance approvals, and expiring roadworthy certificates." : "Tell us a bit about your organization and what you&apos;re looking for."} />
             </div>
             {turnstileConfigured ? <TurnstileWidget action="contact" /> : null}
             <Button type="submit" className="w-full">
-              Send message
+              {isFleetDemo ? "Request Fleet walkthrough" : "Send message"}
             </Button>
           </form>
         </CardContent>

@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { JsonLd } from "@/components/seo/json-ld";
 import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry";
 import { createPublicMetadata, MODULE_SEO, SITE_URL } from "@/lib/seo";
 import { PublicHero } from "@/components/marketing/public-hero";
 import { ModuleShowcase } from "@/components/marketing/module-showcase";
+import { ConversionButtonLink } from "@/components/marketing/conversion-link";
 
 type ModuleKey = keyof typeof MODULE_SEO;
 
@@ -44,6 +44,7 @@ export default async function ModuleLandingPage({
 
   const related = catalogueModuleRegistry.filter((item) => item.key !== moduleKey).slice(0, 3);
   const content = "content" in seo ? seo.content : undefined;
+  const isFleet = moduleKey === "fleet";
   const faqSchema = content
     ? {
         "@context": "https://schema.org",
@@ -81,16 +82,44 @@ export default async function ModuleLandingPage({
         },
         ...(faqSchema ? [faqSchema] : []),
       ]} />
-      <PublicHero eyebrow="Rock Frost Business Suite module" title={seo.shortName} description={seo.description} actions={<>
-            <Button size="lg" nativeButton={false} render={<Link href={`/contact?intent=demo&module=${moduleKey}`} />}>
-              Request a demo
-            </Button>
-            <Button size="lg" variant="outline" nativeButton={false} render={<Link href={`/contact?intent=module&module=${moduleKey}`} />}>
-              Request this module
-            </Button>
+      <PublicHero eyebrow={isFleet ? "Fleet control for Ghanaian operators" : "Rock Frost Business Suite module"} title={seo.shortName} description={seo.description} actions={<>
+            <ConversionButtonLink size="lg" href={`/contact?intent=demo&module=${moduleKey}`} eventName="Acquisition CTA" eventProperties={{ module: moduleKey, action: "demo", location: "module_hero" }}>
+              {isFleet ? "Book a Fleet walkthrough" : "Request a demo"}
+            </ConversionButtonLink>
+            <ConversionButtonLink size="lg" variant="outline" href={isFleet ? "/pricing#fleet-pricing" : `/contact?intent=module&module=${moduleKey}`} eventName="Acquisition CTA" eventProperties={{ module: moduleKey, action: isFleet ? "pricing" : "module_request", location: "module_hero" }}>
+              {isFleet ? "See Fleet pricing" : "Request this module"}
+            </ConversionButtonLink>
           </>} />
 
       <ModuleShowcase moduleKey={moduleKey} />
+
+      {isFleet ? (
+        <section className="mx-auto max-w-6xl px-6 py-16">
+          <Card className="overflow-hidden border-primary/30 bg-primary/5">
+            <CardContent className="grid gap-8 p-6 sm:p-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
+              <div>
+                <p className="public-eyebrow">14-day assisted Fleet pilot</p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-tight">Test your real fleet workflow before you commit</h2>
+                <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
+                  Start with a short fit call. We will then walk through vehicles, drivers, maintenance, compliance, payments, and work-and-pay using the parts that match your operation.
+                </p>
+              </div>
+              <div className="space-y-3">
+                <p className="text-sm font-medium">What happens next</p>
+                <ol className="space-y-2 text-sm text-muted-foreground">
+                  <li>1. Tell us how your fleet operates.</li>
+                  <li>2. See a walkthrough focused on your workflow.</li>
+                  <li>3. Start an assisted pilot if the system fits.</li>
+                </ol>
+                <ConversionButtonLink className="mt-2 w-full" href="/contact?intent=demo&module=fleet" eventName="Acquisition CTA" eventProperties={{ module: "fleet", action: "pilot", location: "pilot_panel" }}>
+                  Book the Fleet fit call
+                </ConversionButtonLink>
+                <p className="text-xs text-muted-foreground">No payment is required to request the walkthrough.</p>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
 
       {content ? (
         <section className="mx-auto max-w-6xl px-6 py-20">
