@@ -46,6 +46,13 @@ function clean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
 }
 
+function contactResultUrl(moduleCode: string, intent: string, result: "sent" | "send-failed") {
+  const query = new URLSearchParams({ [result === "sent" ? "sent" : "error"]: result === "sent" ? "1" : result });
+  if (moduleCode) query.set("module", moduleCode);
+  if (intent) query.set("intent", intent.toLowerCase());
+  return `/contact?${query.toString()}`;
+}
+
 export async function submitContactForm(formData: FormData): Promise<void> {
   const turnstileConfigured = isBotProtectionConfigured();
   const botVerified = turnstileConfigured
@@ -146,7 +153,7 @@ export async function submitContactForm(formData: FormData): Promise<void> {
   const toAddress = process.env.RESEND_TO_EMAIL;
   if (!toAddress) {
     console.warn("[contact] RESEND_TO_EMAIL not configured, submission persisted but not emailed:", { name, company, email, reason });
-    redirect("/contact?sent=1");
+    redirect(contactResultUrl(moduleCode, intent, "sent"));
   }
 
   const reasonLabel = REASON_LABELS[reason] ?? reason;
@@ -168,8 +175,8 @@ export async function submitContactForm(formData: FormData): Promise<void> {
   });
 
   if (!result.ok) {
-    redirect("/contact?error=send-failed");
+    redirect(contactResultUrl(moduleCode, intent, "send-failed"));
   }
 
-  redirect("/contact?sent=1");
+  redirect(contactResultUrl(moduleCode, intent, "sent"));
 }
