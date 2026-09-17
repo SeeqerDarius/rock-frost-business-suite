@@ -385,6 +385,7 @@ async function notifyPharmacyPickupReady(organizationId: string, dispensingId: s
     ...pharmacyPickupReadySms(patient.fullName),
     purpose: "PHARMACY_PICKUP_READY",
     organizationId,
+    moduleKey: "pharmacy",
     relatedType: "PharmacyDispensing",
     relatedId: dispensingId,
   });

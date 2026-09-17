@@ -186,6 +186,7 @@ export async function processRun(organizationId: string, runId: string) {
         ...payrollPayslipIssuedSms({ employeeName: payslip.employee.fullName, netPay: formatMoney(payslip.netPay, organization?.currency), payDate: run.payDate }),
         purpose: "PAYROLL_PAYSLIP_ISSUED",
         organizationId,
+        moduleKey: "payroll",
         relatedType: "PayrollPayslip",
         relatedId: payslip.id,
       });

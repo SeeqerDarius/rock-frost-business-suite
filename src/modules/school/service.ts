@@ -56,6 +56,7 @@ async function notifySchoolGuardians(params: {
       body: params.body(link.guardian.firstName),
       purpose: params.purpose,
       organizationId: params.organizationId,
+      moduleKey: "school",
       relatedType: params.relatedType,
       relatedId: params.relatedId,
     });
