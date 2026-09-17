@@ -32,7 +32,14 @@ export default defineConfig({
     // configured. dotenv/config's side effect on import loads .env from
     // the current working directory (the repo root, since these tests
     // are always run via `npm run test:integration` from there).
-    setupFiles: ["dotenv/config", "./test/integration/setup/environment.ts"],
+    setupFiles: [
+      "dotenv/config",
+      "./test/integration/setup/environment.ts",
+      // Must be a setup file, not a per-test vi.mock: with isolate: false
+      // below, the first file to load @/lib/payments decides whether a
+      // file-local mock applies at all. See the file's own comment.
+      "./test/integration/setup/paystack-http.ts",
+    ],
     testTimeout: 30_000,
     hookTimeout: 60_000,
     pool: "forks",

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { testDb } from "./setup/db";
 import { cleanupTestOrg, createTestOrg, type TestOrg } from "./setup/fixtures";
 
@@ -6,23 +6,17 @@ import { cleanupTestOrg, createTestOrg, type TestOrg } from "./setup/fixtures";
 // every SettlementProfile write and status transition - the thing this test
 // actually verifies. The one thing it deliberately does NOT exercise for
 // real is Paystack's own HTTP API (account resolution, subaccount
-// creation) - there is no live PAYSTACK_SECRET_KEY available in CI, and a
-// real bank/account-number pair capable of live resolution isn't something
-// a repeatable automated test can depend on. Mocking only the Paystack
-// facade, while leaving every Prisma call untouched, keeps this a genuine
+// creation): no automated test should reach a third-party API, and a real
+// bank/account-number pair capable of live resolution isn't something a
+// repeatable test can depend on. That mock now lives in
+// test/integration/setup/paystack-http.ts, loaded as a setup file for the
+// whole suite - it used to be declared here, which only worked when Vitest
+// happened to order this file before the other one that pulls
+// @/lib/payments into the shared registry unmocked (see that file's
+// comment). Every Prisma call stays untouched, which keeps this a genuine
 // database integration test of the status lifecycle rather than a fully
 // mocked unit test - see test/settlement-activation.test.ts for the
 // mocked-Prisma unit coverage of each readiness-check branch in isolation.
-vi.mock("@/lib/payments", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/payments")>();
-  return {
-    ...actual,
-    resolvePaystackAccount: vi.fn(async () => ({ accountName: "Integration Test Org", accountNumber: "0000000000" })),
-    createPaystackSubaccount: vi.fn(async () => ({ subaccountCode: `ACCT_${Date.now()}`, accountName: "Integration Test Org", bankName: "Test Bank" })),
-    updatePaystackSubaccount: vi.fn(async (code: string) => ({ subaccountCode: code, accountName: "Integration Test Org", bankName: "Test Bank" })),
-  };
-});
-
 const { initiateSettlementProfile, confirmSettlementBeneficiary, runSettlementReadinessCheck } = await import("@/lib/payments/operational");
 
 let org: TestOrg;
