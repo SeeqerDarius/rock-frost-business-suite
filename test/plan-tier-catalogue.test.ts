@@ -112,6 +112,20 @@ describe("module tier catalogue", () => {
     expect(pro.every((key) => platinum.includes(key))).toBe(true);
   });
 
+  it("gives every limit a plural that is not just the singular plus s where that would be wrong", () => {
+    // "campus" + "s" produced "campuss" in a real error message, which is how
+    // unitPlural came to exist. Any limit whose unit does not pluralise by
+    // adding "s" has to declare one.
+    for (const catalogue of MODULE_TIER_CATALOGUE) {
+      for (const limit of catalogue.limits) {
+        const naive = `${limit.unit}s`;
+        if (limit.unitPlural) continue;
+        expect(naive, `${limit.key} needs an explicit unitPlural`).not.toMatch(/(?:s|x|z|ch|sh)s$/);
+      }
+    }
+    expect(limitDefinition("school.campuses")?.unitPlural).toBe("campuses");
+  });
+
   it("raises School's ceilings up the ladder and never lowers them", () => {
     expect(limitsAt("school", "BASIC")["school.students"]).toBe(200);
     expect(limitsAt("school", "PRO")["school.students"]).toBe(1500);
@@ -140,7 +154,7 @@ describe("module tier catalogue", () => {
   });
 
   it("looks a definition up by key and fails soft for an unknown module", () => {
-    expect(limitDefinition("school.students")?.unit).toBe("student");
+    expect(limitDefinition("school.students")?.unit).toBe("enrolled student");
     expect(limitDefinition("nope.nope")).toBeUndefined();
     const unknown = moduleTierCatalogue("not-a-module");
     expect(unknown.tieringPending).toBe(true);

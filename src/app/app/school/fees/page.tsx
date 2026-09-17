@@ -19,6 +19,7 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getSchoolAcademicSetup, listSchoolCampuses, listSchoolFeeInvoices, listSchoolFeeStructures, listSchoolStudents } from "@/modules/school/service";
 import { createFeeInvoiceAction, createFeeStructureAction, issueFeeStructureAction, recordFeePaymentAction } from "../actions";
+import { schoolPlanGate } from "@/components/school/plan-gate";
 
 const PATH = "/app/school/fees";
 const PAYMENT_METHODS = ["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "ONLINE", "OTHER"] as const;
@@ -26,6 +27,10 @@ const INVOICE_STATUSES = ["ISSUED", "PART_PAID", "PAID", "CANCELLED"] as const;
 
 export default async function SchoolFeesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; status?: string; issued?: string; skipped?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
+  // Plan gate. Navigation already hides this page when the plan does
+  // not include it, but a hidden link is not a boundary.
+  const gate = await schoolPlanGate(tenant.organizationId, "school.fees", "Fees & Payments", "Student invoices, discounts, receipts, and arrears.");
+  if (gate) return gate;
 
   if (!hasPermission(tenant, PERMISSIONS.SCHOOL_FEES_MANAGE)) {
     return (

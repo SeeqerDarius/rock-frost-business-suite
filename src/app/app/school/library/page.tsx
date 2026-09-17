@@ -15,11 +15,16 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listSchoolLibrary, listSchoolStudents } from "@/modules/school/service";
 import { borrowBookAction, createLibraryBookAction, returnBookAction } from "../actions";
+import { schoolPlanGate } from "@/components/school/plan-gate";
 
 const PATH = "/app/school/library";
 
 export default async function SchoolLibraryPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; view?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
+  // Plan gate. Navigation already hides this page when the plan does
+  // not include it, but a hidden link is not a boundary.
+  const gate = await schoolPlanGate(tenant.organizationId, "school.services", "Library", "Catalogue, copy availability, and circulation.");
+  if (gate) return gate;
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_LIBRARY_MANAGE);
   const [[books, loans], students] = await Promise.all([listSchoolLibrary(tenant.organizationId), listSchoolStudents(tenant.organizationId)]);
 

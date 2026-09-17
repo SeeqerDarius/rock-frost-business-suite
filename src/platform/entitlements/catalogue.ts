@@ -53,6 +53,11 @@ export interface ModuleLimitDefinition {
   name: string;
   /** Singular noun for error copy, e.g. "student". */
   unit: string;
+  /**
+   * Plural noun, when adding "s" is wrong. "campus" becomes "campuss"
+   * otherwise, which is how this field came to exist.
+   */
+  unitPlural?: string;
   /** Ceiling per tier. `null` is unlimited. Must never decrease as the tier rises. */
   byTier: Readonly<Record<PlanTier, number | null>>;
 }
@@ -152,13 +157,15 @@ const SCHOOL: ModuleTierCatalogue = {
     {
       key: "school.students",
       name: "Enrolled students",
-      unit: "student",
+      unit: "enrolled student",
+      unitPlural: "enrolled students",
       byTier: { BASIC: 200, PRO: 1500, PLATINUM: null, ENTERPRISE: null },
     },
     {
       key: "school.campuses",
       name: "Campuses",
       unit: "campus",
+      unitPlural: "campuses",
       byTier: { BASIC: 1, PRO: 3, PLATINUM: null, ENTERPRISE: null },
     },
   ],

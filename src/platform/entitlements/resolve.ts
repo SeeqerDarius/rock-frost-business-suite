@@ -2,8 +2,8 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import { primaryProductKey, productGroupKeys } from "@/platform/modules/product-groups";
-import { featuresIncludedAt, limitsAt, moduleTierCatalogue } from "./catalogue";
-import { UNTIERED_LEGACY_TIER, isPlanTier, type PlanTier } from "./tiers";
+import { featuresIncludedAt, limitDefinition, limitsAt, moduleTierCatalogue } from "./catalogue";
+import { PLAN_TIER_LABELS, UNTIERED_LEGACY_TIER, isPlanTier, type PlanTier } from "./tiers";
 
 /**
  * The single place that answers "what is this organization entitled to in
@@ -159,10 +159,9 @@ export async function resolveModuleTier(organizationId: string, moduleKey: strin
 }
 
 /**
- * Throws when creating one more record would exceed the plan's ceiling.
- * Callers pass the current count so this never has to know how to count
- * every kind of record. Message names the plan and the number, because "you
- * have reached your limit" with no number is not actionable.
+ * Thrown when creating one more record would exceed the plan's ceiling. The
+ * message names the plan and the number, because "you have reached your
+ * limit" without either is not actionable for the person who hit it.
  */
 export class PlanLimitReachedError extends Error {
   constructor(
@@ -175,20 +174,30 @@ export class PlanLimitReachedError extends Error {
   }
 }
 
+/**
+ * Callers pass the current count, so this never has to know how to count
+ * every kind of record, and each caller stays free to decide what counts
+ * (School counts enrolled students, not withdrawn ones). The noun comes from
+ * the catalogue rather than the call site so the wording cannot drift between
+ * the two, and so a plural that is not just "+s" is written once.
+ */
 export async function assertWithinModuleLimit(
   organizationId: string,
   limitKey: string,
   currentCount: number,
-  unit: string,
 ): Promise<void> {
   const ceiling = await resolveModuleLimit(organizationId, limitKey);
   if (ceiling === null) return;
   if (currentCount < ceiling) return;
+
+  const definition = limitDefinition(limitKey);
+  const unit = definition?.unit ?? "record";
+  const noun = ceiling === 1 ? unit : (definition?.unitPlural ?? `${unit}s`);
   const tier = (await resolveModuleTier(organizationId, limitKey.split(".")[0] ?? ""))?.tier;
   throw new PlanLimitReachedError(
     limitKey,
     ceiling,
-    `Your ${tier ? tier.toLowerCase() : "current"} plan includes ${ceiling} ${unit}${ceiling === 1 ? "" : "s"}. Upgrade the plan to add more.`,
+    `Your ${tier ? PLAN_TIER_LABELS[tier] : "current"} plan includes ${ceiling} ${noun}. Upgrade the plan to add more.`,
   );
 }
 
