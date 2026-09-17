@@ -55,8 +55,9 @@ Two independent gates, both must be on for any School text to send:
 - **Per-organization entitlement** (`Organization.smsNotificationsGranted`,
   default **off** for every organization). SMS notifications is a paid
   add-on: a platform operator grants or revokes it for one organization at
-  a time from the "SMS notifications" card on that organization's own
-  detail page (`/app/platform/organizations/[organizationId]`), via
+  a time under Shared capabilities in the Modules and features section of
+  that organization's Configuration pane
+  (`/app/platform/organizations/[organizationId]?section=features`), via
   `toggleOrganizationSmsNotifications()`
   (`src/app/app/platform/actions.ts`) — the same shape as the existing
   `offlineAccessGranted` entitlement. Checked directly in `sendSms()`
@@ -93,10 +94,17 @@ never blocks or fails the underlying attendance/payment/publish action.
 
 The portal is also a **paid, per-organization add-on**
 (`Organization.schoolPortalGranted`, default **off**), independent of the
-SMS entitlement above. A platform operator grants or revokes it from the
-"School: Parent/Student portal" card on that organization's detail page
-(shown only once School is enabled for that organization), via
-`toggleSchoolPortalAccess()` (`src/app/app/platform/actions.ts`). Until
+SMS entitlement above. A platform operator grants or revokes it from
+inside the School Management row itself, in the Modules and features
+section of that organization's Configuration pane
+(`/app/platform/organizations/[organizationId]?section=features`), via
+`toggleSchoolPortalAccess()` (`src/app/app/platform/actions.ts`). It is
+declared `scope: "module"` in
+`src/platform/organizations/feature-addons.ts`, which is what nests it
+under School rather than listing it as a sibling of organization-wide
+grants: this add-on affects School and nothing else, and the pane says so
+by where it puts it. It appears only once School is enabled for that
+organization. Until
 granted, `/app/school/portal` and `/app/school/portal-access` both show a
 "not available, contact Rock Frost" state regardless of role or
 permission — enforced server-side in both pages and in the two invite

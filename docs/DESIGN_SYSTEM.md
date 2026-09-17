@@ -80,6 +80,18 @@ Per the project brief, the following are not acceptable anywhere in this product
 
 Long module menus may use `ModuleNavItem.group` to create quiet, noninteractive section labels. Active-route selection always chooses the longest segment-boundary match so an overview and a nested route are never highlighted simultaneously.
 
+`SidebarNav` prints a group label only when an item's `group` differs from the item before it, so every group's items must be contiguous in the array or its label renders twice. Platform Administration uses this to sort its destinations by the operator's job rather than listing nine peers: an ungrouped Overview, then Customers, Revenue, and Platform (`src/platform/modules/platform-navigation.tsx`, held to both rules by `test/platform-organization-configuration.test.ts`).
+
+## Sectioned detail pages
+
+A detail page with more than a handful of unrelated concerns uses one section at a time, addressed by `?section=` and navigated by a `<nav>` of `Link`-rendered buttons where the active one carries `aria-current="page"`. The School student profile (`src/app/app/school/students/[studentId]/page.tsx`) and the platform Organization Configuration pane (`src/app/app/platform/organizations/[organizationId]/page.tsx`) are the reference implementations; do not build a second convention.
+
+Three rules make the difference between sections and a long scroll worth anything:
+
+- **Group by the reason someone opened the page**, not by the shape of the data. Read-only status belongs together; each thing that changes the record belongs with the decision it serves.
+- **Put the irreversible surfaces behind their own section**, so nobody reaches them while scrolling past for a phone number.
+- **Nest a setting inside what it affects.** A control's position is a claim about its scope, so a control that reaches five things must not sit inside one of them.
+
 ## Reference points (inspiration only, never copy proprietary UI)
 
 Linear, Stripe Dashboard, Ramp, Vercel, Notion, Shopify Admin — used only to calibrate information density, restraint, and interaction polish, not as a source of literal design assets.

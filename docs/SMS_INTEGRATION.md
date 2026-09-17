@@ -21,8 +21,10 @@ non-OTP `sendSms()` call requires
 (`src/lib/platform-communications.ts`) to be true for that specific
 organization, reading `Organization.smsNotificationsGranted` (default
 **off** for every organization). A platform operator grants or revokes it
-per organization from the "SMS notifications" card on that organization's
-own detail page (`/app/platform/organizations/[organizationId]`), via
+per organization under Shared capabilities in the Modules and features
+section of that organization's Configuration pane
+(`/app/platform/organizations/[organizationId]?section=features`, see
+`docs/ORGANIZATION_LIFECYCLE.md`), via
 `toggleOrganizationSmsNotifications()`
 (`src/app/app/platform/actions.ts`) - the same shape and the same
 operator-only gate as the existing `offlineAccessGranted` entitlement.
