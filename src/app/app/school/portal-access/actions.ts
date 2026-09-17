@@ -13,12 +13,22 @@ import { buildTenantAppUrl } from "@/lib/app-url";
 import { invitationEmail } from "@/lib/email-templates";
 import { sendEmail } from "@/lib/email";
 import { logAuditEvent } from "@/lib/audit";
+import { isSchoolPortalGranted } from "@/lib/platform-communications";
 
 const PATH = "/app/school/portal-access";
 
 async function authorize() {
   const tenant = await requireModuleAccess("school");
   if (!hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENTS_MANAGE)) redirect(`${PATH}?error=forbidden`);
+  return tenant;
+}
+
+/** Invites (unlike a revoke) must be blocked server-side, not just hidden in
+ * the UI, if a platform operator hasn't granted this paid add-on to the
+ * organization - see docs/SCHOOL_PARENT_STUDENT_PORTAL.md. */
+async function authorizeInvite() {
+  const tenant = await authorize();
+  if (!(await isSchoolPortalGranted(tenant.organizationId))) redirect(`${PATH}?error=not-granted`);
   return tenant;
 }
 
@@ -54,7 +64,7 @@ async function sendPortalInvite(organizationId: string, membershipId: string, em
 }
 
 export async function inviteGuardianToPortalAction(formData: FormData) {
-  const tenant = await authorize();
+  const tenant = await authorizeInvite();
   const parsed = z.object({ guardianId: cuid }).safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect(`${PATH}?error=invalid`);
   const guardian = await db.schoolGuardian.findFirst({ where: { id: parsed.data.guardianId, organizationId: tenant.organizationId } });
@@ -85,7 +95,7 @@ export async function inviteGuardianToPortalAction(formData: FormData) {
 }
 
 export async function inviteStudentToPortalAction(formData: FormData) {
-  const tenant = await authorize();
+  const tenant = await authorizeInvite();
   const parsed = parseWithSchema(z.object({ studentId: cuid, email: emailSchema }), Object.fromEntries(formData));
   if (!parsed.success) redirect(`${PATH}?error=invalid`);
   const student = await db.schoolStudent.findFirst({ where: { id: parsed.data.studentId, organizationId: tenant.organizationId } });

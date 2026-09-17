@@ -10,12 +10,13 @@ import { GradingScaleField } from "@/components/school/grading-scale-field";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listSchoolSettings } from "@/modules/school/service";
+import { isOrganizationSmsNotificationsGranted } from "@/lib/platform-communications";
 import { upsertSchoolSettingsAction } from "../actions";
 
 export default async function SchoolSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_SETTINGS_MANAGE);
-  const campuses = await listSchoolSettings(tenant.organizationId);
+  const [campuses, smsGranted] = await Promise.all([listSchoolSettings(tenant.organizationId), isOrganizationSmsNotificationsGranted(tenant.organizationId)]);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -99,7 +100,10 @@ export default async function SchoolSettingsPage({ searchParams }: { searchParam
                   <section className="space-y-4">
                     <div>
                       <h2 className="text-sm font-semibold">SMS notifications</h2>
-                      <p className="text-xs text-muted-foreground">Texts guardians when a student is marked absent, a fee payment is received, or exam results are published. Also requires SMS to be enabled platform-wide (a platform administrator&apos;s setting).</p>
+                      <p className="text-xs text-muted-foreground">Texts guardians when a student is marked absent, a fee payment is received, or exam results are published.</p>
+                      {!smsGranted ? (
+                        <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">SMS notifications is a paid add-on that has not been enabled for your organization yet. You can turn this on in advance, but no texts will send until Rock Frost enables it for you.</p>
+                      ) : null}
                     </div>
                     <CheckboxField
                       id={`${campus.id}-sms-notifications`}

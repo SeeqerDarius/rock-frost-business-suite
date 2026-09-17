@@ -114,10 +114,12 @@ accounts and creating their HR link, so staff identities are not duplicated.
 Three pieces of the Release S2 scope below are now built, ahead of the rest
 of that release: the Ghana (WASSCE/BECE) grading-scale preset and a
 ranking-gated exam broadsheet, School as a fifth SMS-notifying module
-(behind a platform-wide switch plus its own per-campus toggle), and a
-Parent/Student self-service portal with its own narrow-scoped roles and a
-dedicated Portal Access management page. See
-`docs/SCHOOL_PARENT_STUDENT_PORTAL.md` for the full design.
+(a paid per-organization add-on a platform operator grants from that
+organization's own detail page, plus its own per-campus toggle), and a
+Parent/Student self-service portal (a separate paid per-organization
+add-on) with its own narrow-scoped roles and a dedicated Portal Access
+management page. See `docs/SCHOOL_PARENT_STUDENT_PORTAL.md` for the full
+design.
 
 ### Release S2 — teaching, assessment, and communication
 

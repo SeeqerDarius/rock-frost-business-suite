@@ -570,6 +570,21 @@ model Organization {
   offlineAccessGranted       Boolean             @default(false)
   offlineAccessGrantedAt     DateTime?
   offlineAccessGrantedById   String?
+  /// Same shape and intent as offlineAccessGranted: a platform-operator-only
+  /// entitlement for an organization that has separately arranged (and pays
+  /// for) SMS notifications, gating every module's own smsNotificationsEnabled
+  /// toggle (School/Hotel/Pharmacy/Payroll/Hospital) regardless of what that
+  /// organization's own admin has configured. See docs/SMS_INTEGRATION.md.
+  smsNotificationsGranted    Boolean             @default(false)
+  smsNotificationsGrantedAt  DateTime?
+  smsNotificationsGrantedById String?
+  /// Same shape: a platform-operator-only entitlement for a School customer
+  /// that has separately arranged (and pays for) the Parent/Student portal
+  /// add-on. Gates /app/school/portal and /app/school/portal-access
+  /// regardless of role/permission. See docs/SCHOOL_PARENT_STUDENT_PORTAL.md.
+  schoolPortalGranted        Boolean             @default(false)
+  schoolPortalGrantedAt      DateTime?
+  schoolPortalGrantedById    String?
 
   members                         OrganizationMember[]
   invitations                     Invitation[]

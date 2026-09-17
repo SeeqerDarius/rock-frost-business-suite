@@ -3,8 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const mockCreate = vi.fn();
 vi.mock("@/lib/db", () => ({ db: { smsMessage: { create: mockCreate } } }));
 
-const mockIsPlatformSmsNotificationsEnabled = vi.fn().mockResolvedValue(true);
-vi.mock("@/lib/platform-communications", () => ({ isPlatformSmsNotificationsEnabled: mockIsPlatformSmsNotificationsEnabled }));
+const mockIsOrganizationSmsNotificationsGranted = vi.fn().mockResolvedValue(true);
+vi.mock("@/lib/platform-communications", () => ({ isOrganizationSmsNotificationsGranted: mockIsOrganizationSmsNotificationsGranted }));
 
 const { sendSms } = await import("@/lib/sms");
 
@@ -13,7 +13,7 @@ const ORIGINAL_ENV = { ...process.env };
 describe("sendSms", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockIsPlatformSmsNotificationsEnabled.mockResolvedValue(true);
+    mockIsOrganizationSmsNotificationsGranted.mockResolvedValue(true);
     process.env.MNOTIFY_API_KEY = "test-key";
     process.env.MNOTIFY_SENDER_ID = "RockFrost";
   });
@@ -94,20 +94,21 @@ describe("sendSms", () => {
     expect(nonOtpBody.sms_type).toBeUndefined();
   });
 
-  it("degrades gracefully and never calls the provider when disabled platform-wide", async () => {
-    mockIsPlatformSmsNotificationsEnabled.mockResolvedValue(false);
+  it("degrades gracefully and never calls the provider when the organization isn't entitled to SMS notifications", async () => {
+    mockIsOrganizationSmsNotificationsGranted.mockResolvedValue(false);
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
 
     const result = await sendSms({ to: "0241234567", body: "hi", purpose: "SCHOOL_ATTENDANCE_ABSENT", organizationId: "org-1" });
 
-    expect(result).toEqual({ ok: false, error: "SMS notifications are currently disabled platform-wide." });
+    expect(result).toEqual({ ok: false, error: "SMS notifications are not enabled for this organization." });
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockIsOrganizationSmsNotificationsGranted).toHaveBeenCalledWith("org-1");
   });
 
-  it("never checks the platform-wide switch for an OTP send, so 2FA still works when notifications are disabled", async () => {
-    mockIsPlatformSmsNotificationsEnabled.mockResolvedValue(false);
+  it("never checks the per-organization entitlement for an OTP send, so 2FA still works for an ungranted organization", async () => {
+    mockIsOrganizationSmsNotificationsGranted.mockResolvedValue(false);
     const fetchSpy = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: "success" }) });
     vi.stubGlobal("fetch", fetchSpy);
 
@@ -115,7 +116,21 @@ describe("sendSms", () => {
 
     expect(result).toEqual({ ok: true });
     expect(fetchSpy).toHaveBeenCalled();
-    expect(mockIsPlatformSmsNotificationsEnabled).not.toHaveBeenCalled();
+    expect(mockIsOrganizationSmsNotificationsGranted).not.toHaveBeenCalled();
+  });
+
+  it("checks entitlement per organization, not a single global flag", async () => {
+    mockIsOrganizationSmsNotificationsGranted.mockImplementation(async (organizationId: string) => organizationId === "org-granted");
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: "success" }) });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const denied = await sendSms({ to: "0241234567", body: "hi", purpose: "TEST", organizationId: "org-ungranted" });
+    expect(denied.ok).toBe(false);
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    const allowed = await sendSms({ to: "0241234567", body: "hi", purpose: "TEST", organizationId: "org-granted" });
+    expect(allowed.ok).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it("passes the API key as a query parameter, not in the request body", async () => {

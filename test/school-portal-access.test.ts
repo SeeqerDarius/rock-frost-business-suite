@@ -52,23 +52,26 @@ describe("isSchoolParentRole / isSchoolStudentRole", () => {
 });
 
 describe("getSchoolNavigationForTenant", () => {
-  it("shows a Parent/Student portal account only the My Portal link", () => {
+  it("shows a Parent/Student portal account only the My Portal link, and only when the organization holds the portal entitlement", () => {
     const tenant = buildTenant({ role: "Parent", permissions: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.SCHOOL_PORTAL_VIEW, PERMISSIONS.AI_ASSISTANT_USE] });
-    const nav = getSchoolNavigationForTenant(tenant);
-    expect(nav.map((item) => item.href)).toEqual(["/app/school/portal"]);
+    expect(getSchoolNavigationForTenant(tenant, true).map((item) => item.href)).toEqual(["/app/school/portal"]);
+    expect(getSchoolNavigationForTenant(tenant, false)).toEqual([]);
   });
 
   it("never shows the portal link to staff without SCHOOL_PORTAL_VIEW", () => {
     const tenant = buildTenant({ role: "Teacher", permissions: [PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_ATTENDANCE_MANAGE, PERMISSIONS.SCHOOL_EXAMS_MANAGE] });
-    const nav = getSchoolNavigationForTenant(tenant);
+    const nav = getSchoolNavigationForTenant(tenant, true);
     expect(nav.some((item) => item.href === "/app/school/portal")).toBe(false);
   });
 
-  it("shows a School Administrator the full staff navigation, including Portal Access", () => {
+  it("shows a School Administrator the full staff navigation, including Portal Access, only when the organization holds the portal entitlement", () => {
     const allSchoolPerms = Object.values(PERMISSIONS).filter((value) => value.startsWith("school."));
     const tenant = buildTenant({ role: "School Administrator", permissions: allSchoolPerms });
-    const nav = getSchoolNavigationForTenant(tenant);
-    expect(nav.some((item) => item.href === "/app/school/portal-access")).toBe(true);
-    expect(nav.some((item) => item.href === "/app/school/staff")).toBe(true);
+    const grantedNav = getSchoolNavigationForTenant(tenant, true);
+    expect(grantedNav.some((item) => item.href === "/app/school/portal-access")).toBe(true);
+    expect(grantedNav.some((item) => item.href === "/app/school/staff")).toBe(true);
+    const ungrantedNav = getSchoolNavigationForTenant(tenant, false);
+    expect(ungrantedNav.some((item) => item.href === "/app/school/portal-access")).toBe(false);
+    expect(ungrantedNav.some((item) => item.href === "/app/school/staff")).toBe(true);
   });
 });

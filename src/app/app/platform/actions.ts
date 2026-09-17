@@ -148,3 +148,109 @@ export async function toggleOrganizationOfflineAccess(formData: FormData): Promi
   revalidatePath("/app/platform/organizations");
   return { ok: true };
 }
+
+/**
+ * SMS notifications are a paid add-on, same shape as offline access above:
+ * granting it here doesn't turn any module's SMS on by itself, it only lets
+ * that organization's own admin then enable a specific module's own
+ * smsNotificationsEnabled toggle - sendSms() (src/lib/sms.ts) enforces this
+ * grant regardless of what that toggle says. See docs/SMS_INTEGRATION.md.
+ */
+export async function toggleOrganizationSmsNotifications(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const tenant = await requireCurrentTenant();
+  if (!isPlatformOperator(tenant)) {
+    return { ok: false, error: "You do not have permission to change SMS notifications." };
+  }
+
+  const parsed = parseWithSchema(offlineAccessSchema, {
+    organizationId: String(formData.get("organizationId") ?? "").trim(),
+  });
+  if (!parsed.success) {
+    return { ok: false, error: "The organization selection is invalid." };
+  }
+  const { organizationId } = parsed.data;
+  const granted = formData.get("granted") === "true";
+
+  const [organization, session] = await Promise.all([
+    db.organization.findUnique({ where: { id: organizationId } }),
+    getServerAuthSession(),
+  ]);
+  if (!organization) {
+    return { ok: false, error: "The organization was not found." };
+  }
+
+  await db.organization.update({
+    where: { id: organizationId },
+    data: {
+      smsNotificationsGranted: granted,
+      smsNotificationsGrantedAt: granted ? new Date() : null,
+      smsNotificationsGrantedById: granted ? session?.user?.id : null,
+    },
+  });
+
+  await logAuditEvent({
+    organizationId,
+    userId: session?.user?.id,
+    module: "platform",
+    action: granted ? "sms_notifications.platform_granted" : "sms_notifications.platform_revoked",
+    entityName: "Organization",
+    entityId: organizationId,
+    metadata: { organization: organization.name },
+  });
+
+  revalidatePath(`/app/platform/organizations/${organizationId}`);
+  revalidatePath("/app/platform/organizations");
+  return { ok: true };
+}
+
+/**
+ * The School Parent/Student portal is the same kind of paid add-on, gating
+ * /app/school/portal and /app/school/portal-access regardless of role or
+ * permission. See docs/SCHOOL_PARENT_STUDENT_PORTAL.md.
+ */
+export async function toggleSchoolPortalAccess(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const tenant = await requireCurrentTenant();
+  if (!isPlatformOperator(tenant)) {
+    return { ok: false, error: "You do not have permission to change portal access." };
+  }
+
+  const parsed = parseWithSchema(offlineAccessSchema, {
+    organizationId: String(formData.get("organizationId") ?? "").trim(),
+  });
+  if (!parsed.success) {
+    return { ok: false, error: "The organization selection is invalid." };
+  }
+  const { organizationId } = parsed.data;
+  const granted = formData.get("granted") === "true";
+
+  const [organization, session] = await Promise.all([
+    db.organization.findUnique({ where: { id: organizationId } }),
+    getServerAuthSession(),
+  ]);
+  if (!organization) {
+    return { ok: false, error: "The organization was not found." };
+  }
+
+  await db.organization.update({
+    where: { id: organizationId },
+    data: {
+      schoolPortalGranted: granted,
+      schoolPortalGrantedAt: granted ? new Date() : null,
+      schoolPortalGrantedById: granted ? session?.user?.id : null,
+    },
+  });
+
+  await logAuditEvent({
+    organizationId,
+    userId: session?.user?.id,
+    module: "platform",
+    action: granted ? "school_portal.platform_granted" : "school_portal.platform_revoked",
+    entityName: "Organization",
+    entityId: organizationId,
+    metadata: { organization: organization.name },
+  });
+
+  revalidatePath(`/app/platform/organizations/${organizationId}`);
+  revalidatePath("/app/platform/organizations");
+  return { ok: true };
+}

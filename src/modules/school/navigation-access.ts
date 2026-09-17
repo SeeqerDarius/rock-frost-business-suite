@@ -9,9 +9,13 @@ import { schoolNavigation } from "@/modules/school/navigation";
  * sidebar's page list, mirroring
  * src/modules/fleet/navigation-access.ts (see that file's comment for why
  * this stays a separate file from the plain schoolNavigation array).
- * A Parent/Student portal account only ever sees /app/school/portal here.
+ * A Parent/Student portal account only ever sees /app/school/portal here,
+ * and only when the organization also holds the paid schoolPortalGranted
+ * entitlement (see docs/SCHOOL_PARENT_STUDENT_PORTAL.md) - the page itself
+ * re-enforces this independently, so this filter is a UX convenience, not
+ * the actual security boundary.
  */
-export function getSchoolNavigationForTenant(tenant: TenantContext): ModuleNavItem[] {
+export function getSchoolNavigationForTenant(tenant: TenantContext, schoolPortalGranted: boolean): ModuleNavItem[] {
   const routeAccess: Array<[string, boolean]> = [
     ["/app/school", hasPermission(tenant, PERMISSIONS.SCHOOL_VIEW)],
     ["/app/school/students", hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENTS_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENT_PROFILE_VIEW)],
@@ -26,10 +30,10 @@ export function getSchoolNavigationForTenant(tenant: TenantContext): ModuleNavIt
     ["/app/school/library", hasPermission(tenant, PERMISSIONS.SCHOOL_LIBRARY_MANAGE)],
     ["/app/school/campuses", hasPermission(tenant, PERMISSIONS.SCHOOL_CAMPUSES_MANAGE)],
     ["/app/school/staff", hasPermission(tenant, PERMISSIONS.SCHOOL_STAFF_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_VIEW)],
-    ["/app/school/portal-access", hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENTS_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENT_PROFILE_VIEW)],
+    ["/app/school/portal-access", schoolPortalGranted && (hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENTS_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENT_PROFILE_VIEW))],
     ["/app/school/reports", hasPermission(tenant, PERMISSIONS.SCHOOL_REPORTS_VIEW)],
     ["/app/school/settings", hasPermission(tenant, PERMISSIONS.SCHOOL_SETTINGS_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_VIEW)],
-    ["/app/school/portal", hasPermission(tenant, PERMISSIONS.SCHOOL_PORTAL_VIEW)],
+    ["/app/school/portal", schoolPortalGranted && hasPermission(tenant, PERMISSIONS.SCHOOL_PORTAL_VIEW)],
   ];
   const allowedRoutes = new Set(routeAccess.filter(([, allowed]) => allowed).map(([href]) => href));
   return schoolNavigation.filter((item) => allowedRoutes.has(item.href));

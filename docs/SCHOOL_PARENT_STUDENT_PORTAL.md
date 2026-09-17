@@ -48,22 +48,31 @@ Given a class and a term:
    (`getSchoolBroadsheet()`) so it's unit-tested without a database — see
    `test/school-broadsheet.test.ts`.
 
-## 2. SMS notifications: platform-wide switch + per-campus opt-in
+## 2. SMS notifications: a paid, per-organization add-on
 
 Two independent gates, both must be on for any School text to send:
 
-- **Platform-wide** (`Organization.metadata.smsNotifications.enabled` on
-  the platform operator's own organization row, edited from the
-  "Communications" card at `/app/platform/settings`, default **on**).
-  Checked once, directly in `sendSms()` (`src/lib/sms.ts`), for every
-  non-OTP send across every module (Hotel, Pharmacy, Payroll, Hospital,
-  School) — a platform operator can kill all notification SMS in one
-  place without touching any tenant's own settings. **Never** gates 2FA
-  OTP codes; login must keep working even if notifications are disabled.
+- **Per-organization entitlement** (`Organization.smsNotificationsGranted`,
+  default **off** for every organization). SMS notifications is a paid
+  add-on: a platform operator grants or revokes it for one organization at
+  a time from the "SMS notifications" card on that organization's own
+  detail page (`/app/platform/organizations/[organizationId]`), via
+  `toggleOrganizationSmsNotifications()`
+  (`src/app/app/platform/actions.ts`) — the same shape as the existing
+  `offlineAccessGranted` entitlement. Checked directly in `sendSms()`
+  (`src/lib/sms.ts`) for every non-OTP send across every module (Hotel,
+  Pharmacy, Payroll, Hospital, School), scoped to that specific
+  organization — granting it to one school never affects any other
+  organization. **Never** gates 2FA OTP codes; login must keep working
+  even for an organization that hasn't purchased this add-on.
 - **Per-campus** (`SchoolSettings.smsNotificationsEnabled`, `Settings >
-  SMS notifications`, default **off**) — same convention as
+  SMS notifications`, default **off**) — an organization that *has* the
+  add-on still opts in per campus, same convention as
   `HotelSettings`/`PharmacySettings`/`PayrollSettings`/`HospitalSettings`'s
-  existing `smsNotificationsEnabled` flags (`docs/SMS_INTEGRATION.md`).
+  existing `smsNotificationsEnabled` flags (`docs/SMS_INTEGRATION.md`). The
+  School Settings page shows an amber note when the organization doesn't
+  hold the entitlement yet, so an admin can pre-configure the toggle
+  without it doing anything until Rock Frost enables the add-on.
 
 Three School trigger points, each calling the shared
 `notifySchoolGuardians()` helper (`src/modules/school/service.ts`), which
@@ -81,6 +90,20 @@ Hospital convention), and `sendSms()` never throws — a slow or failed text
 never blocks or fails the underlying attendance/payment/publish action.
 
 ## 3. Parent and Student self-service portal
+
+The portal is also a **paid, per-organization add-on**
+(`Organization.schoolPortalGranted`, default **off**), independent of the
+SMS entitlement above. A platform operator grants or revokes it from the
+"School: Parent/Student portal" card on that organization's detail page
+(shown only once School is enabled for that organization), via
+`toggleSchoolPortalAccess()` (`src/app/app/platform/actions.ts`). Until
+granted, `/app/school/portal` and `/app/school/portal-access` both show a
+"not available, contact Rock Frost" state regardless of role or
+permission — enforced server-side in both pages and in the two invite
+actions (`inviteGuardianToPortalAction`/`inviteStudentToPortalAction`),
+not just hidden from navigation. Revoking a granted organization's access
+doesn't delete any existing guardian/student links; it simply makes the
+portal and Portal Access unreachable again until re-granted.
 
 Two new seeded system roles, **Parent** and **Student**
 (`prisma/seed-data.ts`), each holding only
@@ -132,23 +155,40 @@ exposes medical notes or documents.
 `src/modules/school/navigation-access.ts` (mirroring
 `src/modules/fleet/navigation-access.ts`'s existing pattern for
 Driver/Mechanic self-service roles) filters the School sidebar by
-permission per route. A Parent/Student account sees only **My Portal**;
-every staff nav item requires its own staff permission, so a portal account
-can never even see a locked link to data it can't open. The School layout
-also hides the cross-module launcher for a narrow portal role
-(`isNarrowSchoolPortalRole()`, `src/lib/auth/permissions.ts`), same
-treatment Fleet's Driver/Mechanic roles already get.
+permission **and** the organization's `schoolPortalGranted` entitlement
+per route — the layout fetches the grant once
+(`src/app/app/school/layout.tsx`) and passes it into
+`getSchoolNavigationForTenant(tenant, schoolPortalGranted)`. A
+Parent/Student account sees only **My Portal**, and only once the
+organization holds the entitlement; every staff nav item requires its own
+staff permission, so a portal account can never even see a locked link to
+data it can't open. This filtering is a UX convenience only — the pages
+and invite actions re-check the entitlement independently, which is the
+real boundary. The School layout also hides the cross-module launcher for
+a narrow portal role (`isNarrowSchoolPortalRole()`,
+`src/lib/auth/permissions.ts`), same treatment Fleet's Driver/Mechanic
+roles already get.
 
 ## Testing
 
 - `test/school-broadsheet.test.ts` — pure ranking/aggregation and
   grade-resolution unit tests (ties, missing-subject handling, ranking
   on/off).
-- `test/sms.test.ts` — platform-wide kill switch: blocks a notification
-  send when disabled, never checks the switch for an OTP send.
+- `test/sms.test.ts` — the per-organization entitlement: blocks a
+  notification send for an ungranted organization, allows it for a
+  granted one, never checks it for an OTP send.
+- `test/integration/sms/organization-sms-entitlement.test.ts` —
+  real-Postgres proof that revoking/regranting
+  `Organization.smsNotificationsGranted` actually changes `sendSms()`'s
+  behavior for that organization.
+- `test/platform-sms-and-portal-grants.test.ts` — mocked-db suite for
+  `toggleOrganizationSmsNotifications()`/`toggleSchoolPortalAccess()`:
+  operator-only, rejects a missing/nonexistent organization, stamps and
+  clears who-and-when on grant/revoke.
 - `test/school-portal-access.test.ts` — `isSchoolParentRole`/
   `isSchoolStudentRole`/`isNarrowSchoolPortalRole` classification, and
-  `getSchoolNavigationForTenant()`'s per-role filtering.
+  `getSchoolNavigationForTenant()`'s per-role **and** per-entitlement
+  filtering.
 - `test/integration/tenant-isolation/school.test.ts` — real-Postgres proof
   that `resolveSchoolPortalScope()` is organization-scoped, not just
   keyed by the globally-unique `userId` (a user linked in one organization

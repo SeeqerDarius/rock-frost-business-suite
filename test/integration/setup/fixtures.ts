@@ -50,6 +50,14 @@ export async function createTestOrg(label: string): Promise<TestOrg> {
       name: `Integration Test Org ${runId}`,
       tenantCode: `itest-${runId}`,
       status: "ACTIVE",
+      // Every operator-granted, per-organization add-on defaults granted
+      // here too, matching "enables every module for it" below - a test
+      // org is meant to behave like a fully-provisioned tenant so
+      // individual test files don't each have to grant these themselves.
+      // See toggleOrganizationSmsNotifications/toggleSchoolPortalAccess
+      // (src/app/app/platform/actions.ts) for the real operator-facing gate.
+      smsNotificationsGranted: true,
+      schoolPortalGranted: true,
     },
   });
 

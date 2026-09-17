@@ -13,7 +13,6 @@ import { isPlatformOperator } from "@/lib/auth/permissions";
 
 const marketingSchema = z.object({
   organizationDeletionRecoveryDays: z.coerce.number().int().min(1).max(365),
-  smsNotificationsEnabled: z.boolean(),
   showcaseEnabled: z.boolean(),
   showIndustry: z.boolean(),
   eyebrow: z.string().trim().min(2).max(60),
@@ -75,7 +74,6 @@ export async function updatePlatformSettings(formData: FormData): Promise<void> 
   const { tenant, metadata } = await requirePlatformContext();
   const parsed = marketingSchema.safeParse({
     organizationDeletionRecoveryDays: formData.get("organizationDeletionRecoveryDays"),
-    smsNotificationsEnabled: formData.get("smsNotificationsEnabled") === "on",
     showcaseEnabled: formData.get("showcaseEnabled") === "on",
     showIndustry: formData.get("showIndustry") === "on",
     eyebrow: String(formData.get("eyebrow") ?? ""),
@@ -89,7 +87,6 @@ export async function updatePlatformSettings(formData: FormData): Promise<void> 
   if (!parsed.success) redirect("/app/platform/settings?error=invalid-settings");
   const current = readPlatformMarketing(metadata);
   metadata.organizationDeletionRecoveryDays = parsed.data.organizationDeletionRecoveryDays;
-  metadata.smsNotifications = { enabled: parsed.data.smsNotificationsEnabled };
   metadata.publicContact = { salesEmail: parsed.data.salesEmail, supportEmail: parsed.data.supportEmail, phone: parsed.data.publicPhone, whatsapp: parsed.data.publicWhatsapp };
   metadata.publicMarketing = {
     ...publicMarketingInput(current),
@@ -107,7 +104,7 @@ export async function updatePlatformSettings(formData: FormData): Promise<void> 
     action: "platform.settings_updated",
     entityName: "Organization",
     entityId: tenant.organizationId,
-    metadata: { showcaseEnabled: parsed.data.showcaseEnabled, showIndustry: parsed.data.showIndustry, smsNotificationsEnabled: parsed.data.smsNotificationsEnabled, publicContactUpdated: true },
+    metadata: { showcaseEnabled: parsed.data.showcaseEnabled, showIndustry: parsed.data.showIndustry, publicContactUpdated: true },
   });
   revalidateSettingsAndMarketing();
   redirect("/app/platform/settings?saved=settings");

@@ -1,4 +1,4 @@
-import { CalendarCheck, GraduationCap, IdCard, Lock, Receipt, ShieldAlert, Users } from "lucide-react";
+import { CalendarCheck, GraduationCap, IdCard, Lock, Receipt, ShieldAlert, ShieldOff, Users } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card";
@@ -9,6 +9,7 @@ import { formatDate, formatMoney } from "@/components/school/format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { resolveSchoolPortalScope, getSchoolPortalStudentSummary } from "@/modules/school/portal-service";
+import { isSchoolPortalGranted } from "@/lib/platform-communications";
 
 export default async function SchoolPortalPage({ searchParams }: { searchParams: Promise<{ studentId?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
@@ -18,6 +19,15 @@ export default async function SchoolPortalPage({ searchParams }: { searchParams:
       <div className="mx-auto max-w-screen-lg space-y-6">
         <PageHeader title="My Portal" description="Your own or your child's school activity." />
         <EmptyState icon={Lock} title="Portal access is restricted" description="Your role does not include School portal access." />
+      </div>
+    );
+  }
+
+  if (!(await isSchoolPortalGranted(tenant.organizationId))) {
+    return (
+      <div className="mx-auto max-w-screen-lg space-y-6">
+        <PageHeader title="My Portal" description="Your own or your child's school activity." />
+        <EmptyState icon={ShieldOff} title="Not available right now" description="This feature is not currently enabled for your school. Contact the school office for more information." />
       </div>
     );
   }

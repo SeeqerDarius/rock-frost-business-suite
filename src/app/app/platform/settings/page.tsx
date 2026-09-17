@@ -12,7 +12,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
 import { db } from "@/lib/db";
 import { readPlatformMarketing } from "@/lib/platform-marketing";
-import { readPlatformCommunicationsSettings } from "@/lib/platform-communications";
 import { getCurrentTenant } from "@/lib/tenant";
 import { isPlatformOperator } from "@/lib/auth/permissions";
 import {
@@ -47,7 +46,6 @@ export default async function PlatformSettingsPage({ searchParams }: {
   const configuredDays = Number(metadata.organizationDeletionRecoveryDays);
   const recoveryDays = Number.isInteger(configuredDays) ? configuredDays : 30;
   const marketing = readPlatformMarketing(metadata);
-  const communications = readPlatformCommunicationsSettings(metadata);
   const publicContact = metadata.publicContact && typeof metadata.publicContact === "object" && !Array.isArray(metadata.publicContact) ? metadata.publicContact as Record<string, string> : {};
   const { saved, error } = await searchParams;
 
@@ -62,8 +60,6 @@ export default async function PlatformSettingsPage({ searchParams }: {
         <CardContent>
           <form id="platform-controls" action={updatePlatformSettings} className="space-y-4">
             <div className="space-y-2"><Label htmlFor="organizationDeletionRecoveryDays" required>Organization deletion recovery (days)</Label><Input id="organizationDeletionRecoveryDays" name="organizationDeletionRecoveryDays" type="number" min={1} max={365} defaultValue={recoveryDays} required /><p className="text-xs text-muted-foreground">Scheduled tenant deletions remain recoverable for this period.</p></div>
-            <div className="border-t pt-4"><p className="font-medium">Communications</p><p className="text-sm text-muted-foreground">A platform-wide kill switch. Each module (Hotel, Pharmacy, Payroll, Hospital, School) also has its own notification toggle in its own Settings: both must be on for that module to text anyone. Never affects 2FA login codes.</p></div>
-            <SettingsToggleRow id="smsNotificationsEnabled" name="smsNotificationsEnabled" label="Allow SMS notifications platform-wide" defaultChecked={communications.smsNotificationsEnabled} />
             <div className="border-t pt-4"><p className="font-medium">Public customer showcase</p><p className="text-sm text-muted-foreground">Controls the complete customer-story section on the public home page.</p></div>
             <SettingsToggleRow id="showcaseEnabled" name="showcaseEnabled" label="Show customer stories on the home page" defaultChecked={marketing.showcaseEnabled} />
             <SettingsToggleRow id="showIndustry" name="showIndustry" label="Show customer industries" defaultChecked={marketing.showIndustry} />

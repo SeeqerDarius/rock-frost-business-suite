@@ -1,4 +1,4 @@
-import { KeyRound, Lock } from "lucide-react";
+import { KeyRound, Lock, ShieldOff } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { EntityDialog } from "@/components/forms/entity-dialog";
@@ -10,6 +10,7 @@ import { TextField } from "@/components/school/form-fields";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listSchoolStudents } from "@/modules/school/service";
+import { isSchoolPortalGranted } from "@/lib/platform-communications";
 import { inviteGuardianToPortalAction, inviteStudentToPortalAction, revokePortalAccessAction } from "./actions";
 
 const MESSAGES: Record<string, string> = {
@@ -21,6 +22,7 @@ const MESSAGES: Record<string, string> = {
   "invalid-user": "That email belongs to a platform account and cannot be linked here.",
   "guardian-no-email": "Add an email address to this guardian's profile before inviting them.",
   "delivery-failed": "The account was created, but the invitation email could not be delivered.",
+  "not-granted": "The Parent/Student portal is not enabled for your organization. Contact Rock Frost to have it enabled.",
 };
 
 export default async function SchoolPortalAccessPage({ searchParams }: { searchParams: Promise<{ invited?: string; saved?: string; error?: string }> }) {
@@ -33,6 +35,15 @@ export default async function SchoolPortalAccessPage({ searchParams }: { searchP
       <div className="mx-auto max-w-screen-lg space-y-6">
         <PageHeader title="Portal Access" description="Invite guardians and students to the self-service parent/student portal." />
         <EmptyState icon={Lock} title="Portal access management is restricted" description="Your role does not include School student management." />
+      </div>
+    );
+  }
+
+  if (!(await isSchoolPortalGranted(tenant.organizationId))) {
+    return (
+      <div className="mx-auto max-w-screen-lg space-y-6">
+        <PageHeader title="Portal Access" description="Invite guardians and students to the self-service parent/student portal." />
+        <EmptyState icon={ShieldOff} title="Not available for your organization" description="The Parent/Student portal is a paid add-on. Contact Rock Frost to have it enabled for your organization." />
       </div>
     );
   }
