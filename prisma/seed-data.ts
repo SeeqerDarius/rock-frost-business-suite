@@ -167,6 +167,7 @@ export const PERMISSIONS = {
   SCHOOL_HOSTEL_PROFILE_VIEW: "school.hostel_profile.view",
   SCHOOL_DASHBOARD_FINANCIAL_VIEW: "school.dashboard_financial.view",
   SCHOOL_ANALYTICS_VIEW: "school.analytics.view",
+  SCHOOL_PORTAL_VIEW: "school.portal.view",
   HOSTEL_VIEW: "hostel.view",
   HOSTEL_BUILDINGS_MANAGE: "hostel.buildings.manage",
   HOSTEL_ALLOCATIONS_MANAGE: "hostel.allocations.manage",
@@ -236,6 +237,8 @@ export const SYSTEM_ROLES: { name: string; description: string }[] = [
   { name: "Bursar", description: "School fees, receipts, financial reporting, and payroll-input role." },
   { name: "Librarian", description: "School library catalog and circulation role." },
   { name: "Transport Manager", description: "School route and student transport assignment role." },
+  { name: "Parent", description: "School guardian self-service portal role, scoped to their own linked children only." },
+  { name: "Student", description: "School student self-service portal role, scoped to their own record only." },
   { name: "Hostel Manager", description: "Full operational Hostel Management role." },
   { name: "Warden", description: "Hostel building allocation and occupancy role, scoped day-to-day to assigned buildings." },
   { name: "Pharmacy Manager", description: "Full operational Pharmacy Management role." },
@@ -431,6 +434,12 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   Bursar: moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_FEES_MANAGE, PERMISSIONS.SCHOOL_PAYROLL_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW, PERMISSIONS.SCHOOL_STUDENT_PROFILE_VIEW, PERMISSIONS.SCHOOL_STUDENT_FINANCE_VIEW, PERMISSIONS.SCHOOL_DASHBOARD_FINANCIAL_VIEW]),
   Librarian: moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_LIBRARY_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW]),
   "Transport Manager": moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW]),
+  // Deliberately not run through moduleRolePermissions() and not SCHOOL_VIEW -
+  // a portal account only ever sees its own child(ren)/own record, never the
+  // staff-facing School workspace, and never counts against a paid School
+  // staff seat (see assertPortalRoleHasNoSeatLimit in the invite action).
+  Parent: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.SCHOOL_PORTAL_VIEW, PERMISSIONS.AI_ASSISTANT_USE],
+  Student: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.SCHOOL_PORTAL_VIEW, PERMISSIONS.AI_ASSISTANT_USE],
   "Hostel Manager": moduleRolePermissions([
     PERMISSIONS.HOSTEL_VIEW, PERMISSIONS.HOSTEL_BUILDINGS_MANAGE, PERMISSIONS.HOSTEL_ALLOCATIONS_MANAGE,
     PERMISSIONS.HOSTEL_WARDENS_MANAGE, PERMISSIONS.HOSTEL_FEES_MANAGE, PERMISSIONS.HOSTEL_REPORTS_VIEW, PERMISSIONS.HOSTEL_SETTINGS_MANAGE,

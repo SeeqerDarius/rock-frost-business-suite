@@ -3,6 +3,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const mockCreate = vi.fn();
 vi.mock("@/lib/db", () => ({ db: { smsMessage: { create: mockCreate } } }));
 
+const mockIsPlatformSmsNotificationsEnabled = vi.fn().mockResolvedValue(true);
+vi.mock("@/lib/platform-communications", () => ({ isPlatformSmsNotificationsEnabled: mockIsPlatformSmsNotificationsEnabled }));
+
 const { sendSms } = await import("@/lib/sms");
 
 const ORIGINAL_ENV = { ...process.env };
@@ -10,6 +13,7 @@ const ORIGINAL_ENV = { ...process.env };
 describe("sendSms", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockIsPlatformSmsNotificationsEnabled.mockResolvedValue(true);
     process.env.MNOTIFY_API_KEY = "test-key";
     process.env.MNOTIFY_SENDER_ID = "RockFrost";
   });
@@ -88,6 +92,30 @@ describe("sendSms", () => {
     await sendSms({ to: "0241234567", body: "hi", purpose: "PHARMACY_PICKUP_READY", organizationId: "org-1" });
     const nonOtpBody = JSON.parse(fetchSpy.mock.calls[0][1].body);
     expect(nonOtpBody.sms_type).toBeUndefined();
+  });
+
+  it("degrades gracefully and never calls the provider when disabled platform-wide", async () => {
+    mockIsPlatformSmsNotificationsEnabled.mockResolvedValue(false);
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const result = await sendSms({ to: "0241234567", body: "hi", purpose: "SCHOOL_ATTENDANCE_ABSENT", organizationId: "org-1" });
+
+    expect(result).toEqual({ ok: false, error: "SMS notifications are currently disabled platform-wide." });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it("never checks the platform-wide switch for an OTP send, so 2FA still works when notifications are disabled", async () => {
+    mockIsPlatformSmsNotificationsEnabled.mockResolvedValue(false);
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: "success" }) });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const result = await sendSms({ to: "0241234567", body: "code", purpose: "2FA_LOGIN", organizationId: "org-1", isOtp: true });
+
+    expect(result).toEqual({ ok: true });
+    expect(fetchSpy).toHaveBeenCalled();
+    expect(mockIsPlatformSmsNotificationsEnabled).not.toHaveBeenCalled();
   });
 
   it("passes the API key as a query parameter, not in the request body", async () => {

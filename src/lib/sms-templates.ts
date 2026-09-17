@@ -33,6 +33,18 @@ export function payrollPayslipIssuedSms(input: { employeeName: string; netPay: s
   return { body: `Hi ${input.employeeName}, your payslip has been issued. Net pay: ${input.netPay}, pay date: ${formatDate(input.payDate)}.` };
 }
 
+export function schoolAttendanceAbsentSms(input: { guardianName: string; studentName: string; className: string; date: Date }): { body: string } {
+  return { body: `Hi ${input.guardianName}, ${input.studentName} (${input.className}) was marked absent on ${formatDate(input.date)}. Contact the school office if this is unexpected.` };
+}
+
+export function schoolFeePaymentReceivedSms(input: { guardianName: string; studentName: string; amount: string; receiptNumber: string }): { body: string } {
+  return { body: `Hi ${input.guardianName}, we received a payment of ${input.amount} for ${input.studentName}. Receipt: ${input.receiptNumber}. Thank you.` };
+}
+
+export function schoolExamResultsPublishedSms(input: { guardianName: string; studentName: string; examName: string }): { body: string } {
+  return { body: `Hi ${input.guardianName}, results for ${input.studentName}'s "${input.examName}" have been published. Check the parent portal or contact the school for details.` };
+}
+
 export function hospitalAppointmentReminderSms(input: {
   patientName: string;
   facilityName: string;

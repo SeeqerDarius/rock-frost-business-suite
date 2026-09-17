@@ -209,16 +209,19 @@ not scale. Requested: filter/pagination parameters on
 `listSchoolStudents`, `listSchoolFeeInvoices`, `listSchoolAttendance`, and
 `listSchoolLibrary`.
 
-**SC-5 — Grading scale has no reader.**
-`GradingScaleField` writes
-`[{ "grade": "A", "min": 80, "max": 100 }, …]` into `SchoolSettings.gradingScale`.
-Nothing reads it back — exam results still take a free-text `grade`. Requested:
-either validate this shape in `upsertSchoolSettingsAction` and use it to derive
-`grade` in `recordSchoolExamResult`, or confirm a different shape and this
-component will be aligned to it.
+**SC-5 — RESOLVED.** `resolveGradeFromScale()` in `src/modules/school/service.ts`
+reads `SchoolSettings.gradingScale` back and auto-derives `grade` (and now
+`remark`) in `recordSchoolExamResult()` when the caller doesn't supply one
+explicitly. `GradingScaleField` ships a "Ghana (WASSCE/BECE) 9-point scale"
+preset (`A1`-`F9` with remarks) alongside the generic A-F preset — see
+`docs/SCHOOL_PARENT_STUDENT_PORTAL.md` for the grading/broadsheet design.
 
-**SC-6 — `allowRanking` has no effect.** The setting is stored but no
-ranking is computed or displayed anywhere.
+**SC-6 — RESOLVED.** `allowRanking` now gates
+`getSchoolBroadsheet()` (`src/modules/school/broadsheet-service.ts`), exposed
+at Exams & Grading > Broadsheet: subjects across the top, students ranked by
+average percentage down the side, tie-broken by total then name. When the
+setting is off, the broadsheet still shows the same table, sorted
+alphabetically with no position column.
 
 **SC-7 — Library loans never become `OVERDUE`.** No job transitions
 `BORROWED` to `OVERDUE`. The UI compares `dueAt` to the current time at
@@ -236,9 +239,12 @@ books, and routes can be created but never edited or deactivated, though
 `active` flags exist on several models. Transport assignments cannot be
 removed. Refunds exist in the schema (`refundedAt`) with no action.
 
-**SC-10 — Report cards are not implemented.** Exam results can be published,
-but nothing assembles a per-student report card, and there is no
-student-detail route.
+**SC-10 — PARTIALLY RESOLVED.** A student-detail route now exists
+(`/app/school/students/[studentId]`), and the class broadsheet
+(`/app/school/exams/broadsheet`) is the per-class equivalent of a report
+card, with each student's own recent results also visible to them or their
+guardian at `/app/school/portal`. A single-student, printable "report card"
+document (one student, every subject, one page) is still not implemented.
 
 ---
 

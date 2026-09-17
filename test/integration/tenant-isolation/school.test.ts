@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import bcrypt from "bcryptjs";
 import * as school from "@/modules/school/service";
 import * as studentProfile from "@/modules/school/student-profile-service";
+import * as portal from "@/modules/school/portal-service";
 import { cleanupTestOrg, createTestOrg, type TestOrg } from "../setup/fixtures";
 import { testDb } from "../setup/db";
 
@@ -108,6 +109,29 @@ describe("School service — real tenant isolation and customer-readiness guards
     await expect(school.linkSchoolGuardian(orgA.organizationId, studentB.id, guardian.id, "Parent")).rejects.toThrow(school.SchoolNotFoundError);
   });
 
+  it("never resolves a portal scope for a user linked to a different tenant's guardian/student record", async () => {
+    const parentUser = await addMemberWithRole(orgA, "Parent", "portal-parent");
+    const studentUser = await addMemberWithRole(orgA, "Student", "portal-student");
+    extraUserIds.push(parentUser.id, studentUser.id);
+
+    const guardian = await school.createSchoolGuardian(orgA.organizationId, { firstName: "Linked", lastName: "Guardian", phone: "233200000200" });
+    const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Linked", lastName: "Student" });
+    await school.linkSchoolGuardian(orgA.organizationId, student.id, guardian.id, "Mother");
+    await testDb.schoolGuardian.update({ where: { id: guardian.id }, data: { userId: parentUser.id } });
+    await testDb.schoolStudent.update({ where: { id: student.id }, data: { userId: studentUser.id } });
+
+    const parentScope = await portal.resolveSchoolPortalScope(orgA.organizationId, parentUser.id);
+    expect(parentScope).toEqual({ type: "guardian", guardianId: guardian.id, studentIds: [student.id] });
+    const studentScope = await portal.resolveSchoolPortalScope(orgA.organizationId, studentUser.id);
+    expect(studentScope).toEqual({ type: "student", studentId: student.id });
+
+    // The same accounts resolve to nothing under orgB - the link is real
+    // (unique userId, so it can't exist twice), but the lookup is still
+    // organization-scoped rather than trusting userId alone.
+    expect(await portal.resolveSchoolPortalScope(orgB.organizationId, parentUser.id)).toBeNull();
+    expect(await portal.resolveSchoolPortalScope(orgB.organizationId, studentUser.id)).toBeNull();
+  });
+
   it("prevents fee overpayment", async () => {
     const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Student", lastName: "A" });
     const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: "2030", startDate: new Date("2030-01-01"), endDate: new Date("2030-12-31") });
@@ -164,7 +188,7 @@ describe("School service — real tenant isolation and customer-readiness guards
     const schoolClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: "P2", name: "Primary 2" });
     const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Fee", lastName: "Student" });
     await school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: year.id, studentId: student.id, classId: schoolClass.id });
-    await school.upsertSchoolSettings(orgA.organizationId, { campusId: campusA.id, attendanceCloseDays: 7, receiptPrefix: "RFS", allowRanking: false });
+    await school.upsertSchoolSettings(orgA.organizationId, { campusId: campusA.id, attendanceCloseDays: 7, receiptPrefix: "RFS", allowRanking: false, smsNotificationsEnabled: false });
     const structure = await school.createSchoolFeeStructure(orgA.organizationId, { campusId: campusA.id, academicYearId: year.id, classId: schoolClass.id, name: "Tuition", amount: "250" });
 
     expect(await school.issueSchoolFeeStructure(orgA.organizationId, structure.id)).toEqual({ eligible: 1, issued: 1, skipped: 0 });
@@ -181,7 +205,7 @@ describe("School service — real tenant isolation and customer-readiness guards
     const schoolClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: "ATT", name: "Attendance Class" });
     const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Attendance", lastName: "Student" });
     await school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: year.id, studentId: student.id, classId: schoolClass.id });
-    await school.upsertSchoolSettings(orgA.organizationId, { campusId: campusA.id, attendanceCloseDays: 1, receiptPrefix: "SCH", allowRanking: false });
+    await school.upsertSchoolSettings(orgA.organizationId, { campusId: campusA.id, attendanceCloseDays: 1, receiptPrefix: "SCH", allowRanking: false, smsNotificationsEnabled: false });
     const oldDate = new Date(now);
     oldDate.setDate(oldDate.getDate() - 3);
     oldDate.setHours(0, 0, 0, 0);
@@ -237,7 +261,7 @@ describe("School service — real tenant isolation and customer-readiness guards
     const schoolClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: "ROSTERWIN", name: "Roster Window Class" });
     const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "RosterWindow", lastName: "Student" });
     await school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: year.id, studentId: student.id, classId: schoolClass.id });
-    await school.upsertSchoolSettings(orgA.organizationId, { campusId: campusA.id, attendanceCloseDays: 1, receiptPrefix: "SCH", allowRanking: false });
+    await school.upsertSchoolSettings(orgA.organizationId, { campusId: campusA.id, attendanceCloseDays: 1, receiptPrefix: "SCH", allowRanking: false, smsNotificationsEnabled: false });
     const oldDate = new Date(now);
     oldDate.setDate(oldDate.getDate() - 3);
     oldDate.setHours(0, 0, 0, 0);

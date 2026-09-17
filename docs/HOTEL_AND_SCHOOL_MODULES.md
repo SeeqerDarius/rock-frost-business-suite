@@ -111,6 +111,14 @@ audit event, and synchronizes active members to the shared HR employee record.
 The invitation acceptance lifecycle remains responsible for activating new
 accounts and creating their HR link, so staff identities are not duplicated.
 
+Three pieces of the Release S2 scope below are now built, ahead of the rest
+of that release: the Ghana (WASSCE/BECE) grading-scale preset and a
+ranking-gated exam broadsheet, School as a fifth SMS-notifying module
+(behind a platform-wide switch plus its own per-campus toggle), and a
+Parent/Student self-service portal with its own narrow-scoped roles and a
+dedicated Portal Access management page. See
+`docs/SCHOOL_PARENT_STUDENT_PORTAL.md` for the full design.
+
 ### Release S2 — teaching, assessment, and communication
 
 - Curriculum/syllabus, subject assignments, teacher allocations, lesson plans,

@@ -1,8 +1,9 @@
 import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
-import { LayoutDashboard, School, Users, CalendarRange, Shapes, ClipboardCheck, Receipt, GraduationCap, CalendarClock, Bus, Library, Banknote, BarChart3, UserRoundCog } from "lucide-react";
+import { LayoutDashboard, School, Users, CalendarRange, Shapes, ClipboardCheck, Receipt, GraduationCap, CalendarClock, Bus, Library, Banknote, BarChart3, UserRoundCog, KeyRound, HeartHandshake } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const schoolNavigation: ModuleNavItem[] = [
+  { label: "My Portal", group: "Overview", href: "/app/school/portal", icon: <HeartHandshake className="size-4" />, description: "See your own or your child's attendance, results, fees, and digital ID." },
   { label: "School Overview", shortLabel: "Overview", group: "Overview", href: "/app/school", icon: <LayoutDashboard className="size-4" />, description: "See enrollment, attendance, fee, and library snapshots and jump into attendance, exams, or timetable workflows." },
   { label: "Students & Guardians", shortLabel: "Students", group: "People", href: "/app/school/students", icon: <Users className="size-4" />, description: "Admit students, link guardians, upload photos, and move students between applicant, active, suspended, withdrawn, and graduated status." },
   { label: "Classes & Enrollment", shortLabel: "Classes", group: "People", href: "/app/school/classes", icon: <Shapes className="size-4" />, description: "Create classes and subjects, enroll students into classes, and assign teachers to a class." },
@@ -16,6 +17,7 @@ export const schoolNavigation: ModuleNavItem[] = [
   { label: "Library", group: "Services", href: "/app/school/library", icon: <Library className="size-4" />, description: "Add books to the catalogue and issue or return loans to students, tracking overdue items." },
   { label: "Campuses", group: "Administration", href: "/app/school/campuses", icon: <School className="size-4" />, description: "Create and manage the physical school sites that students, classes, and fees are tied to." },
   { label: "Staff", group: "Administration", href: "/app/school/staff", icon: <UserRoundCog className="size-4" />, description: "Invite teachers and other school staff, assign their school role, review class assignments, and manage access status." },
+  { label: "Portal Access", group: "Administration", href: "/app/school/portal-access", icon: <KeyRound className="size-4" />, description: "Invite a student's guardian or the student themselves to the parent/student self-service portal." },
   { label: "Reports", group: "Administration", href: "/app/school/reports", icon: <BarChart3 className="size-4" />, description: "View live enrollment, attendance, and fee-collection indicators and export school reports." },
   { label: "School Settings", shortLabel: "Settings", group: "Administration", href: "/app/school/settings", icon: <AnimatedSettingsIcon size={16} />, description: "Configure per-campus attendance correction windows, receipt numbering, and grading scales." },
 ];

@@ -8,7 +8,30 @@ Rock Frost sends SMS through mNotify's Quick Bulk SMS API (`https://api.mnotify.
 
 **Phase 2: SMS as an additional 2FA method, alongside TOTP.** See "SMS one-time codes" below.
 
-**Phase 3 (this doc's current scope): per-module transactional notifications** for Pharmacy, Hotel, Payroll, and Hospital. See "Per-module transactional notifications" below. The Support alert and the marketing tool are separate, later phases; update this doc as each one ships.
+**Phase 3: per-module transactional notifications** for Pharmacy, Hotel, Payroll, and Hospital. See "Per-module transactional notifications" below.
+
+**Phase 4 (this doc's current scope): a platform-wide kill switch, plus School as a fifth notifying module.** See "Platform-wide switch" and "Per-module transactional notifications" below. The Support alert and the marketing tool are separate, later phases; update this doc as each one ships.
+
+## Platform-wide switch
+
+Every non-OTP `sendSms()` call additionally requires
+`isPlatformSmsNotificationsEnabled()` (`src/lib/platform-communications.ts`)
+to be true - a platform operator's own on/off switch for SMS
+*notifications* across every module at once, stored on the platform
+operator organization's own `Organization.metadata.smsNotifications.enabled`
+(default **on**) and edited from the "Communications" card at
+`/app/platform/settings`. This is deliberately its own uncached query
+rather than reusing `findPlatformOrganizationMetadata()`
+(`platform-marketing.ts`, which wraps `unstable_cache`) - `sendSms()` is
+reachable from every module's service layer, and pulling `next/cache` into
+that shared import chain would force every mocked-db test around an
+SMS-sending module to also mock `next/cache`. A kill switch should also
+read as fresh as possible, not wait out a cache window.
+
+This switch never gates `isOtp: true` sends - 2FA login codes keep working
+even when an operator has turned off notification SMS platform-wide. Each
+module's own `smsNotificationsEnabled` toggle (below) still applies on top
+of this: both must be on for that module to actually text anyone.
 
 **Until `MNOTIFY_SENDER_ID` is registered and set, every send - including 2FA codes - degrades to a `console.warn` instead of reaching a phone.** SMS 2FA enrollment and login will complete the request/response flow correctly in this state, but no code actually arrives; treat this as inert until the sender ID is configured (see Configuration below).
 
@@ -43,12 +66,13 @@ mNotify charges an additional per-campaign fee when `sms_type: "otp"` is include
 
 ## Per-module transactional notifications
 
-Four modules can text a party outside the organization when something completes, each gated by its own `smsNotificationsEnabled` flag on that module's settings (off by default) and its own template in `src/lib/sms-templates.ts`. None of these ever throw or block their surrounding operation - each fires only after its transaction has already committed, so a slow or failing SMS send can never roll back or delay real state (dispensing, a reservation, payroll, an appointment).
+Five modules can text a party outside the organization when something happens, each gated by its own `smsNotificationsEnabled` flag on that module's settings (off by default) and its own template in `src/lib/sms-templates.ts`. None of these ever throw or block their surrounding operation - each fires only after its transaction has already committed, so a slow or failing SMS send can never roll back or delay real state (dispensing, a reservation, payroll, an appointment, attendance/a payment/a published exam).
 
 - **Pharmacy** (`PHARMACY_PICKUP_READY`): `dispense()`'s immediate-completion path and `approveControlledDispense()`'s completion path both call a shared `notifyPharmacyPickupReady()` after their transaction resolves. No-ops for a walk-in with no registered patient, since there's nowhere to send it.
 - **Hotel** (`HOTEL_BOOKING_CONFIRMED`): `createHotelReservation()`, after the reservation is created. `HotelSettings` is scoped **per property**, not per organization (`propertyId @unique`) - a multi-property organization can turn this on for one property and off for another, and the check reads the specific property's own settings.
 - **Payroll** (`PAYROLL_PAYSLIP_ISSUED`): `processRun()`, after the run's transaction commits - looping every payslip just created and preferring `HrEmployee.mobilePhone` over `phone` when both are set.
 - **Hospital** (`HOSPITAL_APPT_REMINDER`): the only schedule-based trigger in this phase, not action-triggered - a new daily cron (`src/app/api/cron/appointment-reminders/route.ts`, `vercel.json`, `0 8 * * *`) calls `sendDueAppointmentReminders()`, which finds every `SCHEDULED` `HospitalAppointment` whose `scheduledStart` falls on the calendar day after the cron runs, at a facility with the setting on. `HospitalSettings` is scoped **per facility**, not per organization (`facilityId @unique`), same reasoning as Hotel. Deduped against the `SmsMessage` log (`relatedType: "HospitalAppointment"`) before each send, so a second sweep - deliberate re-run or an accidental double-fire - never double-texts the same appointment.
+- **School** (`SCHOOL_ATTENDANCE_ABSENT`, `SCHOOL_FEE_PAYMENT_RECEIVED`, `SCHOOL_EXAM_RESULTS_PUBLISHED`): `recordSchoolAttendance()`/`recordSchoolAttendanceBulk()` (on an `ABSENT` mark), `recordSchoolFeePayment()`, and `publishSchoolExam()`, each calling the shared `notifySchoolGuardians()` after its own write commits. `SchoolSettings` is scoped **per campus**, same reasoning as Hotel/Hospital. Texts every guardian linked to the student who has a phone number - not just one "primary" contact - since either parent typically wants an attendance/fee/results alert. See `docs/SCHOOL_PARENT_STUDENT_PORTAL.md` for the full feature (this is one of three parts, alongside the exam broadsheet and the Parent/Student portal).
 
 ## Testing
 
@@ -56,7 +80,7 @@ Four modules can text a party outside the organization when something completes,
 - `test/sms-templates.test.ts` - pure template-content tests for the four Phase 3 notification bodies.
 - `test/appointment-reminders-cron.test.ts` - the same auth-check/success/failure shape as `test/trial-expiry-cron.test.ts`, mocked against `sendDueAppointmentReminders()`.
 - `test/integration/sms/pharmacy-pickup-ready-sms.test.ts`, `hotel-booking-confirmed-sms.test.ts`, `payroll-payslip-issued-sms.test.ts`, `hospital-appointment-reminder-sms.test.ts` - real-Postgres suites proving each trigger fires exactly when it should (setting on + phone present), never fires when the setting is off or the phone is missing, and - for the Hospital cron - never double-texts on a second sweep.
-- `test/sms.test.ts` - mocked-db suite (`npm run test`), mocks `fetch` and `@/lib/db`, covers the unconfigured/invalid-phone/success/provider-error/network-error branches and confirms the API key is sent as a query param (never in the body).
+- `test/sms.test.ts` - mocked-db suite (`npm run test`), mocks `fetch`, `@/lib/db`, and `@/lib/platform-communications`, covers the unconfigured/invalid-phone/success/provider-error/network-error/platform-disabled branches, confirms the platform-wide switch never applies to an OTP send, and confirms the API key is sent as a query param (never in the body).
 - `test/sms-otp.test.ts` - mocked-db suite covering issue/consume/attempt-limit/expiry/hashing for `TwoFactorOtpChallenge`.
 - `test/nextauth-sms-2fa.test.ts` - exercises `authorize()`'s SMS branch directly. Note: this installed next-auth version's `CredentialsProvider()` factory doesn't preserve the app's `authorize()` as the provider's own `.authorize` property (that's hardcoded to a `() => null` stub) - the real function only survives under `.options.authorize`, confirmed by reading `node_modules/next-auth/providers/credentials.js`. Any future test that needs to call `authorize()` directly must go through `.options.authorize`, not `.authorize`.
 - `test/auth-request-login-sms-code.test.ts` - covers `requestLoginSmsCode()`'s generic-response/lockout/leak-prevention behavior.

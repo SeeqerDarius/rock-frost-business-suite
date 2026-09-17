@@ -90,8 +90,23 @@ export default async function SchoolSettingsPage({ searchParams }: { searchParam
                       id={`${campus.id}-allow-ranking`}
                       name="allowRanking"
                       label="Allow class rankings"
-                      hint="Publishes each student's position within their class alongside results."
+                      hint="Publishes each student's position within their class alongside results (see Exams & Grading > Broadsheet)."
                       defaultChecked={settings?.allowRanking}
+                      disabled={!canManage}
+                    />
+                  </section>
+
+                  <section className="space-y-4">
+                    <div>
+                      <h2 className="text-sm font-semibold">SMS notifications</h2>
+                      <p className="text-xs text-muted-foreground">Texts guardians when a student is marked absent, a fee payment is received, or exam results are published. Also requires SMS to be enabled platform-wide (a platform administrator&apos;s setting).</p>
+                    </div>
+                    <CheckboxField
+                      id={`${campus.id}-sms-notifications`}
+                      name="smsNotificationsEnabled"
+                      label="Enable SMS notifications for this campus"
+                      hint="Off by default. Guardians must have a phone number on file to receive a text."
+                      defaultChecked={settings?.smsNotificationsEnabled}
                       disabled={!canManage}
                     />
                   </section>
