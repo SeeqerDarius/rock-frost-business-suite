@@ -83,6 +83,8 @@ Node version is pinned in `.nvmrc`/`package.json`'s `engines` field. Required en
 
 **Platform-owner isolation check/repair**: `npm run db:repair-platform-owner-isolation` removes any historical tenant memberships from platform identities, revokes their pending tenant invitations, and invalidates affected sessions. Deployment migration `20260726050000_enforce_platform_owner_isolation` performs the same idempotent repair automatically.
 
+**Looking at a UI change in a browser**: `npx tsx scripts/local-preview-fixture.ts` (after `npm run db:seed`) additively creates a platform anchor with one Super Admin login and one fully-populated tenant organization, then prints the credentials and the tenant's id. It deletes nothing and refuses to run unless `DATABASE_URL` points at localhost. Set `LOCAL_PREVIEW_PASSWORD` to choose the password. `NEXTAUTH_SECRET` must be set locally or sign-in fails with a JWE decryption error.
+
 ## Project structure
 
 See `docs/ARCHITECTURE.md` for the full breakdown. Short version:
