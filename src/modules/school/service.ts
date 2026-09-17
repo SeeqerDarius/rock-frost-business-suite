@@ -6,6 +6,7 @@ import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@/lib/trend-buckets";
 import { sendSms } from "@/lib/sms";
 import { schoolAttendanceAbsentSms, schoolExamResultsPublishedSms, schoolFeePaymentReceivedSms } from "@/lib/sms-templates";
+import { assertWithinModuleLimit } from "@/platform/entitlements/resolve";
 
 export class SchoolStateError extends Error {
   constructor(message: string, readonly code = "blocked") {
@@ -33,8 +34,10 @@ async function nextCode(organizationId: string, prefix: string, count: () => Pro
  * Texts every guardian linked to a student who has a phone number, gated
  * by that student's campus's own `SchoolSettings.smsNotificationsEnabled`
  * (off by default - same convention as Hotel/Pharmacy/Payroll/Hospital).
- * `sendSms()` separately enforces the platform-wide kill switch, so this
- * never needs to check that itself. Always called after its triggering
+ * `sendSms()` separately enforces the entitlement for this organization's
+ * School plan (`school.sms`, Pro and up, or the operator's override - see
+ * canSendModuleSms in src/lib/platform-communications.ts), so this never
+ * needs to check that itself. Always called after its triggering
  * write has already committed, and never awaited in a way that would
  * block or fail that write - a slow or failed text is fire-and-forget.
  */
@@ -56,6 +59,7 @@ async function notifySchoolGuardians(params: {
       body: params.body(link.guardian.firstName),
       purpose: params.purpose,
       organizationId: params.organizationId,
+      moduleKey: "school",
       relatedType: params.relatedType,
       relatedId: params.relatedId,
     });
@@ -66,7 +70,15 @@ export function listSchoolCampuses(organizationId: string) {
   return db.schoolCampus.findMany({ where: { organizationId }, include: { _count: { select: { students: true, classes: true } } }, orderBy: { name: "asc" } });
 }
 
-export function createSchoolCampus(organizationId: string, data: { code: string; name: string; address?: string | null; phone?: string | null; email?: string | null }) {
+export async function createSchoolCampus(organizationId: string, data: { code: string; name: string; address?: string | null; phone?: string | null; email?: string | null }) {
+  // Enforced here rather than in the action layer so every caller is covered,
+  // including the admission flow and any future import. Counts only active
+  // campuses: a deactivated site is not consuming the plan.
+  await assertWithinModuleLimit(
+    organizationId,
+    "school.campuses",
+    await db.schoolCampus.count({ where: { organizationId, active: true } }),
+  );
   return db.schoolCampus.create({ data: { organizationId, ...data } });
 }
 
@@ -129,6 +141,14 @@ export function createSchoolStudent(organizationId: string, data: { campusId: st
   return createWithUniqueRetry(async () => {
     const campus = await db.schoolCampus.findFirst({ where: { id: data.campusId, organizationId, active: true } });
     if (!campus) throw new SchoolNotFoundError("Campus not found.");
+    // Counts enrolled students only. A withdrawn or graduated record is
+    // history the school must keep, and charging a plan for it would push
+    // schools towards deleting records they are required to retain.
+    await assertWithinModuleLimit(
+      organizationId,
+      "school.students",
+      await db.schoolStudent.count({ where: { organizationId, status: { in: ["ACTIVE", "APPLICANT", "SUSPENDED"] } } }),
+    );
     return db.schoolStudent.create({ data: { organizationId, admissionNumber: await nextCode(organizationId, "STU", () => db.schoolStudent.count({ where: { organizationId } })), status: "ACTIVE", ...data } });
   });
 }

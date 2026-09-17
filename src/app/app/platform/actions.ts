@@ -150,11 +150,17 @@ export async function toggleOrganizationOfflineAccess(formData: FormData): Promi
 }
 
 /**
- * SMS notifications are a paid add-on, same shape as offline access above:
- * granting it here doesn't turn any module's SMS on by itself, it only lets
- * that organization's own admin then enable a specific module's own
- * smsNotificationsEnabled toggle - sendSms() (src/lib/sms.ts) enforces this
- * grant regardless of what that toggle says. See docs/SMS_INTEGRATION.md.
+ * SMS notifications. Since plan tiers landed this is an **operator
+ * override**, not the primary gate: a module's own tier normally decides
+ * whether it may text (School's `school.sms`, Pro and up), and setting this
+ * lets every module send regardless of tier. It exists so the tier rollout
+ * never withdrew SMS from an organization that had already been granted it,
+ * and it remains the only gate for the four modules whose ladders are still
+ * pending (Hotel, Pharmacy, Payroll, Hospital). Granting it still turns
+ * nothing on by itself: each module's own `smsNotificationsEnabled` toggle
+ * has to be switched on too. See `canSendModuleSms()` in
+ * src/lib/platform-communications.ts, docs/PLAN_TIERS.md, and
+ * docs/SMS_INTEGRATION.md.
  */
 export async function toggleOrganizationSmsNotifications(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   const tenant = await requireCurrentTenant();

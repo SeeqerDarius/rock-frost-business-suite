@@ -17,9 +17,14 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getSchoolAcademicSetup, listSchoolExams, listSchoolStudents, resolveTeacherClassScope } from "@/modules/school/service";
 import { createExamAction, publishExamAction, recordExamResultAction, submitExamForModerationAction } from "../actions";
+import { schoolPlanGate } from "@/components/school/plan-gate";
 
 export default async function SchoolExamsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
+  // Plan gate. Navigation already hides this page when the plan does
+  // not include it, but a hidden link is not a boundary.
+  const gate = await schoolPlanGate(tenant.organizationId, "school.exams", "Exams & Grading", "Assessments move through result entry, moderation, and publishing. Results become visible to families only once published.");
+  if (gate) return gate;
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_MANAGE);
   const canPublish = hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_PUBLISH);
   const [[years, allClasses, subjects], students, exams, teacherClassScope] = await Promise.all([

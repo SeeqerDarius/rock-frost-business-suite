@@ -14,12 +14,17 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listSchoolPayrollAdjustments } from "@/modules/school/service";
 import { createPayrollAdjustmentAction } from "../actions";
+import { schoolPlanGate } from "@/components/school/plan-gate";
 
 /** Free-text `type` values, offered as a list so entries stay consistent across periods. */
 const ADJUSTMENT_TYPES = ["Teaching allowance", "Substitute cover", "Overtime", "Examination duty", "Transport allowance", "Deduction", "Bonus", "Other"];
 
 export default async function SchoolPayrollPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
+  // Plan gate. Navigation already hides this page when the plan does
+  // not include it, but a hidden link is not a boundary.
+  const gate = await schoolPlanGate(tenant.organizationId, "school.payroll", "School Payroll", "Education-specific payroll inputs for workload, substitutes, and allowances.");
+  if (gate) return gate;
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_PAYROLL_MANAGE);
   const adjustments = await listSchoolPayrollAdjustments(tenant.organizationId);
 

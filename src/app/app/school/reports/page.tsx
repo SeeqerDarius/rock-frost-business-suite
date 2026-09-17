@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getSchoolAcademicSetup, getSchoolReportAnalytics, getSchoolSummary, listSchoolCampuses } from "@/modules/school/service";
+import { schoolPlanGate } from "@/components/school/plan-gate";
 
 const INPUT_CLASS = "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
@@ -29,6 +30,10 @@ function Comparison({ label, current, previous, format = "number", inverse = fal
 
 export default async function SchoolReportsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const tenant = await requireModuleAccess("school");
+  // Plan gate. Navigation already hides this page when the plan does
+  // not include it, but a hidden link is not a boundary.
+  const gate = await schoolPlanGate(tenant.organizationId, "school.reports", "School Reports", "Enrollment, attendance, collections, arrears, library, and transport indicators.");
+  if (gate) return gate;
   if (!hasPermission(tenant, PERMISSIONS.SCHOOL_REPORTS_VIEW)) return <div className="mx-auto max-w-screen-2xl space-y-6"><PageHeader title="School Reports" description="Enrollment, attendance, collections, arrears, library, and transport indicators." /><EmptyState icon={Lock} title="School reports are restricted" description="Your role does not include School reporting. An organization administrator can grant the School reports permission." /></div>;
 
   const query = await searchParams;
