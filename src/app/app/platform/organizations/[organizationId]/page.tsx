@@ -20,6 +20,8 @@ import { resolveOfflinePolicy, OFFLINE_SUPPORTED_MODULES } from "@/lib/pwa/polic
 import { getOrganizationHealthSnapshot } from "@/platform/organizations/health";
 import { ModuleToggle } from "../module-toggle";
 import { OfflineAccessToggle } from "../offline-access-toggle";
+import { SmsNotificationsToggle } from "../sms-notifications-toggle";
+import { SchoolPortalToggle } from "../school-portal-toggle";
 import {
   permanentlyDeleteOrganization,
   resendOrganizationInvitation,
@@ -317,6 +319,48 @@ export default async function OrganizationDetailPage({
           </div>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>SMS notifications</CardTitle>
+          <CardDescription>A paid add-on. Granting it lets this organization&apos;s own admin turn on SMS notifications in any of its modules&apos; own Settings (Hotel, Pharmacy, Payroll, Hospital, School) - it does not turn any of them on by itself, and 2FA login codes are unaffected either way.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+            <div>
+              <p className="text-sm font-medium">{organization.smsNotificationsGranted ? "Granted" : "Not granted"}</p>
+              <p className="text-xs text-muted-foreground">
+                {organization.smsNotificationsGranted && organization.smsNotificationsGrantedAt
+                  ? `Granted ${organization.smsNotificationsGrantedAt.toLocaleString()}`
+                  : "This organization cannot send SMS notifications from any module until access is granted here."}
+              </p>
+            </div>
+            <SmsNotificationsToggle organizationId={organization.id} granted={organization.smsNotificationsGranted} />
+          </div>
+        </CardContent>
+      </Card>
+
+      {enabledByModuleCode.get("school") ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>School: Parent/Student portal</CardTitle>
+            <CardDescription>A paid School add-on. Granting it lets School staff invite guardians and students to the self-service portal at Portal Access - it stays inaccessible to everyone until granted here, even for an already-invited account.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+              <div>
+                <p className="text-sm font-medium">{organization.schoolPortalGranted ? "Granted" : "Not granted"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {organization.schoolPortalGranted && organization.schoolPortalGrantedAt
+                    ? `Granted ${organization.schoolPortalGrantedAt.toLocaleString()}`
+                    : "Portal Access and My Portal stay unavailable to this organization until granted here."}
+                </p>
+              </div>
+              <SchoolPortalToggle organizationId={organization.id} granted={organization.schoolPortalGranted} />
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader><CardTitle>Recent requests</CardTitle><CardDescription>Latest module and customization requests from this organization.</CardDescription></CardHeader>

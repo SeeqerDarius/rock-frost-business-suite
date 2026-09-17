@@ -1,5 +1,8 @@
-import { GraduationCap, Plus } from "lucide-react";
+import { GraduationCap, Plus, Table2 } from "lucide-react";
+import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { Button } from "@/components/ui/button";
@@ -67,7 +70,15 @@ export default async function SchoolExamsPage({ searchParams }: { searchParams: 
       <PageHeader
         title="Exams & Grading"
         description="Assessments move through result entry, moderation, and publishing. Results become visible to families only once published."
-        actions={canManage && termOptions.length > 0 && subjects.length > 0 ? newExamDialog : undefined}
+        actions={
+          <>
+            <Link href="/app/school/exams/broadsheet" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+              <Table2 />
+              Broadsheet
+            </Link>
+            {canManage && termOptions.length > 0 && subjects.length > 0 ? newExamDialog : null}
+          </>
+        }
       />
 
       <FormFeedback

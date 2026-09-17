@@ -4,6 +4,8 @@ import { Prisma, type HotelPaymentMethod, type SchoolAttendanceStatus, type Scho
 import { db } from "@/lib/db";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@/lib/trend-buckets";
+import { sendSms } from "@/lib/sms";
+import { schoolAttendanceAbsentSms, schoolExamResultsPublishedSms, schoolFeePaymentReceivedSms } from "@/lib/sms-templates";
 
 export class SchoolStateError extends Error {
   constructor(message: string, readonly code = "blocked") {
@@ -25,6 +27,39 @@ const STUDENT_TRANSITIONS: Record<SchoolStudentStatus, SchoolStudentStatus[]> = 
 
 async function nextCode(organizationId: string, prefix: string, count: () => Promise<number>) {
   return `${prefix}-${String((await count()) + 1).padStart(5, "0")}`;
+}
+
+/**
+ * Texts every guardian linked to a student who has a phone number, gated
+ * by that student's campus's own `SchoolSettings.smsNotificationsEnabled`
+ * (off by default - same convention as Hotel/Pharmacy/Payroll/Hospital).
+ * `sendSms()` separately enforces the platform-wide kill switch, so this
+ * never needs to check that itself. Always called after its triggering
+ * write has already committed, and never awaited in a way that would
+ * block or fail that write - a slow or failed text is fire-and-forget.
+ */
+async function notifySchoolGuardians(params: {
+  organizationId: string;
+  studentId: string;
+  smsEnabled: boolean;
+  purpose: string;
+  relatedType: string;
+  relatedId: string;
+  body: (guardianFirstName: string) => string;
+}) {
+  if (!params.smsEnabled) return;
+  const links = await db.schoolStudentGuardian.findMany({ where: { organizationId: params.organizationId, studentId: params.studentId }, include: { guardian: true } });
+  for (const link of links) {
+    if (!link.guardian.phone) continue;
+    await sendSms({
+      to: link.guardian.phone,
+      body: params.body(link.guardian.firstName),
+      purpose: params.purpose,
+      organizationId: params.organizationId,
+      relatedType: params.relatedType,
+      relatedId: params.relatedId,
+    });
+  }
 }
 
 export function listSchoolCampuses(organizationId: string) {
@@ -369,7 +404,7 @@ export async function enrollSchoolStudent(organizationId: string, data: { campus
 export async function recordSchoolAttendance(organizationId: string, actingUserId: string, data: { termId: string; classId: string; studentId: string; date: Date; status: SchoolAttendanceStatus; reason?: string | null }) {
   const scope = await resolveTeacherClassScope(organizationId, actingUserId);
   if (scope && !scope.has(data.classId)) throw new SchoolStateError("You can only record attendance for a class you're assigned to.", "class-not-assigned");
-  const enrollment = await db.schoolEnrollment.findFirst({ where: { organizationId, studentId: data.studentId, classId: data.classId, status: "ACTIVE", student: { status: "ACTIVE" }, academicYear: { terms: { some: { id: data.termId } } } }, include: { campus: { include: { settings: true } } } });
+  const enrollment = await db.schoolEnrollment.findFirst({ where: { organizationId, studentId: data.studentId, classId: data.classId, status: "ACTIVE", student: { status: "ACTIVE" }, academicYear: { terms: { some: { id: data.termId } } } }, include: { campus: { include: { settings: true } } }, });
   if (!enrollment) throw new SchoolNotFoundError("Active student enrollment not found.");
   const now = new Date();
   const attendanceDate = new Date(data.date);
@@ -379,7 +414,22 @@ export async function recordSchoolAttendance(organizationId: string, actingUserI
   oldestAllowed.setHours(0, 0, 0, 0);
   oldestAllowed.setDate(oldestAllowed.getDate() - closeDays);
   if (attendanceDate < oldestAllowed) throw new SchoolStateError("The attendance correction window has closed.", "attendance-closed");
-  return db.schoolAttendance.upsert({ where: { studentId_date: { studentId: data.studentId, date: data.date } }, update: { status: data.status, reason: data.reason }, create: { organizationId, ...data } });
+  const record = await db.schoolAttendance.upsert({ where: { studentId_date: { studentId: data.studentId, date: data.date } }, update: { status: data.status, reason: data.reason }, create: { organizationId, ...data } });
+  if (data.status === "ABSENT") {
+    const [student, schoolClass] = await Promise.all([db.schoolStudent.findUnique({ where: { id: data.studentId }, select: { firstName: true, lastName: true } }), db.schoolClass.findUnique({ where: { id: data.classId }, select: { name: true } })]);
+    if (student && schoolClass) {
+      await notifySchoolGuardians({
+        organizationId,
+        studentId: data.studentId,
+        smsEnabled: enrollment.campus.settings?.smsNotificationsEnabled ?? false,
+        purpose: "SCHOOL_ATTENDANCE_ABSENT",
+        relatedType: "SchoolAttendance",
+        relatedId: record.id,
+        body: (guardianName) => schoolAttendanceAbsentSms({ guardianName, studentName: `${student.firstName} ${student.lastName}`, className: schoolClass.name, date: attendanceDate }).body,
+      });
+    }
+  }
+  return record;
 }
 
 export interface SchoolAttendanceRosterEntry {
@@ -470,7 +520,7 @@ export async function recordSchoolAttendanceBulk(
   const valid = data.entries.filter((entry) => activeStudentIds.has(entry.studentId));
   if (valid.length === 0) return { saved: 0, skipped: data.entries.length };
 
-  await db.$transaction(
+  const saved = await db.$transaction(
     valid.map((entry) =>
       db.schoolAttendance.upsert({
         where: { studentId_date: { studentId: entry.studentId, date: data.date } },
@@ -479,6 +529,26 @@ export async function recordSchoolAttendanceBulk(
       }),
     ),
   );
+
+  const smsEnabled = class_.campus.settings?.smsNotificationsEnabled ?? false;
+  const absentees = saved.filter((record) => record.status === "ABSENT");
+  if (smsEnabled && absentees.length > 0) {
+    const students = await db.schoolStudent.findMany({ where: { id: { in: absentees.map((record) => record.studentId) } }, select: { id: true, firstName: true, lastName: true } });
+    const studentsById = new Map(students.map((student) => [student.id, student]));
+    for (const record of absentees) {
+      const student = studentsById.get(record.studentId);
+      if (!student) continue;
+      await notifySchoolGuardians({
+        organizationId,
+        studentId: record.studentId,
+        smsEnabled,
+        purpose: "SCHOOL_ATTENDANCE_ABSENT",
+        relatedType: "SchoolAttendance",
+        relatedId: record.id,
+        body: (guardianName) => schoolAttendanceAbsentSms({ guardianName, studentName: `${student.firstName} ${student.lastName}`, className: class_.name, date: data.date }).body,
+      });
+    }
+  }
 
   return { saved: valid.length, skipped: data.entries.length - valid.length };
 }
@@ -499,7 +569,7 @@ export async function createSchoolFeeInvoice(organizationId: string, data: { aca
 }
 
 export async function recordSchoolFeePayment(organizationId: string, invoiceId: string, data: { amount: Prisma.Decimal.Value; method: HotelPaymentMethod; reference?: string | null }) {
-  return db.$transaction(async (tx) => {
+  const { payment, notify } = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${organizationId}:school-receipt`}))`;
     const invoice = await tx.schoolFeeInvoice.findFirst({ where: { id: invoiceId, organizationId, status: { in: ["ISSUED", "PART_PAID"] } }, include: { payments: true, student: { include: { campus: { include: { settings: true } } } } } });
     if (!invoice) throw new SchoolNotFoundError("Open invoice not found.");
@@ -508,10 +578,23 @@ export async function recordSchoolFeePayment(organizationId: string, invoiceId: 
     const amount = decimal(data.amount);
     if (amount.lte(0) || amount.gt(due)) throw new SchoolStateError("Payment exceeds the outstanding invoice balance.", "payment-exceeds-balance");
     const receiptPrefix = invoice.student.campus.settings?.receiptPrefix?.trim() || "SCH";
-    const payment = await tx.schoolFeePayment.create({ data: { organizationId, invoiceId, studentId: invoice.studentId, receiptNumber: await nextCode(organizationId, receiptPrefix, () => tx.schoolFeePayment.count({ where: { organizationId } })), ...data, amount } });
+    const created = await tx.schoolFeePayment.create({ data: { organizationId, invoiceId, studentId: invoice.studentId, receiptNumber: await nextCode(organizationId, receiptPrefix, () => tx.schoolFeePayment.count({ where: { organizationId } })), ...data, amount } });
     await tx.schoolFeeInvoice.update({ where: { id: invoiceId }, data: { status: amount.eq(due) ? "PAID" : "PART_PAID" } });
-    return payment;
+    return {
+      payment: created,
+      notify: { studentId: invoice.studentId, studentName: `${invoice.student.firstName} ${invoice.student.lastName}`, smsEnabled: invoice.student.campus.settings?.smsNotificationsEnabled ?? false },
+    };
   });
+  await notifySchoolGuardians({
+    organizationId,
+    studentId: notify.studentId,
+    smsEnabled: notify.smsEnabled,
+    purpose: "SCHOOL_FEE_PAYMENT_RECEIVED",
+    relatedType: "SchoolFeePayment",
+    relatedId: payment.id,
+    body: (guardianName) => schoolFeePaymentReceivedSms({ guardianName, studentName: notify.studentName, amount: `GHS ${Number(payment.amount).toFixed(2)}`, receiptNumber: payment.receiptNumber }).body,
+  });
+  return payment;
 }
 
 export function listSchoolFeeStructures(organizationId: string) {
@@ -596,13 +679,15 @@ export async function createSchoolTimetableEntry(organizationId: string, data: {
 }
 
 /**
- * Reads a campus's `SchoolSettings.gradingScale` (`[{ grade, min, max }, …]`
- * as percentages, edited via the Settings > Grading scale control) and
- * returns the matching letter grade for a mark percentage. Returns null if
- * the campus has no grading scale configured or none of its bands match —
- * callers keep whatever grade (if any) was already supplied in that case.
+ * Reads a campus's `SchoolSettings.gradingScale`
+ * (`[{ grade, min, max, remark? }, …]` as percentages, edited via the
+ * Settings > Grading scale control — the "Ghana (WASSCE/BECE) 9-point
+ * scale" preset there populates `remark` too) and returns the matching
+ * band for a mark percentage. Returns null if the campus has no grading
+ * scale configured or none of its bands match — callers keep whatever
+ * grade/remark (if any) was already supplied in that case.
  */
-function resolveGradeFromScale(gradingScale: Prisma.JsonValue | null | undefined, percent: number): string | null {
+export function resolveGradeFromScale(gradingScale: Prisma.JsonValue | null | undefined, percent: number): { grade: string; remark: string | null } | null {
   if (!Array.isArray(gradingScale)) return null;
   for (const entry of gradingScale) {
     if (!entry || typeof entry !== "object") continue;
@@ -610,7 +695,8 @@ function resolveGradeFromScale(gradingScale: Prisma.JsonValue | null | undefined
     const grade = typeof row.grade === "string" ? row.grade : null;
     const min = typeof row.min === "number" ? row.min : null;
     const max = typeof row.max === "number" ? row.max : null;
-    if (grade && min !== null && max !== null && percent >= min && percent <= max) return grade;
+    const remark = typeof row.remark === "string" ? row.remark : null;
+    if (grade && min !== null && max !== null && percent >= min && percent <= max) return { grade, remark };
   }
   return null;
 }
@@ -627,16 +713,20 @@ export async function recordSchoolExamResult(organizationId: string, actingUserI
   const marks = decimal(data.marks);
   if (marks.lt(0) || marks.gt(exam.totalMarks)) throw new SchoolStateError("Marks must be within the exam total.", "marks-out-of-range");
 
-  // Auto-derive the letter grade from the campus's configured grading scale
-  // (Settings > Grading scale) when the caller didn't supply one explicitly —
-  // an explicit grade always wins, so a teacher can still override it.
+  // Auto-derive the letter grade (and its remark, e.g. "Credit") from the
+  // campus's configured grading scale (Settings > Grading scale) when the
+  // caller didn't supply one explicitly — an explicit grade/remark always
+  // wins, so a teacher can still override either.
   let grade = data.grade;
+  let remark = data.remark;
   if (!grade) {
     const percent = marks.div(exam.totalMarks).times(100).toNumber();
-    grade = resolveGradeFromScale(enrollment.student.campus.settings?.gradingScale, percent);
+    const band = resolveGradeFromScale(enrollment.student.campus.settings?.gradingScale, percent);
+    grade = band?.grade ?? null;
+    if (!remark) remark = band?.remark ?? null;
   }
 
-  return db.schoolExamResult.upsert({ where: { examId_studentId: { examId: data.examId, studentId: data.studentId } }, update: { marks, grade, remark: data.remark }, create: { organizationId, ...data, marks, grade } });
+  return db.schoolExamResult.upsert({ where: { examId_studentId: { examId: data.examId, studentId: data.studentId } }, update: { marks, grade, remark }, create: { organizationId, ...data, marks, grade, remark } });
 }
 
 export function listSchoolExams(organizationId: string) { return db.schoolExam.findMany({ where: { organizationId }, include: { academicYear: true, term: true, subject: true, results: { include: { student: true, class: true } } }, orderBy: { examDate: "desc" } }); }
@@ -649,11 +739,23 @@ export async function createSchoolExam(organizationId: string, data: { academicY
 }
 
 export async function publishSchoolExam(organizationId: string, examId: string) {
-  const exam = await db.schoolExam.findFirst({ where: { id: examId, organizationId }, include: { results: true } });
+  const exam = await db.schoolExam.findFirst({ where: { id: examId, organizationId }, include: { results: { include: { student: { include: { campus: { include: { settings: true } } } } } } } });
   if (!exam) throw new SchoolNotFoundError("Exam not found.");
   if (exam.status !== "MODERATION" || exam.results.length === 0) throw new SchoolStateError("Only moderated exams with results can be published.");
   const now = new Date();
-  return db.$transaction([db.schoolExamResult.updateMany({ where: { examId, organizationId }, data: { publishedAt: now } }), db.schoolExam.update({ where: { id: examId }, data: { status: "PUBLISHED", publishedAt: now } })]);
+  const outcome = await db.$transaction([db.schoolExamResult.updateMany({ where: { examId, organizationId }, data: { publishedAt: now } }), db.schoolExam.update({ where: { id: examId }, data: { status: "PUBLISHED", publishedAt: now } })]);
+  for (const result of exam.results) {
+    await notifySchoolGuardians({
+      organizationId,
+      studentId: result.studentId,
+      smsEnabled: result.student.campus.settings?.smsNotificationsEnabled ?? false,
+      purpose: "SCHOOL_EXAM_RESULTS_PUBLISHED",
+      relatedType: "SchoolExam",
+      relatedId: exam.id,
+      body: (guardianName) => schoolExamResultsPublishedSms({ guardianName, studentName: `${result.student.firstName} ${result.student.lastName}`, examName: exam.name }).body,
+    });
+  }
+  return outcome;
 }
 
 export async function submitSchoolExamForModeration(organizationId: string, examId: string) {
@@ -693,7 +795,7 @@ export function listSchoolPayrollAdjustments(organizationId:string){return db.sc
 export function createSchoolPayrollAdjustment(organizationId:string,data:{employeeId:string;period:string;type:string;description:string;amount:Prisma.Decimal.Value}){return db.schoolPayrollAdjustment.create({data:{organizationId,...data,amount:decimal(data.amount)}});}
 
 export function listSchoolSettings(organizationId:string){return db.schoolCampus.findMany({where:{organizationId},include:{settings:true},orderBy:{name:"asc"}});}
-export async function upsertSchoolSettings(organizationId:string,data:{campusId:string;attendanceCloseDays:number;receiptPrefix:string;allowRanking:boolean;gradingScale?:Prisma.InputJsonValue}){if(!(await db.schoolCampus.findFirst({where:{id:data.campusId,organizationId}})))throw new SchoolNotFoundError("Campus not found.");const values={attendanceCloseDays:data.attendanceCloseDays,receiptPrefix:data.receiptPrefix,allowRanking:data.allowRanking,gradingScale:data.gradingScale};return db.schoolSettings.upsert({where:{campusId:data.campusId},update:values,create:{organizationId,...data}});}
+export async function upsertSchoolSettings(organizationId:string,data:{campusId:string;attendanceCloseDays:number;receiptPrefix:string;allowRanking:boolean;smsNotificationsEnabled:boolean;gradingScale?:Prisma.InputJsonValue}){if(!(await db.schoolCampus.findFirst({where:{id:data.campusId,organizationId}})))throw new SchoolNotFoundError("Campus not found.");const values={attendanceCloseDays:data.attendanceCloseDays,receiptPrefix:data.receiptPrefix,allowRanking:data.allowRanking,smsNotificationsEnabled:data.smsNotificationsEnabled,gradingScale:data.gradingScale};return db.schoolSettings.upsert({where:{campusId:data.campusId},update:values,create:{organizationId,...data}});}
 
 export async function getSchoolSummary(organizationId: string) {
   const [students, classes, attendance, invoices, payments, overdueLoans, routes] = await Promise.all([

@@ -2,6 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import { normalizeGhanaPhone } from "@/lib/phone";
+import { isOrganizationSmsNotificationsGranted } from "@/lib/platform-communications";
 
 /**
  * mNotify's Quick Bulk SMS endpoint (confirmed against the current API docs
@@ -60,6 +61,14 @@ export async function sendSms(args: SendSmsArgs): Promise<SendSmsResult> {
   if (!apiKey || !senderId) {
     console.warn(`[sms] Not configured, would have sent "${args.purpose}" to ${args.to}`);
     return { ok: false, error: "SMS delivery is not configured yet." };
+  }
+
+  // The per-organization entitlement (a platform operator's grant, see
+  // platform-communications.ts) never applies to 2FA OTP codes - only a
+  // module's own notification toggle gates those.
+  if (!args.isOtp && !(await isOrganizationSmsNotificationsGranted(args.organizationId))) {
+    console.warn(`[sms] Organization ${args.organizationId} is not entitled to SMS notifications, would have sent "${args.purpose}" to ${args.to}`);
+    return { ok: false, error: "SMS notifications are not enabled for this organization." };
   }
 
   if (!to) {

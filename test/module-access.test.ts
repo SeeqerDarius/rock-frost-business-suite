@@ -173,7 +173,10 @@ describe("module authorization source coverage", () => {
     // 131, up from 126: Accounting Trial Balance, General Ledger (index + per-account), AR/AP Ageing, and Cash Flow each add one guarded page, requireModuleAccess("accounting").
     // 134 adds the School student profile and Accounting financial dashboard.
     // 135 adds the permission-guarded School Staff directory and onboarding page.
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(135);
+    // 136, up from 135: the School exam broadsheet page, requireModuleAccess("school").
+    // 138, up from 136: the School parent/student portal page and the
+    // staff-facing Portal Access page, both requireModuleAccess("school").
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(138);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
     // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
     // all Hostel Server Actions, same shape as School's) joins the sweep
@@ -194,7 +197,8 @@ describe("module authorization source coverage", () => {
     // 67, up from 64: Accounting Contacts, Bills, and Credit Notes each add one guarded actions.ts, requireModuleAccess("accounting").
     // 68, up from 67: the bank-reconciliation workspace's actions.ts, requireModuleAccess("accounting").
     // 69 adds School Staff invitation and access-management actions.
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(69);
+    // 70, up from 69: the School Portal Access actions.ts (guardian/student portal invites), requireModuleAccess("school").
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(70);
 
     for (const { moduleKey, filePath } of guardedFiles) {
       const source = readFileSync(filePath, "utf8");

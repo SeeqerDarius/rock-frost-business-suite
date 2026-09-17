@@ -154,6 +154,7 @@ export const PERMISSIONS = {
   SCHOOL_HOSTEL_PROFILE_VIEW: "school.hostel_profile.view",
   SCHOOL_DASHBOARD_FINANCIAL_VIEW: "school.dashboard_financial.view",
   SCHOOL_ANALYTICS_VIEW: "school.analytics.view",
+  SCHOOL_PORTAL_VIEW: "school.portal.view",
   HOSTEL_VIEW: "hostel.view",
   HOSTEL_BUILDINGS_MANAGE: "hostel.buildings.manage",
   HOSTEL_ALLOCATIONS_MANAGE: "hostel.allocations.manage",
@@ -303,4 +304,34 @@ export function isMechanicRole(tenant: TenantContext): boolean {
  */
 export function isNarrowFleetSelfServiceRole(tenant: TenantContext): boolean {
   return isFleetDriverRole(tenant) || isMechanicRole(tenant);
+}
+
+/**
+ * The seeded Parent/Student roles are self-service portal accounts, same
+ * "narrow permission present, broader one absent" shape as
+ * isFleetDriverRole - a guardian or student only ever sees their own
+ * linked child(ren)/own record via /app/school/portal, never the
+ * staff-facing School workspace.
+ */
+export function isSchoolParentRole(tenant: TenantContext): boolean {
+  return (
+    tenant.role === "Parent" &&
+    tenant.roleIsSystem &&
+    hasPermission(tenant, PERMISSIONS.SCHOOL_PORTAL_VIEW) &&
+    !hasPermission(tenant, PERMISSIONS.SCHOOL_VIEW)
+  );
+}
+
+export function isSchoolStudentRole(tenant: TenantContext): boolean {
+  return (
+    tenant.role === "Student" &&
+    tenant.roleIsSystem &&
+    hasPermission(tenant, PERMISSIONS.SCHOOL_PORTAL_VIEW) &&
+    !hasPermission(tenant, PERMISSIONS.SCHOOL_VIEW)
+  );
+}
+
+/** Either seeded School self-service portal role - used at every nav/chrome-hiding call site, same role as isNarrowFleetSelfServiceRole. */
+export function isNarrowSchoolPortalRole(tenant: TenantContext): boolean {
+  return isSchoolParentRole(tenant) || isSchoolStudentRole(tenant);
 }

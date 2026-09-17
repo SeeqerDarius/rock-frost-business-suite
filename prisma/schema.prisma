@@ -401,6 +401,8 @@ model User {
   uploadedFiles                   FileAsset[]
   fleetDriverProfiles             FleetDriver[]
   schoolClassTeacherAssignments   SchoolClassTeacher[]
+  schoolGuardianPortalProfile     SchoolGuardian?                   @relation("SchoolGuardianPortalUser")
+  schoolStudentPortalProfile      SchoolStudent?                    @relation("SchoolStudentPortalUser")
   hostelWardenAssignments         HostelWarden[]
   fleetOwnerProfiles              FleetOwner[]
   fleetMechanicProfiles           FleetMechanic[]
@@ -568,6 +570,21 @@ model Organization {
   offlineAccessGranted       Boolean             @default(false)
   offlineAccessGrantedAt     DateTime?
   offlineAccessGrantedById   String?
+  /// Same shape and intent as offlineAccessGranted: a platform-operator-only
+  /// entitlement for an organization that has separately arranged (and pays
+  /// for) SMS notifications, gating every module's own smsNotificationsEnabled
+  /// toggle (School/Hotel/Pharmacy/Payroll/Hospital) regardless of what that
+  /// organization's own admin has configured. See docs/SMS_INTEGRATION.md.
+  smsNotificationsGranted    Boolean             @default(false)
+  smsNotificationsGrantedAt  DateTime?
+  smsNotificationsGrantedById String?
+  /// Same shape: a platform-operator-only entitlement for a School customer
+  /// that has separately arranged (and pays for) the Parent/Student portal
+  /// add-on. Gates /app/school/portal and /app/school/portal-access
+  /// regardless of role/permission. See docs/SCHOOL_PARENT_STUDENT_PORTAL.md.
+  schoolPortalGranted        Boolean             @default(false)
+  schoolPortalGrantedAt      DateTime?
+  schoolPortalGrantedById    String?
 
   members                         OrganizationMember[]
   invitations                     Invitation[]
@@ -5278,10 +5295,17 @@ model SchoolGuardian {
   address        String?
   occupation     String?
   photoData      String?  @db.Text
+  /// Links this guardian to a portal login (Parent role). Null until the
+  /// guardian accepts a portal invitation from the Guardian profile page —
+  /// most guardians never get one, so this stays optional rather than
+  /// forcing every admission to create a User account. See
+  /// docs/SCHOOL_PARENT_STUDENT_PORTAL.md.
+  userId         String?  @unique
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  portalUser   User?                   @relation("SchoolGuardianPortalUser", fields: [userId], references: [id], onDelete: SetNull)
   students     SchoolStudentGuardian[]
 
   @@unique([organizationId, guardianNumber])
@@ -5308,11 +5332,17 @@ model SchoolStudent {
   boardingStatus     String?             @default("DAY")
   photoData          String?             @db.Text
   photoOriginalData  String?             @db.Text
+  /// Links this student to a portal login (Student role) for direct
+  /// self-service access, independent of any guardian's own portal
+  /// account. Optional — most students, especially younger ones, never
+  /// get one. See docs/SCHOOL_PARENT_STUDENT_PORTAL.md.
+  userId             String?             @unique
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 
   organization      Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   campus            SchoolCampus                  @relation(fields: [campusId], references: [id], onDelete: Restrict)
+  portalUser        User?                         @relation("SchoolStudentPortalUser", fields: [userId], references: [id], onDelete: SetNull)
   guardians         SchoolStudentGuardian[]
   enrollments       SchoolEnrollment[]
   attendance        SchoolAttendance[]
@@ -5812,6 +5842,12 @@ model SchoolSettings {
   idCardShowEmergencyContact Boolean  @default(false)
   idCardValidityMonths       Int      @default(12)
   idCardPublicFields         Json?
+  /// Off by default, same convention as HotelSettings/PharmacySettings/
+  /// PayrollSettings/HospitalSettings — a campus admin opts in from School
+  /// Settings, and sendSms() additionally still requires the platform-wide
+  /// kill switch (Organization.metadata on the platform operator org) to be
+  /// on. See docs/SMS_INTEGRATION.md.
+  smsNotificationsEnabled    Boolean  @default(false)
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 
