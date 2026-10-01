@@ -32,7 +32,9 @@ The public marketing site has a generated sitemap and robots policy, unique cano
 School customer-readiness is delivered in guarded tranches. School payroll
 adjustments now link to HR employees and feed earnings and deductions into
 full-calendar-month Payroll runs atomically, with recoverable handling for
-unlinked legacy inputs. The Students table now searches within the tenant's
+unlinked legacy inputs. Authorized School staff can update core student profile
+fields with stale-edit protection while preserving admission number, campus,
+status, and class history. The Students table now searches within the tenant's
 database records and returns stable pages instead of loading every student
 for that view. Fee invoices, attendance history, and the library catalogue now
 also search and paginate in tenant-scoped database queries, with fee summary

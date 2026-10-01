@@ -47,6 +47,39 @@ afterAll(async () => {
 });
 
 describe("School service — real tenant isolation and customer-readiness guards", () => {
+  it("updates core student profile fields within the tenant and rejects stale or foreign edits", async () => {
+    const token = `ProfileEdit${Date.now()}`;
+    const student = await school.createSchoolStudent(orgA.organizationId, {
+      campusId: campusA.id,
+      firstName: "Ama",
+      lastName: token,
+      admissionDate: new Date("2031-01-15T00:00:00.000Z"),
+    });
+    const profile = {
+      firstName: "Abena",
+      lastName: token,
+      dateOfBirth: new Date("2015-05-20T00:00:00.000Z"),
+      gender: "Female",
+      admissionDate: new Date("2031-01-20T00:00:00.000Z"),
+    };
+
+    await expect(school.updateSchoolStudentProfile(orgB.organizationId, student.id, student.updatedAt, profile)).rejects.toThrow(school.SchoolNotFoundError);
+    const updated = await school.updateSchoolStudentProfile(orgA.organizationId, student.id, student.updatedAt, profile);
+
+    expect(updated).toMatchObject({
+      id: student.id,
+      admissionNumber: student.admissionNumber,
+      campusId: campusA.id,
+      status: "ACTIVE",
+      firstName: "Abena",
+      lastName: token,
+      gender: "Female",
+    });
+    expect(updated.dateOfBirth?.toISOString()).toBe("2015-05-20T00:00:00.000Z");
+    expect(updated.admissionDate?.toISOString()).toBe("2031-01-20T00:00:00.000Z");
+    await expect(school.updateSchoolStudentProfile(orgA.organizationId, student.id, student.updatedAt, profile)).rejects.toMatchObject({ code: "stale-record" });
+  });
+
   it("searches and paginates student rows in the requested tenant only", async () => {
     const searchToken = `Pagination${Date.now()}`;
     const [first, second, foreign] = await Promise.all([

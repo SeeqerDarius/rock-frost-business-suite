@@ -6,7 +6,7 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import { cuid, shortText, longText, dateInput, moneyAmountPositive, parseWithSchema } from "@/lib/validation";
-import { createSchoolCampus, createSchoolAcademicYear, closeSchoolAcademicYear, deleteSchoolAcademicYear, createSchoolTerm, admitSchoolStudent, createSchoolGuardian, updateSchoolGuardian, linkSchoolGuardian, createSchoolClass, updateSchoolClassCapacity, assignSchoolClassTeacher, removeSchoolClassTeacher, createSchoolSubject, enrollSchoolStudent, recordSchoolAttendanceBulk, createSchoolFeeInvoice, recordSchoolFeePayment, getSchoolFeePaymentForPostingRetry, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, assignPendingSchoolPayrollEmployee, upsertSchoolSettings, transitionSchoolStudent, createSchoolFeeStructure, issueSchoolFeeStructure, updateSchoolStudentPhoto, updateSchoolGuardianPhoto, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
+import { createSchoolCampus, createSchoolAcademicYear, closeSchoolAcademicYear, deleteSchoolAcademicYear, createSchoolTerm, admitSchoolStudent, createSchoolGuardian, updateSchoolGuardian, linkSchoolGuardian, createSchoolClass, updateSchoolClassCapacity, assignSchoolClassTeacher, removeSchoolClassTeacher, createSchoolSubject, enrollSchoolStudent, recordSchoolAttendanceBulk, createSchoolFeeInvoice, recordSchoolFeePayment, getSchoolFeePaymentForPostingRetry, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, assignPendingSchoolPayrollEmployee, upsertSchoolSettings, transitionSchoolStudent, updateSchoolStudentProfile, createSchoolFeeStructure, issueSchoolFeeStructure, updateSchoolStudentPhoto, updateSchoolGuardianPhoto, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
 import { schoolPhotoImageData, schoolStudentPhotoImages } from "@/lib/school-photo-image";
 import { postSchoolFeePaymentRevenue } from "@/modules/school/accounting";
 import { getSurfaceOrigins } from "@/lib/app-surfaces";
@@ -240,6 +240,44 @@ export async function transitionStudentAction(f: FormData) {
   revalidatePath(path);
   revalidatePath("/app/school/classes");
   redirect(`${path}?saved=1`);
+}
+
+export async function updateStudentProfileAction(f: FormData) {
+  const path = "/app/school/students";
+  const tenant = await auth(PERMISSIONS.SCHOOL_STUDENTS_MANAGE, path);
+  const parsed = z.object({
+    studentId: cuid,
+    updatedAt: z.string().datetime().transform((value) => new Date(value)),
+    firstName: shortText,
+    lastName: shortText,
+    dateOfBirth: dateInput.nullable(),
+    gender: shortText.nullable(),
+    admissionDate: dateInput.nullable(),
+  }).safeParse({
+    studentId: clean(f.get("studentId")),
+    updatedAt: clean(f.get("updatedAt")),
+    firstName: clean(f.get("firstName")),
+    lastName: clean(f.get("lastName")),
+    dateOfBirth: clean(f.get("dateOfBirth")),
+    gender: clean(f.get("gender")),
+    admissionDate: clean(f.get("admissionDate")),
+  });
+  if (!parsed.success) redirect(`${path}?error=invalid`);
+  const { studentId, updatedAt, ...data } = parsed.data;
+  try { await updateSchoolStudentProfile(tenant.organizationId, studentId, updatedAt, data); }
+  catch (error) { fail(path, error); }
+  revalidatePath(path);
+  revalidatePath(`/app/school/students/${studentId}`);
+
+  const params = new URLSearchParams();
+  const query = clean(f.get("q"));
+  const status = clean(f.get("status"));
+  const page = clean(f.get("page"));
+  if (query) params.set("q", query.slice(0, 500));
+  if (["APPLICANT", "ACTIVE", "SUSPENDED", "WITHDRAWN", "GRADUATED"].includes(status ?? "")) params.set("status", status!);
+  if (page && /^\d{1,6}$/.test(page)) params.set("page", page);
+  params.set("saved", "1");
+  redirect(`${path}?${params.toString()}`);
 }
 
 /**
