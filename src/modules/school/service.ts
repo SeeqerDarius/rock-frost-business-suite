@@ -455,6 +455,169 @@ export function getSchoolAcademicSetup(organizationId: string) {
   ]);
 }
 
+export function listSchoolAcademicYears(organizationId: string) {
+  return db.schoolAcademicYear.findMany({ where: { organizationId }, select: { id: true, name: true, closedAt: true, startDate: true, endDate: true, current: true }, orderBy: { startDate: "desc" } });
+}
+
+export async function getSchoolEnrollmentRolloverPreview(organizationId: string, academicYearId: string) {
+  const year = await db.schoolAcademicYear.findFirst({
+    where: { id: academicYearId, organizationId },
+    select: {
+      id: true,
+      name: true,
+      enrollments: {
+        where: { status: "ACTIVE", student: { status: "ACTIVE" } },
+        select: { id: true, studentId: true, classId: true, class: { select: { id: true, code: true, name: true, campusId: true, campus: { select: { name: true } } } } },
+        orderBy: [{ class: { name: "asc" } }, { studentId: "asc" }],
+        take: 5001,
+      },
+    },
+  });
+  if (!year) throw new SchoolNotFoundError("Academic year not found.");
+  if (year.enrollments.length > 5000) throw new SchoolStateError("This rollover exceeds the safe batch size of 5,000 learners. Split the work by campus or class.", "rollover-too-large");
+  const classes = new Map<string, { id: string; code: string; name: string; campusId: string; campusName: string; learners: number }>();
+  for (const enrollment of year.enrollments) {
+    const group = classes.get(enrollment.classId) ?? {
+      id: enrollment.class.id,
+      code: enrollment.class.code,
+      name: enrollment.class.name,
+      campusId: enrollment.class.campusId,
+      campusName: enrollment.class.campus.name,
+      learners: 0,
+    };
+    group.learners += 1;
+    classes.set(enrollment.classId, group);
+  }
+  return { year: { id: year.id, name: year.name }, totalLearners: year.enrollments.length, classes: [...classes.values()] };
+}
+
+export async function listSchoolRolloverTargetClasses(organizationId: string, academicYearId: string) {
+  const [classes, counts] = await Promise.all([
+    db.schoolClass.findMany({
+      where: { organizationId, active: true },
+      select: { id: true, code: true, name: true, campusId: true, capacity: true, campus: { select: { name: true } } },
+      orderBy: [{ campus: { name: "asc" } }, { name: "asc" }, { id: "asc" }],
+    }),
+    db.schoolEnrollment.groupBy({
+      by: ["classId"],
+      where: { organizationId, academicYearId, status: "ACTIVE" },
+      _count: { _all: true },
+    }),
+  ]);
+  const enrollmentByClass = new Map(counts.map((row) => [row.classId, row._count._all]));
+  return classes.map(({ campus, ...row }) => ({ ...row, campusName: campus.name, currentEnrollment: enrollmentByClass.get(row.id) ?? 0 }));
+}
+
+export async function rollOverSchoolEnrollments(
+  organizationId: string,
+  sourceYearId: string,
+  targetYearId: string,
+  classMapping: Record<string, string>,
+  expectedLearnersByClass: Record<string, number>,
+  changedById?: string,
+) {
+  if (sourceYearId === targetYearId) throw new SchoolStateError("Choose two different academic years.", "invalid-rollover-years");
+  const mappings = Object.entries(classMapping);
+  if (mappings.length === 0 || mappings.length > 250) throw new SchoolStateError("The rollover class mapping is empty or too large.", "invalid-rollover-mapping");
+  return db.$transaction(async (tx) => {
+    const years = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "SchoolAcademicYear"
+      WHERE "organizationId" = ${organizationId} AND "id" IN (${Prisma.join([sourceYearId, targetYearId])})
+      ORDER BY "id" FOR UPDATE
+    `;
+    if (years.length !== 2) throw new SchoolNotFoundError("One or both academic years could not be found.");
+    const [sourceYear, targetYear] = await Promise.all([
+      tx.schoolAcademicYear.findFirst({ where: { id: sourceYearId, organizationId }, select: { id: true, name: true } }),
+      tx.schoolAcademicYear.findFirst({ where: { id: targetYearId, organizationId }, select: { id: true, name: true, closedAt: true } }),
+    ]);
+    if (!sourceYear || !targetYear) throw new SchoolNotFoundError("One or both academic years could not be found.");
+    if (targetYear.closedAt) throw new SchoolStateError("The destination academic year is archived.", "closed-rollover-target");
+
+    const classIds = [...new Set(mappings.map(([, classId]) => classId))];
+    const lockedClasses = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "SchoolClass"
+      WHERE "organizationId" = ${organizationId} AND "id" IN (${Prisma.join(classIds)}) AND "active" = true
+      ORDER BY "id" FOR UPDATE
+    `;
+    if (lockedClasses.length !== classIds.length) throw new SchoolNotFoundError("A destination class could not be found or is inactive.");
+    const classes = await tx.schoolClass.findMany({ where: { organizationId, id: { in: classIds }, active: true }, select: { id: true, campusId: true, capacity: true } });
+    const targetClassById = new Map(classes.map((schoolClass) => [schoolClass.id, schoolClass]));
+
+    const sourceEnrollments = await tx.schoolEnrollment.findMany({
+      where: { organizationId, academicYearId: sourceYearId, status: "ACTIVE", student: { status: "ACTIVE" } },
+      select: { id: true, studentId: true, classId: true, campusId: true },
+      orderBy: [{ studentId: "asc" }, { id: "asc" }],
+      take: 5001,
+    });
+    if (sourceEnrollments.length > 5000) throw new SchoolStateError("This rollover exceeds the safe batch size of 5,000 learners. Split the work by campus or class.", "rollover-too-large");
+    const sourceClassIds = new Set(sourceEnrollments.map((enrollment) => enrollment.classId));
+    if ([...sourceClassIds].some((classId) => !classMapping[classId])) throw new SchoolStateError("Map every class that has active learners before continuing.", "incomplete-rollover-mapping");
+    if (mappings.length !== sourceClassIds.size || mappings.some(([classId]) => !sourceClassIds.has(classId))) throw new SchoolStateError("The source classes changed. Reload the rollover preview.", "stale-rollover-preview");
+    const actualByClass = new Map<string, number>();
+    for (const enrollment of sourceEnrollments) actualByClass.set(enrollment.classId, (actualByClass.get(enrollment.classId) ?? 0) + 1);
+    if (Object.keys(expectedLearnersByClass).length !== actualByClass.size || [...actualByClass].some(([classId, count]) => expectedLearnersByClass[classId] !== count)) {
+      throw new SchoolStateError("Learner counts changed after the preview. Review the latest counts before continuing.", "stale-rollover-preview");
+    }
+    for (const enrollment of sourceEnrollments) {
+      const targetClass = targetClassById.get(classMapping[enrollment.classId]);
+      if (!targetClass || targetClass.campusId !== enrollment.campusId) throw new SchoolStateError("Each learner must stay mapped to a class at the same campus.", "rollover-campus-mismatch");
+    }
+    const studentIds = [...new Set(sourceEnrollments.map((enrollment) => enrollment.studentId))];
+    if (studentIds.length) {
+      const lockedStudents = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "SchoolStudent"
+        WHERE "organizationId" = ${organizationId} AND "id" IN (${Prisma.join(studentIds)}) AND "status" = 'ACTIVE'::"SchoolStudentStatus"
+        ORDER BY "id" FOR UPDATE
+      `;
+      if (lockedStudents.length !== studentIds.length) throw new SchoolStateError("A learner's status changed. Reload the rollover preview.", "stale-rollover-preview");
+    }
+    const existingTargets = studentIds.length ? await tx.schoolEnrollment.findMany({
+      where: { organizationId, academicYearId: targetYearId, studentId: { in: studentIds } },
+      select: { studentId: true },
+    }) : [];
+    const alreadyEnrolled = new Set(existingTargets.map((enrollment) => enrollment.studentId));
+    const eligible = sourceEnrollments.filter((enrollment) => !alreadyEnrolled.has(enrollment.studentId));
+    const plannedByClass = new Map<string, number>();
+    for (const enrollment of eligible) {
+      const targetClassId = classMapping[enrollment.classId];
+      plannedByClass.set(targetClassId, (plannedByClass.get(targetClassId) ?? 0) + 1);
+    }
+    for (const [classId, planned] of plannedByClass) {
+      const targetClass = targetClassById.get(classId)!;
+      if (targetClass.capacity !== null) {
+        const currentCount = await tx.schoolEnrollment.count({ where: { organizationId, academicYearId: targetYearId, classId, status: "ACTIVE" } });
+        if (currentCount + planned > targetClass.capacity) throw new SchoolStateError("A destination class does not have enough capacity for this rollover.", "rollover-capacity");
+      }
+    }
+
+    if (eligible.length) {
+      await tx.schoolEnrollment.createMany({ data: eligible.map((enrollment) => ({
+        organizationId,
+        campusId: enrollment.campusId,
+        academicYearId: targetYearId,
+        studentId: enrollment.studentId,
+        classId: classMapping[enrollment.classId],
+      })) });
+    }
+    if (sourceEnrollments.length) {
+      await tx.schoolEnrollment.updateMany({
+        where: { organizationId, id: { in: sourceEnrollments.map((enrollment) => enrollment.id) }, status: "ACTIVE" },
+        data: { status: "COMPLETED", endedAt: new Date() },
+      });
+    }
+    await logAuditEvent({
+      organizationId,
+      module: "school",
+      action: "STUDENT_ENROLLMENTS_ROLLED_OVER",
+      entityName: "SchoolAcademicYear",
+      entityId: targetYearId,
+      userId: changedById,
+      metadata: { sourceYearId, sourceYearName: sourceYear.name, targetYearId, targetYearName: targetYear.name, eligible: eligible.length, alreadyEnrolled: alreadyEnrolled.size, completedSourceEnrollments: sourceEnrollments.length, classMapping },
+    }, tx);
+    return { created: eligible.length, alreadyEnrolled: alreadyEnrolled.size, sourceCompleted: sourceEnrollments.length };
+  }, { isolationLevel: "Serializable" });
+}
+
 export function listSchoolGuardians(organizationId: string) {
   return db.schoolGuardian.findMany({
     where: { organizationId },
@@ -598,14 +761,34 @@ export async function updateSchoolStudentGuardianLinks(
 export function listSchoolTimetable(organizationId: string) { return db.schoolTimetableEntry.findMany({ where: { organizationId }, include: { campus: true, term: true, class: true, subject: true }, orderBy: [{ dayOfWeek: "asc" }, { startsAt: "asc" }] }); }
 
 export async function enrollSchoolStudent(organizationId: string, data: { campusId: string; academicYearId: string; studentId: string; classId: string }) {
-  const [student, year, class_] = await Promise.all([
-    db.schoolStudent.findFirst({ where: { id: data.studentId, organizationId, campusId: data.campusId, status: "ACTIVE" } }),
-    db.schoolAcademicYear.findFirst({ where: { id: data.academicYearId, organizationId } }),
-    db.schoolClass.findFirst({ where: { id: data.classId, organizationId, campusId: data.campusId, active: true }, include: { _count: { select: { enrollments: { where: { academicYearId: data.academicYearId, status: "ACTIVE" } } } } } }),
-  ]);
-  if (!student || !year || !class_) throw new SchoolNotFoundError("Student, academic year, or class not found.");
-  if (class_.capacity && class_._count.enrollments >= class_.capacity) throw new SchoolStateError("Class capacity has been reached.", "class-capacity");
-  return db.schoolEnrollment.create({ data: { organizationId, ...data } });
+  return db.$transaction(async (tx) => {
+    const lockedYear = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "SchoolAcademicYear"
+      WHERE "id" = ${data.academicYearId} AND "organizationId" = ${organizationId}
+      FOR UPDATE
+    `;
+    if (!lockedYear.length) throw new SchoolNotFoundError("Student, academic year, or class not found.");
+    const lockedClass = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "SchoolClass"
+      WHERE "id" = ${data.classId} AND "organizationId" = ${organizationId} AND "campusId" = ${data.campusId} AND "active" = true
+      FOR UPDATE
+    `;
+    if (!lockedClass.length) throw new SchoolNotFoundError("Student, academic year, or class not found.");
+    const [student, year, class_] = await Promise.all([
+      tx.schoolStudent.findFirst({ where: { id: data.studentId, organizationId, campusId: data.campusId, status: "ACTIVE" }, select: { id: true } }),
+      tx.schoolAcademicYear.findFirst({ where: { id: data.academicYearId, organizationId }, select: { id: true, closedAt: true } }),
+      tx.schoolClass.findFirst({ where: { id: data.classId, organizationId, campusId: data.campusId, active: true }, select: { id: true, capacity: true } }),
+    ]);
+    if (!student || !year || !class_) throw new SchoolNotFoundError("Student, academic year, or class not found.");
+    if (year.closedAt) throw new SchoolStateError("A closed academic year cannot receive new enrollments.", "closed-rollover-target");
+    const existing = await tx.schoolEnrollment.findUnique({ where: { studentId_academicYearId: { studentId: data.studentId, academicYearId: data.academicYearId } }, select: { id: true } });
+    if (existing) throw new SchoolStateError("This student already has an enrollment in that academic year.", "already-enrolled");
+    if (class_.capacity !== null) {
+      const enrolled = await tx.schoolEnrollment.count({ where: { organizationId, academicYearId: data.academicYearId, classId: class_.id, status: "ACTIVE" } });
+      if (enrolled >= class_.capacity) throw new SchoolStateError("Class capacity has been reached.", "class-capacity");
+    }
+    return tx.schoolEnrollment.create({ data: { organizationId, ...data } });
+  }, { isolationLevel: "Serializable" });
 }
 
 export async function recordSchoolAttendance(organizationId: string, actingUserId: string, data: { termId: string; classId: string; studentId: string; date: Date; status: SchoolAttendanceStatus; reason?: string | null }) {

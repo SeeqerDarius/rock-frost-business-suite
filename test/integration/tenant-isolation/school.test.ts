@@ -47,6 +47,55 @@ afterAll(async () => {
 });
 
 describe("School service — real tenant isolation and customer-readiness guards", () => {
+  it("rolls active learners into a mapped next-year class atomically and preserves prior enrollment history", async () => {
+    const token = `Rollover${Date.now()}`;
+    const sourceYear = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} source`, startDate: new Date("2031-01-01"), endDate: new Date("2031-12-31") });
+    const targetYear = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} target`, startDate: new Date("2032-01-01"), endDate: new Date("2032-12-31") });
+    const sourceClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}A`, name: `${token} source class` });
+    const targetClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}B`, name: `${token} next class`, capacity: 3 });
+    const [first, second] = await Promise.all([
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Ama`, lastName: "One" }),
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Kojo`, lastName: "Two" }),
+    ]);
+    await Promise.all([
+      school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: sourceYear.id, studentId: first.id, classId: sourceClass.id }),
+      school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: sourceYear.id, studentId: second.id, classId: sourceClass.id }),
+      school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: targetYear.id, studentId: first.id, classId: targetClass.id }),
+    ]);
+
+    await expect(school.getSchoolEnrollmentRolloverPreview(orgB.organizationId, sourceYear.id)).rejects.toThrow(school.SchoolNotFoundError);
+    const preview = await school.getSchoolEnrollmentRolloverPreview(orgA.organizationId, sourceYear.id);
+    expect(preview).toMatchObject({ totalLearners: 2, classes: [{ id: sourceClass.id, learners: 2 }] });
+    await expect(school.rollOverSchoolEnrollments(orgA.organizationId, sourceYear.id, targetYear.id, { [sourceClass.id]: targetClass.id }, { [sourceClass.id]: 1 }, orgA.userId)).rejects.toMatchObject({ code: "stale-rollover-preview" });
+    const result = await school.rollOverSchoolEnrollments(orgA.organizationId, sourceYear.id, targetYear.id, { [sourceClass.id]: targetClass.id }, { [sourceClass.id]: 2 }, orgA.userId);
+    expect(result).toEqual({ created: 1, alreadyEnrolled: 1, sourceCompleted: 2 });
+    const targetEnrollments = await testDb.schoolEnrollment.findMany({ where: { organizationId: orgA.organizationId, academicYearId: targetYear.id, studentId: { in: [first.id, second.id] } }, orderBy: { studentId: "asc" } });
+    expect(targetEnrollments).toHaveLength(2);
+    expect(targetEnrollments.every((enrollment) => enrollment.classId === targetClass.id && enrollment.status === "ACTIVE")).toBe(true);
+    expect(await testDb.schoolEnrollment.count({ where: { organizationId: orgA.organizationId, academicYearId: sourceYear.id, status: "ACTIVE", studentId: { in: [first.id, second.id] } } })).toBe(0);
+    expect(await testDb.schoolEnrollment.count({ where: { organizationId: orgA.organizationId, academicYearId: sourceYear.id, status: "COMPLETED", studentId: { in: [first.id, second.id] } } })).toBe(2);
+    expect(await testDb.auditLog.count({ where: { organizationId: orgA.organizationId, action: "STUDENT_ENROLLMENTS_ROLLED_OVER", entityId: targetYear.id } })).toBe(1);
+  });
+
+  it("rolls back every enrollment when a destination class lacks capacity or belongs to another campus", async () => {
+    const token = `RolloverGuard${Date.now()}`;
+    const sourceYear = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} source`, startDate: new Date("2031-01-01"), endDate: new Date("2031-12-31") });
+    const targetYear = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} target`, startDate: new Date("2032-01-01"), endDate: new Date("2032-12-31") });
+    const sourceClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}A`, name: `${token} source class` });
+    const targetClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}B`, name: `${token} next class`, capacity: 1 });
+    const [first, second] = await Promise.all([
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Ama`, lastName: "One" }),
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Kojo`, lastName: "Two" }),
+    ]);
+    await Promise.all([first, second].map((student) => school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: sourceYear.id, studentId: student.id, classId: sourceClass.id })));
+    await expect(school.rollOverSchoolEnrollments(orgA.organizationId, sourceYear.id, targetYear.id, { [sourceClass.id]: targetClass.id }, { [sourceClass.id]: 2 }, orgA.userId)).rejects.toMatchObject({ code: "rollover-capacity" });
+    expect(await testDb.schoolEnrollment.count({ where: { organizationId: orgA.organizationId, academicYearId: targetYear.id } })).toBe(0);
+    expect(await testDb.schoolEnrollment.count({ where: { organizationId: orgA.organizationId, academicYearId: sourceYear.id, status: "ACTIVE" } })).toBe(2);
+
+    await expect(school.rollOverSchoolEnrollments(orgA.organizationId, sourceYear.id, targetYear.id, { [sourceClass.id]: (await school.createSchoolClass(orgB.organizationId, { campusId: campusB.id, code: `${token}X`, name: `${token} foreign class` })).id }, { [sourceClass.id]: 2 }, orgA.userId)).rejects.toThrow(school.SchoolNotFoundError);
+    expect(await testDb.schoolEnrollment.count({ where: { organizationId: orgA.organizationId, academicYearId: sourceYear.id, status: "ACTIVE" } })).toBe(2);
+  });
+
   it("updates core student profile fields within the tenant and rejects stale or foreign edits", async () => {
     const token = `ProfileEdit${Date.now()}`;
     const student = await school.createSchoolStudent(orgA.organizationId, {

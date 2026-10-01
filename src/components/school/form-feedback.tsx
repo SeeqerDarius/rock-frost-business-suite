@@ -30,6 +30,14 @@ const STATE_REASONS: Record<string, string> = {
   "book-unavailable": "No copy of that book is currently available.",
   "stale-record": "The record changed in another request. Refresh and try again.",
   "guardian-duplicate": "A guardian with this name and phone already exists. Use the existing guardian record instead.",
+  "rollover-capacity": "One or more destination classes do not have enough places. Increase class capacity or choose other classes, then review the batch again.",
+  "rollover-campus-mismatch": "A destination class must be at the same campus as its source class.",
+  "closed-rollover-target": "The destination academic year is archived. Choose an open year.",
+  "incomplete-rollover-mapping": "Map every source class with active learners before continuing.",
+  "invalid-rollover-years": "Choose two different academic years.",
+  "invalid-rollover-mapping": "The class mapping is empty or too large. Reload the preview and try again.",
+  "rollover-too-large": "The batch is larger than 5,000 learners. Move one campus or class group at a time.",
+  "stale-rollover-preview": "Learners or enrollments changed after the preview. Reload it and confirm the latest data.",
 };
 
 const GENERIC: Record<SchoolErrorCode, { title: string; description: string }> = {

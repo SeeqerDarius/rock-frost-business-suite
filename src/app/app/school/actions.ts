@@ -6,7 +6,7 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import { cuid, shortText, longText, dateInput, moneyAmountPositive, parseWithSchema } from "@/lib/validation";
-import { createSchoolCampus, createSchoolAcademicYear, closeSchoolAcademicYear, deleteSchoolAcademicYear, createSchoolTerm, admitSchoolStudent, createSchoolGuardian, updateSchoolGuardian, linkSchoolGuardian, updateSchoolStudentGuardianLinks, createSchoolClass, updateSchoolClassCapacity, assignSchoolClassTeacher, removeSchoolClassTeacher, createSchoolSubject, enrollSchoolStudent, recordSchoolAttendanceBulk, createSchoolFeeInvoice, recordSchoolFeePayment, getSchoolFeePaymentForPostingRetry, recordSchoolFeeRefund, getSchoolFeeRefundForPostingRetry, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, assignPendingSchoolPayrollEmployee, upsertSchoolSettings, transitionSchoolStudent, updateSchoolStudentProfile, createSchoolFeeStructure, issueSchoolFeeStructure, updateSchoolStudentPhoto, updateSchoolGuardianPhoto, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
+import { createSchoolCampus, createSchoolAcademicYear, closeSchoolAcademicYear, deleteSchoolAcademicYear, createSchoolTerm, admitSchoolStudent, createSchoolGuardian, updateSchoolGuardian, linkSchoolGuardian, updateSchoolStudentGuardianLinks, createSchoolClass, updateSchoolClassCapacity, assignSchoolClassTeacher, removeSchoolClassTeacher, createSchoolSubject, enrollSchoolStudent, rollOverSchoolEnrollments, recordSchoolAttendanceBulk, createSchoolFeeInvoice, recordSchoolFeePayment, getSchoolFeePaymentForPostingRetry, recordSchoolFeeRefund, getSchoolFeeRefundForPostingRetry, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, assignPendingSchoolPayrollEmployee, upsertSchoolSettings, transitionSchoolStudent, updateSchoolStudentProfile, createSchoolFeeStructure, issueSchoolFeeStructure, updateSchoolStudentPhoto, updateSchoolGuardianPhoto, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
 import { schoolPhotoImageData, schoolStudentPhotoImages } from "@/lib/school-photo-image";
 import { postSchoolFeePaymentRevenue } from "@/modules/school/accounting";
 import { postSchoolFeeRefundRevenue } from "@/modules/school/accounting";
@@ -139,6 +139,37 @@ export async function assignClassTeacherAction(f:FormData){const path="/app/scho
 export async function removeClassTeacherAction(f:FormData){const path="/app/school/classes",t=await auth(PERMISSIONS.SCHOOL_ACADEMICS_MANAGE,path);const p=z.object({classId:cuid,userId:cuid}).safeParse({classId:clean(f.get("classId")),userId:clean(f.get("userId"))});if(!p.success)redirect(`${path}?error=invalid`);await removeSchoolClassTeacher(t.organizationId,p.data.classId,p.data.userId);revalidatePath(path);redirect(`${path}?saved=1`)}
 export async function createSubjectAction(f:FormData){const path="/app/school/classes",t=await auth(PERMISSIONS.SCHOOL_ACADEMICS_MANAGE,path);const p=z.object({code:shortText,name:shortText,description:longText.nullable()}).safeParse({code:clean(f.get("code")),name:clean(f.get("name")),description:clean(f.get("description"))});if(!p.success)redirect(`${path}?error=invalid`);await createSchoolSubject(t.organizationId,p.data);revalidatePath(path);redirect(`${path}?saved=1`)}
 export async function enrollStudentAction(f:FormData){const path="/app/school/classes",t=await auth(PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE,path);const p=z.object({campusId:cuid,academicYearId:cuid,studentId:cuid,classId:cuid}).safeParse(Object.fromEntries(["campusId","academicYearId","studentId","classId"].map(k=>[k,clean(f.get(k))])));if(!p.success)redirect(`${path}?error=invalid`);try{await enrollSchoolStudent(t.organizationId,p.data)}catch(e){fail(path,e)}revalidatePath(path);redirect(`${path}?saved=1`)}
+export async function rollOverEnrollmentsAction(f: FormData) {
+  const path = "/app/school/rollover";
+  const tenant = await auth(PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE, path);
+  const sourceYearId = cuid.safeParse(clean(f.get("sourceYearId")));
+  const targetYearId = cuid.safeParse(clean(f.get("targetYearId")));
+  const mappingEntries = [...f.entries()].filter(([key, value]) => key.startsWith("classMap_") && typeof value === "string");
+  const countEntries = [...f.entries()].filter(([key, value]) => key.startsWith("classCount_") && typeof value === "string");
+  if (!sourceYearId.success || !targetYearId.success || mappingEntries.length > 250 || countEntries.length !== mappingEntries.length) redirect(`${path}?error=invalid`);
+  const classMapping: Record<string, string> = {};
+  const expectedLearnersByClass: Record<string, number> = {};
+  for (const [key, value] of mappingEntries) {
+    const sourceClassId = cuid.safeParse(key.slice("classMap_".length));
+    const targetClassId = cuid.safeParse(value);
+    if (!sourceClassId.success || !targetClassId.success) redirect(`${path}?error=invalid`);
+    classMapping[sourceClassId.data] = targetClassId.data;
+  }
+  for (const [key, value] of countEntries) {
+    const sourceClassId = cuid.safeParse(key.slice("classCount_".length));
+    const count = z.coerce.number().int().positive().max(5000).safeParse(value);
+    if (!sourceClassId.success || !count.success) redirect(`${path}?error=invalid`);
+    expectedLearnersByClass[sourceClassId.data] = count.data;
+  }
+  if (Object.keys(classMapping).length !== Object.keys(expectedLearnersByClass).length) redirect(`${path}?error=invalid`);
+  try {
+    await rollOverSchoolEnrollments(tenant.organizationId, sourceYearId.data, targetYearId.data, classMapping, expectedLearnersByClass, tenant.userId);
+  } catch (error) {
+    fail(path, error);
+  }
+  for (const route of [path, "/app/school/classes", "/app/school/academic-periods"]) revalidatePath(route);
+  redirect(`${path}?saved=1`);
+}
 /**
  * Records attendance for every student in a class on one date from a single
  * roster form submission, instead of one dialog round trip per student. The

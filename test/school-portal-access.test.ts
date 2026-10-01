@@ -64,6 +64,13 @@ describe("getSchoolNavigationForTenant", () => {
     expect(nav.some((item) => item.href === "/app/school/portal")).toBe(false);
   });
 
+  it("shows year rollover only to staff who can manage enrollment", () => {
+    const manager = buildTenant({ role: "Enrollment Manager", permissions: [PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE] });
+    const viewer = buildTenant({ role: "School Viewer", permissions: [PERMISSIONS.SCHOOL_VIEW] });
+    expect(getSchoolNavigationForTenant(manager, false).some((item) => item.href === "/app/school/rollover")).toBe(true);
+    expect(getSchoolNavigationForTenant(viewer, false).some((item) => item.href === "/app/school/rollover")).toBe(false);
+  });
+
   it("shows a School Administrator the full staff navigation, including Portal Access, only when the organization holds the portal entitlement", () => {
     const allSchoolPerms = Object.values(PERMISSIONS).filter((value) => value.startsWith("school."));
     const tenant = buildTenant({ role: "School Administrator", permissions: allSchoolPerms });
