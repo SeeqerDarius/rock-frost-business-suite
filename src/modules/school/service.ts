@@ -519,6 +519,8 @@ export async function rollOverSchoolEnrollments(
   if (sourceYearId === targetYearId) throw new SchoolStateError("Choose two different academic years.", "invalid-rollover-years");
   const mappings = Object.entries(classMapping);
   if (mappings.length === 0 || mappings.length > 250) throw new SchoolStateError("The rollover class mapping is empty or too large.", "invalid-rollover-mapping");
+  // Explicit row locks serialize source/target year and destination-class writes.
+  // Keep READ COMMITTED so capacity counts see rows committed while waiting on those locks.
   return db.$transaction(async (tx) => {
     const years = await tx.$queryRaw<Array<{ id: string }>>`
       SELECT "id" FROM "SchoolAcademicYear"
@@ -615,7 +617,7 @@ export async function rollOverSchoolEnrollments(
       metadata: { sourceYearId, sourceYearName: sourceYear.name, targetYearId, targetYearName: targetYear.name, eligible: eligible.length, alreadyEnrolled: alreadyEnrolled.size, completedSourceEnrollments: sourceEnrollments.length, classMapping },
     }, tx);
     return { created: eligible.length, alreadyEnrolled: alreadyEnrolled.size, sourceCompleted: sourceEnrollments.length };
-  }, { isolationLevel: "Serializable" });
+  });
 }
 
 export function listSchoolGuardians(organizationId: string) {
@@ -761,6 +763,8 @@ export async function updateSchoolStudentGuardianLinks(
 export function listSchoolTimetable(organizationId: string) { return db.schoolTimetableEntry.findMany({ where: { organizationId }, include: { campus: true, term: true, class: true, subject: true }, orderBy: [{ dayOfWeek: "asc" }, { startsAt: "asc" }] }); }
 
 export async function enrollSchoolStudent(organizationId: string, data: { campusId: string; academicYearId: string; studentId: string; classId: string }) {
+  // The year and class locks serialize capacity checks. READ COMMITTED refreshes
+  // the count after any transaction this request had to wait behind.
   return db.$transaction(async (tx) => {
     const lockedYear = await tx.$queryRaw<Array<{ id: string }>>`
       SELECT "id" FROM "SchoolAcademicYear"
@@ -788,7 +792,7 @@ export async function enrollSchoolStudent(organizationId: string, data: { campus
       if (enrolled >= class_.capacity) throw new SchoolStateError("Class capacity has been reached.", "class-capacity");
     }
     return tx.schoolEnrollment.create({ data: { organizationId, ...data } });
-  }, { isolationLevel: "Serializable" });
+  });
 }
 
 export async function recordSchoolAttendance(organizationId: string, actingUserId: string, data: { termId: string; classId: string; studentId: string; date: Date; status: SchoolAttendanceStatus; reason?: string | null }) {

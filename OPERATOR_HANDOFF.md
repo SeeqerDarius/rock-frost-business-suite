@@ -1,11 +1,11 @@
 # Rock Frost Business Suite — Operator Handoff
 
-## 2026-10-01: School academic-year rollover implementation validated locally
+## 2026-10-01: School academic-year rollover CI concurrency fix in progress
 
 - **Scope**: add a permission-checked review and class-mapping workflow to move active learners into a new academic year atomically, preserve source enrollment history, skip learners already placed in the target year, reject changed preview counts, enforce same-campus class mapping and class capacity, and record an audit event. Individual enrollment shares academic-year and class-row locks with the rollover batch to prevent capacity races.
 - **Important files**: School rollover page/action/service/navigation, School `FormFeedback`, School integration/navigation/UX tests, `docs/SCHOOL_CUSTOMER_READINESS.md`, and `README.md`.
 - **Migrations/environment**: none planned; reuses the current academic-year, class, enrollment, and audit tables. No new environment variables.
-- **Validation**: `npm run lint` passed with 0 errors and 2 pre-existing PWA hook-dependency warnings; `npx tsc --noEmit --incremental false` passed; `npm run test -- --run` passed (176 files, 1,349 tests); `npm run build` passed and generated 250 routes; `git diff --check` passed. The local guarded disposable PostgreSQL database is unavailable, so CI integration tests remain a required pre-merge gate. No schema migration was needed.
+- **Validation**: local lint passed with 0 errors and 2 pre-existing PWA hook-dependency warnings; `npx tsc --noEmit --incremental false` passed; `npm run test -- --run` passed (176 files, 1,349 tests); `npm run build` passed and generated 250 routes; `git diff --check` passed. First CI run `36866642619` caught a PostgreSQL `P2034` serialization conflict when the integration fixture enrolled two learners concurrently. Enrollment and rollover now use READ COMMITTED with explicit year/class row locks, so waiting writers re-read capacity after the lock is released; the family-link transaction remains serializable. The disposable PostgreSQL CI rerun is required before merge. No schema migration was needed.
 - **Release state**: not committed, merged, or deployed. Authenticated responsive tenant UI will require a School test session.
 
 ## 2026-10-01: School post-admission family contact management released
