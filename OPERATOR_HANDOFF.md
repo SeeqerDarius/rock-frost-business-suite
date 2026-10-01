@@ -1,12 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
-## 2026-10-01: School student profile editing in progress
+## 2026-10-01: School student profile editing released
 
 - **Scope**: add conflict-safe editing for student name, date of birth, gender, and admission date. Preserve admission number, campus, status, class history, and medical details. Preserve the current student-list search, status, and page after save.
 - **Important files**: `src/modules/school/service.ts`, `src/app/app/school/actions.ts`, `src/app/app/school/students/page.tsx`, `test/integration/tenant-isolation/school.test.ts`, School readiness documentation, and README.
 - **Migrations/environment**: none.
 - **Validation**: `npm run lint` passed with two existing PWA hook-dependency warnings; `npx tsc --noEmit --incremental false` passed; `npm run test` passed (176 files, 1,347 tests); `npm run build` passed (249 routes); `git diff --check` passed. Local disposable-PostgreSQL integration could not be run because its guarded test database is unavailable in this environment; require the CI disposable-database suite before merge.
-- **Release status**: not committed or released. Authenticated responsive tenant UI verification requires a tenant test session.
+- **Release**: commit `c19611e8aa080491cb5cf695d77cf6f229a0bb92` merged via PR #43. CI run `36851978701` passed all five gates, including disposable-PostgreSQL integration, security, and Vercel preview. Production deployment `dpl_FpZsyABn6iBuRmhPoaX6fZDyU4uV` reached `READY` for the merge commit.
+- **Production verification**: the deployment-scoped `/api/health` returned HTTP 200 with the database reachable. No error/fatal runtime logs for the deployment during the first minute after readiness. Authenticated responsive tenant UI verification remains unavailable without a tenant test session; the Vercel preview's protected routes were not visually verified.
 
 ## 2026-10-01: Printable School fee receipts in progress
 
