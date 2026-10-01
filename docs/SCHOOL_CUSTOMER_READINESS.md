@@ -40,6 +40,19 @@ School actions preserve stable rejection codes for customer-readable feedback,
 bulk issuance reports issued/skipped counts, and student status claims reject
 concurrent stale transitions.
 
+## Customer-readiness tranche 3 — fee-payment Accounting delivery
+
+School fee payments remain recorded and receipted even if optional Accounting
+posting fails. Each payment records `PENDING`, `POSTED`, `FAILED`, or
+`NOT_REQUIRED`; users with School fee-management permission can retry failed or
+previously unposted payments. The retry reloads the payment within the active
+organization and reuses the same idempotent Accounting source identity. When
+Accounting is inactive the payment is marked `NOT_REQUIRED` and can be retried
+after Accounting is enabled. The fee page shows posting status beside each
+receipt. Migration `20261001090000_school_fee_accounting_retry` adds the status
+and retry index; existing payments start as `PENDING` so they can be reconciled
+through the same retry path.
+
 ## Customer-readiness tranche 2 — capacity, lifecycle controls, teacher scoping, and UX fixes
 
 Migration `20260818160000_add_school_class_teacher` adds `SchoolClassTeacher`,
@@ -97,8 +110,8 @@ schema change:
 
 - Add fee-structure and bulk-issuance UI, scholarships, credits, refunds,
   reversals, statements, receipt printing, cashier reconciliation, and arrears
-  aging.
-- Add Accounting posting through the Accounting module's public service.
+  aging. Accounting delivery status and retry are now implemented; the other
+  listed finance workflows remain open.
 
 ### Academics
 

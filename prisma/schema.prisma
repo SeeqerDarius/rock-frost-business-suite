@@ -289,6 +289,13 @@ enum FleetPaymentPostingStatus {
   FAILED
 }
 
+enum SchoolFeePaymentPostingStatus {
+  PENDING
+  POSTED
+  FAILED
+  NOT_REQUIRED
+}
+
 enum FleetSalesTargetPeriod {
   DAILY
   WEEKLY
@@ -401,8 +408,8 @@ model User {
   uploadedFiles                   FileAsset[]
   fleetDriverProfiles             FleetDriver[]
   schoolClassTeacherAssignments   SchoolClassTeacher[]
-  schoolGuardianPortalProfile     SchoolGuardian?                   @relation("SchoolGuardianPortalUser")
-  schoolStudentPortalProfile      SchoolStudent?                    @relation("SchoolStudentPortalUser")
+  schoolGuardianPortalProfile     SchoolGuardian?                  @relation("SchoolGuardianPortalUser")
+  schoolStudentPortalProfile      SchoolStudent?                   @relation("SchoolStudentPortalUser")
   hostelWardenAssignments         HostelWarden[]
   fleetOwnerProfiles              FleetOwner[]
   fleetMechanicProfiles           FleetMechanic[]
@@ -541,50 +548,50 @@ model VerificationToken {
 }
 
 model Organization {
-  id                         String              @id @default(cuid())
-  name                       String
-  industry                   String?
-  tenantCode                 String              @unique
-  address                    String?
-  timezone                   String              @default("UTC")
-  billingEmail               String?
-  status                     OrganizationStatus  @default(TRIAL)
-  metadata                   Json?
-  createdAt                  DateTime            @default(now())
-  updatedAt                  DateTime            @updatedAt
-  businessRegistrationNumber String?
-  taxNumber                  String?
-  country                    String?
-  region                     String?
-  city                       String?
-  phone                      String?
-  email                      String?
-  website                    String?
-  logoUrl                    String?
-  currency                   String              @default("GHS")
-  defaultLanguage            String              @default("en")
-  deletionRequestedAt        DateTime?
-  deletionScheduledFor       DateTime?
-  deletionRequestedById      String?
-  deletionPreviousStatus     OrganizationStatus?
-  offlineAccessGranted       Boolean             @default(false)
-  offlineAccessGrantedAt     DateTime?
-  offlineAccessGrantedById   String?
+  id                          String              @id @default(cuid())
+  name                        String
+  industry                    String?
+  tenantCode                  String              @unique
+  address                     String?
+  timezone                    String              @default("UTC")
+  billingEmail                String?
+  status                      OrganizationStatus  @default(TRIAL)
+  metadata                    Json?
+  createdAt                   DateTime            @default(now())
+  updatedAt                   DateTime            @updatedAt
+  businessRegistrationNumber  String?
+  taxNumber                   String?
+  country                     String?
+  region                      String?
+  city                        String?
+  phone                       String?
+  email                       String?
+  website                     String?
+  logoUrl                     String?
+  currency                    String              @default("GHS")
+  defaultLanguage             String              @default("en")
+  deletionRequestedAt         DateTime?
+  deletionScheduledFor        DateTime?
+  deletionRequestedById       String?
+  deletionPreviousStatus      OrganizationStatus?
+  offlineAccessGranted        Boolean             @default(false)
+  offlineAccessGrantedAt      DateTime?
+  offlineAccessGrantedById    String?
   /// Same shape and intent as offlineAccessGranted: a platform-operator-only
   /// entitlement for an organization that has separately arranged (and pays
   /// for) SMS notifications, gating every module's own smsNotificationsEnabled
   /// toggle (School/Hotel/Pharmacy/Payroll/Hospital) regardless of what that
   /// organization's own admin has configured. See docs/SMS_INTEGRATION.md.
-  smsNotificationsGranted    Boolean             @default(false)
-  smsNotificationsGrantedAt  DateTime?
+  smsNotificationsGranted     Boolean             @default(false)
+  smsNotificationsGrantedAt   DateTime?
   smsNotificationsGrantedById String?
   /// Same shape: a platform-operator-only entitlement for a School customer
   /// that has separately arranged (and pays for) the Parent/Student portal
   /// add-on. Gates /app/school/portal and /app/school/portal-access
   /// regardless of role/permission. See docs/SCHOOL_PARENT_STUDENT_PORTAL.md.
-  schoolPortalGranted        Boolean             @default(false)
-  schoolPortalGrantedAt      DateTime?
-  schoolPortalGrantedById    String?
+  schoolPortalGranted         Boolean             @default(false)
+  schoolPortalGrantedAt       DateTime?
+  schoolPortalGrantedById     String?
 
   members                         OrganizationMember[]
   invitations                     Invitation[]
@@ -4370,6 +4377,13 @@ enum PayrollRunStatus {
   CANCELLED
 }
 
+enum PayrollRunPostingStatus {
+  PENDING
+  POSTED
+  FAILED
+  NOT_REQUIRED
+}
+
 model PayrollCompensation {
   id             String   @id @default(cuid())
   organizationId String
@@ -4387,21 +4401,23 @@ model PayrollCompensation {
 }
 
 model PayrollRun {
-  id             String           @id @default(cuid())
+  id             String                  @id @default(cuid())
   organizationId String
   periodStart    DateTime
   periodEnd      DateTime
   payDate        DateTime
-  status         PayrollRunStatus @default(DRAFT)
+  status         PayrollRunStatus        @default(DRAFT)
+  postingStatus  PayrollRunPostingStatus @default(PENDING)
   createdById    String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy    User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
   payslips     PayrollPayslip[]
 
   @@index([organizationId, status])
+  @@index([organizationId, postingStatus])
 }
 
 model PayrollPayslip {
@@ -5647,16 +5663,17 @@ model SchoolStudentDocument {
 }
 
 model SchoolFeePayment {
-  id             String             @id @default(cuid())
+  id             String                        @id @default(cuid())
   organizationId String
   invoiceId      String
   studentId      String
   receiptNumber  String
-  amount         Decimal            @db.Decimal(12, 2)
+  amount         Decimal                       @db.Decimal(12, 2)
   method         HotelPaymentMethod
   reference      String?
-  receivedAt     DateTime           @default(now())
+  receivedAt     DateTime                      @default(now())
   refundedAt     DateTime?
+  postingStatus  SchoolFeePaymentPostingStatus @default(PENDING)
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoice      SchoolFeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
@@ -5665,6 +5682,7 @@ model SchoolFeePayment {
   @@unique([organizationId, receiptNumber])
   @@index([organizationId, receivedAt])
   @@index([invoiceId])
+  @@index([organizationId, postingStatus])
 }
 
 model SchoolExam {

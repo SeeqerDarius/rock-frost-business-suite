@@ -225,6 +225,55 @@ export async function postProcurementSupplierPayment(organizationId: string, inp
 }
 
 /**
+ * Accrues a completed Payroll run: debit gross salaries, credit net salaries
+ * payable and generic payroll deductions payable. Disbursements and statutory
+ * deduction classifications are separate workflows.
+ */
+export async function postPayrollRunAccrual(organizationId: string, input: {
+  runId: string;
+  payDate: Date;
+  grossPay: string;
+  netPay: string;
+  deductions: string;
+  description: string;
+  actorId?: string | null;
+}): Promise<PostModuleRevenueResult> {
+  try {
+    if (!(await isModuleActiveForOrg(db, organizationId, "accounting"))) return { posted: false, reason: "accounting-not-enabled" };
+    const grossPay = new Prisma.Decimal(input.grossPay);
+    const netPay = new Prisma.Decimal(input.netPay);
+    const deductions = new Prisma.Decimal(input.deductions);
+    if (grossPay.lte(0) || netPay.lt(0) || deductions.lt(0) || !grossPay.eq(netPay.plus(deductions))) {
+      throw new Error("Payroll accrual totals do not balance.");
+    }
+    const accounts = await ensureDefaultAccounts(organizationId);
+    const salaryExpense = accounts.find((account) => account.code === "5190" && account.type === "EXPENSE");
+    const salaryPayable = accounts.find((account) => account.code === "2230" && account.type === "LIABILITY");
+    const deductionPayable = accounts.find((account) => account.code === "2220" && account.type === "LIABILITY");
+    if (!salaryExpense || !salaryPayable || !deductionPayable) throw new Error("Payroll control accounts are unavailable.");
+    const lines = [
+      { accountId: salaryExpense.id, debit: grossPay.toFixed(2) },
+      ...(netPay.gt(0) ? [{ accountId: salaryPayable.id, credit: netPay.toFixed(2) }] : []),
+      ...(deductions.gt(0) ? [{ accountId: deductionPayable.id, credit: deductions.toFixed(2) }] : []),
+    ];
+    const entry = await postSourceJournalEntry(organizationId, {
+      sourceModule: "payroll",
+      sourceType: "PAYROLL_RUN",
+      sourceId: input.runId,
+      postingPurpose: "COMPLETED_ACCRUAL",
+      entryDate: input.payDate,
+      description: input.description,
+      createdById: input.actorId,
+      lines,
+    });
+    return { posted: true, journalEntryId: entry.id };
+  } catch (error) {
+    console.error("[accounting-integration] Failed to accrue Payroll run:", { organizationId, runId: input.runId, error });
+    return { posted: false, reason: "error" };
+  }
+}
+
+/**
  * Records a module's cash-basis revenue event in Accounting: debit the
  * shared Cash account, credit that module's own revenue sub-account, so a
  * manager can see both the combined cash position and exactly which

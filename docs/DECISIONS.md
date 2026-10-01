@@ -1,5 +1,13 @@
 # Architecture & Tooling Decisions
 
+## 2026-10-01 - Clear audited dependency fixes with a security-clean lockfile and preserve the single-worker integration contract on Vitest 4
+
+**Decision:** Resolve the CI security audit findings by upgrading Next.js and its matching ESLint config to 16.3.8, Sharp to 0.35.4, and Vitest to 4.1.11, then regenerate the lockfile and apply the remaining compatible transitive security fixes. Keep the PostgreSQL integration runner on the forks pool with `maxWorkers: 1`, `fileParallelism: false`, and `isolate: false`.
+
+**Why:** The initial release PR's `npm audit --audit-level=high` failed on direct Next.js/Sharp/Vitest advisories and vulnerable transitive dependencies. A clean audit is a release requirement. Vitest 4 removes `poolOptions`; using the documented worker limit retains the integration suite's deliberate single shared module graph and prevents concurrent files from racing in the shared disposable database. The Payroll tenant-isolation fixture also now activates its employees through the HR lifecycle before processing a run, matching the production eligibility rule.
+
+**Validation and gate:** A clean `npm ci --ignore-scripts` reported zero vulnerabilities; after Prisma Client generation, the full unit suite passed 1,347/1,347, targeted accounting tests passed 6/6, TypeScript passed, ESLint passed with two existing PWA hook warnings, and the Next.js 16.3.8 production build generated all 249 pages. The disposable-Postgres integration suite remains a required PR gate because no local disposable test URL is configured. See the current dated entry in `OPERATOR_HANDOFF.md` for the release state.
+
 ## 2026-08-29 - Online Collections activation, Phase B3: the guided wizard previews the readiness check with `commit: false`, never as a side effect of a page load
 
 **Decision:** `runSettlementReadinessCheck()` (Phase B1) gained a `commit` option, defaulting to `true` so every existing caller and test keeps its original committing behavior unchanged. The guided activation wizard's readiness step calls it with `commit: false` on every ordinary page render (a GET request), then calls it again with `commit: true` only from the explicit "Activate" Server Action the administrator submits.
@@ -284,5 +292,17 @@ All three are safe for unrestricted commercial, closed-source use.
 - The live Neon Postgres database (schema and data untouched by this rebuild — only application code was replaced; see `docs/DATABASE_STRATEGY.md` for how the new app reconnects to it).
 - Environment variable names (recorded in a private, non-committed migration note — values were never printed or committed).
 - Approved brand assets (`public/RFG.png`, favicon, apple-touch-icon, OG image, manifest, robots.txt, sitemap.xml).
+
+---
+
+## 2026-10-01 — Reliable Accounting delivery for School fees and Payroll
+
+**Decision:** Keep School fee collection and Payroll completion authoritative in their source modules, then post to Accounting through its public, idempotent service. Record delivery status on the source records and let users with the source-module permission retry. A posting failure must not erase a real fee receipt or completed payroll run.
+
+**Accounting treatment:** School collections continue through the School revenue account. Payroll accrues gross wages as a debit to `5190 Payroll Salaries and Wages`, credits net pay to `2230 Payroll Net Payable`, and credits aggregate deductions to `2220 Payroll Deductions Payable`. The account numbers avoid existing rent, payroll template, and Fleet accounts. Decimal totals are validated as balanced before posting. This does not model employee disbursements or statutory deduction classifications.
+
+**Delivery states:** `PENDING`, `POSTED`, `FAILED`, and `NOT_REQUIRED` distinguish an unattempted posting, successful posting, recoverable failure, and Accounting being inactive. Retry queries are organization-scoped and use the same source identity, so repeated attempts cannot create duplicate journals. Refunded School payments are not offered for retry.
+
+**Migration and release gate:** additive status enums/columns/indexes are in migrations `20261001090000_school_fee_accounting_retry` and `20261001100000_payroll_accounting_accrual`. Apply and test these on the guarded disposable PostgreSQL service before production release.
 
 **What was NOT preserved:** the previous `app/`, `components/`, and `lib/` implementation code, and the previous roadmap/architecture docs (archived under `docs/archive/previous-implementation/`, marked obsolete, not authoritative).
