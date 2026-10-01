@@ -41,4 +41,18 @@ describe("School UX upgrade", () => {
     expect(read("src/app/app/school/reports/loading.tsx")).toContain("Loading School reports");
     expect(read("src/app/app/school/reports/error.tsx")).toContain("School reports could not load");
   });
+
+  it("provides a reviewed year rollover with class mapping and transactional safeguards", () => {
+    const rollover = read("src/app/app/school/rollover/page.tsx");
+    const actions = read("src/app/app/school/actions.ts");
+    const service = read("src/modules/school/service.ts");
+    expect(rollover).toContain("Review learners");
+    expect(rollover).toContain("classMap_");
+    expect(rollover).toContain("same campus");
+    expect(actions).toContain("rollOverEnrollmentsAction");
+    expect(actions).toContain("SCHOOL_ENROLLMENT_MANAGE");
+    expect(service).toContain('action: "STUDENT_ENROLLMENTS_ROLLED_OVER"');
+    expect(service).toContain('isolationLevel: "Serializable"');
+    expect(service).toContain('db.schoolEnrollment.groupBy({');
+  });
 });

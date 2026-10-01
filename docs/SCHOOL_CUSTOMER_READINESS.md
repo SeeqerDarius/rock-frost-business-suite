@@ -190,8 +190,15 @@ schema change:
 
 - Post-admission family links now support a tenant-validated primary contact,
   pickup authorization, relationship edits, removal, and audit history.
-- Still needed: admission applications and document workflows, transfer,
-  promotion, and academic-year rollover.
+- Academic-year enrollment rollover is in progress: review active learners,
+  map source classes to same-campus destination classes, check class capacity,
+  reject stale preview counts, skip existing destination placements, and move
+  the batch atomically while preserving completed source-year history.
+  Individual enrollment and rollover share academic-year/class locks so
+  concurrent enrollment cannot bypass capacity checks.
+- Still needed: admission applications and document workflows, student
+  transfer, and promotion decisions that calculate the next class from a
+  configured progression rule.
 - Add bulk import/export with preview, validation, and recoverable error reports.
 - Add printable student profiles and enrollment history.
 

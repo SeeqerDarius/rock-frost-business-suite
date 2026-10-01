@@ -21,6 +21,7 @@ export function getSchoolNavigationForTenant(tenant: TenantContext, schoolPortal
     ["/app/school/students", hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENTS_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENT_PROFILE_VIEW)],
     ["/app/school/classes", hasPermission(tenant, PERMISSIONS.SCHOOL_ACADEMICS_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE)],
     ["/app/school/academic-periods", hasPermission(tenant, PERMISSIONS.SCHOOL_ACADEMICS_MANAGE)],
+    ["/app/school/rollover", hasPermission(tenant, PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE)],
     ["/app/school/attendance", hasPermission(tenant, PERMISSIONS.SCHOOL_ATTENDANCE_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_ATTENDANCE_VIEW)],
     ["/app/school/exams", hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_PUBLISH) || hasPermission(tenant, PERMISSIONS.SCHOOL_ACADEMIC_PERFORMANCE_VIEW)],
     ["/app/school/timetables", hasPermission(tenant, PERMISSIONS.SCHOOL_TIMETABLES_MANAGE)],

@@ -1,12 +1,21 @@
 # Rock Frost Business Suite — Operator Handoff
 
-## 2026-10-01: School post-admission family contact management in progress
+## 2026-10-01: School academic-year rollover CI concurrency fix in progress
+
+- **Scope**: add a permission-checked review and class-mapping workflow to move active learners into a new academic year atomically, preserve source enrollment history, skip learners already placed in the target year, reject changed preview counts, enforce same-campus class mapping and class capacity, and record an audit event. Individual enrollment shares academic-year and class-row locks with the rollover batch to prevent capacity races.
+- **Important files**: School rollover page/action/service/navigation, School `FormFeedback`, School integration/navigation/UX tests, `docs/SCHOOL_CUSTOMER_READINESS.md`, and `README.md`.
+- **Migrations/environment**: none planned; reuses the current academic-year, class, enrollment, and audit tables. No new environment variables.
+- **Validation**: local lint passed with 0 errors and 2 pre-existing PWA hook-dependency warnings; `npx tsc --noEmit --incremental false` passed; `npm run test -- --run` passed (176 files, 1,349 tests); `npm run build` passed and generated 250 routes; `git diff --check` passed. First CI run `36866642619` caught a PostgreSQL `P2034` serialization conflict when the integration fixture enrolled two learners concurrently. Enrollment and rollover now use READ COMMITTED with explicit year/class row locks, so waiting writers re-read capacity after the lock is released; the family-link transaction remains serializable. The disposable PostgreSQL CI rerun is required before merge. No schema migration was needed.
+- **Release state**: not committed, merged, or deployed. Authenticated responsive tenant UI will require a School test session.
+
+## 2026-10-01: School post-admission family contact management released
 
 - **Scope**: add a student-row family-link editor for selecting the primary contact, setting authorized pickup, editing relationships, linking existing guardians, and removing outdated links. Add guardian creation to the Guardian list and avoid loading guardian photo blobs into the student page. Save changes in a tenant-checked, serializable transaction, preserve one primary contact while links remain, and write an audit event.
 - **Important files**: `src/app/app/school/students/page.tsx`, `src/app/app/school/actions.ts`, `src/modules/school/service.ts`, School integration and UX tests, `docs/SCHOOL_CUSTOMER_READINESS.md`, and `README.md`.
 - **Migrations/environment**: none. Uses the existing `SchoolStudentGuardian.primary` and `authorizedPickup` fields. No new environment variables.
-- **Validation**: Prisma validation and generation passed; `npx tsc --noEmit --incremental false` passed; `npm run lint` passed with two pre-existing PWA hook dependency warnings; `npm run test` passed (176 files, 1,347 tests); `npm run build` passed (249 routes); targeted ESLint and `git diff --check` passed. The guarded disposable-PostgreSQL integration suite is not available locally because `TEST_DATABASE_URL` is unset; PR CI must pass the new real-database tenant-isolation and family-link tests before merge.
-- **Release state**: not merged or deployed. Authenticated responsive UI remains unverified without a tenant test session. Do not release until the integration CI gate passes and the protected preview is reviewed where access allows.
+- **Validation**: Prisma validation and generation passed; `npx tsc --noEmit --incremental false` passed; `npm run lint` passed with two pre-existing PWA hook dependency warnings; `npm run test` passed (176 files, 1,347 tests); `npm run build` passed (249 routes); targeted ESLint and `git diff --check` passed. PR #47 CI passed all five checks, including the guarded disposable-PostgreSQL integration suite and Vercel preview.
+- **Production release**: merged PR [#47](https://github.com/SeeqerDarius/rock-frost-business-suite/pull/47) as commit `1dd3e227bfe1b4fc2caf92d5daf8722e83866387`. Production deployment `dpl_6PcQeTyFJyx6czVjsCPFqh8Pz5Eg` reached `READY`; aliases include `app.rockfrostgroup.com`. `https://app.rockfrostgroup.com/api/health` returned HTTP 200 with the database reachable. Vercel's grouped runtime-error scan returned no errors in the first 15 minutes. A detailed deployment-scoped runtime-log query timed out before returning records.
+- **Remaining risks**: authenticated responsive School tenant UI remains unverified because no tenant test session was available. The health endpoint is verified; the protected application route and actual family-link edit still need a tenant session. No schema migration or environment changes were needed.
 
 ## 2026-10-01: Audited School fee refunds released
 
