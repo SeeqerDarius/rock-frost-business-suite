@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-01: School fee, attendance, and catalogue pagination
+
+- **Scope**: moved fee invoice search/status filtering and attendance history search/status filtering into organization-scoped database queries; added deterministic 50-row pages capped at 100 and filter-preserving navigation. Library catalogue search now uses a paged query with a narrow field select. Fee overview totals aggregate organization-wide invoice and non-refunded payment values instead of summing the current page. Corrected the invoice status filter to match schema value `VOID`.
+- **Important files**: `src/modules/school/service.ts`, `src/app/app/school/fees/page.tsx`, `src/app/app/school/attendance/page.tsx`, `src/app/app/school/library/page.tsx`, and `test/integration/tenant-isolation/school.test.ts`; readiness and README status updated.
+- **Migrations/environment**: none.
+- **Validation**: TypeScript passed; lint passed with 0 errors and the 2 existing PWA hook-dependency warnings; unit suite passed 176 files / 1,347 tests; production build passed and generated 249 pages; `git diff --check` passed. New PostgreSQL tenant-isolation/pagination integration coverage awaits the required disposable-database CI job. Responsive tenant-authenticated UI verification remains pending without a tenant test session.
+- **Release status and remaining risks**: local implementation only; do not report as released until CI integration/security/validation, preview, merge, production deployment, health/route/runtime-log checks pass. Library loan history and large organization-wide form pickers remain unpaged and are explicitly tracked in `docs/SCHOOL_CUSTOMER_READINESS.md`.
+
 ## 2026-10-01: School adjustments integrated into Payroll runs
 
 - **Scope**: School payroll inputs now link to same-organization HR employees and Payroll consumes pending monthly earnings/deductions atomically with full-calendar-month runs. Unmatched imported employee IDs remain recoverable; deductions cannot create negative net pay; tax is rounded to cents before net-pay calculation and Accounting accrual. See `docs/SCHOOL_CUSTOMER_READINESS.md` and `docs/MODULE_BOUNDARIES.md`.

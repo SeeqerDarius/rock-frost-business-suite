@@ -201,16 +201,14 @@ Draft and the adjustments unprocessed. Responsive authenticated tenant-browser
 verification remains a release check when a tenant session is available.
 
 **SC-4 — Server-side filtering and pagination (partially resolved).**
-The Students table now uses `listSchoolStudentPage` for organization-scoped
-name/admission-number search, status filtering, a count, and deterministic
-50-row pages (maximum 100). Page navigation preserves current filters, and
-out-of-range page numbers clamp to the last page. The full `listSchoolStudents`
-service remains for forms that need the full eligible directory. The paged
-table selects only its displayed identity, campus, active-enrollment, and
-guardian-contact fields, so medical notes and photo blobs are not loaded into
-the list response. Fee invoices, attendance history (currently limited to the
-250 newest records), and the library catalogue still filter already-loaded
-results and need paginated service queries.
+Students, fee invoices, attendance history, and the library catalogue now use
+tenant-scoped database search and stable 50-row pages (maximum 100). Their
+filter and search conditions are applied before counting and paging, and page
+links preserve filters and clamp stale page values. Student rows exclude
+medical notes and photo blobs; invoice and attendance rows select only the
+fields needed by the tables. Fee summary values are aggregated across the
+organization, not derived from the current page. Library loan history and
+large organization-wide form pickers still load unpaged and remain open work.
 
 **SC-5 — RESOLVED.** `resolveGradeFromScale()` in `src/modules/school/service.ts`
 reads `SchoolSettings.gradingScale` back and auto-derives `grade` (and now
