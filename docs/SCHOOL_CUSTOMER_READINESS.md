@@ -79,6 +79,19 @@ organization-scoped employee and PayrollRun relations and category enum.
 Payroll calls within the run transaction; Payroll does not query School's
 Prisma model directly.
 
+## Customer-readiness tranche 5 — scalable student directory
+
+The Students table now searches by student name or admission number in the
+tenant-scoped database query and returns stable pages of 50 rows (maximum 100
+per page). Status and text filters are applied before counting and paging;
+page links preserve active filters and clamp stale page numbers to the last
+available page. The existing full student directory service remains available
+to forms and workflows that need organization-wide choices. Fee invoices,
+attendance history, and the library catalogue still need the same server-side
+filtering and pagination treatment. The paged table selects only displayed
+identity, campus, active-enrollment, and guardian-contact fields; it does not
+fetch medical notes or photo data into the list response.
+
 ## Customer-readiness tranche 2 — capacity, lifecycle controls, teacher scoping, and UX fixes
 
 Migration `20260818160000_add_school_class_teacher` adds `SchoolClassTeacher`,

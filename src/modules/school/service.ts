@@ -126,6 +126,49 @@ export function listSchoolStudents(organizationId: string) {
   return db.schoolStudent.findMany({ where: { organizationId }, include: { campus: true, guardians: { include: { guardian: true } }, enrollments: { include: { class: true, academicYear: true } }, lifecycleEvents: { orderBy: { createdAt: "desc" }, take: 10 } }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] });
 }
 
+export async function listSchoolStudentPage(organizationId: string, input: { query?: string; status?: SchoolStudentStatus; page?: number; pageSize?: number } = {}) {
+  const pageSize = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.pageSize) ? input.pageSize! : 50)));
+  const requestedPage = Math.max(1, Math.floor(Number.isFinite(input.page) ? input.page! : 1));
+  const query = input.query?.trim().split(/\s+/).filter(Boolean) ?? [];
+  const where: Prisma.SchoolStudentWhereInput = {
+    organizationId,
+    ...(input.status ? { status: input.status } : {}),
+    ...(query.length ? { AND: query.map((term) => ({ OR: [
+      { firstName: { contains: term, mode: "insensitive" as const } },
+      { lastName: { contains: term, mode: "insensitive" as const } },
+      { admissionNumber: { contains: term, mode: "insensitive" as const } },
+    ] })) } : {}),
+  };
+  const total = await db.schoolStudent.count({ where });
+  const pageCount = Math.ceil(total / pageSize);
+  const page = pageCount === 0 ? 1 : Math.min(requestedPage, pageCount);
+  const rows = await db.schoolStudent.findMany({
+    where,
+    select: {
+      id: true,
+      admissionNumber: true,
+      firstName: true,
+      lastName: true,
+      dateOfBirth: true,
+      status: true,
+      campus: { select: { name: true } },
+      guardians: {
+        orderBy: [{ primary: "desc" }, { id: "asc" }],
+        select: { primary: true, guardian: { select: { firstName: true, lastName: true, phone: true } } },
+      },
+      enrollments: {
+        where: { status: "ACTIVE" },
+        orderBy: [{ enrolledAt: "desc" }, { id: "asc" }],
+        select: { status: true, class: { select: { name: true } }, academicYear: { select: { name: true } } },
+      },
+    },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { id: "asc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+  });
+  return { rows, total, page, pageSize, pageCount };
+}
+
 export function createSchoolStudent(organizationId: string, data: { campusId: string; firstName: string; lastName: string; dateOfBirth?: Date | null; gender?: string | null; admissionDate?: Date | null; medicalNotes?: string | null }) {
   return createWithUniqueRetry(async () => {
     const campus = await db.schoolCampus.findFirst({ where: { id: data.campusId, organizationId, active: true } });
@@ -361,8 +404,8 @@ export function listSchoolGuardians(organizationId: string) { return db.schoolGu
  * payload small).
  */
 /** Cheap id-only lookup for rendering a table's photo column without pulling every row's base64 image data into the list query. */
-export async function listSchoolStudentPhotoIds(organizationId: string) {
-  const rows = await db.schoolStudent.findMany({ where: { organizationId, photoData: { not: null } }, select: { id: true } });
+export async function listSchoolStudentPhotoIds(organizationId: string, studentIds?: string[]) {
+  const rows = await db.schoolStudent.findMany({ where: { organizationId, photoData: { not: null }, ...(studentIds ? { id: { in: studentIds } } : {}) }, select: { id: true } });
   return new Set(rows.map((row) => row.id));
 }
 
