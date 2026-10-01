@@ -6,9 +6,10 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import { cuid, shortText, longText, dateInput, moneyAmountPositive, parseWithSchema } from "@/lib/validation";
-import { createSchoolCampus, createSchoolAcademicYear, closeSchoolAcademicYear, deleteSchoolAcademicYear, createSchoolTerm, admitSchoolStudent, createSchoolGuardian, updateSchoolGuardian, linkSchoolGuardian, createSchoolClass, updateSchoolClassCapacity, assignSchoolClassTeacher, removeSchoolClassTeacher, createSchoolSubject, enrollSchoolStudent, recordSchoolAttendanceBulk, createSchoolFeeInvoice, recordSchoolFeePayment, getSchoolFeePaymentForPostingRetry, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, assignPendingSchoolPayrollEmployee, upsertSchoolSettings, transitionSchoolStudent, updateSchoolStudentProfile, createSchoolFeeStructure, issueSchoolFeeStructure, updateSchoolStudentPhoto, updateSchoolGuardianPhoto, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
+import { createSchoolCampus, createSchoolAcademicYear, closeSchoolAcademicYear, deleteSchoolAcademicYear, createSchoolTerm, admitSchoolStudent, createSchoolGuardian, updateSchoolGuardian, linkSchoolGuardian, createSchoolClass, updateSchoolClassCapacity, assignSchoolClassTeacher, removeSchoolClassTeacher, createSchoolSubject, enrollSchoolStudent, recordSchoolAttendanceBulk, createSchoolFeeInvoice, recordSchoolFeePayment, getSchoolFeePaymentForPostingRetry, recordSchoolFeeRefund, getSchoolFeeRefundForPostingRetry, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, assignPendingSchoolPayrollEmployee, upsertSchoolSettings, transitionSchoolStudent, updateSchoolStudentProfile, createSchoolFeeStructure, issueSchoolFeeStructure, updateSchoolStudentPhoto, updateSchoolGuardianPhoto, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
 import { schoolPhotoImageData, schoolStudentPhotoImages } from "@/lib/school-photo-image";
 import { postSchoolFeePaymentRevenue } from "@/modules/school/accounting";
+import { postSchoolFeeRefundRevenue } from "@/modules/school/accounting";
 import { getSurfaceOrigins } from "@/lib/app-surfaces";
 import { createSchoolConductRecord, issueSchoolDigitalId, revokeSchoolDigitalId, recordSchoolIdPrint } from "@/modules/school/student-profile-service";
 
@@ -167,6 +168,48 @@ export async function retrySchoolFeePostingAction(f: FormData) {
   } catch (error) {
     failed = true;
     console.error("[school:fee-accounting-retry] failed", { organizationId: t.organizationId, paymentId: payment.id, actorId: t.userId, error });
+  }
+  revalidatePath(path);
+  redirect(`${path}?posting=${failed ? "failed" : "complete"}`);
+}
+
+export async function recordSchoolFeeRefundAction(f: FormData) {
+  const path = "/app/school/fees", t = await auth(PERMISSIONS.SCHOOL_FEES_MANAGE, path);
+  const parsed = parseWithSchema(z.object({ paymentId: cuid, amount: moneyAmountPositive, method: z.enum(["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "ONLINE", "OTHER"]), reason: z.string().trim().min(3).max(1000), reference: shortText.nullable() }), {
+    paymentId: clean(f.get("paymentId")) ?? "", amount: clean(f.get("amount")), method: clean(f.get("method")), reason: clean(f.get("reason")) ?? "", reference: clean(f.get("reference")),
+  });
+  if (!parsed.success) redirect(`${path}?error=invalid`);
+  let postingFailed = false;
+  try {
+    const refund = await recordSchoolFeeRefund(t.organizationId, parsed.data.paymentId, t.userId, { amount: parsed.data.amount, method: parsed.data.method, reason: parsed.data.reason, reference: parsed.data.reference });
+    try {
+      const result = await postSchoolFeeRefundRevenue(t.organizationId, refund, t.userId);
+      postingFailed = !result.posted && result.reason === "error";
+    } catch (error) {
+      postingFailed = true;
+      console.error("[school:fee-refund-accounting-posting] failed", { organizationId: t.organizationId, refundId: refund.id, actorId: t.userId, error });
+    }
+  } catch (error) {
+    fail(path, error);
+  }
+  revalidatePath(path);
+  revalidatePath("/app/school");
+  redirect(`${path}?saved=1${postingFailed ? "&posting=failed" : ""}`);
+}
+
+export async function retrySchoolFeeRefundPostingAction(f: FormData) {
+  const path = "/app/school/fees", t = await auth(PERMISSIONS.SCHOOL_FEES_MANAGE, path);
+  const id = cuid.safeParse(clean(f.get("refundId")));
+  if (!id.success) redirect(`${path}?error=invalid`);
+  const refund = await getSchoolFeeRefundForPostingRetry(t.organizationId, id.data);
+  if (!refund) redirect(`${path}?error=refund-posting-not-retryable`);
+  let failed = false;
+  try {
+    const result = await postSchoolFeeRefundRevenue(t.organizationId, refund, t.userId);
+    failed = !result.posted && result.reason === "error";
+  } catch (error) {
+    failed = true;
+    console.error("[school:fee-refund-accounting-retry] failed", { organizationId: t.organizationId, refundId: refund.id, actorId: t.userId, error });
   }
   revalidatePath(path);
   redirect(`${path}?posting=${failed ? "failed" : "complete"}`);

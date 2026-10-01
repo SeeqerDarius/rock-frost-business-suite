@@ -24,6 +24,7 @@ const STATE_REASONS: Record<string, string> = {
   "future-attendance": "Attendance cannot be recorded for a future date.",
   "attendance-closed": "The campus attendance correction window has closed for that date.",
   "payment-exceeds-balance": "The payment cannot exceed the invoice's outstanding balance.",
+  "refund-exceeds-balance": "The refund cannot exceed the payment's remaining refundable amount.",
   "timetable-conflict": "That period conflicts with an existing class, teacher, or room booking.",
   "marks-out-of-range": "Marks must be between zero and the exam's total marks.",
   "book-unavailable": "No copy of that book is currently available.",

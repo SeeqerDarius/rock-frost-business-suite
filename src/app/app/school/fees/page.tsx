@@ -20,7 +20,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getSchoolAcademicSetup, getSchoolFeeInvoiceSummary, listSchoolCampuses, listSchoolFeeInvoicePage, listSchoolFeeStructures, listSchoolStudentChoices } from "@/modules/school/service";
 import { RecordPagination } from "@/components/school/record-pagination";
 import Link from "next/link";
-import { createFeeInvoiceAction, createFeeStructureAction, issueFeeStructureAction, recordFeePaymentAction, retrySchoolFeePostingAction } from "../actions";
+import { createFeeInvoiceAction, createFeeStructureAction, issueFeeStructureAction, recordFeePaymentAction, retrySchoolFeePostingAction, recordSchoolFeeRefundAction, retrySchoolFeeRefundPostingAction } from "../actions";
 
 const PATH = "/app/school/fees";
 const PAYMENT_METHODS = ["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "ONLINE", "OTHER"] as const;
@@ -54,7 +54,8 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
   const termOptions = years.flatMap((year) => year.terms.map((term) => ({ value: term.id, label: `${year.name} · ${term.name}${term.current ? " (current)" : ""}` })));
   const studentOptions = students.rows.map((student) => ({ value: student.id, label: `${student.lastName}, ${student.firstName} (${student.admissionNumber})` }));
 
-  const paidOn = (invoice: (typeof invoices)[number]) => invoice.payments.filter((payment) => !payment.refundedAt).reduce((sum, payment) => sum.plus(payment.amount), new Prisma.Decimal(0));
+  const paymentNet = (payment: (typeof invoices)[number]["payments"][number]) => payment.refundedAt ? new Prisma.Decimal(0) : payment.amount.minus(payment.refunds.reduce((sum, refund) => sum.plus(refund.amount), new Prisma.Decimal(0)));
+  const paidOn = (invoice: (typeof invoices)[number]) => invoice.payments.reduce((sum, payment) => sum.plus(paymentNet(payment)), new Prisma.Decimal(0));
   const balanceOf = (invoice: (typeof invoices)[number]) => invoice.amount.minus(invoice.discount).minus(paidOn(invoice));
 
   const visible = invoices;
@@ -126,9 +127,10 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
         stateMessage="Check the amounts: a discount cannot exceed the invoice amount, and a payment cannot exceed the outstanding balance."
       />
       <RecordSearch action={PATH} queryName="studentQ" label="Find a student for an invoice" placeholder="Name or admission number" defaultValue={query.studentQ} hiddenFilters={{ q: query.q, status: statusFilter, page: query.page }} resultSummary={`Showing ${students.rows.length} of ${students.total} students`} />
-      {query.posting === "failed" ? <div role="status" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">The fee payment was recorded and receipted, but its Accounting entry did not post. Use Retry posting beside that payment below.</div> : null}
+      {query.posting === "failed" ? <div role="status" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">The fee payment or refund was recorded, but its Accounting entry did not post. Use the retry action beside that item.</div> : null}
       {query.posting === "complete" ? <div role="status" className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">Accounting posting is up to date.</div> : null}
       {query.error === "posting-not-retryable" ? <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">That payment is unavailable for posting. Refresh the fee list and check its current status.</div> : null}
+      {query.error === "refund-posting-not-retryable" ? <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">That refund is unavailable for posting. Refresh the fee list and check its current status.</div> : null}
       <PrerequisiteNotice
         items={[
           { satisfied: students.total > 0, label: "Admit a student", href: "/app/school/students" },
@@ -274,6 +276,30 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
                                   <input type="hidden" name="paymentId" value={payment.id} />
                                   <Button type="submit" size="xs" variant="outline">Retry posting</Button>
                                 </form>
+                              ) : null}
+                              {payment.refunds.map((refund) => (
+                                <span key={refund.id} className="ml-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                  Refund {formatMoney(refund.amount)} · {humanizeStatus(refund.method)} · {refund.reason} · {formatDate(refund.createdAt)}
+                                  <Badge variant={refund.postingStatus === "FAILED" ? "destructive" : refund.postingStatus === "POSTED" ? "default" : "outline"}>Accounting {humanizeStatus(refund.postingStatus)}</Badge>
+                                  {refund.postingStatus !== "POSTED" && refund.postingStatus !== "NOT_REQUIRED" ? <form action={retrySchoolFeeRefundPostingAction}><input type="hidden" name="refundId" value={refund.id} /><Button type="submit" size="xs" variant="outline">Retry refund posting</Button></form> : null}
+                                </span>
+                              ))}
+                              {paymentNet(payment).gt(0) ? (
+                                <EntityDialog
+                                  trigger={<Button type="button" size="xs" variant="ghost">Record refund</Button>}
+                                  title={`Refund receipt ${payment.receiptNumber}`}
+                                  description={`Remaining refundable amount: ${formatMoney(paymentNet(payment))}. This creates a separate audit record and keeps the original receipt unchanged.`}
+                                  action={recordSchoolFeeRefundAction}
+                                  submitLabel="Record refund"
+                                >
+                                  <input type="hidden" name="paymentId" value={payment.id} />
+                                  <FieldGrid>
+                                    <TextField id={`refund-amount-${payment.id}`} name="amount" label="Refund amount" type="number" step="0.01" min="0.01" max={paymentNet(payment).toString()} required />
+                                    <SelectField id={`refund-method-${payment.id}`} name="method" label="Refund method" required options={PAYMENT_METHODS.map((method) => ({ value: method, label: humanizeStatus(method) }))} />
+                                  </FieldGrid>
+                                  <TextField id={`refund-reference-${payment.id}`} name="reference" label="Refund reference" hint="Optional transaction reference." />
+                                  <div className="space-y-2"><Label htmlFor={`refund-reason-${payment.id}`}>Reason</Label><Textarea id={`refund-reason-${payment.id}`} name="reason" required minLength={3} maxLength={1000} /></div>
+                                </EntityDialog>
                               ) : null}
                             </span>
                           ))}

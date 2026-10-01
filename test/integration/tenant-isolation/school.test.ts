@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import bcrypt from "bcryptjs";
 import * as school from "@/modules/school/service";
-import { postSchoolFeePaymentRevenue } from "@/modules/school/accounting";
+import { postSchoolFeePaymentRevenue, postSchoolFeeRefundRevenue } from "@/modules/school/accounting";
 import * as studentProfile from "@/modules/school/student-profile-service";
 import * as portal from "@/modules/school/portal-service";
 import { cleanupTestOrg, createTestOrg, type TestOrg } from "../setup/fixtures";
@@ -330,6 +330,43 @@ describe("School service — real tenant isolation and customer-readiness guards
     expect(journals).toHaveLength(1);
     expect(journals[0].lines.reduce((sum, line) => sum + Number(line.debit), 0)).toBeCloseTo(100, 2);
     expect(journals[0].lines.reduce((sum, line) => sum + Number(line.credit), 0)).toBeCloseTo(100, 2);
+  });
+
+  it("records partial fee refunds, reopens invoice balance, and posts auditable refund entries", async () => {
+    const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Refund", lastName: "Student" });
+    const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: "2041", startDate: new Date("2041-01-01"), endDate: new Date("2041-12-31") });
+    const invoice = await school.createSchoolFeeInvoice(orgA.organizationId, { academicYearId: year.id, studentId: student.id, description: "Tuition", amount: "100.00" });
+    const payment = await school.recordSchoolFeePayment(orgA.organizationId, invoice.id, { amount: "100.00", method: "CASH" });
+    await postSchoolFeePaymentRevenue(orgA.organizationId, payment, orgA.userId);
+
+    const first = await school.recordSchoolFeeRefund(orgA.organizationId, payment.id, orgA.userId, { amount: "25.00", method: "CASH", reason: "Duplicate payment" });
+    expect(await school.getSchoolFeeRefundForPostingRetry(orgB.organizationId, first.id)).toBeNull();
+    expect(await school.getSchoolFeeRefundForPostingRetry(orgA.organizationId, first.id)).toMatchObject({ id: first.id, reason: "Duplicate payment" });
+    await expect(postSchoolFeeRefundRevenue(orgA.organizationId, first, orgA.userId)).resolves.toMatchObject({ posted: true });
+    expect((await testDb.schoolFeeInvoice.findUniqueOrThrow({ where: { id: invoice.id } })).status).toBe("PART_PAID");
+    expect((await school.getSchoolFeeInvoiceSummary(orgA.organizationId)).outstanding.toString()).toBe("25");
+
+    const second = await school.recordSchoolFeeRefund(orgA.organizationId, payment.id, orgA.userId, { amount: "75.00", method: "MOBILE_MONEY", reason: "Remaining balance" });
+    await postSchoolFeeRefundRevenue(orgA.organizationId, second, orgA.userId);
+    expect((await testDb.schoolFeeInvoice.findUniqueOrThrow({ where: { id: invoice.id } })).status).toBe("ISSUED");
+    expect((await testDb.schoolFeePayment.findUniqueOrThrow({ where: { id: payment.id } })).refundedAt).toBeInstanceOf(Date);
+    expect(await school.getSchoolFeePaymentReceipt(orgA.organizationId, payment.id)).toMatchObject({ id: payment.id, receiptNumber: payment.receiptNumber });
+    expect(await school.getSchoolFeeRefundForPostingRetry(orgA.organizationId, second.id)).toBeNull();
+    const journals = await testDb.accountingJournalEntry.findMany({ where: { organizationId: orgA.organizationId, sourceType: "SCHOOL_FEE_REFUND", sourceId: { in: [first.id, second.id] }, postingPurpose: "REFUNDED" }, include: { lines: true } });
+    expect(journals).toHaveLength(2);
+    expect(journals.reduce((sum, entry) => sum + entry.lines.reduce((lineSum, line) => lineSum + Number(line.debit), 0), 0)).toBeCloseTo(100, 2);
+    expect((await school.getSchoolFeeInvoiceSummary(orgA.organizationId)).collected.toString()).toBe("0");
+  });
+
+  it("serializes concurrent fee refunds so they cannot exceed the receipt value", async () => {
+    const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Concurrent", lastName: "Refund" });
+    const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: "2042", startDate: new Date("2042-01-01"), endDate: new Date("2042-12-31") });
+    const invoice = await school.createSchoolFeeInvoice(orgA.organizationId, { academicYearId: year.id, studentId: student.id, description: "Tuition", amount: "100.00" });
+    const payment = await school.recordSchoolFeePayment(orgA.organizationId, invoice.id, { amount: "100.00", method: "CASH" });
+    const results = await Promise.allSettled([25, 75, 60].map((amount) => school.recordSchoolFeeRefund(orgA.organizationId, payment.id, orgA.userId, { amount, method: "CASH", reason: "Concurrent test refund" })));
+    const stored = await testDb.schoolFeeRefund.findMany({ where: { paymentId: payment.id } });
+    expect(stored.reduce((sum, item) => sum + Number(item.amount), 0)).toBeLessThanOrEqual(100);
+    expect(results.some((result) => result.status === "rejected")).toBe(true);
   });
 
   it("lists only its own campuses", async () => {

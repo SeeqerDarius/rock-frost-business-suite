@@ -50,7 +50,7 @@ export async function getSchoolPortalStudentSummary(organizationId: string, stud
       enrollments: { where: { status: "ACTIVE" }, include: { class: true }, take: 1 },
       attendance: { orderBy: { date: "desc" }, take: 10 },
       examResults: { where: { publishedAt: { not: null } }, orderBy: { publishedAt: "desc" }, take: 10, include: { exam: true, subject: true } },
-      feeInvoices: { where: { status: { in: ["ISSUED", "PART_PAID", "PAID"] } }, orderBy: { createdAt: "desc" }, take: 10, include: { payments: true } },
+      feeInvoices: { where: { status: { in: ["ISSUED", "PART_PAID", "PAID"] } }, orderBy: { createdAt: "desc" }, take: 10, include: { payments: { include: { refunds: { select: { amount: true } } } } } },
       conductRecords: { orderBy: { occurredAt: "desc" }, take: 10 },
       digitalIdCards: { where: { status: "ACTIVE" }, orderBy: { createdAt: "desc" }, take: 1 },
     },
@@ -76,7 +76,7 @@ export async function getSchoolPortalStudentSummary(organizationId: string, stud
   }
 
   const outstandingTotal = student.feeInvoices.reduce((sum, invoice) => {
-    const paid = invoice.payments.filter((p) => !p.refundedAt).reduce((total, p) => total + Number(p.amount), 0);
+    const paid = invoice.payments.reduce((total, p) => total + (p.refundedAt ? 0 : Number(p.amount) - p.refunds.reduce((sum, refund) => sum + Number(refund.amount), 0)), 0);
     return sum + Math.max(0, Number(invoice.amount) - Number(invoice.discount) - paid);
   }, 0);
 

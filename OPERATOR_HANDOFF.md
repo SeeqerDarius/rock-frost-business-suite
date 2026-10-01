@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-01: Audited School fee refunds in progress
+
+- **Scope**: add immutable partial/full refund events; manager-authorized recording with locked over-refund protection; reopen invoice balances; show refund history and Accounting retries; subtract refunds from School collection/balance views; post idempotent contra-revenue entries.
+- **Important files**: `prisma/schema.prisma`, `prisma/migrations/20261001130000_school_fee_refunds/migration.sql`, School fee actions/page/service/accounting/dashboard/portal/student profile, School readiness documentation, README, and the real-PostgreSQL School integration suite.
+- **Migrations/environment**: adds `SchoolFeeRefund`; no new environment variable. Accounting uses the existing School integration's default Cash account mapping, even when the separately recorded refund method is mobile money or bank transfer.
+- **Validation**: `npx prisma validate` passed with placeholder-only database URLs; `npx prisma generate` succeeded; `npx tsc --noEmit --incremental false` passed; `npm run lint` passed with two existing PWA hook-dependency warnings; `npm run test` passed (176 files, 1,347 tests); `npm run build` passed (249 routes); `git diff --check` passed. New real-PostgreSQL integration cases are committed in the School integration suite but cannot run locally because `TEST_DATABASE_URL` is absent. CI must apply the migration and run the guarded disposable-Postgres suite before merge.
+- **Remaining risks**: authenticated tenant UI/print-flow check requires a tenant test session. The refund method is audited but does not select the cash/bank/mobile-money ledger account; settlement account mapping should be a follow-up if schools require method-specific accounting.
+
 ## 2026-10-01: School student profile editing released
 
 - **Scope**: add conflict-safe editing for student name, date of birth, gender, and admission date. Preserve admission number, campus, status, class history, and medical details. Preserve the current student-list search, status, and page after save.

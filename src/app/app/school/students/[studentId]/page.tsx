@@ -134,8 +134,7 @@ export default async function StudentProfilePage({
     );
   const paid = student.feeInvoices
     .flatMap((item) => item.payments)
-    .filter((item) => !item.refundedAt)
-    .reduce((sum, item) => sum + Number(item.amount), 0);
+    .reduce((sum, item) => sum + (item.refundedAt ? 0 : Number(item.amount) - item.refunds.reduce((refundSum, refund) => refundSum + Number(refund.amount), 0)), 0);
   const publishedResults = student.examResults.filter(
     (item) => item.exam.status === "PUBLISHED" && item.publishedAt,
   );
