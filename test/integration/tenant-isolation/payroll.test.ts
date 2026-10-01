@@ -28,6 +28,8 @@ beforeAll(async () => {
 
   orgAEmployee = await hr.createEmployee(orgA.organizationId, { fullName: "Org A Employee", hireDate: new Date("2025-01-01") });
   orgBEmployee = await hr.createEmployee(orgB.organizationId, { fullName: "Org B Employee", hireDate: new Date("2025-01-01") });
+  await hr.activateEmployee(orgA.organizationId, orgAEmployee.id);
+  await hr.activateEmployee(orgB.organizationId, orgBEmployee.id);
 
   await payroll.setCompensation(orgA.organizationId, {
     employeeId: orgAEmployee.id,

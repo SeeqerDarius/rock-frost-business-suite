@@ -1,5 +1,13 @@
 # Architecture & Tooling Decisions
 
+## 2026-10-01 - Clear audited dependency fixes with a security-clean lockfile and preserve the single-worker integration contract on Vitest 4
+
+**Decision:** Resolve the CI security audit findings by upgrading Next.js and its matching ESLint config to 16.3.8, Sharp to 0.35.4, and Vitest to 4.1.11, then regenerate the lockfile and apply the remaining compatible transitive security fixes. Keep the PostgreSQL integration runner on the forks pool with `maxWorkers: 1`, `fileParallelism: false`, and `isolate: false`.
+
+**Why:** The initial release PR's `npm audit --audit-level=high` failed on direct Next.js/Sharp/Vitest advisories and vulnerable transitive dependencies. A clean audit is a release requirement. Vitest 4 removes `poolOptions`; using the documented worker limit retains the integration suite's deliberate single shared module graph and prevents concurrent files from racing in the shared disposable database. The Payroll tenant-isolation fixture also now activates its employees through the HR lifecycle before processing a run, matching the production eligibility rule.
+
+**Validation and gate:** A clean `npm ci --ignore-scripts` reported zero vulnerabilities; after Prisma Client generation, the full unit suite passed 1,347/1,347, targeted accounting tests passed 6/6, TypeScript passed, ESLint passed with two existing PWA hook warnings, and the Next.js 16.3.8 production build generated all 249 pages. The disposable-Postgres integration suite remains a required PR gate because no local disposable test URL is configured. See the current dated entry in `OPERATOR_HANDOFF.md` for the release state.
+
 ## 2026-08-29 - Online Collections activation, Phase B3: the guided wizard previews the readiness check with `commit: false`, never as a side effect of a page load
 
 **Decision:** `runSettlementReadinessCheck()` (Phase B1) gained a `commit` option, defaulting to `true` so every existing caller and test keeps its original committing behavior unchanged. The guided activation wizard's readiness step calls it with `commit: false` on every ordinary page render (a GET request), then calls it again with `commit: true` only from the explicit "Activate" Server Action the administrator submits.
