@@ -257,6 +257,44 @@ describe("School service — real tenant isolation and customer-readiness guards
     expect(link?.relationship).toBe("Mother");
   });
 
+  it("manages post-admission family links, primary contact, pickup authorization, and removal atomically", async () => {
+    const student = await school.admitSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Family", lastName: `Managed-${Date.now()}` }, { firstName: "Ama", lastName: "Guardian", phone: `+23320${Date.now().toString().slice(-7)}`, relationship: "Mother" });
+    const [primary] = await testDb.schoolStudentGuardian.findMany({ where: { organizationId: orgA.organizationId, studentId: student.id }, select: { guardianId: true } });
+    expect(primary).toBeDefined();
+    const auntRecord = await school.createSchoolGuardian(orgA.organizationId, { firstName: "Akosua", lastName: "Aunt", phone: `+23324${Date.now().toString().slice(-7)}` });
+
+    const linked = await school.updateSchoolStudentGuardianLinks(orgA.organizationId, student.id, {
+      links: [{ guardianId: primary!.guardianId, relationship: "Mother", authorizedPickup: false, remove: false }],
+      add: { guardianId: auntRecord.id, relationship: "Aunt", authorizedPickup: true },
+      primaryGuardianId: auntRecord.id,
+    }, orgA.userId);
+    expect(linked).toHaveLength(2);
+    expect(linked.find((link) => link.guardianId === auntRecord.id)).toMatchObject({ primary: true, authorizedPickup: true, relationship: "Aunt" });
+    expect(linked.find((link) => link.guardianId === primary!.guardianId)?.primary).toBe(false);
+
+    const removed = await school.updateSchoolStudentGuardianLinks(orgA.organizationId, student.id, {
+      links: [
+        { guardianId: primary!.guardianId, relationship: "Mother", authorizedPickup: false, remove: true },
+        { guardianId: auntRecord.id, relationship: "Aunt", authorizedPickup: true, remove: false },
+      ],
+      primaryGuardianId: auntRecord.id,
+    }, orgA.userId);
+    expect(removed.map((link) => link.guardianId)).toEqual([auntRecord.id]);
+    expect(await testDb.auditLog.count({ where: { organizationId: orgA.organizationId, action: "STUDENT_GUARDIAN_LINKS_UPDATED", entityId: student.id } })).toBe(2);
+  });
+
+  it("rejects cross-tenant guardian links without changing the student's family contacts", async () => {
+    const student = await school.admitSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Family", lastName: `Tenant-${Date.now()}` }, { firstName: "Local", lastName: "Guardian", phone: `+23320${Date.now().toString().slice(-7)}`, relationship: "Mother" });
+    const [link] = await testDb.schoolStudentGuardian.findMany({ where: { organizationId: orgA.organizationId, studentId: student.id }, select: { guardianId: true, relationship: true } });
+    const foreignGuardian = await school.createSchoolGuardian(orgB.organizationId, { firstName: "Foreign", lastName: "Guardian", phone: `+23324${Date.now().toString().slice(-7)}` });
+    await expect(school.updateSchoolStudentGuardianLinks(orgA.organizationId, student.id, {
+      links: [{ ...link!, authorizedPickup: false, remove: false }],
+      add: { guardianId: foreignGuardian.id, relationship: "Aunt", authorizedPickup: true },
+      primaryGuardianId: foreignGuardian.id,
+    }, orgA.userId)).rejects.toThrow(school.SchoolNotFoundError);
+    expect(await testDb.schoolStudentGuardian.count({ where: { organizationId: orgA.organizationId, studentId: student.id } })).toBe(1);
+  });
+
   it("rejects an existing guardian from another tenant during student admission", async () => {
     const foreignGuardian = await school.createSchoolGuardian(orgB.organizationId, { firstName: "Foreign", lastName: "Guardian", phone: "+233200000099" });
     await expect(school.updateSchoolGuardian(orgA.organizationId, foreignGuardian.id, { firstName: "Foreign", lastName: "Guardian", phone: "+233200000099" })).rejects.toThrow(school.SchoolNotFoundError);
