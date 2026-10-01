@@ -333,6 +333,7 @@ describe("School service — real tenant isolation and customer-readiness guards
   });
 
   it("records partial fee refunds, reopens invoice balance, and posts auditable refund entries", async () => {
+    const startingSummary = await school.getSchoolFeeInvoiceSummary(orgA.organizationId);
     const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Refund", lastName: "Student" });
     const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: "2041", startDate: new Date("2041-01-01"), endDate: new Date("2041-12-31") });
     const invoice = await school.createSchoolFeeInvoice(orgA.organizationId, { academicYearId: year.id, studentId: student.id, description: "Tuition", amount: "100.00" });
@@ -344,7 +345,8 @@ describe("School service — real tenant isolation and customer-readiness guards
     expect(await school.getSchoolFeeRefundForPostingRetry(orgA.organizationId, first.id)).toMatchObject({ id: first.id, reason: "Duplicate payment" });
     await expect(postSchoolFeeRefundRevenue(orgA.organizationId, first, orgA.userId)).resolves.toMatchObject({ posted: true });
     expect((await testDb.schoolFeeInvoice.findUniqueOrThrow({ where: { id: invoice.id } })).status).toBe("PART_PAID");
-    expect((await school.getSchoolFeeInvoiceSummary(orgA.organizationId)).outstanding.toString()).toBe("25");
+    const partialRefundSummary = await school.getSchoolFeeInvoiceSummary(orgA.organizationId);
+    expect(partialRefundSummary.outstanding.minus(startingSummary.outstanding).toString()).toBe("25");
 
     const second = await school.recordSchoolFeeRefund(orgA.organizationId, payment.id, orgA.userId, { amount: "75.00", method: "MOBILE_MONEY", reason: "Remaining balance" });
     await postSchoolFeeRefundRevenue(orgA.organizationId, second, orgA.userId);
@@ -355,7 +357,8 @@ describe("School service — real tenant isolation and customer-readiness guards
     const journals = await testDb.accountingJournalEntry.findMany({ where: { organizationId: orgA.organizationId, sourceType: "SCHOOL_FEE_REFUND", sourceId: { in: [first.id, second.id] }, postingPurpose: "REFUNDED" }, include: { lines: true } });
     expect(journals).toHaveLength(2);
     expect(journals.reduce((sum, entry) => sum + entry.lines.reduce((lineSum, line) => lineSum + Number(line.debit), 0), 0)).toBeCloseTo(100, 2);
-    expect((await school.getSchoolFeeInvoiceSummary(orgA.organizationId)).collected.toString()).toBe("0");
+    const fullRefundSummary = await school.getSchoolFeeInvoiceSummary(orgA.organizationId);
+    expect(startingSummary.collected.minus(fullRefundSummary.collected).toString()).toBe("100");
   });
 
   it("serializes concurrent fee refunds so they cannot exceed the receipt value", async () => {
