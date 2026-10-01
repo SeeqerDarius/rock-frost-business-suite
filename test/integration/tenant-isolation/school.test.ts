@@ -112,6 +112,20 @@ describe("School service — real tenant isolation and customer-readiness guards
     expect(booksOne.total).toBe(2);
     expect(new Set([...booksOne.rows, ...booksTwo.rows].map((row) => row.id))).toEqual(new Set([bookOne.id, bookTwo.id]));
     expect(booksOne.rows[0]).not.toHaveProperty("organizationId");
+    const dueAt = new Date("2031-12-31T12:00:00.000Z");
+    const [loanOne, loanTwo] = await Promise.all([
+      school.borrowSchoolLibraryBook(orgA.organizationId, bookOne.id, studentOne.id, dueAt),
+      school.borrowSchoolLibraryBook(orgA.organizationId, bookTwo.id, studentTwo.id, dueAt),
+    ]);
+    await school.borrowSchoolLibraryBook(orgB.organizationId, (await testDb.schoolLibraryBook.findFirstOrThrow({ where: { organizationId: orgB.organizationId, title: `${token} Foreign` } })).id, foreignStudent.id, dueAt);
+    const loansOne = await school.listSchoolLibraryLoanPage(orgA.organizationId, { query: token, page: 1, pageSize: 1 });
+    const loansTwo = await school.listSchoolLibraryLoanPage(orgA.organizationId, { query: token, page: 2, pageSize: 1 });
+    expect(loansOne.total).toBe(2);
+    expect(loansOne.rows).toHaveLength(1);
+    expect(loansTwo.rows).toHaveLength(1);
+    expect(new Set([...loansOne.rows, ...loansTwo.rows].map((row) => row.id))).toEqual(new Set([loanOne.id, loanTwo.id]));
+    expect(loansOne.rows[0]).not.toHaveProperty("organizationId");
+    expect((await school.listSchoolLibraryLoanPage(orgA.organizationId, { query: token, showAll: true, page: 999, pageSize: 1 })).page).toBe(2);
 
     const [termA, termB] = await Promise.all([
       school.createSchoolTerm(orgA.organizationId, { academicYearId: yearA.id, name: `${token} Term A`, startDate: new Date("2031-01-01"), endDate: new Date("2031-12-31") }),

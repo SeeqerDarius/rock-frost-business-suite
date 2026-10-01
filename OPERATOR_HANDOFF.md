@@ -1,5 +1,19 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-01: School fee, attendance, and catalogue pagination released
+
+- **Scope**: PR #37 merged to `main` as `68a15e7907c1a5af05089ad574662b17981f30e4`. Fee invoices, attendance, and the library catalogue use organization-scoped queries and stable pagination; fee KPI totals aggregate across the organization.
+- **Validation**: GitHub CI run `36839656855` passed all 5 checks, including disposable PostgreSQL migration/integration, unit, validation/build, security, and Vercel preview. The preview reached READY with no unresolved feedback.
+- **Production**: Vercel deployment `dpl_57Uw4K8cFxkQzRpRwA1F3B3F9EFY` reached READY and aliases `app.rockfrostgroup.com`. `/api/health` returned HTTP 200 with the database reachable. Runtime error aggregation found no errors in the 15 minutes after deployment. No migration or environment change was required.
+- **Remaining verification**: a tenant-authenticated School browser session is unavailable, so authenticated list rendering and responsive behavior were not verified in the live UI.
+
+## 2026-10-01: School library loan history pagination in progress
+
+- **Scope**: added tenant-scoped loan search, open/all-loan filtering, stable 50-row pagination capped at 100, an organization-wide overdue count, and narrow row selection. Loan search has independent URL state from catalogue search.
+- **Important files**: `src/modules/school/service.ts`, `src/app/app/school/library/page.tsx`, `src/components/school/record-search.tsx`, `src/components/school/record-pagination.tsx`, and `test/integration/tenant-isolation/school.test.ts`; School readiness and README updated.
+- **Migrations/environment**: none. TypeScript passed (`tsc --noEmit --incremental false`); full lint passed with 0 errors and 2 pre-existing PWA hook-dependency warnings; unit suite passed 176 files / 1,347 tests; production build passed and generated 249 routes; targeted ESLint and `git diff --check` passed. Disposable PostgreSQL integration is not configured locally and must pass in CI. Authenticated responsive browser verification remains unavailable without a tenant session.
+- **Release status**: local implementation only. Do not mark released before all local/CI gates, preview, merge, and production health/route/log checks pass.
+
 ## 2026-10-01: School fee, attendance, and catalogue pagination
 
 - **Scope**: moved fee invoice search/status filtering and attendance history search/status filtering into organization-scoped database queries; added deterministic 50-row pages capped at 100 and filter-preserving navigation. Library catalogue search now uses a paged query with a narrow field select. Fee overview totals aggregate organization-wide invoice and non-refunded payment values instead of summing the current page. Corrected the invoice status filter to match schema value `VOID`.

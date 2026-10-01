@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Prisma, type HotelPaymentMethod, type SchoolAttendanceStatus, type SchoolInvoiceStatus, type SchoolStudentStatus } from "@prisma/client";
+import { Prisma, type HotelPaymentMethod, type SchoolAttendanceStatus, type SchoolInvoiceStatus, type SchoolLibraryLoanStatus, type SchoolStudentStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@/lib/trend-buckets";
@@ -902,6 +902,41 @@ export async function returnSchoolLibraryBook(organizationId: string, loanId: st
 
 export function listSchoolLibrary(organizationId: string) { return Promise.all([db.schoolLibraryBook.findMany({ where: { organizationId }, orderBy: { title: "asc" } }), db.schoolLibraryLoan.findMany({ where: { organizationId }, include: { book: true, student: true }, orderBy: { borrowedAt: "desc" } })]); }
 export function listSchoolLibraryLoans(organizationId: string) { return db.schoolLibraryLoan.findMany({ where: { organizationId }, include: { book: { select: { title: true } }, student: { select: { firstName: true, lastName: true, admissionNumber: true } } }, orderBy: [{ borrowedAt: "desc" }, { id: "desc" }] }); }
+
+export async function listSchoolLibraryLoanPage(organizationId: string, input: { query?: string; status?: SchoolLibraryLoanStatus; showAll?: boolean; page?: number; pageSize?: number } = {}) {
+  const pageSize = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.pageSize) ? input.pageSize! : 50)));
+  const requestedPage = Math.max(1, Math.floor(Number.isFinite(input.page) ? input.page! : 1));
+  const terms = input.query?.trim().split(/\s+/).filter(Boolean) ?? [];
+  const states = input.status ? [input.status] : input.showAll ? undefined : (["BORROWED", "OVERDUE"] as const);
+  const where: Prisma.SchoolLibraryLoanWhereInput = {
+    organizationId,
+    ...(states ? { status: { in: [...states] } } : {}),
+    ...(terms.length ? { AND: terms.map((term) => ({ OR: [
+      { book: { title: { contains: term, mode: "insensitive" as const } } },
+      { student: { firstName: { contains: term, mode: "insensitive" as const } } },
+      { student: { lastName: { contains: term, mode: "insensitive" as const } } },
+      { student: { admissionNumber: { contains: term, mode: "insensitive" as const } } },
+    ] })) } : {}),
+  };
+  const [total, overdueCount] = await Promise.all([
+    db.schoolLibraryLoan.count({ where }),
+    db.schoolLibraryLoan.count({ where: { organizationId, status: { in: ["BORROWED", "OVERDUE"] }, dueAt: { lt: new Date() } } }),
+  ]);
+  const pageCount = Math.ceil(total / pageSize);
+  const page = pageCount === 0 ? 1 : Math.min(requestedPage, pageCount);
+  const rows = await db.schoolLibraryLoan.findMany({
+    where,
+    select: {
+      id: true, status: true, borrowedAt: true, dueAt: true, returnedAt: true,
+      book: { select: { title: true } },
+      student: { select: { firstName: true, lastName: true, admissionNumber: true } },
+    },
+    orderBy: [{ borrowedAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+  });
+  return { rows, total, overdueCount, page, pageSize, pageCount };
+}
 export function listSchoolLibraryBookChoices(organizationId: string) { return db.schoolLibraryBook.findMany({ where: { organizationId, availableCopies: { gt: 0 } }, select: { id: true, title: true, availableCopies: true }, orderBy: [{ title: "asc" }, { id: "asc" }] }); }
 export async function listSchoolLibraryBookPage(organizationId: string, input: { query?: string; page?: number; pageSize?: number } = {}) {
   const pageSize = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.pageSize) ? input.pageSize! : 50)));
