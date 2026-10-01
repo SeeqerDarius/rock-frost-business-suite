@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import bcrypt from "bcryptjs";
 import * as school from "@/modules/school/service";
+import { postSchoolFeePaymentRevenue } from "@/modules/school/accounting";
 import * as studentProfile from "@/modules/school/student-profile-service";
 import * as portal from "@/modules/school/portal-service";
 import { cleanupTestOrg, createTestOrg, type TestOrg } from "../setup/fixtures";
@@ -137,6 +138,22 @@ describe("School service — real tenant isolation and customer-readiness guards
     const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: "2030", startDate: new Date("2030-01-01"), endDate: new Date("2030-12-31") });
     const invoice = await school.createSchoolFeeInvoice(orgA.organizationId, { academicYearId: year.id, studentId: student.id, description: "Tuition", amount: "100" });
     await expect(school.recordSchoolFeePayment(orgA.organizationId, invoice.id, { amount: "101", method: "CASH" })).rejects.toThrow(school.SchoolStateError);
+  });
+
+  it("posts a fee receipt once to the org ledger and keeps retry lookup tenant-scoped", async () => {
+    const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Ledger", lastName: "Student" });
+    const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: "2040", startDate: new Date("2040-01-01"), endDate: new Date("2040-12-31") });
+    const invoice = await school.createSchoolFeeInvoice(orgA.organizationId, { academicYearId: year.id, studentId: student.id, description: "Tuition", amount: "100.00" });
+    const payment = await school.recordSchoolFeePayment(orgA.organizationId, invoice.id, { amount: "100.00", method: "CASH" });
+    expect(await school.getSchoolFeePaymentForPostingRetry(orgB.organizationId, payment.id)).toBeNull();
+
+    await expect(postSchoolFeePaymentRevenue(orgA.organizationId, payment, orgA.userId)).resolves.toMatchObject({ posted: true });
+    const persisted = await testDb.schoolFeePayment.findFirstOrThrow({ where: { id: payment.id, organizationId: orgA.organizationId } });
+    expect(persisted.postingStatus).toBe("POSTED");
+    const journals = await testDb.accountingJournalEntry.findMany({ where: { organizationId: orgA.organizationId, sourceType: "SCHOOL_FEE_PAYMENT", sourceId: payment.id, postingPurpose: "COLLECTED" }, include: { lines: true } });
+    expect(journals).toHaveLength(1);
+    expect(journals[0].lines.reduce((sum, line) => sum + Number(line.debit), 0)).toBeCloseTo(100, 2);
+    expect(journals[0].lines.reduce((sum, line) => sum + Number(line.credit), 0)).toBeCloseTo(100, 2);
   });
 
   it("lists only its own campuses", async () => {

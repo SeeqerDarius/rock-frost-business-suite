@@ -17,10 +17,9 @@ import { formatMoney } from "@/lib/currency";
  * every other module that references another module's core entity by id
  * (e.g. CRM referencing User for ownership).
  *
- * Deliberately NOT integrated with Accounting in this pass (no journal entry
- * posted when a run completes) — see docs/DECISIONS.md / OPERATOR_HANDOFF.md
- * for the reasoning, matching the same scope decision already made for
- * Procurement-to-Accounting.
+ * Completed runs accrue their gross salary expense and related liabilities in
+ * Accounting through the public integration contract. The source run remains
+ * authoritative if delivery is unavailable and exposes a retryable status.
  */
 
 // --- Compensation ---
@@ -100,6 +99,13 @@ export function listRuns(organizationId: string) {
     where: { organizationId },
     include: { payslips: true, createdBy: true },
     orderBy: { periodStart: "desc" },
+  });
+}
+
+export function getPayrollRunForPostingRetry(organizationId: string, runId: string) {
+  return db.payrollRun.findFirst({
+    where: { id: runId, organizationId, status: "COMPLETED", postingStatus: { in: ["PENDING", "FAILED", "NOT_REQUIRED"] } },
+    include: { payslips: true },
   });
 }
 

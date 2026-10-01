@@ -285,4 +285,16 @@ All three are safe for unrestricted commercial, closed-source use.
 - Environment variable names (recorded in a private, non-committed migration note — values were never printed or committed).
 - Approved brand assets (`public/RFG.png`, favicon, apple-touch-icon, OG image, manifest, robots.txt, sitemap.xml).
 
+---
+
+## 2026-10-01 — Reliable Accounting delivery for School fees and Payroll
+
+**Decision:** Keep School fee collection and Payroll completion authoritative in their source modules, then post to Accounting through its public, idempotent service. Record delivery status on the source records and let users with the source-module permission retry. A posting failure must not erase a real fee receipt or completed payroll run.
+
+**Accounting treatment:** School collections continue through the School revenue account. Payroll accrues gross wages as a debit to `5190 Payroll Salaries and Wages`, credits net pay to `2230 Payroll Net Payable`, and credits aggregate deductions to `2220 Payroll Deductions Payable`. The account numbers avoid existing rent, payroll template, and Fleet accounts. Decimal totals are validated as balanced before posting. This does not model employee disbursements or statutory deduction classifications.
+
+**Delivery states:** `PENDING`, `POSTED`, `FAILED`, and `NOT_REQUIRED` distinguish an unattempted posting, successful posting, recoverable failure, and Accounting being inactive. Retry queries are organization-scoped and use the same source identity, so repeated attempts cannot create duplicate journals. Refunded School payments are not offered for retry.
+
+**Migration and release gate:** additive status enums/columns/indexes are in migrations `20261001090000_school_fee_accounting_retry` and `20261001100000_payroll_accounting_accrual`. Apply and test these on the guarded disposable PostgreSQL service before production release.
+
 **What was NOT preserved:** the previous `app/`, `components/`, and `lib/` implementation code, and the previous roadmap/architecture docs (archived under `docs/archive/previous-implementation/`, marked obsolete, not authoritative).
