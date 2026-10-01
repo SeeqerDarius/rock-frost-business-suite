@@ -8,10 +8,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { FormFeedback, ReadOnlyNotice } from "@/components/school/form-feedback";
 import { FieldGrid, SelectField, TextField } from "@/components/school/form-fields";
 import { PrerequisiteNotice, SectionCard } from "@/components/school/section-card";
+import { RecordSearch } from "@/components/school/record-search";
 import { formatMoney } from "@/components/school/format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listSchoolCampuses, listSchoolStudents, listSchoolTransport } from "@/modules/school/service";
+import { listSchoolCampuses, listSchoolStudentChoices, listSchoolTransport } from "@/modules/school/service";
 import { assignTransportAction, createTransportRouteAction } from "../actions";
 
 /** `stops` is a Json column written as a string array by createTransportRouteAction. */
@@ -19,16 +20,14 @@ function readStops(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((stop): stop is string => typeof stop === "string") : [];
 }
 
-export default async function SchoolTransportPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
+export default async function SchoolTransportPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; studentQ?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE);
   const [campuses, students, routes] = await Promise.all([
     listSchoolCampuses(tenant.organizationId),
-    listSchoolStudents(tenant.organizationId),
+    listSchoolStudentChoices(tenant.organizationId, { query: query.studentQ, activeOnly: true }),
     listSchoolTransport(tenant.organizationId),
   ]);
-
-  const activeStudents = students.filter((student) => student.status === "ACTIVE");
 
   const newRouteDialog = (
     <EntityDialog
@@ -66,9 +65,9 @@ export default async function SchoolTransportPage({ searchParams }: { searchPara
         name="studentId"
         label="Student"
         required
-        options={activeStudents.map((student) => ({ value: student.id, label: `${student.lastName}, ${student.firstName} (${student.admissionNumber})` }))}
+        options={students.rows.map((student) => ({ value: student.id, label: `${student.lastName}, ${student.firstName} (${student.admissionNumber})` }))}
         emptyHint="Only active students can be assigned."
-        hint="Only active students are listed."
+        hint="Only active students are listed. Search by name or admission number above."
       />
       <TextField id="assign-stop" name="stopName" label="Boarding stop" maxLength={200} hint="Optional. Where this student joins the route." />
     </EntityDialog>
@@ -79,7 +78,7 @@ export default async function SchoolTransportPage({ searchParams }: { searchPara
       <PageHeader
         title="Transport"
         description="Routes, vehicles, drivers, stops, and student assignments."
-        actions={canManage ? <>{campuses.length > 0 ? newRouteDialog : null}{routes.length > 0 && activeStudents.length > 0 ? assignDialog : null}</> : undefined}
+        actions={canManage ? <>{campuses.length > 0 ? newRouteDialog : null}{routes.length > 0 && students.total > 0 ? assignDialog : null}</> : undefined}
       />
 
       <FormFeedback
@@ -88,6 +87,7 @@ export default async function SchoolTransportPage({ searchParams }: { searchPara
         savedMessage="The transport record is up to date."
         stateMessage="The route or student could not be used: the route must be active and the student must be active."
       />
+      <RecordSearch action="/app/school/transport" queryName="studentQ" label="Find a student for a route" placeholder="Name or admission number" defaultValue={query.studentQ} resultSummary={`Showing ${students.rows.length} of ${students.total} active students`} />
       {!canManage ? <ReadOnlyNotice>Your role can review transport routes but cannot change them or assign students.</ReadOnlyNotice> : null}
       <PrerequisiteNotice items={[{ satisfied: campuses.length > 0, label: "Create a campus", href: "/app/school/campuses" }]} />
 

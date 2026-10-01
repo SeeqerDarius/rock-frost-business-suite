@@ -17,7 +17,7 @@ import { StatusBadge } from "@/components/school/status-badge";
 import { formatDate, formatMoney, humanizeStatus } from "@/components/school/format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getSchoolAcademicSetup, getSchoolFeeInvoiceSummary, listSchoolCampuses, listSchoolFeeInvoicePage, listSchoolFeeStructures, listSchoolStudents } from "@/modules/school/service";
+import { getSchoolAcademicSetup, getSchoolFeeInvoiceSummary, listSchoolCampuses, listSchoolFeeInvoicePage, listSchoolFeeStructures, listSchoolStudentChoices } from "@/modules/school/service";
 import { RecordPagination } from "@/components/school/record-pagination";
 import { createFeeInvoiceAction, createFeeStructureAction, issueFeeStructureAction, recordFeePaymentAction, retrySchoolFeePostingAction } from "../actions";
 
@@ -25,7 +25,7 @@ const PATH = "/app/school/fees";
 const PAYMENT_METHODS = ["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "ONLINE", "OTHER"] as const;
 const INVOICE_STATUSES = ["DRAFT", "ISSUED", "PART_PAID", "PAID", "VOID"] as const;
 
-export default async function SchoolFeesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; status?: string; page?: string; issued?: string; skipped?: string; posting?: string }> }) {
+export default async function SchoolFeesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; status?: string; page?: string; issued?: string; skipped?: string; posting?: string; studentQ?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
 
   if (!hasPermission(tenant, PERMISSIONS.SCHOOL_FEES_MANAGE)) {
@@ -42,7 +42,7 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
   const [[years, classes], campuses, students, invoicePage, structures, totals] = await Promise.all([
     getSchoolAcademicSetup(tenant.organizationId),
     listSchoolCampuses(tenant.organizationId),
-    listSchoolStudents(tenant.organizationId),
+    listSchoolStudentChoices(tenant.organizationId, { query: query.studentQ }),
     listSchoolFeeInvoicePage(tenant.organizationId, { query: query.q, status: statusFilter, page: requestedPage }),
     listSchoolFeeStructures(tenant.organizationId),
     getSchoolFeeInvoiceSummary(tenant.organizationId),
@@ -51,7 +51,7 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
 
   const yearOptions = years.map((year) => ({ value: year.id, label: year.current ? `${year.name} (current)` : year.name }));
   const termOptions = years.flatMap((year) => year.terms.map((term) => ({ value: term.id, label: `${year.name} · ${term.name}${term.current ? " (current)" : ""}` })));
-  const studentOptions = students.map((student) => ({ value: student.id, label: `${student.lastName}, ${student.firstName} (${student.admissionNumber})` }));
+  const studentOptions = students.rows.map((student) => ({ value: student.id, label: `${student.lastName}, ${student.firstName} (${student.admissionNumber})` }));
 
   const paidOn = (invoice: (typeof invoices)[number]) => invoice.payments.filter((payment) => !payment.refundedAt).reduce((sum, payment) => sum.plus(payment.amount), new Prisma.Decimal(0));
   const balanceOf = (invoice: (typeof invoices)[number]) => invoice.amount.minus(invoice.discount).minus(paidOn(invoice));
@@ -124,12 +124,13 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
         savedMessage={query.issued !== undefined ? `${query.issued} invoice${query.issued === "1" ? " was" : "s were"} issued${query.skipped && query.skipped !== "0" ? `; ${query.skipped} already-billed student${query.skipped === "1" ? " was" : "s were"} skipped` : ""}.` : "The fee record is up to date."}
         stateMessage="Check the amounts: a discount cannot exceed the invoice amount, and a payment cannot exceed the outstanding balance."
       />
+      <RecordSearch action={PATH} queryName="studentQ" label="Find a student for an invoice" placeholder="Name or admission number" defaultValue={query.studentQ} hiddenFilters={{ q: query.q, status: statusFilter, page: query.page }} resultSummary={`Showing ${students.rows.length} of ${students.total} students`} />
       {query.posting === "failed" ? <div role="status" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">The fee payment was recorded and receipted, but its Accounting entry did not post. Use Retry posting beside that payment below.</div> : null}
       {query.posting === "complete" ? <div role="status" className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">Accounting posting is up to date.</div> : null}
       {query.error === "posting-not-retryable" ? <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">That payment is unavailable for posting. Refresh the fee list and check its current status.</div> : null}
       <PrerequisiteNotice
         items={[
-          { satisfied: students.length > 0, label: "Admit a student", href: "/app/school/students" },
+          { satisfied: students.total > 0, label: "Admit a student", href: "/app/school/students" },
           { satisfied: years.length > 0, label: "Create an academic year", href: "/app/school/academic-periods" },
         ]}
       />
@@ -206,7 +207,7 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
           icon={Receipt}
           title="No fee invoices yet"
           description="Issue an invoice to a single student, or create a fee structure to bill a whole class or campus at once."
-          action={students.length > 0 && years.length > 0 ? newInvoiceDialog : undefined}
+          action={students.total > 0 && years.length > 0 ? newInvoiceDialog : undefined}
         />
       ) : (
         <SectionCard title="Invoices" description={`${invoicePage.total} invoice${invoicePage.total === 1 ? "" : "s"}, newest first.`}>
@@ -216,6 +217,7 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
               label="Search invoices"
               placeholder="Invoice number, student, or description"
               defaultValue={query.q}
+              hiddenFilters={{ studentQ: query.studentQ }}
               isFiltered={Boolean(query.q || statusFilter)}
               resultSummary={`Showing ${visible.length} of ${invoicePage.total}`}
               filters={
@@ -331,7 +333,7 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
                 </TableBody>
               </Table>
             )}
-            <RecordPagination path={PATH} page={invoicePage.page} pageCount={invoicePage.pageCount} filters={{ q: query.q, status: statusFilter }} label="Invoice list" />
+            <RecordPagination path={PATH} page={invoicePage.page} pageCount={invoicePage.pageCount} filters={{ q: query.q, status: statusFilter, studentQ: query.studentQ }} label="Invoice list" />
           </div>
         </SectionCard>
       )}

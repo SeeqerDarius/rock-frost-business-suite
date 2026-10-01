@@ -12,25 +12,25 @@ import { Textarea } from "@/components/ui/textarea";
 import { FormFeedback, ReadOnlyNotice } from "@/components/school/form-feedback";
 import { FieldGrid, SelectField, TextField } from "@/components/school/form-fields";
 import { PrerequisiteNotice, SectionCard } from "@/components/school/section-card";
+import { RecordSearch } from "@/components/school/record-search";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getSchoolAcademicSetup, listAssignableTeacherUsers, listSchoolCampuses, listSchoolClassTeacherAssignments, listSchoolStudents } from "@/modules/school/service";
+import { getSchoolAcademicSetup, listAssignableTeacherUsers, listSchoolCampuses, listSchoolClassTeacherAssignments, listSchoolStudentChoices } from "@/modules/school/service";
 import { assignClassTeacherAction, createClassAction, createSubjectAction, enrollStudentAction, removeClassTeacherAction, updateClassCapacityAction } from "../actions";
 
-export default async function SchoolClassesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
+export default async function SchoolClassesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; studentQ?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
   const canManageAcademics = hasPermission(tenant, PERMISSIONS.SCHOOL_ACADEMICS_MANAGE);
   const canManageEnrollment = hasPermission(tenant, PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE);
   const [[years, classes, subjects], campuses, students, teacherAssignments, staff] = await Promise.all([
     getSchoolAcademicSetup(tenant.organizationId),
     listSchoolCampuses(tenant.organizationId),
-    listSchoolStudents(tenant.organizationId),
+    listSchoolStudentChoices(tenant.organizationId, { query: query.studentQ, activeOnly: true }),
     listSchoolClassTeacherAssignments(tenant.organizationId),
     listAssignableTeacherUsers(tenant.organizationId),
   ]);
 
   const campusOptions = campuses.map((campus) => ({ value: campus.id, label: campus.name }));
-  const activeStudents = students.filter((student) => student.status === "ACTIVE");
   const staffOptions = staff.map((member) => ({ value: member.userId, label: `${member.user.name ?? member.user.email}${member.role ? ` · ${member.role.name}` : ""}` }));
   const teachersByClass = new Map<string, typeof teacherAssignments>();
   for (const assignment of teacherAssignments) {
@@ -94,9 +94,9 @@ export default async function SchoolClassesPage({ searchParams }: { searchParams
         name="studentId"
         label="Student"
         required
-        options={activeStudents.map((student) => ({ value: student.id, label: `${student.lastName}, ${student.firstName} (${student.admissionNumber})` }))}
+        options={students.rows.map((student) => ({ value: student.id, label: `${student.lastName}, ${student.firstName} (${student.admissionNumber})` }))}
         emptyHint="Only active students can be enrolled."
-        hint="Only active students are listed."
+        hint="Search by name or admission number above to find other students."
       />
       <SelectField
         id="enroll-class"
@@ -133,6 +133,7 @@ export default async function SchoolClassesPage({ searchParams }: { searchParams
         savedMessage="The class, subject, or enrollment is saved."
         stateMessage="The class is full, or the student, class, and academic year do not belong to the campus you selected."
       />
+      <RecordSearch action="/app/school/classes" queryName="studentQ" label="Find a student for enrollment" placeholder="Name or admission number" defaultValue={query.studentQ} resultSummary={`Showing ${students.rows.length} of ${students.total} active students`} />
       {!canDoAnything ? <ReadOnlyNotice>Your role can review classes and subjects but cannot change them or enroll students.</ReadOnlyNotice> : null}
       <PrerequisiteNotice
         items={[

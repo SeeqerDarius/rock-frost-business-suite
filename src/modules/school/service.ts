@@ -126,6 +126,41 @@ export function listSchoolStudents(organizationId: string) {
   return db.schoolStudent.findMany({ where: { organizationId }, include: { campus: true, guardians: { include: { guardian: true } }, enrollments: { include: { class: true, academicYear: true } }, lifecycleEvents: { orderBy: { createdAt: "desc" }, take: 10 } }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] });
 }
 
+/**
+ * Small tenant-scoped student choice set for operational forms. The cap
+ * prevents large organizations from transferring every student into a
+ * select; callers expose a separate search field so users can narrow choices.
+ */
+export async function listSchoolStudentChoices(organizationId: string, input: { query?: string; activeOnly?: boolean; take?: number } = {}) {
+  const take = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.take) ? input.take! : 50)));
+  const terms = input.query?.trim().split(/\s+/).filter(Boolean) ?? [];
+  const where: Prisma.SchoolStudentWhereInput = {
+    organizationId,
+    ...(input.activeOnly ? { status: "ACTIVE" } : {}),
+    ...(terms.length ? { AND: terms.map((term) => ({ OR: [
+      { firstName: { contains: term, mode: "insensitive" as const } },
+      { lastName: { contains: term, mode: "insensitive" as const } },
+      { admissionNumber: { contains: term, mode: "insensitive" as const } },
+    ] })) } : {}),
+  };
+  const [total, rows] = await Promise.all([
+    db.schoolStudent.count({ where }),
+    db.schoolStudent.findMany({
+      where,
+      select: {
+        id: true,
+        admissionNumber: true,
+        firstName: true,
+        lastName: true,
+        enrollments: { where: { status: "ACTIVE" }, orderBy: [{ enrolledAt: "desc" }, { id: "asc" }], take: 1, select: { classId: true } },
+      },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { id: "asc" }],
+      take,
+    }),
+  ]);
+  return { rows, total, take };
+}
+
 export async function listSchoolStudentPage(organizationId: string, input: { query?: string; status?: SchoolStudentStatus; page?: number; pageSize?: number } = {}) {
   const pageSize = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.pageSize) ? input.pageSize! : 50)));
   const requestedPage = Math.max(1, Math.floor(Number.isFinite(input.page) ? input.page! : 1));
@@ -937,7 +972,24 @@ export async function listSchoolLibraryLoanPage(organizationId: string, input: {
   });
   return { rows, total, overdueCount, page, pageSize, pageCount };
 }
-export function listSchoolLibraryBookChoices(organizationId: string) { return db.schoolLibraryBook.findMany({ where: { organizationId, availableCopies: { gt: 0 } }, select: { id: true, title: true, availableCopies: true }, orderBy: [{ title: "asc" }, { id: "asc" }] }); }
+export async function listSchoolLibraryBookChoices(organizationId: string, input: { query?: string; take?: number } = {}) {
+  const take = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.take) ? input.take! : 50)));
+  const query = input.query?.trim();
+  const where: Prisma.SchoolLibraryBookWhereInput = {
+    organizationId,
+    availableCopies: { gt: 0 },
+    ...(query ? { OR: [
+      { title: { contains: query, mode: "insensitive" } },
+      { author: { contains: query, mode: "insensitive" } },
+      { accessionCode: { contains: query, mode: "insensitive" } },
+    ] } : {}),
+  };
+  const [total, rows] = await Promise.all([
+    db.schoolLibraryBook.count({ where }),
+    db.schoolLibraryBook.findMany({ where, select: { id: true, title: true, availableCopies: true }, orderBy: [{ title: "asc" }, { id: "asc" }], take }),
+  ]);
+  return { rows, total, take };
+}
 export async function listSchoolLibraryBookPage(organizationId: string, input: { query?: string; page?: number; pageSize?: number } = {}) {
   const pageSize = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.pageSize) ? input.pageSize! : 50)));
   const requestedPage = Math.max(1, Math.floor(Number.isFinite(input.page) ? input.page! : 1));
