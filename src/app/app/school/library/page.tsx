@@ -13,31 +13,37 @@ import { StatusBadge } from "@/components/school/status-badge";
 import { formatDate } from "@/components/school/format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listSchoolLibraryBookChoices, listSchoolLibraryBookPage, listSchoolLibraryLoans, listSchoolStudents } from "@/modules/school/service";
+import { listSchoolLibraryBookChoices, listSchoolLibraryBookPage, listSchoolLibraryLoanPage, listSchoolStudents } from "@/modules/school/service";
 import { RecordPagination } from "@/components/school/record-pagination";
 import { borrowBookAction, createLibraryBookAction, returnBookAction } from "../actions";
 
 const PATH = "/app/school/library";
 
-export default async function SchoolLibraryPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; view?: string; page?: string }> }) {
+export default async function SchoolLibraryPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; loansQ?: string; view?: string; page?: string; loansPage?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_LIBRARY_MANAGE);
   const requestedPage = query.page && /^\d{1,6}$/.test(query.page) ? Number(query.page) : 1;
-  const [bookPage, loans, availableBooks, students] = await Promise.all([
+  const requestedLoanPage = query.loansPage && /^\d{1,6}$/.test(query.loansPage) ? Number(query.loansPage) : 1;
+  const showReturned = query.view === "all";
+  const [bookPage, loanPage, availableBooks, students] = await Promise.all([
     listSchoolLibraryBookPage(tenant.organizationId, { query: query.q, page: requestedPage }),
-    listSchoolLibraryLoans(tenant.organizationId),
+    listSchoolLibraryLoanPage(tenant.organizationId, { query: query.loansQ, showAll: showReturned, page: requestedLoanPage }),
     listSchoolLibraryBookChoices(tenant.organizationId),
     listSchoolStudents(tenant.organizationId),
   ]);
   const books = bookPage.rows;
 
   const now = new Date();
-  const openLoans = loans.filter((loan) => loan.status === "BORROWED" || loan.status === "OVERDUE");
-  const overdueCount = openLoans.filter((loan) => loan.dueAt < now).length;
+  const loans = loanPage.rows;
+  const overdueCount = loanPage.overdueCount;
   const visibleBooks = books;
 
-  const showReturned = query.view === "all";
-  const visibleLoans = showReturned ? loans : openLoans;
+  const visibleLoans = loans;
+  const loanViewParams = new URLSearchParams();
+  if (query.q) loanViewParams.set("q", query.q);
+  if (query.loansQ) loanViewParams.set("loansQ", query.loansQ);
+  if (!showReturned) loanViewParams.set("view", "all");
+  const loanViewHref = loanViewParams.size ? `${PATH}?${loanViewParams.toString()}` : PATH;
 
   const newBookDialog = (
     <EntityDialog
@@ -120,15 +126,25 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
             actions={
               <>
                 {overdueCount > 0 ? <Badge variant="destructive">{overdueCount} overdue</Badge> : null}
-                <Button size="sm" variant="outline" nativeButton={false} render={<a href={showReturned ? PATH : `${PATH}?view=all`} />}>
+                <Button size="sm" variant="outline" nativeButton={false} render={<a href={loanViewHref} />}>
                   {showReturned ? "Show open loans only" : "Show all loans"}
                 </Button>
               </>
             }
           >
+            <div className="space-y-4">
+            <RecordSearch
+              action={PATH}
+              queryName="loansQ"
+              label="Search loan history"
+              placeholder="Book, student, or admission number"
+              defaultValue={query.loansQ}
+              hiddenFilters={{ q: query.q, view: showReturned ? "all" : undefined }}
+              resultSummary={`Showing ${visibleLoans.length} of ${loanPage.total}`}
+            />
             {visibleLoans.length === 0 ? (
               <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-                {showReturned ? "No loans recorded yet." : "No books are currently on loan."}
+                {query.loansQ?.trim() ? "No loans match this search." : showReturned ? "No loans recorded yet." : "No books are currently on loan."}
               </p>
             ) : (
               <Table>
@@ -172,6 +188,8 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
                 </TableBody>
               </Table>
             )}
+            <RecordPagination path={PATH} page={loanPage.page} pageCount={loanPage.pageCount} filters={{ q: query.q, loansQ: query.loansQ, view: showReturned ? "all" : undefined }} label="Library loan history" queryName="loansPage" />
+            </div>
           </SectionCard>
 
           <SectionCard title="Catalogue" description={`${bookPage.total} title${bookPage.total === 1 ? "" : "s"} on record.`}>
@@ -181,6 +199,7 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
                 label="Search the catalogue"
                 placeholder="Title, author, accession code, or ISBN"
                 defaultValue={query.q}
+                hiddenFilters={{ loansQ: query.loansQ, view: showReturned ? "all" : undefined }}
                 resultSummary={`Showing ${visibleBooks.length} of ${bookPage.total}`}
               />
               {visibleBooks.length === 0 ? (
@@ -215,7 +234,7 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
                   </TableBody>
                 </Table>
               )}
-              <RecordPagination path={PATH} page={bookPage.page} pageCount={bookPage.pageCount} filters={{ q: query.q }} label="Library catalogue" />
+              <RecordPagination path={PATH} page={bookPage.page} pageCount={bookPage.pageCount} filters={{ q: query.q, loansQ: query.loansQ, view: showReturned ? "all" : undefined }} label="Library catalogue" />
             </div>
           </SectionCard>
         </>

@@ -207,8 +207,10 @@ filter and search conditions are applied before counting and paging, and page
 links preserve filters and clamp stale page values. Student rows exclude
 medical notes and photo blobs; invoice and attendance rows select only the
 fields needed by the tables. Fee summary values are aggregated across the
-organization, not derived from the current page. Library loan history and
-large organization-wide form pickers still load unpaged and remain open work.
+organization, not derived from the current page. Library loan history now has
+separate tenant-scoped search and pagination, and the overdue badge counts
+organization-wide overdue loans. Large organization-wide form pickers still
+load unpaged and remain open work.
 
 **SC-5 — RESOLVED.** `resolveGradeFromScale()` in `src/modules/school/service.ts`
 reads `SchoolSettings.gradingScale` back and auto-derives `grade` (and now

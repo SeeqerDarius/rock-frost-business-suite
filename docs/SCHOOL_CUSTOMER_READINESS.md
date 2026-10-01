@@ -101,12 +101,14 @@ across the organization rather than summing only the visible invoice page.
 Invoice rows select only the fields rendered by the table and its receipt
 actions. Attendance rows omit unrelated student data. Library catalogue rows
 use a narrow select; book choices for issuing loans load only IDs, titles, and
-available-copy counts. Library loan history still loads as a whole list and
-needs its own search and pagination pass.
+available-copy counts. Library loan history now has tenant-scoped search and
+stable pages of 50 rows capped at 100, separate search state from the
+catalogue, an open/all-loans toggle, and an organization-wide overdue count.
+Loan rows select only the book and student fields shown in the table.
 
 The invoice status filter now matches the schema's `VOID` value rather than
 offering the nonexistent `CANCELLED` value. Remaining scaling work includes
-paginated library loan history and organization-wide form pickers, followed by
+organization-wide form pickers, followed by
 the finance, student lifecycle, and academic workflows listed below.
 
 ## Customer-readiness tranche 2 — capacity, lifecycle controls, teacher scoping, and UX fixes
