@@ -86,11 +86,28 @@ tenant-scoped database query and returns stable pages of 50 rows (maximum 100
 per page). Status and text filters are applied before counting and paging;
 page links preserve active filters and clamp stale page numbers to the last
 available page. The existing full student directory service remains available
-to forms and workflows that need organization-wide choices. Fee invoices,
-attendance history, and the library catalogue still need the same server-side
-filtering and pagination treatment. The paged table selects only displayed
-identity, campus, active-enrollment, and guardian-contact fields; it does not
-fetch medical notes or photo data into the list response.
+to forms and workflows that need organization-wide choices. The paged table
+selects only displayed identity, campus, active-enrollment, and guardian-contact
+fields; it does not fetch medical notes or photo data into the list response.
+
+## Customer-readiness tranche 6 — scalable operational lists
+
+Fee invoices, attendance history, and the library catalogue now use
+organization-scoped database search and stable pages of 50 rows, capped at
+100. Search terms and valid status filters are applied before counting and
+pagination; page links preserve current filters and stale page requests clamp
+to the last available page. Fee dashboard totals use database aggregates
+across the organization rather than summing only the visible invoice page.
+Invoice rows select only the fields rendered by the table and its receipt
+actions. Attendance rows omit unrelated student data. Library catalogue rows
+use a narrow select; book choices for issuing loans load only IDs, titles, and
+available-copy counts. Library loan history still loads as a whole list and
+needs its own search and pagination pass.
+
+The invoice status filter now matches the schema's `VOID` value rather than
+offering the nonexistent `CANCELLED` value. Remaining scaling work includes
+paginated library loan history and organization-wide form pickers, followed by
+the finance, student lifecycle, and academic workflows listed below.
 
 ## Customer-readiness tranche 2 — capacity, lifecycle controls, teacher scoping, and UX fixes
 
@@ -147,10 +164,9 @@ schema change:
 
 ### Fees and finance
 
-- Add fee-structure and bulk-issuance UI, scholarships, credits, refunds,
-  reversals, statements, receipt printing, cashier reconciliation, and arrears
-  aging. Accounting delivery status and retry are now implemented; the other
-  listed finance workflows remain open.
+- Add scholarships, credits, refunds, reversals, statements, receipt printing,
+  cashier reconciliation, and arrears aging. Fee structures and bulk issuance,
+  plus Accounting delivery status and retry, are implemented.
 
 ### Academics
 

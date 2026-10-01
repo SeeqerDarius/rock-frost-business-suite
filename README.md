@@ -32,7 +32,9 @@ adjustments now link to HR employees and feed earnings and deductions into
 full-calendar-month Payroll runs atomically, with recoverable handling for
 unlinked legacy inputs. The Students table now searches within the tenant's
 database records and returns stable pages instead of loading every student
-for that view. The lifecycle and
+for that view. Fee invoices, attendance history, and the library catalogue now
+also search and paginate in tenant-scoped database queries, with fee summary
+totals aggregated across all invoices. The lifecycle and
 fee-control tranche adds explicit status history, reusable fee structures,
 idempotent bulk billing, attendance correction windows, and campus receipt
 numbering. Fee payments retain their source receipt if Accounting posting fails

@@ -13,24 +13,28 @@ import { StatusBadge } from "@/components/school/status-badge";
 import { formatDate } from "@/components/school/format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listSchoolLibrary, listSchoolStudents } from "@/modules/school/service";
+import { listSchoolLibraryBookChoices, listSchoolLibraryBookPage, listSchoolLibraryLoans, listSchoolStudents } from "@/modules/school/service";
+import { RecordPagination } from "@/components/school/record-pagination";
 import { borrowBookAction, createLibraryBookAction, returnBookAction } from "../actions";
 
 const PATH = "/app/school/library";
 
-export default async function SchoolLibraryPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; view?: string }> }) {
+export default async function SchoolLibraryPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; view?: string; page?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_LIBRARY_MANAGE);
-  const [[books, loans], students] = await Promise.all([listSchoolLibrary(tenant.organizationId), listSchoolStudents(tenant.organizationId)]);
+  const requestedPage = query.page && /^\d{1,6}$/.test(query.page) ? Number(query.page) : 1;
+  const [bookPage, loans, availableBooks, students] = await Promise.all([
+    listSchoolLibraryBookPage(tenant.organizationId, { query: query.q, page: requestedPage }),
+    listSchoolLibraryLoans(tenant.organizationId),
+    listSchoolLibraryBookChoices(tenant.organizationId),
+    listSchoolStudents(tenant.organizationId),
+  ]);
+  const books = bookPage.rows;
 
   const now = new Date();
   const openLoans = loans.filter((loan) => loan.status === "BORROWED" || loan.status === "OVERDUE");
   const overdueCount = openLoans.filter((loan) => loan.dueAt < now).length;
-  const availableBooks = books.filter((book) => book.availableCopies > 0);
-
-  // listSchoolLibrary returns the whole catalogue, so search filters the rows already loaded here.
-  const search = query.q?.trim().toLowerCase() ?? "";
-  const visibleBooks = books.filter((book) => search === "" || `${book.title} ${book.author ?? ""} ${book.accessionCode} ${book.isbn ?? ""} ${book.category ?? ""}`.toLowerCase().includes(search));
+  const visibleBooks = books;
 
   const showReturned = query.view === "all";
   const visibleLoans = showReturned ? loans : openLoans;
@@ -101,7 +105,7 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
       />
       {!canManage ? <ReadOnlyNotice>Your role can review the library but cannot add books or manage loans.</ReadOnlyNotice> : null}
 
-      {books.length === 0 ? (
+      {bookPage.total === 0 && !query.q?.trim() ? (
         <EmptyState
           icon={Library}
           title="No books in the catalogue yet"
@@ -170,14 +174,14 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
             )}
           </SectionCard>
 
-          <SectionCard title="Catalogue" description={`${books.length} title${books.length === 1 ? "" : "s"} on record.`}>
+          <SectionCard title="Catalogue" description={`${bookPage.total} title${bookPage.total === 1 ? "" : "s"} on record.`}>
             <div className="space-y-4">
               <RecordSearch
                 action={PATH}
                 label="Search the catalogue"
                 placeholder="Title, author, accession code, or ISBN"
                 defaultValue={query.q}
-                resultSummary={`Showing ${visibleBooks.length} of ${books.length}`}
+                resultSummary={`Showing ${visibleBooks.length} of ${bookPage.total}`}
               />
               {visibleBooks.length === 0 ? (
                 <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">No books match this search.</p>
@@ -211,6 +215,7 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
                   </TableBody>
                 </Table>
               )}
+              <RecordPagination path={PATH} page={bookPage.page} pageCount={bookPage.pageCount} filters={{ q: query.q }} label="Library catalogue" />
             </div>
           </SectionCard>
         </>

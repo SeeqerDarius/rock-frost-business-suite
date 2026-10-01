@@ -73,6 +73,76 @@ describe("School service — real tenant isolation and customer-readiness guards
     expect(pageOne.rows[0]).not.toHaveProperty("photoData");
   });
 
+  it("searches and paginates fee, attendance, and catalogue lists within one tenant", async () => {
+    const token = `ListPage${Date.now()}`;
+    const [studentOne, studentTwo, foreignStudent] = await Promise.all([
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Ama`, lastName: "One" }),
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Kojo`, lastName: "Two" }),
+      school.createSchoolStudent(orgB.organizationId, { campusId: campusB.id, firstName: `${token} Foreign`, lastName: "Three" }),
+    ]);
+    const [yearA, yearB] = await Promise.all([
+      school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} A`, startDate: new Date("2031-01-01"), endDate: new Date("2031-12-31") }),
+      school.createSchoolAcademicYear(orgB.organizationId, { name: `${token} B`, startDate: new Date("2031-01-01"), endDate: new Date("2031-12-31") }),
+    ]);
+    const summaryBefore = await school.getSchoolFeeInvoiceSummary(orgA.organizationId);
+    const [invoiceOne, invoiceTwo] = await Promise.all([
+      school.createSchoolFeeInvoice(orgA.organizationId, { academicYearId: yearA.id, studentId: studentOne.id, description: `${token} One`, amount: "10" }),
+      school.createSchoolFeeInvoice(orgA.organizationId, { academicYearId: yearA.id, studentId: studentTwo.id, description: `${token} Two`, amount: "20" }),
+    ]);
+    await school.createSchoolFeeInvoice(orgB.organizationId, { academicYearId: yearB.id, studentId: foreignStudent.id, description: `${token} Foreign`, amount: "30" });
+    const feeFirst = await school.listSchoolFeeInvoicePage(orgA.organizationId, { query: token, page: 1, pageSize: 1 });
+    const feeSecond = await school.listSchoolFeeInvoicePage(orgA.organizationId, { query: token, page: 2, pageSize: 1 });
+    expect(feeFirst.total).toBe(2);
+    expect(feeFirst.rows).toHaveLength(1);
+    expect(feeSecond.rows).toHaveLength(1);
+    expect(new Set([...feeFirst.rows, ...feeSecond.rows].map((row) => row.id))).toEqual(new Set([invoiceOne.id, invoiceTwo.id]));
+    expect(feeFirst.rows[0].student).not.toHaveProperty("medicalNotes");
+    expect((await school.listSchoolFeeInvoicePage(orgA.organizationId, { query: token, status: "ISSUED", page: 999, pageSize: 1 })).page).toBe(2);
+    const summaryAfter = await school.getSchoolFeeInvoiceSummary(orgA.organizationId);
+    expect(summaryAfter.billed.minus(summaryBefore.billed).toNumber()).toBe(30);
+    expect(summaryAfter.outstanding.minus(summaryBefore.outstanding).toNumber()).toBe(30);
+
+    const [bookOne, bookTwo] = await Promise.all([
+      school.createSchoolLibraryBook(orgA.organizationId, { accessionCode: `${token}-A`, title: `${token} Alpha`, totalCopies: 2 }),
+      school.createSchoolLibraryBook(orgA.organizationId, { accessionCode: `${token}-B`, title: `${token} Beta`, totalCopies: 1 }),
+    ]);
+    await school.createSchoolLibraryBook(orgB.organizationId, { accessionCode: `${token}-X`, title: `${token} Foreign`, totalCopies: 1 });
+    const booksOne = await school.listSchoolLibraryBookPage(orgA.organizationId, { query: token, page: 1, pageSize: 1 });
+    const booksTwo = await school.listSchoolLibraryBookPage(orgA.organizationId, { query: token, page: 2, pageSize: 1 });
+    expect(booksOne.total).toBe(2);
+    expect(new Set([...booksOne.rows, ...booksTwo.rows].map((row) => row.id))).toEqual(new Set([bookOne.id, bookTwo.id]));
+    expect(booksOne.rows[0]).not.toHaveProperty("organizationId");
+
+    const [termA, termB] = await Promise.all([
+      school.createSchoolTerm(orgA.organizationId, { academicYearId: yearA.id, name: `${token} Term A`, startDate: new Date("2031-01-01"), endDate: new Date("2031-12-31") }),
+      school.createSchoolTerm(orgB.organizationId, { academicYearId: yearB.id, name: `${token} Term B`, startDate: new Date("2031-01-01"), endDate: new Date("2031-12-31") }),
+    ]);
+    const [classA, classB] = await Promise.all([
+      school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}A`, name: `${token} Class A` }),
+      school.createSchoolClass(orgB.organizationId, { campusId: campusB.id, code: `${token}B`, name: `${token} Class B` }),
+    ]);
+    await Promise.all([
+      school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: yearA.id, studentId: studentOne.id, classId: classA.id }),
+      school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: yearA.id, studentId: studentTwo.id, classId: classA.id }),
+      school.enrollSchoolStudent(orgB.organizationId, { campusId: campusB.id, academicYearId: yearB.id, studentId: foreignStudent.id, classId: classB.id }),
+    ]);
+    const attendanceDate = new Date();
+    attendanceDate.setHours(0, 0, 0, 0);
+    await Promise.all([
+      school.recordSchoolAttendance(orgA.organizationId, orgA.userId, { termId: termA.id, classId: classA.id, studentId: studentOne.id, date: attendanceDate, status: "PRESENT" }),
+      school.recordSchoolAttendance(orgA.organizationId, orgA.userId, { termId: termA.id, classId: classA.id, studentId: studentTwo.id, date: attendanceDate, status: "ABSENT" }),
+      school.recordSchoolAttendance(orgB.organizationId, orgB.userId, { termId: termB.id, classId: classB.id, studentId: foreignStudent.id, date: attendanceDate, status: "PRESENT" }),
+    ]);
+    const attendanceOne = await school.listSchoolAttendancePage(orgA.organizationId, { query: token, page: 1, pageSize: 1 });
+    const attendanceTwo = await school.listSchoolAttendancePage(orgA.organizationId, { query: token, page: 2, pageSize: 1 });
+    expect(attendanceOne.total).toBe(2);
+    expect(attendanceOne.rows).toHaveLength(1);
+    expect(attendanceTwo.rows).toHaveLength(1);
+    expect(attendanceOne.rows.some((row) => row.student.firstName.includes("Foreign"))).toBe(false);
+    expect(attendanceOne.rows[0]).not.toHaveProperty("organizationId");
+    expect((await school.listSchoolAttendancePage(orgA.organizationId, { query: token, status: "ABSENT" })).total).toBe(1);
+  });
+
   it("issues, verifies, revokes, and tenant-isolates a digital student ID", async () => {
     process.env.AUTH_SECRET = "integration-only-school-id-signing-secret";
     const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Digital", lastName: "Identity" });

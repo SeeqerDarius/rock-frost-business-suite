@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Prisma, type HotelPaymentMethod, type SchoolAttendanceStatus, type SchoolStudentStatus } from "@prisma/client";
+import { Prisma, type HotelPaymentMethod, type SchoolAttendanceStatus, type SchoolInvoiceStatus, type SchoolStudentStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@/lib/trend-buckets";
@@ -432,6 +432,30 @@ export async function updateSchoolGuardianPhoto(organizationId: string, id: stri
   if (result.count === 0) throw new SchoolNotFoundError("Guardian not found.");
 }
 export function listSchoolAttendance(organizationId: string) { return db.schoolAttendance.findMany({ where: { organizationId }, include: { student: true, class: true, term: true }, orderBy: { date: "desc" }, take: 250 }); }
+export async function listSchoolAttendancePage(organizationId: string, input: { query?: string; status?: SchoolAttendanceStatus; page?: number; pageSize?: number } = {}) {
+  const pageSize = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.pageSize) ? input.pageSize! : 50)));
+  const requestedPage = Math.max(1, Math.floor(Number.isFinite(input.page) ? input.page! : 1));
+  const terms = input.query?.trim().split(/\s+/).filter(Boolean) ?? [];
+  const where: Prisma.SchoolAttendanceWhereInput = {
+    organizationId,
+    ...(input.status ? { status: input.status } : {}),
+    ...(terms.length ? { AND: terms.map((term) => ({ OR: [
+      { student: { firstName: { contains: term, mode: "insensitive" as const } } },
+      { student: { lastName: { contains: term, mode: "insensitive" as const } } },
+      { student: { admissionNumber: { contains: term, mode: "insensitive" as const } } },
+      { class: { name: { contains: term, mode: "insensitive" as const } } },
+    ] })) } : {}),
+  };
+  const total = await db.schoolAttendance.count({ where });
+  const pageCount = Math.ceil(total / pageSize);
+  const page = pageCount === 0 ? 1 : Math.min(requestedPage, pageCount);
+  const rows = await db.schoolAttendance.findMany({ where, select: {
+    id: true, date: true, status: true, reason: true,
+    student: { select: { firstName: true, lastName: true, admissionNumber: true } },
+    class: { select: { name: true } }, term: { select: { name: true } },
+  }, orderBy: [{ date: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize });
+  return { rows, total, page, pageSize, pageCount };
+}
 export function listSchoolTimetable(organizationId: string) { return db.schoolTimetableEntry.findMany({ where: { organizationId }, include: { campus: true, term: true, class: true, subject: true }, orderBy: [{ dayOfWeek: "asc" }, { startsAt: "asc" }] }); }
 
 export async function enrollSchoolStudent(organizationId: string, data: { campusId: string; academicYearId: string; studentId: string; classId: string }) {
@@ -599,6 +623,47 @@ export async function recordSchoolAttendanceBulk(
 
 export function listSchoolFeeInvoices(organizationId: string) {
   return db.schoolFeeInvoice.findMany({ where: { organizationId }, include: { student: true, payments: true, academicYear: true, term: true }, orderBy: { createdAt: "desc" } });
+}
+export async function listSchoolFeeInvoicePage(organizationId: string, input: { query?: string; status?: SchoolInvoiceStatus; page?: number; pageSize?: number } = {}) {
+  const pageSize = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.pageSize) ? input.pageSize! : 50)));
+  const requestedPage = Math.max(1, Math.floor(Number.isFinite(input.page) ? input.page! : 1));
+  const terms = input.query?.trim().split(/\s+/).filter(Boolean) ?? [];
+  const where: Prisma.SchoolFeeInvoiceWhereInput = {
+    organizationId,
+    ...(input.status ? { status: input.status } : {}),
+    ...(terms.length ? { AND: terms.map((term) => ({ OR: [
+      { invoiceNumber: { contains: term, mode: "insensitive" as const } },
+      { description: { contains: term, mode: "insensitive" as const } },
+      { student: { firstName: { contains: term, mode: "insensitive" as const } } },
+      { student: { lastName: { contains: term, mode: "insensitive" as const } } },
+      { student: { admissionNumber: { contains: term, mode: "insensitive" as const } } },
+    ] })) } : {}),
+  };
+  const total = await db.schoolFeeInvoice.count({ where });
+  const pageCount = Math.ceil(total / pageSize);
+  const page = pageCount === 0 ? 1 : Math.min(requestedPage, pageCount);
+  const rows = await db.schoolFeeInvoice.findMany({ where, select: {
+    id: true, invoiceNumber: true, description: true, amount: true, discount: true,
+    status: true, dueDate: true, createdAt: true,
+    student: { select: { firstName: true, lastName: true, admissionNumber: true } },
+    academicYear: { select: { name: true } }, term: { select: { name: true } },
+    payments: { select: { id: true, amount: true, refundedAt: true, receiptNumber: true, postingStatus: true } },
+  }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize });
+  return { rows, total, page, pageSize, pageCount };
+}
+
+export async function getSchoolFeeInvoiceSummary(organizationId: string) {
+  const [invoices, payments, openInvoices, openPayments] = await Promise.all([
+    db.schoolFeeInvoice.aggregate({ where: { organizationId, status: { in: ["ISSUED", "PART_PAID", "PAID"] } }, _sum: { amount: true, discount: true } }),
+    db.schoolFeePayment.aggregate({ where: { organizationId, refundedAt: null }, _sum: { amount: true } }),
+    db.schoolFeeInvoice.aggregate({ where: { organizationId, status: { in: ["ISSUED", "PART_PAID"] } }, _sum: { amount: true, discount: true } }),
+    db.schoolFeePayment.aggregate({ where: { organizationId, refundedAt: null, invoice: { status: { in: ["ISSUED", "PART_PAID"] } } }, _sum: { amount: true } }),
+  ]);
+  return {
+    billed: (invoices._sum.amount ?? new Prisma.Decimal(0)).minus(invoices._sum.discount ?? 0),
+    collected: payments._sum.amount ?? new Prisma.Decimal(0),
+    outstanding: (openInvoices._sum.amount ?? new Prisma.Decimal(0)).minus(openInvoices._sum.discount ?? 0).minus(openPayments._sum.amount ?? 0),
+  };
 }
 
 export async function createSchoolFeeInvoice(organizationId: string, data: { academicYearId: string; termId?: string | null; studentId: string; description: string; amount: Prisma.Decimal.Value; discount?: Prisma.Decimal.Value; dueDate?: Date | null }) {
@@ -836,6 +901,31 @@ export async function returnSchoolLibraryBook(organizationId: string, loanId: st
 }
 
 export function listSchoolLibrary(organizationId: string) { return Promise.all([db.schoolLibraryBook.findMany({ where: { organizationId }, orderBy: { title: "asc" } }), db.schoolLibraryLoan.findMany({ where: { organizationId }, include: { book: true, student: true }, orderBy: { borrowedAt: "desc" } })]); }
+export function listSchoolLibraryLoans(organizationId: string) { return db.schoolLibraryLoan.findMany({ where: { organizationId }, include: { book: { select: { title: true } }, student: { select: { firstName: true, lastName: true, admissionNumber: true } } }, orderBy: [{ borrowedAt: "desc" }, { id: "desc" }] }); }
+export function listSchoolLibraryBookChoices(organizationId: string) { return db.schoolLibraryBook.findMany({ where: { organizationId, availableCopies: { gt: 0 } }, select: { id: true, title: true, availableCopies: true }, orderBy: [{ title: "asc" }, { id: "asc" }] }); }
+export async function listSchoolLibraryBookPage(organizationId: string, input: { query?: string; page?: number; pageSize?: number } = {}) {
+  const pageSize = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.pageSize) ? input.pageSize! : 50)));
+  const requestedPage = Math.max(1, Math.floor(Number.isFinite(input.page) ? input.page! : 1));
+  const terms = input.query?.trim().split(/\s+/).filter(Boolean) ?? [];
+  const where: Prisma.SchoolLibraryBookWhereInput = {
+    organizationId,
+    ...(terms.length ? { AND: terms.map((term) => ({ OR: [
+      { title: { contains: term, mode: "insensitive" as const } },
+      { author: { contains: term, mode: "insensitive" as const } },
+      { accessionCode: { contains: term, mode: "insensitive" as const } },
+      { isbn: { contains: term, mode: "insensitive" as const } },
+      { category: { contains: term, mode: "insensitive" as const } },
+    ] })) } : {}),
+  };
+  const total = await db.schoolLibraryBook.count({ where });
+  const pageCount = Math.ceil(total / pageSize);
+  const page = pageCount === 0 ? 1 : Math.min(requestedPage, pageCount);
+  const rows = await db.schoolLibraryBook.findMany({ where, select: {
+    id: true, accessionCode: true, isbn: true, title: true, author: true, category: true,
+    totalCopies: true, availableCopies: true,
+  }, orderBy: [{ title: "asc" }, { id: "asc" }], skip: (page - 1) * pageSize, take: pageSize });
+  return { rows, total, page, pageSize, pageCount };
+}
 export function createSchoolLibraryBook(organizationId: string, data: { accessionCode: string; isbn?: string | null; title: string; author?: string | null; category?: string | null; totalCopies: number }) { if(data.totalCopies<1) throw new SchoolStateError("At least one copy is required."); return db.schoolLibraryBook.create({ data: { organizationId, ...data, availableCopies: data.totalCopies } }); }
 
 export function listSchoolTransport(organizationId: string) { return db.schoolTransportRoute.findMany({ where: { organizationId }, include: { campus: true, assignments: { include: { student: true } } }, orderBy: { name: "asc" } }); }
