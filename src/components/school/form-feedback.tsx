@@ -35,7 +35,7 @@ const GENERIC: Record<SchoolErrorCode, { title: string; description: string }> =
   forbidden: { title: "You don't have permission to do that", description: "Your role does not include this School permission. An organization administrator can grant it." },
   invalid: { title: "Nothing was saved", description: "Some values were missing or in the wrong format. Check the highlighted form and submit again." },
   state: { title: "That change isn't allowed right now", description: "The record's current status or a school rule blocked this change. Refresh to see the latest state." },
-  "not-found": { title: "That record could not be found", description: "It may have been removed or belongs to another campus. Refresh the page and try again." },
+  "not-found": { title: "That record could not be found", description: "It may have been removed or belongs to another record or organization. Refresh the page and try again." },
   "wrong-password": { title: "Password incorrect", description: "The password you entered doesn't match your account. Nothing was deleted." },
 };
 

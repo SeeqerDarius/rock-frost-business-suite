@@ -160,6 +160,38 @@ export function listManagerCandidates(organizationId: string) {
   });
 }
 
+/** School payroll uses HR's employee record as the authoritative identity. */
+export function listSchoolPayrollEligibleEmployees(organizationId: string) {
+  return db.hrEmployee.findMany({
+    where: { organizationId, status: { in: ["ACTIVE", "ON_LEAVE", "REINSTATED"] }, payrollEligible: true, payrollCompensation: { isNot: null } },
+    select: { id: true, employeeNumber: true, fullName: true },
+    orderBy: [{ fullName: "asc" }, { employeeNumber: "asc" }],
+  });
+}
+
+/** Includes former/ineligible employees so a legacy School input can be linked without changing HR data. */
+export function listSchoolPayrollLinkCandidates(organizationId: string) {
+  return db.hrEmployee.findMany({
+    where: { organizationId },
+    select: { id: true, employeeNumber: true, fullName: true },
+    orderBy: [{ fullName: "asc" }, { employeeNumber: "asc" }],
+  });
+}
+
+export function getSchoolPayrollEligibleEmployee(organizationId: string, employeeId: string) {
+  return db.hrEmployee.findFirst({
+    where: { id: employeeId, organizationId, status: { in: ["ACTIVE", "ON_LEAVE", "REINSTATED"] }, payrollEligible: true, payrollCompensation: { isNot: null } },
+    select: { id: true, employeeNumber: true, fullName: true },
+  });
+}
+
+export function getSchoolPayrollLinkCandidate(organizationId: string, employeeId: string) {
+  return db.hrEmployee.findFirst({
+    where: { id: employeeId, organizationId },
+    select: { id: true, employeeNumber: true, fullName: true },
+  });
+}
+
 export function getEmployeeProfile(organizationId: string, id: string) {
   return db.hrEmployee.findFirst({
     where: { id, organizationId },

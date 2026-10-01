@@ -306,3 +306,20 @@ All three are safe for unrestricted commercial, closed-source use.
 **Migration and release gate:** additive status enums/columns/indexes are in migrations `20261001090000_school_fee_accounting_retry` and `20261001100000_payroll_accounting_accrual`. Apply and test these on the guarded disposable PostgreSQL service before production release.
 
 **What was NOT preserved:** the previous `app/`, `components/`, and `lib/` implementation code, and the previous roadmap/architecture docs (archived under `docs/archive/previous-implementation/`, marked obsolete, not authoritative).
+
+## 2026-10-01 — Process School payroll inputs through Payroll
+
+**Decision:** School remains the owner of its education-specific adjustment
+records, while HR remains the employee authority and Payroll owns run
+calculation. School adjustments link to an HR employee using a
+same-organization database relation. During migration, matching legacy IDs
+are linked; unmatched values are retained in a separate legacy field for
+authorized recovery instead of being discarded or guessed.
+
+Payroll consumes pending earnings and deductions only in a full calendar
+month run. Earnings increase gross before the organization's configured
+default tax rate is applied; deductions reduce net and flow to the existing
+generic deductions payable Accounting account. Linking, processing and run
+completion are organization-scoped and atomic. A failed run does not mark
+inputs processed. Partial-month proration, statutory deduction types and
+salary disbursement remain separate decisions.

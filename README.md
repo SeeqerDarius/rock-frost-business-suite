@@ -27,7 +27,10 @@ The public marketing site has a generated sitemap and robots policy, unique cano
 - **Pharmacy Management:** tenant-isolated medicines, licensed suppliers, batch/expiry and FEFO stock, barcode lookup for medicines and batches, patients and prescribers, a simplified prescription-led dispensing counter that fills the patient and prescribed lines automatically, a separate over-the-counter sale path, optional two-person maker-checker approval for controlled drugs, an append-only stock-reconciliation ledger (count, adjustment, write-off, supplier return, patient return), the controlled-medicine register, safety alerts, reports, settings, backups, and subscription seats.
 - **Hospital Management (merged to `main` and live in production since 2026-08-12):** patient registration with organization-unique MRN and an inline duplicate-patient advisory, appointments, encounters with vitals/notes/diagnoses/care plans, admissions/wards/beds, laboratory and imaging with immutable verified results, split entry/verify permissions with maker-checker enforcement and a rejection workflow, a versioned Hospital-owned medication-order contract that never touches Pharmacy's tables directly, billing/invoicing/insurance claims, nursing tasks, and clinical alerts/referrals/consent. Operational record-keeping software, not a medical device or diagnosis engine. See `docs/HOSPITAL_MODULE.md`.
 
-School customer-readiness is delivered in guarded tranches. The lifecycle and
+School customer-readiness is delivered in guarded tranches. School payroll
+adjustments now link to HR employees and feed earnings and deductions into
+full-calendar-month Payroll runs atomically, with recoverable handling for
+unlinked legacy inputs. The lifecycle and
 fee-control tranche adds explicit status history, reusable fee structures,
 idempotent bulk billing, attendance correction windows, and campus receipt
 numbering. Fee payments retain their source receipt if Accounting posting fails
