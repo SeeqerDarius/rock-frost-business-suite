@@ -22,7 +22,7 @@ import { formatDate, humanizeStatus } from "@/components/school/format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listSchoolCampuses, listSchoolGuardians, listSchoolStudentPage, listSchoolStudentPhotoIds, listSchoolGuardianPhotoIds } from "@/modules/school/service";
-import { createStudentAction, transitionStudentAction, updateStudentProfileAction, updateStudentPhotoAction, updateGuardianAction, updateGuardianPhotoAction } from "../actions";
+import { createGuardianAction, createStudentAction, manageStudentGuardiansAction, transitionStudentAction, updateStudentProfileAction, updateStudentPhotoAction, updateGuardianAction, updateGuardianPhotoAction } from "../actions";
 import { StudentGuardianFields } from "./student-guardian-fields";
 
 function PhotoThumb({ hasPhoto, src, alt }: { hasPhoto: boolean; src: string; alt: string }) {
@@ -108,7 +108,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
       <FormFeedback
         saved={query.saved}
         error={query.error}
-        savedMessage="Student profile saved."
+        savedMessage="Student or family contact saved."
         stateMessage="That status change isn't allowed from the student's current status: withdrawn and graduated records are final."
       />
       {!canManage ? <ReadOnlyNotice>Your role can review students and guardians but cannot admit or change them.</ReadOnlyNotice> : null}
@@ -244,6 +244,50 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
                                   </FieldGrid>
                                   <TextField id={`student-edit-admission-date-${student.id}`} name="admissionDate" label="Admission date" type="date" defaultValue={student.admissionDate?.toISOString().slice(0, 10) ?? ""} />
                                 </EntityDialog>
+                                <EntityDialog
+                                  trigger={<Button size="sm" variant="outline"><Users />Family links</Button>}
+                                  title={`Family contacts for ${student.firstName} ${student.lastName}`}
+                                  description="Choose the primary contact, record pickup authorization, link another guardian, or remove an outdated relationship. A student must keep one primary contact while linked guardians remain."
+                                  action={manageStudentGuardiansAction}
+                                  submitLabel="Save family links"
+                                  contentClassName="sm:max-w-2xl"
+                                >
+                                  <input type="hidden" name="studentId" value={student.id} />
+                                  <input type="hidden" name="q" value={query.q ?? ""} />
+                                  <input type="hidden" name="status" value={statusFilter ?? ""} />
+                                  <input type="hidden" name="page" value={studentPage.page} />
+                                  {student.guardians.length ? (
+                                    <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+                                      {student.guardians.map((link, index) => (
+                                        <fieldset key={link.guardianId} className="space-y-3 rounded-lg border p-3">
+                                          <legend className="px-1 text-sm font-medium">{link.guardian.firstName} {link.guardian.lastName} · {link.guardian.phone}</legend>
+                                          <input type="hidden" name="linkedGuardianId" value={link.guardianId} />
+                                          <TextField id={`family-relationship-${student.id}-${link.guardianId}`} name={`relationship_${link.guardianId}`} label="Relationship" required maxLength={200} defaultValue={link.relationship} />
+                                          <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+                                            <label className="inline-flex items-center gap-2"><input type="radio" name="primaryGuardianId" value={link.guardianId} defaultChecked={link.primary || (!student.guardians.some((item) => item.primary) && index === 0)} />Primary contact</label>
+                                            <label className="inline-flex items-center gap-2"><input type="checkbox" name="pickupGuardianId" value={link.guardianId} defaultChecked={link.authorizedPickup} />Authorized to pick up</label>
+                                            <label className="inline-flex items-center gap-2 text-destructive"><input type="checkbox" name="removeGuardianId" value={link.guardianId} />Remove this link</label>
+                                          </div>
+                                        </fieldset>
+                                      ))}
+                                    </div>
+                                  ) : <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">No guardian is linked yet. Choose one below and mark them as the primary contact.</p>}
+                                  <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+                                    <p className="text-sm font-medium">Link another guardian</p>
+                                    <SelectField
+                                      id={`family-add-guardian-${student.id}`}
+                                      name="newGuardianId"
+                                      label="Guardian"
+                                      options={guardianOptions.filter((option) => !student.guardians.some((link) => link.guardianId === option.value))}
+                                      placeholder="Leave empty to skip"
+                                    />
+                                    <TextField id={`family-new-relationship-${student.id}`} name="newRelationship" label="Relationship" maxLength={200} />
+                                    <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+                                      <label className="inline-flex items-center gap-2"><input type="radio" name="primaryGuardianId" value="new" defaultChecked={student.guardians.length === 0} />Make the new guardian primary</label>
+                                      <label className="inline-flex items-center gap-2"><input type="checkbox" name="newAuthorizedPickup" />Authorize pickup</label>
+                                    </div>
+                                  </div>
+                                </EntityDialog>
                                 {transitions.length > 0 ? (
                                   <EntityDialog
                                     trigger={<Button size="sm" variant="ghost">Change status</Button>}
@@ -283,7 +327,24 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
         </TabsContent>
 
         <TabsContent value="guardians" className="space-y-6">
-          <SectionCard title="Guardians" description={`${guardians.length} guardian${guardians.length === 1 ? "" : "s"} on record.`}>
+          <SectionCard
+            title="Guardians"
+            description={`${guardians.length} guardian${guardians.length === 1 ? "" : "s"} on record.`}
+            actions={canManage ? (
+              <EntityDialog trigger={<Button size="sm"><Plus />Add guardian</Button>} title="Add a guardian" description="Create a guardian record first, then link them to one or more students from the Family links action." action={createGuardianAction} submitLabel="Save guardian">
+                <FieldGrid>
+                  <TextField id="guardian-new-first" name="firstName" label="First name" required maxLength={200} />
+                  <TextField id="guardian-new-last" name="lastName" label="Last name" required maxLength={200} />
+                </FieldGrid>
+                <FieldGrid>
+                  <TextField id="guardian-new-phone" name="phone" label="Phone" type="tel" required maxLength={200} />
+                  <TextField id="guardian-new-email" name="email" label="Email" type="email" maxLength={320} />
+                </FieldGrid>
+                <TextField id="guardian-new-occupation" name="occupation" label="Occupation" maxLength={200} />
+                <div className="space-y-1.5"><Label htmlFor="guardian-new-address">Address</Label><Textarea id="guardian-new-address" name="address" rows={3} maxLength={5000} /></div>
+              </EntityDialog>
+            ) : undefined}
+          >
             {guardians.length === 0 ? (
               <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
                 No guardians yet. A primary guardian is created automatically during the first student admission.

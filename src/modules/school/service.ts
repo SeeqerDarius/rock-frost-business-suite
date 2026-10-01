@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma, type HotelPaymentMethod, type SchoolAttendanceStatus, type SchoolInvoiceStatus, type SchoolLibraryLoanStatus, type SchoolStudentStatus } from "@prisma/client";
 import { db } from "@/lib/db";
+import { logAuditEvent } from "@/lib/audit";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@/lib/trend-buckets";
 import { sendSms } from "@/lib/sms";
@@ -192,7 +193,7 @@ export async function listSchoolStudentPage(organizationId: string, input: { que
       campus: { select: { name: true } },
       guardians: {
         orderBy: [{ primary: "desc" }, { id: "asc" }],
-        select: { primary: true, guardian: { select: { firstName: true, lastName: true, phone: true } } },
+        select: { guardianId: true, relationship: true, primary: true, authorizedPickup: true, guardian: { select: { firstName: true, lastName: true, phone: true } } },
       },
       enrollments: {
         where: { status: "ACTIVE" },
@@ -454,7 +455,13 @@ export function getSchoolAcademicSetup(organizationId: string) {
   ]);
 }
 
-export function listSchoolGuardians(organizationId: string) { return db.schoolGuardian.findMany({ where: { organizationId }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] }); }
+export function listSchoolGuardians(organizationId: string) {
+  return db.schoolGuardian.findMany({
+    where: { organizationId },
+    select: { id: true, guardianNumber: true, firstName: true, lastName: true, phone: true, email: true, occupation: true, address: true },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { id: "asc" }],
+  });
+}
 
 /**
  * Passport/profile photo storage mirrors InventoryItem.imageData - a
@@ -515,6 +522,78 @@ export async function listSchoolAttendancePage(organizationId: string, input: { 
     class: { select: { name: true } }, term: { select: { name: true } },
   }, orderBy: [{ date: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize });
   return { rows, total, page, pageSize, pageCount };
+}
+
+/**
+ * Saves the full set of family links from the student record in one locked
+ * transaction. Every guardian reference is revalidated against the tenant,
+ * and a linked student keeps exactly one primary contact whenever any links
+ * remain. This is used by the post-admission family-contact editor.
+ */
+export async function updateSchoolStudentGuardianLinks(
+  organizationId: string,
+  studentId: string,
+  input: {
+    links: Array<{ guardianId: string; relationship: string; authorizedPickup: boolean; remove: boolean }>;
+    add?: { guardianId: string; relationship: string; authorizedPickup: boolean };
+    primaryGuardianId?: string;
+  },
+  changedById?: string,
+) {
+  return db.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "SchoolStudent" WHERE "id" = ${studentId} AND "organizationId" = ${organizationId} FOR UPDATE`;
+    if (!locked.length) throw new SchoolNotFoundError("Student not found.");
+
+    const existing = await tx.schoolStudentGuardian.findMany({ where: { organizationId, studentId }, select: { guardianId: true, primary: true } });
+    const linkedIds = new Set(existing.map((link) => link.guardianId));
+    const suppliedIds = new Set(input.links.map((link) => link.guardianId));
+    if (suppliedIds.size !== input.links.length || suppliedIds.size !== linkedIds.size || [...suppliedIds].some((id) => !linkedIds.has(id))) {
+      throw new SchoolStateError("The family links changed. Reload the student and try again.", "stale-family-links");
+    }
+
+    const kept = input.links.filter((link) => !link.remove);
+    if (input.add) {
+      const guardian = await tx.schoolGuardian.findFirst({ where: { id: input.add.guardianId, organizationId }, select: { id: true } });
+      if (!guardian) throw new SchoolNotFoundError("Guardian not found.");
+      if (linkedIds.has(guardian.id)) throw new SchoolStateError("This guardian is already linked to the student.", "guardian-already-linked");
+    }
+    const remainingIds = new Set([...kept.map((link) => link.guardianId), ...(input.add ? [input.add.guardianId] : [])]);
+    if (input.primaryGuardianId && !remainingIds.has(input.primaryGuardianId)) {
+      throw new SchoolStateError("Choose a primary contact that will remain linked to this student.", "invalid-primary-guardian");
+    }
+    const previousPrimary = existing.find((link) => link.primary)?.guardianId;
+    const primaryGuardianId = input.primaryGuardianId && remainingIds.has(input.primaryGuardianId)
+      ? input.primaryGuardianId
+      : previousPrimary && remainingIds.has(previousPrimary)
+        ? previousPrimary
+        : remainingIds.values().next().value;
+
+    await tx.schoolStudentGuardian.deleteMany({ where: { organizationId, studentId, guardianId: { in: input.links.filter((link) => link.remove).map((link) => link.guardianId) } } });
+    for (const link of kept) {
+      await tx.schoolStudentGuardian.updateMany({
+        where: { organizationId, studentId, guardianId: link.guardianId },
+        data: { relationship: link.relationship, primary: link.guardianId === primaryGuardianId, authorizedPickup: link.authorizedPickup },
+      });
+    }
+    if (input.add) {
+      await tx.schoolStudentGuardian.create({
+        data: { organizationId, studentId, guardianId: input.add.guardianId, relationship: input.add.relationship, primary: input.add.guardianId === primaryGuardianId, authorizedPickup: input.add.authorizedPickup },
+      });
+    }
+    const result = await tx.schoolStudentGuardian.findMany({ where: { organizationId, studentId }, include: { guardian: { select: { id: true, firstName: true, lastName: true, phone: true } } }, orderBy: [{ primary: "desc" }, { guardian: { lastName: "asc" } }] });
+    if (changedById) {
+      await logAuditEvent({
+        organizationId,
+        module: "school",
+        action: "STUDENT_GUARDIAN_LINKS_UPDATED",
+        entityName: "SchoolStudent",
+        entityId: studentId,
+        userId: changedById,
+        metadata: { links: result.map(({ guardianId, relationship, primary, authorizedPickup }) => ({ guardianId, relationship, primary, authorizedPickup })) },
+      }, tx);
+    }
+    return result;
+  }, { isolationLevel: "Serializable" });
 }
 export function listSchoolTimetable(organizationId: string) { return db.schoolTimetableEntry.findMany({ where: { organizationId }, include: { campus: true, term: true, class: true, subject: true }, orderBy: [{ dayOfWeek: "asc" }, { startsAt: "asc" }] }); }
 

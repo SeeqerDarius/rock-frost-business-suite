@@ -12,8 +12,15 @@ describe("School UX upgrade", () => {
     expect(students).toContain('<TabsTrigger value="guardians">Guardians</TabsTrigger>');
     expect(students).toContain("View profile");
     expect(students).toContain("StudentGuardianFields");
-    expect(students).not.toContain("Add guardian</Button>");
+    expect(students).toContain("Family links");
+    expect(students).toContain("createGuardianAction");
     expect(students).not.toContain("Link guardian</Button>");
+    const actions = read("src/app/app/school/actions.ts");
+    expect(actions).toContain("manageStudentGuardiansAction");
+    expect(actions).toContain("SCHOOL_STUDENTS_MANAGE");
+    const service = read("src/modules/school/service.ts");
+    expect(service).toContain("authorizedPickup: link.authorizedPickup");
+    expect(service).toContain("STUDENT_GUARDIAN_LINKS_UPDATED");
     const guardianFields = read("src/app/app/school/students/student-guardian-fields.tsx");
     expect(guardianFields).toContain("Select existing");
     expect(guardianFields).toContain("Create new");

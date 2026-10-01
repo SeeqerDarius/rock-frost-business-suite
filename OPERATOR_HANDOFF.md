@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-01: School post-admission family contact management in progress
+
+- **Scope**: add a student-row family-link editor for selecting the primary contact, setting authorized pickup, editing relationships, linking existing guardians, and removing outdated links. Add guardian creation to the Guardian list and avoid loading guardian photo blobs into the student page. Save changes in a tenant-checked, serializable transaction, preserve one primary contact while links remain, and write an audit event.
+- **Important files**: `src/app/app/school/students/page.tsx`, `src/app/app/school/actions.ts`, `src/modules/school/service.ts`, School integration and UX tests, `docs/SCHOOL_CUSTOMER_READINESS.md`, and `README.md`.
+- **Migrations/environment**: none. Uses the existing `SchoolStudentGuardian.primary` and `authorizedPickup` fields. No new environment variables.
+- **Validation**: Prisma validation and generation passed; `npx tsc --noEmit --incremental false` passed; `npm run lint` passed with two pre-existing PWA hook dependency warnings; `npm run test` passed (176 files, 1,347 tests); `npm run build` passed (249 routes); targeted ESLint and `git diff --check` passed. The guarded disposable-PostgreSQL integration suite is not available locally because `TEST_DATABASE_URL` is unset; PR CI must pass the new real-database tenant-isolation and family-link tests before merge.
+- **Release state**: not merged or deployed. Authenticated responsive UI remains unverified without a tenant test session. Do not release until the integration CI gate passes and the protected preview is reviewed where access allows.
+
 ## 2026-10-01: Audited School fee refunds released
 
 - **Scope**: add immutable partial/full refund events; manager-authorized recording with locked over-refund protection; reopen invoice balances; show refund history and Accounting retries; subtract refunds from School collection/balance views; post idempotent contra-revenue entries.

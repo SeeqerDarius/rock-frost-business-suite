@@ -188,16 +188,18 @@ schema change:
 
 ### Student administration
 
-- Complete admission application, document, and emergency-contact management,
-  transfer, promotion, and academic-year rollover workflows.
+- Post-admission family links now support a tenant-validated primary contact,
+  pickup authorization, relationship edits, removal, and audit history.
+- Still needed: admission applications and document workflows, transfer,
+  promotion, and academic-year rollover.
 - Add bulk import/export with preview, validation, and recoverable error reports.
 - Add printable student profiles and enrollment history.
 
 ### Fees and finance
 
-- Add scholarships, credits, refunds, reversals, statements, PDF receipt output,
-  cashier reconciliation, and arrears aging. Fee structures and bulk issuance,
-  plus Accounting delivery status and retry, are implemented.
+- Add scholarships, credits, reversals, statements, cashier reconciliation, and
+  arrears aging. Fee structures, bulk issuance, printable fee receipts,
+  auditable refunds, and Accounting delivery status and retry are implemented.
 
 ### Academics
 
