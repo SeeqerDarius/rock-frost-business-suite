@@ -77,7 +77,8 @@ describe("School service — real tenant isolation and customer-readiness guards
     expect(attempts.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect(attempts.filter((result) => result.status === "rejected" && result.reason?.code === "transfer-capacity")).toHaveLength(1);
     expect(await testDb.schoolEnrollment.count({ where: { organizationId: orgA.organizationId, academicYearId: year.id, classId: targetClass.id, status: "ACTIVE" } })).toBe(1);
-    await expect(school.transferSchoolEnrollment(orgA.organizationId, orgA.userId, { studentId: students[0].id, academicYearId: year.id, enrollmentId: enrollments[0].id, expectedClassId: targetClass.id, targetClassId: sourceClass.id, reason: "Stale preview" })).rejects.toMatchObject({ code: "stale-transfer-enrollment" });
+    const winnerIndex = attempts.findIndex((result) => result.status === "fulfilled");
+    await expect(school.transferSchoolEnrollment(orgA.organizationId, orgA.userId, { studentId: students[winnerIndex].id, academicYearId: year.id, enrollmentId: enrollments[winnerIndex].id, expectedClassId: sourceClass.id, targetClassId: targetClass.id, reason: "Stale preview" })).rejects.toMatchObject({ code: "stale-transfer-enrollment" });
   });
 
   it("rolls active learners into a mapped next-year class atomically and preserves prior enrollment history", async () => {
