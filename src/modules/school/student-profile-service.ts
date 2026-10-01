@@ -34,6 +34,7 @@ export async function getSchoolStudentProfile(organizationId: string, studentId:
       enrollments: { include: { class: true, academicYear: { include: { terms: true } } }, orderBy: { enrolledAt: "desc" } },
       lifecycleEvents: { orderBy: { createdAt: "desc" } },
       documents: { orderBy: { createdAt: "desc" } },
+      transfers: { include: { academicYear: true, sourceCampus: true, targetCampus: true, sourceClass: true, targetClass: true }, orderBy: { transferredAt: "desc" } },
     },
   });
   if (!student) throw new SchoolNotFoundError("Student not found.");

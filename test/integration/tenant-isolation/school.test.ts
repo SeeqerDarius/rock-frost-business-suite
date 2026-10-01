@@ -47,6 +47,36 @@ afterAll(async () => {
 });
 
 describe("School service — real tenant isolation and customer-readiness guards", () => {
+  it("transfers an active enrollment across campuses with immutable tenant-scoped history", async () => {
+    const token = `Transfer${Date.now()}`;
+    const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} year`, startDate: new Date("2033-01-01"), endDate: new Date("2033-12-31") });
+    const destinationCampus = await school.createSchoolCampus(orgA.organizationId, { code: `${token}C`, name: `${token} destination` });
+    const sourceClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}A`, name: `${token} source` });
+    const targetClass = await school.createSchoolClass(orgA.organizationId, { campusId: destinationCampus.id, code: `${token}B`, name: `${token} destination`, capacity: 1 });
+    const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Ama`, lastName: "Student" });
+    const enrollment = await school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: year.id, studentId: student.id, classId: sourceClass.id });
+    await expect(school.transferSchoolEnrollment(orgB.organizationId, orgB.userId, { studentId: student.id, academicYearId: year.id, enrollmentId: enrollment.id, expectedClassId: sourceClass.id, targetClassId: targetClass.id, reason: "Family relocation" })).rejects.toThrow(school.SchoolNotFoundError);
+    const transfer = await school.transferSchoolEnrollment(orgA.organizationId, orgA.userId, { studentId: student.id, academicYearId: year.id, enrollmentId: enrollment.id, expectedClassId: sourceClass.id, targetClassId: targetClass.id, reason: "Family relocation" });
+    expect(transfer).toMatchObject({ organizationId: orgA.organizationId, studentId: student.id, sourceCampusId: campusA.id, targetCampusId: destinationCampus.id, sourceClassId: sourceClass.id, targetClassId: targetClass.id, reason: "Family relocation" });
+    expect(await testDb.schoolEnrollment.findUnique({ where: { id: enrollment.id } })).toMatchObject({ campusId: destinationCampus.id, classId: targetClass.id, status: "ACTIVE" });
+    expect(await testDb.schoolStudent.findUnique({ where: { id: student.id } })).toMatchObject({ campusId: destinationCampus.id });
+    expect(await testDb.auditLog.count({ where: { organizationId: orgA.organizationId, action: "STUDENT_ENROLLMENT_TRANSFERRED", entityId: transfer.id } })).toBe(1);
+  });
+
+  it("serializes transfers against destination capacity and rejects stale enrollment expectations", async () => {
+    const token = `TransferRace${Date.now()}`;
+    const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} year`, startDate: new Date("2034-01-01"), endDate: new Date("2034-12-31") });
+    const sourceClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}A`, name: `${token} source` });
+    const targetClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}B`, name: `${token} destination`, capacity: 1 });
+    const students = await Promise.all(["One", "Two"].map((suffix) => school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} ${suffix}`, lastName: "Student" })));
+    const enrollments = await Promise.all(students.map((student) => school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: year.id, studentId: student.id, classId: sourceClass.id })));
+    const attempts = await Promise.allSettled(students.map((student, index) => school.transferSchoolEnrollment(orgA.organizationId, orgA.userId, { studentId: student.id, academicYearId: year.id, enrollmentId: enrollments[index].id, expectedClassId: sourceClass.id, targetClassId: targetClass.id, reason: "Parent relocation" })));
+    expect(attempts.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(attempts.filter((result) => result.status === "rejected" && result.reason?.code === "transfer-capacity")).toHaveLength(1);
+    expect(await testDb.schoolEnrollment.count({ where: { organizationId: orgA.organizationId, academicYearId: year.id, classId: targetClass.id, status: "ACTIVE" } })).toBe(1);
+    await expect(school.transferSchoolEnrollment(orgA.organizationId, orgA.userId, { studentId: students[0].id, academicYearId: year.id, enrollmentId: enrollments[0].id, expectedClassId: targetClass.id, targetClassId: sourceClass.id, reason: "Stale preview" })).rejects.toMatchObject({ code: "stale-transfer-enrollment" });
+  });
+
   it("rolls active learners into a mapped next-year class atomically and preserves prior enrollment history", async () => {
     const token = `Rollover${Date.now()}`;
     const sourceYear = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} source`, startDate: new Date("2031-01-01"), endDate: new Date("2031-12-31") });

@@ -762,6 +762,48 @@ export async function updateSchoolStudentGuardianLinks(
 }
 export function listSchoolTimetable(organizationId: string) { return db.schoolTimetableEntry.findMany({ where: { organizationId }, include: { campus: true, term: true, class: true, subject: true }, orderBy: [{ dayOfWeek: "asc" }, { startsAt: "asc" }] }); }
 
+export async function getSchoolStudentTransferOptions(organizationId: string, studentId: string) {
+  const enrollment = await db.schoolEnrollment.findFirst({ where: { organizationId, studentId, status: "ACTIVE", student: { status: "ACTIVE" }, academicYear: { closedAt: null }, class: { organizationId, campus: { organizationId, active: true } } }, include: { academicYear: true, class: { include: { campus: true } } }, orderBy: { enrolledAt: "desc" } });
+  if (!enrollment) return null;
+  const classes = await db.schoolClass.findMany({ where: { organizationId, active: true, NOT: { id: enrollment.classId }, campus: { organizationId, active: true } }, include: { campus: true, _count: { select: { enrollments: { where: { organizationId, academicYearId: enrollment.academicYearId, status: "ACTIVE" } } } } }, orderBy: [{ campus: { name: "asc" } }, { name: "asc" }] });
+  return { enrollment, targets: classes.filter((item) => item.capacity === null || item._count.enrollments < item.capacity) };
+}
+
+export async function transferSchoolEnrollment(organizationId: string, actorId: string, data: { studentId: string; academicYearId: string; enrollmentId: string; expectedClassId: string; targetClassId: string; reason: string }) {
+  const reason = data.reason.trim();
+  if (reason.length < 5 || reason.length > 500) throw new SchoolStateError("Enter a transfer reason between 5 and 500 characters.", "invalid-transfer-reason");
+  if (data.targetClassId === data.expectedClassId) throw new SchoolStateError("Choose a different class for the transfer.", "same-transfer-class");
+  return db.$transaction(async (tx) => {
+    const yearLock = await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "SchoolAcademicYear" WHERE "id" = ${data.academicYearId} AND "organizationId" = ${organizationId} FOR UPDATE`;
+    if (!yearLock.length) throw new SchoolNotFoundError("Enrollment not found.");
+    const lockedClassIds = [data.expectedClassId, data.targetClassId].sort();
+    const classLocks = await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "SchoolClass" WHERE "id" IN (${Prisma.join(lockedClassIds)}) AND "organizationId" = ${organizationId} ORDER BY "id" FOR UPDATE`;
+    if (classLocks.length !== 2) throw new SchoolNotFoundError("Source or destination class not found.");
+    const studentLock = await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "SchoolStudent" WHERE "id" = ${data.studentId} AND "organizationId" = ${organizationId} FOR UPDATE`;
+    if (!studentLock.length) throw new SchoolNotFoundError("Student not found.");
+    const [year, enrollment, student, target] = await Promise.all([
+      tx.schoolAcademicYear.findFirst({ where: { id: data.academicYearId, organizationId } }),
+      tx.schoolEnrollment.findFirst({ where: { id: data.enrollmentId, organizationId, studentId: data.studentId, academicYearId: data.academicYearId, status: "ACTIVE", classId: data.expectedClassId, class: { organizationId, campus: { organizationId } } }, include: { class: { include: { campus: true } } } }),
+      tx.schoolStudent.findFirst({ where: { id: data.studentId, organizationId, status: "ACTIVE" }, select: { id: true, campusId: true } }),
+      tx.schoolClass.findFirst({ where: { id: data.targetClassId, organizationId, active: true, campus: { organizationId, active: true } }, include: { campus: true } }),
+    ]);
+    if (!year || !enrollment || !student || !target) throw new SchoolStateError("The student's current enrollment changed. Refresh and try again.", "stale-transfer-enrollment");
+    if (year.closedAt) throw new SchoolStateError("Transfers are unavailable in a closed academic year.", "closed-transfer-year");
+    if (enrollment.campusId !== enrollment.class.campusId || student.campusId !== enrollment.class.campusId) throw new SchoolStateError("The student and active enrollment do not match the source campus. Correct the record before transferring.", "stale-transfer-enrollment");
+    if (target.id === enrollment.classId) throw new SchoolStateError("Choose a different class for the transfer.", "same-transfer-class");
+    if (target.capacity !== null) {
+      const count = await tx.schoolEnrollment.count({ where: { organizationId, academicYearId: year.id, classId: target.id, status: "ACTIVE" } });
+      if (count >= target.capacity) throw new SchoolStateError("The destination class has reached capacity.", "transfer-capacity");
+    }
+    const changed = await tx.schoolEnrollment.updateMany({ where: { id: enrollment.id, organizationId, studentId: data.studentId, classId: data.expectedClassId, status: "ACTIVE" }, data: { classId: target.id, campusId: target.campusId } });
+    if (changed.count !== 1) throw new SchoolStateError("The student's current enrollment changed. Refresh and try again.", "stale-transfer-enrollment");
+    await tx.schoolStudent.update({ where: { id: data.studentId }, data: { campusId: target.campusId } });
+    const transfer = await tx.schoolStudentTransfer.create({ data: { organizationId, studentId: data.studentId, academicYearId: year.id, sourceCampusId: enrollment.class.campusId, targetCampusId: target.campusId, sourceClassId: enrollment.classId, targetClassId: target.id, reason, performedById: actorId } });
+    await logAuditEvent({ organizationId, module: "school", action: "STUDENT_ENROLLMENT_TRANSFERRED", entityName: "SchoolStudentTransfer", entityId: transfer.id, userId: actorId, metadata: { studentId: data.studentId, academicYearId: year.id, sourceClassId: enrollment.classId, targetClassId: target.id } }, tx);
+    return transfer;
+  }, { isolationLevel: "ReadCommitted" });
+}
+
 export async function enrollSchoolStudent(organizationId: string, data: { campusId: string; academicYearId: string; studentId: string; classId: string }) {
   // The year and class locks serialize capacity checks. READ COMMITTED refreshes
   // the count after any transaction this request had to wait behind.

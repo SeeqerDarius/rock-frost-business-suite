@@ -1,12 +1,21 @@
 # Rock Frost Business Suite — Operator Handoff
 
-## 2026-10-01: School academic-year rollover CI concurrency fix in progress
+## 2026-10-01: School academic-year rollover released
 
 - **Scope**: add a permission-checked review and class-mapping workflow to move active learners into a new academic year atomically, preserve source enrollment history, skip learners already placed in the target year, reject changed preview counts, enforce same-campus class mapping and class capacity, and record an audit event. Individual enrollment shares academic-year and class-row locks with the rollover batch to prevent capacity races.
 - **Important files**: School rollover page/action/service/navigation, School `FormFeedback`, School integration/navigation/UX tests, `docs/SCHOOL_CUSTOMER_READINESS.md`, and `README.md`.
 - **Migrations/environment**: none planned; reuses the current academic-year, class, enrollment, and audit tables. No new environment variables.
-- **Validation**: local lint passed with 0 errors and 2 pre-existing PWA hook-dependency warnings; `npx tsc --noEmit --incremental false` passed; `npm run test -- --run` passed (176 files, 1,349 tests); `npm run build` passed and generated 250 routes; `git diff --check` passed. First CI run `36866642619` caught a PostgreSQL `P2034` serialization conflict when the integration fixture enrolled two learners concurrently. Enrollment and rollover now use READ COMMITTED with explicit year/class row locks, so waiting writers re-read capacity after the lock is released; the family-link transaction remains serializable. The disposable PostgreSQL CI rerun is required before merge. No schema migration was needed.
-- **Release state**: not committed, merged, or deployed. Authenticated responsive tenant UI will require a School test session.
+- **Validation**: CI run `36867721247` passed the disposable PostgreSQL integration, security, and other required checks. Local validation passed: lint (0 errors, 2 existing PWA hook warnings), TypeScript, 176 test files / 1,349 tests, 250-route production build, and `git diff --check`. No migration was needed.
+- **Production release**: PR #48 merged as `ce75ba3887bf355d47a07ad29831810ed03d4f62`; Vercel deployment `dpl_45fhs1Mv5D5q66EWWTgjueqE6jS9` reached READY and received the app/admin/www production aliases. `/api/health` returned HTTP 200 with the database reachable. No Vercel error clusters appeared in the first 15 minutes. The protected rollover route redirected unauthenticated requests to login; a real tenant session was unavailable, so the authenticated UI workflow remains unverified.
+- **Remaining risks**: the production health and access gate are verified, but a tenant operator should perform a real preview and commit using a School test session.
+
+## 2026-10-01: Audited cross-campus student transfers in progress
+
+- **Scope**: transfer an active student enrollment between classes in the same open academic year, including across active campuses. Enforce `SCHOOL_ENROLLMENT_MANAGE`; serialize capacity checks; reject stale source enrollment; update student/enrollment campus atomically; retain transfer reason, actor, source/destination, and timestamp in immutable history and audit log.
+- **Important files**: `prisma/schema.prisma`, `prisma/migrations/20261001140000_school_student_transfers/migration.sql`, School service/actions/student profile, School readiness docs, README, and real-PostgreSQL School integration tests.
+- **Migrations/environment**: adds `SchoolStudentTransfer`; no environment variable changes.
+- **Validation**: Prisma schema validation and client generation passed; strict TypeScript passed; full mocked suite passed (176 files, 1,349 tests); full lint passed with the two existing PWA hook warnings; `git diff --check` passed; and Next production build passed with `npx next build --webpack` (250 routes). Default Turbopack build is blocked by the managed worktree's dependency junction pointing outside the project root. The disposable PostgreSQL suite could not run locally because `TEST_DATABASE_URL` is unset; CI must prove the migration, cross-campus history, tenant rejection, stale-source handling, and capacity race before merge.
+- **Release state**: not committed, merged, or deployed. Authenticated profile interaction remains unverified.
 
 ## 2026-10-01: School post-admission family contact management released
 

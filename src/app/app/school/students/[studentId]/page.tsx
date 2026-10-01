@@ -11,12 +11,16 @@ import {
   Home,
   IdCard,
   UserRound,
+  ArrowRightLeft,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SectionCard } from "@/components/school/section-card";
+import { EntityDialog } from "@/components/forms/entity-dialog";
+import { SelectField, TextField } from "@/components/school/form-fields";
+import { FormFeedback } from "@/components/school/form-feedback";
 import {
   formatDate,
   formatMoney,
@@ -26,12 +30,13 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getSurfaceOrigins } from "@/lib/app-surfaces";
 import { SchoolNotFoundError } from "@/modules/school/service";
+import { getSchoolStudentTransferOptions } from "@/modules/school/service";
 import {
   getSchoolDigitalIdPresentation,
   getSchoolStudentProfile,
 } from "@/modules/school/student-profile-service";
 import { getStudentHostelSummary } from "@/modules/school/hostel-integration";
-import { issueStudentIdAction, revokeStudentIdAction } from "../../actions";
+import { issueStudentIdAction, revokeStudentIdAction, transferStudentEnrollmentAction } from "../../actions";
 
 const sections = [
   ["passport", "Passport and Bio"],
@@ -47,7 +52,7 @@ export default async function StudentProfilePage({
   searchParams,
 }: {
   params: Promise<{ studentId: string }>;
-  searchParams: Promise<{ section?: string }>;
+  searchParams: Promise<{ section?: string; saved?: string; error?: string }>;
 }) {
   const [tenant, { studentId }, query] = await Promise.all([
     requireModuleAccess("school"),
@@ -74,6 +79,7 @@ export default async function StudentProfilePage({
   );
   const canConduct = hasPermission(tenant, PERMISSIONS.SCHOOL_CONDUCT_VIEW);
   const canId = hasPermission(tenant, PERMISSIONS.SCHOOL_DIGITAL_ID_MANAGE);
+  const canManageEnrollment = hasPermission(tenant, PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE);
   const canHostel =
     tenant.enabledModuleKeys.includes("hostel") &&
     hasPermission(tenant, PERMISSIONS.HOSTEL_VIEW) &&
@@ -99,6 +105,9 @@ export default async function StudentProfilePage({
   }
   const hostel = canHostel
     ? await getStudentHostelSummary(tenant.organizationId, studentId)
+    : null;
+  const transferContext = canManageEnrollment
+    ? await getSchoolStudentTransferOptions(tenant.organizationId, studentId)
     : null;
   const activeCard = student.digitalIdCards.find(
     (card) => card.status === "ACTIVE" && card.expiryDate > new Date(),
@@ -143,7 +152,16 @@ export default async function StudentProfilePage({
       <PageHeader
         title={`${student.firstName} ${student.lastName}`}
         description={`Student ID ${student.admissionNumber}`}
-        actions={
+        actions={<div className="flex flex-wrap items-center gap-2">
+          {transferContext?.targets.length ? <EntityDialog trigger={<Button type="button" size="sm"><ArrowRightLeft />Transfer class</Button>} title="Transfer student" description="Move the active enrollment within this open academic year. The change is recorded in the student history." action={transferStudentEnrollmentAction} submitLabel="Record transfer">
+            <input type="hidden" name="studentId" value={student.id} />
+            <input type="hidden" name="enrollmentId" value={transferContext.enrollment.id} />
+            <input type="hidden" name="academicYearId" value={transferContext.enrollment.academicYearId} />
+            <input type="hidden" name="expectedClassId" value={transferContext.enrollment.classId} />
+            <p className="rounded-lg bg-muted p-3 text-sm">Current: {transferContext.enrollment.class.name} · {transferContext.enrollment.class.campus.name} · {transferContext.enrollment.academicYear.name}</p>
+            <SelectField id="targetClassId" name="targetClassId" label="Destination class" options={transferContext.targets.map((target) => ({ value: target.id, label: `${target.name} · ${target.campus.name}${target.capacity === null ? "" : ` · ${target.capacity - target._count.enrollments} places`}` }))} required />
+            <TextField id="transferReason" name="reason" label="Reason for transfer" minLength={5} maxLength={500} required />
+          </EntityDialog> : null}
           <Button
             nativeButton={false}
             render={<Link href="/app/school/students" />}
@@ -151,8 +169,9 @@ export default async function StudentProfilePage({
           >
             Back to students
           </Button>
-        }
+        </div>}
       />
+      <FormFeedback saved={query.saved} error={query.error} savedMessage={query.saved === "transfer" ? "The student's enrollment was transferred and the change was added to history." : "Student profile updated."} />
       {digitalId && canId ? (
         <div className="flex justify-end">
           <Button
@@ -598,6 +617,12 @@ export default async function StudentProfilePage({
                 </p>
               </div>
             ))}
+          </SectionCard>
+          <SectionCard title="Class transfer history" description="Audited moves between classes and campuses, including the recorded reason.">
+            {student.transfers.length ? student.transfers.map((transfer) => <div key={transfer.id} className="border-b py-3 text-sm">
+              <strong>{transfer.sourceClass.name} · {transfer.sourceCampus.name} → {transfer.targetClass.name} · {transfer.targetCampus.name}</strong>
+              <p className="text-muted-foreground">{transfer.academicYear.name} · {formatDate(transfer.transferredAt)} · {transfer.reason}</p>
+            </div>) : <p className="text-sm text-muted-foreground">No class transfers are recorded.</p>}
           </SectionCard>
           <SectionCard
             title="Documents"

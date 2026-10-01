@@ -488,6 +488,7 @@ model User {
   schoolIdCardsPrinted            SchoolDigitalIdCard[]            @relation("SchoolIdCardPrintedBy")
   schoolConductReported           SchoolConductRecord[]            @relation("SchoolConductReportedBy")
   schoolConductReviewed           SchoolConductRecord[]            @relation("SchoolConductReviewedBy")
+  schoolStudentTransfers          SchoolStudentTransfer[]            @relation("SchoolStudentTransferPerformedBy")
 }
 
 enum TwoFactorMethod {
@@ -756,6 +757,7 @@ model Organization {
   schoolDigitalIdCards            SchoolDigitalIdCard[]
   schoolConductRecords            SchoolConductRecord[]
   schoolStudentDocuments          SchoolStudentDocument[]
+  schoolStudentTransfers          SchoolStudentTransfer[]
   hostelBuildings                 HostelBuilding[]
   hostelRooms                     HostelRoom[]
   hostelBeds                      HostelBed[]
@@ -5256,6 +5258,8 @@ model SchoolCampus {
   feeStructures        SchoolFeeStructure[]
   hostelBuildings      HostelBuilding[]
   schoolConductRecords SchoolConductRecord[]
+  transferSources      SchoolStudentTransfer[] @relation("SchoolStudentTransferFromCampus")
+  transferTargets      SchoolStudentTransfer[] @relation("SchoolStudentTransferToCampus")
 
   @@unique([organizationId, code])
   @@index([organizationId, active])
@@ -5275,6 +5279,7 @@ model SchoolAcademicYear {
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   terms               SchoolTerm[]
   enrollments         SchoolEnrollment[]
+  studentTransfers    SchoolStudentTransfer[]
   feeInvoices         SchoolFeeInvoice[]
   feeStructures       SchoolFeeStructure[]
   exams               SchoolExam[]
@@ -5384,6 +5389,7 @@ model SchoolStudent {
   digitalIdCards    SchoolDigitalIdCard[]
   conductRecords    SchoolConductRecord[]
   documents         SchoolStudentDocument[]
+  transfers         SchoolStudentTransfer[]
 
   @@unique([organizationId, admissionNumber])
   @@index([organizationId, status])
@@ -5426,6 +5432,8 @@ model SchoolClass {
   timetable     SchoolTimetableEntry[]
   feeStructures SchoolFeeStructure[]
   teachers      SchoolClassTeacher[]
+  transferSources SchoolStudentTransfer[] @relation("SchoolStudentTransferFromClass")
+  transferTargets SchoolStudentTransfer[] @relation("SchoolStudentTransferToClass")
 
   @@unique([campusId, code])
   @@index([organizationId, active])
@@ -5491,6 +5499,32 @@ model SchoolEnrollment {
   @@unique([studentId, academicYearId])
   @@index([organizationId, status])
   @@index([classId])
+}
+
+model SchoolStudentTransfer {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  studentId          String
+  academicYearId     String
+  sourceCampusId     String
+  targetCampusId     String
+  sourceClassId      String
+  targetClassId      String
+  reason             String   @db.Text
+  performedById      String?
+  transferredAt      DateTime @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      SchoolStudent      @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  academicYear SchoolAcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  sourceCampus SchoolCampus       @relation("SchoolStudentTransferFromCampus", fields: [sourceCampusId], references: [id], onDelete: Restrict)
+  targetCampus SchoolCampus       @relation("SchoolStudentTransferToCampus", fields: [targetCampusId], references: [id], onDelete: Restrict)
+  sourceClass  SchoolClass        @relation("SchoolStudentTransferFromClass", fields: [sourceClassId], references: [id], onDelete: Restrict)
+  targetClass  SchoolClass        @relation("SchoolStudentTransferToClass", fields: [targetClassId], references: [id], onDelete: Restrict)
+  performedBy  User?              @relation("SchoolStudentTransferPerformedBy", fields: [performedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, transferredAt])
+  @@index([studentId, transferredAt])
 }
 
 model SchoolAttendance {

@@ -38,6 +38,11 @@ const STATE_REASONS: Record<string, string> = {
   "invalid-rollover-mapping": "The class mapping is empty or too large. Reload the preview and try again.",
   "rollover-too-large": "The batch is larger than 5,000 learners. Move one campus or class group at a time.",
   "stale-rollover-preview": "Learners or enrollments changed after the preview. Reload it and confirm the latest data.",
+  "transfer-capacity": "The destination class reached capacity while you were working. Choose another class or increase capacity.",
+  "stale-transfer-enrollment": "The student's current class changed. Refresh the profile before transferring.",
+  "closed-transfer-year": "Transfers cannot be recorded in a closed academic year.",
+  "same-transfer-class": "Choose a destination class different from the current class.",
+  "invalid-transfer-reason": "Enter a clear transfer reason between 5 and 500 characters.",
 };
 
 const GENERIC: Record<SchoolErrorCode, { title: string; description: string }> = {
