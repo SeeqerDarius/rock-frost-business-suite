@@ -47,6 +47,32 @@ afterAll(async () => {
 });
 
 describe("School service — real tenant isolation and customer-readiness guards", () => {
+  it("searches and paginates student rows in the requested tenant only", async () => {
+    const searchToken = `Pagination${Date.now()}`;
+    const [first, second, foreign] = await Promise.all([
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Ama", lastName: `${searchToken} Alpha`, medicalNotes: "Private test note" }),
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Ama", lastName: `${searchToken} Beta` }),
+      school.createSchoolStudent(orgB.organizationId, { campusId: campusB.id, firstName: "Ama", lastName: `${searchToken} Foreign` }),
+    ]);
+
+    const pageOne = await school.listSchoolStudentPage(orgA.organizationId, { query: searchToken.toLowerCase(), page: 1, pageSize: 1 });
+    const pageTwo = await school.listSchoolStudentPage(orgA.organizationId, { query: searchToken, page: 2, pageSize: 1 });
+    const clamped = await school.listSchoolStudentPage(orgA.organizationId, { query: searchToken, page: 999, pageSize: 1 });
+    const fullNameSearch = await school.listSchoolStudentPage(orgA.organizationId, { query: `Ama ${searchToken}` });
+
+    expect(pageOne).toMatchObject({ total: 2, page: 1, pageSize: 1, pageCount: 2 });
+    expect(pageTwo).toMatchObject({ total: 2, page: 2, pageSize: 1, pageCount: 2 });
+    expect(pageOne.rows).toHaveLength(1);
+    expect(pageTwo.rows).toHaveLength(1);
+    expect(pageOne.rows[0].id).not.toBe(pageTwo.rows[0].id);
+    expect(new Set([...pageOne.rows, ...pageTwo.rows].map((row) => row.id))).toEqual(new Set([first.id, second.id]));
+    expect(clamped.page).toBe(2);
+    expect(pageOne.rows.some((row) => row.id === foreign.id)).toBe(false);
+    expect(fullNameSearch.total).toBe(2);
+    expect(pageOne.rows[0]).not.toHaveProperty("medicalNotes");
+    expect(pageOne.rows[0]).not.toHaveProperty("photoData");
+  });
+
   it("issues, verifies, revokes, and tenant-isolates a digital student ID", async () => {
     process.env.AUTH_SECRET = "integration-only-school-id-signing-secret";
     const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Digital", lastName: "Identity" });

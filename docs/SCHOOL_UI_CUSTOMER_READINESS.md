@@ -200,13 +200,17 @@ to a same-organization HR employee. Payroll input failures leave the run in
 Draft and the adjustments unprocessed. Responsive authenticated tenant-browser
 verification remains a release check when a tenant session is available.
 
-**SC-4 — No server-side filtering or pagination.**
-Every list function takes only `organizationId` and returns the full set
-(`listSchoolAttendance` alone caps at 250). All search and filtering added in
-this pass runs in the page over rows already fetched. This is honest but does
-not scale. Requested: filter/pagination parameters on
-`listSchoolStudents`, `listSchoolFeeInvoices`, `listSchoolAttendance`, and
-`listSchoolLibrary`.
+**SC-4 — Server-side filtering and pagination (partially resolved).**
+The Students table now uses `listSchoolStudentPage` for organization-scoped
+name/admission-number search, status filtering, a count, and deterministic
+50-row pages (maximum 100). Page navigation preserves current filters, and
+out-of-range page numbers clamp to the last page. The full `listSchoolStudents`
+service remains for forms that need the full eligible directory. The paged
+table selects only its displayed identity, campus, active-enrollment, and
+guardian-contact fields, so medical notes and photo blobs are not loaded into
+the list response. Fee invoices, attendance history (currently limited to the
+250 newest records), and the library catalogue still filter already-loaded
+results and need paginated service queries.
 
 **SC-5 — RESOLVED.** `resolveGradeFromScale()` in `src/modules/school/service.ts`
 reads `SchoolSettings.gradingScale` back and auto-derives `grade` (and now

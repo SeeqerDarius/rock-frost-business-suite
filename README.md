@@ -30,7 +30,9 @@ The public marketing site has a generated sitemap and robots policy, unique cano
 School customer-readiness is delivered in guarded tranches. School payroll
 adjustments now link to HR employees and feed earnings and deductions into
 full-calendar-month Payroll runs atomically, with recoverable handling for
-unlinked legacy inputs. The lifecycle and
+unlinked legacy inputs. The Students table now searches within the tenant's
+database records and returns stable pages instead of loading every student
+for that view. The lifecycle and
 fee-control tranche adds explicit status history, reusable fee structures,
 idempotent bulk billing, attendance correction windows, and campus receipt
 numbering. Fee payments retain their source receipt if Accounting posting fails
