@@ -741,6 +741,7 @@ model Organization {
   schoolAttendance                SchoolAttendance[]
   schoolFeeInvoices               SchoolFeeInvoice[]
   schoolFeePayments               SchoolFeePayment[]
+  schoolFeeRefunds                SchoolFeeRefund[]
   schoolFeeStructures             SchoolFeeStructure[]
   schoolStudentLifecycleEvents    SchoolStudentLifecycleEvent[]
   schoolExams                     SchoolExam[]
@@ -5684,13 +5685,34 @@ model SchoolFeePayment {
   refundedAt     DateTime?
   postingStatus  SchoolFeePaymentPostingStatus @default(PENDING)
 
-  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invoice      SchoolFeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  student      SchoolStudent    @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      SchoolFeeInvoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  student      SchoolStudent     @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  refunds      SchoolFeeRefund[]
 
   @@unique([organizationId, receiptNumber])
   @@index([organizationId, receivedAt])
   @@index([invoiceId])
+  @@index([organizationId, postingStatus])
+}
+
+model SchoolFeeRefund {
+  id             String                        @id @default(cuid())
+  organizationId String
+  paymentId      String
+  amount         Decimal                       @db.Decimal(12, 2)
+  method         HotelPaymentMethod
+  reason         String                        @db.Text
+  reference      String?
+  createdAt      DateTime                      @default(now())
+  createdById    String
+  postingStatus  SchoolFeePaymentPostingStatus @default(PENDING)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payment      SchoolFeePayment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@index([paymentId, createdAt])
   @@index([organizationId, postingStatus])
 }
 

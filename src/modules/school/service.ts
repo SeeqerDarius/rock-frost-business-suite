@@ -707,22 +707,24 @@ export async function listSchoolFeeInvoicePage(organizationId: string, input: { 
     status: true, dueDate: true, createdAt: true,
     student: { select: { firstName: true, lastName: true, admissionNumber: true } },
     academicYear: { select: { name: true } }, term: { select: { name: true } },
-    payments: { select: { id: true, amount: true, refundedAt: true, receiptNumber: true, postingStatus: true } },
+    payments: { select: { id: true, amount: true, refundedAt: true, receiptNumber: true, postingStatus: true, method: true, refunds: { select: { id: true, amount: true, method: true, reason: true, reference: true, createdAt: true, postingStatus: true }, orderBy: { createdAt: "desc" } } } },
   }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize });
   return { rows, total, page, pageSize, pageCount };
 }
 
 export async function getSchoolFeeInvoiceSummary(organizationId: string) {
-  const [invoices, payments, openInvoices, openPayments] = await Promise.all([
+  const [invoices, payments, refunds, openInvoices, openPayments, openRefunds] = await Promise.all([
     db.schoolFeeInvoice.aggregate({ where: { organizationId, status: { in: ["ISSUED", "PART_PAID", "PAID"] } }, _sum: { amount: true, discount: true } }),
     db.schoolFeePayment.aggregate({ where: { organizationId, refundedAt: null }, _sum: { amount: true } }),
+    db.schoolFeeRefund.aggregate({ where: { organizationId, payment: { refundedAt: null } }, _sum: { amount: true } }),
     db.schoolFeeInvoice.aggregate({ where: { organizationId, status: { in: ["ISSUED", "PART_PAID"] } }, _sum: { amount: true, discount: true } }),
     db.schoolFeePayment.aggregate({ where: { organizationId, refundedAt: null, invoice: { status: { in: ["ISSUED", "PART_PAID"] } } }, _sum: { amount: true } }),
+    db.schoolFeeRefund.aggregate({ where: { organizationId, payment: { refundedAt: null, invoice: { status: { in: ["ISSUED", "PART_PAID"] } } } }, _sum: { amount: true } }),
   ]);
   return {
     billed: (invoices._sum.amount ?? new Prisma.Decimal(0)).minus(invoices._sum.discount ?? 0),
-    collected: payments._sum.amount ?? new Prisma.Decimal(0),
-    outstanding: (openInvoices._sum.amount ?? new Prisma.Decimal(0)).minus(openInvoices._sum.discount ?? 0).minus(openPayments._sum.amount ?? 0),
+    collected: (payments._sum.amount ?? new Prisma.Decimal(0)).minus(refunds._sum.amount ?? 0),
+    outstanding: (openInvoices._sum.amount ?? new Prisma.Decimal(0)).minus(openInvoices._sum.discount ?? 0).minus(openPayments._sum.amount ?? 0).plus(openRefunds._sum.amount ?? 0),
   };
 }
 
@@ -740,9 +742,10 @@ export async function createSchoolFeeInvoice(organizationId: string, data: { aca
 export async function recordSchoolFeePayment(organizationId: string, invoiceId: string, data: { amount: Prisma.Decimal.Value; method: HotelPaymentMethod; reference?: string | null }) {
   const { payment, notify } = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${organizationId}:school-receipt`}))`;
-    const invoice = await tx.schoolFeeInvoice.findFirst({ where: { id: invoiceId, organizationId, status: { in: ["ISSUED", "PART_PAID"] } }, include: { payments: true, student: { include: { campus: { include: { settings: true } } } } } });
+    await tx.$queryRaw`SELECT id FROM "SchoolFeeInvoice" WHERE id = ${invoiceId} AND "organizationId" = ${organizationId} FOR UPDATE`;
+    const invoice = await tx.schoolFeeInvoice.findFirst({ where: { id: invoiceId, organizationId, status: { in: ["ISSUED", "PART_PAID"] } }, include: { payments: { include: { refunds: true } }, student: { include: { campus: { include: { settings: true } } } } } });
     if (!invoice) throw new SchoolNotFoundError("Open invoice not found.");
-    const paid = invoice.payments.filter((p) => !p.refundedAt).reduce((sum, p) => sum.plus(p.amount), new Prisma.Decimal(0));
+    const paid = invoice.payments.reduce((sum, p) => sum.plus(p.refundedAt ? 0 : p.amount.minus(p.refunds.reduce((refundSum, refund) => refundSum.plus(refund.amount), new Prisma.Decimal(0)))), new Prisma.Decimal(0));
     const due = invoice.amount.minus(invoice.discount).minus(paid);
     const amount = decimal(data.amount);
     if (amount.lte(0) || amount.gt(due)) throw new SchoolStateError("Payment exceeds the outstanding invoice balance.", "payment-exceeds-balance");
@@ -764,6 +767,36 @@ export async function recordSchoolFeePayment(organizationId: string, invoiceId: 
     body: (guardianName) => schoolFeePaymentReceivedSms({ guardianName, studentName: notify.studentName, amount: `GHS ${Number(payment.amount).toFixed(2)}`, receiptNumber: payment.receiptNumber }).body,
   });
   return payment;
+}
+
+export async function recordSchoolFeeRefund(organizationId: string, paymentId: string, actorId: string, data: { amount: Prisma.Decimal.Value; method: HotelPaymentMethod; reason: string; reference?: string | null }) {
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "SchoolFeePayment" WHERE id = ${paymentId} AND "organizationId" = ${organizationId} FOR UPDATE`;
+    const payment = await tx.schoolFeePayment.findFirst({ where: { id: paymentId, organizationId }, include: { refunds: true, invoice: true } });
+    if (!payment) throw new SchoolNotFoundError("Fee payment not found.");
+    await tx.$queryRaw`SELECT id FROM "SchoolFeeInvoice" WHERE id = ${payment.invoiceId} AND "organizationId" = ${organizationId} FOR UPDATE`;
+    const invoice = await tx.schoolFeeInvoice.findFirst({ where: { id: payment.invoiceId, organizationId } });
+    if (!invoice) throw new SchoolNotFoundError("Fee invoice not found.");
+    const alreadyRefunded = payment.refunds.reduce((sum, refund) => sum.plus(refund.amount), new Prisma.Decimal(0));
+    const remaining = payment.refundedAt ? new Prisma.Decimal(0) : payment.amount.minus(alreadyRefunded);
+    const amount = decimal(data.amount);
+    if (amount.lte(0) || amount.gt(remaining)) throw new SchoolStateError("Refund exceeds the remaining refundable amount.", "refund-exceeds-balance");
+    const refund = await tx.schoolFeeRefund.create({ data: { organizationId, paymentId, ...data, amount, createdById: actorId } });
+    const totalRefunded = alreadyRefunded.plus(amount);
+    if (totalRefunded.gte(payment.amount)) await tx.schoolFeePayment.update({ where: { id: payment.id }, data: { refundedAt: new Date() } });
+    if (invoice.status !== "VOID" && invoice.status !== "DRAFT") {
+      const invoicePayments = await tx.schoolFeePayment.findMany({ where: { invoiceId: payment.invoiceId, organizationId }, include: { refunds: { select: { amount: true } } } });
+      const collected = invoicePayments.reduce((sum, item) => sum.plus(item.refundedAt ? 0 : item.amount.minus(item.refunds.reduce((refundSum, row) => refundSum.plus(row.amount), new Prisma.Decimal(0)))), new Prisma.Decimal(0));
+      const due = invoice.amount.minus(invoice.discount);
+      const status = collected.gte(due) ? "PAID" : collected.gt(0) ? "PART_PAID" : "ISSUED";
+      await tx.schoolFeeInvoice.update({ where: { id: payment.invoiceId }, data: { status } });
+    }
+    return refund;
+  }, { timeout: 15_000 });
+}
+
+export function getSchoolFeeRefundForPostingRetry(organizationId: string, refundId: string) {
+  return db.schoolFeeRefund.findFirst({ where: { id: refundId, organizationId, postingStatus: { in: ["PENDING", "FAILED", "NOT_REQUIRED"] } }, select: { id: true, amount: true, createdAt: true, reason: true, reference: true } });
 }
 
 export function getSchoolFeePaymentForPostingRetry(organizationId: string, paymentId: string) {
@@ -1119,17 +1152,18 @@ export function listSchoolSettings(organizationId:string){return db.schoolCampus
 export async function upsertSchoolSettings(organizationId:string,data:{campusId:string;attendanceCloseDays:number;receiptPrefix:string;allowRanking:boolean;smsNotificationsEnabled:boolean;gradingScale?:Prisma.InputJsonValue}){if(!(await db.schoolCampus.findFirst({where:{id:data.campusId,organizationId}})))throw new SchoolNotFoundError("Campus not found.");const values={attendanceCloseDays:data.attendanceCloseDays,receiptPrefix:data.receiptPrefix,allowRanking:data.allowRanking,smsNotificationsEnabled:data.smsNotificationsEnabled,gradingScale:data.gradingScale};return db.schoolSettings.upsert({where:{campusId:data.campusId},update:values,create:{organizationId,...data}});}
 
 export async function getSchoolSummary(organizationId: string) {
-  const [students, classes, attendance, invoices, payments, overdueLoans, routes] = await Promise.all([
+  const [students, classes, attendance, invoices, payments, refunds, overdueLoans, routes] = await Promise.all([
     db.schoolStudent.count({ where: { organizationId, status: "ACTIVE" } }),
     db.schoolClass.count({ where: { organizationId, active: true } }),
     db.schoolAttendance.groupBy({ by: ["status"], where: { organizationId }, _count: true }),
-    db.schoolFeeInvoice.findMany({ where: { organizationId, status: { in: ["ISSUED", "PART_PAID"] } }, include: { payments: true } }),
+    db.schoolFeeInvoice.findMany({ where: { organizationId, status: { in: ["ISSUED", "PART_PAID"] } }, include: { payments: { include: { refunds: true } } } }),
     db.schoolFeePayment.aggregate({ where: { organizationId, refundedAt: null }, _sum: { amount: true } }),
+    db.schoolFeeRefund.aggregate({ where: { organizationId, payment: { refundedAt: null } }, _sum: { amount: true } }),
     db.schoolLibraryLoan.count({ where: { organizationId, status: { in: ["BORROWED", "OVERDUE"] }, dueAt: { lt: new Date() } } }),
     db.schoolTransportRoute.count({ where: { organizationId, active: true } }),
   ]);
-  const outstanding = invoices.reduce((total, invoice) => total.plus(invoice.amount.minus(invoice.discount).minus(invoice.payments.filter((p) => !p.refundedAt).reduce((sum, p) => sum.plus(p.amount), new Prisma.Decimal(0)))), new Prisma.Decimal(0));
-  return { activeStudents: students, activeClasses: classes, attendance: Object.fromEntries(attendance.map((item) => [item.status, item._count])), collections: payments._sum.amount ?? new Prisma.Decimal(0), outstanding, overdueLoans, activeRoutes: routes };
+  const outstanding = invoices.reduce((total, invoice) => total.plus(invoice.amount.minus(invoice.discount).minus(invoice.payments.reduce((sum, p) => sum.plus(p.refundedAt ? 0 : p.amount.minus(p.refunds.reduce((refundSum, refund) => refundSum.plus(refund.amount), new Prisma.Decimal(0)))), new Prisma.Decimal(0)))), new Prisma.Decimal(0));
+  return { activeStudents: students, activeClasses: classes, attendance: Object.fromEntries(attendance.map((item) => [item.status, item._count])), collections: (payments._sum.amount ?? new Prisma.Decimal(0)).minus(refunds._sum.amount ?? 0), outstanding, overdueLoans, activeRoutes: routes };
 }
 
 export async function getSchoolReportAnalytics(
@@ -1152,15 +1186,16 @@ export async function getSchoolReportAnalytics(
     ? { ...(filters.campusId ? { campusId: filters.campusId } : {}), ...(filters.classId ? { enrollments: { some: { classId: filters.classId } } } : {}) }
     : undefined;
 
-  const [attendance, payments, classes] = await Promise.all([
+  const [attendance, payments, refunds, classes] = await Promise.all([
     db.schoolAttendance.findMany({
       where: { organizationId, date: { gte: lookback, lt: queryEnd }, ...(filters.classId ? { classId: filters.classId } : {}), ...(filters.campusId ? { class: { campusId: filters.campusId } } : {}) },
       select: { date: true, status: true, classId: true },
     }),
     db.schoolFeePayment.findMany({
-      where: { organizationId, refundedAt: null, receivedAt: { gte: lookback, lt: queryEnd }, ...(studentWhere ? { student: studentWhere } : {}) },
-      select: { receivedAt: true, amount: true },
+      where: { organizationId, receivedAt: { gte: lookback, lt: queryEnd }, ...(studentWhere ? { student: studentWhere } : {}) },
+      select: { receivedAt: true, amount: true, refundedAt: true, refunds: { select: { id: true } } },
     }),
+    db.schoolFeeRefund.findMany({ where: { organizationId, createdAt: { gte: lookback, lt: queryEnd }, ...(studentWhere ? { payment: { student: studentWhere } } : {}) }, select: { createdAt: true, amount: true } }),
     db.schoolClass.findMany({ where: classWhere, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
 
@@ -1172,7 +1207,7 @@ export async function getSchoolReportAnalytics(
       attendanceRate: marks.length > 0 ? Math.round((healthy / marks.length) * 100) : null,
       absent: marks.filter((record) => record.status === "ABSENT").length,
       marked: marks.length,
-      collections: payments.filter((payment) => inRange(payment.receivedAt, start, end)).reduce((sum, payment) => sum + Number(payment.amount), 0),
+      collections: payments.filter((payment) => inRange(payment.receivedAt, start, end) && (!payment.refundedAt || payment.refunds.length > 0)).reduce((sum, payment) => sum + Number(payment.amount), 0) - refunds.filter((refund) => inRange(refund.createdAt, start, end)).reduce((sum, refund) => sum + Number(refund.amount), 0),
     };
   };
   const current = summarize(from, toExclusive);

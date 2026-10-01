@@ -125,7 +125,14 @@ checks School access plus either fee-management or student-finance-view
 permission, and loads the payment by organization with a narrow selection of
 receipt, invoice, student, campus, and academic-period fields. Printing is
 browser-native; a refund does not rewrite or remove the original receipt.
-Refunds, credits, and receipt PDF generation remain separate work.
+Fee managers can record partial or full refunds against a payment. Each refund
+retains its amount, method, reason, reference, actor, timestamp, and Accounting
+posting status as a separate event; the original receipt is preserved. Refunds
+reduce collected totals and reopen the invoice balance. Accounting receives a
+separate contra-revenue journal entry with retry support. Credits and a
+downloadable receipt PDF remain separate work. Refund settlement currently
+uses the Accounting module's default Cash account, consistent with existing
+School fee collection posting.
 
 The invoice status filter now matches the schema's `VOID` value rather than
 offering the nonexistent `CANCELLED` value. Remaining scaling work includes
