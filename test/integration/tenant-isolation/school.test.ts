@@ -73,6 +73,26 @@ describe("School service — real tenant isolation and customer-readiness guards
     expect(pageOne.rows[0]).not.toHaveProperty("photoData");
   });
 
+  it("bounds student form choices, searches names and admission numbers, and enforces tenant and status filters", async () => {
+    const token = `StudentChoice${Date.now()}`;
+    const [first, second, foreign] = await Promise.all([
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Ama", lastName: `${token} Alpha`, medicalNotes: "Private test note" }),
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Kojo", lastName: `${token} Beta` }),
+      school.createSchoolStudent(orgB.organizationId, { campusId: campusB.id, firstName: "Ama", lastName: `${token} Foreign` }),
+    ]);
+    await school.transitionSchoolStudent(orgA.organizationId, first.id, "WITHDRAWN");
+
+    const choices = await school.listSchoolStudentChoices(orgA.organizationId, { query: token, activeOnly: true, take: 1 });
+    const admissionSearch = await school.listSchoolStudentChoices(orgA.organizationId, { query: second.admissionNumber, activeOnly: true });
+
+    expect(choices).toMatchObject({ total: 1, take: 1 });
+    expect(choices.rows).toHaveLength(1);
+    expect(choices.rows[0].id).toBe(second.id);
+    expect(choices.rows[0].id).not.toBe(foreign.id);
+    expect(choices.rows[0]).not.toHaveProperty("medicalNotes");
+    expect(admissionSearch.rows.map((row) => row.id)).toEqual([second.id]);
+  });
+
   it("searches and paginates fee, attendance, and catalogue lists within one tenant", async () => {
     const token = `ListPage${Date.now()}`;
     const [studentOne, studentTwo, foreignStudent] = await Promise.all([
@@ -107,6 +127,10 @@ describe("School service — real tenant isolation and customer-readiness guards
       school.createSchoolLibraryBook(orgA.organizationId, { accessionCode: `${token}-B`, title: `${token} Beta`, totalCopies: 1 }),
     ]);
     await school.createSchoolLibraryBook(orgB.organizationId, { accessionCode: `${token}-X`, title: `${token} Foreign`, totalCopies: 1 });
+    const bookChoices = await school.listSchoolLibraryBookChoices(orgA.organizationId, { query: token, take: 1 });
+    expect(bookChoices).toMatchObject({ total: 2, take: 1 });
+    expect(bookChoices.rows).toHaveLength(1);
+    expect(bookChoices.rows[0].id).not.toBe((await testDb.schoolLibraryBook.findFirstOrThrow({ where: { organizationId: orgB.organizationId, title: `${token} Foreign` } })).id);
     const booksOne = await school.listSchoolLibraryBookPage(orgA.organizationId, { query: token, page: 1, pageSize: 1 });
     const booksTwo = await school.listSchoolLibraryBookPage(orgA.organizationId, { query: token, page: 2, pageSize: 1 });
     expect(booksOne.total).toBe(2);

@@ -106,10 +106,20 @@ stable pages of 50 rows capped at 100, separate search state from the
 catalogue, an open/all-loans toggle, and an organization-wide overdue count.
 Loan rows select only the book and student fields shown in the table.
 
+Student choices in enrollment, fee invoices, transport assignments, exam result
+entry, and library circulation now use tenant-scoped name/admission-number
+search and return at most 50 narrow rows per choice set (configurable up to
+100). Library book choices similarly search available titles, authors, or
+accession codes and return a bounded result. Dedicated GET search forms preserve
+the other active list and picker filters. The create/edit actions still perform
+their own organization and business-rule checks; the picker is only a way to
+find records efficiently.
+
 The invoice status filter now matches the schema's `VOID` value rather than
 offering the nonexistent `CANCELLED` value. Remaining scaling work includes
-organization-wide form pickers, followed by
-the finance, student lifecycle, and academic workflows listed below.
+the portal-access student list and other full-record directory consumers,
+followed by the finance, student lifecycle, and academic workflows listed
+below.
 
 ## Customer-readiness tranche 2 — capacity, lifecycle controls, teacher scoping, and UX fixes
 
