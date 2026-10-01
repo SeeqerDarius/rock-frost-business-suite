@@ -22,7 +22,7 @@ import { formatDate, humanizeStatus } from "@/components/school/format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listSchoolCampuses, listSchoolGuardians, listSchoolStudentPage, listSchoolStudentPhotoIds, listSchoolGuardianPhotoIds } from "@/modules/school/service";
-import { createStudentAction, transitionStudentAction, updateStudentPhotoAction, updateGuardianAction, updateGuardianPhotoAction } from "../actions";
+import { createStudentAction, transitionStudentAction, updateStudentProfileAction, updateStudentPhotoAction, updateGuardianAction, updateGuardianPhotoAction } from "../actions";
 import { StudentGuardianFields } from "./student-guardian-fields";
 
 function PhotoThumb({ hasPhoto, src, alt }: { hasPhoto: boolean; src: string; alt: string }) {
@@ -108,7 +108,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
       <FormFeedback
         saved={query.saved}
         error={query.error}
-        savedMessage="The student record is up to date."
+        savedMessage="Student profile saved."
         stateMessage="That status change isn't allowed from the student's current status: withdrawn and graduated records are final."
       />
       {!canManage ? <ReadOnlyNotice>Your role can review students and guardians but cannot admit or change them.</ReadOnlyNotice> : null}
@@ -221,32 +221,54 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
                           <TableCell><StatusBadge status={student.status} /></TableCell>
                           {canManage ? (
                             <TableCell className="text-right">
-                              {transitions.length > 0 ? (
+                              <div className="flex flex-wrap justify-end gap-2">
                                 <EntityDialog
-                                  trigger={<Button size="sm" variant="ghost">Change status</Button>}
-                                  title={`Change status for ${student.firstName} ${student.lastName}`}
-                                  description={`Currently ${humanizeStatus(student.status).toLowerCase()}. Withdrawing or graduating a student also closes their active enrollments.`}
-                                  action={transitionStudentAction}
-                                  submitLabel="Change status"
+                                  trigger={<Button size="sm" variant="outline"><Pencil />Edit profile</Button>}
+                                  title={`Edit ${student.firstName} ${student.lastName}`}
+                                  description="Update the student's name, date of birth, gender, or admission date. Campus, admission number, status, and class history remain unchanged."
+                                  action={updateStudentProfileAction}
+                                  submitLabel="Save profile"
                                 >
                                   <input type="hidden" name="studentId" value={student.id} />
-                                  <SelectField
-                                    id={`transition-${student.id}`}
-                                    name="toStatus"
-                                    label="New status"
-                                    required
-                                    placeholder="Select a new status…"
-                                    options={transitions.map((status) => ({ value: status, label: humanizeStatus(status) }))}
-                                  />
-                                  <div className="space-y-1.5">
-                                    <Label htmlFor={`transition-reason-${student.id}`}>Reason</Label>
-                                    <Textarea id={`transition-reason-${student.id}`} name="reason" rows={3} maxLength={5000} />
-                                    <p className="text-xs leading-relaxed text-muted-foreground">Optional, but recorded permanently in the student&apos;s lifecycle history.</p>
-                                  </div>
+                                  <input type="hidden" name="updatedAt" value={student.updatedAt.toISOString()} />
+                                  <input type="hidden" name="q" value={query.q ?? ""} />
+                                  <input type="hidden" name="status" value={statusFilter ?? ""} />
+                                  <input type="hidden" name="page" value={studentPage.page} />
+                                  <FieldGrid>
+                                    <TextField id={`student-edit-first-${student.id}`} name="firstName" label="First name" required maxLength={200} defaultValue={student.firstName} />
+                                    <TextField id={`student-edit-last-${student.id}`} name="lastName" label="Last name" required maxLength={200} defaultValue={student.lastName} />
+                                  </FieldGrid>
+                                  <FieldGrid>
+                                    <TextField id={`student-edit-dob-${student.id}`} name="dateOfBirth" label="Date of birth" type="date" defaultValue={student.dateOfBirth?.toISOString().slice(0, 10) ?? ""} />
+                                    <TextField id={`student-edit-gender-${student.id}`} name="gender" label="Gender" maxLength={100} defaultValue={student.gender ?? ""} />
+                                  </FieldGrid>
+                                  <TextField id={`student-edit-admission-date-${student.id}`} name="admissionDate" label="Admission date" type="date" defaultValue={student.admissionDate?.toISOString().slice(0, 10) ?? ""} />
                                 </EntityDialog>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">Final</span>
-                              )}
+                                {transitions.length > 0 ? (
+                                  <EntityDialog
+                                    trigger={<Button size="sm" variant="ghost">Change status</Button>}
+                                    title={`Change status for ${student.firstName} ${student.lastName}`}
+                                    description={`Currently ${humanizeStatus(student.status).toLowerCase()}. Withdrawing or graduating a student also closes their active enrollments.`}
+                                    action={transitionStudentAction}
+                                    submitLabel="Change status"
+                                  >
+                                    <input type="hidden" name="studentId" value={student.id} />
+                                    <SelectField
+                                      id={`transition-${student.id}`}
+                                      name="toStatus"
+                                      label="New status"
+                                      required
+                                      placeholder="Select a new status…"
+                                      options={transitions.map((status) => ({ value: status, label: humanizeStatus(status) }))}
+                                    />
+                                    <div className="space-y-1.5">
+                                      <Label htmlFor={`transition-reason-${student.id}`}>Reason</Label>
+                                      <Textarea id={`transition-reason-${student.id}`} name="reason" rows={3} maxLength={5000} />
+                                      <p className="text-xs leading-relaxed text-muted-foreground">Optional, but recorded permanently in the student&apos;s lifecycle history.</p>
+                                    </div>
+                                  </EntityDialog>
+                                ) : <span className="self-center text-xs text-muted-foreground">Final status</span>}
+                              </div>
                             </TableCell>
                           ) : null}
                         </TableRow>

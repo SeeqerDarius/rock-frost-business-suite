@@ -185,7 +185,10 @@ export async function listSchoolStudentPage(organizationId: string, input: { que
       firstName: true,
       lastName: true,
       dateOfBirth: true,
+      admissionDate: true,
+      gender: true,
       status: true,
+      updatedAt: true,
       campus: { select: { name: true } },
       guardians: {
         orderBy: [{ primary: "desc" }, { id: "asc" }],
@@ -313,6 +316,28 @@ export async function transitionSchoolStudent(
     });
     return tx.schoolStudent.findUniqueOrThrow({ where: { id: student.id } });
   });
+}
+
+/**
+ * Edits student identity and admission dates without changing the immutable
+ * admission number, campus, status, or enrollment history. The caller submits
+ * the version it displayed so a concurrent edit cannot silently overwrite it.
+ */
+export async function updateSchoolStudentProfile(
+  organizationId: string,
+  studentId: string,
+  expectedUpdatedAt: Date,
+  data: { firstName: string; lastName: string; dateOfBirth?: Date | null; gender?: string | null; admissionDate?: Date | null },
+) {
+  const existing = await db.schoolStudent.findFirst({ where: { id: studentId, organizationId }, select: { id: true } });
+  if (!existing) throw new SchoolNotFoundError("Student not found.");
+
+  const result = await db.schoolStudent.updateMany({
+    where: { id: studentId, organizationId, updatedAt: expectedUpdatedAt },
+    data: { ...data, updatedAt: new Date(Math.max(Date.now(), expectedUpdatedAt.getTime() + 1)) },
+  });
+  if (result.count !== 1) throw new SchoolStateError("This student profile changed in another request. Reload the record and try again.", "stale-record");
+  return db.schoolStudent.findFirstOrThrow({ where: { id: studentId, organizationId } });
 }
 
 export function createSchoolGuardian(organizationId: string, data: { firstName: string; lastName: string; email?: string | null; phone: string; address?: string | null; occupation?: string | null }) {

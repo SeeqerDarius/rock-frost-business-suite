@@ -89,6 +89,11 @@ available page. The existing full student directory service remains available
 to forms and workflows that need organization-wide choices. The paged table
 selects only displayed identity, campus, active-enrollment, and guardian-contact
 fields; it does not fetch medical notes or photo data into the list response.
+Staff with student-management permission can edit a student's name, date of
+birth, gender, and admission date from this table. The update checks the row's
+version so concurrent edits cannot silently overwrite one another. Admission
+number, campus, lifecycle status, class history, and medical details stay out
+of this editor; changes to those records use their own workflows.
 
 ## Customer-readiness tranche 6 — scalable operational lists
 
@@ -176,7 +181,7 @@ schema change:
 
 ### Student administration
 
-- Complete admission application, document, emergency-contact, profile-edit,
+- Complete admission application, document, and emergency-contact management,
   transfer, promotion, and academic-year rollover workflows.
 - Add bulk import/export with preview, validation, and recoverable error reports.
 - Add printable student profiles and enrollment history.

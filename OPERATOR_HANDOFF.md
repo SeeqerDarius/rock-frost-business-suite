@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-01: School student profile editing in progress
+
+- **Scope**: add conflict-safe editing for student name, date of birth, gender, and admission date. Preserve admission number, campus, status, class history, and medical details. Preserve the current student-list search, status, and page after save.
+- **Important files**: `src/modules/school/service.ts`, `src/app/app/school/actions.ts`, `src/app/app/school/students/page.tsx`, `test/integration/tenant-isolation/school.test.ts`, School readiness documentation, and README.
+- **Migrations/environment**: none.
+- **Validation**: `npm run lint` passed with two existing PWA hook-dependency warnings; `npx tsc --noEmit --incremental false` passed; `npm run test` passed (176 files, 1,347 tests); `npm run build` passed (249 routes); `git diff --check` passed. Local disposable-PostgreSQL integration could not be run because its guarded test database is unavailable in this environment; require the CI disposable-database suite before merge.
+- **Release status**: not committed or released. Authenticated responsive tenant UI verification requires a tenant test session.
+
 ## 2026-10-01: Printable School fee receipts in progress
 
 - **Scope**: add a permission-checked printable receipt view for each recorded School fee payment, backed by an organization-scoped narrow query; add tenant-isolation coverage and update School readiness and README.
