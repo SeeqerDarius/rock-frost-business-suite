@@ -59,7 +59,7 @@ export default async function SchoolTimetablesPage({ searchParams }: { searchPar
     <div className="mx-auto max-w-screen-2xl space-y-6">
       <PageHeader
         title="Timetables"
-        description="Weekly class schedules. A class, teacher, or room can only be booked once in any time slot."
+        description="Weekly class schedules. A class or teacher cannot overlap; room conflicts apply within the same campus."
         actions={canAddPeriod ? newPeriodDialog : undefined}
       />
 
@@ -67,7 +67,7 @@ export default async function SchoolTimetablesPage({ searchParams }: { searchPar
         saved={query.saved}
         error={query.error}
         savedMessage="The timetable period has been added."
-        stateMessage="This period clashes with an existing booking for the same class, teacher, or room, or the end time is not after the start time."
+        stateMessage="Check the campus, class, term, subject, teacher, and time. The term and academic year must be open, and class, teacher, or same-campus room bookings cannot overlap."
       />
       {!canManage ? <ReadOnlyNotice>Your role can review timetables but cannot change them.</ReadOnlyNotice> : null}
       <PrerequisiteNotice

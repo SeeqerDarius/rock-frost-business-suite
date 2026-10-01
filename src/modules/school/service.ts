@@ -1274,10 +1274,39 @@ export async function issueSchoolFeeStructure(organizationId: string, feeStructu
 }
 
 export async function createSchoolTimetableEntry(organizationId: string, data: { campusId: string; termId: string; classId: string; subjectId: string; teacherName: string; room?: string | null; dayOfWeek: number; startsAt: string; endsAt: string }) {
-  if (data.dayOfWeek < 1 || data.dayOfWeek > 7 || data.endsAt <= data.startsAt) throw new SchoolStateError("Invalid timetable period.");
-  const conflict = await db.schoolTimetableEntry.findFirst({ where: { organizationId, termId: data.termId, dayOfWeek: data.dayOfWeek, startsAt: { lt: data.endsAt }, endsAt: { gt: data.startsAt }, OR: [{ classId: data.classId }, { teacherName: data.teacherName }, ...(data.room ? [{ room: data.room }] : [])] } });
-  if (conflict) throw new SchoolStateError("Timetable conflicts with an existing class, teacher, or room period.", "timetable-conflict");
-  return db.schoolTimetableEntry.create({ data: { organizationId, ...data } });
+  const teacherName = data.teacherName.trim();
+  const room = data.room?.trim() || null;
+  const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+  if (!Number.isInteger(data.dayOfWeek) || data.dayOfWeek < 1 || data.dayOfWeek > 7 || !timePattern.test(data.startsAt) || !timePattern.test(data.endsAt) || data.endsAt <= data.startsAt || !teacherName) {
+    throw new SchoolStateError("Enter a valid day, teacher, and timetable period.", "invalid-timetable-period");
+  }
+  const [campus, term, schoolClass, subject] = await Promise.all([
+    db.schoolCampus.findFirst({ where: { id: data.campusId, organizationId }, select: { id: true } }),
+    db.schoolTerm.findFirst({ where: { id: data.termId, organizationId }, select: { id: true, closedAt: true, academicYear: { select: { closedAt: true } } } }),
+    db.schoolClass.findFirst({ where: { id: data.classId, organizationId, active: true }, select: { id: true, campusId: true } }),
+    db.schoolSubject.findFirst({ where: { id: data.subjectId, organizationId, active: true }, select: { id: true } }),
+  ]);
+  if (!campus || !term || !schoolClass || !subject) throw new SchoolNotFoundError("Campus, term, active class, or active subject not found.");
+  if (schoolClass.campusId !== campus.id) throw new SchoolStateError("The selected class does not belong to this campus.", "timetable-campus-mismatch");
+  if (term.closedAt || term.academicYear.closedAt) throw new SchoolStateError("A timetable cannot be changed for a closed term or academic year.", "timetable-term-closed");
+
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${organizationId}:${data.termId}:${data.dayOfWeek}:school-timetable`}))`;
+    const conflict = await tx.schoolTimetableEntry.findFirst({ where: {
+      organizationId,
+      termId: data.termId,
+      dayOfWeek: data.dayOfWeek,
+      startsAt: { lt: data.endsAt },
+      endsAt: { gt: data.startsAt },
+      OR: [
+        { classId: data.classId },
+        { teacherName: { equals: teacherName, mode: "insensitive" } },
+        ...(room ? [{ campusId: campus.id, room: { equals: room, mode: "insensitive" as const } }] : []),
+      ],
+    } });
+    if (conflict) throw new SchoolStateError("Timetable conflicts with an existing class, teacher, or room period.", "timetable-conflict");
+    return tx.schoolTimetableEntry.create({ data: { ...data, organizationId, teacherName, room } });
+  });
 }
 
 /**

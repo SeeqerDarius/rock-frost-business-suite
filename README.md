@@ -41,7 +41,8 @@ also search and paginate in tenant-scoped database queries, with fee summary
 totals aggregated across all invoices. Library loan history now has separate
 search and pagination, with open/all-loan views and a full-organization
 overdue count. The current School candidate adds publishable class attendance
-registers, with reasoned corrections retained in an audit history. Student choice
+registers with reasoned corrections and race-safe timetable booking checks.
+Student choice
 pickers in enrollment, fees, transport, exam results, and library
 circulation now search within a bounded tenant-scoped result set; book issuance
 choices search only available copies. The lifecycle and

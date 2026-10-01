@@ -5,7 +5,7 @@ operational, tenant-isolated, and deployed, but this document tracks the work
 required to make it complete for day-to-day customer use rather than treating a
 broad set of initial pages as the end of product development.
 
-The student-transfer, printable-profile, and attendance-publication improvements
+The student-transfer, printable-profile, attendance-publication, and timetable-safety improvements
 described in the current candidate entries are on branch
 `codex/school-student-transfers` and are not in production. Production release
 requires the guarded PostgreSQL integration gate, GitHub pull-request CI, and
@@ -206,6 +206,20 @@ entry/correction access but cannot publish by default. Migration
 `20261001150000_school_attendance_publication_revisions` adds the revision
 table. No environment variable changed.
 
+## Customer-readiness tranche 8 — timetable booking integrity
+
+The current candidate also hardens timetable creation. The service verifies the
+campus, open term and academic year, active class, and active subject belong to the organization;
+the selected class must belong to the selected campus. Teacher names are
+trimmed and compared case-insensitively. Room names are trimmed and compared
+case-insensitively within a campus, so the same room label at another campus
+does not create a false conflict. Periods require a valid weekday and strict
+24-hour `HH:mm` values with the end after the start. An organization/term/day
+transaction advisory lock serializes conflict-check plus insert, closing the
+simultaneous-booking race. No schema migration or environment change is
+required. This does not replace free-text teacher and room labels with HR-backed
+assignments; that remains open work. This candidate is not deployed.
+
 ## Remaining customer-readiness program
 
 ### Student administration
@@ -243,7 +257,9 @@ table. No environment variable changed.
 - Add class-register workflows that support stronger register completeness and
   class-level review beyond the current per-day publication and correction audit.
 - Replace free-text teachers/rooms with School-owned assignments backed by HR
-  employees and enforce timetable collisions.
+  employees. The current candidate validates timetable resource ownership and
+  prevents same-class, same-teacher, and same-campus-room overlaps, including
+  concurrent submissions.
 - Add assessment schemes, calculated grading, report cards, transcripts,
   promotion decisions, and published-result revision history.
 

@@ -553,6 +553,41 @@ describe("School service — real tenant isolation and customer-readiness guards
     expect(payment.receiptNumber).toMatch(/^RFS-\d{5}$/);
   });
 
+  it("serializes timetable bookings and rejects cross-tenant or cross-campus references", async () => {
+    const token = `Timetable${Date.now()}`;
+    const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: token, startDate: new Date("2035-01-01"), endDate: new Date("2035-12-31") });
+    const term = await school.createSchoolTerm(orgA.organizationId, { academicYearId: year.id, name: token, startDate: new Date("2035-01-01"), endDate: new Date("2035-12-31") });
+    const [otherCampus, classOne, classTwo, subject] = await Promise.all([
+      school.createSchoolCampus(orgA.organizationId, { code: `${token}C`, name: `${token} second campus` }),
+      school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}1`, name: `${token} class one` }),
+      school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}2`, name: `${token} class two` }),
+      school.createSchoolSubject(orgA.organizationId, { code: `${token}S`, name: `${token} subject` }),
+    ]);
+    const otherCampusClass = await school.createSchoolClass(orgA.organizationId, { campusId: otherCampus.id, code: `${token}3`, name: `${token} other-campus class` });
+    const foreignClass = await school.createSchoolClass(orgB.organizationId, { campusId: campusB.id, code: `${token}F`, name: `${token} foreign class` });
+    const base = { campusId: campusA.id, termId: term.id, subjectId: subject.id, dayOfWeek: 1, startsAt: "09:00", endsAt: "10:00" };
+
+    await expect(school.createSchoolTimetableEntry(orgA.organizationId, { ...base, classId: classOne.id, teacherName: "Invalid Time", startsAt: "9am" })).rejects.toMatchObject({ code: "invalid-timetable-period" });
+    await school.createSchoolTimetableEntry(orgA.organizationId, { ...base, classId: classOne.id, teacherName: "Ms. Asante", room: "R1" });
+    await expect(school.createSchoolTimetableEntry(orgA.organizationId, { ...base, classId: classOne.id, teacherName: "Mr. Other", startsAt: "09:30", endsAt: "10:30" })).rejects.toMatchObject({ code: "timetable-conflict" });
+    await expect(school.createSchoolTimetableEntry(orgA.organizationId, { ...base, classId: classTwo.id, teacherName: " ms. ASANTE ", startsAt: "09:30", endsAt: "10:30" })).rejects.toMatchObject({ code: "timetable-conflict" });
+    await expect(school.createSchoolTimetableEntry(orgA.organizationId, { ...base, classId: classTwo.id, teacherName: "Ms. Room", room: "r1", startsAt: "09:30", endsAt: "10:30" })).rejects.toMatchObject({ code: "timetable-conflict" });
+    const otherCampusBooking = await school.createSchoolTimetableEntry(orgA.organizationId, { ...base, classId: otherCampusClass.id, teacherName: "Ms. Independent", room: "R1" });
+    expect(otherCampusBooking).toMatchObject({ campusId: otherCampus.id, room: "R1" });
+    await expect(school.createSchoolTimetableEntry(orgA.organizationId, { ...base, classId: otherCampusClass.id, campusId: campusA.id, teacherName: "Different Teacher", room: "R1", startsAt: "11:00", endsAt: "12:00" })).rejects.toMatchObject({ code: "timetable-campus-mismatch" });
+    await expect(school.createSchoolTimetableEntry(orgA.organizationId, { ...base, classId: foreignClass.id, teacherName: "Different Teacher", room: "R2" })).rejects.toThrow(school.SchoolNotFoundError);
+
+    const concurrent = await Promise.allSettled([
+      school.createSchoolTimetableEntry(orgA.organizationId, { ...base, dayOfWeek: 2, classId: classOne.id, teacherName: "Concurrent Teacher", room: "R2" }),
+      school.createSchoolTimetableEntry(orgA.organizationId, { ...base, dayOfWeek: 2, classId: classTwo.id, teacherName: "concurrent teacher", room: "R3" }),
+    ]);
+    expect(concurrent.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(concurrent.filter((result) => result.status === "rejected" && result.reason?.code === "timetable-conflict")).toHaveLength(1);
+
+    await testDb.schoolAcademicYear.update({ where: { id: year.id }, data: { closedAt: new Date() } });
+    await expect(school.createSchoolTimetableEntry(orgA.organizationId, { ...base, dayOfWeek: 3, classId: classOne.id, teacherName: "After close" })).rejects.toMatchObject({ code: "timetable-term-closed" });
+  });
+
   it("enforces the configured attendance correction window", async () => {
     const now = new Date();
     const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: `Attendance ${now.getFullYear()}`, startDate: new Date(now.getFullYear(), 0, 1), endDate: new Date(now.getFullYear(), 11, 31) });
