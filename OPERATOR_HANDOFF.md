@@ -5,8 +5,10 @@
 - **Scope**: add a permission-checked printable receipt view for each recorded School fee payment, backed by an organization-scoped narrow query; add tenant-isolation coverage and update School readiness and README.
 - **Important files**: School fee page, receipt route/print button, `src/modules/school/service.ts`, `test/integration/tenant-isolation/school.test.ts`, and `test/module-access.test.ts`.
 - **Migrations/environment**: none.
-- **Validation**: TypeScript passed; full lint passed with 0 errors and 2 pre-existing PWA hook-dependency warnings; unit suite passed 176 files / 1,347 tests; production build passed and generated 249 routes; `git diff --check` passed. The new receipt tenant-isolation assertion is pending the guarded PostgreSQL CI job because local `TEST_DATABASE_URL` is not configured. No schema, migration, or environment change.
-- **Release status**: local implementation only; not committed or released yet. The tenant-authenticated responsive receipt view still needs verification with a test tenant session.
+- **Validation**: TypeScript passed; full lint passed with 0 errors and 2 pre-existing PWA hook-dependency warnings; unit suite passed 176 files / 1,347 tests; production build passed and generated 249 routes; `git diff --check` passed. CI run `36848561707` passed all 5 checks, including disposable PostgreSQL migration and integration, security, lint, type-check, Prisma validation, unit tests, production build, and Vercel preview. No schema, migration, or environment change.
+- **Release**: PR #41 merged as `80c95c7105aecdb89acab7db973d51a7428d1350`. Vercel production deployment `dpl_FbUR5EKrprUQPXshNZQU1AUREMVD` reached READY.
+- **Production verification**: `https://app.rockfrostgroup.com/api/health` returned HTTP 200 with the database reachable; no error or fatal runtime logs were reported for the deployment in the first 10 minutes after readiness.
+- **Remaining verification**: the tenant-authenticated responsive receipt page and print layout were not verified because no tenant test session is available. The Vercel-protected deployment URL also blocks unauthenticated direct route smoke tests.
 
 ## 2026-10-01: School student and library-choice search released
 
