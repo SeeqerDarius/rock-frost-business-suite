@@ -23,7 +23,7 @@
 - **Scope**: add a separate profile-view-permission-checked print route with student identity, guardians, enrollments, transfer/lifecycle history, and document metadata. Medical and finance sections are excluded.
 - **Important files**: School student profile page/service, new `/app/school/students/[studentId]/print` route, profile-control tests, School readiness documentation, README, and this handoff.
 - **Migrations/environment**: none; no new environment variables.
-- **Validation**: focused profile-control tests passed (6/6); focused ESLint, strict TypeScript, and `git diff --check` passed; and the Next Webpack production build completed with 250 routes, including `/app/school/students/[studentId]/print`. No database integration is required for this read-only route.
+- **Validation**: focused profile-control tests passed (6/6); the full mocked suite passed (176 files, 1,350 tests) after updating the guarded-page count; focused ESLint, strict TypeScript, and `git diff --check` passed; and the Next Webpack production build completed with 250 routes, including `/app/school/students/[studentId]/print`. No database integration is required for this read-only route.
 - **Release state**: not committed, merged, or deployed. The branch PR-create permission blocker above still applies; authenticated responsive tenant rendering remains unverified.
 
 ## 2026-10-01: School post-admission family contact management released
