@@ -682,7 +682,8 @@ export async function listSchoolAttendancePage(organizationId: string, input: { 
   const pageCount = Math.ceil(total / pageSize);
   const page = pageCount === 0 ? 1 : Math.min(requestedPage, pageCount);
   const rows = await db.schoolAttendance.findMany({ where, select: {
-    id: true, date: true, status: true, reason: true,
+    id: true, date: true, status: true, reason: true, publishedAt: true,
+    revisions: { select: { previousStatus: true, newStatus: true, correctionReason: true, changedByLabel: true, createdAt: true }, orderBy: { createdAt: "desc" } },
     student: { select: { firstName: true, lastName: true, admissionNumber: true } },
     class: { select: { name: true } }, term: { select: { name: true } },
   }, orderBy: [{ date: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize });
@@ -838,7 +839,7 @@ export async function enrollSchoolStudent(organizationId: string, data: { campus
   });
 }
 
-export async function recordSchoolAttendance(organizationId: string, actingUserId: string, data: { termId: string; classId: string; studentId: string; date: Date; status: SchoolAttendanceStatus; reason?: string | null }) {
+export async function recordSchoolAttendance(organizationId: string, actingUserId: string, data: { termId: string; classId: string; studentId: string; date: Date; status: SchoolAttendanceStatus; reason?: string | null; correctionReason?: string | null }) {
   const scope = await resolveTeacherClassScope(organizationId, actingUserId);
   if (scope && !scope.has(data.classId)) throw new SchoolStateError("You can only record attendance for a class you're assigned to.", "class-not-assigned");
   const enrollment = await db.schoolEnrollment.findFirst({ where: { organizationId, studentId: data.studentId, classId: data.classId, status: "ACTIVE", student: { status: "ACTIVE" }, academicYear: { terms: { some: { id: data.termId } } } }, include: { campus: { include: { settings: true } } }, });
@@ -851,7 +852,20 @@ export async function recordSchoolAttendance(organizationId: string, actingUserI
   oldestAllowed.setHours(0, 0, 0, 0);
   oldestAllowed.setDate(oldestAllowed.getDate() - closeDays);
   if (attendanceDate < oldestAllowed) throw new SchoolStateError("The attendance correction window has closed.", "attendance-closed");
-  const record = await db.schoolAttendance.upsert({ where: { studentId_date: { studentId: data.studentId, date: data.date } }, update: { status: data.status, reason: data.reason }, create: { organizationId, ...data } });
+  const record = await db.$transaction(async (tx) => {
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "SchoolAttendance" WHERE "organizationId" = ${organizationId} AND "studentId" = ${data.studentId} AND "date" = ${data.date} FOR UPDATE`);
+    const existing = await tx.schoolAttendance.findUnique({ where: { studentId_date: { studentId: data.studentId, date: data.date } } });
+    if (existing?.organizationId !== undefined && existing.organizationId !== organizationId) throw new SchoolStateError("Attendance record belongs to another organization.", "tenant-mismatch");
+    if (existing?.publishedAt) {
+      if (existing.status === data.status && existing.reason === (data.reason ?? null)) return existing;
+      const correctionReason = data.correctionReason?.trim() ?? "";
+      if (correctionReason.length < 5 || correctionReason.length > 500) throw new SchoolStateError("A correction reason of 5 to 500 characters is required for published attendance.", "correction-reason-required");
+      const actor = await tx.user.findUnique({ where: { id: actingUserId }, select: { name: true, email: true } });
+      await tx.schoolAttendanceRevision.create({ data: { organizationId, attendanceId: existing.id, changedById: actingUserId, changedByLabel: actor?.name || actor?.email || actingUserId, previousStatus: existing.status, previousReason: existing.reason, newStatus: data.status, newReason: data.reason ?? null, correctionReason } });
+      return tx.schoolAttendance.update({ where: { id: existing.id }, data: { status: data.status, reason: data.reason ?? null } });
+    }
+    return tx.schoolAttendance.upsert({ where: { studentId_date: { studentId: data.studentId, date: data.date } }, update: { organizationId, termId: data.termId, classId: data.classId, status: data.status, reason: data.reason ?? null }, create: { organizationId, termId: data.termId, classId: data.classId, studentId: data.studentId, date: data.date, status: data.status, reason: data.reason ?? null } });
+  });
   if (data.status === "ABSENT") {
     const [student, schoolClass] = await Promise.all([db.schoolStudent.findUnique({ where: { id: data.studentId }, select: { firstName: true, lastName: true } }), db.schoolClass.findUnique({ where: { id: data.classId }, select: { name: true } })]);
     if (student && schoolClass) {
@@ -877,6 +891,7 @@ export interface SchoolAttendanceRosterEntry {
   /** Null when nothing has been recorded yet for this student on this date - the caller defaults this to PRESENT for display. */
   status: SchoolAttendanceStatus | null;
   reason: string | null;
+  publishedAt: Date | null;
 }
 
 /** The active roster for a class on a given date, merged with any attendance already recorded - powers the bulk "take attendance" screen. */
@@ -913,6 +928,7 @@ export async function getSchoolAttendanceRoster(
       admissionNumber: student.admissionNumber,
       status: record?.status ?? null,
       reason: record?.reason ?? null,
+      publishedAt: record?.publishedAt ?? null,
     };
   });
 
@@ -930,7 +946,7 @@ export async function getSchoolAttendanceRoster(
 export async function recordSchoolAttendanceBulk(
   organizationId: string,
   actingUserId: string,
-  data: { termId: string; classId: string; date: Date; entries: Array<{ studentId: string; status: SchoolAttendanceStatus; reason?: string | null }> },
+  data: { termId: string; classId: string; date: Date; entries: Array<{ studentId: string; status: SchoolAttendanceStatus; reason?: string | null; correctionReason?: string | null }> },
 ): Promise<{ saved: number; skipped: number }> {
   const scope = await resolveTeacherClassScope(organizationId, actingUserId);
   if (scope && !scope.has(data.classId)) throw new SchoolStateError("You can only record attendance for a class you're assigned to.", "class-not-assigned");
@@ -957,15 +973,32 @@ export async function recordSchoolAttendanceBulk(
   const valid = data.entries.filter((entry) => activeStudentIds.has(entry.studentId));
   if (valid.length === 0) return { saved: 0, skipped: data.entries.length };
 
-  const saved = await db.$transaction(
-    valid.map((entry) =>
-      db.schoolAttendance.upsert({
-        where: { studentId_date: { studentId: entry.studentId, date: data.date } },
-        update: { status: entry.status, reason: entry.reason ?? null },
-        create: { organizationId, termId: data.termId, classId: data.classId, studentId: entry.studentId, date: data.date, status: entry.status, reason: entry.reason ?? null },
-      }),
-    ),
-  );
+  const saved = await db.$transaction(async (tx) => {
+    const studentIds = [...new Set(valid.map((entry) => entry.studentId))];
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "SchoolAttendance" WHERE "organizationId" = ${organizationId} AND "classId" = ${data.classId} AND "date" = ${data.date} AND "studentId" IN (${Prisma.join(studentIds)}) FOR UPDATE`);
+    const existing = await tx.schoolAttendance.findMany({ where: { organizationId, classId: data.classId, date: data.date, studentId: { in: studentIds } } });
+    const existingByStudent = new Map(existing.map((record) => [record.studentId, record]));
+    const correctionRequired = valid.some((entry) => {
+      const prior = existingByStudent.get(entry.studentId);
+      return Boolean(prior?.publishedAt && (prior.status !== entry.status || prior.reason !== (entry.reason ?? null)));
+    });
+    const actor = correctionRequired ? await tx.user.findUnique({ where: { id: actingUserId }, select: { name: true, email: true } }) : null;
+    const changedByLabel = actor?.name || actor?.email || actingUserId;
+    const records = [];
+    for (const entry of valid) {
+      const prior = existingByStudent.get(entry.studentId);
+      if (prior?.publishedAt) {
+        if (prior.status === entry.status && prior.reason === (entry.reason ?? null)) { records.push(prior); continue; }
+        const correctionReason = entry.correctionReason?.trim() ?? "";
+        if (correctionReason.length < 5 || correctionReason.length > 500) throw new SchoolStateError("A correction reason of 5 to 500 characters is required for published attendance.", "correction-reason-required");
+        await tx.schoolAttendanceRevision.create({ data: { organizationId, attendanceId: prior.id, changedById: actingUserId, changedByLabel, previousStatus: prior.status, previousReason: prior.reason, newStatus: entry.status, newReason: entry.reason ?? null, correctionReason } });
+        records.push(await tx.schoolAttendance.update({ where: { id: prior.id }, data: { status: entry.status, reason: entry.reason ?? null } }));
+      } else {
+        records.push(await tx.schoolAttendance.upsert({ where: { studentId_date: { studentId: entry.studentId, date: data.date } }, update: { organizationId, termId: data.termId, classId: data.classId, status: entry.status, reason: entry.reason ?? null }, create: { organizationId, termId: data.termId, classId: data.classId, studentId: entry.studentId, date: data.date, status: entry.status, reason: entry.reason ?? null } }));
+      }
+    }
+    return records;
+  });
 
   const smsEnabled = class_.campus.settings?.smsNotificationsEnabled ?? false;
   const absentees = saved.filter((record) => record.status === "ABSENT");
@@ -988,6 +1021,22 @@ export async function recordSchoolAttendanceBulk(
   }
 
   return { saved: valid.length, skipped: data.entries.length - valid.length };
+}
+
+export async function publishSchoolAttendanceRegister(organizationId: string, termId: string, classId: string, date: Date): Promise<{ published: number }> {
+  const term = await db.schoolTerm.findFirst({ where: { id: termId, organizationId }, select: { id: true, academicYearId: true } });
+  const schoolClass = await db.schoolClass.findFirst({ where: { id: classId, organizationId }, select: { id: true } });
+  if (!term || !schoolClass) throw new SchoolNotFoundError("Term or class not found.");
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "SchoolClass" WHERE "organizationId" = ${organizationId} AND "id" = ${classId} FOR UPDATE`);
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "SchoolAttendance" WHERE "organizationId" = ${organizationId} AND "termId" = ${termId} AND "classId" = ${classId} AND "date" = ${date} FOR UPDATE`);
+    const activeStudents = await tx.schoolEnrollment.findMany({ where: { organizationId, academicYearId: term.academicYearId, classId, status: "ACTIVE", student: { status: "ACTIVE" } }, select: { studentId: true } });
+    const markedCount = activeStudents.length ? await tx.schoolAttendance.count({ where: { organizationId, termId, classId, date, studentId: { in: activeStudents.map((enrollment) => enrollment.studentId) } } }) : 0;
+    if (activeStudents.length === 0 || markedCount !== activeStudents.length) throw new SchoolStateError("Save attendance for every actively enrolled student before publishing this register.", "attendance-register-incomplete");
+    const result = await tx.schoolAttendance.updateMany({ where: { organizationId, termId, classId, date, publishedAt: null }, data: { publishedAt: new Date() } });
+    if (result.count === 0) throw new SchoolStateError("There are no unpublished attendance marks to publish.", "attendance-already-published");
+    return { published: result.count };
+  });
 }
 
 export function listSchoolFeeInvoices(organizationId: string) {

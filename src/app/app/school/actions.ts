@@ -6,7 +6,7 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import { cuid, shortText, longText, dateInput, moneyAmountPositive, parseWithSchema } from "@/lib/validation";
-import { createSchoolCampus, createSchoolAcademicYear, closeSchoolAcademicYear, deleteSchoolAcademicYear, createSchoolTerm, admitSchoolStudent, createSchoolGuardian, updateSchoolGuardian, linkSchoolGuardian, updateSchoolStudentGuardianLinks, createSchoolClass, updateSchoolClassCapacity, assignSchoolClassTeacher, removeSchoolClassTeacher, createSchoolSubject, enrollSchoolStudent, transferSchoolEnrollment, rollOverSchoolEnrollments, recordSchoolAttendanceBulk, createSchoolFeeInvoice, recordSchoolFeePayment, getSchoolFeePaymentForPostingRetry, recordSchoolFeeRefund, getSchoolFeeRefundForPostingRetry, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, assignPendingSchoolPayrollEmployee, upsertSchoolSettings, transitionSchoolStudent, updateSchoolStudentProfile, createSchoolFeeStructure, issueSchoolFeeStructure, updateSchoolStudentPhoto, updateSchoolGuardianPhoto, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
+import { createSchoolCampus, createSchoolAcademicYear, closeSchoolAcademicYear, deleteSchoolAcademicYear, createSchoolTerm, admitSchoolStudent, createSchoolGuardian, updateSchoolGuardian, linkSchoolGuardian, updateSchoolStudentGuardianLinks, createSchoolClass, updateSchoolClassCapacity, assignSchoolClassTeacher, removeSchoolClassTeacher, createSchoolSubject, enrollSchoolStudent, transferSchoolEnrollment, rollOverSchoolEnrollments, recordSchoolAttendanceBulk, publishSchoolAttendanceRegister, createSchoolFeeInvoice, recordSchoolFeePayment, getSchoolFeePaymentForPostingRetry, recordSchoolFeeRefund, getSchoolFeeRefundForPostingRetry, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, assignPendingSchoolPayrollEmployee, upsertSchoolSettings, transitionSchoolStudent, updateSchoolStudentProfile, createSchoolFeeStructure, issueSchoolFeeStructure, updateSchoolStudentPhoto, updateSchoolGuardianPhoto, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
 import { schoolPhotoImageData, schoolStudentPhotoImages } from "@/lib/school-photo-image";
 import { postSchoolFeePaymentRevenue } from "@/modules/school/accounting";
 import { postSchoolFeeRefundRevenue } from "@/modules/school/accounting";
@@ -201,24 +201,40 @@ export async function recordAttendanceBulkAction(f: FormData) {
   if (!head.success) redirect(`${path}?error=invalid`);
 
   const statusSchema = z.enum(["PRESENT", "ABSENT", "LATE", "EXCUSED"]);
-  const entries: Array<{ studentId: string; status: z.infer<typeof statusSchema>; reason: string | null }> = [];
+  const entries: Array<{ studentId: string; status: z.infer<typeof statusSchema>; reason: string | null; correctionReason: string | null }> = [];
   for (const [key, value] of f.entries()) {
     const match = /^status_(.+)$/.exec(key);
     if (!match) continue;
     const status = statusSchema.safeParse(value);
     if (!status.success) continue;
     const studentId = match[1];
-    entries.push({ studentId, status: status.data, reason: clean(f.get(`reason_${studentId}`)) });
+    entries.push({ studentId, status: status.data, reason: clean(f.get(`reason_${studentId}`)), correctionReason: clean(f.get(`correction_${studentId}`)) });
   }
   if (entries.length === 0) redirect(`${path}?error=invalid`);
 
   try {
     const result = await recordSchoolAttendanceBulk(t.organizationId, t.userId, { ...head.data, entries });
     revalidatePath(path);
-    redirect(`${path}?saved=1&count=${result.saved}${result.skipped > 0 ? `&skipped=${result.skipped}` : ""}`);
+    const params = new URLSearchParams({ saved: "1", count: String(result.saved), termId: head.data.termId, classId: head.data.classId, date: clean(f.get("date")) ?? "" });
+    if (result.skipped > 0) params.set("skipped", String(result.skipped));
+    redirect(`${path}?${params.toString()}`);
   } catch (e) {
     fail(path, e);
   }
+}
+export async function publishAttendanceRegisterAction(f: FormData) {
+  const path = "/app/school/attendance";
+  const t = await auth(PERMISSIONS.SCHOOL_ATTENDANCE_PUBLISH, path);
+  const p = parseWithSchema(z.object({ termId: cuid, classId: cuid, date: dateInput }), { termId: clean(f.get("termId")) ?? "", classId: clean(f.get("classId")) ?? "", date: clean(f.get("date")) });
+  if (!p.success) redirect(`${path}?error=invalid`);
+  try {
+    await publishSchoolAttendanceRegister(t.organizationId, p.data.termId, p.data.classId, p.data.date);
+  } catch (error) {
+    fail(path, error);
+  }
+  revalidatePath(path);
+  const params = new URLSearchParams({ saved: "1", published: "1", termId: p.data.termId, classId: p.data.classId, date: clean(f.get("date")) ?? "" });
+  redirect(`${path}?${params.toString()}`);
 }
 export async function createFeeInvoiceAction(f:FormData){const path="/app/school/fees",t=await auth(PERMISSIONS.SCHOOL_FEES_MANAGE,path);const p=parseWithSchema(z.object({academicYearId:cuid,termId:cuid.nullable(),studentId:cuid,description:shortText,amount:moneyAmountPositive,discount:z.coerce.number().min(0),dueDate:dateInput.nullable()}),{academicYearId:clean(f.get("academicYearId"))??"",termId:clean(f.get("termId")),studentId:clean(f.get("studentId"))??"",description:clean(f.get("description"))??"",amount:clean(f.get("amount")),discount:clean(f.get("discount"))??"0",dueDate:clean(f.get("dueDate"))});if(!p.success)redirect(`${path}?error=invalid`);try{await createSchoolFeeInvoice(t.organizationId,p.data)}catch(e){fail(path,e)}revalidatePath(path);redirect(`${path}?saved=1`)}
 export async function recordFeePaymentAction(f: FormData) {

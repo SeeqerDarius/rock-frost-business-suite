@@ -14,6 +14,7 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getSchoolAcademicSetup, getSchoolAttendanceRoster, listSchoolAttendancePage } from "@/modules/school/service";
 import { RecordPagination } from "@/components/school/record-pagination";
+import { publishAttendanceRegisterAction } from "../actions";
 
 const PATH = "/app/school/attendance";
 const STATUSES = ["PRESENT", "ABSENT", "LATE", "EXCUSED"] as const;
@@ -24,10 +25,11 @@ const SELECT_CLASS = "h-8 w-full min-w-0 rounded-lg border border-input bg-trans
 export default async function SchoolAttendancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string; count?: string; skipped?: string; q?: string; status?: string; page?: string; termId?: string; classId?: string; date?: string }>;
+  searchParams: Promise<{ saved?: string; error?: string; count?: string; skipped?: string; published?: string; q?: string; status?: string; page?: string; termId?: string; classId?: string; date?: string }>;
 }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_ATTENDANCE_MANAGE);
+  const canPublish = hasPermission(tenant, PERMISSIONS.SCHOOL_ATTENDANCE_PUBLISH);
   const statusFilter = STATUSES.find((status) => status === query.status);
   const requestedPage = query.page && /^\d{1,6}$/.test(query.page) ? Number(query.page) : 1;
   const [[years, classes], attendancePage] = await Promise.all([
@@ -64,7 +66,7 @@ export default async function SchoolAttendancePage({
     windowClosed = new Date(`${selectedDate}T00:00:00`) < oldestAllowed;
   }
 
-  const savedMessage = query.count
+  const savedMessage = query.published ? "Attendance register published. Any later changes require a reason and are retained in its revision history." : query.count
     ? `Attendance saved for ${query.count} student${query.count === "1" ? "" : "s"}.${query.skipped ? ` ${query.skipped} skipped: no longer actively enrolled in this class.` : ""}`
     : "Attendance has been recorded.";
 
@@ -123,7 +125,16 @@ export default async function SchoolAttendancePage({
               ) : isFuture || windowClosed ? (
                 <ReadOnlyNotice>{isFuture ? "Attendance cannot be recorded for a future date." : "The attendance correction window for this date has already closed."}</ReadOnlyNotice>
               ) : (
-                <AttendanceRosterForm termId={selectedTermId!} classId={selectedClass.id} date={selectedDate} entries={roster.entries} />
+                <div className="space-y-4">
+                  <AttendanceRosterForm key={`${selectedTermId}-${selectedClass.id}-${selectedDate}-${roster.entries.map((entry) => `${entry.studentId}:${entry.status}:${entry.reason}:${entry.publishedAt?.toISOString() ?? "draft"}`).join("|")}`} termId={selectedTermId!} classId={selectedClass.id} date={selectedDate} entries={roster.entries} />
+                  {canPublish && roster.entries.some((entry) => entry.status !== null && !entry.publishedAt) ? (
+                    <form action={publishAttendanceRegisterAction} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30">
+                      <div><p className="font-medium">Ready to publish this register?</p><p className="text-sm text-muted-foreground">Publishing locks the current marks. Changes afterward need a correction reason.</p></div>
+                      <input type="hidden" name="termId" value={selectedTermId} /><input type="hidden" name="classId" value={selectedClass.id} /><input type="hidden" name="date" value={selectedDate} />
+                      <Button type="submit" variant="outline">Publish attendance</Button>
+                    </form>
+                  ) : null}
+                </div>
               )
             ) : (
               <p className="text-sm text-muted-foreground">Choose a term, class, and date, then load the roster to mark attendance.</p>
@@ -175,7 +186,7 @@ export default async function SchoolAttendancePage({
                     <TableHead className="hidden md:table-cell">Class</TableHead>
                     <TableHead className="hidden lg:table-cell">Term</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="hidden lg:table-cell">Reason</TableHead>
+                    <TableHead className="hidden lg:table-cell">Reason and revisions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -186,11 +197,31 @@ export default async function SchoolAttendancePage({
                         <span className="font-medium">{record.student.firstName} {record.student.lastName}</span>
                         <span className="block font-mono text-xs text-muted-foreground">{record.student.admissionNumber}</span>
                         <span className="block text-xs text-muted-foreground md:hidden">{record.class.name}</span>
+                        {record.revisions.length ? <details className="mt-1 text-xs lg:hidden">
+                          <summary className="cursor-pointer font-medium text-foreground">{record.revisions.length} correction{record.revisions.length === 1 ? "" : "s"}</summary>
+                          <ol className="mt-2 space-y-2">
+                            {record.revisions.map((revision, index) => <li key={`${record.id}-mobile-${index}`} className="border-l-2 pl-2">
+                              <span>{humanizeStatus(revision.previousStatus)} to {humanizeStatus(revision.newStatus)} by {revision.changedByLabel} on {formatDate(revision.createdAt)}</span>
+                              <span className="block">{revision.correctionReason}</span>
+                            </li>)}
+                          </ol>
+                        </details> : null}
                       </TableCell>
                       <TableCell className="hidden text-muted-foreground md:table-cell">{record.class.name}</TableCell>
                       <TableCell className="hidden text-muted-foreground lg:table-cell">{record.term.name}</TableCell>
-                      <TableCell><StatusBadge status={record.status} /></TableCell>
-                      <TableCell className="hidden text-muted-foreground lg:table-cell">{record.reason ?? "-"}</TableCell>
+                      <TableCell><StatusBadge status={record.status} /><span className="mt-1 block text-xs text-muted-foreground">{record.publishedAt ? "Published" : "Draft"}</span></TableCell>
+                      <TableCell className="hidden text-muted-foreground lg:table-cell">
+                        <span>{record.reason ?? "-"}</span>
+                        {record.revisions.length ? <details className="mt-1 text-xs">
+                          <summary className="cursor-pointer font-medium text-foreground">{record.revisions.length} correction{record.revisions.length === 1 ? "" : "s"}</summary>
+                          <ol className="mt-2 space-y-2">
+                            {record.revisions.map((revision, index) => <li key={`${record.id}-${index}`} className="border-l-2 pl-2">
+                              <span>{humanizeStatus(revision.previousStatus)} to {humanizeStatus(revision.newStatus)} by {revision.changedByLabel} on {formatDate(revision.createdAt)}</span>
+                              <span className="block">{revision.correctionReason}</span>
+                            </li>)}
+                          </ol>
+                        </details> : null}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

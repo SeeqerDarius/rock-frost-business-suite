@@ -23,6 +23,7 @@ type RosterEntry = {
   admissionNumber: string;
   status: SchoolAttendanceStatus | null;
   reason: string | null;
+  publishedAt: Date | null;
 };
 
 function SaveButton({ count, dirty }: { count: number; dirty: boolean }) {
@@ -84,6 +85,10 @@ export function AttendanceRosterForm({ termId, classId, date, entries }: { termI
               <div>
                 <label htmlFor={`reason-${entry.studentId}`} className="sr-only">Reason for {entry.firstName} {entry.lastName}</label>
                 <Input id={`reason-${entry.studentId}`} name={`reason_${entry.studentId}`} defaultValue={entry.reason ?? ""} maxLength={200} placeholder={statuses[entry.studentId] === "PRESENT" ? "Optional note" : "Reason, if known"} onChange={() => setDirty(true)} />
+                {entry.publishedAt ? <>
+                  <label htmlFor={`correction-${entry.studentId}`} className="sr-only">Required correction reason for {entry.firstName} {entry.lastName}</label>
+                  <Input id={`correction-${entry.studentId}`} name={`correction_${entry.studentId}`} maxLength={500} placeholder="Correction reason, only if changing this mark" className="mt-2" onChange={() => setDirty(true)} />
+                </> : null}
               </div>
               <input type="hidden" name={`status_${entry.studentId}`} value={statuses[entry.studentId]} />
             </div>
@@ -92,7 +97,7 @@ export function AttendanceRosterForm({ termId, classId, date, entries }: { termI
       </div>
 
       <div className="sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background p-3 shadow-sm">
-        <p className="text-sm text-muted-foreground">{dirty ? "Unsaved attendance changes" : "Roster matches the last loaded state"}</p>
+        <p className="text-sm text-muted-foreground">{entries.some((entry) => entry.publishedAt) ? "Published marks require a correction reason. Each change is retained in the revision history." : dirty ? "Unsaved attendance changes" : "Roster matches the last loaded state"}</p>
         <SaveButton count={entries.length} dirty={dirty} />
       </div>
     </form>

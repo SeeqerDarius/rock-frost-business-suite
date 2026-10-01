@@ -5,6 +5,12 @@ operational, tenant-isolated, and deployed, but this document tracks the work
 required to make it complete for day-to-day customer use rather than treating a
 broad set of initial pages as the end of product development.
 
+The student-transfer, printable-profile, and attendance-publication improvements
+described in the current candidate entries are on branch
+`codex/school-student-transfers` and are not in production. Production release
+requires the guarded PostgreSQL integration gate, GitHub pull-request CI, and
+post-deploy verification.
+
 ## Delivered foundation
 
 The deployed foundation includes campuses, academic periods, students and
@@ -184,6 +190,22 @@ schema change:
   them. Now `max-h-[calc(100vh-2rem)] overflow-y-auto`. This is the shared
   Dialog every module uses, not School-specific.
 
+## Customer-readiness tranche 7 — published attendance and auditable corrections
+
+This is candidate behavior and is not in production. Attendance can be
+published per class, term, and date by users with the
+separate `school.attendance.publish` permission. Publication requires a mark
+for every active student in the roster and sets `publishedAt` on the register.
+Bulk and single-record writes lock matching marks and recheck their published
+state before writing. Changes to published marks require a 5 to 500 character
+correction reason and append a `SchoolAttendanceRevision` containing the
+before and after status/reason, actor ID and label, reason, and timestamp.
+Attendance history exposes revisions on desktop and mobile. The seeded School
+Administrator and Academic Head can publish; Teachers retain attendance
+entry/correction access but cannot publish by default. Migration
+`20261001150000_school_attendance_publication_revisions` adds the revision
+table. No environment variable changed.
+
 ## Remaining customer-readiness program
 
 ### Student administration
@@ -196,7 +218,7 @@ schema change:
   the batch atomically while preserving completed source-year history.
   Individual enrollment and rollover share academic-year/class locks so
   concurrent enrollment cannot bypass capacity checks.
-- Student transfers are implemented in this release: authorized staff can
+- The current candidate implements student transfers: authorized staff can
   move an active enrollment within the current open academic year, including across
   campuses. Capacity is rechecked under year/class locks, stale source-class
   submissions are rejected, student and enrollment campus are updated
@@ -206,7 +228,7 @@ schema change:
   promotion decisions that calculate the next class from a
   configured progression rule.
 - Add bulk import/export with preview, validation, and recoverable error reports.
-- A permission-checked printable student record now includes enrollment,
+- The current candidate adds a permission-checked printable student record with enrollment,
   transfer, lifecycle, guardian, and document-metadata history. Medical and
   financial information are excluded from the print view.
 
@@ -218,7 +240,8 @@ schema change:
 
 ### Academics
 
-- Add class-register attendance and append-only published-attendance revisions.
+- Add class-register workflows that support stronger register completeness and
+  class-level review beyond the current per-day publication and correction audit.
 - Replace free-text teachers/rooms with School-owned assignments backed by HR
   employees and enforce timetable collisions.
 - Add assessment schemes, calculated grading, report cards, transcripts,

@@ -740,6 +740,7 @@ model Organization {
   schoolSubjects                  SchoolSubject[]
   schoolEnrollments               SchoolEnrollment[]
   schoolAttendance                SchoolAttendance[]
+  schoolAttendanceRevisions       SchoolAttendanceRevision[]
   schoolFeeInvoices               SchoolFeeInvoice[]
   schoolFeePayments               SchoolFeePayment[]
   schoolFeeRefunds                SchoolFeeRefund[]
@@ -5544,10 +5545,32 @@ model SchoolAttendance {
   term         SchoolTerm    @relation(fields: [termId], references: [id], onDelete: Restrict)
   class        SchoolClass   @relation(fields: [classId], references: [id], onDelete: Restrict)
   student      SchoolStudent @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  revisions    SchoolAttendanceRevision[]
 
   @@unique([studentId, date])
   @@index([organizationId, date])
   @@index([classId, date])
+}
+
+model SchoolAttendanceRevision {
+  id               String                 @id @default(cuid())
+  organizationId   String
+  attendanceId     String
+  changedById      String
+  changedByLabel   String
+  previousStatus   SchoolAttendanceStatus
+  previousReason   String?
+  newStatus        SchoolAttendanceStatus
+  newReason        String?
+  correctionReason String                 @db.Text
+  createdAt        DateTime               @default(now())
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  attendance   SchoolAttendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([attendanceId, createdAt])
+  @@index([changedById, createdAt])
 }
 
 model SchoolFeeInvoice {

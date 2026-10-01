@@ -567,6 +567,35 @@ describe("School service — real tenant isolation and customer-readiness guards
     await expect(school.recordSchoolAttendance(orgA.organizationId, orgA.userId, { termId: term.id, classId: schoolClass.id, studentId: student.id, date: oldDate, status: "PRESENT" })).rejects.toThrow("correction window has closed");
   });
 
+  it("publishes attendance registers and retains reasoned revisions for later corrections", async () => {
+    const now = new Date();
+    const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: `Published attendance ${now.getFullYear()}`, startDate: new Date(now.getFullYear(), 0, 1), endDate: new Date(now.getFullYear(), 11, 31) });
+    const term = await school.createSchoolTerm(orgA.organizationId, { academicYearId: year.id, name: "Published register", startDate: new Date(now.getFullYear(), 0, 1), endDate: new Date(now.getFullYear(), 11, 31) });
+    const schoolClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `PUB${Date.now()}`, name: "Published register class" });
+    const [student, secondStudent] = await Promise.all([
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Published", lastName: "Student" }),
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Unmarked", lastName: "Student" }),
+    ]);
+    await Promise.all([student, secondStudent].map((learner) => school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: year.id, studentId: learner.id, classId: schoolClass.id })));
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    await school.recordSchoolAttendanceBulk(orgA.organizationId, orgA.userId, { termId: term.id, classId: schoolClass.id, date, entries: [{ studentId: student.id, status: "ABSENT", reason: "Sick" }] });
+
+    await expect(school.publishSchoolAttendanceRegister(orgA.organizationId, term.id, schoolClass.id, date)).rejects.toMatchObject({ code: "attendance-register-incomplete" });
+    await school.recordSchoolAttendanceBulk(orgA.organizationId, orgA.userId, { termId: term.id, classId: schoolClass.id, date, entries: [{ studentId: secondStudent.id, status: "PRESENT" }] });
+    expect(await school.publishSchoolAttendanceRegister(orgA.organizationId, term.id, schoolClass.id, date)).toEqual({ published: 2 });
+    await expect(school.publishSchoolAttendanceRegister(orgA.organizationId, term.id, schoolClass.id, date)).rejects.toMatchObject({ code: "attendance-already-published" });
+    await expect(school.recordSchoolAttendanceBulk(orgA.organizationId, orgA.userId, { termId: term.id, classId: schoolClass.id, date, entries: [{ studentId: student.id, status: "PRESENT" }] })).rejects.toMatchObject({ code: "correction-reason-required" });
+
+    await school.recordSchoolAttendanceBulk(orgA.organizationId, orgA.userId, { termId: term.id, classId: schoolClass.id, date, entries: [{ studentId: student.id, status: "PRESENT", correctionReason: "Teacher verified the signed register" }] });
+    const current = await testDb.schoolAttendance.findUniqueOrThrow({ where: { studentId_date: { studentId: student.id, date } } });
+    expect(current).toMatchObject({ status: "PRESENT", publishedAt: expect.any(Date) });
+    const revisions = await testDb.schoolAttendanceRevision.findMany({ where: { organizationId: orgA.organizationId, attendanceId: current.id } });
+    expect(revisions).toHaveLength(1);
+    expect(revisions[0]).toMatchObject({ changedById: orgA.userId, changedByLabel: expect.any(String), previousStatus: "ABSENT", previousReason: "Sick", newStatus: "PRESENT", correctionReason: "Teacher verified the signed register" });
+    await expect(school.publishSchoolAttendanceRegister(orgB.organizationId, term.id, schoolClass.id, date)).rejects.toThrow(school.SchoolNotFoundError);
+  });
+
   it("records attendance for a whole roster in one call, defaults unrecorded students to null, and skips a student who isn't actively enrolled", async () => {
     const now = new Date();
     const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: `Roster ${now.getFullYear()}`, startDate: new Date(now.getFullYear(), 0, 1), endDate: new Date(now.getFullYear(), 11, 31) });

@@ -133,6 +133,7 @@ export const PERMISSIONS = {
   SCHOOL_ACADEMICS_MANAGE: "school.academics.manage",
   SCHOOL_ENROLLMENT_MANAGE: "school.enrollment.manage",
   SCHOOL_ATTENDANCE_MANAGE: "school.attendance.manage",
+  SCHOOL_ATTENDANCE_PUBLISH: "school.attendance.publish",
   SCHOOL_FEES_MANAGE: "school.fees.manage",
   SCHOOL_EXAMS_MANAGE: "school.exams.manage",
   SCHOOL_EXAMS_PUBLISH: "school.exams.publish",
