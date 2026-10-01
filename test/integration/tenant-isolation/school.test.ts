@@ -358,7 +358,8 @@ describe("School service — real tenant isolation and customer-readiness guards
     expect(journals).toHaveLength(2);
     expect(journals.reduce((sum, entry) => sum + entry.lines.reduce((lineSum, line) => lineSum + Number(line.debit), 0), 0)).toBeCloseTo(100, 2);
     const fullRefundSummary = await school.getSchoolFeeInvoiceSummary(orgA.organizationId);
-    expect(startingSummary.collected.minus(fullRefundSummary.collected).toString()).toBe("100");
+    expect(fullRefundSummary.outstanding.minus(startingSummary.outstanding).toString()).toBe("100");
+    expect(fullRefundSummary.collected.toString()).toBe(startingSummary.collected.toString());
   });
 
   it("serializes concurrent fee refunds so they cannot exceed the receipt value", async () => {
