@@ -748,6 +748,41 @@ export function getSchoolFeePaymentForPostingRetry(organizationId: string, payme
   });
 }
 
+export function getSchoolFeePaymentReceipt(organizationId: string, paymentId: string) {
+  return db.schoolFeePayment.findFirst({
+    where: { id: paymentId, organizationId },
+    select: {
+      id: true,
+      amount: true,
+      method: true,
+      reference: true,
+      receivedAt: true,
+      receiptNumber: true,
+      organization: { select: { name: true, address: true, phone: true, email: true, currency: true } },
+      invoice: {
+        select: {
+          invoiceNumber: true,
+          description: true,
+          amount: true,
+          discount: true,
+          dueDate: true,
+          academicYear: { select: { name: true } },
+          term: { select: { name: true } },
+        },
+      },
+      student: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          admissionNumber: true,
+          campus: { select: { name: true } },
+        },
+      },
+    },
+  });
+}
+
 export function listSchoolFeeStructures(organizationId: string) {
   return db.schoolFeeStructure.findMany({
     where: { organizationId },

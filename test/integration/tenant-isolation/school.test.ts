@@ -280,6 +280,15 @@ describe("School service — real tenant isolation and customer-readiness guards
     const invoice = await school.createSchoolFeeInvoice(orgA.organizationId, { academicYearId: year.id, studentId: student.id, description: "Tuition", amount: "100.00" });
     const payment = await school.recordSchoolFeePayment(orgA.organizationId, invoice.id, { amount: "100.00", method: "CASH" });
     expect(await school.getSchoolFeePaymentForPostingRetry(orgB.organizationId, payment.id)).toBeNull();
+    expect(await school.getSchoolFeePaymentReceipt(orgB.organizationId, payment.id)).toBeNull();
+    const receipt = await school.getSchoolFeePaymentReceipt(orgA.organizationId, payment.id);
+    expect(receipt).toMatchObject({
+      id: payment.id,
+      receiptNumber: payment.receiptNumber,
+      invoice: { invoiceNumber: invoice.invoiceNumber, description: "Tuition" },
+      student: { id: student.id, firstName: "Ledger", lastName: "Student" },
+    });
+    expect(receipt?.amount.toString()).toBe("100");
 
     await expect(postSchoolFeePaymentRevenue(orgA.organizationId, payment, orgA.userId)).resolves.toMatchObject({ posted: true });
     const persisted = await testDb.schoolFeePayment.findFirstOrThrow({ where: { id: payment.id, organizationId: orgA.organizationId } });

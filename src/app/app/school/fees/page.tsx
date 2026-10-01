@@ -19,6 +19,7 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getSchoolAcademicSetup, getSchoolFeeInvoiceSummary, listSchoolCampuses, listSchoolFeeInvoicePage, listSchoolFeeStructures, listSchoolStudentChoices } from "@/modules/school/service";
 import { RecordPagination } from "@/components/school/record-pagination";
+import Link from "next/link";
 import { createFeeInvoiceAction, createFeeStructureAction, issueFeeStructureAction, recordFeePaymentAction, retrySchoolFeePostingAction } from "../actions";
 
 const PATH = "/app/school/fees";
@@ -264,7 +265,7 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
                           <span className="block text-xs text-muted-foreground">{invoice.description}</span>
                           {invoice.payments.map((payment) => (
                             <span key={payment.id} className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                              <span className="text-muted-foreground">Receipt {payment.receiptNumber}: {formatMoney(payment.amount)}</span>
+                              <Link className="text-muted-foreground underline underline-offset-2" href={`/app/school/fees/receipt/${payment.id}`} target="_blank">Receipt {payment.receiptNumber}: {formatMoney(payment.amount)}</Link>
                               <Badge variant={payment.postingStatus === "FAILED" ? "destructive" : payment.postingStatus === "POSTED" ? "default" : "outline"}>
                                 {payment.postingStatus === "NOT_REQUIRED" ? "Accounting inactive" : `Accounting ${humanizeStatus(payment.postingStatus)}`}
                               </Badge>
