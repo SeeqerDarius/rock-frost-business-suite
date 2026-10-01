@@ -5,7 +5,7 @@
 - **Scope**: replace unbounded student option loads in enrollment, fee invoices, transport assignment, exam result entry, and library circulation with tenant-scoped search and bounded choice sets. Library book issuance choices also search available titles/authors/accession codes. Dedicated GET forms preserve the related list and picker filters.
 - **Important files**: `src/modules/school/service.ts`, School classes, fees, exams, library, and transport pages, and `test/integration/tenant-isolation/school.test.ts`.
 - **Validation**: TypeScript passed; targeted ESLint passed; full lint passed with 0 errors and 2 pre-existing PWA hook-dependency warnings; unit suite passed 176 files / 1,347 tests; production build passed and generated 249 routes; `git diff --check` passed. The real-PostgreSQL assertions are pending CI because `TEST_DATABASE_URL` is not configured locally. No schema, migration, or environment change is expected.
-- **Release status**: implementation is in progress on `codex/school-form-picker-search`; no commit or production release yet. The live tenant-authenticated workflow still needs verification when a test tenant session is available.
+- **Release status**: commit `6119341c3b8aefaefc8ffdf9d5bce51cfc667cd7` is pushed on `codex/school-form-picker-search`, and PR #39 is open. Disposable PostgreSQL integration and CI checks are pending. No production release yet. The live tenant-authenticated workflow still needs verification when a test tenant session is available.
 
 ## 2026-10-01: School library loan history pagination released
 
