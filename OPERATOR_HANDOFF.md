@@ -1,5 +1,12 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-01: School adjustments integrated into Payroll runs
+
+- **Scope**: School payroll inputs now link to same-organization HR employees and Payroll consumes pending monthly earnings/deductions atomically with full-calendar-month runs. Unmatched imported employee IDs remain recoverable; deductions cannot create negative net pay; tax is rounded to cents before net-pay calculation and Accounting accrual. See `docs/SCHOOL_CUSTOMER_READINESS.md` and `docs/MODULE_BOUNDARIES.md`.
+- **Important files**: `prisma/schema.prisma`, `prisma/migrations/20261001120000_school_payroll_run_integration/migration.sql`, `src/modules/school/payroll-integration.ts`, `src/modules/school/service.ts`, `src/modules/hr/service.ts`, `src/modules/payroll/service.ts`, School/Payroll actions and pages, and `test/integration/school-payroll-run-integration.test.ts`.
+- **Validation**: Prisma validate passed; Prisma Client generation passed after rerun with filesystem permission; TypeScript passed; `npm run lint` passed with 0 errors and the 2 pre-existing PWA hook-dependency warnings; production build passed and generated 249 pages; `npm test -- --maxWorkers=2` passed 176 files / 1,347 tests; targeted Payroll/financial integrity unit tests passed 37/37. `git diff --check` passed.
+- **Release gates still open**: the real-PostgreSQL integration suite has not run locally because no guarded `TEST_DATABASE_URL` is configured. CI's disposable PostgreSQL 16 job must apply this migration and pass all integration tests before merge/deploy. Responsive authenticated tenant UI verification is also pending because this checkout has no tenant test session. Do not report this tranche as released until PR CI, merge/deploy, health/routes, migration status, runtime logs, and tenant UI verification are addressed or explicitly documented as blocked.
+
 ## 2026-10-01: School fee delivery status and Payroll accrual reliability
 
 - **Scope**: completed fee receipts now survive a temporary Accounting posting failure and expose an authorized retry; Payroll run completion now creates an idempotent, balanced accrual and exposes a retry for failed or deferred postings. Each source row keeps explicit `PENDING`, `POSTED`, `FAILED`, or `NOT_REQUIRED` state. School and Payroll retry lookup/update paths are organization-scoped. Payroll accrual uses gross salaries expense against net-pay and generic deductions payable; salary disbursement and statutory deduction classification remain separate workflows.

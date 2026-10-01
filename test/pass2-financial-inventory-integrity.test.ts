@@ -31,6 +31,7 @@ const mockDb = {
   payrollRun: { findFirst: vi.fn(), updateMany: vi.fn() },
   payrollCompensation: { findMany: vi.fn() },
   payrollSettings: { upsert: vi.fn() },
+  schoolPayrollAdjustment: { findMany: vi.fn(), updateMany: vi.fn() },
 
   hrEmployee: { findFirst: vi.fn() },
   hirePurchaseAccount: { findFirst: vi.fn() },
@@ -65,6 +66,7 @@ beforeEach(() => {
   txPassthrough();
   mockDb.accountingPeriod.findFirst.mockResolvedValue(null);
   mockDb.accountingJournalEntry.count.mockResolvedValue(0);
+  mockDb.schoolPayrollAdjustment.findMany.mockResolvedValue([]);
 });
 
 describe("Inventory — quantity validation, warehouse IDOR, atomic guard", () => {

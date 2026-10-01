@@ -53,6 +53,32 @@ receipt. Migration `20261001090000_school_fee_accounting_retry` adds the status
 and retry index; existing payments start as `PENDING` so they can be reconciled
 through the same retry path.
 
+## Customer-readiness tranche 4 — School inputs in Payroll runs
+
+School payroll adjustments are now linked to an active, payroll-eligible HR
+employee in the same organization. The School page shows each employee's name
+and number, lets authorized users assign or reassign a pending imported row,
+and labels each row as an earning or deduction. Existing IDs that cannot be
+matched during migration are retained as legacy values for recovery; they are
+not discarded or silently attached to another employee.
+
+Payroll consumes pending School inputs only when processing a full calendar
+month. Earnings increase gross pay before the organization's configured
+default tax rate is applied. Deductions are included in other deductions and
+reduce net pay. A matching input with an invalid employee, a non-monthly run,
+or deductions exceeding net pay blocks processing with a specific message.
+The Payroll run and adjustment claims commit in the same transaction, so a
+failed run leaves its inputs pending. The resulting Payroll accrual continues
+through the existing idempotent Accounting integration. Statutory deduction
+classification, employee disbursement, and partial-month proration remain
+separate work.
+
+Migration `20261001120000_school_payroll_run_integration` introduces the
+organization-scoped employee and PayrollRun relations and category enum.
+`src/modules/school/payroll-integration.ts` is the School-owned contract that
+Payroll calls within the run transaction; Payroll does not query School's
+Prisma model directly.
+
 ## Customer-readiness tranche 2 — capacity, lifecycle controls, teacher scoping, and UX fixes
 
 Migration `20260818160000_add_school_class_teacher` adds `SchoolClassTeacher`,

@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { sendSms } from "@/lib/sms";
 import { payrollPayslipIssuedSms } from "@/lib/sms-templates";
 import { formatMoney } from "@/lib/currency";
+import { claimSchoolPayrollInputsForRun, listSchoolPayrollInputsForRun } from "@/modules/school/payroll-integration";
 
 /**
  * Fresh module (no reference implementation to migrate from). Every function
@@ -122,6 +123,22 @@ export function createRun(organizationId: string, data: RunInput) {
 
 export class RunStateError extends Error {}
 export class NoCompensationError extends Error {}
+export class SchoolPayrollInputError extends Error {
+  constructor(readonly reason: "unlinked" | "employee-ineligible" | "period-mismatch" | "deductions-exceed-net" | "changed") {
+    super(`School payroll inputs need attention: ${reason}`);
+  }
+}
+
+function monthKey(date: Date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function isFullCalendarMonth(periodStart: Date, periodEnd: Date) {
+  const start = new Date(Date.UTC(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(periodStart.getUTCFullYear(), periodStart.getUTCMonth() + 1, 0));
+  return periodStart.toISOString().slice(0, 10) === start.toISOString().slice(0, 10)
+    && periodEnd.toISOString().slice(0, 10) === end.toISOString().slice(0, 10);
+}
 
 /**
  * Claims the run (DRAFT -> COMPLETED) with a guarded updateMany as the
@@ -158,18 +175,47 @@ export async function processRun(organizationId: string, runId: string) {
     const claimed = await tx.payrollRun.updateMany({ where: { id: runId, status: "DRAFT" }, data: { status: "COMPLETED" } });
     if (claimed.count === 0) throw new RunStateError("Only draft runs can be processed.");
 
-    for (const comp of compensations) {
-      const grossPay = new Prisma.Decimal(comp.baseSalary);
-      const taxDeduction = grossPay.times(taxRate);
-      const netPay = grossPay.minus(taxDeduction);
+    const schoolInputs = await listSchoolPayrollInputsForRun(tx, organizationId, monthKey(existingRun.periodStart), monthKey(existingRun.periodEnd));
+    if (schoolInputs.length > 0 && !isFullCalendarMonth(existingRun.periodStart, existingRun.periodEnd)) {
+      throw new SchoolPayrollInputError("period-mismatch");
+    }
+
+    const compensatedEmployeeIds = new Set(compensations.map((compensation) => compensation.employeeId));
+    const adjustmentTotals = new Map<string, { earnings: Prisma.Decimal; deductions: Prisma.Decimal }>();
+    for (const input of schoolInputs) {
+      if (!input.employeeId || input.legacyEmployeeId) throw new SchoolPayrollInputError("unlinked");
+      if (!compensatedEmployeeIds.has(input.employeeId)) throw new SchoolPayrollInputError("employee-ineligible");
+      const totals = adjustmentTotals.get(input.employeeId) ?? { earnings: new Prisma.Decimal(0), deductions: new Prisma.Decimal(0) };
+      if (input.category === "DEDUCTION") totals.deductions = totals.deductions.plus(input.amount);
+      else totals.earnings = totals.earnings.plus(input.amount);
+      adjustmentTotals.set(input.employeeId, totals);
+    }
+
+    const payslipAmounts = compensations.map((comp) => {
+      const adjustment = adjustmentTotals.get(comp.employeeId) ?? { earnings: new Prisma.Decimal(0), deductions: new Prisma.Decimal(0) };
+      const grossPay = new Prisma.Decimal(comp.baseSalary).plus(adjustment.earnings);
+      const taxDeduction = grossPay.times(taxRate).toDecimalPlaces(2);
+      const netPay = grossPay.minus(taxDeduction).minus(adjustment.deductions);
+      if (netPay.isNegative()) throw new SchoolPayrollInputError("deductions-exceed-net");
+      return { employeeId: comp.employeeId, grossPay, taxDeduction, otherDeductions: adjustment.deductions, netPay };
+    });
+
+    try {
+      await claimSchoolPayrollInputsForRun(tx, organizationId, schoolInputs.map((input) => input.id), runId);
+    } catch {
+      throw new SchoolPayrollInputError("changed");
+    }
+
+    for (const amounts of payslipAmounts) {
       await tx.payrollPayslip.create({
         data: {
           organizationId,
           payrollRunId: runId,
-          employeeId: comp.employeeId,
-          grossPay: grossPay.toFixed(2),
-          taxDeduction: taxDeduction.toFixed(2),
-          netPay: netPay.toFixed(2),
+          employeeId: amounts.employeeId,
+          grossPay: amounts.grossPay.toFixed(2),
+          taxDeduction: amounts.taxDeduction.toFixed(2),
+          otherDeductions: amounts.otherDeductions.toFixed(2),
+          netPay: amounts.netPay.toFixed(2),
         },
       });
     }

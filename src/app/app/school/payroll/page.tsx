@@ -1,4 +1,4 @@
-import { Banknote, Info, Plus } from "lucide-react";
+import { Banknote, Info, Plus, Link2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { EntityDialog } from "@/components/forms/entity-dialog";
@@ -13,20 +13,27 @@ import { formatMoney } from "@/components/school/format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listSchoolPayrollAdjustments } from "@/modules/school/service";
-import { createPayrollAdjustmentAction } from "../actions";
+import { listSchoolPayrollEligibleEmployees, listSchoolPayrollLinkCandidates } from "@/modules/hr/service";
+import { createPayrollAdjustmentAction, assignPayrollInputEmployeeAction } from "../actions";
 
 /** Free-text `type` values, offered as a list so entries stay consistent across periods. */
-const ADJUSTMENT_TYPES = ["Teaching allowance", "Substitute cover", "Overtime", "Examination duty", "Transport allowance", "Deduction", "Bonus", "Other"];
+const ADJUSTMENT_TYPES = ["Teaching allowance", "Substitute cover", "Overtime", "Examination duty", "Transport allowance", "Bonus", "Other"];
 
-export default async function SchoolPayrollPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
+export default async function SchoolPayrollPage({ searchParams }: { searchParams: Promise<{ saved?: string; linked?: string; error?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_PAYROLL_MANAGE);
-  const adjustments = await listSchoolPayrollAdjustments(tenant.organizationId);
+  const [adjustments, eligibleEmployees, linkCandidates] = await Promise.all([
+    listSchoolPayrollAdjustments(tenant.organizationId),
+    listSchoolPayrollEligibleEmployees(tenant.organizationId),
+    listSchoolPayrollLinkCandidates(tenant.organizationId),
+  ]);
 
   // Group by pay period so the page reads like a payroll run rather than a flat log.
   const periods = [...new Set(adjustments.map((adjustment) => adjustment.period))]
     .sort((a, b) => b.localeCompare(a))
     .map((period) => ({ period, rows: adjustments.filter((adjustment) => adjustment.period === period) }));
+  const eligibleEmployeeIds = new Set(eligibleEmployees.map((employee) => employee.id));
+  const canAddPayrollInput = canManage && eligibleEmployees.length > 0;
 
   const newAdjustmentDialog = (
     <EntityDialog
@@ -36,16 +43,18 @@ export default async function SchoolPayrollPage({ searchParams }: { searchParams
       action={createPayrollAdjustmentAction}
       submitLabel="Add payroll input"
     >
-      <TextField
+      <SelectField
         id="payroll-employee"
         name="employeeId"
-        label="HR employee ID"
+        label="HR employee"
         required
-        maxLength={200}
-        hint="Copy this from the employee's record in the HR module. School payroll inputs are not yet linked to HR, so this value is stored as typed and is not verified."
+        hint="Only active, payroll-eligible HR employees are listed. Add compensation in Payroll before processing this employee's run."
+        emptyHint="Create or activate a payroll-eligible employee in HR and set up their Payroll compensation first."
+        options={eligibleEmployees.map((employee) => ({ value: employee.id, label: `${employee.fullName} (${employee.employeeNumber})` }))}
       />
       <TextField id="payroll-period" name="period" label="Pay period" type="month" required hint="The month this input belongs to." />
       <SelectField id="payroll-type" name="type" label="Type" required placeholder="Select a type…" options={ADJUSTMENT_TYPES.map((type) => ({ value: type, label: type }))} />
+      <SelectField id="payroll-category" name="category" label="Treatment" required placeholder="Select earning or deduction…" options={[{ value: "EARNING", label: "Earning added to gross pay" }, { value: "DEDUCTION", label: "Deduction from take-home pay" }]} />
       <FieldGrid>
         <TextField id="payroll-description" name="description" label="Description" required maxLength={200} />
         <TextField id="payroll-amount" name="amount" label="Amount" type="number" step="0.01" min="0.01" required />
@@ -58,17 +67,24 @@ export default async function SchoolPayrollPage({ searchParams }: { searchParams
       <PageHeader
         title="School Payroll"
         description="Education-specific payroll inputs for workload, substitutes, and allowances."
-        actions={canManage ? newAdjustmentDialog : undefined}
+        actions={canAddPayrollInput ? newAdjustmentDialog : undefined}
       />
 
-      <FormFeedback saved={query.saved} error={query.error} savedMessage="The payroll input has been recorded and is waiting for the Payroll module to process it." />
+      <FormFeedback saved={query.saved ?? query.linked} error={query.error} savedMessage={query.linked ? "The payroll input is linked to its HR employee." : "The payroll input has been recorded and will be included in its matching full-month Payroll run."} />
       {!canManage ? <ReadOnlyNotice>Your role can review School payroll inputs but cannot add them.</ReadOnlyNotice> : null}
+      {canManage && eligibleEmployees.length === 0 ? (
+        <Alert>
+          <Info />
+          <AlertTitle>Prepare payroll in HR and Payroll first</AlertTitle>
+          <AlertDescription>Create an active, payroll-eligible HR employee and set up their Payroll compensation before recording School payroll inputs.</AlertDescription>
+        </Alert>
+      ) : null}
 
       <Alert>
         <Info />
         <AlertTitle>These inputs are processed by the Payroll module</AlertTitle>
         <AlertDescription>
-          This page only collects education-specific amounts such as substitute cover and teaching allowances. Final salary calculation, statutory deductions, and payslips remain owned by the Payroll module.
+          This page records HR-linked education-specific earnings and deductions. Payroll includes eligible inputs in the matching full-calendar-month run, applies the organization&apos;s configured default tax rate to gross pay, and subtracts deductions from take-home pay. Final salary calculation, statutory deductions, and payslips remain owned by the Payroll module.
         </AlertDescription>
       </Alert>
 
@@ -77,7 +93,7 @@ export default async function SchoolPayrollPage({ searchParams }: { searchParams
           icon={Banknote}
           title="No school payroll inputs yet"
           description="Add education-specific inputs such as substitute cover or examination duty for the Payroll module to process."
-          action={canManage ? newAdjustmentDialog : undefined}
+          action={canAddPayrollInput ? newAdjustmentDialog : undefined}
         />
       ) : (
         periods.map(({ period, rows }) => {
@@ -93,21 +109,38 @@ export default async function SchoolPayrollPage({ searchParams }: { searchParams
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Employee ID</TableHead>
+                    <TableHead>Employee</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Description</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Status</TableHead>
+                    {canManage ? <TableHead><span className="sr-only">Actions</span></TableHead> : null}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {rows.map((row) => (
                     <TableRow key={row.id}>
-                      <TableCell className="font-mono text-xs">{row.employeeId}</TableCell>
-                      <TableCell className="text-muted-foreground">{row.type}</TableCell>
+                      <TableCell>
+                        {row.employee ? <span className="font-medium">{row.employee.fullName}<span className="block text-xs text-muted-foreground">{row.employee.employeeNumber}</span></span> : <span className="text-destructive">Unlinked legacy ID: {row.legacyEmployeeId ?? "unknown"}</span>}
+                      </TableCell>
+                      <TableCell><span>{row.type}</span><Badge variant="outline" className="ml-2">{row.category === "DEDUCTION" ? "Deduction" : "Earning"}</Badge></TableCell>
                       <TableCell className="font-medium">{row.description}</TableCell>
                       <TableCell className="tabular-nums">{formatMoney(row.amount)}</TableCell>
-                      <TableCell>{row.processedAt ? <Badge>Processed</Badge> : <Badge variant="secondary">Pending</Badge>}</TableCell>
+                      <TableCell>{row.processedAt ? <div className="space-y-1"><Badge>Processed</Badge>{row.payrollRunId ? <a className="block text-xs text-primary underline-offset-4 hover:underline" href="/app/payroll/runs">View Payroll runs</a> : null}</div> : <Badge variant="secondary">Pending</Badge>}</TableCell>
+                      {canManage ? <TableCell className="text-right">
+                        {(!row.employeeId || !eligibleEmployeeIds.has(row.employeeId)) && !row.processedAt ? (
+                          <EntityDialog
+                            trigger={<Button size="sm" variant="outline"><Link2 />{row.employeeId ? "Update employee" : "Link HR employee"}</Button>}
+                            title="Link payroll input to HR"
+                            description="Choose the HR employee this input belongs to. Its amount, treatment, type, and period will be kept."
+                            action={assignPayrollInputEmployeeAction}
+                            submitLabel="Save employee link"
+                          >
+                            <input type="hidden" name="adjustmentId" value={row.id} />
+                            <SelectField id={`legacy-payroll-employee-${row.id}`} name="employeeId" label="HR employee" required options={linkCandidates.map((employee) => ({ value: employee.id, label: `${employee.fullName} (${employee.employeeNumber})` }))} emptyHint="Create an HR employee before linking this input." />
+                          </EntityDialog>
+                        ) : null}
+                      </TableCell> : null}
                     </TableRow>
                   ))}
                 </TableBody>

@@ -6,7 +6,7 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { verifyCurrentPassword } from "@/lib/auth/verify-password";
 import { cuid, shortText, longText, dateInput, moneyAmountPositive, parseWithSchema } from "@/lib/validation";
-import { createSchoolCampus, createSchoolAcademicYear, closeSchoolAcademicYear, deleteSchoolAcademicYear, createSchoolTerm, admitSchoolStudent, createSchoolGuardian, updateSchoolGuardian, linkSchoolGuardian, createSchoolClass, updateSchoolClassCapacity, assignSchoolClassTeacher, removeSchoolClassTeacher, createSchoolSubject, enrollSchoolStudent, recordSchoolAttendanceBulk, createSchoolFeeInvoice, recordSchoolFeePayment, getSchoolFeePaymentForPostingRetry, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, upsertSchoolSettings, transitionSchoolStudent, createSchoolFeeStructure, issueSchoolFeeStructure, updateSchoolStudentPhoto, updateSchoolGuardianPhoto, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
+import { createSchoolCampus, createSchoolAcademicYear, closeSchoolAcademicYear, deleteSchoolAcademicYear, createSchoolTerm, admitSchoolStudent, createSchoolGuardian, updateSchoolGuardian, linkSchoolGuardian, createSchoolClass, updateSchoolClassCapacity, assignSchoolClassTeacher, removeSchoolClassTeacher, createSchoolSubject, enrollSchoolStudent, recordSchoolAttendanceBulk, createSchoolFeeInvoice, recordSchoolFeePayment, getSchoolFeePaymentForPostingRetry, createSchoolTimetableEntry, createSchoolExam, recordSchoolExamResult, submitSchoolExamForModeration, publishSchoolExam, createSchoolLibraryBook, borrowSchoolLibraryBook, returnSchoolLibraryBook, createSchoolTransportRoute, assignSchoolTransport, createSchoolPayrollAdjustment, assignPendingSchoolPayrollEmployee, upsertSchoolSettings, transitionSchoolStudent, createSchoolFeeStructure, issueSchoolFeeStructure, updateSchoolStudentPhoto, updateSchoolGuardianPhoto, SchoolStateError, SchoolNotFoundError } from "@/modules/school/service";
 import { schoolPhotoImageData, schoolStudentPhotoImages } from "@/lib/school-photo-image";
 import { postSchoolFeePaymentRevenue } from "@/modules/school/accounting";
 import { getSurfaceOrigins } from "@/lib/app-surfaces";
@@ -182,7 +182,44 @@ export async function borrowBookAction(f:FormData){const path="/app/school/libra
 export async function returnBookAction(f:FormData){const path="/app/school/library",t=await auth(PERMISSIONS.SCHOOL_LIBRARY_MANAGE,path);const id=clean(f.get("loanId"));if(!id)redirect(`${path}?error=invalid`);try{await returnSchoolLibraryBook(t.organizationId,id)}catch(e){fail(path,e)}revalidatePath(path);redirect(`${path}?saved=1`)}
 export async function createTransportRouteAction(f:FormData){const path="/app/school/transport",t=await auth(PERMISSIONS.SCHOOL_TRANSPORT_MANAGE,path);const p=z.object({campusId:cuid,code:shortText,name:shortText,vehicle:shortText.nullable(),driverName:shortText.nullable(),stops:shortText.nullable(),fee:z.coerce.number().min(0)}).safeParse(Object.fromEntries(["campusId","code","name","vehicle","driverName","stops","fee"].map(k=>[k,clean(f.get(k))])));if(!p.success)redirect(`${path}?error=invalid`);const{stops,...data}=p.data;try{await createSchoolTransportRoute(t.organizationId,{...data,stops:stops?.split(",").map(s=>s.trim()).filter(Boolean)})}catch(e){fail(path,e)}revalidatePath(path);redirect(`${path}?saved=1`)}
 export async function assignTransportAction(f:FormData){const path="/app/school/transport",t=await auth(PERMISSIONS.SCHOOL_TRANSPORT_MANAGE,path);const p=z.object({routeId:cuid,studentId:cuid,stopName:shortText.nullable()}).safeParse({routeId:clean(f.get("routeId")),studentId:clean(f.get("studentId")),stopName:clean(f.get("stopName"))});if(!p.success)redirect(`${path}?error=invalid`);try{await assignSchoolTransport(t.organizationId,p.data.routeId,p.data.studentId,p.data.stopName)}catch(e){fail(path,e)}revalidatePath(path);redirect(`${path}?saved=1`)}
-export async function createPayrollAdjustmentAction(f:FormData){const path="/app/school/payroll",t=await auth(PERMISSIONS.SCHOOL_PAYROLL_MANAGE,path);const p=parseWithSchema(z.object({employeeId:shortText,period:shortText,type:shortText,description:shortText,amount:moneyAmountPositive}),Object.fromEntries(["employeeId","period","type","description","amount"].map(k=>[k,clean(f.get(k))??""])));if(!p.success)redirect(`${path}?error=invalid`);await createSchoolPayrollAdjustment(t.organizationId,p.data);revalidatePath(path);redirect(`${path}?saved=1`)}
+export async function createPayrollAdjustmentAction(f: FormData) {
+  const path = "/app/school/payroll";
+  const tenant = await auth(PERMISSIONS.SCHOOL_PAYROLL_MANAGE, path);
+  const parsed = parseWithSchema(z.object({
+    employeeId: cuid,
+    period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+    type: shortText,
+    category: z.enum(["EARNING", "DEDUCTION"]),
+    description: shortText,
+    amount: moneyAmountPositive,
+  }), Object.fromEntries(["employeeId", "period", "type", "category", "description", "amount"].map((key) => [key, clean(f.get(key)) ?? ""])));
+  if (!parsed.success) redirect(`${path}?error=invalid`);
+  try {
+    await createSchoolPayrollAdjustment(tenant.organizationId, parsed.data);
+  } catch (error) {
+    fail(path, error);
+  }
+  revalidatePath(path);
+  redirect(`${path}?saved=1`);
+}
+
+export async function assignPayrollInputEmployeeAction(f: FormData) {
+  const path = "/app/school/payroll";
+  const tenant = await auth(PERMISSIONS.SCHOOL_PAYROLL_MANAGE, path);
+  const parsed = z.object({ adjustmentId: cuid, employeeId: cuid }).safeParse({
+    adjustmentId: clean(f.get("adjustmentId")),
+    employeeId: clean(f.get("employeeId")),
+  });
+  if (!parsed.success) redirect(`${path}?error=invalid`);
+  try {
+    await assignPendingSchoolPayrollEmployee(tenant.organizationId, parsed.data.adjustmentId, parsed.data.employeeId);
+  } catch (error) {
+    fail(path, error);
+  }
+  revalidatePath(path);
+  revalidatePath("/app/payroll/runs");
+  redirect(`${path}?linked=1`);
+}
 export async function upsertSchoolSettingsAction(f:FormData){const path="/app/school/settings",t=await auth(PERMISSIONS.SCHOOL_SETTINGS_MANAGE,path);const p=z.object({campusId:cuid,attendanceCloseDays:z.coerce.number().int().min(0).max(365),receiptPrefix:shortText,allowRanking:z.boolean(),smsNotificationsEnabled:z.boolean(),gradingScaleText:longText.nullable()}).safeParse({campusId:clean(f.get("campusId")),attendanceCloseDays:clean(f.get("attendanceCloseDays")),receiptPrefix:clean(f.get("receiptPrefix")),allowRanking:f.get("allowRanking")==="on",smsNotificationsEnabled:f.get("smsNotificationsEnabled")==="on",gradingScaleText:clean(f.get("gradingScaleText"))});if(!p.success)redirect(`${path}?error=invalid`);let gradingScale;try{gradingScale=p.data.gradingScaleText?JSON.parse(p.data.gradingScaleText):undefined}catch{redirect(`${path}?error=invalid`)}await upsertSchoolSettings(t.organizationId,{campusId:p.data.campusId,attendanceCloseDays:p.data.attendanceCloseDays,receiptPrefix:p.data.receiptPrefix,allowRanking:p.data.allowRanking,smsNotificationsEnabled:p.data.smsNotificationsEnabled,gradingScale});revalidatePath(path);redirect(`${path}?saved=1`)}
 
 export async function transitionStudentAction(f: FormData) {

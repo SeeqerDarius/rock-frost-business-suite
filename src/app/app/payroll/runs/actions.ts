@@ -12,6 +12,7 @@ import {
   cancelRun,
   RunStateError,
   NoCompensationError,
+  SchoolPayrollInputError,
   NotFoundError,
   getPayrollRunForPostingRetry,
 } from "@/modules/payroll/service";
@@ -117,6 +118,18 @@ export async function processExistingRun(formData: FormData): Promise<void> {
         status: "FAILURE",
       });
       redirect("/app/payroll/runs?error=no-compensation");
+    }
+    if (error instanceof SchoolPayrollInputError) {
+      await logAuditEvent({
+        organizationId: tenant.organizationId,
+        userId: session?.user?.id,
+        module: "payroll",
+        action: "payroll.processed",
+        entityName: "PayrollRun",
+        entityId: id,
+        status: "FAILURE",
+      });
+      redirect(`/app/payroll/runs?error=school-inputs-${error.reason}`);
     }
     if (error instanceof NotFoundError) redirect("/app/payroll/runs?error=not-found");
     throw error;

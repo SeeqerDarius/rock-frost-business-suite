@@ -6,6 +6,7 @@ import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@/lib/trend-buckets";
 import { sendSms } from "@/lib/sms";
 import { schoolAttendanceAbsentSms, schoolExamResultsPublishedSms, schoolFeePaymentReceivedSms } from "@/lib/sms-templates";
+import { getSchoolPayrollEligibleEmployee, getSchoolPayrollLinkCandidate, listSchoolPayrollLinkCandidates } from "@/modules/hr/service";
 
 export class SchoolStateError extends Error {
   constructor(message: string, readonly code = "blocked") {
@@ -798,8 +799,41 @@ export function listSchoolTransport(organizationId: string) { return db.schoolTr
 export async function createSchoolTransportRoute(organizationId: string, data: { campusId: string; code: string; name: string; vehicle?: string | null; driverName?: string | null; stops?: string[]; fee: Prisma.Decimal.Value }) { if(!(await db.schoolCampus.findFirst({where:{id:data.campusId,organizationId}}))) throw new SchoolNotFoundError("Campus not found."); return db.schoolTransportRoute.create({data:{organizationId,...data,stops:data.stops ?? Prisma.JsonNull,fee:decimal(data.fee)}}); }
 export async function assignSchoolTransport(organizationId:string,routeId:string,studentId:string,stopName?:string|null){const [route,student]=await Promise.all([db.schoolTransportRoute.findFirst({where:{id:routeId,organizationId,active:true}}),db.schoolStudent.findFirst({where:{id:studentId,organizationId,status:"ACTIVE"}})]);if(!route||!student)throw new SchoolNotFoundError("Route or student not found.");return db.schoolTransportAssignment.upsert({where:{routeId_studentId:{routeId,studentId}},update:{stopName,active:true},create:{organizationId,routeId,studentId,stopName}});}
 
-export function listSchoolPayrollAdjustments(organizationId:string){return db.schoolPayrollAdjustment.findMany({where:{organizationId},orderBy:{createdAt:"desc"}});}
-export function createSchoolPayrollAdjustment(organizationId:string,data:{employeeId:string;period:string;type:string;description:string;amount:Prisma.Decimal.Value}){return db.schoolPayrollAdjustment.create({data:{organizationId,...data,amount:decimal(data.amount)}});}
+export async function listSchoolPayrollAdjustments(organizationId: string) {
+  const adjustments = await db.schoolPayrollAdjustment.findMany({ where: { organizationId }, orderBy: [{ period: "desc" }, { createdAt: "desc" }] });
+  const employees = await listSchoolPayrollLinkCandidates(organizationId);
+  const employeeById = new Map(employees.map((employee) => [employee.id, employee]));
+  return adjustments.map((adjustment) => ({
+    ...adjustment,
+    employee: adjustment.employeeId ? employeeById.get(adjustment.employeeId) ?? null : null,
+  }));
+}
+
+export async function createSchoolPayrollAdjustment(
+  organizationId: string,
+  data: { employeeId: string; period: string; type: string; category: "EARNING" | "DEDUCTION"; description: string; amount: Prisma.Decimal.Value },
+) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(data.period)) throw new SchoolStateError("Choose a valid payroll month.", "invalid-period");
+  const amount = decimal(data.amount);
+  if (!amount.isFinite() || amount.lte(0)) throw new SchoolStateError("The payroll input amount must be greater than zero.", "invalid-amount");
+  const employee = await getSchoolPayrollEligibleEmployee(organizationId, data.employeeId);
+  if (!employee) throw new SchoolNotFoundError("Payroll-eligible HR employee not found.");
+  return db.schoolPayrollAdjustment.create({ data: { organizationId, ...data, amount } });
+}
+
+export async function assignPendingSchoolPayrollEmployee(organizationId: string, adjustmentId: string, employeeId: string) {
+  const [adjustment, employee] = await Promise.all([
+    db.schoolPayrollAdjustment.findFirst({ where: { id: adjustmentId, organizationId, processedAt: null, payrollRunId: null } }),
+    getSchoolPayrollLinkCandidate(organizationId, employeeId),
+  ]);
+  if (!adjustment || !employee) throw new SchoolNotFoundError("Pending School payroll input or HR employee not found.");
+  const updated = await db.schoolPayrollAdjustment.updateMany({
+    where: { id: adjustmentId, organizationId, employeeId: adjustment.employeeId, legacyEmployeeId: adjustment.legacyEmployeeId, processedAt: null, payrollRunId: null },
+    data: { employeeId: employee.id, legacyEmployeeId: null },
+  });
+  if (updated.count !== 1) throw new SchoolStateError("This legacy payroll input changed in another request. Refresh and try again.", "stale-record");
+  return db.schoolPayrollAdjustment.findFirstOrThrow({ where: { id: adjustmentId, organizationId } });
+}
 
 export function listSchoolSettings(organizationId:string){return db.schoolCampus.findMany({where:{organizationId},include:{settings:true},orderBy:{name:"asc"}});}
 export async function upsertSchoolSettings(organizationId:string,data:{campusId:string;attendanceCloseDays:number;receiptPrefix:string;allowRanking:boolean;smsNotificationsEnabled:boolean;gradingScale?:Prisma.InputJsonValue}){if(!(await db.schoolCampus.findFirst({where:{id:data.campusId,organizationId}})))throw new SchoolNotFoundError("Campus not found.");const values={attendanceCloseDays:data.attendanceCloseDays,receiptPrefix:data.receiptPrefix,allowRanking:data.allowRanking,smsNotificationsEnabled:data.smsNotificationsEnabled,gradingScale:data.gradingScale};return db.schoolSettings.upsert({where:{campusId:data.campusId},update:values,create:{organizationId,...data}});}

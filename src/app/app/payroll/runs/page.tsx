@@ -19,6 +19,11 @@ const ERROR_MESSAGES: Record<string, string> = {
   "no-compensation": "No active employees have compensation set up yet. Add compensation before processing.",
   "not-found": "That payroll run could not be found.",
   "posting-not-retryable": "That Payroll run is not available for Accounting posting. Refresh the page and check its status.",
+  "school-inputs-unlinked": "A School payroll input still needs an HR employee link. Open School Payroll and link the input before processing this month.",
+  "school-inputs-employee-ineligible": "A School payroll input belongs to an employee without active Payroll compensation. Check the employee's HR status and Payroll compensation before processing.",
+  "school-inputs-period-mismatch": "School payroll inputs are monthly. Process them with a run covering the full calendar month, or adjust the run dates.",
+  "school-inputs-deductions-exceed-net": "A School payroll deduction is greater than the employee's take-home pay. Correct the input before processing this run.",
+  "school-inputs-changed": "A School payroll input changed while this run was being processed. Refresh and try again.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
@@ -49,7 +54,7 @@ export default async function PayrollRunsPage({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <PageHeader title="Runs" description="Payroll runs: each processes every active employee with compensation on record." />
+        <PageHeader title="Runs" description="Runs calculate payroll-eligible employees with compensation on record. A full calendar-month run also includes linked, pending School earnings and deductions for that month." />
         {canManage ? (
           <EntityDialog trigger={<Button size="sm"><Plus />New run</Button>} title="New payroll run" action={createNewRun}>
             <div className="grid gap-4 sm:grid-cols-2">
