@@ -197,7 +197,7 @@ schema change:
   Individual enrollment and rollover share academic-year/class locks so
   concurrent enrollment cannot bypass capacity checks.
 - Student transfers are implemented in this release: authorized staff can
-  move an active enrollment within an open academic year, including across
+  move an active enrollment within the current open academic year, including across
   campuses. Capacity is rechecked under year/class locks, stale source-class
   submissions are rejected, student and enrollment campus are updated
   together, and the reason plus source/destination are retained in an

@@ -49,12 +49,15 @@ afterAll(async () => {
 describe("School service — real tenant isolation and customer-readiness guards", () => {
   it("transfers an active enrollment across campuses with immutable tenant-scoped history", async () => {
     const token = `Transfer${Date.now()}`;
-    const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} year`, startDate: new Date("2033-01-01"), endDate: new Date("2033-12-31") });
+    const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} year`, startDate: new Date("2033-01-01"), endDate: new Date("2033-12-31"), current: true });
     const destinationCampus = await school.createSchoolCampus(orgA.organizationId, { code: `${token}C`, name: `${token} destination` });
     const sourceClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}A`, name: `${token} source` });
     const targetClass = await school.createSchoolClass(orgA.organizationId, { campusId: destinationCampus.id, code: `${token}B`, name: `${token} destination`, capacity: 1 });
     const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Ama`, lastName: "Student" });
     const enrollment = await school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: year.id, studentId: student.id, classId: sourceClass.id });
+    const inactiveYear = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} prior year`, startDate: new Date("2032-01-01"), endDate: new Date("2032-12-31") });
+    const priorEnrollment = await school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: inactiveYear.id, studentId: student.id, classId: sourceClass.id });
+    await expect(school.transferSchoolEnrollment(orgA.organizationId, orgA.userId, { studentId: student.id, academicYearId: inactiveYear.id, enrollmentId: priorEnrollment.id, expectedClassId: sourceClass.id, targetClassId: targetClass.id, reason: "Prior-year change" })).rejects.toMatchObject({ code: "inactive-transfer-year" });
     await expect(school.transferSchoolEnrollment(orgB.organizationId, orgB.userId, { studentId: student.id, academicYearId: year.id, enrollmentId: enrollment.id, expectedClassId: sourceClass.id, targetClassId: targetClass.id, reason: "Family relocation" })).rejects.toThrow(school.SchoolNotFoundError);
     const transfer = await school.transferSchoolEnrollment(orgA.organizationId, orgA.userId, { studentId: student.id, academicYearId: year.id, enrollmentId: enrollment.id, expectedClassId: sourceClass.id, targetClassId: targetClass.id, reason: "Family relocation" });
     expect(transfer).toMatchObject({ organizationId: orgA.organizationId, studentId: student.id, sourceCampusId: campusA.id, targetCampusId: destinationCampus.id, sourceClassId: sourceClass.id, targetClassId: targetClass.id, reason: "Family relocation" });
@@ -65,7 +68,7 @@ describe("School service — real tenant isolation and customer-readiness guards
 
   it("serializes transfers against destination capacity and rejects stale enrollment expectations", async () => {
     const token = `TransferRace${Date.now()}`;
-    const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} year`, startDate: new Date("2034-01-01"), endDate: new Date("2034-12-31") });
+    const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} year`, startDate: new Date("2034-01-01"), endDate: new Date("2034-12-31"), current: true });
     const sourceClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}A`, name: `${token} source` });
     const targetClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}B`, name: `${token} destination`, capacity: 1 });
     const students = await Promise.all(["One", "Two"].map((suffix) => school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} ${suffix}`, lastName: "Student" })));

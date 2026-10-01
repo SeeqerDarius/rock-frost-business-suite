@@ -763,7 +763,7 @@ export async function updateSchoolStudentGuardianLinks(
 export function listSchoolTimetable(organizationId: string) { return db.schoolTimetableEntry.findMany({ where: { organizationId }, include: { campus: true, term: true, class: true, subject: true }, orderBy: [{ dayOfWeek: "asc" }, { startsAt: "asc" }] }); }
 
 export async function getSchoolStudentTransferOptions(organizationId: string, studentId: string) {
-  const enrollment = await db.schoolEnrollment.findFirst({ where: { organizationId, studentId, status: "ACTIVE", student: { status: "ACTIVE" }, academicYear: { closedAt: null }, class: { organizationId, campus: { organizationId, active: true } } }, include: { academicYear: true, class: { include: { campus: true } } }, orderBy: { enrolledAt: "desc" } });
+  const enrollment = await db.schoolEnrollment.findFirst({ where: { organizationId, studentId, status: "ACTIVE", student: { status: "ACTIVE" }, academicYear: { current: true, closedAt: null }, class: { organizationId, campus: { organizationId, active: true } } }, include: { academicYear: true, class: { include: { campus: true } } }, orderBy: { enrolledAt: "desc" } });
   if (!enrollment) return null;
   const classes = await db.schoolClass.findMany({ where: { organizationId, active: true, NOT: { id: enrollment.classId }, campus: { organizationId, active: true } }, include: { campus: true, _count: { select: { enrollments: { where: { organizationId, academicYearId: enrollment.academicYearId, status: "ACTIVE" } } } } }, orderBy: [{ campus: { name: "asc" } }, { name: "asc" }] });
   return { enrollment, targets: classes.filter((item) => item.capacity === null || item._count.enrollments < item.capacity) };
@@ -789,6 +789,7 @@ export async function transferSchoolEnrollment(organizationId: string, actorId: 
     ]);
     if (!year || !enrollment || !student || !target) throw new SchoolStateError("The student's current enrollment changed. Refresh and try again.", "stale-transfer-enrollment");
     if (year.closedAt) throw new SchoolStateError("Transfers are unavailable in a closed academic year.", "closed-transfer-year");
+    if (!year.current) throw new SchoolStateError("Transfers are only available in the current academic year.", "inactive-transfer-year");
     if (enrollment.campusId !== enrollment.class.campusId || student.campusId !== enrollment.class.campusId) throw new SchoolStateError("The student and active enrollment do not match the source campus. Correct the record before transferring.", "stale-transfer-enrollment");
     if (target.id === enrollment.classId) throw new SchoolStateError("Choose a different class for the transfer.", "same-transfer-class");
     if (target.capacity !== null) {
