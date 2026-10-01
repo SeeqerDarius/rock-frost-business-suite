@@ -10,6 +10,9 @@ ALTER TABLE "SchoolPayrollAdjustment"
 RENAME COLUMN "employeeId" TO "legacyEmployeeId";
 
 ALTER TABLE "SchoolPayrollAdjustment"
+ALTER COLUMN "legacyEmployeeId" DROP NOT NULL;
+
+ALTER TABLE "SchoolPayrollAdjustment"
 ADD COLUMN "employeeId" TEXT,
 ADD COLUMN "category" "SchoolPayrollAdjustmentCategory" NOT NULL DEFAULT 'EARNING',
 ADD COLUMN "payrollRunId" TEXT;
