@@ -115,6 +115,13 @@ the other active list and picker filters. The create/edit actions still perform
 their own organization and business-rule checks; the picker is only a way to
 find records efficiently.
 
+Recorded School fee payments now link to a printable receipt page. The route
+checks School access plus either fee-management or student-finance-view
+permission, and loads the payment by organization with a narrow selection of
+receipt, invoice, student, campus, and academic-period fields. Printing is
+browser-native; a refund does not rewrite or remove the original receipt.
+Refunds, credits, and receipt PDF generation remain separate work.
+
 The invoice status filter now matches the schema's `VOID` value rather than
 offering the nonexistent `CANCELLED` value. Remaining scaling work includes
 the portal-access student list and other full-record directory consumers,
@@ -176,7 +183,7 @@ schema change:
 
 ### Fees and finance
 
-- Add scholarships, credits, refunds, reversals, statements, receipt printing,
+- Add scholarships, credits, refunds, reversals, statements, PDF receipt output,
   cashier reconciliation, and arrears aging. Fee structures and bulk issuance,
   plus Accounting delivery status and retry, are implemented.
 
