@@ -10,6 +10,7 @@ import {
   HeartPulse,
   Home,
   IdCard,
+  Printer,
   UserRound,
   ArrowRightLeft,
 } from "lucide-react";
@@ -153,6 +154,7 @@ export default async function StudentProfilePage({
         title={`${student.firstName} ${student.lastName}`}
         description={`Student ID ${student.admissionNumber}`}
         actions={<div className="flex flex-wrap items-center gap-2">
+          <Button nativeButton={false} render={<Link href={`/app/school/students/${student.id}/print`} target="_blank" rel="noopener noreferrer" />} variant="outline" size="sm"><Printer />Print profile</Button>
           {transferContext?.targets.length ? <EntityDialog trigger={<Button type="button" size="sm"><ArrowRightLeft />Transfer class</Button>} title="Transfer student" description="Move the active enrollment within this open academic year. The change is recorded in the student history." action={transferStudentEnrollmentAction} submitLabel="Record transfer">
             <input type="hidden" name="studentId" value={student.id} />
             <input type="hidden" name="enrollmentId" value={transferContext.enrollment.id} />

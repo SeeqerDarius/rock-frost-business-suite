@@ -206,7 +206,9 @@ schema change:
   promotion decisions that calculate the next class from a
   configured progression rule.
 - Add bulk import/export with preview, validation, and recoverable error reports.
-- Add printable student profiles and enrollment history.
+- A permission-checked printable student record now includes enrollment,
+  transfer, lifecycle, guardian, and document-metadata history. Medical and
+  financial information are excluded from the print view.
 
 ### Fees and finance
 

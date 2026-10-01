@@ -178,7 +178,8 @@ describe("module authorization source coverage", () => {
     // staff-facing Portal Access page, both requireModuleAccess("school").
     // 139, up from 138: the School fee receipt page requires School access.
     // 140, up from 139: the School academic-year rollover page requires School access.
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(140);
+    // 141, up from 140: the printable School student record page requires School access.
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(141);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
     // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
     // all Hostel Server Actions, same shape as School's) joins the sweep

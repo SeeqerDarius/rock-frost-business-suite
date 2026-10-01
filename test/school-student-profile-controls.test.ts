@@ -6,6 +6,7 @@ const read = (path: string) => readFileSync(path, "utf8");
 describe("School student profile controls", () => {
   const service = read("src/modules/school/student-profile-service.ts");
   const page = read("src/app/app/school/students/[studentId]/page.tsx");
+  const printPage = read("src/app/app/school/students/[studentId]/print/page.tsx");
   const hostel = read("src/modules/school/hostel-integration.ts");
 
   it("enforces sensitive field access in service queries", () => {
@@ -35,6 +36,17 @@ describe("School student profile controls", () => {
     expect(page).toContain("tenant.organization.currency");
     expect(page).toContain("?section=${key}");
     expect(page).toContain("Download wallet-size ID PDF");
+  });
+
+  it("provides a permission-checked printable student record without medical or finance sections", () => {
+    expect(page).toContain("/print");
+    expect(printPage).toContain("PERMISSIONS.SCHOOL_STUDENT_PROFILE_VIEW");
+    expect(printPage).toContain("getSchoolStudentProfile");
+    expect(printPage).toContain("medical: false");
+    expect(printPage).toContain("finance: false");
+    expect(printPage).toContain("Enrollment history");
+    expect(printPage).toContain("Transfer history");
+    expect(printPage).toContain("PrintButton");
   });
 
   it("builds the School dashboard from server aggregates with permission-gated finance", () => {
