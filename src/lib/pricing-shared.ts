@@ -26,6 +26,12 @@ export type PricingBundle = {
 };
 
 export type ModulePriceLike = { monthlyGhs: number; annualGhs: number; includedSeats: number };
+export type PromotionPrice = { amountGhs: number; originalGhs: number; promotionName: string; endsAt: Date };
+
+export function resolvePromotionPrice(originalGhs: number, promotion?: { amountGhs: number; promotionName: string; endsAt: Date }): PromotionPrice | undefined {
+  if (!promotion || promotion.amountGhs >= originalGhs) return undefined;
+  return { ...promotion, originalGhs };
+}
 
 export function computeRecommendedQuote(priceMap: Map<string, ModulePriceLike>, moduleKey: string, durationMonths: number) {
   const price = priceMap.get(moduleKey);

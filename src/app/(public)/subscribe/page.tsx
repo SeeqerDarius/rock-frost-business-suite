@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { TurnstileWidget } from "@/components/security/turnstile-widget";
 import { isBotProtectionConfigured } from "@/lib/bot-protection";
 import { createContactFormProof } from "@/lib/contact-form-protection";
-import { formatGhs, listModulePrices, listPricingBundles } from "@/lib/pricing";
+import { formatGhs, getActivePromotionMap, listModulePrices, listPricingBundles, resolvePromotionPrice } from "@/lib/pricing";
 import { createPublicMetadata } from "@/lib/seo";
 import { getModule } from "@/platform/modules/registry";
 import { startPublicSubscription } from "./actions";
@@ -22,7 +22,7 @@ const errors: Record<string, string> = { verification: "We could not verify this
 
 export default async function SubscribePage({ searchParams }: { searchParams: Promise<{ type?: string; product?: string; cycle?: string; error?: string }> }) {
   const params = await searchParams;
-  const [modulePrices, pricingBundles] = await Promise.all([listModulePrices(), listPricingBundles()]);
+  const [modulePrices, pricingBundles, monthlyModules, monthlyBundles] = await Promise.all([listModulePrices(), listPricingBundles(), getActivePromotionMap("MODULE", "MONTHLY"), getActivePromotionMap("BUNDLE", "MONTHLY")]);
   const productType = params.type === "bundle" ? "BUNDLE" : "MODULE";
   const modulePrice = modulePrices.find((entry) => entry.moduleKey === params.product);
   const bundle = pricingBundles.find((entry) => entry.key === params.product);
@@ -38,7 +38,7 @@ export default async function SubscribePage({ searchParams }: { searchParams: Pr
         <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="fullName">Your full name</Label><Input id="fullName" name="fullName" required /></div><div className="space-y-2"><Label htmlFor="organizationName">Organization name</Label><Input id="organizationName" name="organizationName" required /></div></div>
         <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="email">Work email</Label><Input id="email" name="email" type="email" required /></div><div className="space-y-2"><Label htmlFor="phone">Phone or WhatsApp</Label><Input id="phone" name="phone" type="tel" /></div></div>
         <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="productType">Product type</Label><select id="productType" name="productType" defaultValue={productType} className="h-10 w-full rounded-md border bg-background px-3"><option value="MODULE">Individual module</option><option value="BUNDLE">Combined suite</option></select></div><div className="space-y-2"><Label htmlFor="billingCycle">Billing period</Label><select id="billingCycle" name="billingCycle" defaultValue={params.cycle === "monthly" ? "MONTHLY" : "ANNUAL"} className="h-10 w-full rounded-md border bg-background px-3"><option value="MONTHLY">Monthly</option><option value="ANNUAL">Annual</option></select></div></div>
-        <div className="space-y-2"><Label htmlFor="productKey">Product</Label><select id="productKey" name="productKey" defaultValue={defaultProduct} className="h-10 w-full rounded-md border bg-background px-3">{modulePrices.map((entry) => <option key={entry.moduleKey} value={entry.moduleKey}>{getModule(entry.moduleKey)?.name} ({formatGhs(entry.monthlyGhs)}/month)</option>)}{pricingBundles.map((entry) => <option key={entry.key} value={entry.key}>{entry.name} suite ({formatGhs(entry.monthlyGhs)}/month)</option>)}</select><p className="text-xs text-muted-foreground">Choose a module when Product type is Individual module, or a suite when Product type is Combined suite.</p></div>
+        <div className="space-y-2"><Label htmlFor="productKey">Product</Label><select id="productKey" name="productKey" defaultValue={defaultProduct} className="h-10 w-full rounded-md border bg-background px-3">{modulePrices.map((entry) => { const promo = resolvePromotionPrice(entry.monthlyGhs, monthlyModules.get(entry.moduleKey)); return <option key={entry.moduleKey} value={entry.moduleKey}>{getModule(entry.moduleKey)?.name} ({promo ? `${formatGhs(entry.monthlyGhs)} → ${formatGhs(promo.amountGhs)}` : formatGhs(entry.monthlyGhs)}/month)</option>; })}{pricingBundles.map((entry) => { const promo = resolvePromotionPrice(entry.monthlyGhs, monthlyBundles.get(entry.key)); return <option key={entry.key} value={entry.key}>{entry.name} suite ({promo ? `${formatGhs(entry.monthlyGhs)} → ${formatGhs(promo.amountGhs)}` : formatGhs(entry.monthlyGhs)}/month)</option>; })}</select><p className="text-xs text-muted-foreground">Choose a module when Product type is Individual module, or a suite when Product type is Combined suite.</p></div>
         {turnstile ? <TurnstileWidget action="subscribe" /> : null}<Button className="w-full" type="submit">Verify email and prepare subscription</Button>
       </form>
     </CardContent></Card>

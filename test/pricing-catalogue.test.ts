@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MODULE_PRICING_SEED, PRICING_BUNDLE_SEED } from "../prisma/seed-data";
-import { computeRecommendedQuote } from "@/lib/pricing-shared";
+import { computeRecommendedQuote, resolvePromotionPrice } from "@/lib/pricing-shared";
 import { catalogueModuleRegistry } from "@/platform/modules/registry";
 
 /**
@@ -40,6 +40,25 @@ describe("subscription pricing catalogue seed data", () => {
       "pharmacy-complete": 2899,
       "hospital-complete": 5199,
     });
+  });
+});
+
+describe("new subscription promotions", () => {
+  const endsAt = new Date("2026-10-31T23:59:00.000Z");
+
+  it("uses the promotion price and retains the catalogue amount for display", () => {
+    expect(resolvePromotionPrice(599, { amountGhs: 499, promotionName: "October launch", endsAt })).toEqual({
+      originalGhs: 599,
+      amountGhs: 499,
+      promotionName: "October launch",
+      endsAt,
+    });
+  });
+
+  it("ignores missing or non-discounted promotions", () => {
+    expect(resolvePromotionPrice(599)).toBeUndefined();
+    expect(resolvePromotionPrice(599, { amountGhs: 599, promotionName: "No discount", endsAt })).toBeUndefined();
+    expect(resolvePromotionPrice(599, { amountGhs: 699, promotionName: "Price increase", endsAt })).toBeUndefined();
   });
 });
 

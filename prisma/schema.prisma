@@ -133,6 +133,16 @@ enum SubscriptionPaymentStatus {
   FAILED
 }
 
+enum PromotionTargetType {
+  MODULE
+  BUNDLE
+}
+
+enum PromotionBillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
 enum OperationalPaymentPurpose {
   FLEET_REMITTANCE
   FLEET_WORK_AND_PAY
@@ -1025,6 +1035,26 @@ model PricingBundle {
   moduleKeys String[]
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+/// Platform-wide offer for new self-service subscriptions. The original
+/// amount is resolved from the current catalogue; amountGhs is snapshotted
+/// onto subscriptions created while the offer is active.
+model PricingPromotion {
+  id          String                 @id @default(cuid())
+  name        String
+  targetType  PromotionTargetType
+  targetKey   String
+  billingCycle PromotionBillingCycle
+  amountGhs   Decimal                @db.Decimal(18, 2)
+  startsAt    DateTime
+  endsAt      DateTime
+  active      Boolean                @default(true)
+  createdById String
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@index([targetType, targetKey, billingCycle, active, startsAt, endsAt])
 }
 
 model OrganizationModule {

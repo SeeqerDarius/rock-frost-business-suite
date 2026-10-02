@@ -9,7 +9,7 @@ import { requirePlatformOperator } from "@/lib/auth/module-access";
 import { db } from "@/lib/db";
 import { getPlatformAnchorOrganizationIds } from "@/lib/platform-organizations";
 import { activateSubscriptionAction, cancelSubscriptionAction, createSubscriptionAction, updateSubscriptionSeatLimitAction } from "./actions";
-import { updateModulePricePlan, updatePricingBundlePrice } from "./pricing-actions";
+import { createPricingPromotion, stopPricingPromotion, updateModulePricePlan, updatePricingBundlePrice } from "./pricing-actions";
 import { getOrganizationSeatUsage } from "@/platform/subscriptions/seats";
 import { listModulePrices, listPricingBundles } from "@/lib/pricing";
 import { SubscriptionQuoteFields } from "./subscription-quote-fields";
@@ -23,24 +23,27 @@ const ERROR_MESSAGES: Record<string, string> = {
   "price-not-found": "That module price could not be found.",
   "invalid-bundle": "Enter a valid suite name and monthly price.",
   "bundle-not-found": "That suite price could not be found.",
+  "invalid-promotion": "Enter a valid offer below the catalogue price and a valid date range.",
+  "promotion-overlap": "An offer already overlaps that product and billing period.",
   create: "The subscription could not be created.",
   activate: "The subscription could not be activated.",
   cancel: "The subscription could not be cancelled.",
   "cancel-paystack-unregistered": "Automatic renewal isn't fully registered with Paystack yet. Cancel it directly from Paystack's dashboard first, then cancel local access.",
 };
-const SAVED_MESSAGES: Record<string, string> = { price: "Module price updated.", bundle: "Suite price updated." };
+const SAVED_MESSAGES: Record<string, string> = { price: "Module price updated.", bundle: "Suite price updated.", promotion: "Promotion scheduled.", "promotion-stopped": "Promotion stopped." };
 
 export default async function PlatformSubscriptionsPage({ searchParams }: { searchParams: Promise<{ error?: string; seats?: string; saved?: string }> }) {
   await requirePlatformOperator();
   const { error, seats, saved } = await searchParams;
   const platformAnchorIds = await getPlatformAnchorOrganizationIds();
-  const [organizations, modules, requests, subscriptions, modulePrices, pricingBundles] = await Promise.all([
+  const [organizations, modules, requests, subscriptions, modulePrices, pricingBundles, promotions] = await Promise.all([
     db.organization.findMany({ where: { id: { notIn: platformAnchorIds }, status: { in: ["ACTIVE", "TRIAL"] } }, orderBy: { name: "asc" } }),
     db.module.findMany({ where: { status: "ACTIVE", code: { in: [...catalogueModuleKeys] } }, orderBy: { name: "asc" } }),
     db.moduleRequest.findMany({ where: { status: { in: ["SUBMITTED", "UNDER_REVIEW", "QUOTED", "APPROVED"] } }, include: { organization: true, module: true, contactSubmission: true }, orderBy: { createdAt: "desc" } }),
     db.subscription.findMany({ include: { organization: true, module: true }, orderBy: { createdAt: "desc" } }),
     listModulePrices(),
     listPricingBundles(),
+    db.pricingPromotion.findMany({ orderBy: [{ active: "desc" }, { startsAt: "desc" }] }),
   ]);
   const modulePriceMap = new Map(modulePrices.map((price) => [price.moduleKey, price]));
   const usageByOrganization = new Map((await Promise.all(organizations.map(async (organization) => [organization.id, await getOrganizationSeatUsage(organization.id)] as const))));
@@ -136,6 +139,22 @@ export default async function PlatformSubscriptionsPage({ searchParams }: { sear
             </Card>
           ))}
         </div>
+      </section>
+      <section id="promotions" className="scroll-mt-24 space-y-4">
+        <div><h2 className="text-2xl font-semibold tracking-tight">Promotions</h2><p className="text-muted-foreground">Schedule a lower price for new subscriptions. Existing subscriptions keep their stored amount.</p></div>
+        <Card><CardHeader><CardTitle>Schedule an offer</CardTitle><CardDescription>The offer applies only to new self-service checkouts during its date window.</CardDescription></CardHeader><CardContent>
+          <form action={createPricingPromotion} className="grid gap-3 md:grid-cols-3">
+            <div><Label htmlFor="promotion-name">Promotion name</Label><Input id="promotion-name" name="name" maxLength={120} placeholder="October launch offer" required /></div>
+            <div><Label htmlFor="promotion-target-type">Product type</Label><select id="promotion-target-type" name="targetType" className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"><option value="MODULE">Module</option><option value="BUNDLE">Suite</option></select></div>
+            <div><Label htmlFor="promotion-target-key">Product</Label><select id="promotion-target-key" name="targetKey" required className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"><optgroup label="Modules">{modulePrices.map((price) => <option key={price.moduleKey} value={price.moduleKey}>{getModule(price.moduleKey)?.name ?? price.moduleKey}</option>)}</optgroup><optgroup label="Suites">{pricingBundles.map((bundle) => <option key={bundle.key} value={bundle.key}>{bundle.name}</option>)}</optgroup></select></div>
+            <div><Label htmlFor="promotion-cycle">Billing period</Label><select id="promotion-cycle" name="billingCycle" className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"><option value="MONTHLY">Monthly</option><option value="ANNUAL">Annual</option></select></div>
+            <div><Label htmlFor="promotion-price">Promotion price (GHS)</Label><Input id="promotion-price" name="amountGhs" type="number" min="0.01" step="0.01" required /></div>
+            <div><Label htmlFor="promotion-start">Starts (UTC)</Label><Input id="promotion-start" name="startsAt" type="datetime-local" required /></div>
+            <div><Label htmlFor="promotion-end">Ends (UTC)</Label><Input id="promotion-end" name="endsAt" type="datetime-local" required /></div>
+            <div className="flex items-end"><Button type="submit">Schedule promotion</Button></div>
+          </form>
+        </CardContent></Card>
+        <div className="space-y-2">{promotions.map((promotion) => <Card key={promotion.id}><CardContent className="flex flex-wrap items-center justify-between gap-3 py-4"><div><p className="font-medium">{promotion.name}</p><p className="text-sm text-muted-foreground">{promotion.targetType === "MODULE" ? getModule(promotion.targetKey as never)?.name ?? promotion.targetKey : pricingBundles.find((bundle) => bundle.key === promotion.targetKey)?.name ?? promotion.targetKey} · {promotion.billingCycle.toLowerCase()} · GHS {promotion.amountGhs.toString()} · {promotion.startsAt.toLocaleString()} to {promotion.endsAt.toLocaleString()}</p><Badge variant={promotion.active && promotion.endsAt > new Date() ? "default" : "secondary"}>{!promotion.active ? "Stopped" : promotion.startsAt > new Date() ? "Scheduled" : promotion.endsAt <= new Date() ? "Ended" : "Active"}</Badge></div>{promotion.active && promotion.endsAt > new Date() ? <form action={stopPricingPromotion}><input type="hidden" name="promotionId" value={promotion.id} /><Button type="submit" variant="outline" size="sm">Stop offer</Button></form> : null}</CardContent></Card>)}</div>
       </section>
     </div>
   );

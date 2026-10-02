@@ -7,7 +7,7 @@ import { logAuditEvent } from "@/lib/audit";
 import { initializeTransaction, type GatewayProvider } from "@/lib/payments";
 import { createPlan as createPaystackPlan, disableSubscription as disablePaystackSubscription, getSubscriptionManagementLink } from "@/lib/payments/paystack";
 import { ensureRevenueAccountsForOrg } from "@/lib/accounting-integration";
-import { getModulePriceMap, getPricingBundleMap, type PricingBundleKey } from "@/lib/pricing";
+import { getActivePromotionMap, getModulePriceMap, getPricingBundleMap, resolvePromotionPrice, type PricingBundleKey } from "@/lib/pricing";
 import { getModule, type BusinessModuleKey } from "@/platform/modules/registry";
 import { expandProductModuleKeys, productGroupKeys } from "@/platform/modules/product-groups";
 
@@ -55,7 +55,10 @@ export async function createSelfServiceSubscription(input: {
   }
 
   const durationMonths = input.billingCycle === "ANNUAL" ? 12 : 1;
-  const amount = input.billingCycle === "ANNUAL" ? price.annualGhs : price.monthlyGhs;
+  const originalAmount = input.billingCycle === "ANNUAL" ? price.annualGhs : price.monthlyGhs;
+  const promoMap = await getActivePromotionMap("MODULE", input.billingCycle);
+  const promotion = resolvePromotionPrice(originalAmount, promoMap.get(input.moduleKey));
+  const amount = promotion?.amountGhs ?? originalAmount;
 
   return db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`self-service-subscription:${input.organizationId}:${input.moduleKey}`}))`;
@@ -103,7 +106,7 @@ export async function createSelfServiceSubscription(input: {
       action: "subscription.self_service_created",
       entityName: "Subscription",
       entityId: subscription.id,
-      metadata: { moduleKey: input.moduleKey, billingCycle: input.billingCycle, amount, currency: "GHS", seatLimit: price.includedSeats },
+      metadata: { moduleKey: input.moduleKey, billingCycle: input.billingCycle, amount, originalAmount, promotionName: promotion?.promotionName, currency: "GHS", seatLimit: price.includedSeats },
     }, tx);
     return subscription;
   });
@@ -120,7 +123,10 @@ export async function createSelfServiceBundleSubscription(input: {
   const bundle = bundleMap.get(input.bundleKey);
   if (!bundle) throw new Error("This suite is not available for self-service purchase.");
   const durationMonths = input.billingCycle === "ANNUAL" ? 12 : 1;
-  const amount = input.billingCycle === "ANNUAL" ? bundle.monthlyGhs * 10 : bundle.monthlyGhs;
+  const originalAmount = input.billingCycle === "ANNUAL" ? bundle.monthlyGhs * 10 : bundle.monthlyGhs;
+  const promoMap = await getActivePromotionMap("BUNDLE", input.billingCycle);
+  const promotion = resolvePromotionPrice(originalAmount, promoMap.get(bundle.key));
+  const amount = promotion?.amountGhs ?? originalAmount;
   const entitledModuleKeys = [...new Set(bundle.moduleKeys.flatMap((key) => [...productGroupKeys(key)]))];
 
   return db.$transaction(async (tx) => {
@@ -169,7 +175,7 @@ export async function createSelfServiceBundleSubscription(input: {
       action: "subscription.self_service_bundle_created",
       entityName: "Subscription",
       entityId: subscription.id,
-      metadata: { bundleKey: bundle.key, billingCycle: input.billingCycle, amount, entitledModuleKeys },
+      metadata: { bundleKey: bundle.key, billingCycle: input.billingCycle, amount, originalAmount, promotionName: promotion?.promotionName, entitledModuleKeys },
     }, tx);
     return subscription;
   });
@@ -207,9 +213,15 @@ export async function createSelfServiceCartSubscription(input: {
   const durationMonths = input.billingCycle === "ANNUAL" ? 12 : 1;
   // Priced on the plain sum of each selected module's own price — an ad-hoc
   // cart is not a curated PricingBundle discount, so no bundle rate applies.
-  const amount = uniqueKeys.reduce((sum, key) => {
+  const promoMap = await getActivePromotionMap("MODULE", input.billingCycle);
+  const originalAmount = uniqueKeys.reduce((sum, key) => {
     const price = modulePriceMap.get(key)!;
     return sum + (input.billingCycle === "ANNUAL" ? price.annualGhs : price.monthlyGhs);
+  }, 0);
+  const amount = uniqueKeys.reduce((sum, key) => {
+    const price = modulePriceMap.get(key)!;
+    const original = input.billingCycle === "ANNUAL" ? price.annualGhs : price.monthlyGhs;
+    return sum + (resolvePromotionPrice(original, promoMap.get(key))?.amountGhs ?? original);
   }, 0);
   const entitledModuleKeys = expandProductModuleKeys(uniqueKeys);
   const includedSeats = Math.max(...uniqueKeys.map((key) => modulePriceMap.get(key)!.includedSeats));
@@ -258,7 +270,7 @@ export async function createSelfServiceCartSubscription(input: {
       action: "subscription.self_service_cart_created",
       entityName: "Subscription",
       entityId: subscription.id,
-      metadata: { moduleKeys: uniqueKeys, billingCycle: input.billingCycle, amount, entitledModuleKeys },
+      metadata: { moduleKeys: uniqueKeys, billingCycle: input.billingCycle, amount, originalAmount, promotionSavings: originalAmount - amount, entitledModuleKeys },
     }, tx);
     return subscription;
   });

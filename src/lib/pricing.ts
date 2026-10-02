@@ -4,8 +4,20 @@ import { db } from "@/lib/db";
 import { computeRecommendedQuote, type ModulePrice, type PricingBundle } from "@/lib/pricing-shared";
 import { getModule, type BusinessModuleKey } from "@/platform/modules/registry";
 
+export async function getActivePromotionMap(targetType: "MODULE" | "BUNDLE", billingCycle: "MONTHLY" | "ANNUAL", now = new Date()) {
+  const rows = await db.pricingPromotion.findMany({
+    where: { targetType, billingCycle, active: true, startsAt: { lte: now }, endsAt: { gt: now } },
+    orderBy: { createdAt: "desc" },
+  });
+  return new Map(rows.map((row) => [row.targetKey, {
+    amountGhs: Number(row.amountGhs),
+    promotionName: row.name,
+    endsAt: row.endsAt,
+  }]));
+}
+
 export type { ModulePrice, PricingBundle, PricingBundleKey } from "@/lib/pricing-shared";
-export { computeRecommendedQuote, formatGhs } from "@/lib/pricing-shared";
+export { computeRecommendedQuote, formatGhs, resolvePromotionPrice } from "@/lib/pricing-shared";
 
 /**
  * Deliberately NOT wrapped in unstable_cache: this catalogue is also read

@@ -1,5 +1,15 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-02: Scheduled subscription promotions
+
+- **Scope**: Added a platform-operator Promotions section for scheduled module or suite discounts by monthly or annual billing cycle. Promotion prices must be below the live catalogue amount, overlapping windows for the same product/cycle are rejected under an advisory lock, and offers can be stopped early.
+- **Behavior**: Public pricing and organization Billing show active discounts with the catalogue amount struck through. Checkout rechecks offers server-side and snapshots the promotional amount only when creating a new pending self-service subscription. Module, suite, and module-cart checkout are covered. Existing subscriptions and automatic renewals continue using their stored amount.
+- **Important files**: `prisma/schema.prisma`, `prisma/migrations/20261002120000_pricing_promotions/migration.sql`, `src/lib/pricing.ts`, `src/platform/subscriptions/service.ts`, platform subscription admin and billing/pricing pages, `docs/BILLING_AND_SUBSCRIPTIONS.md`.
+- **Environment**: No new environment variable. The migration adds `PricingPromotion` and two PostgreSQL enum types.
+- **Validation**: Prisma schema validation and client generation passed on current `main`. `npm run lint` passed with 0 errors and 2 pre-existing hook-dependency warnings in offline sync and PWA provider files. Focused pricing, self-service UI, and editorial-punctuation tests passed (13 tests). `npm run build` passed, including TypeScript and 250 generated routes. `git diff --check` passed.
+- **Release gate**: Commit `512e3b9` is pushed to `codex/pricing-promotions`. The guarded real-PostgreSQL integration suite was not run locally because there is no `TEST_DATABASE_URL` or Docker executable. GitHub connector PR creation returned HTTP 403 (`Resource not accessible by integration`) and the local GitHub CLI is unauthenticated, so no PR or CI preview exists yet. No production migration or promotion data has been applied. Migration integration, production deploy, and post-deploy checks remain outstanding.
+- **Remaining risk**: `datetime-local` values are interpreted in the application's server timezone; the form labels values UTC and the current Ghana operating timezone is UTC. Confirm this remains true for deployment. Production migration and post-deploy checks remain outstanding.
+
 ## 2026-10-01: School academic-year rollover CI concurrency fix in progress
 
 - **Scope**: add a permission-checked review and class-mapping workflow to move active learners into a new academic year atomically, preserve source enrollment history, skip learners already placed in the target year, reject changed preview counts, enforce same-campus class mapping and class capacity, and record an audit event. Individual enrollment shares academic-year and class-row locks with the rollover batch to prevent capacity races.

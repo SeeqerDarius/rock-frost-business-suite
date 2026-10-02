@@ -12,7 +12,7 @@ import { configuredGatewayProviders } from "@/lib/payments";
 import { cancelPaystackRenewal, managePaystackSubscription, startGatewayPayment, startSelfServiceCheckout } from "./actions";
 import { ModuleCart } from "./module-cart";
 import { getOrganizationSeatUsage } from "@/platform/subscriptions/seats";
-import { formatGhs, listModulePrices, listPricingBundles } from "@/lib/pricing";
+import { formatGhs, getActivePromotionMap, listModulePrices, listPricingBundles, resolvePromotionPrice } from "@/lib/pricing";
 import { getModule } from "@/platform/modules/registry";
 import { primaryProductKey } from "@/platform/modules/product-groups";
 
@@ -48,7 +48,7 @@ export default async function OrganizationBillingPage({
   }
 
   const { error, "renewal-cancelled": renewalCancelled, product, type } = await searchParams;
-  const [subscriptions, seatUsage, modulePrices, pricingBundles] = await Promise.all([
+  const [subscriptions, seatUsage, modulePrices, pricingBundles, monthlyPromotions, annualPromotions, monthlyBundlePromotions, annualBundlePromotions] = await Promise.all([
     db.subscription.findMany({
       where: { organizationId: tenant.organizationId },
       include: { module: true, payments: { orderBy: { createdAt: "desc" }, take: 5 } },
@@ -57,6 +57,10 @@ export default async function OrganizationBillingPage({
     getOrganizationSeatUsage(tenant.organizationId),
     listModulePrices(),
     listPricingBundles(),
+    getActivePromotionMap("MODULE", "MONTHLY"),
+    getActivePromotionMap("MODULE", "ANNUAL"),
+    getActivePromotionMap("BUNDLE", "MONTHLY"),
+    getActivePromotionMap("BUNDLE", "ANNUAL"),
   ]);
   const availableProviders = configuredGatewayProviders();
   const subscribedProducts = new Set(subscriptions.flatMap((subscription) => subscription.entitledModuleKeys.length ? subscription.entitledModuleKeys.map(primaryProductKey) : [primaryProductKey(subscription.module.code)]));
@@ -88,7 +92,7 @@ export default async function OrganizationBillingPage({
           <ModuleCart
             products={selfServiceProducts.flatMap((price) => {
               const module_ = getModule(price.moduleKey);
-              return module_ ? [{ ...price, name: module_.name, description: module_.description }] : [];
+              return module_ ? [{ ...price, monthlyPromotion: resolvePromotionPrice(price.monthlyGhs, monthlyPromotions.get(price.moduleKey))?.amountGhs, annualPromotion: resolvePromotionPrice(price.annualGhs, annualPromotions.get(price.moduleKey))?.amountGhs, name: module_.name, description: module_.description }] : [];
             })}
             paystackAvailable={paystackAvailable}
           />
@@ -110,7 +114,7 @@ export default async function OrganizationBillingPage({
                 <form action={startSelfServiceCheckout} className="space-y-3">
                   <input type="hidden" name="productKey" value={bundle.key} />
                   <input type="hidden" name="productType" value="BUNDLE" />
-                  <label className="block space-y-1 text-sm"><span className="font-medium">Billing period</span><select name="billingCycle" className="h-10 w-full rounded-md border bg-background px-3" defaultValue="ANNUAL"><option value="MONTHLY">Monthly, {formatGhs(bundle.monthlyGhs)}</option><option value="ANNUAL">Annual, {formatGhs(bundle.monthlyGhs * 10)}</option></select></label>
+                  <label className="block space-y-1 text-sm"><span className="font-medium">Billing period</span><select name="billingCycle" className="h-10 w-full rounded-md border bg-background px-3" defaultValue="ANNUAL"><option value="MONTHLY">Monthly, {formatGhs(bundle.monthlyGhs)}{resolvePromotionPrice(bundle.monthlyGhs, monthlyBundlePromotions.get(bundle.key)) ? ` → ${formatGhs(resolvePromotionPrice(bundle.monthlyGhs, monthlyBundlePromotions.get(bundle.key))!.amountGhs)} promotion` : ""}</option><option value="ANNUAL">Annual, {formatGhs(bundle.monthlyGhs * 10)}{resolvePromotionPrice(bundle.monthlyGhs * 10, annualBundlePromotions.get(bundle.key)) ? ` → ${formatGhs(resolvePromotionPrice(bundle.monthlyGhs * 10, annualBundlePromotions.get(bundle.key))!.amountGhs)} promotion` : ""}</option></select></label>
                   <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="autoRenew" value="true" defaultChecked className="mt-1 size-4" /><span>Renew automatically using the card authorized at checkout.</span></label>
                   <Button type="submit" disabled={!paystackAvailable}>Continue to secure payment</Button>
                 </form>

@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { formatGhs, type ModulePrice } from "@/lib/pricing-shared";
 import { startCartCheckout } from "./actions";
 
-type CartProduct = ModulePrice & { name: string; description: string };
+type CartProduct = ModulePrice & { name: string; description: string; monthlyPromotion?: number; annualPromotion?: number };
 
 export function ModuleCart({ products, paystackAvailable }: { products: CartProduct[]; paystackAvailable: boolean }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -25,7 +25,7 @@ export function ModuleCart({ products, paystackAvailable }: { products: CartProd
 
   const selectedProducts = useMemo(() => products.filter((product) => selected.has(product.moduleKey)), [products, selected]);
   const total = useMemo(
-    () => selectedProducts.reduce((sum, product) => sum + (billingCycle === "ANNUAL" ? product.annualGhs : product.monthlyGhs), 0),
+    () => selectedProducts.reduce((sum, product) => sum + (billingCycle === "ANNUAL" ? product.annualPromotion ?? product.annualGhs : product.monthlyPromotion ?? product.monthlyGhs), 0),
     [selectedProducts, billingCycle],
   );
 
@@ -68,7 +68,7 @@ export function ModuleCart({ products, paystackAvailable }: { products: CartProd
                 <CardContent>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">
-                      {billingCycle === "ANNUAL" ? `${formatGhs(product.annualGhs)}/year` : `${formatGhs(product.monthlyGhs)}/month`}
+                      {billingCycle === "ANNUAL" ? product.annualPromotion ? <><del className="mr-1">{formatGhs(product.annualGhs)}</del>{formatGhs(product.annualPromotion)}/year <span className="text-primary">Promotion</span></> : `${formatGhs(product.annualGhs)}/year` : product.monthlyPromotion ? <><del className="mr-1">{formatGhs(product.monthlyGhs)}</del>{formatGhs(product.monthlyPromotion)}/month <span className="text-primary">Promotion</span></> : `${formatGhs(product.monthlyGhs)}/month`}
                     </span>
                     <span className="text-xs text-muted-foreground">Includes {product.includedSeats} seats</span>
                   </div>
