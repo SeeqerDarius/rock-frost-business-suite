@@ -1,5 +1,11 @@
 # Architecture & Tooling Decisions
 
+## 2026-10-05 - The CI dependency audit gates production (runtime) dependencies only; the shadcn CLI is a devDependency
+
+**Decision:** The CI security job now runs `npm audit --omit=dev --audit-level=high`, and `shadcn` (a component CLI whose only runtime-free use is the build-time `@import "shadcn/tailwind.css"` in `globals.css`, alongside the already-dev `tailwindcss`) moved from `dependencies` to `devDependencies` at the same `^4.13.1` range. The lockfile change only marks its subtree `"dev": true`; no versions changed.
+
+**Why:** GHSA-vfj7-8cjw-p6xm (`braces <= 3.0.3`, high, no patched release) entered the npm advisory feed after the last green `main` run and reaches the project only through build and lint tooling (`shadcn` → `fast-glob` → `micromatch`, `eslint-config-next`, `ts-morph`). None of it ships in the deployed server bundle, but the full-tree audit blocked every release. The owner chose to gate runtime dependencies, matching the existing guidance in `docs/OPERATIONS_AND_MONITORING.md`. Dev-tooling advisories should still be reviewed with a full `npm audit` on dependency changes; when a patched `braces` ships, update the lockfile.
+
 ## 2026-10-01 - Clear audited dependency fixes with a security-clean lockfile and preserve the single-worker integration contract on Vitest 4
 
 **Decision:** Resolve the CI security audit findings by upgrading Next.js and its matching ESLint config to 16.3.8, Sharp to 0.35.4, and Vitest to 4.1.11, then regenerate the lockfile and apply the remaining compatible transitive security fixes. Keep the PostgreSQL integration runner on the forks pool with `maxWorkers: 1`, `fileParallelism: false`, and `isolate: false`.

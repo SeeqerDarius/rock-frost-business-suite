@@ -4,6 +4,7 @@ const mockRequireCurrentTenant = vi.fn();
 const mockHasPermission = vi.fn();
 const mockIsPlatformOperator = vi.fn();
 const mockCreateModuleRequest = vi.fn();
+const mockCreateModuleRequestsForModules = vi.fn();
 const mockUpdateModuleRequest = vi.fn();
 const mockAddRequesterMessage = vi.fn();
 
@@ -21,6 +22,7 @@ vi.mock("@/lib/auth/permissions", () => ({
 }));
 vi.mock("@/platform/module-requests/service", () => ({
   createModuleRequest: mockCreateModuleRequest,
+  createModuleRequestsForModules: mockCreateModuleRequestsForModules,
   updateModuleRequest: mockUpdateModuleRequest,
   addRequesterMessage: mockAddRequesterMessage,
 }));
@@ -57,6 +59,9 @@ beforeEach(() => {
   mockHasPermission.mockReturnValue(true);
   mockIsPlatformOperator.mockReturnValue(true);
   mockCreateModuleRequest.mockResolvedValue({ id: "request-1" });
+  mockCreateModuleRequestsForModules.mockImplementation(async (input: { moduleIds: string[] }) =>
+    (input.moduleIds.length ? input.moduleIds : [null]).map((_, index) => ({ id: `request-${index + 1}` })),
+  );
   mockUpdateModuleRequest.mockResolvedValue({ id: "request-1" });
 });
 
@@ -64,7 +69,7 @@ describe("module request workflow", () => {
   it("blocks tenant submission without organization-management permission", async () => {
     mockHasPermission.mockReturnValue(false);
     await expect(submitModuleRequest(new FormData())).rejects.toThrow("/app/modules?error=forbidden");
-    expect(mockCreateModuleRequest).not.toHaveBeenCalled();
+    expect(mockCreateModuleRequestsForModules).not.toHaveBeenCalled();
   });
 
   it("requires an existing module for an enable request", async () => {
@@ -78,7 +83,44 @@ describe("module request workflow", () => {
         expectedUsers: "10",
       })),
     ).rejects.toThrow("module-required");
-    expect(mockCreateModuleRequest).not.toHaveBeenCalled();
+    expect(mockCreateModuleRequestsForModules).not.toHaveBeenCalled();
+  });
+
+  it("submits several selected modules at once, one request per module", async () => {
+    const formData = data({
+      type: "ENABLE_EXISTING",
+      title: "Enable operations modules",
+      businessJustification: "We are moving fleet and stock tracking onto the platform.",
+      customizationDetails: "",
+      expectedUsers: "8",
+    });
+    formData.append("moduleIds", "clhfleet000000000000000001");
+    formData.append("moduleIds", "clhinvt0000000000000000001");
+    formData.append("moduleIds", "clhfleet000000000000000001");
+
+    await expect(submitModuleRequest(formData)).rejects.toThrow("/app/module-requests?submitted=2");
+
+    expect(mockCreateModuleRequestsForModules).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: tenant.organizationId,
+      type: "ENABLE_EXISTING",
+      moduleIds: ["clhfleet000000000000000001", "clhinvt0000000000000000001"],
+      expectedUsers: 8,
+    }));
+  });
+
+  it("still accepts a legacy single moduleId field", async () => {
+    await expect(
+      submitModuleRequest(data({
+        type: "DEMO",
+        moduleId: "clhfleet000000000000000001",
+        title: "Fleet demo",
+        businessJustification: "We want to see the dispatch workflow.",
+      })),
+    ).rejects.toThrow("submitted=1");
+
+    expect(mockCreateModuleRequestsForModules).toHaveBeenCalledWith(expect.objectContaining({
+      moduleIds: ["clhfleet000000000000000001"],
+    }));
   });
 
   it("creates an organization-scoped custom module request", async () => {
@@ -93,10 +135,11 @@ describe("module request workflow", () => {
       })),
     ).rejects.toThrow("submitted=1");
 
-    expect(mockCreateModuleRequest).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockCreateModuleRequestsForModules).toHaveBeenCalledWith(expect.objectContaining({
       organizationId: tenant.organizationId,
       requestedById: tenant.userId,
       type: "CUSTOM_MODULE",
+      moduleIds: [],
       expectedUsers: 12,
     }));
   });
