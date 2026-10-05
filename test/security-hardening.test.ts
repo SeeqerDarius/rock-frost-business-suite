@@ -14,7 +14,7 @@ describe("security hardening", () => {
 
   it("runs dependency and Git-history secret scanning in CI", async () => {
     const ci = await read(".github/workflows/ci.yml");
-    expect(ci).toContain("npm audit --audit-level=high");
+    expect(ci).toContain("npm audit --omit=dev --audit-level=high");
     expect(ci).toContain("gitleaks/gitleaks-action@v2");
     expect(ci).toContain("fetch-depth: 0");
   });

@@ -95,4 +95,8 @@ Production dependencies are audited after installation. The July 2026
 hardening pass upgraded Next.js to 16.2.12 and NextAuth to 4.24.15, and pins
 patched PostCSS/Sharp transitive versions through `package.json` overrides.
 Run `npm audit --omit=dev` on every dependency change and document any accepted
-advisory with scope and compensating controls.
+advisory with scope and compensating controls. CI enforces this as
+`npm audit --omit=dev --audit-level=high`, so build and lint tooling must live
+in `devDependencies`. As of 2026-10-05 the full-tree audit reports the
+unpatched dev-only advisory GHSA-vfj7-8cjw-p6xm (`braces`, via `shadcn`,
+`eslint-config-next`, and `ts-morph`); refresh the lockfile once a fix ships.
