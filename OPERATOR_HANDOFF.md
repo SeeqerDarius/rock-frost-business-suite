@@ -7,6 +7,7 @@
 - **Migrations/environment**: none. Reuses the existing optional `ModuleRequest.moduleId`. Platform-operator request conversion (`/app/platform/requests`, `/app/platform/organizations`) is unchanged and still single-module.
 - **Validation**: `npm run lint` passed (0 errors, 2 pre-existing PWA hook-dependency warnings); `npx tsc --noEmit` passed; `npm run test` passed (177 files, 1,356 tests); `npm run build` passed (250 routes); `git diff --check` passed; no em dashes in the diff. Built from a clean worktree off `origin/main` so unrelated uncommitted work on `codex/seo-visibility-sprint` is not included.
 - **Remaining risks**: the authenticated tenant dialog was not visually verified because no tenant test session is available.
+- **Release state (blocked)**: PR [#49](https://github.com/SeeqerDarius/rock-frost-business-suite/pull/49), commit `91cff84`. CI run `37380595920`: `validate`, `integration` (disposable PostgreSQL) and Vercel preview passed; `security` failed at `npm audit --audit-level=high` on GHSA-vfj7-8cjw-p6xm (`braces <= 3.0.3`, no patched release) via `shadcn`/`fast-glob`/`micromatch`, `eslint-config-next`, and `ts-morph`. This is repo-wide and unrelated to the change; `main` will fail the same gate. Not merged or deployed pending an owner decision on how to clear the gate.
 
 ## 2026-10-01: School academic-year rollover CI concurrency fix in progress
 
