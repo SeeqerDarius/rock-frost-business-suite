@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-05: Multi-module selection on tenant module requests
+
+- **Scope**: the `/app/module-requests` "New request" dialog now uses a checklist so an organization administrator can select several existing modules in one submission. The server creates one `ModuleRequest` per selected module in a single transaction (all or none), appending the module name to each title when more than one is selected, so operators still review and approve-and-enable each module independently. No modules selected still creates one module-less request. Demo/enable/customize types require at least one module. The legacy single `moduleId` form field is still accepted. The success banner reports how many requests were created.
+- **Important files**: `src/platform/module-requests/service.ts` (`createModuleRequestsForModules`, `moduleScopedTitle`, shared transactional helper), `src/app/app/(overview)/module-requests/actions.ts`, `src/app/app/(overview)/module-requests/page.tsx`, `test/module-request-workflow.test.ts`, new `test/module-request-multi-select.test.ts`, `docs/MODULE_REQUESTS_AND_CUSTOMIZATION.md`.
+- **Migrations/environment**: none. Reuses the existing optional `ModuleRequest.moduleId`. Platform-operator request conversion (`/app/platform/requests`, `/app/platform/organizations`) is unchanged and still single-module.
+- **Validation**: `npm run lint` passed (0 errors, 2 pre-existing PWA hook-dependency warnings); `npx tsc --noEmit` passed; `npm run test` passed (177 files, 1,356 tests); `npm run build` passed (250 routes); `git diff --check` passed; no em dashes in the diff. Built from a clean worktree off `origin/main` so unrelated uncommitted work on `codex/seo-visibility-sprint` is not included.
+- **Remaining risks**: the authenticated tenant dialog was not visually verified because no tenant test session is available.
+
 ## 2026-10-01: School academic-year rollover CI concurrency fix in progress
 
 - **Scope**: add a permission-checked review and class-mapping workflow to move active learners into a new academic year atomically, preserve source enrollment history, skip learners already placed in the target year, reject changed preview counts, enforce same-campus class mapping and class capacity, and record an audit event. Individual enrollment shares academic-year and class-row locks with the rollover batch to prevent capacity races.

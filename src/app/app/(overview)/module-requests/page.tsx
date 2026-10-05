@@ -25,7 +25,7 @@ import { catalogueModuleKeys } from "@/platform/modules/registry";
 
 const ERRORS: Record<string, string> = {
   invalid: "Check the request details and try again.",
-  "module-required": "Select the existing module this request concerns.",
+  "module-required": "Select at least one existing module this request concerns.",
   "invalid-message": "Enter a valid message.",
 };
 
@@ -47,6 +47,7 @@ export default async function ModuleRequestsPage({
   const query = await searchParams;
   const view: View = isView(query.view) ? query.view : "open";
   const search = (query.q ?? "").trim();
+  const submittedCount = Number.parseInt(query.submitted ?? "", 10) || 1;
 
   const terminalStatuses = Array.from(TERMINAL_MODULE_REQUEST_STATUSES) as ModuleRequestStatus[];
   const statusFilter: Prisma.ModuleRequestWhereInput["status"] =
@@ -115,15 +116,24 @@ export default async function ModuleRequestsPage({
           ))}
         </select>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="moduleId">Existing module, if applicable</Label>
-        <select id="moduleId" name="moduleId" defaultValue="" className="h-9 w-full rounded-md border bg-transparent px-3 text-sm">
-          <option value="">Not applicable / new module</option>
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium">Existing modules, if applicable</legend>
+        <p className="text-xs text-muted-foreground">
+          Select every module you need. Each one is tracked as its own request so it can be approved separately.
+          Leave all unchecked for a new module, integration, or migration.
+        </p>
+        <div className="grid max-h-48 gap-1 overflow-y-auto rounded-md border p-2 sm:grid-cols-2">
           {modules.map((module_) => (
-            <option key={module_.id} value={module_.id}>{module_.name}</option>
+            <label
+              key={module_.id}
+              className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted has-[:checked]:bg-muted"
+            >
+              <input type="checkbox" name="moduleIds" value={module_.id} className="size-4 accent-primary" />
+              {module_.name}
+            </label>
           ))}
-        </select>
-      </div>
+        </div>
+      </fieldset>
       <div className="space-y-2">
         <Label htmlFor="title">Request title</Label>
         <Input id="title" name="title" required placeholder="What capability does your organization need?" />
@@ -160,8 +170,12 @@ export default async function ModuleRequestsPage({
 
       {query.submitted ? (
         <Alert>
-          <AlertTitle>Request submitted</AlertTitle>
-          <AlertDescription>Rock Frost operators can now review, assign, and respond to it.</AlertDescription>
+          <AlertTitle>{submittedCount > 1 ? `${submittedCount} requests submitted` : "Request submitted"}</AlertTitle>
+          <AlertDescription>
+            {submittedCount > 1
+              ? "One request was created for each selected module. Rock Frost operators can now review, assign, and respond to them."
+              : "Rock Frost operators can now review, assign, and respond to it."}
+          </AlertDescription>
         </Alert>
       ) : null}
       {query.message ? (

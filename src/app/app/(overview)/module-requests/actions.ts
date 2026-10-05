@@ -6,7 +6,9 @@ import { z } from "zod";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { cuid, longText, parseWithSchema, positiveInt, shortText } from "@/lib/validation";
-import { addRequesterMessage, createModuleRequest } from "@/platform/module-requests/service";
+import { addRequesterMessage, createModuleRequestsForModules } from "@/platform/module-requests/service";
+
+const MAX_MODULES_PER_REQUEST = 30;
 
 const requestSchema = z.object({
   type: z.enum([
@@ -17,7 +19,7 @@ const requestSchema = z.object({
     "INTEGRATION",
     "DATA_MIGRATION",
   ]),
-  moduleId: z.union([cuid, z.literal("")]).optional(),
+  moduleIds: z.array(cuid).max(MAX_MODULES_PER_REQUEST),
   title: shortText,
   businessJustification: longText,
   customizationDetails: longText.optional(),
@@ -41,7 +43,14 @@ export async function submitModuleRequest(formData: FormData): Promise<void> {
 
   const parsed = parseWithSchema(requestSchema, {
     type: String(formData.get("type") ?? "").trim(),
-    moduleId: String(formData.get("moduleId") ?? "").trim(),
+    // The form posts one `moduleIds` entry per checked module; `moduleId` keeps older single-select posts working.
+    moduleIds: [
+      ...new Set(
+        [...formData.getAll("moduleIds"), formData.get("moduleId")]
+          .map((value) => String(value ?? "").trim())
+          .filter(Boolean),
+      ),
+    ],
     title: String(formData.get("title") ?? "").trim(),
     businessJustification: String(formData.get("businessJustification") ?? "").trim(),
     customizationDetails: String(formData.get("customizationDetails") ?? "").trim() || undefined,
@@ -51,15 +60,15 @@ export async function submitModuleRequest(formData: FormData): Promise<void> {
 
   const needsExistingModule =
     parsed.data.type === "DEMO" || parsed.data.type === "ENABLE_EXISTING" || parsed.data.type === "CUSTOMIZE_EXISTING";
-  if (needsExistingModule && !parsed.data.moduleId) {
+  if (needsExistingModule && parsed.data.moduleIds.length === 0) {
     redirect("/app/module-requests?error=module-required");
   }
 
-  await createModuleRequest({
+  const requests = await createModuleRequestsForModules({
     organizationId: tenant.organizationId,
     requestedById: tenant.userId,
     type: parsed.data.type,
-    moduleId: parsed.data.moduleId || null,
+    moduleIds: parsed.data.moduleIds,
     title: parsed.data.title,
     businessJustification: parsed.data.businessJustification,
     customizationDetails: parsed.data.customizationDetails || null,
@@ -71,7 +80,7 @@ export async function submitModuleRequest(formData: FormData): Promise<void> {
 
   revalidatePath("/app/module-requests");
   revalidatePath("/app/platform/requests");
-  redirect("/app/module-requests?submitted=1");
+  redirect(`/app/module-requests?submitted=${requests.length}`);
 }
 
 export async function addModuleRequestMessage(formData: FormData): Promise<void> {
