@@ -46,6 +46,7 @@ type SectionKey = (typeof SECTIONS)[number][0];
 const ERRORS: Record<string, string> = {
   invalid: "Check the submitted values.",
   "tenant-code": "That tenant code is already assigned to another organization.",
+  "currency-locked": "The base currency cannot change because this organization already has accounting records in its current currency.",
   "platform-anchor": "This organization contains an active system Super Admin and is protected from destructive lifecycle changes.",
   confirmation: "The tenant-code confirmation did not match.",
   "wrong-password": "Your current password was incorrect.",
@@ -73,6 +74,7 @@ const NOTICE_SECTIONS: Record<string, SectionKey> = {
 
 const ERROR_SECTIONS: Record<string, SectionKey> = {
   "tenant-code": "profile",
+  "currency-locked": "profile",
   "showcase-invalid": "profile",
   "showcase-logo": "profile",
   invitation: "members",

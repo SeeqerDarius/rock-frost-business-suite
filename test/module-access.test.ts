@@ -178,7 +178,8 @@ describe("module authorization source coverage", () => {
     // staff-facing Portal Access page, both requireModuleAccess("school").
     // 139, up from 138: the School fee receipt page requires School access.
     // 140, up from 139: the School academic-year rollover page requires School access.
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(140);
+    // 141, up from 140: the Accounting Exchange Rates page, requireModuleAccess("accounting").
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(141);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
     // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
     // all Hostel Server Actions, same shape as School's) joins the sweep
@@ -200,7 +201,8 @@ describe("module authorization source coverage", () => {
     // 68, up from 67: the bank-reconciliation workspace's actions.ts, requireModuleAccess("accounting").
     // 69 adds School Staff invitation and access-management actions.
     // 70, up from 69: the School Portal Access actions.ts (guardian/student portal invites), requireModuleAccess("school").
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(70);
+    // 71, up from 70: the Accounting Exchange Rates actions.ts, requireModuleAccess("accounting").
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(71);
 
     for (const { moduleKey, filePath } of guardedFiles) {
       const source = readFileSync(filePath, "utf8");
