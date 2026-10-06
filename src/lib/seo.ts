@@ -4,7 +4,7 @@ export const SITE_URL = "https://www.rockfrostgroup.com";
 export const SITE_NAME = "Rock Frost Business Suite";
 export const COMPANY_NAME = "Rock Frost Technologies";
 export const DEFAULT_DESCRIPTION =
-  "Run finance, fleet, sales, people, stock and industry operations with secure, modular business management software built for Ghanaian organizations.";
+  "Modular business software for Ghana: accounting, HR and payroll, inventory, POS and CRM, plus school, hospital, pharmacy, hotel and fleet management.";
 
 type ModuleSeoContent = {
   audience: string;
@@ -154,11 +154,50 @@ export const MODULE_SEO = {
     },
   },
   accounting: {
-    shortName: "Accounting Software",
+    shortName: "Accounting Software Ghana",
     description:
-      "Manage ledgers, invoices, expenses, journal entries, and financial statements with organization-scoped accounting software.",
-    keywords: ["accounting software Ghana", "business accounting system Africa", "invoice and expense software"],
-    features: ["Chart of accounts and ledgers", "Invoices and payment tracking", "Expense management", "Financial statements and reports"],
+      "Ghana VAT-ready accounting software: ledgers, invoices, bills, bank reconciliation, budgets, and financial statements connected to your operations.",
+    keywords: ["accounting software Ghana", "VAT accounting software Ghana", "bookkeeping software Ghana", "business accounting system Africa", "invoice and expense software"],
+    features: ["Chart of accounts, journals, and general ledger", "Invoices, bills, credit notes, and payment tracking", "Ghana VAT, NHIL, GETFund, and withholding tax codes", "Bank reconciliation, budgets, and financial statements"],
+    content: {
+      audience: "Built for Ghanaian businesses, schools, clinics, hotels, and multi-department organizations that want their books kept in Ghana cedis, with Ghana tax codes, and fed directly by the operations that earn the revenue.",
+      outcomes: [
+        { title: "Keep the books in one place", description: "Run the chart of accounts, journals, general ledger, customer invoices, supplier bills, and credit notes from one organization-scoped workspace." },
+        { title: "Handle Ghana tax properly", description: "Use effective-dated tax codes for standard-rated, zero-rated, and exempt supplies, with VAT, NHIL, and GETFund rates, plus withholding tax by goods, services, or rent." },
+        { title: "Stop re-entering operational revenue", description: "Confirmed activity from enabled modules posts into Accounting automatically, so sales, fees, and charges reach the ledger without a second data-entry step." },
+      ],
+      workflows: [
+        "Load the Ghana SME chart of accounts or build your own",
+        "Issue multi-line invoices, record supplier bills, and settle credit notes",
+        "Import a bank statement CSV and reconcile it against the ledger",
+        "Set up recurring journal entries, invoices, and bills",
+        "Route journal entries through approval before they post",
+        "Review the trial balance, general ledger, ageing, cash-flow statement, and budgets",
+      ],
+      faqs: [
+        { question: "Does Rock Frost Accounting support Ghana VAT?", answer: "Yes. Tax codes carry VAT, NHIL, and GETFund rates with effective dates, and cover standard-rated, zero-rated, and exempt supplies. Withholding tax can be configured by goods, services, or rent." },
+        { question: "Can I use Accounting on its own?", answer: "Yes. Accounting is a module you can subscribe to by itself. Other modules are optional, and when you add them their confirmed revenue posts into Accounting automatically." },
+        { question: "Can our existing accountant work in it?", answer: "Yes. Organization roles and module permissions let you give an internal or external accountant access to Accounting without exposing other departments' data." },
+      ],
+      ghana: [
+        "Amounts are recorded and reported in Ghana cedis (GH₵) by default.",
+        "A one-click Ghana SME chart of accounts gives a familiar starting structure.",
+        "VAT, NHIL, GETFund, and withholding tax are configured as dated tax codes, so a rate change does not rewrite historical entries.",
+      ],
+      integrations: [
+        { module: "pos", note: "Point of Sale sales post into Accounting as POS Revenue." },
+        { module: "school", note: "School fee payments post into Accounting as School Revenue." },
+        { module: "hotel", note: "Settled guest folios post into Accounting as Hotel Revenue." },
+        { module: "pharmacy", note: "Pharmacy sales post into Accounting as Pharmacy Revenue." },
+        { module: "inventory", note: "Approved supplier invoices from Inventory and Procurement create payables in Accounting." },
+        { module: "fleet", note: "Confirmed fleet payments post into Accounting as Fleet Revenue." },
+      ],
+      security: [
+        "Ledgers, invoices, and reports are scoped to your organization only.",
+        "Closed periods can be locked so posted history cannot be changed after the books are closed.",
+        "Permissions separate who can record transactions, approve journals, and view reports.",
+      ],
+    },
   },
   hr: {
     shortName: "HR and Payroll Software Ghana",

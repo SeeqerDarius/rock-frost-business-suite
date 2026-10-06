@@ -111,6 +111,39 @@ characters; both are now a single, non-redundant title and a description
 under 160 characters. CRM's title was expanded from the bare "CRM Software"
 past the template suffix to describe who it is for.
 
+### Multi-module positioning (2026-10-06)
+
+Search summaries (including AI answers comparing Rock Frost Accounting to
+standalone accounting packages) described the suite as aimed at "logistics
+and consumer finance". The cause was public copy, not crawling: the module
+registry lists Fleet and Installment first, so every public list, the
+`/industries` page (only transport, retail and consumer finance), the default
+description, the homepage spotlight and the share image led with Fleet. The
+owner asked for the suite to be presented as broad. Now:
+
+- `PUBLIC_MODULE_ORDER` in `src/platform/modules/registry.ts` sets the order
+  for public surfaces (homepage grid, `/modules`, pricing, contact, sitemap,
+  module-page related links): cross-industry modules first (Accounting, HR,
+  Inventory, POS, CRM), then industry suites. In-app navigation keeps the
+  registry order.
+- `DEFAULT_DESCRIPTION`, the homepage hero, the Company portfolio card, the
+  homepage FAQ, `/solutions` and the share image list Accounting first and
+  name the industry suites together. The homepage spotlights Accounting,
+  School and Pharmacy.
+- `/industries` covers eight sectors (Education, Healthcare, Hospitality,
+  Retail & Distribution, Professional Services, Transport & Logistics,
+  Installment Sales, Multi-department), each linking to its modules.
+- The Accounting module page has a full content block (Ghana VAT, NHIL,
+  GETFund and withholding tax codes, verified revenue integrations, period
+  locking), and `/resources/accounting-software-ghana-guide` targets
+  accounting buyer searches. All claims were checked against
+  `src/modules/accounting/tax-service.ts`, `docs/ACCOUNTING_MODULE.md` and
+  `MODULE_REVENUE_ACCOUNTS`.
+
+The Fleet pilot CTA and Fleet-specific contact flow stay in place for
+Fleet-intent visitors; only the site-wide emphasis changed. Search results and
+AI summaries update only after recrawl.
+
 `src/app/opengraph-image.tsx` provides the 1200×630 social-sharing image.
 `src/app/sitemap.ts` and `src/app/robots.ts` generate their production
 responses; there must not be competing static copies in `public/`.

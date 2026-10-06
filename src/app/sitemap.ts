@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL, MODULE_SEO } from "@/lib/seo";
-import { catalogueModuleKeys } from "@/platform/modules/registry";
+import { publicCatalogueModuleKeys } from "@/platform/modules/registry";
 import { RESOURCE_ARTICLES } from "@/lib/resource-articles";
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -26,7 +26,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: page.changeFrequency,
       priority: page.priority,
     })),
-    ...catalogueModuleKeys.filter((key) => key in MODULE_SEO).map((key) => ({
+    ...publicCatalogueModuleKeys.filter((key) => key in MODULE_SEO).map((key) => ({
       url: `${SITE_URL}/modules/${key}`,
       lastModified,
       changeFrequency: "monthly" as const,

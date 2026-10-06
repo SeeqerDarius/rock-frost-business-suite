@@ -22,6 +22,50 @@ export type ResourceArticle = {
 
 export const RESOURCE_ARTICLES: readonly ResourceArticle[] = [
   {
+    slug: "accounting-software-ghana-guide",
+    title: "Choosing Accounting Software for a Ghanaian Business",
+    description: "What to look for in accounting software in Ghana: VAT, NHIL and GETFund codes, withholding tax, bank reconciliation, and revenue from your operations.",
+    eyebrow: "Finance",
+    dek: "The features that matter for Ghanaian books, and why your accounting system should hear about sales without anyone retyping them.",
+    relatedModuleKey: "accounting",
+    relatedLabel: "Explore Accounting",
+    sections: [
+      {
+        heading: "Generic bookkeeping is only half the job",
+        body: [
+          "Most accounting packages handle a chart of accounts, invoices and reports well. The harder part for a Ghanaian business is everything around the ledger: applying VAT, NHIL and GETFund correctly, deducting withholding tax on the right supplies, and getting revenue from the till, the school fees office or the hotel front desk into the books without someone keying it in a second time.",
+        ],
+      },
+      {
+        heading: "What to check before choosing accounting software",
+        list: [
+          "Tax codes that carry VAT, NHIL and GETFund rates separately, with effective dates so a rate change does not rewrite past entries.",
+          "Support for standard-rated, zero-rated and exempt supplies, and withholding tax that varies by goods, services or rent.",
+          "Books kept in Ghana cedis (GH₵) by default, with a chart of accounts that suits a Ghanaian SME.",
+          "Bank reconciliation that can import a statement file instead of ticking lines by hand.",
+          "Journal approval and period locking, so posted history cannot quietly change after the books are closed.",
+          "A direct connection to the systems that earn revenue, rather than a monthly export and re-entry.",
+        ],
+      },
+      {
+        heading: "Standalone ledger or connected modules",
+        body: [
+          "A standalone accounting package suits a business whose only system is its ledger. Once sales, fees, stock or payroll run in other software, the ledger becomes the place where numbers are retyped and reconciled by hand. A connected platform removes that step: each operational module posts its confirmed activity into Accounting as it happens.",
+        ],
+      },
+      {
+        heading: "How Rock Frost Accounting handles this",
+        body: [
+          "Rock Frost Accounting includes a one-click Ghana SME chart of accounts, effective-dated tax codes with VAT, NHIL, GETFund and withholding tax, multi-line invoices, supplier bills, credit notes, CSV bank statement reconciliation, recurring entries, journal approval, period locking, budgets, and the trial balance, general ledger, ageing and cash-flow reports. It works on its own, and when you add modules such as Point of Sale, School, Hotel, Pharmacy or Inventory and Procurement, their confirmed revenue and payables post into Accounting automatically.",
+        ],
+      },
+    ],
+    faqs: [
+      { question: "Can I subscribe to Accounting without other modules?", answer: "Yes. Accounting is its own module. Other modules are optional and connect to it automatically when added." },
+      { question: "Does it handle Ghana VAT?", answer: "Yes. Tax codes carry VAT, NHIL and GETFund rates with effective dates, and cover standard-rated, zero-rated and exempt supplies." },
+    ],
+  },
+  {
     slug: "hotel-management-software-ghana",
     title: "Best Hotel Management Software for Ghanaian Hotels",
     description: "What to look for in hotel management software in Ghana, from real-time room availability to folio and housekeeping controls.",
