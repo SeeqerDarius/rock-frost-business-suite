@@ -19,6 +19,8 @@ import { CurrencyFields, SettlementRateField } from "@/components/forms/currency
 import { baseTotal } from "@/modules/accounting/multi-currency";
 import { listAccounts, listBills, listContacts, listAccountingAttachmentsByType } from "@/modules/accounting/service";
 import { listTaxCodes } from "@/modules/accounting/tax-service";
+import { listApplicableRules } from "@/modules/tax/service";
+import { db } from "@/lib/db";
 import { createNewBill, approveExistingBill, payBill, voidExistingBill, uploadBillAttachment, deleteBillAttachmentAction } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -30,6 +32,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-payment": "That payment amount is invalid or exceeds the remaining balance.",
   "not-found": "That bill, expense account, or contact could not be found.",
   "period-closed": "The transaction date is in a closed accounting period.",
+  "tax-rule": "That tax rule could not be applied on the document date. Check its rates and effective dates in Tax and Compliance.",
   "fx-rate": "No exchange rate is recorded for that currency and date. Record one under Exchange Rates or enter a rate.",
   "missing-file": "Choose a file to attach.",
   "invalid-attachment": "That file must be a JPEG, PNG, WEBP, or PDF under 3 MB.",
@@ -56,6 +59,8 @@ export default async function AccountingBillsPage({
   const currency = format.presentation.currency;
   const money = (value: Parameters<typeof format.money>[0], documentCurrency?: string | null) => format.money(value, documentCurrency ?? currency);
   const [bills, accounts, taxCodes, contacts, attachments] = await Promise.all([listBills(tenant.organizationId), listAccounts(tenant.organizationId), listTaxCodes(tenant.organizationId), listContacts(tenant.organizationId), listAccountingAttachmentsByType(tenant.organizationId, "BILL")]);
+  const [taxRules, pricing] = await Promise.all([listApplicableRules(tenant.organizationId), db.organization.findUnique({ where: { id: tenant.organizationId }, select: { pricesIncludeTax: true } })]);
+  const pricesIncludeTax = pricing?.pricesIncludeTax ?? false;
   const attachmentsByBillId = new Map<string, typeof attachments>();
   for (const attachment of attachments) {
     const list = attachmentsByBillId.get(attachment.entityId) ?? [];
@@ -112,8 +117,16 @@ export default async function AccountingBillsPage({
               <Label htmlFor="taxCodeId">Tax treatment</Label>
               <select id="taxCodeId" name="taxCodeId" className="h-10 w-full rounded-md border bg-background px-3">
                 <option value="">No tax</option>
-                {taxCodes.filter((taxCode) => taxCode.active).map((taxCode) => <option key={taxCode.id} value={taxCode.id}>{taxCode.code}: {taxCode.name} ({Number(taxCode.vatRate) + Number(taxCode.nhilRate) + Number(taxCode.getfundRate)}%)</option>)}
+                {taxRules.length ? (
+                  <optgroup label="Tax rules">
+                    {taxRules.map((rule) => <option key={rule.id} value={`rule:${rule.id}`}>{rule.code}: {rule.name}</option>)}
+                  </optgroup>
+                ) : null}
+                <optgroup label="Tax codes">
+                  {taxCodes.filter((taxCode) => taxCode.active).map((taxCode) => <option key={taxCode.id} value={taxCode.id}>{taxCode.code}: {taxCode.name} ({Number(taxCode.vatRate) + Number(taxCode.nhilRate) + Number(taxCode.getfundRate)}%)</option>)}
+                </optgroup>
               </select>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="pricesIncludeTax" defaultChecked={pricesIncludeTax} className="size-4" />Line prices include tax (applies to tax rules)</label>
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
@@ -170,7 +183,7 @@ export default async function AccountingBillsPage({
                     </details>
                   ) : null}
                 </TableCell>
-                <TableCell className="text-muted-foreground"><div>{money(bill.amount, bill.currency)}</div>{bill.currency && bill.currency !== currency ? <div className="text-xs">{money(baseTotal(bill))} at {format.number(bill.exchangeRate.toString(), { maximumFractionDigits: 6 })}</div> : null}{bill.taxCode ? <div className="text-xs">Tax {money(bill.vatAmount.plus(bill.nhilAmount).plus(bill.getfundAmount), bill.currency)} ({bill.taxCode.code})</div> : null}</TableCell>
+                <TableCell className="text-muted-foreground"><div>{money(bill.amount, bill.currency)}</div>{bill.currency && bill.currency !== currency ? <div className="text-xs">{money(baseTotal(bill))} at {format.number(bill.exchangeRate.toString(), { maximumFractionDigits: 6 })}</div> : null}{bill.taxAmount.greaterThan(0) ? <div className="text-xs">Tax {money(bill.taxAmount, bill.currency)}{bill.taxCode ? ` (${bill.taxCode.code})` : bill.taxTreatment ? " (tax rule)" : ""}</div> : null}</TableCell>
                 <TableCell className="text-muted-foreground">{money(bill.amountPaid, bill.currency)}</TableCell>
                 <TableCell className="text-muted-foreground">{format.date(bill.dueDate)}</TableCell>
                 <TableCell>

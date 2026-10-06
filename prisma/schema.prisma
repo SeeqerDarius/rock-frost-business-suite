@@ -489,6 +489,8 @@ model User {
   schoolConductReported           SchoolConductRecord[]            @relation("SchoolConductReportedBy")
   schoolConductReviewed           SchoolConductRecord[]            @relation("SchoolConductReviewedBy")
   exchangeRatesRecorded           ExchangeRate[]
+  taxRatesCreated                 TaxRate[]                        @relation("TaxRateCreatedBy")
+  taxRulesCreated                 TaxRule[]                        @relation("TaxRuleCreatedBy")
 }
 
 enum TwoFactorMethod {
@@ -651,6 +653,15 @@ model Organization {
   fleetPayments                   FleetPayment[]
   workAndPayContracts             FleetWorkAndPayContract[]
   exchangeRates                   ExchangeRate[]
+  taxJurisdictions                TaxJurisdiction[]
+  taxAuthorities                  TaxAuthority[]
+  taxCategories                   TaxCategory[]
+  taxRates                        TaxRate[]
+  taxRules                        TaxRule[]
+  taxRegistrations                TaxRegistration[]
+  taxExemptions                   TaxExemption[]
+  documentTaxLines                DocumentTaxLine[]
+  taxLedgerEntries                TaxLedgerEntry[]
   settlementProfile               SettlementProfile?
   customerFeedback                CustomerFeedback[]
   operationalPayments             OperationalPayment[]
@@ -3062,6 +3073,12 @@ model AccountingInvoice {
   exchangeRateDate   DateTime?
   exchangeRateSource String?
   baseAmount         Decimal?                @db.Decimal(14, 2)
+  /// Set when the document's tax comes from the tax engine (a TaxRule) rather
+  /// than a legacy AccountingTaxCode. Its components are in DocumentTaxLine
+  /// and the total in taxAmount; vat/nhil/getfund columns stay zero.
+  taxRuleId          String?
+  taxTreatment       TaxTreatment?
+  taxAmount          Decimal                 @default(0) @db.Decimal(14, 2)
   /// Base-currency carrying amount already relieved by payments and credits;
   /// the final settlement relieves exactly the remainder, so no rounding
   /// residue is left on the receivable/payable.
@@ -3134,6 +3151,7 @@ model AccountingContact {
   currency                String?
   countryCode             String?
   vatNumber               String?
+  taxExemptions           TaxExemption[]
   fleetOwnerId            String?
   procurementVendorId     String?
   crmContactId            String?
@@ -3181,6 +3199,12 @@ model AccountingBill {
   exchangeRateDate   DateTime?
   exchangeRateSource String?
   baseAmount         Decimal?             @db.Decimal(14, 2)
+  /// Set when the document's tax comes from the tax engine (a TaxRule) rather
+  /// than a legacy AccountingTaxCode. Its components are in DocumentTaxLine
+  /// and the total in taxAmount; vat/nhil/getfund columns stay zero.
+  taxRuleId          String?
+  taxTreatment       TaxTreatment?
+  taxAmount          Decimal              @default(0) @db.Decimal(14, 2)
   /// Base-currency carrying amount already relieved by payments and credits;
   /// the final settlement relieves exactly the remainder, so no rounding
   /// residue is left on the receivable/payable.
@@ -7768,4 +7792,302 @@ model UserPresence {
   activeConversationId String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// International tax engine (2026-10-06). Tenant-scoped, effective-dated, and
+// versioned. Jurisdiction packs seed these records; administrators can review
+// and change them. Rates and rules are never edited in place once used: a
+// change creates a new version, and documents keep immutable tax-line
+// snapshots, so historical transactions never recalculate.
+// ---------------------------------------------------------------------------
+
+enum TaxJurisdictionLevel {
+  SUPRANATIONAL
+  COUNTRY
+  STATE
+  COUNTY
+  CITY
+  DISTRICT
+}
+
+enum TaxKind {
+  VAT
+  GST
+  SALES
+  USE
+  LEVY
+  EXCISE
+  WITHHOLDING
+  PAYROLL
+  INCOME
+  OTHER
+}
+
+enum TaxTreatment {
+  STANDARD
+  REDUCED
+  ZERO_RATED
+  EXEMPT
+  REVERSE_CHARGE
+  OUT_OF_SCOPE
+}
+
+enum TaxRegistrationStatus {
+  NOT_REGISTERED
+  MONITORING
+  REGISTERED
+  DEREGISTERED
+}
+
+enum TaxFilingFrequency {
+  MONTHLY
+  QUARTERLY
+  SEMI_ANNUAL
+  ANNUAL
+}
+
+enum TaxExemptionType {
+  RESALE
+  GOVERNMENT
+  NON_PROFIT
+  DIPLOMATIC
+  EXPORT
+  OTHER
+}
+
+enum TaxDocumentType {
+  INVOICE
+  BILL
+  CREDIT_NOTE
+}
+
+model TaxJurisdiction {
+  id             String               @id @default(cuid())
+  organizationId String
+  /// GH, US, US-GA, US-GA-FULTON, EU, EU-DE, GB, CH, NO ...
+  code           String
+  name           String
+  level          TaxJurisdictionLevel
+  countryCode    String?
+  parentId       String?
+  packKey        String?
+  active         Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent        TaxJurisdiction?  @relation("TaxJurisdictionHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children      TaxJurisdiction[] @relation("TaxJurisdictionHierarchy")
+  authorities   TaxAuthority[]
+  rates         TaxRate[]
+  rules         TaxRule[]
+  registrations TaxRegistration[]
+  exemptions    TaxExemption[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, level])
+}
+
+model TaxAuthority {
+  id             String   @id @default(cuid())
+  organizationId String
+  jurisdictionId String
+  code           String
+  name           String
+  website        String?
+  createdAt      DateTime @default(now())
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jurisdiction TaxJurisdiction @relation(fields: [jurisdictionId], references: [id], onDelete: Cascade)
+  rates        TaxRate[]
+
+  @@unique([organizationId, code])
+}
+
+model TaxCategory {
+  id             String   @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  description    String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rules        TaxRule[]
+
+  @@unique([organizationId, code])
+}
+
+/// One tax component (e.g. Ghana VAT, Georgia state sales tax, German
+/// standard VAT). A rate change is a new version row; the previous version is
+/// closed with effectiveTo and never edited.
+model TaxRate {
+  id                String    @id @default(cuid())
+  organizationId    String
+  jurisdictionId    String
+  authorityId       String?
+  code              String
+  name              String
+  taxKind           TaxKind
+  rate              Decimal   @db.Decimal(9, 6)
+  compound          Boolean   @default(false)
+  recoverable       Boolean   @default(true)
+  effectiveFrom     DateTime
+  effectiveTo       DateTime?
+  version           Int       @default(1)
+  supersedesId      String?
+  sourceReference   String?
+  outputAccountCode String?
+  inputAccountCode  String?
+  createdById       String?
+  createdAt         DateTime  @default(now())
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jurisdiction TaxJurisdiction @relation(fields: [jurisdictionId], references: [id], onDelete: Restrict)
+  authority    TaxAuthority?   @relation(fields: [authorityId], references: [id], onDelete: SetNull)
+  createdBy    User?           @relation("TaxRateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, code, version])
+  @@index([organizationId, code, effectiveFrom])
+}
+
+/// Selects which rate components apply to a jurisdiction, category, and
+/// treatment. Versioned like TaxRate.
+model TaxRule {
+  id              String       @id @default(cuid())
+  organizationId  String
+  code            String
+  name            String
+  jurisdictionId  String
+  categoryId      String?
+  treatment       TaxTreatment @default(STANDARD)
+  /// TaxRate codes; the version effective on the document date is used.
+  rateCodes       String[]
+  effectiveFrom   DateTime
+  effectiveTo     DateTime?
+  version         Int          @default(1)
+  supersedesId    String?
+  active          Boolean      @default(true)
+  sourceReference String?
+  createdById     String?
+  createdAt       DateTime     @default(now())
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jurisdiction TaxJurisdiction @relation(fields: [jurisdictionId], references: [id], onDelete: Restrict)
+  category     TaxCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdBy    User?           @relation("TaxRuleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, code, version])
+  @@index([organizationId, active, effectiveFrom])
+}
+
+/// Registration, nexus, and collection status per jurisdiction. Statuses are
+/// administrator-entered facts; the system does not make legal nexus
+/// determinations.
+model TaxRegistration {
+  id                 String                @id @default(cuid())
+  organizationId     String
+  jurisdictionId     String
+  registrationNumber String?
+  status             TaxRegistrationStatus @default(NOT_REGISTERED)
+  collectionEnabled  Boolean               @default(false)
+  filingFrequency    TaxFilingFrequency?
+  effectiveFrom      DateTime?
+  effectiveTo        DateTime?
+  notes              String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jurisdiction TaxJurisdiction @relation(fields: [jurisdictionId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, jurisdictionId])
+}
+
+/// A customer's exemption (resale certificate, government, non-profit...).
+model TaxExemption {
+  id                String           @id @default(cuid())
+  organizationId    String
+  contactId         String
+  jurisdictionId    String?
+  exemptionType     TaxExemptionType
+  certificateNumber String?
+  reason            String?
+  validFrom         DateTime
+  validTo           DateTime?
+  createdById       String?
+  createdAt         DateTime         @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact      AccountingContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  jurisdiction TaxJurisdiction?  @relation(fields: [jurisdictionId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, contactId])
+}
+
+/// Immutable tax-line snapshot of a document, written when the document is
+/// created from a tax rule. Amounts are in the document currency.
+model DocumentTaxLine {
+  id                 String          @id @default(cuid())
+  organizationId     String
+  documentType       TaxDocumentType
+  documentId         String
+  taxRateId          String?
+  code               String
+  name               String
+  taxKind            TaxKind
+  jurisdictionCode   String
+  jurisdictionLevel  String?
+  authorityName      String?
+  rate               Decimal         @db.Decimal(9, 6)
+  compound           Boolean         @default(false)
+  recoverable        Boolean         @default(true)
+  treatment          TaxTreatment
+  taxableAmount      Decimal         @db.Decimal(14, 2)
+  taxAmount          Decimal         @db.Decimal(14, 2)
+  selfAssessedAmount Decimal         @default(0) @db.Decimal(14, 2)
+  outputAccountCode  String?
+  inputAccountCode   String?
+  sortOrder          Int             @default(0)
+  createdAt          DateTime        @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, documentType, documentId])
+}
+
+/// Per-component tax evidence in the base currency, written when a document
+/// posts. Source for tax reports by jurisdiction, authority, and kind.
+model TaxLedgerEntry {
+  id                 String                 @id @default(cuid())
+  organizationId     String
+  direction          AccountingTaxDirection
+  sourceType         String
+  sourceId           String
+  documentNumber     String?
+  counterparty       String?
+  contactId          String?
+  transactionDate    DateTime
+  jurisdictionCode   String
+  jurisdictionLevel  String?
+  authorityName      String?
+  taxKind            TaxKind
+  rateCode           String
+  rate               Decimal                @db.Decimal(9, 6)
+  treatment          TaxTreatment
+  taxableAmount      Decimal                @db.Decimal(14, 2)
+  taxAmount          Decimal                @db.Decimal(14, 2)
+  selfAssessedAmount Decimal                @default(0) @db.Decimal(14, 2)
+  customerExempt     Boolean                @default(false)
+  currency           String?
+  exchangeRate       Decimal?               @db.Decimal(20, 10)
+  createdAt          DateTime               @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, transactionDate])
+  @@index([organizationId, jurisdictionCode, transactionDate])
+  @@index([organizationId, sourceType, sourceId])
 }

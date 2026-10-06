@@ -19,6 +19,8 @@ import { CurrencyFields, SettlementRateField } from "@/components/forms/currency
 import { baseTotal } from "@/modules/accounting/multi-currency";
 import { listAccounts, listInvoices, listContacts } from "@/modules/accounting/service";
 import { listTaxCodes } from "@/modules/accounting/tax-service";
+import { listApplicableRules } from "@/modules/tax/service";
+import { db } from "@/lib/db";
 import { createNewInvoice, sendInvoice, payInvoice, voidExistingInvoice } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -30,6 +32,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-payment": "That payment amount is invalid or exceeds the remaining balance.",
   "not-found": "That invoice could not be found.",
   "period-closed": "The transaction date is in a closed accounting period.",
+  "tax-rule": "That tax rule could not be applied on the document date. Check its rates and effective dates in Tax and Compliance.",
   "fx-rate": "No exchange rate is recorded for that currency and date. Record one under Exchange Rates or enter a rate.",
 };
 
@@ -54,6 +57,8 @@ export default async function AccountingInvoicesPage({
   const money = (value: Parameters<typeof format.money>[0], currency?: string | null) => format.money(value, currency ?? baseCurrency);
   const canReceive = hasPermission(tenant, PERMISSIONS.ACCOUNTING_RECEIVABLES_MANAGE);
   const [invoices, accounts, taxCodes, contacts] = await Promise.all([listInvoices(tenant.organizationId), listAccounts(tenant.organizationId), listTaxCodes(tenant.organizationId), listContacts(tenant.organizationId)]);
+  const [taxRules, pricing] = await Promise.all([listApplicableRules(tenant.organizationId), db.organization.findUnique({ where: { id: tenant.organizationId }, select: { pricesIncludeTax: true } })]);
+  const pricesIncludeTax = pricing?.pricesIncludeTax ?? false;
   const receivingAccounts = accounts.filter((account) => account.active && account.liquidityType !== "NONE");
   const customerContacts = contacts.filter((contact) => contact.type === "CUSTOMER" || contact.type === "BOTH");
   const today = new Date().toISOString().slice(0, 10);
@@ -97,8 +102,16 @@ export default async function AccountingInvoicesPage({
               <Label htmlFor="taxCodeId">Tax treatment</Label>
               <select id="taxCodeId" name="taxCodeId" className="h-10 w-full rounded-md border bg-background px-3">
                 <option value="">No tax</option>
-                {taxCodes.filter((taxCode) => taxCode.active).map((taxCode) => <option key={taxCode.id} value={taxCode.id}>{taxCode.code}: {taxCode.name} ({Number(taxCode.vatRate) + Number(taxCode.nhilRate) + Number(taxCode.getfundRate)}%)</option>)}
+                {taxRules.length ? (
+                  <optgroup label="Tax rules">
+                    {taxRules.map((rule) => <option key={rule.id} value={`rule:${rule.id}`}>{rule.code}: {rule.name}</option>)}
+                  </optgroup>
+                ) : null}
+                <optgroup label="Tax codes">
+                  {taxCodes.filter((taxCode) => taxCode.active).map((taxCode) => <option key={taxCode.id} value={taxCode.id}>{taxCode.code}: {taxCode.name} ({Number(taxCode.vatRate) + Number(taxCode.nhilRate) + Number(taxCode.getfundRate)}%)</option>)}
+                </optgroup>
               </select>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="pricesIncludeTax" defaultChecked={pricesIncludeTax} className="size-4" />Line prices include tax (applies to tax rules)</label>
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
@@ -149,7 +162,7 @@ export default async function AccountingInvoicesPage({
                     </details>
                   ) : null}
                 </TableCell>
-                <TableCell className="text-muted-foreground"><div>{money(invoice.amount, invoice.currency)}</div>{invoice.currency && invoice.currency !== baseCurrency ? <div className="text-xs">{money(baseTotal(invoice))} at {format.number(invoice.exchangeRate.toString(), { maximumFractionDigits: 6 })}</div> : null}{invoice.taxCode ? <div className="text-xs">Tax {money(invoice.vatAmount.plus(invoice.nhilAmount).plus(invoice.getfundAmount), invoice.currency)} ({invoice.taxCode.code})</div> : null}</TableCell>
+                <TableCell className="text-muted-foreground"><div>{money(invoice.amount, invoice.currency)}</div>{invoice.currency && invoice.currency !== baseCurrency ? <div className="text-xs">{money(baseTotal(invoice))} at {format.number(invoice.exchangeRate.toString(), { maximumFractionDigits: 6 })}</div> : null}{invoice.taxAmount.greaterThan(0) ? <div className="text-xs">Tax {money(invoice.taxAmount, invoice.currency)}{invoice.taxCode ? ` (${invoice.taxCode.code})` : invoice.taxTreatment ? " (tax rule)" : ""}</div> : invoice.taxTreatment && invoice.taxTreatment !== "STANDARD" ? <div className="text-xs capitalize">{invoice.taxTreatment.replaceAll("_", " ").toLowerCase()}</div> : null}</TableCell>
                 <TableCell className="text-muted-foreground">{money(invoice.amountPaid, invoice.currency)}{Number(invoice.amountCredited) > 0 ? <div className="text-xs">+{money(invoice.amountCredited, invoice.currency)} credited</div> : null}</TableCell>
                 <TableCell className="text-muted-foreground">{format.date(invoice.dueDate)}</TableCell>
                 <TableCell>

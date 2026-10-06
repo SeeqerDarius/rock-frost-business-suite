@@ -19,6 +19,7 @@ import {
   type LineItemInput,
 } from "@/modules/accounting/service";
 import { ExchangeRateError } from "@/modules/globalization/fx";
+import { TaxConfigurationError as TaxEngineError } from "@/modules/tax/service";
 import { moneyAmount, shortText, longText, email, cuid, dateInput, currencyCode, exchangeRateInput, parseIndexedFormRows, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
 
@@ -35,6 +36,7 @@ const createInvoiceSchema = z.object({
   issueDate: dateInput,
   dueDate: dateInput,
   taxCodeId: cuid.nullable().optional(),
+  taxRuleId: cuid.nullable().optional(),
   currency: currencyCode.nullable().optional(),
   exchangeRate: exchangeRateInput.nullable().optional(),
 });
@@ -52,7 +54,9 @@ export async function createNewInvoice(formData: FormData): Promise<void> {
     description: clean(formData.get("description")),
     issueDate: clean(formData.get("issueDate")),
     dueDate: clean(formData.get("dueDate")),
-    taxCodeId: clean(formData.get("taxCodeId")),
+    // A "rule:<id>" value selects a tax engine rule instead of a legacy tax code.
+    taxCodeId: clean(formData.get("taxCodeId"))?.startsWith("rule:") ? null : clean(formData.get("taxCodeId")),
+    taxRuleId: clean(formData.get("taxCodeId"))?.startsWith("rule:") ? clean(formData.get("taxCodeId"))!.slice(5) : null,
     currency: clean(formData.get("currency")),
     exchangeRate: clean(formData.get("exchangeRate")),
   });
@@ -75,6 +79,8 @@ export async function createNewInvoice(formData: FormData): Promise<void> {
         issueDate,
         dueDate,
         taxCodeId: taxCodeId ?? null,
+        taxRuleId: parsed.data.taxRuleId ?? null,
+        pricesIncludeTax: formData.get("pricesIncludeTax") === "on",
         currency: currency ?? null,
         exchangeRate: exchangeRate ?? null,
       },
@@ -83,6 +89,7 @@ export async function createNewInvoice(formData: FormData): Promise<void> {
   } catch (error) {
     if (error instanceof InvalidLineItemsError) redirect("/app/accounting/invoices?error=invalid-lines");
     if (error instanceof ExchangeRateError) redirect("/app/accounting/invoices?error=fx-rate");
+    if (error instanceof TaxEngineError) redirect("/app/accounting/invoices?error=tax-rule");
     throw error;
   }
 

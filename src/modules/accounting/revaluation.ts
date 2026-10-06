@@ -61,7 +61,7 @@ export async function previewRevaluation(organizationId: string, asOfInput: Date
   for (const invoice of invoices) {
     if (!invoice.currency) continue;
     const openForeign = invoice.amount.minus(invoice.amountPaid).minus(invoice.amountCredited);
-    if (!openForeign.isPositive()) continue;
+    if (!openForeign.greaterThan(0)) continue;
     const carryingBase = baseOutstanding(invoice);
     const rate = await closingRate(invoice.currency);
     const revaluedBase = rate ? convertToBase(openForeign, rate) : null;
@@ -70,7 +70,7 @@ export async function previewRevaluation(organizationId: string, asOfInput: Date
   for (const bill of bills) {
     if (!bill.currency) continue;
     const openForeign = bill.amount.minus(bill.amountPaid);
-    if (!openForeign.isPositive()) continue;
+    if (!openForeign.greaterThan(0)) continue;
     const carryingBase = baseOutstanding(bill);
     const rate = await closingRate(bill.currency);
     const revaluedBase = rate ? convertToBase(openForeign, rate) : null;

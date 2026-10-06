@@ -13,6 +13,8 @@ import {
 import { calculateTax } from "./tax-service";
 import { isValidCurrencyCode } from "@/lib/localization";
 import { ExchangeRateError } from "@/modules/globalization/fx";
+import { resolveDocumentTax, TaxConfigurationError as TaxEngineError } from "@/modules/tax/service";
+import { buildPurchasePosting, buildSalesPosting, engineBaseTotal, ensureTaxAccounts, requiredTaxAccountCodes, reverseJournal, type LedgerRow } from "./engine-posting";
 import { FX_ACCOUNT_CODES, atDocumentRate, baseOutstanding, baseTotal, documentBaseComponents, fxDifferenceLines, getBaseCurrency, lineFx, resolveDocumentFx, settlementSplit } from "./multi-currency";
 import { listSupplierInvoices } from "@/modules/procurement/service";
 
@@ -887,9 +889,14 @@ interface InvoiceInput {
   currency?: string | null;
   /** Optional explicit rate (1 document currency = x base). Otherwise the recorded rate for the issue date is used. */
   exchangeRate?: string | null;
+  /** Tax engine rule. Mutually exclusive with taxCodeId. */
+  taxRuleId?: string | null;
+  /** Whether entered line prices include tax; defaults to the organization setting. */
+  pricesIncludeTax?: boolean | null;
 }
 
 export async function createInvoice(organizationId: string, data: InvoiceInput, createdById?: string | null) {
+  if (data.taxRuleId) return createEngineDocument(organizationId, "INVOICE", data, createdById);
   const { lines, taxableAmount } = computeLineItems(data.lines);
   const tax = await calculateTax(organizationId, taxableAmount, data.taxCodeId, data.issueDate);
   const fx = await resolveDocumentFx(organizationId, { currency: data.currency, date: data.issueDate, manualRate: data.exchangeRate });
@@ -912,6 +919,7 @@ export async function createInvoice(organizationId: string, data: InvoiceInput, 
         vatAmount: tax.vatAmount,
         nhilAmount: tax.nhilAmount,
         getfundAmount: tax.getfundAmount,
+        taxAmount: tax.totalTax,
         amount: tax.grossAmount,
         currency: fx.currency,
         exchangeRate: fx.rate,
@@ -938,6 +946,7 @@ export class InvalidPaymentError extends Error {}
 export async function markInvoiceSent(organizationId: string, id: string) {
   const invoice = await db.accountingInvoice.findFirst({ where: { id, organizationId } });
   if (!invoice) throw new NotFoundError("Invoice not found.");
+  if (invoice.taxRuleId) return postEngineInvoice(organizationId, invoice, "SEND");
 
   const accounts = await ensureDefaultAccounts(organizationId);
   const findAccount = (code: string) => { const account = accounts.find((candidate) => candidate.code === code); if (!account) throw new Error(`Default account ${code} missing.`); return account; };
@@ -971,6 +980,7 @@ export async function markInvoiceSent(organizationId: string, id: string) {
     });
     // Tax evidence is always recorded in the base currency, with the document currency and rate kept as evidence.
     await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: invoice.taxCodeId, direction: "OUTPUT", transactionDate: invoice.issueDate, sourceType: "ACCOUNTING_INVOICE", sourceId: invoice.id, documentNumber: invoice.invoiceNumber, counterparty: invoice.customerName, taxableAmount: posted.taxable, vatAmount: posted.vat, nhilAmount: posted.nhil, getfundAmount: posted.getfund, ...(fx.isForeign ? { currency: fx.currency, exchangeRate: invoice.exchangeRate } : {}) } });
+    await writeLegacyTaxLedger(tx, organizationId, { direction: "OUTPUT", sourceType: "ACCOUNTING_INVOICE", sourceId: invoice.id, documentNumber: invoice.invoiceNumber, counterparty: invoice.customerName, contactId: invoice.contactId, transactionDate: invoice.issueDate, taxCodeId: invoice.taxCodeId, taxable: posted.taxable, vat: posted.vat, nhil: posted.nhil, getfund: posted.getfund, fx, exchangeRate: invoice.exchangeRate });
     return tx.accountingInvoice.findUniqueOrThrow({ where: { id } });
   });
 }
@@ -1103,6 +1113,7 @@ export async function voidInvoice(organizationId: string, id: string) {
   const invoice = await db.accountingInvoice.findFirst({ where: { id, organizationId } });
   if (!invoice) throw new NotFoundError("Invoice not found.");
   if (Number(invoice.amountPaid) > 0) throw new InvoiceStateError("Cannot void an invoice that has received payment.");
+  if (invoice.taxRuleId) return postEngineInvoice(organizationId, invoice, "VOID");
 
   const needsReversal = invoice.status === "SENT" || invoice.status === "OVERDUE";
   const accounts = needsReversal ? await ensureDefaultAccounts(organizationId) : null;
@@ -1136,10 +1147,179 @@ export async function voidInvoice(organizationId: string, id: string) {
         ],
       });
       await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: invoice.taxCodeId, direction: "ADJUSTMENT", transactionDate: new Date(), sourceType: "ACCOUNTING_INVOICE_VOID", sourceId: invoice.id, documentNumber: invoice.invoiceNumber, counterparty: invoice.customerName, taxableAmount: posted.taxable.negated(), vatAmount: posted.vat.negated(), nhilAmount: posted.nhil.negated(), getfundAmount: posted.getfund.negated(), notes: "Invoice voided", ...(fx.isForeign ? { currency: fx.currency, exchangeRate: invoice.exchangeRate } : {}) } });
+      await writeLegacyTaxLedger(tx, organizationId, { direction: "ADJUSTMENT", sourceType: "ACCOUNTING_INVOICE_VOID", sourceId: invoice.id, documentNumber: invoice.invoiceNumber, counterparty: invoice.customerName, contactId: invoice.contactId, transactionDate: new Date(), taxCodeId: invoice.taxCodeId, taxable: posted.taxable.negated(), vat: posted.vat.negated(), nhil: posted.nhil.negated(), getfund: posted.getfund.negated(), fx, exchangeRate: invoice.exchangeRate });
     }
 
     return tx.accountingInvoice.findUniqueOrThrow({ where: { id } });
   });
+}
+
+// --- Tax engine documents ---
+
+type EngineDocumentInput = (InvoiceInput & { customerName: string }) | (BillInput & { supplierName: string });
+
+/**
+ * Creates an invoice or bill whose tax comes from a TaxRule. Tax is computed
+ * on the server from rates in effect on the document date; the per-component
+ * result is stored as an immutable DocumentTaxLine snapshot alongside the
+ * document, so later rate changes never alter it.
+ */
+type InvoiceWithLines = Prisma.AccountingInvoiceGetPayload<{ include: { lines: true } }>;
+type BillWithLines = Prisma.AccountingBillGetPayload<{ include: { lines: true } }>;
+function createEngineDocument(organizationId: string, documentType: "INVOICE", data: InvoiceInput, createdById?: string | null): Promise<InvoiceWithLines>;
+function createEngineDocument(organizationId: string, documentType: "BILL", data: BillInput, createdById?: string | null): Promise<BillWithLines>;
+async function createEngineDocument(organizationId: string, documentType: "INVOICE" | "BILL", data: EngineDocumentInput, createdById?: string | null): Promise<InvoiceWithLines | BillWithLines> {
+  if (data.taxCodeId) throw new TaxEngineError("Choose either a legacy tax code or a tax rule, not both.");
+  const { lines, taxableAmount } = computeLineItems(data.lines);
+  const organization = await db.organization.findUnique({ where: { id: organizationId }, select: { pricesIncludeTax: true } });
+  if (!organization) throw new NotFoundError("Organization not found.");
+  const date = documentType === "INVOICE" ? (data as InvoiceInput).issueDate : (data as BillInput).billDate;
+  if (data.contactId) {
+    const contact = await db.accountingContact.findFirst({ where: { id: data.contactId, organizationId }, select: { id: true } });
+    if (!contact) throw new NotFoundError("Contact not found.");
+  }
+  const resolved = await resolveDocumentTax(organizationId, { ruleId: data.taxRuleId!, date, amount: taxableAmount, pricesIncludeTax: data.pricesIncludeTax ?? organization.pricesIncludeTax, contactId: data.contactId });
+  const fx = await resolveDocumentFx(organizationId, { currency: data.currency, date, manualRate: data.exchangeRate });
+  const calc = resolved.calculation;
+  const baseAmount = engineBaseTotal(calc.taxableAmount, calc.lines.map((line) => line.taxAmount), fx);
+  const common = {
+    organizationId, createdById, contactId: data.contactId, description: data.description,
+    taxRuleId: resolved.rule.id, taxTreatment: resolved.treatment, taxableAmount: calc.taxableAmount, taxAmount: calc.totalTax, amount: calc.grossAmount,
+    currency: fx.currency, exchangeRate: fx.rate, exchangeRateDate: fx.rateDate, exchangeRateSource: fx.rateSource, baseAmount,
+    lines: { create: lines.map((line) => ({ description: line.description, quantity: line.quantity, unitPrice: line.unitPrice, lineTotal: line.lineTotal, sortOrder: line.sortOrder })) },
+  };
+  return createWithUniqueRetry(() => db.$transaction(async (tx) => {
+    let documentId: string;
+    let created;
+    if (documentType === "INVOICE") {
+      const input = data as InvoiceInput;
+      created = await tx.accountingInvoice.create({ data: { ...common, invoiceNumber: await generateInvoiceNumber(organizationId), customerName: input.customerName, customerEmail: input.customerEmail, issueDate: input.issueDate, dueDate: input.dueDate }, include: { lines: true } });
+      documentId = created.id;
+    } else {
+      const input = data as BillInput;
+      const expenseAccount = await tx.accountingAccount.findFirst({ where: { id: input.expenseAccountId, organizationId, type: "EXPENSE" } });
+      if (!expenseAccount) throw new NotFoundError("Expense account not found.");
+      created = await tx.accountingBill.create({ data: { ...common, billNumber: await generateBillNumber(organizationId), branchId: input.branchId, supplierName: input.supplierName, supplierEmail: input.supplierEmail, expenseAccountId: expenseAccount.id, billDate: input.billDate, dueDate: input.dueDate }, include: { lines: true } });
+      documentId = created.id;
+    }
+    if (calc.lines.length) {
+      await tx.documentTaxLine.createMany({
+        data: calc.lines.map((line, index) => {
+          const accounts = resolved.accounts.get(line.code);
+          return {
+            organizationId, documentType, documentId, taxRateId: line.rateId, code: line.code, name: line.name, taxKind: accounts?.taxKind ?? "OTHER",
+            jurisdictionCode: line.jurisdictionCode, jurisdictionLevel: line.jurisdictionLevel, authorityName: line.authorityName, rate: line.rate, compound: line.compound, recoverable: line.recoverable,
+            treatment: resolved.treatment, taxableAmount: line.taxableAmount, taxAmount: line.taxAmount, selfAssessedAmount: line.selfAssessedAmount,
+            outputAccountCode: accounts?.outputAccountCode ?? null, inputAccountCode: accounts?.inputAccountCode ?? null, sortOrder: index,
+          };
+        }),
+      });
+    }
+    return created;
+  }));
+}
+
+function ledgerData(organizationId: string, rows: LedgerRow[], context: { direction: "OUTPUT" | "INPUT" | "ADJUSTMENT"; sourceType: string; sourceId: string; documentNumber: string; counterparty: string; contactId: string | null; transactionDate: Date; customerExempt: boolean; fx: { currency: string; isForeign: boolean }; exchangeRate: Prisma.Decimal.Value; negate?: boolean }) {
+  const sign = (value: Prisma.Decimal) => (context.negate ? value.negated() : value);
+  return rows.map((row) => ({
+    organizationId, direction: context.direction, sourceType: context.sourceType, sourceId: context.sourceId, documentNumber: context.documentNumber, counterparty: context.counterparty, contactId: context.contactId,
+    transactionDate: context.transactionDate, jurisdictionCode: row.jurisdictionCode, jurisdictionLevel: row.jurisdictionLevel, authorityName: row.authorityName, taxKind: row.taxKind, rateCode: row.rateCode, rate: row.rate,
+    treatment: row.treatment as "STANDARD", taxableAmount: sign(row.taxableAmount), taxAmount: sign(row.taxAmount), selfAssessedAmount: sign(row.selfAssessedAmount), customerExempt: context.customerExempt,
+    currency: context.fx.isForeign ? context.fx.currency : null, exchangeRate: context.fx.isForeign ? new Prisma.Decimal(context.exchangeRate) : null,
+  }));
+}
+
+async function isCustomerExempt(organizationId: string, doc: { taxRuleId: string | null; taxTreatment: string | null }) {
+  if (doc.taxTreatment !== "EXEMPT" || !doc.taxRuleId) return false;
+  const rule = await db.taxRule.findFirst({ where: { id: doc.taxRuleId, organizationId }, select: { treatment: true } });
+  return !!rule && rule.treatment !== "EXEMPT";
+}
+
+type EngineInvoice = NonNullable<Awaited<ReturnType<typeof db.accountingInvoice.findFirst>>>;
+type EngineBill = NonNullable<Awaited<ReturnType<typeof db.accountingBill.findFirst>>>;
+
+async function postEngineInvoice(organizationId: string, invoice: EngineInvoice, action: "SEND" | "VOID") {
+  const taxLines = await db.documentTaxLine.findMany({ where: { organizationId, documentType: "INVOICE", documentId: invoice.id }, orderBy: { sortOrder: "asc" } });
+  const needsPosting = action === "SEND" || invoice.status === "SENT" || invoice.status === "OVERDUE";
+  const accounts = await ensureDefaultAccounts(organizationId);
+  const account = (code: string) => { const found = accounts.find((candidate) => candidate.code === code); if (!found) throw new Error(`Default account ${code} missing.`); return found; };
+  const taxAccountIds = needsPosting ? await ensureTaxAccounts(organizationId, requiredTaxAccountCodes(taxLines, "SALE")) : new Map<string, string>();
+  const fx = docFx(invoice, await getBaseCurrency(organizationId));
+  const posting = buildSalesPosting({ taxableAmount: invoice.taxableAmount, amount: invoice.amount, lines: taxLines, fx, receivableAccountId: account("1100").id, revenueAccountId: account("4000").id, accountIds: taxAccountIds });
+  const customerExempt = await isCustomerExempt(organizationId, invoice);
+  const fxEvidence = fx.isForeign ? { currency: fx.currency, exchangeRate: invoice.exchangeRate } : {};
+
+  return db.$transaction(async (tx) => {
+    if (action === "SEND") {
+      const claimed = await tx.accountingInvoice.updateMany({ where: { id: invoice.id, status: "DRAFT" }, data: { status: "SENT" } });
+      if (claimed.count === 0) throw new InvoiceStateError("Only draft invoices can be sent.");
+      await postJournalEntry(tx, organizationId, { entryDate: invoice.issueDate, description: `Invoice ${invoice.invoiceNumber} sent to ${invoice.customerName}`, sourceModule: "accounting", sourceType: "INVOICE", sourceId: invoice.id, branchId: invoice.branchId, lines: posting.journal });
+      await tx.accountingTaxTransaction.create({ data: { organizationId, direction: "OUTPUT", transactionDate: invoice.issueDate, sourceType: "ACCOUNTING_INVOICE", sourceId: invoice.id, documentNumber: invoice.invoiceNumber, counterparty: invoice.customerName, taxableAmount: posting.taxableBase, vatAmount: posting.legacy.vat, nhilAmount: posting.legacy.nhil, getfundAmount: posting.legacy.getfund, ...fxEvidence } });
+      if (posting.ledger.length) await tx.taxLedgerEntry.createMany({ data: ledgerData(organizationId, posting.ledger, { direction: "OUTPUT", sourceType: "ACCOUNTING_INVOICE", sourceId: invoice.id, documentNumber: invoice.invoiceNumber, counterparty: invoice.customerName, contactId: invoice.contactId, transactionDate: invoice.issueDate, customerExempt, fx, exchangeRate: invoice.exchangeRate }) });
+    } else {
+      const claimed = await tx.accountingInvoice.updateMany({ where: { id: invoice.id, status: { in: ["DRAFT", "SENT", "OVERDUE"] } }, data: { status: "VOID" } });
+      if (claimed.count === 0) throw new InvoiceStateError("This invoice can no longer be voided.");
+      if (needsPosting) {
+        const now = new Date();
+        await postJournalEntry(tx, organizationId, { entryDate: now, description: `Void of invoice ${invoice.invoiceNumber} (reversal)`, sourceModule: "accounting", sourceType: "INVOICE_VOID", sourceId: invoice.id, branchId: invoice.branchId, lines: reverseJournal(posting.journal) });
+        await tx.accountingTaxTransaction.create({ data: { organizationId, direction: "ADJUSTMENT", transactionDate: now, sourceType: "ACCOUNTING_INVOICE_VOID", sourceId: invoice.id, documentNumber: invoice.invoiceNumber, counterparty: invoice.customerName, taxableAmount: posting.taxableBase.negated(), vatAmount: posting.legacy.vat.negated(), nhilAmount: posting.legacy.nhil.negated(), getfundAmount: posting.legacy.getfund.negated(), notes: "Invoice voided", ...fxEvidence } });
+        if (posting.ledger.length) await tx.taxLedgerEntry.createMany({ data: ledgerData(organizationId, posting.ledger, { direction: "ADJUSTMENT", sourceType: "ACCOUNTING_INVOICE_VOID", sourceId: invoice.id, documentNumber: invoice.invoiceNumber, counterparty: invoice.customerName, contactId: invoice.contactId, transactionDate: now, customerExempt, fx, exchangeRate: invoice.exchangeRate, negate: true }) });
+      }
+    }
+    return tx.accountingInvoice.findUniqueOrThrow({ where: { id: invoice.id } });
+  });
+}
+
+async function postEngineBill(organizationId: string, bill: EngineBill, action: "APPROVE" | "VOID", actorId: string | null | undefined) {
+  const taxLines = await db.documentTaxLine.findMany({ where: { organizationId, documentType: "BILL", documentId: bill.id }, orderBy: { sortOrder: "asc" } });
+  const needsPosting = action === "APPROVE" || bill.status === "APPROVED";
+  const accounts = await ensureDefaultAccounts(organizationId);
+  const payable = accounts.find((candidate) => candidate.code === "2000");
+  if (!payable) throw new Error("Default account 2000 missing.");
+  const taxAccountIds = needsPosting ? await ensureTaxAccounts(organizationId, requiredTaxAccountCodes(taxLines, "PURCHASE")) : new Map<string, string>();
+  const fx = docFx(bill, await getBaseCurrency(organizationId));
+  const posting = buildPurchasePosting({ taxableAmount: bill.taxableAmount, amount: bill.amount, lines: taxLines, fx, expenseAccountId: bill.expenseAccountId, payableAccountId: payable.id, accountIds: taxAccountIds });
+  const fxEvidence = fx.isForeign ? { currency: fx.currency, exchangeRate: bill.exchangeRate } : {};
+
+  return db.$transaction(async (tx) => {
+    if (action === "APPROVE") {
+      const claimed = await tx.accountingBill.updateMany({ where: { id: bill.id, status: "DRAFT" }, data: { status: "APPROVED" } });
+      if (claimed.count === 0) throw new BillStateError("Only draft bills can be approved.");
+      await postJournalEntry(tx, organizationId, { entryDate: bill.billDate, description: `Bill ${bill.billNumber} from ${bill.supplierName}`, sourceModule: "accounting", sourceType: "ACCOUNTING_BILL", sourceId: bill.id, postingPurpose: "APPROVED", branchId: bill.branchId, createdById: actorId, lines: posting.journal });
+      await tx.accountingTaxTransaction.create({ data: { organizationId, direction: "INPUT", transactionDate: bill.billDate, sourceType: "ACCOUNTING_BILL", sourceId: bill.id, documentNumber: bill.billNumber, counterparty: bill.supplierName, taxableAmount: posting.taxableBase, vatAmount: posting.legacy.vat, nhilAmount: posting.legacy.nhil, getfundAmount: posting.legacy.getfund, ...fxEvidence } });
+      if (posting.ledger.length) await tx.taxLedgerEntry.createMany({ data: ledgerData(organizationId, posting.ledger, { direction: "INPUT", sourceType: "ACCOUNTING_BILL", sourceId: bill.id, documentNumber: bill.billNumber, counterparty: bill.supplierName, contactId: bill.contactId, transactionDate: bill.billDate, customerExempt: false, fx, exchangeRate: bill.exchangeRate }) });
+    } else {
+      const claimed = await tx.accountingBill.updateMany({ where: { id: bill.id, status: { in: ["DRAFT", "APPROVED"] } }, data: { status: "VOID" } });
+      if (claimed.count === 0) throw new BillStateError("This bill can no longer be voided.");
+      if (needsPosting) {
+        const now = new Date();
+        await postJournalEntry(tx, organizationId, { entryDate: now, description: `Void of bill ${bill.billNumber} (reversal)`, sourceModule: "accounting", sourceType: "ACCOUNTING_BILL_VOID", sourceId: bill.id, branchId: bill.branchId, lines: reverseJournal(posting.journal) });
+        await tx.accountingTaxTransaction.create({ data: { organizationId, direction: "ADJUSTMENT", transactionDate: now, sourceType: "ACCOUNTING_BILL_VOID", sourceId: bill.id, documentNumber: bill.billNumber, counterparty: bill.supplierName, taxableAmount: posting.taxableBase.negated(), vatAmount: posting.legacy.vat.negated(), nhilAmount: posting.legacy.nhil.negated(), getfundAmount: posting.legacy.getfund.negated(), notes: "Bill voided", ...fxEvidence } });
+        if (posting.ledger.length) await tx.taxLedgerEntry.createMany({ data: ledgerData(organizationId, posting.ledger, { direction: "ADJUSTMENT", sourceType: "ACCOUNTING_BILL_VOID", sourceId: bill.id, documentNumber: bill.billNumber, counterparty: bill.supplierName, contactId: bill.contactId, transactionDate: now, customerExempt: false, fx, exchangeRate: bill.exchangeRate, negate: true }) });
+      }
+    }
+    return tx.accountingBill.findUniqueOrThrow({ where: { id: bill.id } });
+  });
+}
+
+/**
+ * Per-component tax ledger rows for documents taxed with a legacy
+ * AccountingTaxCode, so every document reports from one source. Untaxed
+ * documents record an out-of-scope row so non-taxable sales still appear.
+ */
+async function writeLegacyTaxLedger(tx: TxClient, organizationId: string, input: { direction: "OUTPUT" | "INPUT" | "ADJUSTMENT"; sourceType: string; sourceId: string; documentNumber: string; counterparty: string; contactId: string | null; transactionDate: Date; taxCodeId: string | null; taxable: Prisma.Decimal; vat: Prisma.Decimal; nhil: Prisma.Decimal; getfund: Prisma.Decimal; fx: { currency: string; isForeign: boolean }; exchangeRate: Prisma.Decimal.Value }) {
+  const taxCode = input.taxCodeId ? await tx.accountingTaxCode.findFirst({ where: { id: input.taxCodeId, organizationId } }) : null;
+  const treatment = (taxCode ? (taxCode.treatment === "RELIEVED" ? "EXEMPT" : taxCode.treatment) : "OUT_OF_SCOPE") as "STANDARD";
+  const jurisdictionCode = taxCode?.jurisdiction ?? "NONE";
+  const base = { organizationId, direction: input.direction, sourceType: input.sourceType, sourceId: input.sourceId, documentNumber: input.documentNumber, counterparty: input.counterparty, contactId: input.contactId, transactionDate: input.transactionDate, jurisdictionCode, jurisdictionLevel: "COUNTRY", authorityName: null, treatment, customerExempt: false, currency: input.fx.isForeign ? input.fx.currency : null, exchangeRate: input.fx.isForeign ? new Prisma.Decimal(input.exchangeRate) : null };
+  const rows = taxCode
+    ? [
+        { taxKind: "VAT" as const, rateCode: `${taxCode.code}:VAT`, rate: taxCode.vatRate, taxAmount: input.vat },
+        { taxKind: "LEVY" as const, rateCode: `${taxCode.code}:NHIL`, rate: taxCode.nhilRate, taxAmount: input.nhil },
+        { taxKind: "LEVY" as const, rateCode: `${taxCode.code}:GETFUND`, rate: taxCode.getfundRate, taxAmount: input.getfund },
+      ].filter((row, index) => index === 0 || !new Prisma.Decimal(row.rate).isZero())
+    : [{ taxKind: "OTHER" as const, rateCode: "NONE", rate: new Prisma.Decimal(0), taxAmount: new Prisma.Decimal(0) }];
+  await tx.taxLedgerEntry.createMany({ data: rows.map((row) => ({ ...base, taxKind: row.taxKind, rateCode: row.rateCode, rate: row.rate, taxableAmount: input.taxable, taxAmount: row.taxAmount, selfAssessedAmount: new Prisma.Decimal(0) })) });
 }
 
 // --- Contacts ---
@@ -1208,9 +1388,12 @@ interface BillInput {
   branchId?: string | null;
   currency?: string | null;
   exchangeRate?: string | null;
+  taxRuleId?: string | null;
+  pricesIncludeTax?: boolean | null;
 }
 
 export async function createBill(organizationId: string, data: BillInput, createdById?: string | null) {
+  if (data.taxRuleId) return createEngineDocument(organizationId, "BILL", data, createdById);
   const { lines, taxableAmount } = computeLineItems(data.lines);
   const expenseAccount = await db.accountingAccount.findFirst({ where: { id: data.expenseAccountId, organizationId, type: "EXPENSE" } });
   if (!expenseAccount) throw new NotFoundError("Expense account not found.");
@@ -1237,6 +1420,7 @@ export async function createBill(organizationId: string, data: BillInput, create
         vatAmount: tax.vatAmount,
         nhilAmount: tax.nhilAmount,
         getfundAmount: tax.getfundAmount,
+        taxAmount: tax.totalTax,
         amount: tax.grossAmount,
         currency: fx.currency,
         exchangeRate: fx.rate,
@@ -1260,6 +1444,7 @@ export async function createBill(organizationId: string, data: BillInput, create
 export async function approveBill(organizationId: string, id: string, actorId?: string | null) {
   const bill = await db.accountingBill.findFirst({ where: { id, organizationId } });
   if (!bill) throw new NotFoundError("Bill not found.");
+  if (bill.taxRuleId) return postEngineBill(organizationId, bill, "APPROVE", actorId);
 
   const accounts = await ensureDefaultAccounts(organizationId);
   const findAccount = (code: string) => { const account = accounts.find((candidate) => candidate.code === code); if (!account) throw new Error(`Default account ${code} missing.`); return account; };
@@ -1289,6 +1474,7 @@ export async function approveBill(organizationId: string, id: string, actorId?: 
       ],
     });
     await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: bill.taxCodeId, direction: "INPUT", transactionDate: bill.billDate, sourceType: "ACCOUNTING_BILL", sourceId: bill.id, documentNumber: bill.billNumber, counterparty: bill.supplierName, taxableAmount: posted.taxable, vatAmount: posted.vat, nhilAmount: posted.nhil, getfundAmount: posted.getfund, ...(fx.isForeign ? { currency: fx.currency, exchangeRate: bill.exchangeRate } : {}) } });
+    await writeLegacyTaxLedger(tx, organizationId, { direction: "INPUT", sourceType: "ACCOUNTING_BILL", sourceId: bill.id, documentNumber: bill.billNumber, counterparty: bill.supplierName, contactId: bill.contactId, transactionDate: bill.billDate, taxCodeId: bill.taxCodeId, taxable: posted.taxable, vat: posted.vat, nhil: posted.nhil, getfund: posted.getfund, fx, exchangeRate: bill.exchangeRate });
     return tx.accountingBill.findUniqueOrThrow({ where: { id } });
   });
 }
@@ -1401,6 +1587,7 @@ export async function voidBill(organizationId: string, id: string) {
   const bill = await db.accountingBill.findFirst({ where: { id, organizationId } });
   if (!bill) throw new NotFoundError("Bill not found.");
   if (Number(bill.amountPaid) > 0) throw new BillStateError("Cannot void a bill that has already received a payment.");
+  if (bill.taxRuleId) return postEngineBill(organizationId, bill, "VOID", null);
 
   const needsReversal = bill.status === "APPROVED";
   const accounts = needsReversal ? await ensureDefaultAccounts(organizationId) : null;
@@ -1430,6 +1617,7 @@ export async function voidBill(organizationId: string, id: string) {
         ],
       });
       await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: bill.taxCodeId, direction: "ADJUSTMENT", transactionDate: new Date(), sourceType: "ACCOUNTING_BILL_VOID", sourceId: bill.id, documentNumber: bill.billNumber, counterparty: bill.supplierName, taxableAmount: posted.taxable.negated(), vatAmount: posted.vat.negated(), nhilAmount: posted.nhil.negated(), getfundAmount: posted.getfund.negated(), notes: "Bill voided", ...(fx.isForeign ? { currency: fx.currency, exchangeRate: bill.exchangeRate } : {}) } });
+      await writeLegacyTaxLedger(tx, organizationId, { direction: "ADJUSTMENT", sourceType: "ACCOUNTING_BILL_VOID", sourceId: bill.id, documentNumber: bill.billNumber, counterparty: bill.supplierName, contactId: bill.contactId, transactionDate: new Date(), taxCodeId: bill.taxCodeId, taxable: posted.taxable.negated(), vat: posted.vat.negated(), nhil: posted.nhil.negated(), getfund: posted.getfund.negated(), fx, exchangeRate: bill.exchangeRate });
     }
 
     return tx.accountingBill.findUniqueOrThrow({ where: { id } });

@@ -18,6 +18,10 @@ These defaults follow the Ghana Revenue Authority's published 2026 reform guidan
 
 Tax codes are effective dated. Transactions retain the selected code and calculated component amounts, so a future rate change does not rewrite prior evidence. Custom jurisdictions and rates can be added by authorized Accounting settings managers.
 
+## International tax engine (2026-10-06)
+
+Alongside the legacy effective-dated tax codes above, Accounting has a jurisdiction-agnostic tax engine configured at `/app/accounting/tax-compliance`: tenant-scoped jurisdictions (country to district), authorities, categories, versioned rate components, rules (treatment and component set), registrations and nexus status, and customer exemptions. Invoices and bills can select a tax rule; tax is computed on the server from the rates in effect on the document date and stored as an immutable per-document snapshot. A rate change is a new version from a future date; earlier documents never recalculate. Each component posts to its own account (VAT, levies, sales tax, use tax, excise), reverse charge and use tax are self-assessed, and every posted document (engine, legacy code, or untaxed) writes per-component `TaxLedgerEntry` evidence for reporting by jurisdiction. Registration and nexus statuses are administrator-entered facts; Rock Frost does not determine legal nexus or compliance, and filing remains outside the application. The Ghana pack reproduces the 2026 Ghana configuration in the engine; engine-taxed Ghana documents also feed the working VAT return below. Design and limitations: `docs/GLOBAL_EXPANSION_ARCHITECTURE.md` (Increment 3).
+
 ## Output tax
 
 Accounting customer invoices accept a taxable amount and optional tax code. The gross receivable is taxable value plus VAT, NHIL, and GETFund. Sending the invoice posts:

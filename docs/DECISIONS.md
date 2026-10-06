@@ -357,3 +357,17 @@ Unrealized FX is an explicit, user-run revaluation that reverses the next day
 rather than a change to any document's carrying amount. Credit notes adjust
 their invoice at the invoice's rate. FX accounts are created lazily so
 single-currency charts are unchanged.
+
+## 2026-10-06 — Tax engine: tenant-scoped versioned configuration, pure calculation, document snapshots
+
+**Decision:** Tax configuration (jurisdictions, rates, rules, registrations,
+exemptions) is tenant-scoped data seeded from static, versioned jurisdiction
+packs; packs never run at calculation time and re-applying one never
+overwrites administrator changes. Calculation is a pure Decimal engine with
+no country logic. A rate change is a new version from a future date and a
+document stores an immutable tax-line snapshot, so history never
+recalculates. Each component posts to its own account by kind so sales tax,
+VAT, levies, use tax, and excise never share one balance. Legacy tax codes
+remain fully supported; both paths write the same per-component tax ledger so
+reporting reads one source. Collection is skipped only where an administrator
+has explicitly disabled it; the system never infers legal nexus.
