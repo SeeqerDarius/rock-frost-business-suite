@@ -1,8 +1,6 @@
 import "server-only";
-import { unstable_cache } from "next/cache";
 import type { CustomerFeedbackCategory, CustomerFeedbackStatus } from "@prisma/client";
 import { db } from "@/lib/db";
-import { PUBLIC_MARKETING_CACHE_TAG } from "@/lib/platform-marketing";
 
 export class FeedbackRateLimitError extends Error {}
 export class FeedbackNotFoundError extends Error {}
@@ -118,26 +116,16 @@ export async function moderateCustomerFeedback(input: {
   });
 }
 
-/** The homepage's only remaining uncached read (see docs/SEO.md's homepage
- * caching section): every other public marketing read there is already
- * wrapped in unstable_cache, so this one was hitting the database on every
- * single homepage request. Tagged with the same PUBLIC_MARKETING_CACHE_TAG
- * so moderateFeedbackAction's updateTag() call keeps a newly published
- * testimonial from waiting out the 5-minute window. */
-export const listPublishedTestimonials = unstable_cache(
-  async () => {
-    return db.customerFeedback.findMany({
-      where: { status: "PUBLISHED", category: "TESTIMONIAL", consentToPublish: true },
-      select: {
-        id: true, rating: true, publishedMessage: true, message: true, jobTitleSnapshot: true,
-        submitterNameSnapshot: true, organizationNameSnapshot: true, displayPerson: true,
-        displayOrganization: true, displayLogo: true, organizationId: true,
-        organization: { select: { industry: true, logoUrl: true } },
-      },
-      orderBy: [{ publicationOrder: "asc" }, { publishedAt: "desc" }],
-      take: 12,
-    });
-  },
-  ["public-homepage-testimonials"],
-  { revalidate: 300, tags: [PUBLIC_MARKETING_CACHE_TAG] },
-);
+export function listPublishedTestimonials() {
+  return db.customerFeedback.findMany({
+    where: { status: "PUBLISHED", category: "TESTIMONIAL", consentToPublish: true },
+    select: {
+      id: true, rating: true, publishedMessage: true, message: true, jobTitleSnapshot: true,
+      submitterNameSnapshot: true, organizationNameSnapshot: true, displayPerson: true,
+      displayOrganization: true, displayLogo: true, organizationId: true,
+      organization: { select: { industry: true, logoUrl: true } },
+    },
+    orderBy: [{ publicationOrder: "asc" }, { publishedAt: "desc" }],
+    take: 12,
+  });
+}
