@@ -11,6 +11,15 @@ type ModuleSeoContent = {
   outcomes: readonly { title: string; description: string }[];
   workflows: readonly string[];
   faqs: readonly { question: string; answer: string }[];
+  /** Ghana-specific operational notes: currency, calendar, contract or
+   * regulatory context that make the workflow recognizable to a Ghanaian
+   * buyer. Keep these tied to confirmed product behavior, never aspirational. */
+  ghana?: readonly string[];
+  /** Only list an integration that a source file actually implements (see
+   * src/lib/accounting-integration.ts and each module's service code) - do
+   * not describe a connection the product does not have yet. */
+  integrations?: readonly { module: string; note: string }[];
+  security?: readonly string[];
 };
 
 type ModuleSeoEntry = {
@@ -82,6 +91,18 @@ export const MODULE_SEO = {
         { question: "Can fleet payments connect to accounting?", answer: "Yes. Confirmed fleet activity can connect to the Accounting module while permissions keep operational and financial responsibilities separated." },
         { question: "Does it support work-and-pay vehicles?", answer: "Yes. The module supports work-and-pay contracts, driver-linked activity, payment periods, and owner or stakeholder visibility." },
       ],
+      ghana: [
+        "Built around the work-and-pay and hire-purchase contract structures common among Ghanaian commercial vehicle operators.",
+        "Vehicle payments, work-and-pay balances, and payouts are recorded in Ghana cedis (GH₵).",
+        "Supports fleets that mix organization-owned vehicles with vehicles under owner arrangements in the same view.",
+      ],
+      integrations: [
+        { module: "accounting", note: "Fleet revenue and payments post directly into Accounting as Fleet Revenue, so vehicle income reaches the ledger without manual re-entry." },
+      ],
+      security: [
+        "Vehicle, driver, and contract records stay scoped to your organization only.",
+        "Maintenance approval and payout actions follow each user's assigned role and permissions.",
+      ],
     },
   },
   installment: {
@@ -92,7 +113,7 @@ export const MODULE_SEO = {
     features: ["Customer installment accounts", "Collection and payment tracking", "Staff inventory and performance", "Credits, refunds, and account lifecycle"],
   },
   crm: {
-    shortName: "CRM Software",
+    shortName: "CRM Software for Sales Teams in Ghana",
     description:
       "Organize leads, contacts, deals, activities, and customer communication with secure CRM software for growing organizations.",
     keywords: ["CRM software Ghana", "customer relationship management Africa", "sales pipeline software"],
@@ -117,6 +138,19 @@ export const MODULE_SEO = {
         { question: "Does the system include procurement approvals?", answer: "Yes. Teams can manage purchase requests, approvals, orders, suppliers, and receiving in a connected process." },
         { question: "Can inventory connect to other modules?", answer: "Yes. Inventory and Procurement can operate independently or connect with relevant sales, point-of-sale, pharmacy, and accounting workflows." },
       ],
+      ghana: [
+        "Built for organizations moving stock between locations in different regions, such as an Accra warehouse and a Kumasi warehouse.",
+        "Purchase and stock values are recorded in Ghana cedis (GH₵).",
+        "Keeps supplier and purchase records in one place even when suppliers operate on different lead times and payment terms.",
+      ],
+      integrations: [
+        { module: "accounting", note: "Inventory reads tax codes directly from Accounting, so purchases and stock movements use the same tax treatment as the rest of your books." },
+        { module: "pos", note: "Retail sales made through Point of Sale draw on the same stock records, keeping on-hand quantity accurate at the till and in the warehouse." },
+      ],
+      security: [
+        "Stock, supplier, and purchase data stays scoped to your organization and is never shared across tenants.",
+        "Purchase approval limits and warehouse access follow each user's assigned role.",
+      ],
     },
   },
   accounting: {
@@ -137,13 +171,25 @@ export const MODULE_SEO = {
       outcomes: [
         { title: "Create a reliable employee record", description: "Keep employment information, organizational assignments, skills, onboarding, and status history in one structured profile." },
         { title: "Standardize people workflows", description: "Manage leave, reviews, onboarding plans, and offboarding activities with visible ownership and status." },
-        { title: "Run payroll with clearer controls", description: "Maintain compensation, process salary runs, apply configured deductions, and produce payslips and payroll reports." },
+        { title: "Run payroll with clearer controls", description: "Maintain compensation, process salary runs against your organization's configured tax rate, and produce GHS payslips and payroll reports every period." },
       ],
       workflows: ["Onboard employees and maintain their profiles", "Configure departments, positions, leave types, and HR settings", "Submit and review leave requests", "Manage reviews, skills, and employee lifecycle activities", "Prepare payroll runs and issue payslips"],
       faqs: [
-        { question: "Are HR and payroll connected?", answer: "Yes. Rock Frost combines employee and compensation records with payroll processing so authorized teams work from consistent information." },
+        { question: "Does Rock Frost calculate PAYE tax bands or SSNIT contributions automatically?", answer: "Not yet. You set your organization's payroll tax rate and Rock Frost applies it consistently across every payroll run, generating GHS payslips automatically with SMS delivery to employees. Graduated PAYE bands and SSNIT contribution handling are on our roadmap; until then, your payroll officer or accountant applies GRA and SSNIT rates when reviewing each run." },
         { question: "Can employees receive payslips?", answer: "Yes. Authorized payroll users can process payroll and generate employee payslips from recorded compensation and payroll settings." },
         { question: "Does every user see payroll information?", answer: "No. Organization roles and module permissions control who can access employee, compensation, payroll, and reporting information." },
+      ],
+      ghana: [
+        "Payroll runs, compensation, and payslips are recorded in Ghana cedis (GH₵).",
+        "Payslips can be delivered to employees by SMS as well as viewed in the workspace.",
+        "A single organization-wide tax rate applies consistently to every payroll run, so results are predictable across pay periods.",
+      ],
+      integrations: [
+        { module: "analytics", note: "Payroll summaries feed directly into Analytics, so workforce cost sits alongside your other business reporting." },
+      ],
+      security: [
+        "Employee, compensation, and payroll records stay scoped to your organization only.",
+        "Organization roles and module permissions control who can view or process payroll and employee data.",
       ],
     },
   },
@@ -200,6 +246,18 @@ export const MODULE_SEO = {
         { question: "Does it include housekeeping?", answer: "Yes. Teams can manage room readiness and housekeeping activity alongside reservations and guest stays." },
         { question: "Can restaurant charges be connected to a guest stay?", answer: "Yes. Hotel restaurant activity and guest folios are part of the connected operational workflow." },
       ],
+      ghana: [
+        "Priced and billed in Ghana cedis (GH₵), matching how front desk and finance teams already work.",
+        "Built for properties that mix walk-in guests, corporate accounts, and travel-agent bookings on the same calendar.",
+        "Restaurant and bar activity runs inside the same property, so a guest's food and drink charges reach their room folio automatically.",
+      ],
+      integrations: [
+        { module: "accounting", note: "Settled folios post directly into Accounting as Hotel Revenue, so front-desk activity reaches the ledger without manual re-entry." },
+      ],
+      security: [
+        "Every room, reservation, and folio stays scoped to your organization, never visible to another property on the platform.",
+        "Front-desk, housekeeping, and management roles see only the screens and actions their job requires.",
+      ],
     },
   },
   school: {
@@ -219,6 +277,19 @@ export const MODULE_SEO = {
         { question: "Which schools can use Rock Frost School Management?", answer: "The module supports basic schools, senior high schools, and multi-campus education organizations that need controlled academic and administrative workflows." },
         { question: "Does it manage school fees and receipts?", answer: "Yes. Authorized staff can configure fees, create invoices, record payments, and issue receipts." },
         { question: "Can boarding operations be included?", answer: "Yes. Schools can add the Hostel Management module for buildings, rooms, beds, allocations, wardens, and hostel fee billing." },
+      ],
+      ghana: [
+        "Organized around a termly academic calendar, with fees, attendance, and results tracked per term.",
+        "Fees and collections are recorded in Ghana cedis (GH₵).",
+        "Guardian and family contact details are captured at admission, matching how Ghanaian schools already manage enrollment.",
+      ],
+      integrations: [
+        { module: "accounting", note: "Fee collections post directly into Accounting as School Revenue, so termly income reaches your books without manual entry." },
+        { module: "hostel", note: "Boarding schools can add the Hostel module to manage buildings, beds, and student allocations alongside the same student records." },
+      ],
+      security: [
+        "Student, guardian, and academic records stay scoped to your school only.",
+        "Examination results stay hidden from families and restricted staff until a staff member explicitly publishes them.",
       ],
     },
   },

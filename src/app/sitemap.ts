@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL, MODULE_SEO } from "@/lib/seo";
 import { catalogueModuleKeys } from "@/platform/modules/registry";
+import { RESOURCE_ARTICLES } from "@/lib/resource-articles";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date("2026-09-06T00:00:00.000Z");
@@ -12,6 +13,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: "/industries", priority: 0.8, changeFrequency: "monthly" as const },
     { path: "/company", priority: 0.7, changeFrequency: "monthly" as const },
     { path: "/contact", priority: 0.8, changeFrequency: "monthly" as const },
+    { path: "/resources", priority: 0.7, changeFrequency: "monthly" as const },
     { path: "/terms", priority: 0.4, changeFrequency: "yearly" as const },
     { path: "/privacy", priority: 0.4, changeFrequency: "yearly" as const },
     { path: "/cookie-policy", priority: 0.4, changeFrequency: "yearly" as const },
@@ -29,6 +31,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified,
       changeFrequency: "monthly" as const,
       priority: 0.85,
+    })),
+    ...RESOURCE_ARTICLES.map((article) => ({
+      url: `${SITE_URL}/resources/${article.slug}`,
+      lastModified,
+      changeFrequency: "monthly" as const,
+      priority: 0.6,
     })),
   ];
 }

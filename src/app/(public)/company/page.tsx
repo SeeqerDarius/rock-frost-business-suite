@@ -20,8 +20,8 @@ import { createPublicMetadata } from "@/lib/seo";
 import { PublicHero } from "@/components/marketing/public-hero";
 
 export const metadata = createPublicMetadata({
-  title: "Technology Company Ghana | Rock Frost Technologies",
-  description: "Rock Frost Technologies designs premium business software, e-commerce platforms, websites, integrations, cloud systems, and tailored digital solutions for ambitious organizations.",
+  title: "Custom Software Development Company in Ghana",
+  description: "Rock Frost Technologies builds custom business software, e-commerce platforms, websites and cloud systems for ambitious Ghanaian organizations.",
   path: "/company",
   keywords: ["software development company Ghana", "ecommerce website development Ghana", "IT solutions company Ghana", "custom business software Africa", "Rock Frost Technologies"],
 });

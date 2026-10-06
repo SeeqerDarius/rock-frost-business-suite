@@ -154,6 +154,59 @@ export default async function ModuleLandingPage({
         </div>
       </section>
 
+      {content && (content.ghana || content.integrations || content.security) ? (
+        <section className="public-section-tint">
+          <div className="mx-auto max-w-6xl px-6 py-20">
+            <div className="grid gap-10 lg:grid-cols-3">
+              {content.ghana ? (
+                <div>
+                  <p className="public-eyebrow">Built for Ghana</p>
+                  <h2 className="mt-2 text-xl font-semibold">How it fits daily operations</h2>
+                  <ul className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
+                    {content.ghana.map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {content.integrations ? (
+                <div>
+                  <p className="public-eyebrow">Integrates with</p>
+                  <h2 className="mt-2 text-xl font-semibold">Connected Rock Frost modules</h2>
+                  <ul className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
+                    {content.integrations.map((integration) => {
+                      const linkedModule = getModule(integration.module);
+                      return (
+                        <li key={integration.module}>
+                          {linkedModule ? (
+                            <Link href={`/modules/${integration.module}`} className="font-medium text-foreground underline-offset-4 hover:underline">
+                              {linkedModule.name}
+                            </Link>
+                          ) : null}
+                          {linkedModule ? " " : ""}
+                          {integration.note}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ) : null}
+              {content.security ? (
+                <div>
+                  <p className="public-eyebrow">Security and permissions</p>
+                  <h2 className="mt-2 text-xl font-semibold">Your data, your organization</h2>
+                  <ul className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
+                    {content.security.map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       {content ? (
         <section className="mx-auto max-w-6xl px-6 py-20">
           <div className="grid gap-12 lg:grid-cols-2">
