@@ -8,7 +8,7 @@ const FAQS = [
   },
   {
     question: "Which businesses is this built for?",
-    answer: "Any organization that wants Fleet, Installment Sales, CRM, Inventory & Procurement, Accounting, HR & Payroll, Analytics, Point of Sale, Project Management, Hotel, School, Hostel, Pharmacy, or Hospital management, on one platform instead of separate tools per department.",
+    answer: "Any organization that wants Accounting, HR & Payroll, Inventory & Procurement, Point of Sale, CRM, Project Management, Analytics, or industry management for a School, Hostel, Hospital, Pharmacy, Hotel, Fleet, or Installment Sales business, on one platform instead of separate tools per department.",
   },
   {
     question: "Can I try it before committing?",

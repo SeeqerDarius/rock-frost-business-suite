@@ -4,7 +4,7 @@ import { unstable_cache } from "next/cache";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { IconBadge } from "@/components/ui/icon-badge";
-import { catalogueModuleRegistry } from "@/platform/modules/registry";
+import { publicCatalogueModuleRegistry } from "@/platform/modules/registry";
 import { JsonLd } from "@/components/seo/json-ld";
 import { createPublicMetadata, DEFAULT_DESCRIPTION, SITE_URL } from "@/lib/seo";
 import { db } from "@/lib/db";
@@ -106,7 +106,7 @@ export default async function HomePage() {
         description: DEFAULT_DESCRIPTION,
         provider: { "@id": `${SITE_URL}/#organization` },
       }} />
-      <PublicHero eyebrow="A role-based ERP built for Ghana" title="Run the work. See the money. Stay in control." description="Connect finance, fleet, sales, people, stock and industry operations in one secure platform. Every person gets the workspace, approvals and information their role requires." actions={<>
+      <PublicHero eyebrow="A role-based ERP built for Ghana" title="Run the work. See the money. Stay in control." description="Connect accounting, HR and payroll, inventory, sales and your industry operations, from schools and clinics to hotels and fleets, in one secure platform. Every person gets the workspace, approvals and information their role requires." actions={<>
             <Button size="lg" nativeButton={false} render={<Link href="/subscribe" />}>Start your subscription</Button>
             <Button size="lg" variant="outline" nativeButton={false} render={<Link href="/pricing" />}>See pricing</Button>
           </>}>
@@ -126,7 +126,7 @@ export default async function HomePage() {
             </Link>
           </div>
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {catalogueModuleRegistry.map((mod) => (
+            {publicCatalogueModuleRegistry.map((mod) => (
               <Card key={mod.key}>
                 <CardHeader>
                   <IconBadge size="lg"><mod.icon className="size-5" /></IconBadge>
@@ -154,10 +154,10 @@ export default async function HomePage() {
           </div>
         </div>
         <div>
-          <ModuleShowcase moduleKey="fleet" />
+          <ModuleShowcase moduleKey="school" />
           <div className="mx-auto max-w-6xl px-6">
-          <Link href="/modules/fleet" className="inline-block text-sm font-medium underline underline-offset-4">
-            Explore Fleet Management
+          <Link href="/modules/school" className="inline-block text-sm font-medium underline underline-offset-4">
+            Explore School Management
           </Link>
           </div>
         </div>

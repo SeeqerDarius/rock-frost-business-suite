@@ -220,6 +220,28 @@ export const moduleRegistry: readonly ModuleDefinition[] = moduleDefinitions;
 export const catalogueModuleRegistry: readonly ModuleDefinition[] = moduleRegistry.filter((module_) => module_.catalogueVisible !== false);
 export const catalogueModuleKeys = catalogueModuleRegistry.map((module_) => module_.key);
 
+/**
+ * Display order for public marketing surfaces (homepage, /modules, pricing,
+ * contact, sitemap). Cross-industry modules lead, then industry suites, so
+ * search engines and buyers read the suite as broad rather than as one
+ * vertical. In-app navigation keeps the registry order above.
+ */
+export const PUBLIC_MODULE_ORDER = [
+  "accounting", "hr", "inventory", "pos", "crm",
+  "school", "hospital", "pharmacy", "hotel", "hostel", "fleet", "installment",
+  "projects", "analytics",
+] as const;
+
+export function publicModuleRank(key: string): number {
+  const rank = PUBLIC_MODULE_ORDER.indexOf(key as (typeof PUBLIC_MODULE_ORDER)[number]);
+  return rank === -1 ? PUBLIC_MODULE_ORDER.length : rank;
+}
+
+export const publicCatalogueModuleRegistry: readonly ModuleDefinition[] = [...catalogueModuleRegistry].sort(
+  (a, b) => publicModuleRank(a.key) - publicModuleRank(b.key),
+);
+export const publicCatalogueModuleKeys = publicCatalogueModuleRegistry.map((module_) => module_.key);
+
 export function getModule(key: string): ModuleDefinition | undefined {
   return moduleRegistry.find((mod) => mod.key === key);
 }

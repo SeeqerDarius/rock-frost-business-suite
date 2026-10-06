@@ -123,3 +123,19 @@ describe("public SEO", () => {
     expect(subscribeActions).not.toContain("?email=");
   });
 });
+
+describe("multi-module public positioning", () => {
+  it("leads public module lists with cross-industry modules, not Fleet", async () => {
+    const { publicCatalogueModuleKeys, catalogueModuleKeys } = await import("@/platform/modules/registry");
+    expect(publicCatalogueModuleKeys[0]).toBe("accounting");
+    expect(publicCatalogueModuleKeys.indexOf("fleet")).toBeGreaterThan(publicCatalogueModuleKeys.indexOf("school"));
+    expect([...publicCatalogueModuleKeys].sort()).toEqual([...catalogueModuleKeys].sort());
+  });
+
+  it("describes the suite without leading on a single vertical", async () => {
+    const { DEFAULT_DESCRIPTION, MODULE_SEO } = await import("@/lib/seo");
+    expect(DEFAULT_DESCRIPTION.length).toBeLessThanOrEqual(160);
+    expect(DEFAULT_DESCRIPTION.toLowerCase().indexOf("accounting")).toBeLessThan(DEFAULT_DESCRIPTION.toLowerCase().indexOf("fleet"));
+    expect(MODULE_SEO.accounting.content?.faqs.length).toBeGreaterThan(0);
+  });
+});

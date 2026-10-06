@@ -25,8 +25,8 @@ export default function OpenGraphImage() {
         <div style={{ display: "flex", maxWidth: 950, fontSize: 68, fontWeight: 700, lineHeight: 1.05 }}>
           One platform for every system your business runs on.
         </div>
-        <div style={{ display: "flex", fontSize: 28, color: "#dbeafe" }}>
-          Fleet · Installment · CRM · Inventory · Accounting · HR · Payroll · POS
+        <div style={{ display: "flex", fontSize: 24, color: "#dbeafe" }}>
+          Accounting · HR &amp; Payroll · Inventory · POS · School · Hospital · Hotel · Fleet
         </div>
       </div>
       <div style={{ display: "flex", fontSize: 24 }}>rockfrostgroup.com</div>

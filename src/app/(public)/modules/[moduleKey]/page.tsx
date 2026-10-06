@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { JsonLd } from "@/components/seo/json-ld";
-import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry";
+import { catalogueModuleRegistry, getModule, publicCatalogueModuleRegistry } from "@/platform/modules/registry";
 import { createPublicMetadata, MODULE_SEO, SITE_URL } from "@/lib/seo";
 import { PublicHero } from "@/components/marketing/public-hero";
 import { ModuleShowcase } from "@/components/marketing/module-showcase";
@@ -42,7 +42,7 @@ export default async function ModuleLandingPage({
   const module_ = getModule(moduleKey);
   if (!seo || !module_) notFound();
 
-  const related = catalogueModuleRegistry.filter((item) => item.key !== moduleKey).slice(0, 3);
+  const related = publicCatalogueModuleRegistry.filter((item) => item.key !== moduleKey).slice(0, 3);
   const content = "content" in seo ? seo.content : undefined;
   const faqSchema = content
     ? {
