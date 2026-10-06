@@ -11,7 +11,8 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { LineItemsEditor } from "@/components/forms/line-items-editor";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
+import { CurrencyFields } from "@/components/forms/currency-fields";
 import { listAccounts, listCreditNotes, listInvoices, listContacts } from "@/modules/accounting/service";
 import { listTaxCodes } from "@/modules/accounting/tax-service";
 import { createNewCreditNote, applyCreditNote, refundExistingCreditNote, voidExistingCreditNote } from "./actions";
@@ -24,6 +25,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-payment": "Select an active cash, bank, or mobile-money account owned by this organization.",
   "not-found": "That credit note or invoice could not be found.",
   "period-closed": "The transaction date is in a closed accounting period.",
+  "fx-rate": "No exchange rate is recorded for that currency and date. Record one under Exchange Rates or enter a rate.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
@@ -41,8 +43,9 @@ export default async function AccountingCreditNotesPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("accounting");
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_RECEIVABLES_MANAGE);
-  const currency = tenant.organization.currency ?? "GHS";
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, currency);
+  const format = createOrganizationFormatter(tenant.organization);
+  const currency = format.presentation.currency;
+  const money = (value: Parameters<typeof format.money>[0], documentCurrency?: string | null) => format.money(value, documentCurrency ?? currency);
   const [creditNotes, invoices, accounts, taxCodes, contacts] = await Promise.all([
     listCreditNotes(tenant.organizationId),
     listInvoices(tenant.organizationId),
@@ -78,6 +81,7 @@ export default async function AccountingCreditNotesPage({
               <Label htmlFor="customerEmail">Customer email</Label>
               <Input id="customerEmail" name="customerEmail" type="email" />
             </div>
+            <CurrencyFields baseCurrency={currency} idPrefix="credit-note" />
             <LineItemsEditor currency={currency} />
             <div className="space-y-2">
               <Label htmlFor="issueDate">Issue date</Label>
@@ -117,7 +121,7 @@ export default async function AccountingCreditNotesPage({
             <TableRow>
               <TableHead>Number</TableHead>
               <TableHead>Customer</TableHead>
-              <TableHead>Amount ({currency})</TableHead>
+              <TableHead>Amount</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Applied to</TableHead>
               {canManage ? <TableHead /> : null}
@@ -128,7 +132,7 @@ export default async function AccountingCreditNotesPage({
               <TableRow key={creditNote.id}>
                 <TableCell className="font-mono text-xs">{creditNote.creditNoteNumber}</TableCell>
                 <TableCell className="font-medium">{creditNote.customerName}</TableCell>
-                <TableCell className="text-muted-foreground">{money(creditNote.amount)}</TableCell>
+                <TableCell className="text-muted-foreground">{money(creditNote.amount, creditNote.currency)}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[creditNote.status]}>{creditNote.status}</Badge>
                 </TableCell>
@@ -148,7 +152,7 @@ export default async function AccountingCreditNotesPage({
                           <div className="space-y-2">
                             <Label htmlFor={`apply-invoice-${creditNote.id}`}>Invoice</Label>
                             <select id={`apply-invoice-${creditNote.id}`} name="invoiceId" className="h-10 w-full rounded-md border bg-background px-3" required>
-                              {openInvoices.map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.invoiceNumber} - {invoice.customerName} ({money(Number(invoice.amount) - Number(invoice.amountPaid) - Number(invoice.amountCredited))} outstanding)</option>)}
+                              {openInvoices.filter((invoice) => (invoice.currency ?? currency) === (creditNote.currency ?? currency)).map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.invoiceNumber} - {invoice.customerName} ({money(invoice.amount.minus(invoice.amountPaid).minus(invoice.amountCredited), invoice.currency)} outstanding)</option>)}
                             </select>
                           </div>
                         </EntityDialog>
@@ -163,7 +167,7 @@ export default async function AccountingCreditNotesPage({
                           <div className="space-y-2">
                             <Label htmlFor={`refund-account-${creditNote.id}`}>Refund from account</Label>
                             <select id={`refund-account-${creditNote.id}`} name="accountId" className="h-10 w-full rounded-md border bg-background px-3" required>
-                              {refundAccounts.map((account) => <option key={account.id} value={account.id}>{account.code} {account.name}</option>)}
+                              {refundAccounts.filter((account) => !account.currency || account.currency === currency || account.currency === creditNote.currency).map((account) => <option key={account.id} value={account.id}>{account.code} {account.name}</option>)}
                             </select>
                           </div>
                         </EntityDialog>

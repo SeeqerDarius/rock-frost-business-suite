@@ -344,3 +344,16 @@ for tenant administrators and platform operators alike. Exchange rates are
 organization-scoped, append-only rows; documents will snapshot the rate they
 used, so recording or correcting a rate never changes history. A provider
 interface allows a live FX feed later without coupling Accounting to a vendor.
+
+## 2026-10-06 — Multi-currency documents keep their own currency and a fixed rate
+
+**Decision:** Accounting documents store amounts in their own currency with
+an exchange rate fixed at creation, and the ledger stays in the base currency.
+Each posted component is converted at the stored rate (so voids reproduce the
+original postings exactly) and receivables/payables are relieved at the booked
+rate, with settlement differences posted as realized FX. Base-currency
+documents post byte-identical journals to preserve existing behavior.
+Unrealized FX is an explicit, user-run revaluation that reverses the next day
+rather than a change to any document's carrying amount. Credit notes adjust
+their invoice at the invoice's rate. FX accounts are created lazily so
+single-currency charts are unchanged.

@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { formatMoney } from "@/lib/currency";
 import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@/lib/trend-buckets";
 import { listSupplierInvoices } from "@/modules/procurement/service";
+import { atDocumentRate, baseOutstanding, baseTotal } from "./multi-currency";
 import {
   getAccountBalancesAsOf,
   getCashFlowStatement,
@@ -143,8 +144,8 @@ async function computePeriodFinancials(organizationId: string, period: Dashboard
       where: { organizationId, entryDate: { gte: period.from, lte: period.to }, status: { notIn: NON_POSTED_JOURNAL_STATUSES } },
       select: { lines: { select: { debit: true, credit: true, account: { select: { type: true } } } } },
     }),
-    db.accountingInvoice.aggregate({ where: { organizationId, issueDate: { gte: period.from, lte: period.to } }, _sum: { amount: true } }),
-    db.accountingBill.findMany({ where: { organizationId, billDate: { gte: period.from, lte: period.to } }, select: { amount: true } }),
+    db.accountingInvoice.aggregate({ where: { organizationId, issueDate: { gte: period.from, lte: period.to } }, _sum: { baseAmount: true } }),
+    db.accountingBill.findMany({ where: { organizationId, billDate: { gte: period.from, lte: period.to } }, select: { amount: true, exchangeRate: true, baseAmount: true } }),
     listSupplierInvoices(organizationId),
   ]);
 
@@ -171,8 +172,9 @@ async function computePeriodFinancials(organizationId: string, period: Dashboard
   const receivableAtStart = balancesBeforeStart.find((a) => a.code === "1100")?.balance ?? 0;
   const payableAtStart = balancesBeforeStart.find((a) => a.code === "2000")?.balance ?? 0;
 
-  const creditSales = Number(invoiceAgg._sum.amount ?? 0);
-  const billPurchases = bills.reduce((sum, bill) => sum + Number(bill.amount), 0);
+  // Base-currency totals, so foreign-currency documents are never summed as if they were the base currency.
+  const creditSales = Number(invoiceAgg._sum.baseAmount ?? 0);
+  const billPurchases = bills.reduce((sum, bill) => sum + Number(baseTotal(bill)), 0);
   // Safe here (unlike a balance): a period total of invoiced amounts is
   // accurate regardless of a supplier invoice's payment status today.
   const supplierPurchases = supplierInvoices
@@ -444,9 +446,9 @@ export async function getTopInvoices(organizationId: string, preset: DashboardPe
   const period = resolveDashboardPeriod(preset, now);
   const invoices = await db.accountingInvoice.findMany({
     where: { organizationId, issueDate: { gte: period.from, lte: period.to } },
-    orderBy: { amount: "desc" },
+    orderBy: { baseAmount: "desc" },
     take: limit,
-    select: { id: true, invoiceNumber: true, customerName: true, status: true, issueDate: true, amount: true, amountPaid: true, amountCredited: true, createdBy: { select: { name: true } } },
+    select: { id: true, invoiceNumber: true, customerName: true, status: true, issueDate: true, amount: true, amountPaid: true, amountCredited: true, exchangeRate: true, baseAmount: true, baseAmountSettled: true, createdBy: { select: { name: true } } },
   });
   return invoices.map((invoice) => ({
     id: invoice.id,
@@ -454,8 +456,8 @@ export async function getTopInvoices(organizationId: string, preset: DashboardPe
     customerName: invoice.customerName,
     status: invoice.status,
     issueDate: invoice.issueDate,
-    amount: Number(invoice.amount),
-    outstanding: Number(invoice.amount) - Number(invoice.amountPaid) - Number(invoice.amountCredited),
+    amount: Number(baseTotal(invoice)),
+    outstanding: Number(baseOutstanding(invoice)),
     createdByName: invoice.createdBy?.name ?? null,
   }));
 }
@@ -481,26 +483,26 @@ export async function getRevenueBreakdownTrend(organizationId: string): Promise<
   const [invoices, creditNotes] = await Promise.all([
     db.accountingInvoice.findMany({
       where: { organizationId, issueDate: { gte: lookback } },
-      select: { issueDate: true, amount: true, amountPaid: true, amountCredited: true, status: true },
+      select: { issueDate: true, amount: true, amountPaid: true, amountCredited: true, status: true, exchangeRate: true, baseAmount: true, baseAmountSettled: true },
     }),
     db.accountingCreditNote.findMany({
       where: { organizationId, status: "REFUNDED", settledAt: { gte: lookback } },
-      select: { settledAt: true, amount: true },
+      select: { settledAt: true, amount: true, exchangeRate: true, baseAmount: true },
     }),
   ]);
 
   const buildSeries = (granularity: TrendGranularity): RevenueTrendPoint[] =>
     buildTrendBuckets(granularity).map((bucket) => {
       const bucketInvoices = invoices.filter((invoice) => invoice.issueDate >= bucket.start && invoice.issueDate < bucket.end);
-      const total = bucketInvoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
-      const paid = bucketInvoices.reduce((sum, invoice) => sum + Number(invoice.amountPaid), 0);
-      const unpaid = bucketInvoices.reduce((sum, invoice) => sum + Math.max(0, Number(invoice.amount) - Number(invoice.amountPaid) - Number(invoice.amountCredited)), 0);
+      const total = bucketInvoices.reduce((sum, invoice) => sum + Number(baseTotal(invoice)), 0);
+      const paid = bucketInvoices.reduce((sum, invoice) => sum + Number(atDocumentRate(invoice.amountPaid, invoice)), 0);
+      const unpaid = bucketInvoices.reduce((sum, invoice) => sum + Math.max(0, Number(baseOutstanding(invoice))), 0);
       const overdue = bucketInvoices
         .filter((invoice) => invoice.status === "OVERDUE")
-        .reduce((sum, invoice) => sum + Math.max(0, Number(invoice.amount) - Number(invoice.amountPaid) - Number(invoice.amountCredited)), 0);
+        .reduce((sum, invoice) => sum + Math.max(0, Number(baseOutstanding(invoice))), 0);
       const refund = creditNotes
         .filter((note) => note.settledAt && note.settledAt >= bucket.start && note.settledAt < bucket.end)
-        .reduce((sum, note) => sum + Number(note.amount), 0);
+        .reduce((sum, note) => sum + Number(baseTotal(note)), 0);
       return { label: bucket.label, total, paid, unpaid, refund, overdue };
     });
 

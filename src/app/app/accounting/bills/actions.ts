@@ -20,7 +20,8 @@ import {
   AccountingPeriodLockedError,
   type LineItemInput,
 } from "@/modules/accounting/service";
-import { moneyAmount, shortText, longText, email, cuid, dateInput, parseIndexedFormRows, parseWithSchema } from "@/lib/validation";
+import { moneyAmount, shortText, longText, email, cuid, dateInput, parseIndexedFormRows, currencyCode, exchangeRateInput, parseWithSchema } from "@/lib/validation";
+import { ExchangeRateError } from "@/modules/globalization/fx";
 import { logAuditEvent } from "@/lib/audit";
 import { accountingAttachmentFileData } from "@/lib/accounting-attachment-file";
 
@@ -38,6 +39,8 @@ const createBillSchema = z.object({
   billDate: dateInput,
   dueDate: dateInput,
   taxCodeId: cuid.nullable().optional(),
+  currency: currencyCode.nullable().optional(),
+  exchangeRate: exchangeRateInput.nullable().optional(),
 });
 
 export async function createNewBill(formData: FormData): Promise<void> {
@@ -55,11 +58,13 @@ export async function createNewBill(formData: FormData): Promise<void> {
     billDate: clean(formData.get("billDate")),
     dueDate: clean(formData.get("dueDate")),
     taxCodeId: clean(formData.get("taxCodeId")),
+    currency: clean(formData.get("currency")),
+    exchangeRate: clean(formData.get("exchangeRate")),
   });
   if (!parsed.success) {
     redirect("/app/accounting/bills?error=missing-fields");
   }
-  const { contactId, supplierName, supplierEmail, description, expenseAccountId, billDate, dueDate, taxCodeId } = parsed.data;
+  const { contactId, supplierName, supplierEmail, description, expenseAccountId, billDate, dueDate, taxCodeId, currency, exchangeRate } = parsed.data;
   const lines = parseIndexedFormRows(formData, "lines", ["description", "quantity", "unitPrice"]) as unknown as LineItemInput[];
 
   const session = await getServerAuthSession();
@@ -76,11 +81,14 @@ export async function createNewBill(formData: FormData): Promise<void> {
         billDate,
         dueDate,
         taxCodeId: taxCodeId ?? null,
+        currency: currency ?? null,
+        exchangeRate: exchangeRate ?? null,
       },
       session?.user?.id ?? null,
     );
   } catch (error) {
     if (error instanceof InvalidLineItemsError) redirect("/app/accounting/bills?error=invalid-lines");
+    if (error instanceof ExchangeRateError) redirect("/app/accounting/bills?error=fx-rate");
     if (error instanceof NotFoundError) redirect("/app/accounting/bills?error=not-found");
     throw error;
   }
@@ -119,7 +127,7 @@ export async function approveExistingBill(formData: FormData): Promise<void> {
   redirect("/app/accounting/bills?saved=1");
 }
 
-const payBillSchema = z.object({ id: cuid, amount: moneyAmount, paymentDate: dateInput, accountId: cuid, paymentMethod: z.enum(["CASH", "BANK_TRANSFER", "MOBILE_MONEY", "CHEQUE", "CARD", "OTHER"]), reference: shortText.nullable().optional(), notes: longText.nullable().optional() });
+const payBillSchema = z.object({ id: cuid, amount: moneyAmount, paymentDate: dateInput, accountId: cuid, paymentMethod: z.enum(["CASH", "BANK_TRANSFER", "MOBILE_MONEY", "CHEQUE", "CARD", "OTHER"]), reference: shortText.nullable().optional(), notes: longText.nullable().optional(), exchangeRate: exchangeRateInput.nullable().optional() });
 
 export async function payBill(formData: FormData): Promise<void> {
   const tenant = await requireModuleAccess("accounting");
@@ -139,15 +147,16 @@ export async function payBill(formData: FormData): Promise<void> {
   if (!parsed.success) {
     redirect("/app/accounting/bills?error=missing-fields");
   }
-  const { id, amount, paymentDate, accountId, paymentMethod, reference, notes } = parsed.data;
+  const { id, amount, paymentDate, accountId, paymentMethod, reference, notes, exchangeRate } = parsed.data;
   const session = await getServerAuthSession();
 
   let result;
   try {
-    result = await recordBillPayment(tenant.organizationId, id, { amount, paymentDate, accountId, paymentMethod, reference, notes, createdById: session?.user?.id ?? null });
+    result = await recordBillPayment(tenant.organizationId, id, { amount, paymentDate, accountId, paymentMethod, reference, notes, exchangeRate: exchangeRate ?? null, createdById: session?.user?.id ?? null });
   } catch (error) {
     if (error instanceof AccountingPeriodLockedError) redirect("/app/accounting/bills?error=period-closed");
     if (error instanceof InvalidPaymentError) redirect("/app/accounting/bills?error=invalid-payment");
+    if (error instanceof ExchangeRateError) redirect("/app/accounting/bills?error=fx-rate");
     if (error instanceof BillStateError) redirect("/app/accounting/bills?error=invalid-state");
     if (error instanceof NotFoundError) redirect("/app/accounting/bills?error=not-found");
     throw error;

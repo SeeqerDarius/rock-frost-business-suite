@@ -26,6 +26,12 @@ export const moneyAmount = z
 /** Explicit alias for workflows where zero is never a valid monetary value. */
 export const moneyAmountPositive = moneyAmount;
 
+/** ISO 4217 currency code as submitted by a form (validated against the real list server-side). */
+export const currencyCode = z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/, "Must be a three-letter currency code.");
+
+/** An explicit exchange rate: 1 document currency = x base currency, up to 10 decimal places. */
+export const exchangeRateInput = z.string().trim().regex(/^\d{1,10}(\.\d{1,10})?$/, "Must be a positive rate with at most 10 decimal places.");
+
 /** Same as moneyAmount but allows zero (e.g. an optional deposit/fee that can legitimately be 0). */
 export const moneyAmountNonNegative = z
   .string()

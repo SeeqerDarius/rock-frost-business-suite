@@ -1,4 +1,5 @@
 import { Contact, Plus, Upload } from "lucide-react";
+import { listCountries, SUPPORTED_CURRENCIES } from "@/lib/localization";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -28,7 +29,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 const TYPE_LABELS: Record<string, string> = { CUSTOMER: "Customer", SUPPLIER: "Supplier", BOTH: "Customer and supplier" };
 const TYPE_BADGE: Record<string, "default" | "secondary" | "outline"> = { CUSTOMER: "default", SUPPLIER: "secondary", BOTH: "outline" };
 
-function ContactFields({ contact }: { contact?: { id: string; type: string; name: string; email: string | null; phone: string | null; address: string | null; taxIdentificationNumber: string | null } }) {
+function ContactFields({ contact }: { contact?: { id: string; type: string; name: string; email: string | null; phone: string | null; address: string | null; taxIdentificationNumber: string | null; currency: string | null; countryCode: string | null; vatNumber: string | null } }) {
   const idSuffix = contact ? `-${contact.id}` : "";
   return (
     <>
@@ -63,8 +64,28 @@ function ContactFields({ contact }: { contact?: { id: string; type: string; name
         </div>
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`taxIdentificationNumber${idSuffix}`}>TIN (Ghana Tax Identification Number)</Label>
-        <Input id={`taxIdentificationNumber${idSuffix}`} name="taxIdentificationNumber" defaultValue={contact?.taxIdentificationNumber ?? ""} />
+        <Label htmlFor={`taxIdentificationNumber${idSuffix}`}>Tax identification number</Label>
+        <Input id={`taxIdentificationNumber${idSuffix}`} name="taxIdentificationNumber" defaultValue={contact?.taxIdentificationNumber ?? ""} placeholder="TIN, EIN, or national tax ID" />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="space-y-2">
+          <Label htmlFor={`countryCode${idSuffix}`}>Country</Label>
+          <select id={`countryCode${idSuffix}`} name="countryCode" defaultValue={contact?.countryCode ?? ""} className="h-10 w-full rounded-md border bg-background px-3">
+            <option value="">Not specified</option>
+            {listCountries().map((country) => <option key={country.code} value={country.code}>{country.name}</option>)}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`vatNumber${idSuffix}`}>VAT/GST number</Label>
+          <Input id={`vatNumber${idSuffix}`} name="vatNumber" defaultValue={contact?.vatNumber ?? ""} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`currency${idSuffix}`}>Default currency</Label>
+          <select id={`currency${idSuffix}`} name="currency" defaultValue={contact?.currency ?? ""} className="h-10 w-full rounded-md border bg-background px-3">
+            <option value="">Base currency</option>
+            {SUPPORTED_CURRENCIES.map((code) => <option key={code} value={code}>{code}</option>)}
+          </select>
+        </div>
       </div>
       <div className="space-y-2">
         <Label htmlFor={`address${idSuffix}`}>Address</Label>

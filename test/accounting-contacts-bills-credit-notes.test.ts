@@ -7,6 +7,8 @@ vi.mock("@/platform/module-requests/configuration", () => ({
 }));
 
 const mockDb = {
+  // Base currency lookup used by multi-currency posting; these suites cover base-currency documents.
+  organization: { findUnique: vi.fn(async () => ({ currency: "GHS" })) },
   accountingContact: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
   accountingAccount: { count: vi.fn(), findMany: vi.fn(), createMany: vi.fn(), findFirst: vi.fn() },
   accountingJournalEntry: { create: vi.fn(), count: vi.fn(), findFirst: vi.fn() },
@@ -212,7 +214,7 @@ describe("Credit note applied to an invoice reduces its outstanding balance", ()
     expect(result.status).toBe("APPLIED");
     expect(mockDb.accountingInvoice.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "invoice-1" },
-      data: { amountCredited: { increment: creditNote.amount } },
+      data: { amountCredited: { increment: creditNote.amount }, baseAmountSettled: { increment: creditNote.amount } },
     }));
     // Debit Revenue (taxableAmount) + Debit VAT payable (vatAmount) = Credit AR (amount, gross) - must balance exactly.
     const journalCall = mockDb.accountingJournalEntry.create.mock.calls[0][0];

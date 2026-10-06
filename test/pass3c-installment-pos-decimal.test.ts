@@ -8,6 +8,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  */
 
 const mockDb = {
+  // Base currency lookup used by multi-currency posting; these suites cover base-currency documents.
+  organization: { findUnique: vi.fn(async () => ({ currency: "GHS" })) },
   hirePurchaseStaff: { findFirst: vi.fn() },
   hirePurchaseProduct: { findFirst: vi.fn() },
   hirePurchaseStaffSalaryPayment: { create: vi.fn() },

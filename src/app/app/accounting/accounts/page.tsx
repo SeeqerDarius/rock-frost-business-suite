@@ -1,4 +1,5 @@
 import { Plus, ListChecks, Upload } from "lucide-react";
+import { SUPPORTED_CURRENCIES } from "@/lib/localization";
 import { PageHeader } from "@/components/layout/page-header";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -34,7 +35,7 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 interface AccountFieldsProps {
-  account?: { code: string; name: string; type: string; active: boolean; liquidityType: string; bankName: string | null; accountNumberLast4: string | null };
+  account?: { code: string; name: string; type: string; active: boolean; liquidityType: string; bankName: string | null; accountNumberLast4: string | null; currency: string | null };
 }
 
 function AccountFields({ account }: AccountFieldsProps) {
@@ -72,6 +73,7 @@ function AccountFields({ account }: AccountFieldsProps) {
       </div>
       <div className="space-y-2"><Label htmlFor={`liquidityType${idSuffix}`}>Cash or bank classification</Label><select id={`liquidityType${idSuffix}`} name="liquidityType" defaultValue={account?.liquidityType ?? "NONE"} className="h-10 w-full rounded-md border bg-background px-3"><option value="NONE">Not a cash account</option><option value="CASH">Cash</option><option value="BANK">Bank</option><option value="MOBILE_MONEY">Mobile money</option></select></div>
       <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor={`bankName${idSuffix}`}>Institution name</Label><Input id={`bankName${idSuffix}`} name="bankName" defaultValue={account?.bankName ?? ""} /></div><div className="space-y-2"><Label htmlFor={`accountNumberLast4${idSuffix}`}>Account last 4 digits</Label><Input id={`accountNumberLast4${idSuffix}`} name="accountNumberLast4" inputMode="numeric" maxLength={4} defaultValue={account?.accountNumberLast4 ?? ""} /></div></div>
+      <div className="space-y-2"><Label htmlFor={`currency${idSuffix}`}>Account currency</Label><select id={`currency${idSuffix}`} name="currency" defaultValue={account?.currency ?? ""} className="h-10 w-full rounded-md border bg-background px-3"><option value="">Base currency</option>{SUPPORTED_CURRENCIES.map((code) => <option key={code} value={code}>{code}</option>)}</select><p className="text-xs text-muted-foreground">For a foreign-currency bank account. Balances are still reported in the base currency.</p></div>
     </>
   );
 }
