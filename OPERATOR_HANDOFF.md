@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-06: Release of stranded uncommitted work from `codex/seo-visibility-sprint`
+
+- **Scope**: the main checkout had about 55 uncommitted files from earlier agents (last touched 2026-10-01). Each file's edits were tested against `origin/main` to see whether they reverse-apply. Already released elsewhere, so not re-applied: both sprint commits (`dc662e9`, `c889b58`), the theme toggle core (#28), and School/Payroll accounting retry and accrual with both migrations (#33). The leftover accounting edits were an earlier draft superseded by #33's `src/modules/*/accounting.ts` design and were discarded. Released here: (1) theme toggle on the login page and password-reset/invite auth layout, plus organization-settings copy reflecting personal overrides; (2) homepage testimonials cached under `PUBLIC_MARKETING_CACHE_TAG` with `updateTag` on feedback moderation; (3) public `/resources` guides (5 Ghana-focused articles in `src/lib/resource-articles.ts`), sitemap/robots/SEO metadata, homepage FAQ, company and module page links, and a header "Resources" link; (4) analytics overview/financial/operations/sales pages refresh with a shared `AttentionQueue` component.
+- **Not included**: media files (`artifacts/`, `linkedin-media/`, `motion/`, `output/`, `fb.html`, `public/linkedin-*`, `public/Rock_Frost_Invoice.xlsx`) remain local and untracked.
+- **Migrations/environment**: none.
+- **Validation**: clean `npm ci`; `npx tsc --noEmit` passed; `npm run lint` 0 errors (2 pre-existing warnings); `npm run test` 177 files / 1,358 tests passed; `npm run build` passed with `/resources` and `/resources/[slug]`; `git diff --check` passed; no em dashes in customer-facing copy.
+- **Remaining risks**: authenticated analytics pages were not visually verified (no tenant session).
+
 ## 2026-10-05: Multi-module selection on tenant module requests released
 
 - **Scope**: the `/app/module-requests` "New request" dialog now uses a checklist so an organization administrator can select several existing modules in one submission. The server creates one `ModuleRequest` per selected module in a single transaction (all or none), appending the module name to each title when more than one is selected, so operators still review and approve-and-enable each module independently. No modules selected still creates one module-less request. Demo/enable/customize types require at least one module. The legacy single `moduleId` form field is still accepted. The success banner reports how many requests were created.
