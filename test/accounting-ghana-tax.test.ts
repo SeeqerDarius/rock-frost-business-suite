@@ -6,6 +6,8 @@ vi.mock("@/platform/module-requests/configuration", () => ({
 }));
 
 const mockDb = {
+  // Base currency lookup used by multi-currency posting; these suites cover base-currency documents.
+  organization: { findUnique: vi.fn(async () => ({ currency: "GHS" })) },
   accountingAccount: { count: vi.fn(), findMany: vi.fn(), createMany: vi.fn(), findFirst: vi.fn() },
   accountingBill: { findFirst: vi.fn(), update: vi.fn() },
   accountingPayablePayment: { create: vi.fn() },
@@ -110,7 +112,7 @@ describe("recordBillPayment: withholding tax configured on the bill's tax code",
     ]);
     // The full 1000 clears the payable, even though only 900 left as cash - the
     // other 100 was withheld and is now owed to GRA instead of the supplier.
-    expect(mockDb.accountingBill.update).toHaveBeenCalledWith(expect.objectContaining({ data: { amountPaid: { increment: expect.anything() } } }));
+    expect(mockDb.accountingBill.update).toHaveBeenCalledWith(expect.objectContaining({ data: { amountPaid: { increment: expect.anything() }, baseAmountSettled: { increment: expect.anything() } } }));
     expect(bill.amountPaid).toBe("1000.00");
   });
 });

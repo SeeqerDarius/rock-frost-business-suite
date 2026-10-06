@@ -1,7 +1,7 @@
 # Global accounting and contract expansion: audit baseline
 
 **Audit date:** 2026-10-06  
-**Status:** Phase 1 discovery is complete. Increment 1 (global foundation) is implemented: organization localization persistence and settings, country-aware signup, locale and timezone-aware formatting, and an append-only exchange-rate store with a provider abstraction. Multi-currency documents, the jurisdiction tax engine, country packs, and Contracts are outstanding.
+**Status:** Phase 1 discovery is complete. Increment 1 (global foundation) is live in production. Increment 2 (multi-currency accounting documents with realized and unrealized FX) is implemented. The jurisdiction tax engine, country packs, and Contracts are outstanding.
 
 This document records the current reusable architecture and the gaps that must be closed before Rock Frost can claim global accounting or Contract Lifecycle Management. It is a delivery plan, not a claim that the expansion is complete.
 
@@ -90,14 +90,60 @@ The main checkout's uncommitted Payroll, School, SEO, and media work is outside 
 
 ### Known limitations of Increment 1
 
-- Accounting documents are still single-currency. `resolveExchangeRate()` and `buildFxSnapshot()` are ready, but invoices, bills, payments, and contacts do not yet store a transaction currency or post realized FX. That is Increment 2.
+- Accounting documents were single-currency in this increment; Increment 2 below adds multi-currency documents.
 - About 170 existing `formatMoney()` call sites still format with the currency-level default locale. Ghana tenants are unaffected; a non-GHS tenant's amounts are labeled correctly only where the call passes the organization currency. Migrating call sites to `createOrganizationFormatter()` is part of Increment 2.
 - No live FX provider is connected; manual rates are the source of truth.
 - The interface language remains English; `defaultLanguage` is stored for generated documents.
 
+Increment 1 was released to production on 2026-10-06 (PR #54, merge `513d9ab`, deployment `dpl_8z2DuFXrzin7qbPEuG26qLY96FDr`; migration applied).
+
+## Increment 2: multi-currency accounting documents (implemented 2026-10-06)
+
+### Schema (migration `20261006120000_multi_currency_documents`, additive)
+
+- `AccountingInvoice`, `AccountingBill`, `AccountingCreditNote`: `currency`, `exchangeRate` DECIMAL(20,10) default 1 (CHECK > 0), `exchangeRateDate`, `exchangeRateSource` (`BASE`, `MANUAL`, `PROVIDER`, `INVERTED`, `MANUAL_ENTRY`, or `INVOICE` for an applied credit note), and `baseAmount`. Invoices and bills also store `baseAmountSettled`, the base carrying amount already relieved by payments and credits. Indexed by organization and currency.
+- `AccountingReceivablePayment`, `AccountingPayablePayment`: `currency`, settlement `exchangeRate`, `exchangeRateSource`, `baseAmount` (base value received or paid), `settledBaseAmount` (carrying amount relieved), and `realizedFxAmount` (positive = gain).
+- `AccountingAccount.currency` (a foreign-currency bank account; ledger balances stay in base currency), `AccountingJournalLine.transactionCurrency/transactionAmount/exchangeRate` (original amount on converted lines), `AccountingContact.currency/countryCode/vatNumber`, `AccountingTaxTransaction.currency/exchangeRate` (tax amounts remain in base currency; the document currency is evidence).
+- Backfill: every existing document and payment becomes a base-currency record at rate 1 with `baseAmount = amount` and `baseAmountSettled = amountPaid (+ amountCredited)`. No existing total, balance, or posting changes.
+
+### Rules (`src/modules/accounting/multi-currency.ts`)
+
+- Document amounts stay in the document currency. The rate is resolved once on the server when the document is created, from the organization's recorded rates for the document date or an explicit rate the user enters, and is never recalculated. A newer recorded rate never changes an existing document.
+- Postings convert each component (revenue/expense, each tax, receivable/payable) at the stored rate; the receivable/payable is the exact sum of the converted components, so journals always balance and a void reproduces the original base amounts.
+- Base-currency documents post exactly the values they posted before (byte-identical journal lines), verified by the unchanged existing suites.
+- Settlement relieves the receivable/payable at the document's booked rate. The base value received or paid uses the settlement rate (recorded, or entered from the bank advice). The difference posts to `4810 Foreign Exchange Gain (Realized)` or `5810 Foreign Exchange Loss (Realized)`. The final settlement relieves exactly the remaining carrying amount, so rounding never leaves residue on a closed document. Withholding tax on a foreign bill is valued at the settlement rate.
+- A cash or bank account may settle a document only in the base currency or the document's own currency.
+- A credit note can be applied only to an invoice in the same currency and is posted at that invoice's booked rate (it adjusts the invoice, so it creates no artificial FX difference). A refunded credit note uses its own rate.
+- FX gain/loss accounts (4810, 5810, and unrealized 4820, 5820) are created only when an organization first needs them; single-currency charts of accounts are unchanged.
+- Reports and dashboards (receivables summary, ageing, overview, financial dashboard, revenue trend, top invoices, insights) aggregate base-currency values, so mixed-currency documents are never summed as one currency.
+
+### Unrealized revaluation (`src/modules/accounting/revaluation.ts`)
+
+An explicit period-end action on `/app/accounting/exchange-rates` (preview with `accounting.view`, posting requires `accounting.periods.manage`). It values open foreign invoices and bills at the closing rate for a date, posts one journal on that date against 4820/5820, and an automatic reversal the next day. Posting is idempotent per date, refuses missing closing rates, respects closed periods, never modifies documents or carrying amounts, and is audited (`fx_revaluation.posted`).
+
+### UI
+
+- Invoices, bills, and credit notes: currency selector (base by default) and an optional explicit rate; amounts render in the document currency with the base equivalent and rate; payment dialogs offer an optional settlement rate and list only compatible accounts; payment history shows realized FX.
+- Chart of accounts: account currency for foreign bank accounts. Contacts: country, VAT/GST number, default currency; the tax ID label is now jurisdiction-neutral ("Tax identification number" instead of a Ghana-specific label).
+- Printable invoices and bills use the document currency.
+
+### Tests
+
+- `test/multi-currency-accounting.test.ts`: component conversion and exact totals, realized gain/loss signs, rounding-free final settlement, base-currency identity, FX journal lines, original-currency metadata, base reporting values.
+- Existing accounting suites (Ghana tax, bills/credit notes, reporting, dashboard, decimal hygiene, regression) updated only where they assert the new `baseAmountSettled` bookkeeping or base-currency aggregate fields.
+- `test/integration/tenant-isolation/multi-currency.test.ts` (real PostgreSQL): USD invoice with rate snapshot, converted posting and base tax evidence, collection at a higher rate with a realized gain, unchanged historical rate, rounding-free partial payments, exact void reversal, account-currency and credit-note-currency guards, EUR bill paid at a lower rate, revaluation and next-day reversal (idempotent), base-currency regression, and cross-tenant rate isolation.
+
+### Known limitations of Increment 2
+
+- Customer default currency is stored but not yet applied automatically when a contact is selected on a new document; the user selects the currency.
+- Procurement supplier invoices, POS, Fleet, School, and other modules that post to Accounting remain base-currency.
+- Legacy `formatMoney()` call sites outside the Accounting document pages still use currency-level locale defaults (no change for Ghana tenants). That sweep is now a separate formatting increment.
+- Printable documents still use the existing (Ghana-oriented) tax layout; jurisdiction-specific invoice templates arrive with the tax packs.
+- No live FX provider is connected.
+
 ## Remaining increments
 
-2. **Multi-currency accounting:** transaction currency and FX snapshot columns on invoices, bills, credit notes, payments, and contacts; base-currency posting; realized FX gain/loss journals on settlement; unrealized revaluation as an explicit, reversible accounting event; formatter migration.
+2. **Formatting sweep:** migrate remaining `formatMoney()` call sites across modules to `createOrganizationFormatter()`, and apply contact default currencies on new documents.
 3. **Tax engine core:** jurisdictions, authorities, tax types, categories, registrations, exemptions, effective-dated and versioned rules and rates with provenance, document tax-line snapshots, account mappings, and Ghana compatibility through the existing `AccountingTaxCode` surface.
 4. **Jurisdiction packs:** Ghana; US (state/county/city/district layering, nexus status, exemption certificates, sales versus use tax, separate federal/employment/excise account configuration and reports); EU (member-state rates, B2B/B2C, reverse charge, OSS/IOSS readiness, VAT ID validation provider interface); UK, CH, and NO foundations.
 5. **Tax and Compliance settings UI and tax reports.**

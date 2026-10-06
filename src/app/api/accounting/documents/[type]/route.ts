@@ -47,7 +47,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ type
       counterpartyName: invoice.customerName,
       counterpartyEmail: invoice.customerEmail,
       counterpartyTin: invoice.contact?.taxIdentificationNumber ?? null,
-      currency: tenant.organization.currency ?? "GHS",
+      // Printed in the document currency, not the organization base currency.
+      currency: invoice.currency ?? tenant.organization.currency ?? "GHS",
       lines: invoice.lines.map((line) => ({ description: line.description, quantity: Number(line.quantity), unitPrice: Number(line.unitPrice), lineTotal: Number(line.lineTotal) })),
       taxableAmount: Number(invoice.taxableAmount),
       vatAmount: Number(invoice.vatAmount),
@@ -74,7 +75,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ type
       counterpartyName: bill.supplierName,
       counterpartyEmail: bill.supplierEmail,
       counterpartyTin: bill.contact?.taxIdentificationNumber ?? null,
-      currency: tenant.organization.currency ?? "GHS",
+      currency: bill.currency ?? tenant.organization.currency ?? "GHS",
       lines: bill.lines.map((line) => ({ description: line.description, quantity: Number(line.quantity), unitPrice: Number(line.unitPrice), lineTotal: Number(line.lineTotal) })),
       taxableAmount: Number(bill.taxableAmount),
       vatAmount: Number(bill.vatAmount),

@@ -18,7 +18,8 @@ import {
   AccountingPeriodLockedError,
   type LineItemInput,
 } from "@/modules/accounting/service";
-import { moneyAmount, shortText, longText, email, cuid, dateInput, parseIndexedFormRows, parseWithSchema } from "@/lib/validation";
+import { ExchangeRateError } from "@/modules/globalization/fx";
+import { moneyAmount, shortText, longText, email, cuid, dateInput, currencyCode, exchangeRateInput, parseIndexedFormRows, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
 
 function clean(value: FormDataEntryValue | null) {
@@ -34,6 +35,8 @@ const createInvoiceSchema = z.object({
   issueDate: dateInput,
   dueDate: dateInput,
   taxCodeId: cuid.nullable().optional(),
+  currency: currencyCode.nullable().optional(),
+  exchangeRate: exchangeRateInput.nullable().optional(),
 });
 
 export async function createNewInvoice(formData: FormData): Promise<void> {
@@ -50,11 +53,13 @@ export async function createNewInvoice(formData: FormData): Promise<void> {
     issueDate: clean(formData.get("issueDate")),
     dueDate: clean(formData.get("dueDate")),
     taxCodeId: clean(formData.get("taxCodeId")),
+    currency: clean(formData.get("currency")),
+    exchangeRate: clean(formData.get("exchangeRate")),
   });
   if (!parsed.success) {
     redirect("/app/accounting/invoices?error=missing-fields");
   }
-  const { contactId, customerName, customerEmail, description, issueDate, dueDate, taxCodeId } = parsed.data;
+  const { contactId, customerName, customerEmail, description, issueDate, dueDate, taxCodeId, currency, exchangeRate } = parsed.data;
   const lines = parseIndexedFormRows(formData, "lines", ["description", "quantity", "unitPrice"]) as unknown as LineItemInput[];
 
   const session = await getServerAuthSession();
@@ -70,11 +75,14 @@ export async function createNewInvoice(formData: FormData): Promise<void> {
         issueDate,
         dueDate,
         taxCodeId: taxCodeId ?? null,
+        currency: currency ?? null,
+        exchangeRate: exchangeRate ?? null,
       },
       session?.user?.id ?? null,
     );
   } catch (error) {
     if (error instanceof InvalidLineItemsError) redirect("/app/accounting/invoices?error=invalid-lines");
+    if (error instanceof ExchangeRateError) redirect("/app/accounting/invoices?error=fx-rate");
     throw error;
   }
 
@@ -122,7 +130,7 @@ export async function sendInvoice(formData: FormData): Promise<void> {
   redirect("/app/accounting/invoices?saved=1");
 }
 
-const payInvoiceSchema = z.object({ id: cuid, amount: moneyAmount, paymentDate: dateInput, accountId: cuid, paymentMethod: z.enum(["CASH", "BANK_TRANSFER", "MOBILE_MONEY", "CHEQUE", "CARD", "OTHER"]), reference: shortText.nullable().optional(), notes: longText.nullable().optional() });
+const payInvoiceSchema = z.object({ id: cuid, amount: moneyAmount, paymentDate: dateInput, accountId: cuid, paymentMethod: z.enum(["CASH", "BANK_TRANSFER", "MOBILE_MONEY", "CHEQUE", "CARD", "OTHER"]), reference: shortText.nullable().optional(), notes: longText.nullable().optional(), exchangeRate: exchangeRateInput.nullable().optional() });
 
 export async function payInvoice(formData: FormData): Promise<void> {
   const tenant = await requireModuleAccess("accounting");
@@ -138,18 +146,20 @@ export async function payInvoice(formData: FormData): Promise<void> {
     paymentMethod: clean(formData.get("paymentMethod")),
     reference: clean(formData.get("reference")),
     notes: clean(formData.get("notes")),
+    exchangeRate: clean(formData.get("exchangeRate")),
   });
   if (!parsed.success) {
     redirect("/app/accounting/invoices?error=missing-fields");
   }
-  const { id, amount, paymentDate, accountId, paymentMethod, reference, notes } = parsed.data;
+  const { id, amount, paymentDate, accountId, paymentMethod, reference, notes, exchangeRate } = parsed.data;
 
   const session = await getServerAuthSession();
 
   let invoice;
   try {
-    invoice = await recordInvoicePayment(tenant.organizationId, id, { amount, paymentDate, accountId, paymentMethod, reference, notes, createdById: session?.user?.id ?? null });
+    invoice = await recordInvoicePayment(tenant.organizationId, id, { amount, paymentDate, accountId, paymentMethod, reference, notes, exchangeRate: exchangeRate ?? null, createdById: session?.user?.id ?? null });
   } catch (error) {
+    if (error instanceof ExchangeRateError) redirect("/app/accounting/invoices?error=fx-rate");
     if (error instanceof AccountingPeriodLockedError) redirect("/app/accounting/invoices?error=period-closed");
     if (error instanceof InvalidPaymentError) {
       await logAuditEvent({

@@ -6,6 +6,8 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { ExchangeRateError } from "@/modules/globalization/fx";
 import { recordExchangeRate } from "@/modules/globalization/exchange-rates";
+import { assertRevaluationDate, postRevaluation, RevaluationError } from "@/modules/accounting/revaluation";
+import { AccountingPeriodLockedError } from "@/modules/accounting/service";
 
 function value(formData: FormData, key: string) { return String(formData.get(key) ?? "").trim(); }
 
@@ -40,4 +42,21 @@ export async function recordExchangeRateAction(formData: FormData): Promise<void
   }
   revalidatePath("/app/accounting/exchange-rates");
   redirect("/app/accounting/exchange-rates?saved=1");
+}
+
+export async function postRevaluationAction(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("accounting");
+  // Revaluation is a period-end posting, so it requires period-management permission.
+  if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_PERIODS_MANAGE)) redirect("/app/accounting/exchange-rates?error=forbidden");
+  const asOf = value(formData, "asOf");
+  try {
+    assertRevaluationDate(asOf);
+    await postRevaluation(tenant.organizationId, asOf, tenant.userId);
+  } catch (error) {
+    if (error instanceof RevaluationError || error instanceof ExchangeRateError) redirect(`/app/accounting/exchange-rates?revalueAsOf=${encodeURIComponent(asOf)}&error=revaluation`);
+    if (error instanceof AccountingPeriodLockedError) redirect(`/app/accounting/exchange-rates?revalueAsOf=${encodeURIComponent(asOf)}&error=period-closed`);
+    throw error;
+  }
+  revalidatePath("/app/accounting/exchange-rates");
+  redirect(`/app/accounting/exchange-rates?revalueAsOf=${encodeURIComponent(asOf)}&revalued=1`);
 }

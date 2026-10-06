@@ -64,7 +64,7 @@ export async function getAccountingInsights(organizationId: string, period: Acco
     db.accountingInvoice.aggregate({
       where: { organizationId, status: "OVERDUE" },
       _count: { _all: true },
-      _sum: { amount: true },
+      _sum: { baseAmount: true },
     }),
     db.accountingExpense.findMany({
       where: { organizationId, status: { in: ["PENDING", "APPROVED"] } },
@@ -137,7 +137,7 @@ export async function getAccountingInsights(organizationId: string, period: Acco
     revenueChangePercent: percentageChange(revenue, previousRevenue),
     expenseChangePercent: percentageChange(expenses, previousExpenses),
     overdueInvoiceCount: overdueInvoices._count._all,
-    overdueInvoiceTotal: Number(overdueInvoices._sum.amount ?? 0),
+    overdueInvoiceTotal: Number(overdueInvoices._sum.baseAmount ?? 0),
     pendingExpenseCount: pendingExpenses.length,
     pendingExpenseTotal: round(pendingExpenses.reduce((sum, expense) => sum.plus(expense.amount), new Prisma.Decimal(0))),
     sources,

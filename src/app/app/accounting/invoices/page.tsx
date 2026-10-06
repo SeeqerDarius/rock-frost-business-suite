@@ -14,7 +14,9 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { LineItemsEditor } from "@/components/forms/line-items-editor";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
+import { CurrencyFields, SettlementRateField } from "@/components/forms/currency-fields";
+import { baseTotal } from "@/modules/accounting/multi-currency";
 import { listAccounts, listInvoices, listContacts } from "@/modules/accounting/service";
 import { listTaxCodes } from "@/modules/accounting/tax-service";
 import { createNewInvoice, sendInvoice, payInvoice, voidExistingInvoice } from "./actions";
@@ -28,6 +30,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-payment": "That payment amount is invalid or exceeds the remaining balance.",
   "not-found": "That invoice could not be found.",
   "period-closed": "The transaction date is in a closed accounting period.",
+  "fx-rate": "No exchange rate is recorded for that currency and date. Record one under Exchange Rates or enter a rate.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
@@ -46,7 +49,9 @@ export default async function AccountingInvoicesPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("accounting");
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_INVOICES_MANAGE);
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
+  const format = createOrganizationFormatter(tenant.organization);
+  const baseCurrency = format.presentation.currency;
+  const money = (value: Parameters<typeof format.money>[0], currency?: string | null) => format.money(value, currency ?? baseCurrency);
   const canReceive = hasPermission(tenant, PERMISSIONS.ACCOUNTING_RECEIVABLES_MANAGE);
   const [invoices, accounts, taxCodes, contacts] = await Promise.all([listInvoices(tenant.organizationId), listAccounts(tenant.organizationId), listTaxCodes(tenant.organizationId), listContacts(tenant.organizationId)]);
   const receivingAccounts = accounts.filter((account) => account.active && account.liquidityType !== "NONE");
@@ -76,7 +81,8 @@ export default async function AccountingInvoicesPage({
               <Label htmlFor="customerEmail">Customer email</Label>
               <Input id="customerEmail" name="customerEmail" type="email" />
             </div>
-            <LineItemsEditor currency={tenant.organization.currency ?? "GHS"} />
+            <CurrencyFields baseCurrency={baseCurrency} idPrefix="invoice" />
+            <LineItemsEditor currency={baseCurrency} />
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="issueDate">Issue date</Label>
@@ -121,8 +127,8 @@ export default async function AccountingInvoicesPage({
             <TableRow>
               <TableHead>Number</TableHead>
               <TableHead>Customer</TableHead>
-              <TableHead>Amount ({tenant.organization.currency})</TableHead>
-              <TableHead>Paid ({tenant.organization.currency})</TableHead>
+              <TableHead>Amount</TableHead>
+              <TableHead>Paid</TableHead>
               <TableHead>Due</TableHead>
               <TableHead>Status</TableHead>
               {canManage || canReceive ? <TableHead /> : null}
@@ -138,14 +144,14 @@ export default async function AccountingInvoicesPage({
                     <details className="mt-1 text-xs font-normal text-muted-foreground">
                       <summary className="cursor-pointer">{invoice.lines.length} line{invoice.lines.length === 1 ? "" : "s"}</summary>
                       <div className="mt-1 space-y-0.5">
-                        {invoice.lines.map((line) => <p key={line.id}>{line.description}: {Number(line.quantity)} x {money(line.unitPrice)} = {money(line.lineTotal)}</p>)}
+                        {invoice.lines.map((line) => <p key={line.id}>{line.description}: {Number(line.quantity)} x {money(line.unitPrice, invoice.currency)} = {money(line.lineTotal, invoice.currency)}</p>)}
                       </div>
                     </details>
                   ) : null}
                 </TableCell>
-                <TableCell className="text-muted-foreground"><div>{money(invoice.amount)}</div>{invoice.taxCode ? <div className="text-xs">Tax {money(Number(invoice.vatAmount) + Number(invoice.nhilAmount) + Number(invoice.getfundAmount))} ({invoice.taxCode.code})</div> : null}</TableCell>
-                <TableCell className="text-muted-foreground">{money(invoice.amountPaid)}{Number(invoice.amountCredited) > 0 ? <div className="text-xs">+{money(invoice.amountCredited)} credited</div> : null}</TableCell>
-                <TableCell className="text-muted-foreground">{invoice.dueDate.toLocaleDateString()}</TableCell>
+                <TableCell className="text-muted-foreground"><div>{money(invoice.amount, invoice.currency)}</div>{invoice.currency && invoice.currency !== baseCurrency ? <div className="text-xs">{money(baseTotal(invoice))} at {format.number(invoice.exchangeRate.toString(), { maximumFractionDigits: 6 })}</div> : null}{invoice.taxCode ? <div className="text-xs">Tax {money(invoice.vatAmount.plus(invoice.nhilAmount).plus(invoice.getfundAmount), invoice.currency)} ({invoice.taxCode.code})</div> : null}</TableCell>
+                <TableCell className="text-muted-foreground">{money(invoice.amountPaid, invoice.currency)}{Number(invoice.amountCredited) > 0 ? <div className="text-xs">+{money(invoice.amountCredited, invoice.currency)} credited</div> : null}</TableCell>
+                <TableCell className="text-muted-foreground">{format.date(invoice.dueDate)}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[invoice.status]}>{invoice.status}</Badge>
                 </TableCell>
@@ -171,7 +177,7 @@ export default async function AccountingInvoicesPage({
                         >
                           <input type="hidden" name="id" value={invoice.id} />
                           <div className="space-y-2">
-                            <Label htmlFor={`pay-amount-${invoice.id}`}>Amount ({tenant.organization.currency})</Label>
+                            <Label htmlFor={`pay-amount-${invoice.id}`}>Amount ({invoice.currency ?? baseCurrency})</Label>
                             <Input
                               id={`pay-amount-${invoice.id}`}
                               name="amount"
@@ -186,7 +192,8 @@ export default async function AccountingInvoicesPage({
                             <Input id={`pay-date-${invoice.id}`} name="paymentDate" type="date" defaultValue={today} required />
                           </div>
                           <div className="space-y-2"><Label htmlFor={`pay-method-${invoice.id}`}>Payment method</Label><select id={`pay-method-${invoice.id}`} name="paymentMethod" className="h-10 w-full rounded-md border bg-background px-3"><option value="BANK_TRANSFER">Bank transfer</option><option value="CASH">Cash</option><option value="MOBILE_MONEY">Mobile money</option><option value="CARD">Card</option><option value="CHEQUE">Cheque</option><option value="OTHER">Other</option></select></div>
-                          <div className="space-y-2"><Label htmlFor={`pay-account-${invoice.id}`}>Receiving account</Label><select id={`pay-account-${invoice.id}`} name="accountId" className="h-10 w-full rounded-md border bg-background px-3" required>{receivingAccounts.map((account) => <option key={account.id} value={account.id}>{account.code} {account.name}</option>)}</select></div>
+                          {invoice.currency && invoice.currency !== baseCurrency ? <SettlementRateField id={`pay-rate-${invoice.id}`} currency={invoice.currency} baseCurrency={baseCurrency} /> : null}
+                          <div className="space-y-2"><Label htmlFor={`pay-account-${invoice.id}`}>Receiving account</Label><select id={`pay-account-${invoice.id}`} name="accountId" className="h-10 w-full rounded-md border bg-background px-3" required>{receivingAccounts.filter((account) => !account.currency || account.currency === baseCurrency || account.currency === invoice.currency).map((account) => <option key={account.id} value={account.id}>{account.code} {account.name}{account.currency && account.currency !== baseCurrency ? ` (${account.currency})` : ""}</option>)}</select></div>
                           <div className="space-y-2"><Label htmlFor={`pay-reference-${invoice.id}`}>Reference</Label><Input id={`pay-reference-${invoice.id}`} name="reference" /></div>
                           <div className="space-y-2"><Label htmlFor={`pay-notes-${invoice.id}`}>Notes</Label><Textarea id={`pay-notes-${invoice.id}`} name="notes" rows={2} /></div>
                         </EntityDialog>
@@ -201,7 +208,7 @@ export default async function AccountingInvoicesPage({
                   </TableCell>
                 ) : null}
               </TableRow>
-              {invoice.payments.length ? <TableRow><TableCell colSpan={7} className="bg-muted/30"><div className="space-y-1 text-xs"><p className="font-medium">Receipt history</p>{invoice.payments.map((payment) => <p key={payment.id} className="text-muted-foreground">{payment.paymentDate.toLocaleDateString()}: {money(payment.amount)} via {payment.paymentMethod.replaceAll("_", " ")} into {payment.account.name}{payment.reference ? `, reference ${payment.reference}` : ""}</p>)}</div></TableCell></TableRow> : null}</Fragment>
+              {invoice.payments.length ? <TableRow><TableCell colSpan={7} className="bg-muted/30"><div className="space-y-1 text-xs"><p className="font-medium">Receipt history</p>{invoice.payments.map((payment) => <p key={payment.id} className="text-muted-foreground">{format.date(payment.paymentDate)}: {money(payment.amount, invoice.currency)}{Number(payment.realizedFxAmount) !== 0 ? ` (realized FX ${Number(payment.realizedFxAmount) > 0 ? "gain" : "loss"} ${money(payment.realizedFxAmount.abs())})` : ""} via {payment.paymentMethod.replaceAll("_", " ")} into {payment.account.name}{payment.reference ? `, reference ${payment.reference}` : ""}</p>)}</div></TableCell></TableRow> : null}</Fragment>
             ))}
           </TableBody>
         </Table>

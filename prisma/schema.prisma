@@ -2905,6 +2905,9 @@ model AccountingAccount {
   liquidityType          AccountingLiquidityType @default(NONE)
   bankName               String?
   accountNumberLast4     String?
+  /// Currency the account is held in (e.g. a USD bank account). Null = base
+  /// currency. Ledger balances are always kept in the base currency.
+  currency               String?
   openingBalancePostedAt DateTime?
   createdAt              DateTime                @default(now())
 
@@ -3024,39 +3027,52 @@ model AccountingExpenseCategory {
 }
 
 model AccountingInvoice {
-  id             String                  @id @default(cuid())
-  organizationId String
-  branchId       String?
-  invoiceNumber  String
-  contactId      String?
-  customerName   String
-  customerEmail  String?
-  description    String?                 @db.Text
-  amount         Decimal                 @db.Decimal(12, 2)
-  taxableAmount  Decimal                 @default(0) @db.Decimal(12, 2)
-  vatAmount      Decimal                 @default(0) @db.Decimal(12, 2)
-  nhilAmount     Decimal                 @default(0) @db.Decimal(12, 2)
-  getfundAmount  Decimal                 @default(0) @db.Decimal(12, 2)
+  id                 String                  @id @default(cuid())
+  organizationId     String
+  branchId           String?
+  invoiceNumber      String
+  contactId          String?
+  customerName       String
+  customerEmail      String?
+  description        String?                 @db.Text
+  amount             Decimal                 @db.Decimal(12, 2)
+  taxableAmount      Decimal                 @default(0) @db.Decimal(12, 2)
+  vatAmount          Decimal                 @default(0) @db.Decimal(12, 2)
+  nhilAmount         Decimal                 @default(0) @db.Decimal(12, 2)
+  getfundAmount      Decimal                 @default(0) @db.Decimal(12, 2)
   /// When true, the line total entered is treated as gross (tax already
   /// included) and taxableAmount is back-calculated from it via
   /// calculateTaxInclusive() instead of calculateTax() adding tax on top -
   /// false (the existing, unchanged behavior) for every invoice created
   /// before this column existed.
-  taxInclusive   Boolean                 @default(false)
-  taxCodeId      String?
-  amountPaid     Decimal                 @default(0) @db.Decimal(12, 2)
+  taxInclusive       Boolean                 @default(false)
+  taxCodeId          String?
+  amountPaid         Decimal                 @default(0) @db.Decimal(12, 2)
   /// Reduces outstanding balance the same way amountPaid does, but via an
   /// applied AccountingCreditNote rather than cash - kept as its own column
   /// (not folded into amountPaid) so cash-received figures never include a
   /// non-cash credit. Outstanding balance = amount - amountPaid - amountCredited.
-  amountCredited Decimal                 @default(0) @db.Decimal(12, 2)
-  issueDate      DateTime
-  dueDate        DateTime
-  status         AccountingInvoiceStatus @default(DRAFT)
-  paidAt         DateTime?
-  createdById    String?
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
+  amountCredited     Decimal                 @default(0) @db.Decimal(12, 2)
+  /// Multi-currency snapshot (2026-10-06). Document amounts are in
+  /// `currency` (null = the organization's base currency for legacy rows).
+  /// The rate is fixed when the document is created and never recalculated;
+  /// baseAmount is the base-currency equivalent posted to the ledger.
+  currency           String?
+  exchangeRate       Decimal                 @default(1) @db.Decimal(20, 10)
+  exchangeRateDate   DateTime?
+  exchangeRateSource String?
+  baseAmount         Decimal?                @db.Decimal(14, 2)
+  /// Base-currency carrying amount already relieved by payments and credits;
+  /// the final settlement relieves exactly the remainder, so no rounding
+  /// residue is left on the receivable/payable.
+  baseAmountSettled  Decimal                 @default(0) @db.Decimal(14, 2)
+  issueDate          DateTime
+  dueDate            DateTime
+  status             AccountingInvoiceStatus @default(DRAFT)
+  paidAt             DateTime?
+  createdById        String?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
 
   organization Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch       Branch?                       @relation(fields: [branchId], references: [id], onDelete: SetNull)
@@ -3069,6 +3085,7 @@ model AccountingInvoice {
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, status])
+  @@index([organizationId, currency])
   @@index([branchId])
   @@index([taxCodeId])
   @@index([contactId])
@@ -3113,6 +3130,10 @@ model AccountingContact {
   phone                   String?
   address                 String?               @db.Text
   taxIdentificationNumber String?
+  /// Default document currency for this customer/supplier (null = base).
+  currency                String?
+  countryCode             String?
+  vatNumber               String?
   fleetOwnerId            String?
   procurementVendorId     String?
   crmContactId            String?
@@ -3133,31 +3154,44 @@ model AccountingContact {
 }
 
 model AccountingBill {
-  id               String               @id @default(cuid())
-  organizationId   String
-  branchId         String?
-  billNumber       String
-  contactId        String?
-  supplierName     String
-  supplierEmail    String?
-  description      String?              @db.Text
-  expenseAccountId String
-  amount           Decimal              @db.Decimal(12, 2)
-  taxableAmount    Decimal              @default(0) @db.Decimal(12, 2)
-  vatAmount        Decimal              @default(0) @db.Decimal(12, 2)
-  nhilAmount       Decimal              @default(0) @db.Decimal(12, 2)
-  getfundAmount    Decimal              @default(0) @db.Decimal(12, 2)
+  id                 String               @id @default(cuid())
+  organizationId     String
+  branchId           String?
+  billNumber         String
+  contactId          String?
+  supplierName       String
+  supplierEmail      String?
+  description        String?              @db.Text
+  expenseAccountId   String
+  amount             Decimal              @db.Decimal(12, 2)
+  taxableAmount      Decimal              @default(0) @db.Decimal(12, 2)
+  vatAmount          Decimal              @default(0) @db.Decimal(12, 2)
+  nhilAmount         Decimal              @default(0) @db.Decimal(12, 2)
+  getfundAmount      Decimal              @default(0) @db.Decimal(12, 2)
   /// Same meaning as AccountingInvoice.taxInclusive.
-  taxInclusive     Boolean              @default(false)
-  taxCodeId        String?
-  amountPaid       Decimal              @default(0) @db.Decimal(12, 2)
-  billDate         DateTime
-  dueDate          DateTime
-  status           AccountingBillStatus @default(DRAFT)
-  paidAt           DateTime?
-  createdById      String?
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  taxInclusive       Boolean              @default(false)
+  taxCodeId          String?
+  amountPaid         Decimal              @default(0) @db.Decimal(12, 2)
+  /// Multi-currency snapshot (2026-10-06). Document amounts are in
+  /// `currency` (null = the organization's base currency for legacy rows).
+  /// The rate is fixed when the document is created and never recalculated;
+  /// baseAmount is the base-currency equivalent posted to the ledger.
+  currency           String?
+  exchangeRate       Decimal              @default(1) @db.Decimal(20, 10)
+  exchangeRateDate   DateTime?
+  exchangeRateSource String?
+  baseAmount         Decimal?             @db.Decimal(14, 2)
+  /// Base-currency carrying amount already relieved by payments and credits;
+  /// the final settlement relieves exactly the remainder, so no rounding
+  /// residue is left on the receivable/payable.
+  baseAmountSettled  Decimal              @default(0) @db.Decimal(14, 2)
+  billDate           DateTime
+  dueDate            DateTime
+  status             AccountingBillStatus @default(DRAFT)
+  paidAt             DateTime?
+  createdById        String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
   organization   Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch         Branch?                    @relation(fields: [branchId], references: [id], onDelete: SetNull)
@@ -3170,6 +3204,7 @@ model AccountingBill {
 
   @@unique([organizationId, billNumber])
   @@index([organizationId, status])
+  @@index([organizationId, currency])
   @@index([branchId])
   @@index([taxCodeId])
   @@index([contactId])
@@ -3204,6 +3239,16 @@ model AccountingPayablePayment {
   /// Withholding Tax Payable account instead of paid as cash - zero unless the
   /// bill's tax code has a configured withholdingRate.
   withholdingTaxAmount Decimal  @default(0) @db.Decimal(12, 2)
+  /// Payment currency always equals the document currency. exchangeRate is the
+  /// settlement rate; baseAmount is the base value received/paid;
+  /// settledBaseAmount is the document carrying amount relieved; the
+  /// difference is realizedFxAmount (positive = gain).
+  currency             String?
+  exchangeRate         Decimal  @default(1) @db.Decimal(20, 10)
+  exchangeRateSource   String?
+  baseAmount           Decimal? @db.Decimal(14, 2)
+  settledBaseAmount    Decimal? @db.Decimal(14, 2)
+  realizedFxAmount     Decimal  @default(0) @db.Decimal(14, 2)
   paymentDate          DateTime
   reference            String?
   notes                String?  @db.Text
@@ -3221,27 +3266,36 @@ model AccountingPayablePayment {
 }
 
 model AccountingCreditNote {
-  id               String                     @id @default(cuid())
-  organizationId   String
-  branchId         String?
-  creditNoteNumber String
-  contactId        String?
-  customerName     String
-  customerEmail    String?
-  description      String?                    @db.Text
-  amount           Decimal                    @db.Decimal(12, 2)
-  taxableAmount    Decimal                    @default(0) @db.Decimal(12, 2)
-  vatAmount        Decimal                    @default(0) @db.Decimal(12, 2)
-  nhilAmount       Decimal                    @default(0) @db.Decimal(12, 2)
-  getfundAmount    Decimal                    @default(0) @db.Decimal(12, 2)
-  taxCodeId        String?
-  invoiceId        String?
-  issueDate        DateTime
-  status           AccountingCreditNoteStatus @default(DRAFT)
-  settledAt        DateTime?
-  createdById      String?
-  createdAt        DateTime                   @default(now())
-  updatedAt        DateTime                   @updatedAt
+  id                 String                     @id @default(cuid())
+  organizationId     String
+  branchId           String?
+  creditNoteNumber   String
+  contactId          String?
+  customerName       String
+  customerEmail      String?
+  description        String?                    @db.Text
+  amount             Decimal                    @db.Decimal(12, 2)
+  taxableAmount      Decimal                    @default(0) @db.Decimal(12, 2)
+  vatAmount          Decimal                    @default(0) @db.Decimal(12, 2)
+  nhilAmount         Decimal                    @default(0) @db.Decimal(12, 2)
+  getfundAmount      Decimal                    @default(0) @db.Decimal(12, 2)
+  taxCodeId          String?
+  invoiceId          String?
+  /// Multi-currency snapshot (2026-10-06). Document amounts are in
+  /// `currency` (null = the organization's base currency for legacy rows).
+  /// The rate is fixed when the document is created and never recalculated;
+  /// baseAmount is the base-currency equivalent posted to the ledger.
+  currency           String?
+  exchangeRate       Decimal                    @default(1) @db.Decimal(20, 10)
+  exchangeRateDate   DateTime?
+  exchangeRateSource String?
+  baseAmount         Decimal?                   @db.Decimal(14, 2)
+  issueDate          DateTime
+  status             AccountingCreditNoteStatus @default(DRAFT)
+  settledAt          DateTime?
+  createdById        String?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
 
   organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch       Branch?                    @relation(fields: [branchId], references: [id], onDelete: SetNull)
@@ -3324,6 +3378,10 @@ model AccountingTaxTransaction {
   nhilAmount      Decimal                @default(0) @db.Decimal(14, 2)
   getfundAmount   Decimal                @default(0) @db.Decimal(14, 2)
   notes           String?                @db.Text
+  /// Tax amounts above are always in the base currency. These record the
+  /// document's own currency and rate as evidence.
+  currency        String?
+  exchangeRate    Decimal?               @db.Decimal(20, 10)
   createdAt       DateTime               @default(now())
 
   organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -3357,17 +3415,27 @@ model AccountingTaxPeriod {
 }
 
 model AccountingReceivablePayment {
-  id             String   @id @default(cuid())
-  organizationId String
-  invoiceId      String
-  accountId      String
-  paymentMethod  String
-  amount         Decimal  @db.Decimal(12, 2)
-  paymentDate    DateTime
-  reference      String?
-  notes          String?  @db.Text
-  createdById    String?
-  createdAt      DateTime @default(now())
+  id                 String   @id @default(cuid())
+  organizationId     String
+  invoiceId          String
+  accountId          String
+  paymentMethod      String
+  amount             Decimal  @db.Decimal(12, 2)
+  /// Payment currency always equals the document currency. exchangeRate is the
+  /// settlement rate; baseAmount is the base value received/paid;
+  /// settledBaseAmount is the document carrying amount relieved; the
+  /// difference is realizedFxAmount (positive = gain).
+  currency           String?
+  exchangeRate       Decimal  @default(1) @db.Decimal(20, 10)
+  exchangeRateSource String?
+  baseAmount         Decimal? @db.Decimal(14, 2)
+  settledBaseAmount  Decimal? @db.Decimal(14, 2)
+  realizedFxAmount   Decimal  @default(0) @db.Decimal(14, 2)
+  paymentDate        DateTime
+  reference          String?
+  notes              String?  @db.Text
+  createdById        String?
+  createdAt          DateTime @default(now())
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoice      AccountingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
@@ -3463,11 +3531,16 @@ model AccountingPeriod {
 }
 
 model AccountingJournalLine {
-  id             String  @id @default(cuid())
-  journalEntryId String
-  accountId      String
-  debit          Decimal @default(0) @db.Decimal(12, 2)
-  credit         Decimal @default(0) @db.Decimal(12, 2)
+  id                  String   @id @default(cuid())
+  journalEntryId      String
+  accountId           String
+  debit               Decimal  @default(0) @db.Decimal(12, 2)
+  credit              Decimal  @default(0) @db.Decimal(12, 2)
+  /// Original transaction currency/amount and rate for a line converted
+  /// into the base currency. Null for base-currency lines.
+  transactionCurrency String?
+  transactionAmount   Decimal? @db.Decimal(14, 2)
+  exchangeRate        Decimal? @db.Decimal(20, 10)
 
   journalEntry       AccountingJournalEntry       @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
   account            AccountingAccount            @relation(fields: [accountId], references: [id], onDelete: Cascade)

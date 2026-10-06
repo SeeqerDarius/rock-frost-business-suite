@@ -15,7 +15,8 @@ import { db } from "@/lib/db";
 import { SUPPORTED_CURRENCIES } from "@/lib/localization";
 import { createOrganizationFormatter, zonedDateParts } from "@/lib/org-format";
 import { listExchangeRates } from "@/modules/globalization/exchange-rates";
-import { recordExchangeRateAction } from "./actions";
+import { postRevaluationAction, recordExchangeRateAction } from "./actions";
+import { previewRevaluation } from "@/modules/accounting/revaluation";
 
 export const metadata = { title: "Exchange rates" };
 
@@ -25,11 +26,13 @@ const ERROR_MESSAGES: Record<string, string> = {
   date: "Enter a valid rate date.",
   currency: "Choose a supported ISO 4217 currency.",
   rate: "Enter a rate greater than zero with at most 10 decimal places.",
+  revaluation: "The revaluation was not posted. Check that closing rates exist for every open currency and that it has not already been posted for this date.",
+  "period-closed": "The revaluation date is in a closed accounting period.",
 };
 
 const SELECT_CLASS = "h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs";
 
-export default async function ExchangeRatesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; page?: string; currency?: string }> }) {
+export default async function ExchangeRatesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; page?: string; currency?: string; revalueAsOf?: string; revalued?: string }> }) {
   const tenant = await requireModuleAccess("accounting");
   if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_VIEW)) {
     return <EmptyState icon={Lock} title="You don't have access to this page" description="Exchange rates are visible to roles with Accounting access." />;
@@ -44,11 +47,15 @@ export default async function ExchangeRatesPage({ searchParams }: { searchParams
   const todayParts = zonedDateParts(new Date(), organization.timezone);
   const today = `${todayParts.year}-${todayParts.month}-${todayParts.day}`;
   const foreignCurrencies = SUPPORTED_CURRENCIES.filter((code) => code !== organization.currency);
+  const canRevalue = hasPermission(tenant, PERMISSIONS.ACCOUNTING_PERIODS_MANAGE);
+  const revalueAsOf = params.revalueAsOf && /^\d{4}-\d{2}-\d{2}$/.test(params.revalueAsOf) ? params.revalueAsOf : null;
+  const revaluation = revalueAsOf ? await previewRevaluation(tenant.organizationId, revalueAsOf) : null;
 
   return (
     <div className="space-y-6">
       <PageHeader title="Exchange rates" description={`Dated rates that convert foreign-currency documents into the base currency (${organization.currency}). Each document keeps the rate it was recorded with, so adding or correcting a rate never changes history.`} />
 
+      {params.revalued ? <Alert><CheckCircle2 /><AlertTitle>Revaluation posted</AlertTitle><AlertDescription>The unrealized difference is posted at the revaluation date and reversed automatically the next day. Documents keep their original rates.</AlertDescription></Alert> : null}
       {params.saved ? <Alert><CheckCircle2 /><AlertTitle>Rate recorded</AlertTitle><AlertDescription>New documents dated on or after the rate date will use it.</AlertDescription></Alert> : null}
       {params.error ? <Alert variant="destructive"><TriangleAlert /><AlertTitle>Rate was not recorded</AlertTitle><AlertDescription>{ERROR_MESSAGES[params.error] ?? ERROR_MESSAGES.rate}</AlertDescription></Alert> : null}
 
@@ -138,6 +145,65 @@ export default async function ExchangeRatesPage({ searchParams }: { searchParams
                 {page < pages ? <Button size="sm" variant="outline" nativeButton={false} render={<Link href={`?page=${page + 1}${params.currency ? `&currency=${params.currency}` : ""}`} />}>Next</Button> : null}
               </div>
             </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle>Unrealized FX revaluation</CardTitle>
+          <CardDescription>Values open foreign-currency invoices and bills at the closing rate for a reporting date. Posting creates a revaluation entry on that date and an automatic reversal the next day; original documents and their rates never change.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <form method="get" className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="revalueAsOf">Revaluation date</Label>
+              <Input id="revalueAsOf" name="revalueAsOf" type="date" defaultValue={revalueAsOf ?? today} required />
+            </div>
+            <Button type="submit" variant="outline">Preview</Button>
+          </form>
+          {revaluation ? (
+            revaluation.lines.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No open foreign-currency invoices or bills on {format.date(revaluation.asOf.toISOString().slice(0, 10) + "T12:00:00Z")}.</p>
+            ) : (
+              <>
+                {revaluation.missingRates.length ? (
+                  <Alert variant="destructive"><TriangleAlert /><AlertTitle>Closing rates missing</AlertTitle><AlertDescription>Record a rate for {revaluation.missingRates.join(", ")} on or before this date before posting.</AlertDescription></Alert>
+                ) : null}
+                <Table>
+                  <TableHeader>
+                    <TableRow><TableHead>Document</TableHead><TableHead>Counterparty</TableHead><TableHead className="text-right">Open amount</TableHead><TableHead className="text-right">Booked rate</TableHead><TableHead className="text-right">Closing rate</TableHead><TableHead className="text-right">Carrying ({organization.currency})</TableHead><TableHead className="text-right">Revalued ({organization.currency})</TableHead><TableHead className="text-right">Gain / loss</TableHead></TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {revaluation.lines.map((line) => (
+                      <TableRow key={line.documentId}>
+                        <TableCell className="font-mono text-xs">{line.kind === "RECEIVABLE" ? "Invoice" : "Bill"} {line.documentNumber}</TableCell>
+                        <TableCell>{line.counterparty}</TableCell>
+                        <TableCell className="text-right tabular-nums">{format.money(line.openForeign.toString(), line.currency)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{format.number(line.bookedRate.toString(), { maximumFractionDigits: 6 })}</TableCell>
+                        <TableCell className="text-right tabular-nums">{line.closingRate ? format.number(line.closingRate.toString(), { maximumFractionDigits: 6 }) : "Missing"}</TableCell>
+                        <TableCell className="text-right tabular-nums">{format.money(line.carryingBase.toString())}</TableCell>
+                        <TableCell className="text-right tabular-nums">{line.revaluedBase ? format.money(line.revaluedBase.toString()) : "-"}</TableCell>
+                        <TableCell className={`text-right tabular-nums ${line.difference && line.difference.isNegative() ? "text-destructive" : ""}`}>{line.difference ? format.money(line.difference.toString()) : "-"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/30 p-3 text-sm">
+                  <span>Net unrealized {revaluation.netDifference.isNegative() ? "loss" : "gain"}: <strong className="tabular-nums">{format.money(revaluation.netDifference.abs().toString())}</strong></span>
+                  {revaluation.alreadyPosted ? (
+                    <Badge variant="outline">Posted as {revaluation.alreadyPosted.postingNumber}</Badge>
+                  ) : canRevalue ? (
+                    <form action={postRevaluationAction}>
+                      <input type="hidden" name="asOf" value={revalueAsOf ?? ""} />
+                      <Button type="submit" disabled={revaluation.missingRates.length > 0}>Post revaluation</Button>
+                    </form>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Posting requires accounting period permission.</span>
+                  )}
+                </div>
+              </>
+            )
           ) : null}
         </CardContent>
       </Card>

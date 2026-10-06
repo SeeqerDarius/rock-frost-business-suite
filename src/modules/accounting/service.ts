@@ -11,6 +11,9 @@ import {
   updateOrganizationModuleConfigurationValues,
 } from "@/platform/module-requests/configuration";
 import { calculateTax } from "./tax-service";
+import { isValidCurrencyCode } from "@/lib/localization";
+import { ExchangeRateError } from "@/modules/globalization/fx";
+import { FX_ACCOUNT_CODES, atDocumentRate, baseOutstanding, baseTotal, documentBaseComponents, fxDifferenceLines, getBaseCurrency, lineFx, resolveDocumentFx, settlementSplit } from "./multi-currency";
 import { listSupplierInvoices } from "@/modules/procurement/service";
 
 const DEFAULT_INVOICE_NUMBER_PREFIX = "INV";
@@ -71,6 +74,52 @@ export async function ensureDefaultAccounts(organizationId: string) {
   }, { timeout: 20_000 });
 }
 
+const FX_ACCOUNTS: { code: string; name: string; type: AccountingAccountType }[] = [
+  { code: FX_ACCOUNT_CODES.realizedGain, name: "Foreign Exchange Gain (Realized)", type: "REVENUE" },
+  { code: FX_ACCOUNT_CODES.realizedLoss, name: "Foreign Exchange Loss (Realized)", type: "EXPENSE" },
+  { code: FX_ACCOUNT_CODES.unrealizedGain, name: "Foreign Exchange Gain (Unrealized)", type: "REVENUE" },
+  { code: FX_ACCOUNT_CODES.unrealizedLoss, name: "Foreign Exchange Loss (Unrealized)", type: "EXPENSE" },
+];
+
+/**
+ * FX gain/loss accounts are created only when an organization first records
+ * a foreign-currency settlement or revaluation, so single-currency charts of
+ * accounts are unchanged. An existing account with the same code is reused.
+ */
+export async function ensureFxAccounts(organizationId: string) {
+  await db.accountingAccount.createMany({ data: FX_ACCOUNTS.map((account) => ({ organizationId, ...account, isSystem: true })), skipDuplicates: true });
+  const accounts = await db.accountingAccount.findMany({ where: { organizationId, code: { in: FX_ACCOUNTS.map((account) => account.code) } } });
+  const byCode = (code: string) => { const account = accounts.find((candidate) => candidate.code === code); if (!account) throw new Error(`FX account ${code} missing.`); return account.id; };
+  return {
+    realized: { gainAccountId: byCode(FX_ACCOUNT_CODES.realizedGain), lossAccountId: byCode(FX_ACCOUNT_CODES.realizedLoss) },
+    unrealized: { gainAccountId: byCode(FX_ACCOUNT_CODES.unrealizedGain), lossAccountId: byCode(FX_ACCOUNT_CODES.unrealizedLoss) },
+  };
+}
+
+/**
+ * Amounts a document posts to the ledger: its stored values for base-currency
+ * documents (unchanged legacy behavior), or each component converted at the
+ * document's fixed rate for foreign-currency documents.
+ */
+function postedComponents(doc: { amount: Prisma.Decimal; taxableAmount: Prisma.Decimal; vatAmount: Prisma.Decimal; nhilAmount: Prisma.Decimal; getfundAmount: Prisma.Decimal; exchangeRate: Prisma.Decimal.Value }, isForeign: boolean) {
+  if (!isForeign) return { total: doc.amount, taxable: doc.taxableAmount, vat: doc.vatAmount, nhil: doc.nhilAmount, getfund: doc.getfundAmount };
+  return documentBaseComponents(doc);
+}
+
+/** Whether a stored document is in a currency other than the base currency. */
+function docFx(doc: { currency: string | null; exchangeRate: Prisma.Decimal.Value }, baseCurrency: string) {
+  const currency = doc.currency ?? baseCurrency;
+  return { currency, isForeign: currency !== baseCurrency, rate: doc.exchangeRate };
+}
+
+/** A cash/bank account may receive or pay a document only in the base currency or the document's own currency. */
+function assertAccountCurrency(account: { currency: string | null; name: string }, documentCurrency: string, baseCurrency: string) {
+  const accountCurrency = account.currency ?? baseCurrency;
+  if (accountCurrency !== baseCurrency && accountCurrency !== documentCurrency) {
+    throw new InvalidPaymentError(`${account.name} is held in ${accountCurrency}; it cannot settle a ${documentCurrency} document.`);
+  }
+}
+
 async function getDefaultAccount(organizationId: string, code: string) {
   const accounts = await ensureDefaultAccounts(organizationId);
   const account = accounts.find((a) => a.code === code);
@@ -113,6 +162,11 @@ interface AccountInput {
   liquidityType?: AccountingLiquidityType;
   bankName?: string | null;
   accountNumberLast4?: string | null;
+  currency?: string | null;
+}
+
+function assertOptionalCurrency(currency: string | null | undefined) {
+  if (currency && !isValidCurrencyCode(currency)) throw new ExchangeRateError(`${currency} is not a supported ISO 4217 currency code.`);
 }
 
 export async function postOpeningBalance(organizationId: string, accountId: string, amountInput: string, asOfDate: Date, createdById?: string | null) {
@@ -336,6 +390,7 @@ export async function completeDraftReconciliation(organizationId: string, reconc
 }
 
 export async function createAccount(organizationId: string, data: AccountInput) {
+  assertOptionalCurrency(data.currency);
   try {
     return await db.accountingAccount.create({ data: { organizationId, ...data } });
   } catch (error) {
@@ -347,6 +402,7 @@ export async function createAccount(organizationId: string, data: AccountInput) 
 }
 
 export async function updateAccount(organizationId: string, id: string, data: AccountInput) {
+  assertOptionalCurrency(data.currency);
   try {
     return await db.accountingAccount.update({ where: { id, organizationId }, data });
   } catch (error) {
@@ -428,7 +484,7 @@ async function postJournalEntry(
     createdById?: string | null;
     status?: "POSTED" | "PENDING_APPROVAL";
     submittedById?: string | null;
-    lines: { accountId: string; debit?: string | number; credit?: string | number }[];
+    lines: { accountId: string; debit?: string | number; credit?: string | number; transactionCurrency?: string; transactionAmount?: string; exchangeRate?: string }[];
   },
 ) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${organizationId}:accounting-periods`}))`;
@@ -482,7 +538,7 @@ async function postJournalEntry(
       status: input.status ?? "POSTED",
       submittedById: input.status === "PENDING_APPROVAL" ? input.submittedById : null,
       lines: {
-        create: input.lines.map((l) => ({ accountId: l.accountId, debit: l.debit ?? 0, credit: l.credit ?? 0 })),
+        create: input.lines.map((l) => ({ accountId: l.accountId, debit: l.debit ?? 0, credit: l.credit ?? 0, transactionCurrency: l.transactionCurrency, transactionAmount: l.transactionAmount, exchangeRate: l.exchangeRate })),
       },
     },
   });
@@ -765,9 +821,10 @@ export async function getReceivablesSummary(organizationId: string) {
   for (const invoice of invoices) {
     const key = invoice.customerEmail?.trim().toLowerCase() || `name:${invoice.customerName.trim().toLowerCase()}`;
     const current = customers.get(key) ?? { key, customerName: invoice.customerName, customerEmail: invoice.customerEmail, invoiced: new Prisma.Decimal(0), paid: new Prisma.Decimal(0), outstanding: new Prisma.Decimal(0), overdue: new Prisma.Decimal(0), invoices: [] };
-    const outstanding = invoice.status === "VOID" ? new Prisma.Decimal(0) : invoice.amount.minus(invoice.amountPaid).minus(invoice.amountCredited);
-    current.invoiced = current.invoiced.plus(invoice.amount);
-    current.paid = current.paid.plus(invoice.amountPaid);
+    // Customer totals are in the base currency so mixed-currency invoices never add up as one currency.
+    const outstanding = invoice.status === "VOID" ? new Prisma.Decimal(0) : baseOutstanding(invoice);
+    current.invoiced = current.invoiced.plus(baseTotal(invoice));
+    current.paid = current.paid.plus(atDocumentRate(invoice.amountPaid, invoice));
     current.outstanding = current.outstanding.plus(outstanding);
     if (invoice.status === "OVERDUE") current.overdue = current.overdue.plus(outstanding);
     current.invoices.push(invoice);
@@ -826,11 +883,17 @@ interface InvoiceInput {
   issueDate: Date;
   dueDate: Date;
   taxCodeId?: string | null;
+  /** Document currency; omitted means the organization's base currency. */
+  currency?: string | null;
+  /** Optional explicit rate (1 document currency = x base). Otherwise the recorded rate for the issue date is used. */
+  exchangeRate?: string | null;
 }
 
 export async function createInvoice(organizationId: string, data: InvoiceInput, createdById?: string | null) {
   const { lines, taxableAmount } = computeLineItems(data.lines);
   const tax = await calculateTax(organizationId, taxableAmount, data.taxCodeId, data.issueDate);
+  const fx = await resolveDocumentFx(organizationId, { currency: data.currency, date: data.issueDate, manualRate: data.exchangeRate });
+  const base = documentBaseComponents({ ...tax, exchangeRate: fx.rate });
   return createWithUniqueRetry(async () => {
     const invoiceNumber = await generateInvoiceNumber(organizationId);
     return db.accountingInvoice.create({
@@ -850,6 +913,11 @@ export async function createInvoice(organizationId: string, data: InvoiceInput, 
         nhilAmount: tax.nhilAmount,
         getfundAmount: tax.getfundAmount,
         amount: tax.grossAmount,
+        currency: fx.currency,
+        exchangeRate: fx.rate,
+        exchangeRateDate: fx.rateDate,
+        exchangeRateSource: fx.rateSource,
+        baseAmount: base.total,
         lines: { create: lines.map((line) => ({ description: line.description, quantity: line.quantity, unitPrice: line.unitPrice, lineTotal: line.lineTotal, sortOrder: line.sortOrder })) },
       },
       include: { lines: true },
@@ -874,6 +942,10 @@ export async function markInvoiceSent(organizationId: string, id: string) {
   const accounts = await ensureDefaultAccounts(organizationId);
   const findAccount = (code: string) => { const account = accounts.find((candidate) => candidate.code === code); if (!account) throw new Error(`Default account ${code} missing.`); return account; };
   const [ar, revenue, vatPayable, nhilPayable, getfundPayable] = [findAccount("1100"), findAccount("4000"), findAccount("2100"), findAccount("2110"), findAccount("2120")];
+  const fx = docFx(invoice, await getBaseCurrency(organizationId));
+  // Base-currency invoices post their stored values unchanged; foreign
+  // invoices post each component converted at the invoice's fixed rate.
+  const posted = postedComponents(invoice, fx.isForeign);
 
   return db.$transaction(async (tx) => {
     const claimed = await tx.accountingInvoice.updateMany({
@@ -890,19 +962,20 @@ export async function markInvoiceSent(organizationId: string, id: string) {
       sourceId: invoice.id,
       branchId: invoice.branchId,
       lines: [
-        { accountId: ar.id, debit: invoice.amount.toString() },
-        { accountId: revenue.id, credit: invoice.taxableAmount.toString() },
-        ...(invoice.vatAmount.isPositive() ? [{ accountId: vatPayable.id, credit: invoice.vatAmount.toString() }] : []),
-        ...(invoice.nhilAmount.isPositive() ? [{ accountId: nhilPayable.id, credit: invoice.nhilAmount.toString() }] : []),
-        ...(invoice.getfundAmount.isPositive() ? [{ accountId: getfundPayable.id, credit: invoice.getfundAmount.toString() }] : []),
+        { accountId: ar.id, debit: posted.total.toString(), ...lineFx(fx, invoice.amount) },
+        { accountId: revenue.id, credit: posted.taxable.toString(), ...lineFx(fx, invoice.taxableAmount) },
+        ...(invoice.vatAmount.isPositive() ? [{ accountId: vatPayable.id, credit: posted.vat.toString(), ...lineFx(fx, invoice.vatAmount) }] : []),
+        ...(invoice.nhilAmount.isPositive() ? [{ accountId: nhilPayable.id, credit: posted.nhil.toString(), ...lineFx(fx, invoice.nhilAmount) }] : []),
+        ...(invoice.getfundAmount.isPositive() ? [{ accountId: getfundPayable.id, credit: posted.getfund.toString(), ...lineFx(fx, invoice.getfundAmount) }] : []),
       ],
     });
-    await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: invoice.taxCodeId, direction: "OUTPUT", transactionDate: invoice.issueDate, sourceType: "ACCOUNTING_INVOICE", sourceId: invoice.id, documentNumber: invoice.invoiceNumber, counterparty: invoice.customerName, taxableAmount: invoice.taxableAmount, vatAmount: invoice.vatAmount, nhilAmount: invoice.nhilAmount, getfundAmount: invoice.getfundAmount } });
+    // Tax evidence is always recorded in the base currency, with the document currency and rate kept as evidence.
+    await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: invoice.taxCodeId, direction: "OUTPUT", transactionDate: invoice.issueDate, sourceType: "ACCOUNTING_INVOICE", sourceId: invoice.id, documentNumber: invoice.invoiceNumber, counterparty: invoice.customerName, taxableAmount: posted.taxable, vatAmount: posted.vat, nhilAmount: posted.nhil, getfundAmount: posted.getfund, ...(fx.isForeign ? { currency: fx.currency, exchangeRate: invoice.exchangeRate } : {}) } });
     return tx.accountingInvoice.findUniqueOrThrow({ where: { id } });
   });
 }
 
-type LockedInvoiceRow = { id: string; amount: Prisma.Decimal | string; amountPaid: Prisma.Decimal | string; amountCredited: Prisma.Decimal | string; status: string };
+type LockedInvoiceRow = { id: string; amount: Prisma.Decimal | string; amountPaid: Prisma.Decimal | string; amountCredited: Prisma.Decimal | string; status: string; currency: string | null; exchangeRate: Prisma.Decimal | string; baseAmount: Prisma.Decimal | string | null; baseAmountSettled: Prisma.Decimal | string };
 
 /**
  * amountPaid is updated with an atomic increment, not a JS-computed
@@ -919,7 +992,7 @@ type LockedInvoiceRow = { id: string; amount: Prisma.Decimal | string; amountPai
  * amountPaid before deciding whether it still fits — see
  * docs/HARDENING_PLAN.md's Pass 4 section.
  */
-export async function recordInvoicePayment(organizationId: string, id: string, inputOrAmount: { amount: string; paymentDate: Date; accountId: string; paymentMethod: string; reference?: string | null; notes?: string | null; createdById?: string | null } | string, legacyPaymentDate?: Date) {
+export async function recordInvoicePayment(organizationId: string, id: string, inputOrAmount: { amount: string; paymentDate: Date; accountId: string; paymentMethod: string; reference?: string | null; notes?: string | null; createdById?: string | null; exchangeRate?: string | null } | string, legacyPaymentDate?: Date) {
   const legacy = typeof inputOrAmount === "string";
   const amount = legacy ? inputOrAmount : inputOrAmount.amount;
   // Prisma.Decimal throughout — this is a comparison against a database
@@ -937,10 +1010,16 @@ export async function recordInvoicePayment(organizationId: string, id: string, i
   if (!invoice) throw new NotFoundError("Invoice not found.");
   if (paymentAmount.greaterThan(new Prisma.Decimal(invoice.amount).minus(invoice.amountPaid).minus(invoice.amountCredited))) throw new InvalidPaymentError("Payment exceeds the current outstanding balance.");
   const [ar, legacyCash] = await Promise.all([getDefaultAccount(organizationId, "1100"), legacy ? getDefaultAccount(organizationId, "1000") : Promise.resolve(null)]);
+  const baseCurrency = await getBaseCurrency(organizationId);
+  const fx = docFx(invoice, baseCurrency);
+  if (legacy && fx.isForeign) throw new InvalidPaymentError("Select a receiving account to record a foreign-currency payment.");
+  // Settlement rate: an explicit rate from the user, otherwise the recorded rate for the payment date.
+  const settlement = await resolveDocumentFx(organizationId, { currency: fx.currency, date: input.paymentDate, manualRate: legacy ? null : inputOrAmount.exchangeRate, baseCurrency });
+  const fxAccounts = fx.isForeign ? await ensureFxAccounts(organizationId) : null;
 
   return db.$transaction(async (tx) => {
     const [locked] = await tx.$queryRaw<LockedInvoiceRow[]>`
-      SELECT id, amount, "amountPaid", "amountCredited", status
+      SELECT id, amount, "amountPaid", "amountCredited", status, currency, "exchangeRate", "baseAmount", "baseAmountSettled"
       FROM "AccountingInvoice"
       WHERE id = ${id} AND "organizationId" = ${organizationId}
       FOR UPDATE
@@ -961,8 +1040,11 @@ export async function recordInvoicePayment(organizationId: string, id: string, i
     const receivingAccount = legacy ? legacyCash : await tx.accountingAccount.findFirst({ where: { id: input.accountId, organizationId, active: true, liquidityType: { in: ["CASH", "BANK", "MOBILE_MONEY"] } } });
     if (!receivingAccount) throw new InvalidPaymentError("Select an active cash, bank, or mobile-money account owned by this organization.");
     if (!input.paymentMethod.trim()) throw new InvalidPaymentError("Payment method is required.");
+    assertAccountCurrency(receivingAccount, fx.currency, baseCurrency);
 
-    const payment = legacy ? null : await tx.accountingReceivablePayment.create({ data: { organizationId, invoiceId: invoice.id, accountId: receivingAccount.id, paymentMethod: input.paymentMethod.trim(), amount: paymentAmount, paymentDate: input.paymentDate, reference: input.reference?.trim() || null, notes: input.notes?.trim() || null, createdById: input.createdById } });
+    const split = settlementSplit({ side: "RECEIVABLE", amount: paymentAmount, documentRate: locked.exchangeRate ?? 1, settlementRate: settlement.rate, remainingForeign: remaining, remainingBase: baseOutstanding(locked) });
+
+    const payment = legacy ? null : await tx.accountingReceivablePayment.create({ data: { organizationId, invoiceId: invoice.id, accountId: receivingAccount.id, paymentMethod: input.paymentMethod.trim(), amount: paymentAmount, paymentDate: input.paymentDate, reference: input.reference?.trim() || null, notes: input.notes?.trim() || null, createdById: input.createdById, currency: fx.currency, exchangeRate: settlement.rate, exchangeRateSource: settlement.rateSource, baseAmount: split.baseAmount, settledBaseAmount: split.settledBaseAmount, realizedFxAmount: split.realizedFxAmount } });
 
     await postJournalEntry(tx, organizationId, {
       entryDate: input.paymentDate,
@@ -972,15 +1054,21 @@ export async function recordInvoicePayment(organizationId: string, id: string, i
       sourceId: payment?.id ?? invoice.id,
       postingPurpose: payment ? "RECEIVED" : undefined,
       branchId: invoice.branchId,
-      lines: [
-        { accountId: receivingAccount.id, debit: input.amount },
-        { accountId: ar.id, credit: input.amount },
-      ],
+      lines: fx.isForeign
+        ? [
+            { accountId: receivingAccount.id, debit: split.baseAmount.toFixed(2), ...lineFx({ ...fx, rate: settlement.rate }, paymentAmount) },
+            { accountId: ar.id, credit: split.settledBaseAmount.toFixed(2), ...lineFx(fx, paymentAmount) },
+            ...fxDifferenceLines(split.realizedFxAmount, fxAccounts!.realized),
+          ]
+        : [
+            { accountId: receivingAccount.id, debit: input.amount },
+            { accountId: ar.id, credit: input.amount },
+          ],
     });
 
     const updated = await tx.accountingInvoice.update({
       where: { id },
-      data: { amountPaid: { increment: paymentAmount } },
+      data: { amountPaid: { increment: paymentAmount }, baseAmountSettled: { increment: split.settledBaseAmount } },
     });
 
     const isFullyPaid = new Prisma.Decimal(updated.amountPaid).plus(updated.amountCredited).greaterThanOrEqualTo(updated.amount);
@@ -1018,6 +1106,9 @@ export async function voidInvoice(organizationId: string, id: string) {
 
   const needsReversal = invoice.status === "SENT" || invoice.status === "OVERDUE";
   const accounts = needsReversal ? await ensureDefaultAccounts(organizationId) : null;
+  const fx = docFx(invoice, await getBaseCurrency(organizationId));
+  // A void reverses exactly what was posted, at the invoice's own fixed rate.
+  const posted = postedComponents(invoice, fx.isForeign);
 
   return db.$transaction(async (tx) => {
     const claimed = await tx.accountingInvoice.updateMany({
@@ -1037,14 +1128,14 @@ export async function voidInvoice(organizationId: string, id: string) {
         sourceId: invoice.id,
         branchId: invoice.branchId,
         lines: [
-          { accountId: revenue.id, debit: invoice.taxableAmount.toString() },
-          ...(invoice.vatAmount.isPositive() ? [{ accountId: vatPayable.id, debit: invoice.vatAmount.toString() }] : []),
-          ...(invoice.nhilAmount.isPositive() ? [{ accountId: nhilPayable.id, debit: invoice.nhilAmount.toString() }] : []),
-          ...(invoice.getfundAmount.isPositive() ? [{ accountId: getfundPayable.id, debit: invoice.getfundAmount.toString() }] : []),
-          { accountId: ar.id, credit: invoice.amount.toString() },
+          { accountId: revenue.id, debit: posted.taxable.toString(), ...lineFx(fx, invoice.taxableAmount) },
+          ...(invoice.vatAmount.isPositive() ? [{ accountId: vatPayable.id, debit: posted.vat.toString(), ...lineFx(fx, invoice.vatAmount) }] : []),
+          ...(invoice.nhilAmount.isPositive() ? [{ accountId: nhilPayable.id, debit: posted.nhil.toString(), ...lineFx(fx, invoice.nhilAmount) }] : []),
+          ...(invoice.getfundAmount.isPositive() ? [{ accountId: getfundPayable.id, debit: posted.getfund.toString(), ...lineFx(fx, invoice.getfundAmount) }] : []),
+          { accountId: ar.id, credit: posted.total.toString(), ...lineFx(fx, invoice.amount) },
         ],
       });
-      await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: invoice.taxCodeId, direction: "ADJUSTMENT", transactionDate: new Date(), sourceType: "ACCOUNTING_INVOICE_VOID", sourceId: invoice.id, documentNumber: invoice.invoiceNumber, counterparty: invoice.customerName, taxableAmount: invoice.taxableAmount.negated(), vatAmount: invoice.vatAmount.negated(), nhilAmount: invoice.nhilAmount.negated(), getfundAmount: invoice.getfundAmount.negated(), notes: "Invoice voided" } });
+      await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: invoice.taxCodeId, direction: "ADJUSTMENT", transactionDate: new Date(), sourceType: "ACCOUNTING_INVOICE_VOID", sourceId: invoice.id, documentNumber: invoice.invoiceNumber, counterparty: invoice.customerName, taxableAmount: posted.taxable.negated(), vatAmount: posted.vat.negated(), nhilAmount: posted.nhil.negated(), getfundAmount: posted.getfund.negated(), notes: "Invoice voided", ...(fx.isForeign ? { currency: fx.currency, exchangeRate: invoice.exchangeRate } : {}) } });
     }
 
     return tx.accountingInvoice.findUniqueOrThrow({ where: { id } });
@@ -1064,6 +1155,9 @@ interface ContactInput {
   phone?: string | null;
   address?: string | null;
   taxIdentificationNumber?: string | null;
+  currency?: string | null;
+  countryCode?: string | null;
+  vatNumber?: string | null;
   fleetOwnerId?: string | null;
   procurementVendorId?: string | null;
   crmContactId?: string | null;
@@ -1071,10 +1165,12 @@ interface ContactInput {
 }
 
 export function createContact(organizationId: string, data: ContactInput, createdById?: string | null) {
+  assertOptionalCurrency(data.currency);
   return db.accountingContact.create({ data: { organizationId, createdById, ...data } });
 }
 
 export async function updateContact(organizationId: string, id: string, data: ContactInput) {
+  assertOptionalCurrency(data.currency);
   const existing = await db.accountingContact.findFirst({ where: { id, organizationId }, select: { id: true } });
   if (!existing) throw new NotFoundError("Contact not found.");
   return db.accountingContact.update({ where: { id }, data });
@@ -1110,6 +1206,8 @@ interface BillInput {
   dueDate: Date;
   taxCodeId?: string | null;
   branchId?: string | null;
+  currency?: string | null;
+  exchangeRate?: string | null;
 }
 
 export async function createBill(organizationId: string, data: BillInput, createdById?: string | null) {
@@ -1117,6 +1215,8 @@ export async function createBill(organizationId: string, data: BillInput, create
   const expenseAccount = await db.accountingAccount.findFirst({ where: { id: data.expenseAccountId, organizationId, type: "EXPENSE" } });
   if (!expenseAccount) throw new NotFoundError("Expense account not found.");
   const tax = await calculateTax(organizationId, taxableAmount, data.taxCodeId, data.billDate);
+  const fx = await resolveDocumentFx(organizationId, { currency: data.currency, date: data.billDate, manualRate: data.exchangeRate });
+  const base = documentBaseComponents({ ...tax, exchangeRate: fx.rate });
   return createWithUniqueRetry(async () => {
     const billNumber = await generateBillNumber(organizationId);
     return db.accountingBill.create({
@@ -1138,6 +1238,11 @@ export async function createBill(organizationId: string, data: BillInput, create
         nhilAmount: tax.nhilAmount,
         getfundAmount: tax.getfundAmount,
         amount: tax.grossAmount,
+        currency: fx.currency,
+        exchangeRate: fx.rate,
+        exchangeRateDate: fx.rateDate,
+        exchangeRateSource: fx.rateSource,
+        baseAmount: base.total,
         lines: { create: lines.map((line) => ({ description: line.description, quantity: line.quantity, unitPrice: line.unitPrice, lineTotal: line.lineTotal, sortOrder: line.sortOrder })) },
       },
       include: { lines: true },
@@ -1159,6 +1264,8 @@ export async function approveBill(organizationId: string, id: string, actorId?: 
   const accounts = await ensureDefaultAccounts(organizationId);
   const findAccount = (code: string) => { const account = accounts.find((candidate) => candidate.code === code); if (!account) throw new Error(`Default account ${code} missing.`); return account; };
   const [payable, inputVat, inputNhil, inputGetfund] = [findAccount("2000"), findAccount("1300"), findAccount("1310"), findAccount("1320")];
+  const fx = docFx(bill, await getBaseCurrency(organizationId));
+  const posted = postedComponents(bill, fx.isForeign);
 
   return db.$transaction(async (tx) => {
     const claimed = await tx.accountingBill.updateMany({ where: { id, status: "DRAFT" }, data: { status: "APPROVED" } });
@@ -1174,19 +1281,19 @@ export async function approveBill(organizationId: string, id: string, actorId?: 
       branchId: bill.branchId,
       createdById: actorId,
       lines: [
-        { accountId: bill.expenseAccountId, debit: bill.taxableAmount.toString() },
-        ...(bill.vatAmount.isPositive() ? [{ accountId: inputVat.id, debit: bill.vatAmount.toString() }] : []),
-        ...(bill.nhilAmount.isPositive() ? [{ accountId: inputNhil.id, debit: bill.nhilAmount.toString() }] : []),
-        ...(bill.getfundAmount.isPositive() ? [{ accountId: inputGetfund.id, debit: bill.getfundAmount.toString() }] : []),
-        { accountId: payable.id, credit: bill.amount.toString() },
+        { accountId: bill.expenseAccountId, debit: posted.taxable.toString(), ...lineFx(fx, bill.taxableAmount) },
+        ...(bill.vatAmount.isPositive() ? [{ accountId: inputVat.id, debit: posted.vat.toString(), ...lineFx(fx, bill.vatAmount) }] : []),
+        ...(bill.nhilAmount.isPositive() ? [{ accountId: inputNhil.id, debit: posted.nhil.toString(), ...lineFx(fx, bill.nhilAmount) }] : []),
+        ...(bill.getfundAmount.isPositive() ? [{ accountId: inputGetfund.id, debit: posted.getfund.toString(), ...lineFx(fx, bill.getfundAmount) }] : []),
+        { accountId: payable.id, credit: posted.total.toString(), ...lineFx(fx, bill.amount) },
       ],
     });
-    await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: bill.taxCodeId, direction: "INPUT", transactionDate: bill.billDate, sourceType: "ACCOUNTING_BILL", sourceId: bill.id, documentNumber: bill.billNumber, counterparty: bill.supplierName, taxableAmount: bill.taxableAmount, vatAmount: bill.vatAmount, nhilAmount: bill.nhilAmount, getfundAmount: bill.getfundAmount } });
+    await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: bill.taxCodeId, direction: "INPUT", transactionDate: bill.billDate, sourceType: "ACCOUNTING_BILL", sourceId: bill.id, documentNumber: bill.billNumber, counterparty: bill.supplierName, taxableAmount: posted.taxable, vatAmount: posted.vat, nhilAmount: posted.nhil, getfundAmount: posted.getfund, ...(fx.isForeign ? { currency: fx.currency, exchangeRate: bill.exchangeRate } : {}) } });
     return tx.accountingBill.findUniqueOrThrow({ where: { id } });
   });
 }
 
-type LockedBillRow = { id: string; amount: Prisma.Decimal | string; amountPaid: Prisma.Decimal | string; status: string };
+type LockedBillRow = { id: string; amount: Prisma.Decimal | string; amountPaid: Prisma.Decimal | string; status: string; currency: string | null; exchangeRate: Prisma.Decimal | string; baseAmount: Prisma.Decimal | string | null; baseAmountSettled: Prisma.Decimal | string };
 
 /**
  * Payable-side counterpart to recordInvoicePayment - same SELECT ... FOR
@@ -1194,7 +1301,7 @@ type LockedBillRow = { id: string; amount: Prisma.Decimal | string; amountPaid: 
  * direction (Debit Accounts Payable / Credit the chosen cash/bank/mobile-
  * money account).
  */
-export async function recordBillPayment(organizationId: string, id: string, input: { amount: string; paymentDate: Date; accountId: string; paymentMethod: string; reference?: string | null; notes?: string | null; createdById?: string | null }) {
+export async function recordBillPayment(organizationId: string, id: string, input: { amount: string; paymentDate: Date; accountId: string; paymentMethod: string; reference?: string | null; notes?: string | null; createdById?: string | null; exchangeRate?: string | null }) {
   const paymentAmount = new Prisma.Decimal(input.amount);
   if (!paymentAmount.isFinite() || paymentAmount.lessThanOrEqualTo(0)) {
     throw new InvalidPaymentError("Payment amount must be a positive number.");
@@ -1210,10 +1317,14 @@ export async function recordBillPayment(organizationId: string, id: string, inpu
   // this feature, so their payments post exactly as they always have.
   const withholdingRate = bill.taxCode ? new Prisma.Decimal(bill.taxCode.withholdingRate) : new Prisma.Decimal(0);
   const withholdingTaxPayable = withholdingRate.greaterThan(0) ? await getDefaultAccount(organizationId, "2130") : null;
+  const baseCurrency = await getBaseCurrency(organizationId);
+  const fx = docFx(bill, baseCurrency);
+  const settlement = await resolveDocumentFx(organizationId, { currency: fx.currency, date: input.paymentDate, manualRate: input.exchangeRate, baseCurrency });
+  const fxAccounts = fx.isForeign ? await ensureFxAccounts(organizationId) : null;
 
   return db.$transaction(async (tx) => {
     const [locked] = await tx.$queryRaw<LockedBillRow[]>`
-      SELECT id, amount, "amountPaid", status
+      SELECT id, amount, "amountPaid", status, currency, "exchangeRate", "baseAmount", "baseAmountSettled"
       FROM "AccountingBill"
       WHERE id = ${id} AND "organizationId" = ${organizationId}
       FOR UPDATE
@@ -1231,11 +1342,19 @@ export async function recordBillPayment(organizationId: string, id: string, inpu
     const payingAccount = await tx.accountingAccount.findFirst({ where: { id: input.accountId, organizationId, active: true, liquidityType: { in: ["CASH", "BANK", "MOBILE_MONEY"] } } });
     if (!payingAccount) throw new InvalidPaymentError("Select an active cash, bank, or mobile-money account owned by this organization.");
     if (!input.paymentMethod.trim()) throw new InvalidPaymentError("Payment method is required.");
+    assertAccountCurrency(payingAccount, fx.currency, baseCurrency);
 
     const withheld = withholdingRate.greaterThan(0) ? paymentAmount.mul(withholdingRate).div(100).toDecimalPlaces(2) : new Prisma.Decimal(0);
     const cashPortion = paymentAmount.minus(withheld);
+    // Cash paid and tax withheld are valued at the settlement rate; the
+    // payable is relieved at the bill's booked rate.
+    const split = settlementSplit({ side: "PAYABLE", amount: paymentAmount, documentRate: locked.exchangeRate ?? 1, settlementRate: settlement.rate, remainingForeign: remaining, remainingBase: baseOutstanding(locked) });
+    const cashBase = fx.isForeign ? cashPortion.mul(settlement.rate).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP) : cashPortion;
+    const withheldBase = fx.isForeign ? withheld.mul(settlement.rate).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP) : withheld;
+    const paidBase = cashBase.plus(withheldBase);
+    const realizedFx = split.settledBaseAmount.minus(paidBase);
 
-    const payment = await tx.accountingPayablePayment.create({ data: { organizationId, billId: bill.id, accountId: payingAccount.id, paymentMethod: input.paymentMethod.trim(), amount: paymentAmount, withholdingTaxAmount: withheld, paymentDate: input.paymentDate, reference: input.reference?.trim() || null, notes: input.notes?.trim() || null, createdById: input.createdById } });
+    const payment = await tx.accountingPayablePayment.create({ data: { organizationId, billId: bill.id, accountId: payingAccount.id, paymentMethod: input.paymentMethod.trim(), amount: paymentAmount, withholdingTaxAmount: withheld, paymentDate: input.paymentDate, reference: input.reference?.trim() || null, notes: input.notes?.trim() || null, createdById: input.createdById, currency: fx.currency, exchangeRate: settlement.rate, exchangeRateSource: settlement.rateSource, baseAmount: paidBase, settledBaseAmount: split.settledBaseAmount, realizedFxAmount: realizedFx } });
 
     await postJournalEntry(tx, organizationId, {
       entryDate: input.paymentDate,
@@ -1246,7 +1365,14 @@ export async function recordBillPayment(organizationId: string, id: string, inpu
       postingPurpose: "PAID",
       branchId: bill.branchId,
       createdById: input.createdById,
-      lines: withheld.greaterThan(0)
+      lines: fx.isForeign
+        ? [
+            { accountId: payable.id, debit: split.settledBaseAmount.toFixed(2), ...lineFx(fx, paymentAmount) },
+            { accountId: payingAccount.id, credit: cashBase.toFixed(2), ...lineFx({ ...fx, rate: settlement.rate }, cashPortion) },
+            ...(withheld.greaterThan(0) ? [{ accountId: withholdingTaxPayable!.id, credit: withheldBase.toFixed(2), ...lineFx({ ...fx, rate: settlement.rate }, withheld) }] : []),
+            ...fxDifferenceLines(realizedFx, fxAccounts!.realized),
+          ].filter((line) => !("credit" in line) || line.credit !== "0.00")
+        : withheld.greaterThan(0)
         ? [
             { accountId: payable.id, debit: input.amount },
             { accountId: payingAccount.id, credit: cashPortion.toFixed(2) },
@@ -1258,7 +1384,7 @@ export async function recordBillPayment(organizationId: string, id: string, inpu
           ],
     });
 
-    const updated = await tx.accountingBill.update({ where: { id }, data: { amountPaid: { increment: paymentAmount } } });
+    const updated = await tx.accountingBill.update({ where: { id }, data: { amountPaid: { increment: paymentAmount }, baseAmountSettled: { increment: split.settledBaseAmount } } });
     const isFullyPaid = new Prisma.Decimal(updated.amountPaid).greaterThanOrEqualTo(updated.amount);
     const finalBill = await tx.accountingBill.update({ where: { id }, data: isFullyPaid ? { status: "PAID", paidAt: input.paymentDate } : { status: "PARTIALLY_PAID" } });
     return { bill: finalBill, payment };
@@ -1278,6 +1404,8 @@ export async function voidBill(organizationId: string, id: string) {
 
   const needsReversal = bill.status === "APPROVED";
   const accounts = needsReversal ? await ensureDefaultAccounts(organizationId) : null;
+  const fx = docFx(bill, await getBaseCurrency(organizationId));
+  const posted = postedComponents(bill, fx.isForeign);
 
   return db.$transaction(async (tx) => {
     const claimed = await tx.accountingBill.updateMany({ where: { id, status: { in: ["DRAFT", "APPROVED"] } }, data: { status: "VOID" } });
@@ -1294,14 +1422,14 @@ export async function voidBill(organizationId: string, id: string) {
         sourceId: bill.id,
         branchId: bill.branchId,
         lines: [
-          { accountId: payable.id, debit: bill.amount.toString() },
-          { accountId: bill.expenseAccountId, credit: bill.taxableAmount.toString() },
-          ...(bill.vatAmount.isPositive() ? [{ accountId: inputVat.id, credit: bill.vatAmount.toString() }] : []),
-          ...(bill.nhilAmount.isPositive() ? [{ accountId: inputNhil.id, credit: bill.nhilAmount.toString() }] : []),
-          ...(bill.getfundAmount.isPositive() ? [{ accountId: inputGetfund.id, credit: bill.getfundAmount.toString() }] : []),
+          { accountId: payable.id, debit: posted.total.toString(), ...lineFx(fx, bill.amount) },
+          { accountId: bill.expenseAccountId, credit: posted.taxable.toString(), ...lineFx(fx, bill.taxableAmount) },
+          ...(bill.vatAmount.isPositive() ? [{ accountId: inputVat.id, credit: posted.vat.toString(), ...lineFx(fx, bill.vatAmount) }] : []),
+          ...(bill.nhilAmount.isPositive() ? [{ accountId: inputNhil.id, credit: posted.nhil.toString(), ...lineFx(fx, bill.nhilAmount) }] : []),
+          ...(bill.getfundAmount.isPositive() ? [{ accountId: inputGetfund.id, credit: posted.getfund.toString(), ...lineFx(fx, bill.getfundAmount) }] : []),
         ],
       });
-      await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: bill.taxCodeId, direction: "ADJUSTMENT", transactionDate: new Date(), sourceType: "ACCOUNTING_BILL_VOID", sourceId: bill.id, documentNumber: bill.billNumber, counterparty: bill.supplierName, taxableAmount: bill.taxableAmount.negated(), vatAmount: bill.vatAmount.negated(), nhilAmount: bill.nhilAmount.negated(), getfundAmount: bill.getfundAmount.negated(), notes: "Bill voided" } });
+      await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: bill.taxCodeId, direction: "ADJUSTMENT", transactionDate: new Date(), sourceType: "ACCOUNTING_BILL_VOID", sourceId: bill.id, documentNumber: bill.billNumber, counterparty: bill.supplierName, taxableAmount: posted.taxable.negated(), vatAmount: posted.vat.negated(), nhilAmount: posted.nhil.negated(), getfundAmount: posted.getfund.negated(), notes: "Bill voided", ...(fx.isForeign ? { currency: fx.currency, exchangeRate: bill.exchangeRate } : {}) } });
     }
 
     return tx.accountingBill.findUniqueOrThrow({ where: { id } });
@@ -1336,11 +1464,15 @@ interface CreditNoteInput {
   issueDate: Date;
   taxCodeId?: string | null;
   branchId?: string | null;
+  currency?: string | null;
+  exchangeRate?: string | null;
 }
 
 export async function createCreditNote(organizationId: string, data: CreditNoteInput, createdById?: string | null) {
   const { lines, taxableAmount } = computeLineItems(data.lines);
   const tax = await calculateTax(organizationId, taxableAmount, data.taxCodeId, data.issueDate);
+  const fx = await resolveDocumentFx(organizationId, { currency: data.currency, date: data.issueDate, manualRate: data.exchangeRate });
+  const base = documentBaseComponents({ ...tax, exchangeRate: fx.rate });
   return createWithUniqueRetry(async () => {
     const creditNoteNumber = await generateCreditNoteNumber(organizationId);
     return db.accountingCreditNote.create({
@@ -1360,6 +1492,11 @@ export async function createCreditNote(organizationId: string, data: CreditNoteI
         nhilAmount: tax.nhilAmount,
         getfundAmount: tax.getfundAmount,
         amount: tax.grossAmount,
+        currency: fx.currency,
+        exchangeRate: fx.rate,
+        exchangeRateDate: fx.rateDate,
+        exchangeRateSource: fx.rateSource,
+        baseAmount: base.total,
         lines: { create: lines.map((line) => ({ description: line.description, quantity: line.quantity, unitPrice: line.unitPrice, lineTotal: line.lineTotal, sortOrder: line.sortOrder })) },
       },
       include: { lines: true },
@@ -1384,6 +1521,9 @@ export async function applyCreditNoteToInvoice(organizationId: string, creditNot
   if (!invoice) throw new NotFoundError("Invoice not found.");
   if (creditNote.status !== "DRAFT") throw new CreditNoteStateError("Only a draft credit note can be applied.");
   if (invoice.status !== "SENT" && invoice.status !== "OVERDUE") throw new CreditNoteStateError("Credit notes can only be applied to a sent or overdue invoice.");
+  const baseCurrency = await getBaseCurrency(organizationId);
+  const fx = docFx(invoice, baseCurrency);
+  if ((creditNote.currency ?? baseCurrency) !== fx.currency) throw new CreditNoteStateError(`A ${creditNote.currency ?? baseCurrency} credit note cannot be applied to a ${fx.currency} invoice.`);
   const outstanding = new Prisma.Decimal(invoice.amount).minus(invoice.amountPaid).minus(invoice.amountCredited);
   if (new Prisma.Decimal(creditNote.amount).greaterThan(outstanding)) {
     throw new CreditNoteStateError(`Credit note of ${formatMoney(creditNote.amount)} exceeds the invoice's outstanding balance of ${formatMoney(outstanding)}.`);
@@ -1392,9 +1532,20 @@ export async function applyCreditNoteToInvoice(organizationId: string, creditNot
   const accounts = await ensureDefaultAccounts(organizationId);
   const findAccount = (code: string) => { const account = accounts.find((candidate) => candidate.code === code); if (!account) throw new Error(`Default account ${code} missing.`); return account; };
   const [ar, revenue, vatPayable, nhilPayable, getfundPayable] = [findAccount("1100"), findAccount("4000"), findAccount("2100"), findAccount("2110"), findAccount("2120")];
+  // A credit applied to an invoice adjusts that invoice, so it is posted at
+  // the invoice's booked rate (no artificial FX difference). The final
+  // credit relieves exactly the remaining base carrying amount.
+  const base = fx.isForeign ? documentBaseComponents({ ...creditNote, exchangeRate: invoice.exchangeRate }) : null;
+  const isFinal = new Prisma.Decimal(creditNote.amount).equals(outstanding);
+  const settledBase = base ? (isFinal ? baseOutstanding(invoice) : base.total) : new Prisma.Decimal(creditNote.amount);
+  const rounding = base ? base.total.minus(settledBase) : new Prisma.Decimal(0);
+  const fxAccounts = base && !rounding.isZero() ? await ensureFxAccounts(organizationId) : null;
+  const posted = base
+    ? { taxable: base.taxable, vat: base.vat, nhil: base.nhil, getfund: base.getfund, ar: settledBase }
+    : { taxable: creditNote.taxableAmount, vat: creditNote.vatAmount, nhil: creditNote.nhilAmount, getfund: creditNote.getfundAmount, ar: creditNote.amount };
 
   return db.$transaction(async (tx) => {
-    const claimed = await tx.accountingCreditNote.updateMany({ where: { id: creditNoteId, status: "DRAFT" }, data: { status: "APPLIED", invoiceId, settledAt: new Date() } });
+    const claimed = await tx.accountingCreditNote.updateMany({ where: { id: creditNoteId, status: "DRAFT" }, data: { status: "APPLIED", invoiceId, settledAt: new Date(), ...(base ? { exchangeRate: invoice.exchangeRate, exchangeRateSource: "INVOICE", baseAmount: base.total } : {}) } });
     if (claimed.count === 0) throw new CreditNoteStateError("This credit note can no longer be applied.");
 
     await postJournalEntry(tx, organizationId, {
@@ -1407,15 +1558,16 @@ export async function applyCreditNoteToInvoice(organizationId: string, creditNot
       branchId: invoice.branchId,
       createdById: actorId,
       lines: [
-        { accountId: revenue.id, debit: creditNote.taxableAmount.toString() },
-        ...(creditNote.vatAmount.isPositive() ? [{ accountId: vatPayable.id, debit: creditNote.vatAmount.toString() }] : []),
-        ...(creditNote.nhilAmount.isPositive() ? [{ accountId: nhilPayable.id, debit: creditNote.nhilAmount.toString() }] : []),
-        ...(creditNote.getfundAmount.isPositive() ? [{ accountId: getfundPayable.id, debit: creditNote.getfundAmount.toString() }] : []),
-        { accountId: ar.id, credit: creditNote.amount.toString() },
+        { accountId: revenue.id, debit: posted.taxable.toString(), ...lineFx(fx, creditNote.taxableAmount) },
+        ...(creditNote.vatAmount.isPositive() ? [{ accountId: vatPayable.id, debit: posted.vat.toString(), ...lineFx(fx, creditNote.vatAmount) }] : []),
+        ...(creditNote.nhilAmount.isPositive() ? [{ accountId: nhilPayable.id, debit: posted.nhil.toString(), ...lineFx(fx, creditNote.nhilAmount) }] : []),
+        ...(creditNote.getfundAmount.isPositive() ? [{ accountId: getfundPayable.id, debit: posted.getfund.toString(), ...lineFx(fx, creditNote.getfundAmount) }] : []),
+        { accountId: ar.id, credit: posted.ar.toString(), ...lineFx(fx, creditNote.amount) },
+        ...(fxAccounts ? fxDifferenceLines(rounding, fxAccounts.realized) : []),
       ],
     });
 
-    const updatedInvoice = await tx.accountingInvoice.update({ where: { id: invoiceId }, data: { amountCredited: { increment: creditNote.amount } } });
+    const updatedInvoice = await tx.accountingInvoice.update({ where: { id: invoiceId }, data: { amountCredited: { increment: creditNote.amount }, baseAmountSettled: { increment: fx.isForeign ? settledBase : creditNote.amount } } });
     const isFullyPaid = new Prisma.Decimal(updatedInvoice.amountPaid).plus(updatedInvoice.amountCredited).greaterThanOrEqualTo(updatedInvoice.amount);
     if (isFullyPaid) await tx.accountingInvoice.update({ where: { id: invoiceId }, data: { status: "PAID", paidAt: new Date() } });
 
@@ -1440,6 +1592,10 @@ export async function refundCreditNote(organizationId: string, creditNoteId: str
   if (!refundAccount) throw new InvalidPaymentError("Select an active cash, bank, or mobile-money account owned by this organization.");
   const findAccount = (code: string) => { const account = accounts.find((candidate) => candidate.code === code); if (!account) throw new Error(`Default account ${code} missing.`); return account; };
   const [revenue, vatPayable, nhilPayable, getfundPayable] = [findAccount("4000"), findAccount("2100"), findAccount("2110"), findAccount("2120")];
+  const baseCurrency = await getBaseCurrency(organizationId);
+  const fx = docFx(creditNote, baseCurrency);
+  assertAccountCurrency(refundAccount, fx.currency, baseCurrency);
+  const posted = postedComponents(creditNote, fx.isForeign);
 
   return db.$transaction(async (tx) => {
     const claimed = await tx.accountingCreditNote.updateMany({ where: { id: creditNoteId, status: "DRAFT" }, data: { status: "REFUNDED", settledAt: new Date() } });
@@ -1455,11 +1611,11 @@ export async function refundCreditNote(organizationId: string, creditNoteId: str
       branchId: creditNote.branchId,
       createdById: actorId,
       lines: [
-        { accountId: revenue.id, debit: creditNote.taxableAmount.toString() },
-        ...(creditNote.vatAmount.isPositive() ? [{ accountId: vatPayable.id, debit: creditNote.vatAmount.toString() }] : []),
-        ...(creditNote.nhilAmount.isPositive() ? [{ accountId: nhilPayable.id, debit: creditNote.nhilAmount.toString() }] : []),
-        ...(creditNote.getfundAmount.isPositive() ? [{ accountId: getfundPayable.id, debit: creditNote.getfundAmount.toString() }] : []),
-        { accountId: refundAccount.id, credit: creditNote.amount.toString() },
+        { accountId: revenue.id, debit: posted.taxable.toString(), ...lineFx(fx, creditNote.taxableAmount) },
+        ...(creditNote.vatAmount.isPositive() ? [{ accountId: vatPayable.id, debit: posted.vat.toString(), ...lineFx(fx, creditNote.vatAmount) }] : []),
+        ...(creditNote.nhilAmount.isPositive() ? [{ accountId: nhilPayable.id, debit: posted.nhil.toString(), ...lineFx(fx, creditNote.nhilAmount) }] : []),
+        ...(creditNote.getfundAmount.isPositive() ? [{ accountId: getfundPayable.id, debit: posted.getfund.toString(), ...lineFx(fx, creditNote.getfundAmount) }] : []),
+        { accountId: refundAccount.id, credit: posted.total.toString(), ...lineFx(fx, creditNote.amount) },
       ],
     });
 
@@ -1824,7 +1980,7 @@ export async function getAccountingSummary(organizationId: string) {
     totalExpenses,
     netIncome: totalRevenue - totalExpenses,
     outstandingInvoiceCount: outstandingInvoices.length,
-    outstandingInvoiceTotal: outstandingInvoices.reduce((sum, i) => sum + (Number(i.amount) - Number(i.amountPaid)), 0),
+    outstandingInvoiceTotal: outstandingInvoices.reduce((sum, i) => sum + Number(baseTotal(i).minus(atDocumentRate(i.amountPaid, i))), 0),
     overdueInvoiceCount: overdueInvoices.length,
     pendingExpenseCount: pendingExpenses.length,
     pendingExpenseTotal: pendingExpenses.reduce((sum, e) => sum + Number(e.amount), 0),
@@ -1856,15 +2012,15 @@ export async function getAccountingOverviewTrends(organizationId: string): Promi
   const lookback = widestTrendLookback();
 
   const [invoiceRows, expenseRows, statusGroups, recentInvoices, overdueInvoiceRows] = await Promise.all([
-    db.accountingInvoice.findMany({ where: { organizationId, issueDate: { gte: lookback } }, select: { issueDate: true, amount: true } }),
+    db.accountingInvoice.findMany({ where: { organizationId, issueDate: { gte: lookback } }, select: { issueDate: true, amount: true, exchangeRate: true, baseAmount: true } }),
     db.accountingExpense.findMany({ where: { organizationId, expenseDate: { gte: lookback } }, select: { expenseDate: true, amount: true } }),
     db.accountingInvoice.groupBy({ by: ["status"], where: { organizationId }, _count: { _all: true } }),
-    db.accountingInvoice.findMany({ where: { organizationId }, orderBy: { issueDate: "desc" }, take: 5, select: { id: true, invoiceNumber: true, customerName: true, amount: true, status: true, issueDate: true } }),
-    db.accountingInvoice.findMany({ where: { organizationId, status: "OVERDUE" }, orderBy: { dueDate: "asc" }, take: 5, select: { id: true, invoiceNumber: true, customerName: true, amount: true, amountPaid: true, dueDate: true } }),
+    db.accountingInvoice.findMany({ where: { organizationId }, orderBy: { issueDate: "desc" }, take: 5, select: { id: true, invoiceNumber: true, customerName: true, amount: true, status: true, issueDate: true, exchangeRate: true, baseAmount: true } }),
+    db.accountingInvoice.findMany({ where: { organizationId, status: "OVERDUE" }, orderBy: { dueDate: "asc" }, take: 5, select: { id: true, invoiceNumber: true, customerName: true, amount: true, amountPaid: true, dueDate: true, exchangeRate: true, baseAmount: true } }),
   ]);
 
   const invoicedBetween = (start: Date, end: Date) =>
-    invoiceRows.filter((i) => i.issueDate >= start && i.issueDate < end).reduce((sum, i) => sum + Number(i.amount), 0);
+    invoiceRows.filter((i) => i.issueDate >= start && i.issueDate < end).reduce((sum, i) => sum + Number(baseTotal(i)), 0);
   const expensesBetween = (start: Date, end: Date) =>
     expenseRows.filter((e) => e.expenseDate >= start && e.expenseDate < end).reduce((sum, e) => sum + Number(e.amount), 0);
 
@@ -1882,12 +2038,13 @@ export async function getAccountingOverviewTrends(organizationId: string): Promi
   return {
     trends: { days: buildSeries("days"), weeks: buildSeries("weeks"), months: buildSeries("months") },
     invoiceStatusBreakdown,
-    recentInvoices: recentInvoices.map((invoice) => ({ ...invoice, amount: Number(invoice.amount) })),
+    // Overview figures are in the base currency.
+    recentInvoices: recentInvoices.map(({ exchangeRate: _rate, baseAmount: _base, ...invoice }) => ({ ...invoice, amount: Number(baseTotal({ amount: invoice.amount, exchangeRate: _rate, baseAmount: _base })) })),
     overdueInvoices: overdueInvoiceRows.map((invoice) => ({
       id: invoice.id,
       invoiceNumber: invoice.invoiceNumber,
       customerName: invoice.customerName,
-      amountDue: Number(invoice.amount) - Number(invoice.amountPaid),
+      amountDue: Number(baseTotal(invoice).minus(atDocumentRate(invoice.amountPaid, invoice))),
       dueDate: invoice.dueDate,
     })),
   };
@@ -2107,7 +2264,7 @@ export async function getReceivablesAgeing(organizationId: string, asOf: Date = 
   const invoices = await db.accountingInvoice.findMany({ where: { organizationId, status: { in: ["SENT", "OVERDUE"] } } });
   const rows: ReceivablesAgeingRow[] = invoices
     .map((invoice) => {
-      const outstanding = Number(invoice.amount) - Number(invoice.amountPaid) - Number(invoice.amountCredited);
+      const outstanding = Number(baseOutstanding(invoice));
       return { invoiceId: invoice.id, invoiceNumber: invoice.invoiceNumber, customerName: invoice.customerName, dueDate: invoice.dueDate, outstanding, ...bucketByAge(invoice.dueDate, outstanding, asOf) };
     })
     .filter((row) => row.outstanding > 0.004)
@@ -2132,7 +2289,7 @@ export async function getPayablesAgeing(organizationId: string, asOf: Date = new
   ]);
 
   const billRows: PayablesAgeingRow[] = bills.map((bill) => {
-    const outstanding = Number(bill.amount) - Number(bill.amountPaid);
+    const outstanding = Number(baseOutstanding(bill));
     return { source: "Bill", id: bill.id, reference: bill.billNumber, counterparty: bill.supplierName, dueDate: bill.dueDate, outstanding, ...bucketByAge(bill.dueDate, outstanding, asOf) };
   });
   const supplierRows: PayablesAgeingRow[] = supplierInvoices
