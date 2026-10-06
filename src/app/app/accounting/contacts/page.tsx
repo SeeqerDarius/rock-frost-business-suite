@@ -16,6 +16,7 @@ import { listContacts } from "@/modules/accounting/service";
 import { upsertContact, importContactsCsvAction } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
+  "invalid-vat": "That VAT/GST number does not match the expected format for the selected country. Only the format is checked, not registration.",
   forbidden: "You don't have permission to manage contacts.",
   "invalid-input": "Please check that the name and email are valid.",
   "not-found": "That contact could not be found.",

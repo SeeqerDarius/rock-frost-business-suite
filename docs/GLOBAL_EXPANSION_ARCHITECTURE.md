@@ -1,7 +1,7 @@
 # Global accounting and contract expansion: audit baseline
 
 **Audit date:** 2026-10-06  
-**Status:** Phase 1 discovery is complete. Increments 1 (global foundation) and 2 (multi-currency accounting) are live in production. Increment 3 (tax engine core, Ghana pack, Tax and Compliance settings) is implemented. Country packs beyond Ghana, tax reports, and Contracts are outstanding.
+**Status:** Phase 1 discovery is complete. Increments 1 (global foundation), 2 (multi-currency accounting), and 3 (tax engine core) are live in production. Increment 4 (US, EU, UK, CH, and NO jurisdiction packs, provider interfaces, and tax reports) is implemented. Contracts is outstanding.
 
 This document records the current reusable architecture and the gaps that must be closed before Rock Frost can claim global accounting or Contract Lifecycle Management. It is a delivery plan, not a claim that the expansion is complete.
 
@@ -192,8 +192,40 @@ Sections: Overview (pack application, organization jurisdiction, pricing default
 - No external tax-rate provider or VAT-number validation provider is connected yet. Their interfaces arrive with the packs.
 - Withholding tax remains on legacy tax codes.
 
+Increment 3 was released to production on 2026-10-06 (PR #56, merge `6cdaba7`, deployment `dpl_H7FN6YcmHYGpxUsAT9UZNm8KmBoi`; migration applied).
+
+## Increment 4: jurisdiction packs and tax reports (implemented 2026-10-06)
+
+No schema change.
+
+### Packs (`src/modules/tax/packs`)
+
+- **United States** (foundation): the US plus all 50 states and DC as STATE jurisdictions, the IRS authority, and categories (taxable goods, taxable services, non-taxable, resale). It creates no rates and no rules, because sales tax varies by state, county, city, and district and changes often. Organizations record their registrations (nexus) and the state and local rates they collect, and can layer state, county, city, and district components in one rule. A reference table of statewide base rates (`US_STATE_BASE_RATE_REFERENCE`) is shown on the Rates section as a suggestion to verify, never applied automatically. The pack provisions separate ledger accounts for federal and employment taxes so they are never mixed with sales tax: 2200 Federal Income Tax Payable, 1450 Estimated Federal Income Tax Payments, 2210 Federal Income Tax Withheld, 2211/2212 Social Security (employee/employer), 2213/2214 Medicare (employee/employer), 2215 FUTA, 2216 State Unemployment, 2160 Excise, 2140 Sales Tax, 2145 Use Tax, 6100 Employer Payroll Tax Expense, and 6110 Income Tax Expense. Existing accounts with the same code are left untouched.
+- **European Union**, built for the organization's home member state (from its jurisdiction code, e.g. EU-DE): the EU, EU-OSS, and EU-IOSS scheme jurisdictions plus all 27 member states, each member state's standard VAT rate (source: the Commission's Taxes in Europe Database), and rules for domestic standard, export outside the EU (zero-rated), exempt, intra-EU B2B reverse charge (sale and purchase), and a destination-VAT OSS B2C rule for each of the other 26 member states. Whether a sale falls under OSS depends on the EU-wide threshold and registration; the administrator chooses the rule, and OSS/IOSS registrations are recorded on the scheme jurisdictions. Reduced rates are added by the administrator.
+- **United Kingdom** (HMRC; standard 20%, reduced 5%, zero, exempt, domestic reverse charge), **Switzerland** (FTA; 8.1%, 2.6%, accommodation 3.8%, exempt), and **Norway** (Skatteetaten; 25%, food 15%, reduced 12%, exempt). These are separate jurisdictions and never use EU logic.
+
+### Providers (`src/modules/tax/providers.ts`)
+
+- `VatIdValidationProvider`, with a built-in format-only check covering EU member states (including Greece's EL prefix and Northern Ireland's XI), the UK, Switzerland, and Norway. Results are labeled FORMAT and state that registration was not verified. A registry provider (for example VIES) can be registered without changing Accounting. Contacts with a country and VAT number are format-checked on save.
+- `TaxRateProvider` for professional tax engines (for example address-level US sales tax). Manual configuration remains the default, and a provider quote must be stored as the document's tax-line snapshot like any other calculation. No provider is connected.
+
+### Reports (`src/modules/tax/reports.ts`, `/app/accounting/tax-reports`)
+
+Read from `TaxLedgerEntry` (base currency) over local calendar days in the organization timezone (`src/lib/timezone.ts`, which handles daylight-saving changeovers). Views: by jurisdiction, by level (state, county, city), by tax kind, by authority, and by month. Each shows taxable, zero-rated, exempt, non-taxable, and reverse-charge sales, plus tax collected, recoverable input tax, self-assessed tax, adjustments, and net payable. A document's taxable amount counts once per group even when it has several components. Voided bills reduce input tax and voided invoices reduce output tax. Net payable deducts only recoverable kinds (VAT, GST, levies); sales and use tax on purchases is cost. Also included are a customer exemption report (exempt sales by customer with certificates on file) and tax liabilities by class from ledger balances (VAT and levies, sales and use tax, excise, other levies, withholding, payroll and employment, income tax, recoverable input tax, estimated payments). CSV export at `/app/accounting/tax-reports/export` neutralizes spreadsheet formulas and is not cached. Access requires `accounting.reports.view`. The reports are working reports and state that Rock Frost does not file returns.
+
+### Tests
+
+- `test/tax-packs.test.ts`: US pack structure (51 states/DC, no rates, separate federal accounts, reference rates), EU pack per home state (27 rates, 26 OSS rules, reverse charge, export), refusal without an EU home state, UK/CH/NO separation, registry listing, VAT format checks and prefixes, and timezone boundaries including New York and Berlin daylight-saving days.
+- `test/integration/tenant-isolation/tax-packs-reports.test.ts` (real PostgreSQL): EU pack for a German organization (domestic VAT, intra-EU B2B reverse charge, OSS B2C sale to France at French VAT, reported under EU-FR), US pack provisioning (51 states, federal accounts, no rates), New York sales tax by state and level, sales tax kept out of VAT, an invoice issued late on 31 October in New York reported in October, the resale exemption report, liabilities by class, and cross-tenant report isolation.
+
+### Known limitations of Increment 4
+
+- US local rates and taxability by product are configured by the organization or a future provider; Rock Frost does not determine economic nexus. The nexus status is the administrator's record.
+- EU reduced rates, OSS return file formats, and VIES registry checks are not included; OSS and IOSS are readiness (scheme registrations, destination rules, reporting by member state of consumption).
+- Payroll does not yet post US employment taxes into the new accounts automatically; the accounts and the liability report are ready for it.
+
 ## Remaining increments
 
 2. **Formatting sweep:** migrate remaining `formatMoney()` call sites across modules to `createOrganizationFormatter()`, and apply contact default currencies on new documents.
-3. **Jurisdiction packs and tax reports:** Ghana; US (state/county/city/district layering, nexus status, exemption certificates, sales versus use tax, separate federal/employment/excise account configuration and reports); EU (member-state rates, B2B/B2C, reverse charge, OSS/IOSS readiness, VAT ID validation provider interface); UK, CH, and NO foundations.
+3. **Tax follow-ups:** US payroll tax posting into the federal accounts, EU reduced-rate catalogs, a VIES registry provider, OSS return exports, per-line tax categories, and credit notes and Procurement on the tax engine.
 4. **Contracts:** core, lifecycle, integrations, and reporting as described in the architecture direction above.
