@@ -329,3 +329,18 @@ generic deductions payable Accounting account. Linking, processing and run
 completion are organization-scoped and atomic. A failed run does not mark
 inputs processed. Partial-month proration, statutory deduction types and
 salary disbursement remain separate decisions.
+
+## 2026-10-06 — Global localization lives on Organization; exchange rates are append-only
+
+**Decision:** Organization localization (legal identity, base currency,
+locale, date and number formats, fiscal year, accounting basis, tax
+jurisdiction) extends the existing `Organization` row instead of a separate
+settings table, because every request already loads the organization and the
+values are tenant identity. Country behavior comes from one catalog in
+`src/lib/localization.ts`, not country conditionals across the app. The base
+currency comes only from saved settings (IP and browser locale may only
+suggest a country during signup) and is locked once accounting records exist,
+for tenant administrators and platform operators alike. Exchange rates are
+organization-scoped, append-only rows; documents will snapshot the rate they
+used, so recording or correcting a rate never changes history. A provider
+interface allows a live FX feed later without coupling Accounting to a vendor.

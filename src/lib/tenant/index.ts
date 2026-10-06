@@ -23,6 +23,10 @@ export interface TenantContext {
     status: string;
     currency?: string;
     timezone?: string;
+    /** Presentation settings; see src/lib/org-format.ts. Null locale derives from currency. */
+    locale?: string | null;
+    dateFormat?: string;
+    numberFormat?: string;
   };
   role: string | null;
   roleId: string | null;
@@ -182,6 +186,9 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
       status: membership.organization.status,
       currency: membership.organization.currency,
       timezone: membership.organization.timezone,
+      locale: membership.organization.locale,
+      dateFormat: membership.organization.dateFormat,
+      numberFormat: membership.organization.numberFormat,
     },
     role: membership.role?.name ?? null,
     roleId: membership.roleId,

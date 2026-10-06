@@ -73,6 +73,10 @@ Fixed assets, predictive forecasting, consolidation, multi-company accounting, m
 
 Supplier invoice approval in Inventory and Procurement creates an idempotent accrual in Accounting. Untaxed invoices debit Inventory Asset and credit Accounts Payable. Taxed invoices additionally debit the separate recoverable input VAT, NHIL, and GETFund accounts while Accounts Payable receives the gross value. A partial or final supplier payment debits Accounts Payable and credits the organization-owned cash, bank, or mobile-money account selected at payment time. Procurement owns the operational invoice and payment record. Accounting owns its immutable journal and tax evidence. Users must correct source transactions through their source workflow rather than manually reversing a source-owned journal.
 
+## Exchange rates (global foundation, 2026-10-06)
+
+`/app/accounting/exchange-rates` records organization-scoped, dated exchange rates against the organization's base currency (`accounting.settings.manage` to record, `accounting.view` to read). Rates are append-only: a later entry for the same pair and date is a correction that applies to new documents only, and the audit trail records the superseded rate. `resolveExchangeRate()` in `src/modules/globalization/exchange-rates.ts` returns the latest rate on or before a document date through an `ExchangeRateProvider` interface (recorded rates today; a live provider can be added without changing how documents store rates) and fails rather than guessing when none exists. FX arithmetic is decimal-only (`src/modules/globalization/fx.ts`). Documents do not yet carry a transaction currency; multi-currency invoices, bills, payments, and realized/unrealized FX journals are the next increment.
+
 ## Journal dimensions
 
 Source-managed journal reversals retain the original source module and branch dimensions. The reversal transaction uses a 20-second timeout so its validation, balanced posting, original-entry claim, and reversal link can complete reliably when the managed PostgreSQL region has elevated latency.

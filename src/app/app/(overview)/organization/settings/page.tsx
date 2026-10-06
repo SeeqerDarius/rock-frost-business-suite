@@ -1,4 +1,4 @@
-import { CheckCircle2, CloudOff, CreditCard, DatabaseBackup, ImageIcon, Lock, Palette, Receipt, TriangleAlert } from "lucide-react";
+import { CheckCircle2, CloudOff, CreditCard, DatabaseBackup, Globe2, ImageIcon, Lock, Palette, Receipt, TriangleAlert } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
@@ -16,6 +16,7 @@ import { db } from "@/lib/db";
 import { updateOfflineAccessSettings, uploadCompanyLogo, updateWorkspaceSettings } from "./actions";
 import { getSettlementProfile, settlementStatusLabel } from "@/lib/payments/operational";
 import { OFFLINE_SUPPORTED_MODULES } from "@/lib/pwa/policy";
+import { getCountryProfile } from "@/lib/localization";
 
 const ERROR_MESSAGES: Record<string, string> = {
   image: "Choose a JPG, PNG, or WebP logo no larger than 1 MB.",
@@ -42,7 +43,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
   }
   const organization = await db.organization.findUniqueOrThrow({
     where: { id: tenant.organizationId },
-    select: { name: true, metadata: true, logoUrl: true },
+    select: { name: true, metadata: true, logoUrl: true, country: true, currency: true, timezone: true, locale: true },
   });
   const metadata = organization.metadata;
   const settings = (metadata && typeof metadata === "object" && !Array.isArray(metadata)
@@ -78,6 +79,18 @@ export default async function OrganizationSettingsPage({ searchParams }: {
           <AlertDescription>{ERROR_MESSAGES[error]}</AlertDescription>
         </Alert>
       ) : null}
+
+      <Card className="shadow-sm">
+        <CardHeader><div className="flex items-center gap-2"><Globe2 className="size-5 text-muted-foreground" /><CardTitle>Organization and localization</CardTitle></div><CardDescription>Legal identity, country of registration, base currency, fiscal year, timezone, and number and date formatting.</CardDescription></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-3">
+            <div><p className="text-muted-foreground">Country</p><p className="font-medium">{organization.country ? getCountryProfile(organization.country).name : "Not set"}</p></div>
+            <div><p className="text-muted-foreground">Base currency</p><p className="font-medium">{organization.currency}</p></div>
+            <div><p className="text-muted-foreground">Timezone</p><p className="font-medium">{organization.timezone.replaceAll("_", " ")}</p></div>
+          </div>
+          <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/app/organization/settings/localization" />}><Globe2 />Manage localization</Button>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader><div className="flex items-center gap-2"><CreditCard className="size-5 text-muted-foreground" /><CardTitle>Payments and online collections</CardTitle></div><CardDescription>Connect the organization bank account that should receive operational payments. Rock Frost uses its secure Paystack integration to route collections. Your Paystack credentials are never required.</CardDescription></CardHeader>

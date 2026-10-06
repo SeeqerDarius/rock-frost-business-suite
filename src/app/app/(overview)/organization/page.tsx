@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { db } from "@/lib/db";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { getCountryProfile } from "@/lib/localization";
 
 export default async function OrganizationSettingsPage() {
   const tenant = await requireCurrentTenant();
@@ -34,8 +35,9 @@ export default async function OrganizationSettingsPage() {
     { label: "Tenant code", value: organization.tenantCode },
     { label: "Industry", value: organization.industry ?? "Not set" },
     { label: "Status", value: organization.status },
-    { label: "Country", value: organization.country ?? "Not set" },
-    { label: "Currency", value: organization.currency },
+    { label: "Country", value: organization.country ? getCountryProfile(organization.country).name : "Not set" },
+    { label: "Tax jurisdiction", value: organization.jurisdictionCode ?? "Not set" },
+    { label: "Base currency", value: organization.currency },
     { label: "Timezone", value: organization.timezone },
     { label: "Billing email", value: organization.billingEmail ?? "Not set" },
     { label: "Website", value: organization.website ?? "Not set" },

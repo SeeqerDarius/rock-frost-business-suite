@@ -488,6 +488,7 @@ model User {
   schoolIdCardsPrinted            SchoolDigitalIdCard[]            @relation("SchoolIdCardPrintedBy")
   schoolConductReported           SchoolConductRecord[]            @relation("SchoolConductReportedBy")
   schoolConductReviewed           SchoolConductRecord[]            @relation("SchoolConductReviewedBy")
+  exchangeRatesRecorded           ExchangeRate[]
 }
 
 enum TwoFactorMethod {
@@ -597,6 +598,27 @@ model Organization {
   schoolPortalGranted         Boolean             @default(false)
   schoolPortalGrantedAt       DateTime?
   schoolPortalGrantedById     String?
+  /// Global localization (2026-10-06). `country` stores an ISO 3166-1
+  /// alpha-2 code for new writes; legacy rows may hold a country name and are
+  /// normalized through src/lib/localization.ts. `currency` above is the
+  /// authoritative accounting base currency and is changed only through the
+  /// guarded localization settings action (never from IP/browser locale).
+  legalName                   String?
+  tradingName                 String?
+  postalCode                  String?
+  legalEntityType             String?
+  vatRegistrationNumber       String?
+  /// BCP 47 locale for number/date/currency presentation. Null means
+  /// "derive from the base currency" so existing organizations keep en-GH.
+  locale                      String?
+  dateFormat                  String              @default("LOCALE")
+  numberFormat                String              @default("LOCALE")
+  fiscalYearStartMonth        Int                 @default(1)
+  accountingBasis             AccountingBasis     @default(ACCRUAL)
+  pricesIncludeTax            Boolean             @default(false)
+  /// Tax jurisdiction code (GH, US, EU-DE, GB, CH, NO...). Selects the
+  /// jurisdiction pack; null means no pack has been chosen yet.
+  jurisdictionCode            String?
 
   members                         OrganizationMember[]
   invitations                     Invitation[]
@@ -628,6 +650,7 @@ model Organization {
   fleetMaintenanceAttachments     FleetMaintenanceAttachment[]
   fleetPayments                   FleetPayment[]
   workAndPayContracts             FleetWorkAndPayContract[]
+  exchangeRates                   ExchangeRate[]
   settlementProfile               SettlementProfile?
   customerFeedback                CustomerFeedback[]
   operationalPayments             OperationalPayment[]
@@ -2709,6 +2732,41 @@ enum AccountingJournalStatus {
   REVERSED
   PENDING_APPROVAL
   REJECTED
+}
+
+enum AccountingBasis {
+  ACCRUAL
+  CASH
+}
+
+enum ExchangeRateSource {
+  MANUAL
+  PROVIDER
+}
+
+/// An organization-scoped exchange rate: 1 unit of fromCurrency equals
+/// `rate` units of toCurrency on rateDate. Rows are append-only. A correction
+/// is a newer row for the same pair/date (the latest createdAt wins for future
+/// documents); documents snapshot the rate they used, so recording or
+/// correcting a rate never changes a historical transaction.
+model ExchangeRate {
+  id             String             @id @default(cuid())
+  organizationId String
+  fromCurrency   String
+  toCurrency     String
+  rate           Decimal            @db.Decimal(20, 10)
+  rateDate       DateTime           @db.Date
+  source         ExchangeRateSource @default(MANUAL)
+  providerName   String?
+  notes          String?
+  createdById    String?
+  createdAt      DateTime           @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, fromCurrency, toCurrency, rateDate])
+  @@index([organizationId, createdAt])
 }
 
 enum AccountingTaxTreatment {
