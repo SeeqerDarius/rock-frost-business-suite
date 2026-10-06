@@ -4,7 +4,7 @@ import { Prisma, type TaxExemptionType, type TaxFilingFrequency, type TaxJurisdi
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 import { calculateTaxes, type TaxCalculation, type TaxComponentInput } from "./engine";
-import { getJurisdictionPack } from "./packs";
+import { getJurisdictionPack, homeCountryForJurisdiction } from "./packs";
 
 export class TaxConfigurationError extends Error {}
 
@@ -43,8 +43,11 @@ function normalizeCode(code: string) {
  * never overwritten by re-provisioning.
  */
 export async function provisionJurisdictionPack(organizationId: string, packKey: string, actorId: string | null) {
-  const pack = getJurisdictionPack(packKey);
-  if (!pack) throw new TaxConfigurationError(`No jurisdiction pack is available for ${packKey}.`);
+  // The EU pack is built for the organization's own member state.
+  const organization = await db.organization.findUnique({ where: { id: organizationId }, select: { jurisdictionCode: true, country: true } });
+  const homeCountry = homeCountryForJurisdiction(organization?.jurisdictionCode) ?? organization?.country ?? null;
+  const pack = getJurisdictionPack(packKey, { homeCountry });
+  if (!pack) throw new TaxConfigurationError(packKey.toUpperCase() === "EU" ? "Set the organization country to an EU member state before applying the EU pack." : `No jurisdiction pack is available for ${packKey}.`);
   return db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${organizationId}:tax-configuration`}))`;
     const jurisdictionIds = new Map<string, string>();
@@ -103,8 +106,15 @@ export async function provisionJurisdictionPack(organizationId: string, packKey:
       });
       rulesCreated += 1;
     }
-    await logAuditEvent({ organizationId, userId: actorId, module: "accounting", action: "tax_pack.provisioned", entityName: "TaxJurisdiction", metadata: { pack: pack.key, version: pack.version, ratesCreated, rulesCreated } }, tx);
-    return { pack: pack.key, ratesCreated, rulesCreated };
+    let accountsCreated = 0;
+    if (pack.accounts?.length) {
+      // Separate ledger accounts (for example US federal and employment
+      // taxes); an existing account with the same code is left as is.
+      const created = await tx.accountingAccount.createMany({ data: pack.accounts.map((account) => ({ organizationId, code: account.code, name: account.name, type: account.type })), skipDuplicates: true });
+      accountsCreated = created.count;
+    }
+    await logAuditEvent({ organizationId, userId: actorId, module: "accounting", action: "tax_pack.provisioned", entityName: "TaxJurisdiction", metadata: { pack: pack.key, name: pack.name, version: pack.version, ratesCreated, rulesCreated, accountsCreated } }, tx);
+    return { pack: pack.key, ratesCreated, rulesCreated, accountsCreated };
   }, { timeout: 30_000 });
 }
 

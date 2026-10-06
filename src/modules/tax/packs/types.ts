@@ -39,6 +39,8 @@ export type PackRule = {
   sourceReference?: string;
 };
 
+export type PackAccount = { code: string; name: string; type: "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE" };
+
 export type JurisdictionPack = {
   key: string;
   name: string;
@@ -52,4 +54,6 @@ export type JurisdictionPack = {
   categories: PackCategory[];
   rates: PackRate[];
   rules: PackRule[];
+  /** Ledger accounts the pack provisions (created only if the code is unused). */
+  accounts?: PackAccount[];
 };

@@ -20,6 +20,7 @@ import { listContacts } from "@/modules/accounting/service";
 import { TAX_FLASH_COOKIE } from "@/modules/tax/flash";
 import { listJurisdictionPacks, packKeyForJurisdiction } from "@/modules/tax/packs";
 import { getTaxConfiguration } from "@/modules/tax/service";
+import { US_STATE_BASE_RATE_REFERENCE, US_STATES } from "@/modules/tax/packs/united-states";
 import {
   createCategoryAction,
   createExemptionAction,
@@ -175,6 +176,21 @@ export default async function TaxCompliancePage({ searchParams }: { searchParams
                 </TableBody>
               </Table>
             )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {section === "rates" && suggestedPack === "US" ? (
+        <Card>
+          <CardHeader><CardTitle>Reference state base rates</CardTitle><CardDescription>Statewide base sales tax rates for reference when you add a state rate. Local county, city, and district rates are additional. Rates change; verify with the state department of revenue before use. Nothing here is applied automatically.</CardDescription></CardHeader>
+          <CardContent>
+            <div className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-3">
+              {US_STATES.map((state) => {
+                const reference = US_STATE_BASE_RATE_REFERENCE[state.code];
+                return <div key={state.code} className="flex justify-between gap-3 border-b py-1"><span>{state.name}</span><span className="tabular-nums text-muted-foreground" title={reference?.note}>{reference ? `${format.number(reference.rate, { maximumFractionDigits: 3 })}%` : "-"}{reference?.note ? " *" : ""}</span></div>;
+              })}
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">* See the note on hover. Record state and local rates you collect under Rates, and your registrations under Registrations and nexus.</p>
           </CardContent>
         </Card>
       ) : null}

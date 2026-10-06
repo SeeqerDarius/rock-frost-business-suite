@@ -180,7 +180,8 @@ describe("module authorization source coverage", () => {
     // 140, up from 139: the School academic-year rollover page requires School access.
     // 141, up from 140: the Accounting Exchange Rates page, requireModuleAccess("accounting").
     // 142, up from 141: the Accounting Tax and Compliance page, requireModuleAccess("accounting").
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(142);
+    // 143, up from 142: the Accounting Tax Reports page, requireModuleAccess("accounting").
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(143);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
     // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
     // all Hostel Server Actions, same shape as School's) joins the sweep

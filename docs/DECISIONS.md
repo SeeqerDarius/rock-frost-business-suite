@@ -371,3 +371,15 @@ VAT, levies, use tax, and excise never share one balance. Legacy tax codes
 remain fully supported; both paths write the same per-component tax ledger so
 reporting reads one source. Collection is skipped only where an administrator
 has explicitly disabled it; the system never infers legal nexus.
+
+## 2026-10-06 — The US pack seeds structure, not sales tax rates
+
+**Decision:** The US jurisdiction pack seeds every state, nexus tracking,
+categories, and separate federal/employment/excise accounts, but creates no
+sales tax rates or rules. Sales tax depends on state, county, city, district,
+product taxability, and the organization's own nexus, and rates change often;
+seeding rates would present unverified legal determinations as configuration.
+Reference state base rates are shown as suggestions to verify. The EU pack is
+built per home member state (EU VAT is per country, not one jurisdiction),
+and the UK, Switzerland, and Norway are separate packs. VAT numbers are only
+format-checked until a registry provider is configured, and the UI says so.

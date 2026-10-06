@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { isValidCurrencyCode } from "@/lib/localization";
+import { validateVatNumber } from "@/modules/tax/providers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireModuleAccess } from "@/lib/auth/module-access";
@@ -48,6 +49,10 @@ export async function upsertContact(formData: FormData): Promise<void> {
   });
   if (!parsed.success) {
     redirect("/app/accounting/contacts?error=invalid-input");
+  }
+  if (parsed.data.vatNumber && parsed.data.countryCode) {
+    const check = await validateVatNumber(parsed.data.countryCode, parsed.data.vatNumber);
+    if (!check.valid) redirect("/app/accounting/contacts?error=invalid-vat");
   }
 
   const data = {
