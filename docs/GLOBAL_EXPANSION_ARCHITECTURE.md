@@ -1,7 +1,7 @@
 # Global accounting and contract expansion: audit baseline
 
 **Audit date:** 2026-10-06  
-**Status:** Phase 1 discovery is complete. Increment 1 (global foundation) is live in production. Increment 2 (multi-currency accounting documents with realized and unrealized FX) is implemented. The jurisdiction tax engine, country packs, and Contracts are outstanding.
+**Status:** Phase 1 discovery is complete. Increments 1 (global foundation) and 2 (multi-currency accounting) are live in production. Increment 3 (tax engine core, Ghana pack, Tax and Compliance settings) is implemented. Country packs beyond Ghana, tax reports, and Contracts are outstanding.
 
 This document records the current reusable architecture and the gaps that must be closed before Rock Frost can claim global accounting or Contract Lifecycle Management. It is a delivery plan, not a claim that the expansion is complete.
 
@@ -141,10 +141,59 @@ An explicit period-end action on `/app/accounting/exchange-rates` (preview with 
 - Printable documents still use the existing (Ghana-oriented) tax layout; jurisdiction-specific invoice templates arrive with the tax packs.
 - No live FX provider is connected.
 
+Increment 2 was released to production on 2026-10-06 (PR #55, merge `0a9f5d5`, deployment `dpl_6wbsa3KjvJsF4KEZCVtkidwdZUX9`; migration applied).
+
+## Increment 3: tax engine core (implemented 2026-10-06)
+
+### Schema (migration `20261006150000_tax_engine_core`, additive)
+
+Tenant-scoped, effective-dated, versioned configuration: `TaxJurisdiction` (SUPRANATIONAL, COUNTRY, STATE, COUNTY, CITY, DISTRICT with a parent hierarchy and pack key), `TaxAuthority`, `TaxCategory`, `TaxRate` (one component: tax kind VAT/GST/SALES/USE/LEVY/EXCISE/WITHHOLDING/PAYROLL/INCOME/OTHER, rate, compound, recoverable, effective range, version, supersedes link, source reference, output/input account codes), `TaxRule` (jurisdiction, optional category, treatment STANDARD/REDUCED/ZERO_RATED/EXEMPT/REVERSE_CHARGE/OUT_OF_SCOPE, rate codes, effective range, version), `TaxRegistration` (status NOT_REGISTERED/MONITORING/REGISTERED/DEREGISTERED, collection enabled, filing frequency), `TaxExemption` (customer, optional jurisdiction, type, certificate, validity), `DocumentTaxLine` (immutable per-document tax snapshot), and `TaxLedgerEntry` (per-component base-currency evidence for reporting by jurisdiction, level, authority, and kind). Invoices and bills gain `taxRuleId`, `taxTreatment`, and `taxAmount` (backfilled to the legacy component total). CHECKs enforce rate range, effective ranges, and positive versions.
+
+### Engine (`src/modules/tax/engine.ts`)
+
+Pure Decimal calculation with no country logic: simple and compound components, exclusive and inclusive pricing (the last component absorbs inclusive rounding so taxable plus tax equals the gross exactly), and explicit zero lines for zero-rated, exempt, and out-of-scope supplies. Reverse charge charges nothing and returns the buyer's self-assessed amount.
+
+### Configuration service (`src/modules/tax/service.ts`)
+
+- `provisionJurisdictionPack()` seeds a pack idempotently and never overwrites administrator changes.
+- `createTaxRateVersion()` changes a rate from a date by adding a version and closing the prior one the day before. It refuses a start on or before the current version's start, so historical periods are never rewritten.
+- `resolveDocumentTax()` is server-authoritative. It loads the rule and every rate version in effect on the document date, fails clearly if a rate is missing, skips components in jurisdictions whose registration explicitly disables collection, and turns standard-rated sales to a customer with a valid exemption into exempt sales.
+- Every configuration write is organization-scoped and audited (rate versions record the previous rate; registration numbers are masked).
+
+### Jurisdiction packs (`src/modules/tax/packs`)
+
+Static, versioned configuration with source references. Increment 3 ships the Ghana pack (VAT 15%, NHIL 2.5%, GETFund 2.5% on the taxable value from 1 January 2026, mapped to the existing separate payable and recoverable accounts). The US, EU member state, UK, Switzerland, and Norway packs are Increment 4; until then administrators can configure those jurisdictions manually (the integration tests do exactly this for Georgia state, Fulton County, and Atlanta).
+
+### Accounting integration
+
+- Invoices and bills may use either a legacy `AccountingTaxCode` (unchanged behavior) or a tax rule. The document form's tax selector lists rules and codes; a "line prices include tax" option defaults to the organization setting.
+- An engine-taxed document stores its `DocumentTaxLine` snapshot at creation. Sending, approving, and voiding post each component to its own account (rate mapping, or defaults by kind: VAT/GST 2100 and 1300, sales tax 2140, use tax 2145, excise 2160, other levies 2150, other recoverable input 1330; missing catalog accounts are created on first use), so sales tax, VAT, levies, and excise never share one balance. Non-recoverable purchase tax is added to the expense. Reverse charge and use tax are self-assessed: input tax (or expense) is debited and the output or use tax payable credited, and the supplier is owed only the net. Foreign-currency documents convert each component at the document rate.
+- Posting writes `TaxLedgerEntry` rows for engine documents and, from this release, for legacy tax-code documents and untaxed documents (as out of scope), so all tax reporting can read one source. The legacy `AccountingTaxTransaction` is still written; for engine documents its VAT/NHIL/GETFund columns are filled by payable account (2100/2110/2120), so the existing Ghana working VAT return includes engine-taxed documents.
+- Credit notes, Procurement supplier invoices, and other modules still use legacy tax codes.
+
+### Tax and Compliance (`/app/accounting/tax-compliance`)
+
+Sections: Overview (pack application, organization jurisdiction, pricing default), Rates (version history and a guarded "change rate from a date" dialog that requires confirmation), Rules, Registrations and nexus, Customer exemptions, Jurisdictions, Categories. Viewing requires `accounting.view`; changes require `accounting.settings.manage`. Error text is passed through a short-lived httpOnly cookie instead of the URL. Copy states that calculations follow the organization's selected tax settings and does not claim compliance.
+
+### Tests
+
+- `test/tax-engine.test.ts`: exclusive and inclusive pricing, Ghana structure, US state/county/city layering, compound components, German inclusive VAT, rounding invariants, zero-rated, exempt, reverse charge, validation, and line aggregation.
+- `test/tax-engine-posting.test.ts`: per-component accounts, Ghana VAT-return mapping, sales tax kept out of VAT, foreign conversion balance, exempt ledger lines, recoverable versus non-recoverable purchase tax, reverse-charge self-assessment, reversal, and base totals.
+- `test/integration/tenant-isolation/tax-engine.test.ts` (real PostgreSQL): idempotent Ghana pack, snapshot and per-component posting feeding the working return, rate change effective only from its date (earlier and backdated documents keep the old rate; rewriting history is refused), exact void reversal with a net-zero ledger, US layered sales tax by jurisdiction, collection-disabled components skipped, registration guard, resale exemption recorded for reporting, reverse-charge purchase, and cross-tenant rule and contact isolation.
+
+### Fixes found while building this increment
+
+`Prisma.Decimal.isPositive()` returns true for zero. New code uses `greaterThan(0)`. Revaluation previously could include a zero-open document as a zero-difference row; that is now skipped.
+
+### Known limitations of Increment 3
+
+- Tax reports by jurisdiction (the data now exists in `TaxLedgerEntry`) and the US, EU, UK, CH, and NO packs are Increment 4.
+- Rules are selected per document (one rule for all lines); per-line categories are a later enhancement.
+- No external tax-rate provider or VAT-number validation provider is connected yet. Their interfaces arrive with the packs.
+- Withholding tax remains on legacy tax codes.
+
 ## Remaining increments
 
 2. **Formatting sweep:** migrate remaining `formatMoney()` call sites across modules to `createOrganizationFormatter()`, and apply contact default currencies on new documents.
-3. **Tax engine core:** jurisdictions, authorities, tax types, categories, registrations, exemptions, effective-dated and versioned rules and rates with provenance, document tax-line snapshots, account mappings, and Ghana compatibility through the existing `AccountingTaxCode` surface.
-4. **Jurisdiction packs:** Ghana; US (state/county/city/district layering, nexus status, exemption certificates, sales versus use tax, separate federal/employment/excise account configuration and reports); EU (member-state rates, B2B/B2C, reverse charge, OSS/IOSS readiness, VAT ID validation provider interface); UK, CH, and NO foundations.
-5. **Tax and Compliance settings UI and tax reports.**
-6. **Contracts:** core, lifecycle, integrations, and reporting as described in the architecture direction above.
+3. **Jurisdiction packs and tax reports:** Ghana; US (state/county/city/district layering, nexus status, exemption certificates, sales versus use tax, separate federal/employment/excise account configuration and reports); EU (member-state rates, B2B/B2C, reverse charge, OSS/IOSS readiness, VAT ID validation provider interface); UK, CH, and NO foundations.
+4. **Contracts:** core, lifecycle, integrations, and reporting as described in the architecture direction above.

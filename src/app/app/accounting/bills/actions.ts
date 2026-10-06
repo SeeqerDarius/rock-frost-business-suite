@@ -22,6 +22,7 @@ import {
 } from "@/modules/accounting/service";
 import { moneyAmount, shortText, longText, email, cuid, dateInput, parseIndexedFormRows, currencyCode, exchangeRateInput, parseWithSchema } from "@/lib/validation";
 import { ExchangeRateError } from "@/modules/globalization/fx";
+import { TaxConfigurationError as TaxEngineError } from "@/modules/tax/service";
 import { logAuditEvent } from "@/lib/audit";
 import { accountingAttachmentFileData } from "@/lib/accounting-attachment-file";
 
@@ -39,6 +40,7 @@ const createBillSchema = z.object({
   billDate: dateInput,
   dueDate: dateInput,
   taxCodeId: cuid.nullable().optional(),
+  taxRuleId: cuid.nullable().optional(),
   currency: currencyCode.nullable().optional(),
   exchangeRate: exchangeRateInput.nullable().optional(),
 });
@@ -57,7 +59,9 @@ export async function createNewBill(formData: FormData): Promise<void> {
     expenseAccountId: clean(formData.get("expenseAccountId")),
     billDate: clean(formData.get("billDate")),
     dueDate: clean(formData.get("dueDate")),
-    taxCodeId: clean(formData.get("taxCodeId")),
+    // A "rule:<id>" value selects a tax engine rule instead of a legacy tax code.
+    taxCodeId: clean(formData.get("taxCodeId"))?.startsWith("rule:") ? null : clean(formData.get("taxCodeId")),
+    taxRuleId: clean(formData.get("taxCodeId"))?.startsWith("rule:") ? clean(formData.get("taxCodeId"))!.slice(5) : null,
     currency: clean(formData.get("currency")),
     exchangeRate: clean(formData.get("exchangeRate")),
   });
@@ -81,6 +85,8 @@ export async function createNewBill(formData: FormData): Promise<void> {
         billDate,
         dueDate,
         taxCodeId: taxCodeId ?? null,
+        taxRuleId: parsed.data.taxRuleId ?? null,
+        pricesIncludeTax: formData.get("pricesIncludeTax") === "on",
         currency: currency ?? null,
         exchangeRate: exchangeRate ?? null,
       },
@@ -89,6 +95,7 @@ export async function createNewBill(formData: FormData): Promise<void> {
   } catch (error) {
     if (error instanceof InvalidLineItemsError) redirect("/app/accounting/bills?error=invalid-lines");
     if (error instanceof ExchangeRateError) redirect("/app/accounting/bills?error=fx-rate");
+    if (error instanceof TaxEngineError) redirect("/app/accounting/bills?error=tax-rule");
     if (error instanceof NotFoundError) redirect("/app/accounting/bills?error=not-found");
     throw error;
   }

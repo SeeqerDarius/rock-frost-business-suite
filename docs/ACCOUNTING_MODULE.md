@@ -81,6 +81,10 @@ Supplier invoice approval in Inventory and Procurement creates an idempotent acc
 
 Invoices, bills, and credit notes can be issued in any supported currency. The document keeps its own amounts and the exchange rate fixed at creation (recorded rate for the document date, or a rate the user enters); the ledger receives each component converted at that rate, with the original currency and amount recorded on the journal line. Tax evidence is recorded in the base currency with the document currency and rate as evidence. Payments relieve the receivable or payable at the booked rate and post the difference from the settlement-rate value to realized FX gain (4810) or loss (5810); the final settlement clears the exact remaining carrying amount. Cash and bank accounts may carry a currency and can only settle base-currency or same-currency documents. Credit notes apply only to same-currency invoices, at the invoice's rate. Base-currency documents post exactly as before. Unrealized revaluation at a reporting date is an explicit action on the Exchange Rates page that posts to 4820/5820 and reverses the next day. All receivable, payable, dashboard, and insight totals aggregate base-currency values. Details, limitations, and tests: `docs/GLOBAL_EXPANSION_ARCHITECTURE.md` (Increment 2).
 
+## Tax engine documents (2026-10-06)
+
+Invoices and bills can be taxed by a tax rule (`src/modules/tax`) instead of a legacy tax code. The document stores `taxRuleId`, `taxTreatment`, `taxAmount`, and an immutable `DocumentTaxLine` snapshot; postings use `src/modules/accounting/engine-posting.ts` to credit or debit each component's own account, self-assess reverse charge and use tax, and add non-recoverable purchase tax to the expense. All posted documents now also write `TaxLedgerEntry` rows. See `docs/TAX_AND_STATUTORY_REPORTING.md`.
+
 ## Journal dimensions
 
 Source-managed journal reversals retain the original source module and branch dimensions. The reversal transaction uses a 20-second timeout so its validation, balanced posting, original-entry claim, and reversal link can complete reliably when the managed PostgreSQL region has elevated latency.
