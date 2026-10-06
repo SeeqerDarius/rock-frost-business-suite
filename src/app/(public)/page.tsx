@@ -32,6 +32,15 @@ const readShowcaseOrganizations = unstable_cache(
   { revalidate: 300, tags: [PUBLIC_MARKETING_CACHE_TAG] },
 );
 
+/** Published testimonials, cached the same way. Moderation calls
+ * updateTag(PUBLIC_MARKETING_CACHE_TAG) so a newly published testimonial
+ * appears without waiting out the 5-minute window. */
+const readPublishedTestimonials = unstable_cache(
+  listPublishedTestimonials,
+  ["public-homepage-testimonials"],
+  { revalidate: 300, tags: [PUBLIC_MARKETING_CACHE_TAG] },
+);
+
 export const metadata = createPublicMetadata({
   title: "Business Management Software Ghana",
   description: DEFAULT_DESCRIPTION,
@@ -46,7 +55,7 @@ export default async function HomePage() {
   const [showcaseOrganizations, platformOrganization, publishedTestimonials] = await Promise.all([
     readShowcaseOrganizations(),
     findPlatformOrganizationMetadata(),
-    listPublishedTestimonials(),
+    readPublishedTestimonials(),
   ]);
   const marketing = readPlatformMarketing(platformOrganization?.metadata);
   const tenantCustomers = showcaseOrganizations.flatMap((organization) => {

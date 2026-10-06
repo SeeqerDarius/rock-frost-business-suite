@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
 import { MODULE_SEO, SITE_URL, createPublicMetadata } from "@/lib/seo";
-import { catalogueModuleKeys } from "@/platform/modules/registry";
+import { catalogueModuleKeys, getModule } from "@/platform/modules/registry";
+import { RESOURCE_ARTICLES } from "@/lib/resource-articles";
 import nextConfig from "../next.config";
 
 describe("public SEO", () => {
@@ -50,12 +51,49 @@ describe("public SEO", () => {
       expect(seo.content.outcomes).toHaveLength(3);
       expect(seo.content.workflows.length).toBeGreaterThanOrEqual(5);
       expect(seo.content.faqs).toHaveLength(3);
+      expect(seo.content.ghana?.length).toBeGreaterThan(0);
+      expect(seo.content.security?.length).toBeGreaterThan(0);
+      for (const integration of seo.content.integrations ?? []) {
+        expect(getModule(integration.module)).toBeDefined();
+      }
     }
 
     const modulePage = readFileSync("src/app/(public)/modules/[moduleKey]/page.tsx", "utf8");
     expect(modulePage).toContain('"@type": "FAQPage"');
     expect(modulePage).toContain("Who this software is for");
     expect(modulePage).toContain("How your team can use it");
+    expect(modulePage).toContain("Connected Rock Frost modules");
+  });
+
+  it("does not claim automated PAYE or SSNIT calculation that Payroll does not implement", () => {
+    const hrFaqs = MODULE_SEO.hr.content.faqs.map((faq) => `${faq.question} ${faq.answer}`).join(" ");
+    expect(hrFaqs).toMatch(/PAYE/);
+    expect(hrFaqs).toMatch(/SSNIT/);
+    expect(hrFaqs).toMatch(/Not yet/);
+
+    const payrollService = readFileSync("src/modules/payroll/service.ts", "utf8");
+    expect(payrollService).not.toMatch(/SSNIT/i);
+  });
+
+  it("publishes the resources guides section and links each article to a real destination", () => {
+    const urls = sitemap().map((entry) => entry.url);
+    expect(urls).toContain(`${SITE_URL}/resources`);
+
+    const config = robots();
+    const rules = Array.isArray(config.rules) ? config.rules[0] : config.rules;
+    expect(rules.allow).toEqual(expect.arrayContaining(["/resources"]));
+
+    expect(RESOURCE_ARTICLES.length).toBeGreaterThanOrEqual(5);
+    for (const article of RESOURCE_ARTICLES) {
+      expect(urls).toContain(`${SITE_URL}/resources/${article.slug}`);
+      expect(article.description.length).toBeLessThanOrEqual(160);
+      if (article.relatedModuleKey) {
+        expect(article.relatedModuleKey in MODULE_SEO).toBe(true);
+        expect(getModule(article.relatedModuleKey)).toBeDefined();
+      } else {
+        expect(article.relatedPath).toBeTruthy();
+      }
+    }
   });
 
   it("returns permanent HTTP redirects for retired companion product pages", async () => {

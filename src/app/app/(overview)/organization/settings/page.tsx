@@ -152,7 +152,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
             <Palette className="size-5 text-muted-foreground" />
             <CardTitle>Interface theme</CardTitle>
           </div>
-          <CardDescription>Applies to every member&apos;s session in this workspace the next time they load the app.</CardDescription>
+          <CardDescription>Default appearance for members who have not chosen their own theme. Anyone can switch light or dark mode from the header button; that choice stays on their device.</CardDescription>
         </CardHeader>
         <CardContent>
           <form action={updateWorkspaceSettings} className="space-y-4">

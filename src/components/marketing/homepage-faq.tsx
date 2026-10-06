@@ -1,4 +1,5 @@
 import { ChevronDown } from "lucide-react";
+import { JsonLd } from "@/components/seo/json-ld";
 
 const FAQS = [
   {
@@ -26,6 +27,15 @@ const FAQS = [
 export function HomepageFaq() {
   return (
     <section className="public-section-tint">
+      <JsonLd data={{
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: FAQS.map((faq) => ({
+          "@type": "Question",
+          name: faq.question,
+          acceptedAnswer: { "@type": "Answer", text: faq.answer },
+        })),
+      }} />
       <div className="mx-auto max-w-3xl px-6 py-20">
         <div className="space-y-2">
           <p className="public-eyebrow">FAQ</p>
