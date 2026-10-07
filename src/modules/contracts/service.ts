@@ -265,6 +265,8 @@ export async function updateContract(actor: ContractActor, contractId: string, i
     if (!EDITABLE_STATUSES.includes(current.status)) throw new ContractError("Terminated, expired, cancelled, and archived contracts cannot be edited.");
     if (current.status === "ACTIVE" && !reason?.trim()) throw new ContractError("Enter a reason for changing an active contract.");
     const data = await validateInput(actor, input, tx);
+    // A contract always has an owner: leaving the owner blank keeps the current one.
+    if (!data.ownerId) data.ownerId = current.ownerId;
     if (!can(actor, PERMISSIONS.CONTRACTS_VIEW_FINANCIALS)) {
       // Without financial access the financial fields stay as they are.
       data.value = current.value;

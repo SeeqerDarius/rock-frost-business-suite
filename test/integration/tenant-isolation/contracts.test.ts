@@ -84,6 +84,8 @@ describe("contract creation, numbering, and versions (real Postgres)", () => {
     const version = await testDb.contractVersion.findUniqueOrThrow({ where: { contractId_version: { contractId: contract.id, version: 2 } } });
     expect(version.changedFields.sort()).toEqual(["title", "value"]);
     expect(version.reason).toBe("Price review");
+    // Leaving the owner blank keeps the existing owner instead of clearing it.
+    expect(updated.ownerId).toBe(contract.ownerId);
     const diff = await compareContractVersions(ownerA, contract.id, 1, 2);
     expect(diff.title).toEqual({ from: "Formatted", to: "Formatted (renegotiated)" });
     // Nothing changed means no new version.
