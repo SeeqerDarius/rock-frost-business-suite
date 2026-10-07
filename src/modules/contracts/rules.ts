@@ -344,3 +344,121 @@ export function buildCalendarEvents(
   }
   return events.sort((a, b) => a.date.getTime() - b.date.getTime() || a.kind.localeCompare(b.kind));
 }
+
+// --- Calculated risk ------------------------------------------------------------
+
+/**
+ * Risk factors and their default points. The calculated score is guidance
+ * next to the risk level people assign; it never overwrites that level.
+ */
+export const RISK_FACTORS = {
+  manualHigh: { label: "Assigned risk is high", points: 20 },
+  manualCritical: { label: "Assigned risk is critical", points: 35 },
+  highValue: { label: "Value at or above the high-value threshold for its currency", points: 15 },
+  missingRequiredClauses: { label: "Required clauses are missing", points: 15 },
+  noPrimaryDocument: { label: "Active without a primary document", points: 10 },
+  unsignedActive: { label: "Active with no recorded signature", points: 5 },
+  overdueObligations: { label: "Obligations are overdue", points: 15 },
+  expiringSoon: { label: "Expires within 30 days", points: 10 },
+  pastExpiry: { label: "Past its expiration date while still active", points: 20 },
+  noticeDeadlineSoon: { label: "Notice deadline to stop renewal within 30 days", points: 10 },
+  openEnded: { label: "Active with no expiration date", points: 5 },
+} as const;
+export type RiskFactorKey = keyof typeof RISK_FACTORS;
+export type RiskWeights = Record<RiskFactorKey, number>;
+
+export const DEFAULT_RISK_WEIGHTS = Object.fromEntries(Object.entries(RISK_FACTORS).map(([key, factor]) => [key, factor.points])) as RiskWeights;
+
+/** Merges stored weights over the defaults, keeping each weight between 0 and 50. */
+export function resolveRiskWeights(stored: unknown): RiskWeights {
+  const weights = { ...DEFAULT_RISK_WEIGHTS };
+  if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+    for (const key of Object.keys(RISK_FACTORS) as RiskFactorKey[]) {
+      const value = (stored as Record<string, unknown>)[key];
+      if (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 50) weights[key] = value;
+    }
+  }
+  return weights;
+}
+
+/** Parses stored high-value thresholds, keeping only three-letter currencies with valid amounts. */
+export function resolveValueThresholds(stored: unknown): Record<string, string> {
+  const thresholds: Record<string, string> = {};
+  if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+    for (const [currency, amount] of Object.entries(stored as Record<string, unknown>)) {
+      if (/^[A-Z]{3}$/.test(currency) && typeof amount === "string" && /^\d{1,14}(\.\d{1,2})?$/.test(amount)) thresholds[currency] = amount;
+    }
+  }
+  return thresholds;
+}
+
+export type RiskInput = {
+  status: string;
+  riskLevel: RiskLevel;
+  value: DecimalLike | null;
+  currency: string;
+  expirationDate: Date | null;
+  renewalType: string;
+  noticePeriodDays: number | null;
+  hasPrimaryDocument: boolean;
+  hasSignature: boolean;
+  missingRequiredClauses: number;
+  overdueObligations: number;
+};
+
+export type RiskAssessment = { score: number; band: RiskLevel; factors: { key: RiskFactorKey; label: string; points: number }[] };
+
+export function riskBand(score: number): RiskLevel {
+  if (score >= 70) return "CRITICAL";
+  if (score >= 45) return "HIGH";
+  if (score >= 20) return "MEDIUM";
+  return "LOW";
+}
+
+/** Calculates a 0 to 100 risk score from the contract's state. Closed contracts score zero. */
+export function assessContractRisk(input: RiskInput, weights: RiskWeights, valueThresholds: Record<string, string>, now: Date = new Date()): RiskAssessment {
+  const factors: RiskAssessment["factors"] = [];
+  const add = (key: RiskFactorKey) => { if (weights[key] > 0) factors.push({ key, label: RISK_FACTORS[key].label, points: weights[key] }); };
+  const open = ["DRAFT", "PENDING_APPROVAL", "APPROVED", "ACTIVE"].includes(input.status);
+  if (!open) return { score: 0, band: "LOW", factors: [] };
+  const active = input.status === "ACTIVE";
+  if (input.riskLevel === "CRITICAL") add("manualCritical");
+  else if (input.riskLevel === "HIGH") add("manualHigh");
+  const threshold = valueThresholds[input.currency];
+  if (threshold && input.value !== null && decimalAtLeast(input.value, threshold)) add("highValue");
+  if (input.missingRequiredClauses > 0) add("missingRequiredClauses");
+  if (active && !input.hasPrimaryDocument) add("noPrimaryDocument");
+  if (active && !input.hasSignature) add("unsignedActive");
+  if (input.overdueObligations > 0) add("overdueObligations");
+  if (active && input.expirationDate) {
+    const days = (input.expirationDate.getTime() - now.getTime()) / DAY_MS;
+    if (days < 0) add("pastExpiry");
+    else if (days <= 30) add("expiringSoon");
+    const deadline = noticeDeadline(input.expirationDate, input.noticePeriodDays);
+    if (deadline && input.noticePeriodDays && (input.renewalType === "AUTO_RENEWAL" || input.renewalType === "EVERGREEN")) {
+      const untilDeadline = (deadline.getTime() - now.getTime()) / DAY_MS;
+      if (untilDeadline >= 0 && untilDeadline <= 30) add("noticeDeadlineSoon");
+    }
+  }
+  if (active && !input.expirationDate && input.renewalType !== "EVERGREEN") add("openEnded");
+  const score = Math.min(100, factors.reduce((sum, factor) => sum + factor.points, 0));
+  return { score, band: riskBand(score), factors };
+}
+
+// --- Billing schedule ------------------------------------------------------------
+
+/**
+ * Due dates for a billing plan: from the first due date, every `months`
+ * months, up to and including `until` when given, and never more than
+ * `maxLines` lines.
+ */
+export function planBillingDates(firstDueDate: Date, months: number, until: Date | null, maxLines: number): Date[] {
+  if (!Number.isInteger(months) || months < 1) throw new ContractRuleError("Choose a billing frequency.");
+  const dates: Date[] = [];
+  for (let index = 0; index < maxLines; index++) {
+    const due = addMonths(firstDueDate, months * index);
+    if (until && due > until) break;
+    dates.push(due);
+  }
+  return dates;
+}

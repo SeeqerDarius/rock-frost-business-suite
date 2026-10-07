@@ -12,12 +12,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { requireModuleAccess } from "@/lib/auth/module-access";
-import { PERMISSIONS } from "@/lib/auth/permissions";
+import { canAccessModule, PERMISSIONS } from "@/lib/auth/permissions";
 import { createOrganizationFormatter } from "@/lib/org-format";
 import { cn } from "@/lib/utils";
 import { daysUntil } from "@/modules/contracts/rules";
 import { actorFromTenant, compareContractVersions, ContractNotFoundError, getContractDetail, getContractFormOptions } from "@/modules/contracts/service";
 import { getContractLifecycle } from "@/modules/contracts/lifecycle";
+import { getBillingSchedule, getContractLinks, getContractRisk, listBillableDocuments, listLinkTargetOptions } from "@/modules/contracts/integrations";
+import { BillingTab, LinksTab, RiskCard } from "../_components/integration-tabs";
 import { AmendmentsTab, ApprovalsTab, ObligationsTab, RenewalsTab, SignaturesTab, type LifecycleTabProps } from "../_components/lifecycle-tabs";
 import {
   addAccessGrantAction,
@@ -34,8 +36,9 @@ import { UploadDocumentDialog } from "../_components/upload-document-dialog";
 
 export const metadata = { title: "Contract" };
 
-const TABS = ["overview", "parties", "documents", "clauses", "approvals", "obligations", "amendments", "renewals", "signatures", "versions", "access"] as const;
-const TAB_LABELS: Partial<Record<(typeof TABS)[number], string>> = { obligations: "Obligations & milestones", renewals: "Renewal & termination" };
+const TABS = ["overview", "parties", "documents", "clauses", "approvals", "obligations", "amendments", "renewals", "signatures", "links", "billing", "versions", "access"] as const;
+const TAB_LABELS: Partial<Record<(typeof TABS)[number], string>> = { obligations: "Obligations & milestones", renewals: "Renewal & termination", links: "Linked records", billing: "Billing schedule" };
+const LINKABLE_MODULES = ["accounting", "fleet", "hr", "projects"];
 const LIFECYCLE_TABS = new Set(["approvals", "obligations", "amendments", "renewals", "signatures"]);
 type Tab = (typeof TABS)[number];
 const PARTY_ROLES = ["CLIENT", "VENDOR", "BUYER", "SELLER", "CONTRACTOR", "EMPLOYEE", "EMPLOYER", "PARTNER", "SERVICE_PROVIDER", "LANDLORD", "TENANT", "OWNER", "GUARANTOR", "WITNESS", "OTHER"];
@@ -49,7 +52,7 @@ export default async function ContractDetailPage({ params, searchParams }: { par
   }
   const { contractId } = await params;
   const search = await searchParams;
-  const tab: Tab = (TABS as readonly string[]).includes(search.tab ?? "") ? (search.tab as Tab) : "overview";
+  const requestedTab: Tab = (TABS as readonly string[]).includes(search.tab ?? "") ? (search.tab as Tab) : "overview";
   let detail;
   try {
     detail = await getContractDetail(actor, contractId);
@@ -58,6 +61,16 @@ export default async function ContractDetailPage({ params, searchParams }: { par
     throw caught;
   }
   const { contract, versions, missingRequiredClauses, canViewFinancials } = detail;
+  const visibleTabs = TABS.filter((item) => item !== "billing" || canViewFinancials);
+  const tab: Tab = visibleTabs.includes(requestedTab) ? requestedTab : "overview";
+  const allowedModules = LINKABLE_MODULES.filter((key) => canAccessModule(tenant, key));
+  const [risk, links, linkOptions, billing, billable] = await Promise.all([
+    tab === "overview" ? getContractRisk(actor, contract.id) : null,
+    tab === "links" ? getContractLinks(actor, contract.id, allowedModules) : null,
+    tab === "links" && actor.permissions.includes(PERMISSIONS.CONTRACTS_UPDATE) ? listLinkTargetOptions(tenant.organizationId, allowedModules) : {},
+    tab === "billing" ? getBillingSchedule(actor, contract.id) : null,
+    tab === "billing" && actor.permissions.includes(PERMISSIONS.CONTRACTS_UPDATE) ? listBillableDocuments(tenant.organizationId, contract.currency, tenant.organization.currency ?? "GHS") : { invoices: [], bills: [] },
+  ]);
   const format = createOrganizationFormatter(tenant.organization);
   const can = (key: string) => actor.permissions.includes(key);
   const editable = ["DRAFT", "APPROVED", "ACTIVE"].includes(contract.status);
@@ -117,7 +130,7 @@ export default async function ContractDetailPage({ params, searchParams }: { par
       {missingRequiredClauses.length ? <Alert><TriangleAlert /><AlertTitle>Required clauses not attached</AlertTitle><AlertDescription>{missingRequiredClauses.map((clause) => clause.name).join(", ")}. Your organization marks these clauses as required.</AlertDescription></Alert> : null}
 
       <nav aria-label="Contract sections" className="flex flex-wrap gap-1 border-b">
-        {TABS.map((item) => <Link key={item} href={`?tab=${item}`} aria-current={item === tab ? "page" : undefined} className={cn("rounded-t-md px-3 py-2 text-sm", item === tab ? "border-b-2 border-primary font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}>{TAB_LABELS[item] ?? humanize(item)}{item === "parties" ? ` (${contract.parties.length})` : item === "documents" ? ` (${activeDocuments.length})` : item === "clauses" ? ` (${contract.clauses.length})` : ""}</Link>)}
+        {visibleTabs.map((item) => <Link key={item} href={`?tab=${item}`} aria-current={item === tab ? "page" : undefined} className={cn("rounded-t-md px-3 py-2 text-sm", item === tab ? "border-b-2 border-primary font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}>{TAB_LABELS[item] ?? humanize(item)}{item === "parties" ? ` (${contract.parties.length})` : item === "documents" ? ` (${activeDocuments.length})` : item === "clauses" ? ` (${contract.clauses.length})` : ""}</Link>)}
       </nav>
 
       {tab === "overview" ? (
@@ -152,6 +165,7 @@ export default async function ContractDetailPage({ params, searchParams }: { par
               ) : <p className="text-sm text-muted-foreground">Requires contract financial access.</p>}
             </CardContent>
           </Card>
+          {risk ? <div className="lg:col-span-3"><RiskCard risk={risk} assigned={contract.riskLevel} /></div> : null}
           {contract.body ? <Card className="lg:col-span-3"><CardHeader><CardTitle>Contract text</CardTitle></CardHeader><CardContent><pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 p-4 text-sm">{contract.body}</pre></CardContent></Card> : null}
           {contract.notes ? <Card className="lg:col-span-3"><CardHeader><CardTitle>Internal notes</CardTitle></CardHeader><CardContent><p className="whitespace-pre-wrap text-sm">{contract.notes}</p></CardContent></Card> : null}
         </div>
@@ -275,6 +289,9 @@ export default async function ContractDetailPage({ params, searchParams }: { par
         if (tab === "renewals") return <RenewalsTab {...props} />;
         return <SignaturesTab {...props} />;
       })() : null}
+
+      {tab === "links" && links ? <LinksTab contractId={contract.id} links={links} options={linkOptions} canUpdate={can(PERMISSIONS.CONTRACTS_UPDATE)} formatDate={date} formatMoney={(value, currency) => format.money(value, currency)} /> : null}
+      {tab === "billing" && billing ? <BillingTab contractId={contract.id} status={contract.status} hasExpiration={!!contract.expirationDate} billing={billing} billable={billable} canUpdate={can(PERMISSIONS.CONTRACTS_UPDATE)} formatDate={date} formatMoney={(value, currency) => format.money(value, currency)} /> : null}
 
       {tab === "versions" ? (
         <div className="space-y-4">

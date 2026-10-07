@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import type { ContractConfidentiality, ContractObligationType, ContractPartyRole, ContractRecurrence, ContractRenewalType, ContractRiskLevel } from "@prisma/client";
+import type { ContractConfidentiality, ContractLinkType, ContractObligationType, ContractPartyRole, ContractRecurrence, ContractRenewalType, ContractRiskLevel } from "@prisma/client";
+import { canAccessModule } from "@/lib/auth/permissions";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { CONTRACTS_FLASH_COOKIE, CONTRACTS_FLASH_PATH } from "@/modules/contracts/flash";
-import { AMENDABLE_FIELDS, type AmendableField } from "@/modules/contracts/rules";
+import { AMENDABLE_FIELDS, RISK_FACTORS, type AmendableField } from "@/modules/contracts/rules";
+import { addBillingLine, addContractLink, cancelBillingLine, generateBillingPlan, LINK_TYPES, markBillingLineInvoiced, removeContractLink, updateRiskSettings } from "@/modules/contracts/integrations";
 import {
   addContractComment,
   applyAmendment,
@@ -470,4 +472,84 @@ export async function cancelSignatureAction(formData: FormData) {
   const current = await actor();
   const id = str(formData, "contractId");
   await run(`/app/contracts/${id}?tab=signatures`, async () => { await cancelSignatureRequest(current, str(formData, "signatureId")); });
+}
+
+// --- Integrations: links, billing, risk -------------------------------------------------
+
+const LINKABLE_MODULES = ["accounting", "fleet", "hr", "projects"];
+
+/** Modules whose records the signed-in user may link, from the session. */
+async function linkContext() {
+  const tenant = await requireModuleAccess("contracts");
+  return { actor: actorFromTenant(tenant), allowedModules: LINKABLE_MODULES.filter((key) => canAccessModule(tenant, key)) };
+}
+
+export async function addLinkAction(formData: FormData) {
+  const { actor: current, allowedModules } = await linkContext();
+  const id = str(formData, "contractId");
+  const [type, ...rest] = str(formData, "target").split(":");
+  await run(`/app/contracts/${id}?tab=links`, async () => {
+    if (!(LINK_TYPES as string[]).includes(type)) throw new ContractError("Choose a record to link.");
+    await addContractLink(current, id, { linkType: type as ContractLinkType, entityId: rest.join(":") }, allowedModules);
+  });
+}
+
+export async function removeLinkAction(formData: FormData) {
+  const current = await actor();
+  const id = str(formData, "contractId");
+  await run(`/app/contracts/${id}?tab=links`, async () => { await removeContractLink(current, id, str(formData, "linkId")); });
+}
+
+const DIRECTIONS = ["RECEIVABLE", "PAYABLE"] as const;
+
+export async function generateBillingPlanAction(formData: FormData) {
+  const current = await actor();
+  const id = str(formData, "contractId");
+  await run(`/app/contracts/${id}?tab=billing`, async () => {
+    const periods = str(formData, "periods");
+    await generateBillingPlan(current, id, {
+      direction: oneOf(str(formData, "direction"), DIRECTIONS, "RECEIVABLE"),
+      frequencyMonths: Number(str(formData, "frequencyMonths")),
+      amount: str(formData, "amount"),
+      firstDueDate: requiredDate(formData, "firstDueDate", "first due date"),
+      description: str(formData, "description"),
+      periods: periods ? Number(periods) : null,
+    });
+  });
+}
+
+export async function addBillingLineAction(formData: FormData) {
+  const current = await actor();
+  const id = str(formData, "contractId");
+  await run(`/app/contracts/${id}?tab=billing`, async () => {
+    await addBillingLine(current, id, { direction: oneOf(str(formData, "direction"), DIRECTIONS, "RECEIVABLE"), dueDate: requiredDate(formData, "dueDate", "due date"), amount: str(formData, "amount"), description: str(formData, "description") });
+  });
+}
+
+export async function cancelBillingLineAction(formData: FormData) {
+  const current = await actor();
+  const id = str(formData, "contractId");
+  await run(`/app/contracts/${id}?tab=billing`, async () => { await cancelBillingLine(current, str(formData, "lineId"), str(formData, "reason")); });
+}
+
+export async function markBillingLineInvoicedAction(formData: FormData) {
+  const current = await actor();
+  const id = str(formData, "contractId");
+  await run(`/app/contracts/${id}?tab=billing`, async () => { await markBillingLineInvoiced(current, str(formData, "lineId"), str(formData, "documentId")); });
+}
+
+export async function updateRiskSettingsAction(formData: FormData) {
+  const current = await actor();
+  await run("/app/contracts/settings", async () => {
+    const weights: Record<string, number> = {};
+    for (const key of Object.keys(RISK_FACTORS)) {
+      const value = str(formData, `weight_${key}`);
+      weights[key] = value === "" ? Number.NaN : Number(value);
+    }
+    const thresholds: Record<string, string> = {};
+    const raw = str(formData, "thresholds");
+    for (const match of raw.matchAll(/([A-Za-z]{3})\s*=\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/g)) thresholds[match[1].toUpperCase()] = match[2].replace(/,/g, "");
+    if (raw.trim() && !Object.keys(thresholds).length) throw new ContractError("Enter thresholds as a currency code and an amount, for example GHS=500000.");
+    await updateRiskSettings(current, { weights, thresholds });
+  });
 }
