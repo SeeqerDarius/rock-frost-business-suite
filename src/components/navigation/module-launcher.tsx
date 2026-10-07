@@ -9,9 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { IconBadge } from "@/components/ui/icon-badge";
 import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry";
 import { productGroupKeys } from "@/platform/modules/product-groups";
+import { useOrganizationBranding } from "@/components/theme/organization-branding-context";
 
 export function ModuleLauncher({ enabledModuleKeys = [] }: { enabledModuleKeys?: string[] }) {
   const [open, setOpen] = useState(false);
+  const branding = useOrganizationBranding();
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -39,7 +41,7 @@ export function ModuleLauncher({ enabledModuleKeys = [] }: { enabledModuleKeys?:
                 >
                   <IconBadge size="sm"><mod.icon className="size-4" /></IconBadge>
                   <div>
-                    <p className="text-sm font-medium">{mod.name}</p>
+                    <p className="text-sm font-medium">{branding.modules?.[accessibleKey!]?.displayName || mod.name}</p>
                     <p className="text-xs text-muted-foreground">{mod.description}</p>
                   </div>
                 </Link>

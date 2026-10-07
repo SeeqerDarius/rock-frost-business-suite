@@ -8,6 +8,8 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import type { Prisma } from "@prisma/client";
 import { logAuditEvent } from "@/lib/audit";
 import { OFFLINE_SUPPORTED_MODULES } from "@/lib/pwa/policy";
+import { getModule } from "@/platform/modules/registry";
+import { hasSupportedImageSignature, isValidModuleBrandingColor, MODULE_BRANDING_IMAGE_TYPES, MODULE_BRANDING_MAX_IMAGE_BYTES, MODULE_BRANDING_MAX_NAME_LENGTH } from "@/lib/module-branding";
 
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BYTES = 1024 * 1024;
@@ -64,6 +66,58 @@ export async function uploadCompanyLogo(formData: FormData): Promise<void> {
   await db.organization.update({ where: { id: tenant.organizationId }, data: { logoUrl } });
   revalidatePath("/app");
   redirect("/app/organization/settings?saved=logo");
+}
+
+export async function saveOrganizationModuleBranding(formData: FormData): Promise<void> {
+  const tenant = await authorizedTenant();
+  const moduleKey = String(formData.get("moduleKey") ?? "");
+  if (!getModule(moduleKey) || !tenant.enabledModuleKeys.includes(moduleKey)) redirect("/app/organization/settings?error=module");
+  const rawName = String(formData.get("displayName") ?? "").trim();
+  const primaryColor = String(formData.get("primaryColor") ?? "").trim();
+  const accentColor = String(formData.get("accentColor") ?? "").trim();
+  const surfaceColor = String(formData.get("surfaceColor") ?? "").trim();
+  const file = formData.get("logo");
+  const removeLogo = formData.get("removeLogo") === "on";
+  if (rawName.length > MODULE_BRANDING_MAX_NAME_LENGTH || [primaryColor, accentColor, surfaceColor].some((color) => color && !isValidModuleBrandingColor(color)) ||
+      (file instanceof File && file.size > 0 && (file.size > MODULE_BRANDING_MAX_IMAGE_BYTES || !MODULE_BRANDING_IMAGE_TYPES.has(file.type)))) {
+    redirect("/app/organization/settings?error=module-branding");
+  }
+  const previous = await db.organizationModuleBranding.findUnique({
+    where: { organizationId_moduleKey: { organizationId: tenant.organizationId, moduleKey } },
+    select: { logoUrl: true },
+  });
+  let logoUrl = removeLogo ? null : previous?.logoUrl ?? null;
+  if (file instanceof File && file.size > 0) {
+    const bytes = Buffer.from(await file.arrayBuffer());
+    if (!hasSupportedImageSignature(file.type, bytes)) redirect("/app/organization/settings?error=module-branding");
+    logoUrl = `data:${file.type};base64,${bytes.toString("base64")}`;
+  }
+  const displayName = rawName || null;
+  const colors = { primaryColor: primaryColor || null, accentColor: accentColor || null, surfaceColor: surfaceColor || null };
+  if (!displayName && !logoUrl && !colors.primaryColor && !colors.accentColor && !colors.surfaceColor) {
+    await db.organizationModuleBranding.deleteMany({ where: { organizationId: tenant.organizationId, moduleKey } });
+  } else {
+    await db.organizationModuleBranding.upsert({
+      where: { organizationId_moduleKey: { organizationId: tenant.organizationId, moduleKey } },
+      create: { organizationId: tenant.organizationId, moduleKey, displayName, logoUrl, hasLogo: Boolean(logoUrl), ...colors },
+      update: { displayName, logoUrl, hasLogo: Boolean(logoUrl), ...colors },
+    });
+  }
+  await logAuditEvent({ organizationId: tenant.organizationId, userId: tenant.userId, module: moduleKey, action: "module.branding_updated", entityName: "OrganizationModuleBranding", entityId: moduleKey });
+  revalidatePath("/app");
+  revalidatePath("/app", "layout");
+  redirect("/app/organization/settings?saved=module-branding");
+}
+
+export async function resetOrganizationModuleBranding(formData: FormData): Promise<void> {
+  const tenant = await authorizedTenant();
+  const moduleKey = String(formData.get("moduleKey") ?? "");
+  if (!getModule(moduleKey) || !tenant.enabledModuleKeys.includes(moduleKey)) redirect("/app/organization/settings?error=module");
+  await db.organizationModuleBranding.deleteMany({ where: { organizationId: tenant.organizationId, moduleKey } });
+  await logAuditEvent({ organizationId: tenant.organizationId, userId: tenant.userId, module: moduleKey, action: "module.branding_reset", entityName: "OrganizationModuleBranding", entityId: moduleKey });
+  revalidatePath("/app");
+  revalidatePath("/app", "layout");
+  redirect("/app/organization/settings?saved=module-branding");
 }
 
 export async function updateOfflineAccessSettings(formData: FormData): Promise<void> {

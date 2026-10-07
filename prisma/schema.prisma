@@ -638,6 +638,7 @@ model Organization {
   branches                        Branch[]
   roles                           Role[]
   organizationModules             OrganizationModule[]
+  moduleBrandings                 OrganizationModuleBranding[]
   auditLogs                       AuditLog[]
   notifications                   Notification[]
   smsMessages                     SmsMessage[]
@@ -1111,6 +1112,26 @@ model OrganizationModule {
 
   @@unique([organizationId, moduleId])
   @@index([moduleId])
+}
+
+/// Tenant-owned presentation overrides for a subscribed business module.
+model OrganizationModuleBranding {
+  id             String   @id @default(cuid())
+  organizationId String
+  moduleKey      String
+  displayName    String?
+  logoUrl        String?  @db.Text
+  hasLogo        Boolean  @default(false)
+  primaryColor   String?  @db.VarChar(7)
+  accentColor    String?  @db.VarChar(7)
+  surfaceColor   String?  @db.VarChar(7)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, moduleKey])
+  @@index([organizationId])
 }
 
 model ModuleRequest {

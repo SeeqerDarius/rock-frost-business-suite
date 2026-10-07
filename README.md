@@ -151,3 +151,5 @@ Start with `OPERATOR_HANDOFF.md` at the repo root for the current state and next
 - `docs/DECISIONS.md` — dated log of consequential technical decisions
 
 `docs/archive/previous-implementation/` contains the retired implementation's docs, marked obsolete. Do not follow them.
+
+Organization owners can configure a separate display name, logo, and primary/accent/surface palette for each active subscribed module from Workspace settings. The legal/account organization name stays intact, and modules without overrides inherit existing organization branding. See `docs/ACCOUNT_AND_TENANT_SETTINGS.md`.
