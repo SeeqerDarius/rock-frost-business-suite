@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-08: Global expansion Increment 5b production verification
+
+- PR [#61](https://github.com/SeeqerDarius/rock-frost-business-suite/pull/61) merged as `deb1b82917b69cb23142c42a8ba46df3a49d5ff3` after all five CI checks passed (validate, integration including all 14 tests of `contracts-lifecycle.test.ts` against real Postgres, security, Vercel preview).
+- Production deployment `dpl_CaSYWRQkcxcH56x3gTi74iiDE1o3` is READY. Build log: `Applying migration 20261008090000_contracts_lifecycle` and `All migrations have been successfully applied`.
+- Checks on `https://app.rockfrostgroup.com`: `/api/health` 200 with the database reachable; `/app/contracts/approvals`, `/app/contracts/obligations`, and `/app/contracts/calendar` redirect (307) to `/login` signed out; `/api/cron/contract-reminders` returns 401 without the cron secret; `/modules/contracts` still 404 (not publicly listed); `/pricing` 200.
+- Runtime errors (last 30 minutes): only the pre-existing signed-out `No organization membership found for the current user` group, from these probes. No new error types.
+- Remaining: the first scheduled reminder run is at 07:00 UTC; confirm `Contract-reminders cron completed` in runtime logs after it. Authenticated pages not visually verified (no tenant session). Next: Increment 5c (integrations, risk scoring, reports).
+
 ## 2026-10-08: Global expansion Increment 5b, contract lifecycle
 
 - **Scope**: approval rules (Settings) and approval workflow (submit, ordered member and role steps, approve, request changes, reject, withdraw, reassign, escalate, comments), activation gated on approval when a rule applies, contracts locked under approval and reset to draft when approved terms change; obligations (recurring, owner-managed) and milestones; renewals and non-renewal decisions; numbered amendments applied as new versions by a second person; controlled termination with short-notice confirmation; internal acknowledgements and recorded external signatures (no electronic signature provider connected); in-app notifications with deep links; daily `/api/cron/contract-reminders` (07:00 UTC) for expiry, notice deadlines, obligations, and milestones, idempotent by band; new pages `/app/contracts/approvals`, `/app/contracts/obligations`, `/app/contracts/calendar`; new detail tabs (approvals, obligations and milestones, amendments, renewal and termination, signatures); dashboard lifecycle figures; renewal term field. The organization entitlement computation moved to `src/lib/tenant/entitlements.ts` (unchanged behavior, re-exported from `@/lib/tenant`) so the cron can check entitlement without a session. Details: `docs/CONTRACTS_MODULE.md`.
