@@ -21,6 +21,7 @@ export const MODULE_TEAM_CONFIGS: Record<ModuleTeamKey, ModuleTeamConfig> = {
   projects: { key: "projects", label: "Projects", roleNames: ["Projects Manager"], managePermission: PERMISSIONS.PROJECTS_SETTINGS_MANAGE },
   hotel: { key: "hotel", label: "Hotel", roleNames: ["Hotel Manager", "Front Desk Agent", "Housekeeping Supervisor", "Housekeeper", "Restaurant Manager", "Revenue Manager"], managePermission: PERMISSIONS.HOTEL_SETTINGS_MANAGE },
   pharmacy: { key: "pharmacy", label: "Pharmacy", roleNames: ["Pharmacy Manager", "Pharmacist", "Pharmacy Technician"], managePermission: PERMISSIONS.PHARMACY_SETTINGS_MANAGE },
+  contracts: { key: "contracts", label: "Contracts", roleNames: ["Contract Manager", "Contract Reviewer", "Contract Viewer"], managePermission: PERMISSIONS.CONTRACTS_MANAGE_SETTINGS },
   hospital: { key: "hospital", label: "Hospital", roleNames: ["Hospital Administrator", "Receptionist", "Doctor", "Nurse", "Laboratory Scientist", "Radiology Staff", "Hospital Pharmacist", "Billing Officer", "Records Officer"], managePermission: PERMISSIONS.HOSPITAL_SETTINGS_MANAGE },
 };
 

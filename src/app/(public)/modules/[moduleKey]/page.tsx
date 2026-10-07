@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { JsonLd } from "@/components/seo/json-ld";
-import { catalogueModuleRegistry, getModule, publicCatalogueModuleRegistry } from "@/platform/modules/registry";
+import { getModule, isPubliclyListedModule, publicCatalogueModuleRegistry } from "@/platform/modules/registry";
 import { createPublicMetadata, MODULE_SEO, SITE_URL } from "@/lib/seo";
 import { PublicHero } from "@/components/marketing/public-hero";
 import { ModuleShowcase } from "@/components/marketing/module-showcase";
@@ -13,7 +13,7 @@ import { ConversionButtonLink } from "@/components/marketing/conversion-link";
 type ModuleKey = keyof typeof MODULE_SEO;
 
 export function generateStaticParams() {
-  return catalogueModuleRegistry.map(({ key: moduleKey }) => ({ moduleKey }));
+  return publicCatalogueModuleRegistry.map(({ key: moduleKey }) => ({ moduleKey }));
 }
 
 export async function generateMetadata({
@@ -40,7 +40,7 @@ export default async function ModuleLandingPage({
   const { moduleKey } = await params;
   const seo = MODULE_SEO[moduleKey as ModuleKey];
   const module_ = getModule(moduleKey);
-  if (!seo || !module_) notFound();
+  if (!seo || !module_ || !isPubliclyListedModule(moduleKey)) notFound();
 
   const related = publicCatalogueModuleRegistry.filter((item) => item.key !== moduleKey).slice(0, 3);
   const content = "content" in seo ? seo.content : undefined;

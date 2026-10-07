@@ -38,6 +38,7 @@ const MODULE_KEYS = [
   "projects",
   "school",
   "hostel",
+  "contracts",
 ] as const;
 
 function tenant(overrides: Record<string, unknown> = {}) {
@@ -181,7 +182,8 @@ describe("module authorization source coverage", () => {
     // 141, up from 140: the Accounting Exchange Rates page, requireModuleAccess("accounting").
     // 142, up from 141: the Accounting Tax and Compliance page, requireModuleAccess("accounting").
     // 143, up from 142: the Accounting Tax Reports page, requireModuleAccess("accounting").
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(143);
+    // 151, up from 143: Contract Management joins the sweep with 8 guarded pages (dashboard, register, new, detail, edit, templates, clauses, settings).
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(151);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
     // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
     // all Hostel Server Actions, same shape as School's) joins the sweep
@@ -205,7 +207,8 @@ describe("module authorization source coverage", () => {
     // 70, up from 69: the School Portal Access actions.ts (guardian/student portal invites), requireModuleAccess("school").
     // 71, up from 70: the Accounting Exchange Rates actions.ts, requireModuleAccess("accounting").
     // 72, up from 71: the Accounting Tax and Compliance actions.ts, requireModuleAccess("accounting").
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(72);
+    // 73, up from 72: Contract Management's single actions.ts, requireModuleAccess("contracts").
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(73);
 
     for (const { moduleKey, filePath } of guardedFiles) {
       const source = readFileSync(filePath, "utf8");

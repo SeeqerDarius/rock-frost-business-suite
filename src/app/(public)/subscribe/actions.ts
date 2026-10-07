@@ -12,7 +12,7 @@ import { sendEmail } from "@/lib/email";
 import { invitationEmail } from "@/lib/email-templates";
 import { getModulePriceMap, getPricingBundleMap, type PricingBundleKey } from "@/lib/pricing";
 import { createSelfServiceBundleSubscription, createSelfServiceSubscription } from "@/platform/subscriptions/service";
-import type { BusinessModuleKey } from "@/platform/modules/registry";
+import { isPubliclyListedModule, type BusinessModuleKey } from "@/platform/modules/registry";
 import { getCountryProfile } from "@/lib/localization";
 
 const schema = z.object({
@@ -50,7 +50,8 @@ export async function startPublicSubscription(formData: FormData): Promise<void>
   if (!parsed.success) redirect("/subscribe?error=invalid");
   const input = parsed.data;
   const [modulePriceMap, bundleMap] = await Promise.all([getModulePriceMap(), getPricingBundleMap()]);
-  const selectedModule = modulePriceMap.has(input.productKey as BusinessModuleKey);
+  // Self-service signup only sells publicly listed modules.
+  const selectedModule = modulePriceMap.has(input.productKey as BusinessModuleKey) && isPubliclyListedModule(input.productKey);
   const selectedBundle = bundleMap.has(input.productKey as PricingBundleKey);
   if (!selectedModule && !selectedBundle) redirect("/subscribe?error=product");
 

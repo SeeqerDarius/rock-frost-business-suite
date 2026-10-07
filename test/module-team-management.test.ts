@@ -7,10 +7,11 @@ const root = resolve(__dirname, "..");
 
 describe("shared module team management", () => {
   it("defines the expected membership-only module teams and fixed role families", () => {
-    expect(Object.keys(MODULE_TEAM_CONFIGS).sort()).toEqual(["accounting", "analytics", "crm", "hospital", "hotel", "inventory", "payroll", "pharmacy", "pos", "procurement", "projects"]);
+    expect(Object.keys(MODULE_TEAM_CONFIGS).sort()).toEqual(["accounting", "analytics", "contracts", "crm", "hospital", "hotel", "inventory", "payroll", "pharmacy", "pos", "procurement", "projects"]);
     expect(MODULE_TEAM_CONFIGS.hospital.roleNames).toContain("Doctor");
     expect(MODULE_TEAM_CONFIGS.hotel.roleNames).toContain("Housekeeper");
     expect(MODULE_TEAM_CONFIGS.pharmacy.roleNames).toContain("Pharmacist");
+    expect(MODULE_TEAM_CONFIGS.contracts.roleNames).toEqual(["Contract Manager", "Contract Reviewer", "Contract Viewer"]);
   });
 
   it("enforces tenant, module, permission, fixed-role, seat, platform-user, and self-edit boundaries", () => {
