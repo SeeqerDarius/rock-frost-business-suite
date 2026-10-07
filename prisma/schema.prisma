@@ -496,6 +496,12 @@ model User {
   contractDocumentsUploaded       ContractDocument[]               @relation("ContractDocumentUploadedBy")
   contractVersionsChanged         ContractVersion[]                @relation("ContractVersionChangedBy")
   contractClausesOwned            ContractClause[]                 @relation("ContractClauseOwner")
+  contractApprovalsRequested      ContractApprovalRequest[]        @relation("ContractApprovalRequestedBy")
+  contractApprovalStepsAssigned   ContractApprovalStep[]           @relation("ContractApprovalStepApprover")
+  contractApprovalStepsDecided    ContractApprovalStep[]           @relation("ContractApprovalStepDecidedBy")
+  contractComments                ContractComment[]                @relation("ContractCommentAuthor")
+  contractObligationsOwned        ContractObligation[]             @relation("ContractObligationOwner")
+  contractAmendmentsCreated       ContractAmendment[]              @relation("ContractAmendmentCreatedBy")
 }
 
 enum TwoFactorMethod {
@@ -864,6 +870,17 @@ model Organization {
   contractClauseLinks             ContractClauseLink[]
   contractAccessGrants            ContractAccessGrant[]
   contractLinks                   ContractLink[]
+  contractApprovalRules           ContractApprovalRule[]
+  contractApprovalRuleSteps       ContractApprovalRuleStep[]
+  contractApprovalRequests        ContractApprovalRequest[]
+  contractApprovalSteps           ContractApprovalStep[]
+  contractComments                ContractComment[]
+  contractObligations             ContractObligation[]
+  contractMilestones              ContractMilestone[]
+  contractAmendments              ContractAmendment[]
+  contractRenewals                ContractRenewal[]
+  contractSignatures              ContractSignature[]
+  contractReminders               ContractReminder[]
 
   @@index([industry])
   @@index([status])
@@ -8213,6 +8230,87 @@ enum ContractLinkType {
   PROJECT
 }
 
+enum ContractApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+  WITHDRAWN
+}
+
+enum ContractApprovalStepStatus {
+  WAITING
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+  SKIPPED
+}
+
+enum ContractObligationType {
+  DELIVERABLE
+  PAYMENT
+  REPORTING
+  COMPLIANCE
+  INSURANCE
+  NOTICE
+  OTHER
+}
+
+enum ContractObligationParty {
+  INTERNAL
+  COUNTERPARTY
+}
+
+enum ContractObligationStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  WAIVED
+}
+
+enum ContractRecurrence {
+  NONE
+  MONTHLY
+  QUARTERLY
+  SEMI_ANNUAL
+  ANNUAL
+}
+
+enum ContractMilestoneStatus {
+  PLANNED
+  ACHIEVED
+  MISSED
+  CANCELLED
+}
+
+enum ContractAmendmentStatus {
+  DRAFT
+  APPLIED
+  CANCELLED
+}
+
+enum ContractRenewalDecision {
+  RENEWED
+  NOT_RENEWING
+}
+
+enum ContractSignatureMethod {
+  /// An internal user acknowledges the contract in the application. Not an electronic signature.
+  INTERNAL_ACKNOWLEDGEMENT
+  /// A signature obtained outside the application (wet ink or another tool), recorded with evidence.
+  RECORDED_EXTERNAL
+  /// A configured electronic signature provider.
+  PROVIDER
+}
+
+enum ContractSignatureStatus {
+  PENDING
+  SIGNED
+  DECLINED
+  CANCELLED
+}
+
 /// Organization-level Contracts configuration (numbering, alert policy, and
 /// confidential access policy).
 model ContractSettings {
@@ -8228,6 +8326,9 @@ model ContractSettings {
   /// When false (default), holding contracts.view_confidential alone does not
   /// open confidential contracts; access needs an explicit grant.
   confidentialAdminAccess Boolean  @default(false)
+  /// When false (default), the person who submits a contract cannot approve it.
+  allowSelfApproval       Boolean  @default(false)
+  obligationReminderDays  Int[]    @default([14, 7, 1])
   updatedAt               DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -8266,59 +8367,73 @@ model ContractType {
 }
 
 model Contract {
-  id                    String                  @id @default(cuid())
-  organizationId        String
-  contractNumber        String
-  title                 String
-  categoryId            String?
-  typeId                String?
-  branchId              String?
-  ownerId               String?
-  department            String?
-  counterpartyName      String
-  value                 Decimal?                @db.Decimal(16, 2)
-  currency              String
-  taxTreatment          String?
-  startDate             DateTime?
-  effectiveDate         DateTime?
-  expirationDate        DateTime?
-  renewalDate           DateTime?
-  noticePeriodDays      Int?
-  renewalType           ContractRenewalType     @default(FIXED_TERM)
-  paymentTerms          String?
-  billingFrequency      String?
-  governingLaw          String?
-  governingJurisdiction String?
-  language              String?
-  status                ContractStatus          @default(DRAFT)
-  riskLevel             ContractRiskLevel       @default(LOW)
-  confidentiality       ContractConfidentiality @default(STANDARD)
-  description           String?                 @db.Text
+  id                       String                  @id @default(cuid())
+  organizationId           String
+  contractNumber           String
+  title                    String
+  categoryId               String?
+  typeId                   String?
+  branchId                 String?
+  ownerId                  String?
+  department               String?
+  counterpartyName         String
+  value                    Decimal?                @db.Decimal(16, 2)
+  currency                 String
+  taxTreatment             String?
+  startDate                DateTime?
+  effectiveDate            DateTime?
+  expirationDate           DateTime?
+  renewalDate              DateTime?
+  noticePeriodDays         Int?
+  renewalType              ContractRenewalType     @default(FIXED_TERM)
+  paymentTerms             String?
+  billingFrequency         String?
+  governingLaw             String?
+  governingJurisdiction    String?
+  language                 String?
+  status                   ContractStatus          @default(DRAFT)
+  riskLevel                ContractRiskLevel       @default(LOW)
+  confidentiality          ContractConfidentiality @default(STANDARD)
+  description              String?                 @db.Text
   /// Drafted contract text (for example rendered from a template).
-  body                  String?                 @db.Text
-  tags                  String[]
-  notes                 String?                 @db.Text
-  currentVersion        Int                     @default(1)
-  templateId            String?
-  templateVersion       Int?
-  archivedAt            DateTime?
-  createdById           String?
-  createdAt             DateTime                @default(now())
-  updatedAt             DateTime                @updatedAt
+  body                     String?                 @db.Text
+  tags                     String[]
+  notes                    String?                 @db.Text
+  currentVersion           Int                     @default(1)
+  templateId               String?
+  templateVersion          Int?
+  /// Length of each renewal term, used to propose the next expiration date.
+  renewalTermMonths        Int?
+  noticeGivenAt            DateTime?
+  terminationEffectiveDate DateTime?
+  terminationReason        String?
+  terminatedAt             DateTime?
+  archivedAt               DateTime?
+  createdById              String?
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
 
-  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  category     ContractCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  type         ContractType?         @relation(fields: [typeId], references: [id], onDelete: SetNull)
-  branch       Branch?               @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  owner        User?                 @relation("ContractOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  createdBy    User?                 @relation("ContractCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  template     ContractTemplate?     @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  parties      ContractParty[]
-  documents    ContractDocument[]
-  versions     ContractVersion[]
-  clauses      ContractClauseLink[]
-  accessGrants ContractAccessGrant[]
-  links        ContractLink[]
+  organization     Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category         ContractCategory?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  type             ContractType?             @relation(fields: [typeId], references: [id], onDelete: SetNull)
+  branch           Branch?                   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  owner            User?                     @relation("ContractOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy        User?                     @relation("ContractCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  template         ContractTemplate?         @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  parties          ContractParty[]
+  documents        ContractDocument[]
+  versions         ContractVersion[]
+  clauses          ContractClauseLink[]
+  accessGrants     ContractAccessGrant[]
+  links            ContractLink[]
+  approvalRequests ContractApprovalRequest[]
+  comments         ContractComment[]
+  obligations      ContractObligation[]
+  milestones       ContractMilestone[]
+  amendments       ContractAmendment[]
+  renewals         ContractRenewal[]
+  signatures       ContractSignature[]
+  reminders        ContractReminder[]
 
   @@unique([organizationId, contractNumber])
   @@index([organizationId, status])
@@ -8519,4 +8634,261 @@ model ContractLink {
 
   @@unique([contractId, linkType, entityId])
   @@index([organizationId, linkType, entityId])
+}
+
+/// Approval rule: the first active rule (lowest priority number) whose
+/// conditions all match a contract decides its approval chain.
+model ContractApprovalRule {
+  id             String             @id @default(cuid())
+  organizationId String
+  name           String
+  priority       Int                @default(100)
+  active         Boolean            @default(true)
+  /// Value threshold; always paired with a currency (values in different currencies are never compared).
+  minValue       Decimal?           @db.Decimal(16, 2)
+  currency       String?
+  categoryId     String?
+  typeId         String?
+  department     String?
+  minRiskLevel   ContractRiskLevel?
+  jurisdiction   String?
+  branchId       String?
+  createdById    String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  steps        ContractApprovalRuleStep[]
+
+  @@index([organizationId, active, priority])
+}
+
+model ContractApprovalRuleStep {
+  id             String  @id @default(cuid())
+  organizationId String
+  ruleId         String
+  stepOrder      Int
+  name           String
+  approverUserId String?
+  approverRoleId String?
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rule         ContractApprovalRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, stepOrder])
+}
+
+/// One approval round for a specific contract version. Steps are copied from
+/// the rule at submission, so later rule edits never change a running request.
+model ContractApprovalRequest {
+  id              String                 @id @default(cuid())
+  organizationId  String
+  contractId      String
+  contractVersion Int
+  ruleId          String?
+  ruleName        String
+  status          ContractApprovalStatus @default(PENDING)
+  requestedById   String?
+  requestedAt     DateTime               @default(now())
+  completedAt     DateTime?
+  note            String?
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract               @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  requestedBy  User?                  @relation("ContractApprovalRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  steps        ContractApprovalStep[]
+  comments     ContractComment[]
+
+  @@index([organizationId, status])
+  @@index([contractId, requestedAt])
+}
+
+model ContractApprovalStep {
+  id             String                     @id @default(cuid())
+  organizationId String
+  requestId      String
+  stepOrder      Int
+  name           String
+  approverUserId String?
+  approverRoleId String?
+  status         ContractApprovalStepStatus @default(WAITING)
+  activatedAt    DateTime?
+  escalated      Boolean                    @default(false)
+  decidedById    String?
+  decidedAt      DateTime?
+  comment        String?
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  request      ContractApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  approverUser User?                   @relation("ContractApprovalStepApprover", fields: [approverUserId], references: [id], onDelete: SetNull)
+  decidedBy    User?                   @relation("ContractApprovalStepDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@unique([requestId, stepOrder])
+  @@index([organizationId, status, approverUserId])
+  @@index([organizationId, status, approverRoleId])
+}
+
+model ContractComment {
+  id                String   @id @default(cuid())
+  organizationId    String
+  contractId        String
+  approvalRequestId String?
+  authorId          String?
+  body              String   @db.Text
+  createdAt         DateTime @default(now())
+
+  organization    Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract        Contract                 @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  approvalRequest ContractApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
+  author          User?                    @relation("ContractCommentAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([contractId, createdAt])
+}
+
+model ContractObligation {
+  id               String                   @id @default(cuid())
+  organizationId   String
+  contractId       String
+  title            String
+  description      String?                  @db.Text
+  obligationType   ContractObligationType   @default(OTHER)
+  responsibleParty ContractObligationParty  @default(INTERNAL)
+  ownerId          String?
+  dueDate          DateTime
+  recurrence       ContractRecurrence       @default(NONE)
+  status           ContractObligationStatus @default(OPEN)
+  completedAt      DateTime?
+  completedById    String?
+  resolutionNote   String?
+  /// Earlier occurrence of a recurring obligation.
+  previousId       String?
+  createdById      String?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  owner        User?        @relation("ContractObligationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, dueDate])
+  @@index([contractId, dueDate])
+}
+
+model ContractMilestone {
+  id             String                  @id @default(cuid())
+  organizationId String
+  contractId     String
+  title          String
+  description    String?                 @db.Text
+  dueDate        DateTime
+  amount         Decimal?                @db.Decimal(16, 2)
+  status         ContractMilestoneStatus @default(PLANNED)
+  achievedAt     DateTime?
+  note           String?
+  recordedById   String?
+  createdById    String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status, dueDate])
+  @@index([contractId, dueDate])
+}
+
+/// A recorded change to the contract terms. Applying it creates a new
+/// contract version; earlier versions are never rewritten.
+model ContractAmendment {
+  id              String                  @id @default(cuid())
+  organizationId  String
+  contractId      String
+  amendmentNumber Int
+  title           String
+  reason          String                  @db.Text
+  effectiveDate   DateTime?
+  /// Proposed field values, e.g. {"expirationDate": "2027-12-31", "value": "150000.00"}.
+  changes         Json
+  status          ContractAmendmentStatus @default(DRAFT)
+  appliedVersion  Int?
+  appliedAt       DateTime?
+  appliedById     String?
+  cancelledAt     DateTime?
+  cancelledById   String?
+  createdById     String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("ContractAmendmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([contractId, amendmentNumber])
+  @@index([organizationId, status])
+}
+
+model ContractRenewal {
+  id                     String                  @id @default(cuid())
+  organizationId         String
+  contractId             String
+  decision               ContractRenewalDecision
+  previousExpirationDate DateTime?
+  newExpirationDate      DateTime?
+  previousValue          Decimal?                @db.Decimal(16, 2)
+  newValue               Decimal?                @db.Decimal(16, 2)
+  reason                 String?
+  contractVersion        Int?
+  decidedById            String?
+  createdAt              DateTime                @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId, createdAt])
+}
+
+model ContractSignature {
+  id                String                  @id @default(cuid())
+  organizationId    String
+  contractId        String
+  documentId        String?
+  partyId           String?
+  method            ContractSignatureMethod
+  status            ContractSignatureStatus @default(PENDING)
+  signerName        String
+  signerEmail       String?
+  signerTitle       String?
+  signerUserId      String?
+  providerKey       String?
+  providerReference String?
+  evidenceNote      String?
+  requestedById     String?
+  requestedAt       DateTime                @default(now())
+  completedAt       DateTime?
+  recordedById      String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId, status])
+}
+
+/// Delivery log that keeps scheduled reminders idempotent: one row per
+/// reminder kind, target, threshold, and due date.
+model ContractReminder {
+  id              String   @id @default(cuid())
+  organizationId  String
+  contractId      String
+  kind            String
+  targetId        String
+  thresholdDays   Int
+  dueDate         DateTime
+  recipientUserId String?
+  sentAt          DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@unique([kind, targetId, thresholdDays, dueDate])
+  @@index([organizationId, sentAt])
 }

@@ -17,6 +17,8 @@ import { createOrganizationFormatter } from "@/lib/org-format";
 import { cn } from "@/lib/utils";
 import { daysUntil } from "@/modules/contracts/rules";
 import { actorFromTenant, compareContractVersions, ContractNotFoundError, getContractDetail, getContractFormOptions } from "@/modules/contracts/service";
+import { getContractLifecycle } from "@/modules/contracts/lifecycle";
+import { AmendmentsTab, ApprovalsTab, ObligationsTab, RenewalsTab, SignaturesTab, type LifecycleTabProps } from "../_components/lifecycle-tabs";
 import {
   addAccessGrantAction,
   addPartyAction,
@@ -32,7 +34,9 @@ import { UploadDocumentDialog } from "../_components/upload-document-dialog";
 
 export const metadata = { title: "Contract" };
 
-const TABS = ["overview", "parties", "documents", "clauses", "versions", "access"] as const;
+const TABS = ["overview", "parties", "documents", "clauses", "approvals", "obligations", "amendments", "renewals", "signatures", "versions", "access"] as const;
+const TAB_LABELS: Partial<Record<(typeof TABS)[number], string>> = { obligations: "Obligations & milestones", renewals: "Renewal & termination" };
+const LIFECYCLE_TABS = new Set(["approvals", "obligations", "amendments", "renewals", "signatures"]);
 type Tab = (typeof TABS)[number];
 const PARTY_ROLES = ["CLIENT", "VENDOR", "BUYER", "SELLER", "CONTRACTOR", "EMPLOYEE", "EMPLOYER", "PARTNER", "SERVICE_PROVIDER", "LANDLORD", "TENANT", "OWNER", "GUARANTOR", "WITNESS", "OTHER"];
 const DOCUMENT_TYPES = ["PRIMARY", "SUPPORTING", "AMENDMENT", "ADDENDUM", "SCHEDULE", "EXHIBIT", "EVIDENCE", "CERTIFICATE", "OTHER"];
@@ -56,10 +60,12 @@ export default async function ContractDetailPage({ params, searchParams }: { par
   const { contract, versions, missingRequiredClauses, canViewFinancials } = detail;
   const format = createOrganizationFormatter(tenant.organization);
   const can = (key: string) => actor.permissions.includes(key);
-  const editable = ["DRAFT", "PENDING_APPROVAL", "APPROVED", "ACTIVE"].includes(contract.status);
+  const editable = ["DRAFT", "APPROVED", "ACTIVE"].includes(contract.status);
   const canEdit = can(PERMISSIONS.CONTRACTS_UPDATE) && editable;
   const canManageAccess = contract.ownerId === tenant.userId || can(PERMISSIONS.CONTRACTS_VIEW_CONFIDENTIAL);
-  const options = tab === "clauses" || tab === "access" || tab === "parties" ? await getContractFormOptions(tenant.organizationId) : null;
+  const options = tab === "clauses" || tab === "access" || tab === "parties" || LIFECYCLE_TABS.has(tab) ? await getContractFormOptions(tenant.organizationId) : null;
+  const lifecycle = LIFECYCLE_TABS.has(tab) || contract.status === "DRAFT" ? await getContractLifecycle(actor, contract.id) : null;
+  const needsApproval = contract.status === "DRAFT" && !!lifecycle?.applicableRule;
   const fromVersion = Number(search.from);
   const toVersion = Number(search.to);
   const comparison = tab === "versions" && Number.isInteger(fromVersion) && Number.isInteger(toVersion) && fromVersion !== toVersion ? await compareContractVersions(actor, contract.id, Math.min(fromVersion, toVersion), Math.max(fromVersion, toVersion)).catch(() => null) : null;
@@ -95,7 +101,8 @@ export default async function ContractDetailPage({ params, searchParams }: { par
         </div>
         <div className="flex flex-wrap gap-2">
           {canEdit ? <Button size="sm" nativeButton={false} render={<Link href={`/app/contracts/${contract.id}/edit`} />}><Pencil />Edit</Button> : null}
-          {can(PERMISSIONS.CONTRACTS_UPDATE) && ["DRAFT", "APPROVED"].includes(contract.status) ? statusForm("ACTIVATE", "Activate", { variant: "default", description: "The contract becomes active. Approval workflows, when configured, will gate this step." }) : null}
+          {can(PERMISSIONS.CONTRACTS_UPDATE) && needsApproval ? <Button size="sm" nativeButton={false} render={<Link href="?tab=approvals" />}>Submit for approval</Button> : null}
+          {can(PERMISSIONS.CONTRACTS_UPDATE) && ((contract.status === "DRAFT" && !needsApproval) || contract.status === "APPROVED") ? statusForm("ACTIVATE", "Activate", { variant: "default", description: contract.status === "APPROVED" ? "The approved contract becomes active." : "No approval rule applies, so the contract becomes active directly." }) : null}
           {can(PERMISSIONS.CONTRACTS_UPDATE) && contract.status === "ACTIVE" && days !== null && days < 0 ? statusForm("MARK_EXPIRED", "Mark expired") : null}
           {can(PERMISSIONS.CONTRACTS_UPDATE) && ["DRAFT", "PENDING_APPROVAL", "APPROVED"].includes(contract.status) ? statusForm("CANCEL", "Cancel", { reason: true, description: "Cancelled contracts are kept with their history." }) : null}
           {can(PERMISSIONS.CONTRACTS_DELETE) && ["DRAFT", "CANCELLED", "EXPIRED", "TERMINATED"].includes(contract.status) ? statusForm("ARCHIVE", "Archive", { reason: true, description: "Archiving hides the contract from active lists. Nothing is deleted and it can be restored." }) : null}
@@ -110,7 +117,7 @@ export default async function ContractDetailPage({ params, searchParams }: { par
       {missingRequiredClauses.length ? <Alert><TriangleAlert /><AlertTitle>Required clauses not attached</AlertTitle><AlertDescription>{missingRequiredClauses.map((clause) => clause.name).join(", ")}. Your organization marks these clauses as required.</AlertDescription></Alert> : null}
 
       <nav aria-label="Contract sections" className="flex flex-wrap gap-1 border-b">
-        {TABS.map((item) => <Link key={item} href={`?tab=${item}`} aria-current={item === tab ? "page" : undefined} className={cn("rounded-t-md px-3 py-2 text-sm", item === tab ? "border-b-2 border-primary font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}>{humanize(item)}{item === "parties" ? ` (${contract.parties.length})` : item === "documents" ? ` (${activeDocuments.length})` : item === "clauses" ? ` (${contract.clauses.length})` : ""}</Link>)}
+        {TABS.map((item) => <Link key={item} href={`?tab=${item}`} aria-current={item === tab ? "page" : undefined} className={cn("rounded-t-md px-3 py-2 text-sm", item === tab ? "border-b-2 border-primary font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}>{TAB_LABELS[item] ?? humanize(item)}{item === "parties" ? ` (${contract.parties.length})` : item === "documents" ? ` (${activeDocuments.length})` : item === "clauses" ? ` (${contract.clauses.length})` : ""}</Link>)}
       </nav>
 
       {tab === "overview" ? (
@@ -259,6 +266,15 @@ export default async function ContractDetailPage({ params, searchParams }: { par
           </CardContent>
         </Card>
       ) : null}
+
+      {lifecycle && options && LIFECYCLE_TABS.has(tab) ? (() => {
+        const props: LifecycleTabProps = { contract, lifecycle, options, permissions: actor.permissions, userId: tenant.userId, roleId: tenant.roleId, canViewFinancials, formatDate: date, formatDateTime: (value) => format.dateTime(value), formatMoney: (value, currency) => format.money(value, currency) };
+        if (tab === "approvals") return <ApprovalsTab {...props} />;
+        if (tab === "obligations") return <ObligationsTab {...props} />;
+        if (tab === "amendments") return <AmendmentsTab {...props} />;
+        if (tab === "renewals") return <RenewalsTab {...props} />;
+        return <SignaturesTab {...props} />;
+      })() : null}
 
       {tab === "versions" ? (
         <div className="space-y-4">

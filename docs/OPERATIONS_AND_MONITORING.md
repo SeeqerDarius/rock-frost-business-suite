@@ -44,6 +44,18 @@ Overlapping invocations are safe: only the first guarded update can claim a
 tenant. Never invoke the production route without the configured bearer
 secret. Rotate `CRON_SECRET` if it is disclosed.
 
+## Contract reminders cron
+
+Vercel invokes `GET /api/cron/contract-reminders` daily at 07:00 UTC from
+`vercel.json`, with the same `CRON_SECRET` bearer check (`401` otherwise).
+For every active or trial organization entitled to Contract Management it
+sends in-app expiry, notice-deadline, obligation, and milestone reminders
+(see `docs/CONTRACTS_MODULE.md`). Each delivery is recorded in
+`ContractReminder` under a unique key, so reruns and overlapping invocations
+never send duplicates. It never changes a contract's status. Success logs
+report `organizations`, `candidates`, and `sent`; alert on
+`Contract-reminders cron failed`.
+
 ## Logs and error handling
 
 API health and cron routes emit JSON logs with severity, route, request ID,
@@ -54,6 +66,7 @@ without request bodies, authorization headers, or secrets.
 Use Vercel Runtime Logs to alert on:
 
 - `Trial-expiry cron failed`
+- `Contract-reminders cron failed`
 - `Health check failed`
 - `Unhandled Next.js request error`
 - HTTP `5xx` responses or sustained latency increases

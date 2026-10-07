@@ -399,3 +399,21 @@ request-body limit; an object store with direct uploads can replace the
 database backend behind the same adapter. Confidential contracts are not
 opened by an administrator permission alone unless the organization enables
 that policy, and restricted contracts always need an explicit grant.
+
+## 2026-10-08: Contract approvals, reminders, and segregation of duties
+
+**Decision:** Contract approval is rule-based. The first active rule by
+priority whose conditions match a draft decides an ordered chain of member
+or role steps, copied into the approval round at submission so later rule
+edits never change a running request. Value thresholds apply only in their
+own currency; currencies are never converted for approval. A contract under
+approval is locked, and changing an approved contract returns it to draft.
+By default nobody approves their own submission or applies their own
+amendment (organizations can opt out for very small teams). The current
+step's approver may open a confidential contract only while that step is
+pending. Scheduled jobs send reminders but never change a contract's
+status: renewal, expiry, and termination are always human decisions.
+Reminders are delivered once per threshold band through a unique delivery
+log, so reruns cannot duplicate them. Internal acknowledgements are
+labelled as such and never presented as electronic signatures; an external
+provider will be added behind the reserved provider method.
