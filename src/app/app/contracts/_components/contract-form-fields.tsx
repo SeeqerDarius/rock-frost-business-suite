@@ -15,7 +15,7 @@ type Options = {
 export type ContractFormValues = {
   title?: string; categoryId?: string | null; typeId?: string | null; branchId?: string | null; ownerId?: string | null; department?: string | null;
   counterpartyName?: string; value?: string | null; currency?: string; taxTreatment?: string | null; startDate?: Date | null; effectiveDate?: Date | null;
-  expirationDate?: Date | null; renewalDate?: Date | null; noticePeriodDays?: number | null; renewalType?: string; paymentTerms?: string | null;
+  expirationDate?: Date | null; renewalDate?: Date | null; noticePeriodDays?: number | null; renewalType?: string; renewalTermMonths?: number | null; paymentTerms?: string | null;
   billingFrequency?: string | null; governingLaw?: string | null; governingJurisdiction?: string | null; language?: string | null; riskLevel?: string;
   confidentiality?: string; description?: string | null; body?: string | null; tags?: string[]; notes?: string | null;
 };
@@ -70,6 +70,7 @@ export function ContractFormFields({ values, options, baseCurrency, canViewFinan
           {select("renewalType", "Renewal type", values.renewalType ?? "FIXED_TERM", ["FIXED_TERM", "EVERGREEN", "AUTO_RENEWAL", "MANUAL_RENEWAL", "NO_RENEWAL"].map((value) => ({ value, label: humanize(value) })))}
           {field("renewalDate", "Renewal date", dayInput(values.renewalDate), { type: "date" })}
           {field("noticePeriodDays", "Notice period (days)", values.noticePeriodDays, { type: "number" })}
+          {field("renewalTermMonths", "Renewal term (months)", values.renewalTermMonths, { type: "number" })}
         </CardContent>
       </Card>
 

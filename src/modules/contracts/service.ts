@@ -15,9 +15,11 @@ import {
   formatContractNumber,
   formatUsesYear,
   renderTemplate,
+  selectApprovalRule,
   validateNumberFormat,
   VERSIONED_FIELDS,
   type AccessSubject,
+  type ApprovalSubjectShape,
   type TemplateContext,
 } from "./rules";
 
@@ -25,7 +27,7 @@ export class ContractError extends Error {}
 export class ContractNotFoundError extends ContractError {}
 export class ContractForbiddenError extends ContractError {}
 
-type Tx = Prisma.TransactionClient;
+export type Tx = Prisma.TransactionClient;
 
 /** The authenticated actor, always derived from the server-side tenant context. */
 export type ContractActor = {
@@ -35,9 +37,9 @@ export type ContractActor = {
   permissions: string[];
 };
 
-const can = (actor: ContractActor, key: string) => actor.permissions.includes(key);
+export const can = (actor: ContractActor, key: string) => actor.permissions.includes(key);
 
-function requirePermission(actor: ContractActor, key: string) {
+export function requirePermission(actor: ContractActor, key: string) {
   if (!can(actor, key)) throw new ContractForbiddenError("You do not have permission for this contract action.");
 }
 
@@ -47,7 +49,7 @@ export async function getContractSettings(organizationId: string, client: Tx | t
   return client.contractSettings.upsert({ where: { organizationId }, update: {}, create: { organizationId } });
 }
 
-export async function updateContractSettings(actor: ContractActor, input: { numberFormat: string; numberPrefix: string; resetSequenceYearly: boolean; expiryAlertDays: number[]; confidentialAdminAccess: boolean }) {
+export async function updateContractSettings(actor: ContractActor, input: { numberFormat: string; numberPrefix: string; resetSequenceYearly: boolean; expiryAlertDays: number[]; confidentialAdminAccess: boolean; allowSelfApproval?: boolean; obligationReminderDays?: number[] }) {
   requirePermission(actor, PERMISSIONS.CONTRACTS_MANAGE_SETTINGS);
   const numberFormat = input.numberFormat.trim();
   const numberPrefix = input.numberPrefix.trim().toUpperCase();
@@ -60,8 +62,11 @@ export async function updateContractSettings(actor: ContractActor, input: { numb
   const expiryAlertDays = [...new Set(input.expiryAlertDays)].filter((days) => Number.isInteger(days) && days >= 1 && days <= 730).sort((a, b) => b - a);
   if (!expiryAlertDays.length) throw new ContractError("Choose at least one expiry alert between 1 and 730 days.");
   const previous = await getContractSettings(actor.organizationId);
-  const saved = await db.contractSettings.update({ where: { organizationId: actor.organizationId }, data: { numberFormat, numberPrefix, resetSequenceYearly: input.resetSequenceYearly, expiryAlertDays, confidentialAdminAccess: input.confidentialAdminAccess } });
-  await logAuditEvent({ organizationId: actor.organizationId, userId: actor.userId, module: "contracts", action: "contracts.settings_updated", entityName: "ContractSettings", entityId: actor.organizationId, metadata: { from: { numberFormat: previous.numberFormat, numberPrefix: previous.numberPrefix, expiryAlertDays: previous.expiryAlertDays, confidentialAdminAccess: previous.confidentialAdminAccess }, to: { numberFormat, numberPrefix, expiryAlertDays, confidentialAdminAccess: input.confidentialAdminAccess } } });
+  const allowSelfApproval = input.allowSelfApproval ?? previous.allowSelfApproval;
+  const obligationReminderDays = input.obligationReminderDays ? [...new Set(input.obligationReminderDays)].filter((days) => Number.isInteger(days) && days >= 0 && days <= 365).sort((a, b) => b - a) : previous.obligationReminderDays;
+  if (!obligationReminderDays.length) throw new ContractError("Choose at least one obligation reminder between 0 and 365 days.");
+  const saved = await db.contractSettings.update({ where: { organizationId: actor.organizationId }, data: { numberFormat, numberPrefix, resetSequenceYearly: input.resetSequenceYearly, expiryAlertDays, confidentialAdminAccess: input.confidentialAdminAccess, allowSelfApproval, obligationReminderDays } });
+  await logAuditEvent({ organizationId: actor.organizationId, userId: actor.userId, module: "contracts", action: "contracts.settings_updated", entityName: "ContractSettings", entityId: actor.organizationId, metadata: { from: { numberFormat: previous.numberFormat, numberPrefix: previous.numberPrefix, expiryAlertDays: previous.expiryAlertDays, confidentialAdminAccess: previous.confidentialAdminAccess, allowSelfApproval: previous.allowSelfApproval, obligationReminderDays: previous.obligationReminderDays }, to: { numberFormat, numberPrefix, expiryAlertDays, confidentialAdminAccess: input.confidentialAdminAccess, allowSelfApproval, obligationReminderDays } } });
   return saved;
 }
 
@@ -92,7 +97,7 @@ export async function createContractType(actor: ContractActor, input: { code: st
 
 // --- Access ------------------------------------------------------------------
 
-async function accessSubject(actor: ContractActor, client: Tx | typeof db = db): Promise<AccessSubject> {
+export async function accessSubject(actor: ContractActor, client: Tx | typeof db = db): Promise<AccessSubject> {
   const [settings, employee] = await Promise.all([
     getContractSettings(actor.organizationId, client),
     client.hrEmployee.findFirst({ where: { organizationId: actor.organizationId, userId: actor.userId }, select: { department: true } }),
@@ -101,7 +106,7 @@ async function accessSubject(actor: ContractActor, client: Tx | typeof db = db):
 }
 
 /** Database filter matching canViewContract(), so lists never load hidden contracts. */
-function accessWhere(subject: AccessSubject): Prisma.ContractWhereInput {
+export function accessWhere(subject: AccessSubject): Prisma.ContractWhereInput {
   const grantClauses: Prisma.ContractAccessGrantWhereInput[] = [{ userId: subject.userId }];
   if (subject.roleId) grantClauses.push({ roleId: subject.roleId });
   if (subject.department) grantClauses.push({ department: { equals: subject.department, mode: "insensitive" } });
@@ -112,17 +117,35 @@ function accessWhere(subject: AccessSubject): Prisma.ContractWhereInput {
     { accessGrants: { some: { OR: grantClauses } } },
   ];
   if (subject.canViewConfidential && subject.confidentialAdminAccess) or.push({ confidentiality: "CONFIDENTIAL" });
+  or.push(assignmentWhere(subject));
   return { OR: or };
 }
 
+/**
+ * People asked to act on a contract can open it while the request is open:
+ * the approver of the current approval step (directly or through their role)
+ * and an internal signer with a pending acknowledgement.
+ */
+function assignmentWhere(subject: { userId: string; roleId: string | null }): Prisma.ContractWhereInput {
+  const approver: Prisma.ContractApprovalStepWhereInput[] = [{ approverUserId: subject.userId }];
+  if (subject.roleId) approver.push({ approverRoleId: subject.roleId });
+  return {
+    OR: [
+      { approvalRequests: { some: { status: "PENDING", steps: { some: { status: "PENDING", OR: approver } } } } },
+      { signatures: { some: { status: "PENDING", signerUserId: subject.userId } } },
+    ],
+  };
+}
+
 /** Loads a contract the actor may see, or throws not-found (never reveals existence). */
-async function loadAccessibleContract(actor: ContractActor, contractId: string, client: Tx | typeof db = db) {
+export async function loadAccessibleContract(actor: ContractActor, contractId: string, client: Tx | typeof db = db) {
   requirePermission(actor, PERMISSIONS.CONTRACTS_VIEW);
   const contract = await client.contract.findFirst({ where: { id: contractId, organizationId: actor.organizationId }, include: { accessGrants: true } });
   if (!contract) throw new ContractNotFoundError("Contract not found.");
   const subject = await accessSubject(actor, client);
   if (!canViewContract(subject, { confidentiality: contract.confidentiality, ownerId: contract.ownerId, createdById: contract.createdById, grants: contract.accessGrants })) {
-    throw new ContractNotFoundError("Contract not found.");
+    const assigned = await client.contract.count({ where: { id: contract.id, ...assignmentWhere(subject) } });
+    if (!assigned) throw new ContractNotFoundError("Contract not found.");
   }
   return contract;
 }
@@ -164,6 +187,7 @@ export type ContractInput = {
   renewalDate?: Date | null;
   noticePeriodDays?: number | null;
   renewalType: ContractRenewalType;
+  renewalTermMonths?: number | null;
   paymentTerms?: string | null;
   billingFrequency?: string | null;
   governingLaw?: string | null;
@@ -197,6 +221,7 @@ async function validateInput(actor: ContractActor, input: ContractInput, client:
   }
   if (input.startDate && input.expirationDate && input.expirationDate < input.startDate) throw new ContractError("The expiration date cannot be before the start date.");
   if (input.noticePeriodDays !== null && input.noticePeriodDays !== undefined && (!Number.isInteger(input.noticePeriodDays) || input.noticePeriodDays < 0 || input.noticePeriodDays > 3650)) throw new ContractError("Notice period must be between 0 and 3650 days.");
+  if (input.renewalTermMonths !== null && input.renewalTermMonths !== undefined && (!Number.isInteger(input.renewalTermMonths) || input.renewalTermMonths < 1 || input.renewalTermMonths > 600)) throw new ContractError("Renewal term must be between 1 and 600 months.");
   // Every related record must belong to the same organization.
   const org = actor.organizationId;
   const checks: [string | null | undefined, () => Promise<unknown>, string][] = [
@@ -211,13 +236,13 @@ async function validateInput(actor: ContractActor, input: ContractInput, client:
     title: title.slice(0, 200), categoryId: input.categoryId || null, typeId: input.typeId || null, branchId: input.branchId || null, ownerId: input.ownerId || null,
     department: text(input.department, 120), counterpartyName: counterpartyName.slice(0, 200), value, currency, taxTreatment: text(input.taxTreatment, 120),
     startDate: input.startDate ?? null, effectiveDate: input.effectiveDate ?? null, expirationDate: input.expirationDate ?? null, renewalDate: input.renewalDate ?? null,
-    noticePeriodDays: input.noticePeriodDays ?? null, renewalType: input.renewalType, paymentTerms: text(input.paymentTerms, 200), billingFrequency: text(input.billingFrequency, 60),
+    noticePeriodDays: input.noticePeriodDays ?? null, renewalType: input.renewalType, renewalTermMonths: input.renewalTermMonths ?? null, paymentTerms: text(input.paymentTerms, 200), billingFrequency: text(input.billingFrequency, 60),
     governingLaw: text(input.governingLaw, 120), governingJurisdiction: text(input.governingJurisdiction, 120), language: text(input.language, 20), riskLevel: input.riskLevel,
     confidentiality: input.confidentiality, description: text(input.description, 5000), body: input.body?.trim() ? input.body.slice(0, 200_000) : null, tags, notes: text(input.notes, 5000),
   };
 }
 
-function snapshotOf(contract: Record<string, unknown>) {
+export function snapshotOf(contract: Record<string, unknown>) {
   const snapshot: Record<string, unknown> = {};
   for (const field of VERSIONED_FIELDS) {
     const value = contract[field];
@@ -227,7 +252,7 @@ function snapshotOf(contract: Record<string, unknown>) {
 }
 
 /** Audit-safe change summary: long text bodies are recorded as changed, not copied. */
-function auditChanges(changes: Record<string, { from: unknown; to: unknown }>) {
+export function auditChanges(changes: Record<string, { from: unknown; to: unknown }>) {
   const safe: Record<string, unknown> = {};
   for (const [field, change] of Object.entries(changes)) safe[field] = field === "body" || field === "notes" || field === "description" ? "changed" : change;
   return safe;
@@ -255,16 +280,31 @@ export async function createContract(actor: ContractActor, input: ContractInput 
   }, { timeout: 20_000 });
 }
 
-const EDITABLE_STATUSES: ContractStatus[] = ["DRAFT", "PENDING_APPROVAL", "APPROVED", "ACTIVE"];
+/** Statuses whose terms can still change. A contract under approval is locked until the request is decided or withdrawn. */
+export const EDITABLE_STATUSES: ContractStatus[] = ["DRAFT", "APPROVED", "ACTIVE"];
+
+export function assertTermsEditable(contract: { status: ContractStatus }, what = "This contract") {
+  if (contract.status === "PENDING_APPROVAL") throw new ContractError("Withdraw the approval request before changing this contract.");
+  if (!EDITABLE_STATUSES.includes(contract.status)) throw new ContractError(`${what} cannot change on a terminated, expired, cancelled, or archived contract.`);
+}
+
+/** An approval covers the terms it saw: changing an approved contract returns it to draft. */
+async function resetApprovalAfterChange(tx: Tx, actor: ContractActor, contract: { id: string; status: ContractStatus; currentVersion: number }, change: string) {
+  if (contract.status !== "APPROVED") return;
+  const version = contract.currentVersion + 1;
+  const updated = await tx.contract.update({ where: { id: contract.id }, data: { status: "DRAFT", currentVersion: version } });
+  await tx.contractVersion.create({ data: { organizationId: actor.organizationId, contractId: contract.id, version, snapshot: snapshotOf(updated), changedFields: ["status"], changes: { status: { from: "APPROVED", to: "DRAFT" } }, reason: `Approval reset: ${change}`, changedById: actor.userId } });
+  await logAuditEvent({ organizationId: actor.organizationId, userId: actor.userId, module: "contracts", action: "contract.approval_reset", entityName: "Contract", entityId: contract.id, metadata: { change } }, tx);
+}
 
 export async function updateContract(actor: ContractActor, contractId: string, input: ContractInput, reason?: string | null) {
   requirePermission(actor, PERMISSIONS.CONTRACTS_UPDATE);
   return db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`contract:${contractId}`}))`;
     const current = await loadAccessibleContract(actor, contractId, tx);
-    if (!EDITABLE_STATUSES.includes(current.status)) throw new ContractError("Terminated, expired, cancelled, and archived contracts cannot be edited.");
+    assertTermsEditable(current);
     if (current.status === "ACTIVE" && !reason?.trim()) throw new ContractError("Enter a reason for changing an active contract.");
-    const data = await validateInput(actor, input, tx);
+    const data: Awaited<ReturnType<typeof validateInput>> & { status?: ContractStatus } = await validateInput(actor, input, tx);
     // A contract always has an owner: leaving the owner blank keeps the current one.
     if (!data.ownerId) data.ownerId = current.ownerId;
     if (!can(actor, PERMISSIONS.CONTRACTS_VIEW_FINANCIALS)) {
@@ -277,8 +317,13 @@ export async function updateContract(actor: ContractActor, contractId: string, i
     if (current.confidentiality !== data.confidentiality && current.ownerId !== actor.userId && !can(actor, PERMISSIONS.CONTRACTS_VIEW_CONFIDENTIAL)) {
       throw new ContractForbiddenError("Only the owner or a user with confidential access can change confidentiality.");
     }
-    const changes = diffContract(current as unknown as Record<string, unknown>, data as unknown as Record<string, unknown>);
+    let changes = diffContract(current as unknown as Record<string, unknown>, data as unknown as Record<string, unknown>);
     if (!Object.keys(changes).length) return current;
+    if (current.status === "APPROVED") {
+      // The approval covered the earlier terms.
+      data.status = "DRAFT";
+      changes = diffContract(current as unknown as Record<string, unknown>, data as unknown as Record<string, unknown>);
+    }
     const version = current.currentVersion + 1;
     const updated = await tx.contract.update({ where: { id: contractId }, data: { ...data, currentVersion: version } });
     await tx.contractVersion.create({ data: { organizationId: actor.organizationId, contractId, version, snapshot: snapshotOf(updated), changedFields: Object.keys(changes), changes: auditChanges(changes) as Prisma.InputJsonValue, reason: reason?.trim().slice(0, 500) || null, changedById: actor.userId } });
@@ -300,6 +345,21 @@ const STATUS_ACTIONS = {
 } as const;
 export type ContractStatusAction = keyof typeof STATUS_ACTIONS | "RESTORE";
 
+/** The approval rule that applies to a contract, or null when it can be activated directly. */
+export async function findApprovalRuleFor(client: Tx | typeof db, organizationId: string, contract: ApprovalSubjectShape) {
+  const rules = await client.contractApprovalRule.findMany({ where: { organizationId, active: true }, include: { steps: { orderBy: { stepOrder: "asc" } } } });
+  return selectApprovalRule(rules.filter((rule) => rule.steps.length > 0), contract);
+}
+
+/** Closes the open approval round of a contract; unfinished steps are marked skipped. */
+export async function closePendingApproval(tx: Tx, contractId: string, status: "WITHDRAWN" | "REJECTED" | "CHANGES_REQUESTED") {
+  const pending = await tx.contractApprovalRequest.findFirst({ where: { contractId, status: "PENDING" }, select: { id: true } });
+  if (!pending) return null;
+  await tx.contractApprovalStep.updateMany({ where: { requestId: pending.id, status: { in: ["WAITING", "PENDING"] } }, data: { status: "SKIPPED" } });
+  await tx.contractApprovalRequest.update({ where: { id: pending.id }, data: { status, completedAt: new Date() } });
+  return pending.id;
+}
+
 export async function changeContractStatus(actor: ContractActor, contractId: string, action: ContractStatusAction, reason?: string | null) {
   return db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`contract:${contractId}`}))`;
@@ -317,6 +377,10 @@ export async function changeContractStatus(actor: ContractActor, contractId: str
       requirePermission(actor, rule.permission);
       if (!rule.from.includes(current.status)) throw new ContractError(`A ${current.status.toLowerCase().replace("_", " ")} contract cannot be changed that way.`);
       if (action === "ACTIVATE" && !current.startDate) throw new ContractError("Set a start date before activating the contract.");
+      if (action === "ACTIVATE" && current.status === "DRAFT" && (await findApprovalRuleFor(tx, actor.organizationId, current))) {
+        throw new ContractError("This contract needs approval before it can be activated. Submit it for approval.");
+      }
+      if (action === "CANCEL" && current.status === "PENDING_APPROVAL") await closePendingApproval(tx, contractId, "WITHDRAWN");
       to = rule.to;
       auditAction = rule.audit;
     }
@@ -350,7 +414,8 @@ export async function addContractParty(actor: ContractActor, contractId: string,
   requirePermission(actor, PERMISSIONS.CONTRACTS_UPDATE);
   return db.$transaction(async (tx) => {
     const contract = await loadAccessibleContract(actor, contractId, tx);
-    if (!EDITABLE_STATUSES.includes(contract.status)) throw new ContractError("Parties cannot change on a closed contract.");
+    assertTermsEditable(contract, "Parties");
+    await resetApprovalAfterChange(tx, actor, contract, "parties changed");
     const count = await tx.contractParty.count({ where: { contractId } });
     const party = await createParty(tx, actor, contractId, input, count);
     await logAuditEvent({ organizationId: actor.organizationId, userId: actor.userId, module: "contracts", action: "contract.party_added", entityName: "Contract", entityId: contractId, metadata: { partyId: party.id, role: party.role, name: party.name } }, tx);
@@ -362,7 +427,8 @@ export async function removeContractParty(actor: ContractActor, contractId: stri
   requirePermission(actor, PERMISSIONS.CONTRACTS_UPDATE);
   return db.$transaction(async (tx) => {
     const contract = await loadAccessibleContract(actor, contractId, tx);
-    if (!EDITABLE_STATUSES.includes(contract.status)) throw new ContractError("Parties cannot change on a closed contract.");
+    assertTermsEditable(contract, "Parties");
+    await resetApprovalAfterChange(tx, actor, contract, "parties changed");
     const party = await tx.contractParty.findFirst({ where: { id: partyId, contractId, organizationId: actor.organizationId } });
     if (!party) throw new ContractNotFoundError("Party not found.");
     await tx.contractParty.delete({ where: { id: party.id } });
@@ -541,7 +607,8 @@ export async function attachContractClause(actor: ContractActor, contractId: str
   requirePermission(actor, PERMISSIONS.CONTRACTS_UPDATE);
   return db.$transaction(async (tx) => {
     const contract = await loadAccessibleContract(actor, contractId, tx);
-    if (!EDITABLE_STATUSES.includes(contract.status)) throw new ContractError("Clauses cannot change on a closed contract.");
+    assertTermsEditable(contract, "Clauses");
+    await resetApprovalAfterChange(tx, actor, contract, "clauses changed");
     const clause = await tx.contractClause.findFirst({ where: { id: clauseId, organizationId: actor.organizationId } });
     if (!clause) throw new ContractNotFoundError("Clause not found.");
     if (clause.status !== "APPROVED") throw new ContractError("Only approved clauses can be added to a contract.");
@@ -560,7 +627,8 @@ export async function detachContractClause(actor: ContractActor, contractId: str
   requirePermission(actor, PERMISSIONS.CONTRACTS_UPDATE);
   return db.$transaction(async (tx) => {
     const contract = await loadAccessibleContract(actor, contractId, tx);
-    if (!EDITABLE_STATUSES.includes(contract.status)) throw new ContractError("Clauses cannot change on a closed contract.");
+    assertTermsEditable(contract, "Clauses");
+    await resetApprovalAfterChange(tx, actor, contract, "clauses changed");
     const link = await tx.contractClauseLink.findFirst({ where: { id: linkId, contractId, organizationId: actor.organizationId }, include: { clause: { select: { code: true } } } });
     if (!link) throw new ContractNotFoundError("Clause not found on this contract.");
     await tx.contractClauseLink.delete({ where: { id: link.id } });
@@ -710,6 +778,15 @@ export async function getContractDashboard(actor: ContractActor) {
     for (const row of rows) if (row.value) totals.set(key(row), (totals.get(key(row)) ?? new Prisma.Decimal(0)).plus(row.value));
     return [...totals.entries()].map(([label, total]) => ({ label, total: total.toFixed(2) })).sort((a, b) => Number(b.total) - Number(a.total));
   };
+  const approver: Prisma.ContractApprovalStepWhereInput[] = [{ approverUserId: actor.userId }];
+  if (actor.roleId) approver.push({ approverRoleId: actor.roleId });
+  const openWork = { organizationId: actor.organizationId, contract: { AND: [accessWhere(subject), { status: { notIn: ["ARCHIVED", "CANCELLED", "TERMINATED"] as ContractStatus[] } }] } };
+  const [myPendingApprovals, overdueObligations, obligationsDue30, milestonesDue30] = await Promise.all([
+    db.contractApprovalStep.count({ where: { organizationId: actor.organizationId, status: "PENDING", request: { status: "PENDING" }, OR: approver } }),
+    db.contractObligation.count({ where: { ...openWork, status: { in: ["OPEN", "IN_PROGRESS"] }, dueDate: { lt: now } } }),
+    db.contractObligation.count({ where: { ...openWork, status: { in: ["OPEN", "IN_PROGRESS"] }, dueDate: { gte: now, lte: inDays(30) } } }),
+    db.contractMilestone.count({ where: { ...openWork, status: "PLANNED", dueDate: { lte: inDays(30) } } }),
+  ]);
   const trend: { month: string; count: number }[] = [];
   for (let offset = 0; offset < 12; offset++) {
     const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
@@ -728,6 +805,10 @@ export async function getContractDashboard(actor: ContractActor) {
     autoRenewalsUpcoming: active.filter((contract) => contract.renewalType === "AUTO_RENEWAL" && contract.renewalDate && contract.renewalDate >= now && contract.renewalDate <= inDays(90)).length,
     renewalsRequiringDecision: active.filter((contract) => contract.renewalType === "MANUAL_RENEWAL" && (contract.renewalDate ?? contract.expirationDate) && (contract.renewalDate ?? contract.expirationDate)! <= inDays(90)).length,
     expiryTrend: trend,
+    myPendingApprovals,
+    overdueObligations,
+    obligationsDue30,
+    milestonesDue30,
     activeValueByCurrency: showFinancials ? sumBy(active, (row) => row.currency) : null,
     valueByCategory: showFinancials ? sumBy(active, (row) => `${row.category?.name ?? "Uncategorized"} (${row.currency})`) : null,
     valueByCounterparty: showFinancials ? sumBy(active, (row) => `${row.counterpartyName} (${row.currency})`).slice(0, 10) : null,

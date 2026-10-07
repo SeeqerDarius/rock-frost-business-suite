@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarClock, FilePen, FileSignature, Lock, Plus, RefreshCcw, ShieldAlert } from "lucide-react";
+import { CalendarClock, ClipboardList, FilePen, FileSignature, Lock, Plus, RefreshCcw, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Button } from "@/components/ui/button";
@@ -67,6 +67,10 @@ export default async function ContractsDashboardPage() {
         <Stat label="Active" value={count("ACTIVE")} href="/app/contracts/list/active" icon={<FileSignature className="size-5" />} />
         <Stat label="Drafts" value={count("DRAFT")} href="/app/contracts/list/drafts" icon={<FilePen className="size-5" />} />
         <Stat label="Pending approval" value={count("PENDING_APPROVAL")} icon={<ShieldAlert className="size-5" />} />
+        <Stat label="Awaiting my approval" value={summary.myPendingApprovals} href="/app/contracts/approvals" icon={<ShieldAlert className="size-5" />} tone={summary.myPendingApprovals ? "text-amber-600 dark:text-amber-400" : ""} />
+        <Stat label="Overdue obligations" value={summary.overdueObligations} href="/app/contracts/obligations?view=overdue" icon={<ClipboardList className="size-5" />} tone={summary.overdueObligations ? "text-destructive" : ""} />
+        <Stat label="Obligations due in 30 days" value={summary.obligationsDue30} href="/app/contracts/obligations?view=upcoming" icon={<ClipboardList className="size-5" />} />
+        <Stat label="Milestones due in 30 days" value={summary.milestonesDue30} href="/app/contracts/calendar" icon={<CalendarClock className="size-5" />} />
         <Stat label="Expiring in 30 days" value={summary.expiring30} href="/app/contracts/list/expiring" icon={<CalendarClock className="size-5" />} tone={summary.expiring30 ? "text-amber-600 dark:text-amber-400" : ""} />
         <Stat label="Expiring in 60 days" value={summary.expiring60} href="/app/contracts/list/expiring" icon={<CalendarClock className="size-5" />} />
         <Stat label="Expiring in 90 days" value={summary.expiring90} href="/app/contracts/list/expiring" icon={<CalendarClock className="size-5" />} />

@@ -183,7 +183,7 @@ describe("module authorization source coverage", () => {
     // 142, up from 141: the Accounting Tax and Compliance page, requireModuleAccess("accounting").
     // 143, up from 142: the Accounting Tax Reports page, requireModuleAccess("accounting").
     // 151, up from 143: Contract Management joins the sweep with 8 guarded pages (dashboard, register, new, detail, edit, templates, clauses, settings).
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(151);
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(154);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
     // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
     // all Hostel Server Actions, same shape as School's) joins the sweep
