@@ -383,3 +383,19 @@ Reference state base rates are shown as suggestions to verify. The EU pack is
 built per home member state (EU VAT is per country, not one jurisdiction),
 and the UK, Switzerland, and Norway are separate packs. VAT numbers are only
 format-checked until a registry provider is configured, and the UI says so.
+
+## 2026-10-07 — Contracts: separate public listing from availability; private document storage
+
+**Decision:** A module can be fully available (catalogue, entitlement,
+operator enablement, subscriptions) while not marketed publicly, through a
+`publicListing` flag that public pages, pricing, self-service signup, the
+sitemap, and the login page respect. Contract Management launches this way
+until its marketing page, screenshot, and confirmed price exist. Contract
+documents use private storage (bytes in `FileContent`, never public URLs),
+served only by an authorized route that re-checks organization, entitlement,
+permission, and confidentiality, verifies a SHA-256 checksum, and audits the
+download. Uploads use a route handler capped at 4 MB because of the platform
+request-body limit; an object store with direct uploads can replace the
+database backend behind the same adapter. Confidential contracts are not
+opened by an administrator permission alone unless the organization enables
+that policy, and restricted contracts always need an explicit grant.

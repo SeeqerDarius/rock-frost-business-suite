@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
 import { MODULE_SEO, SITE_URL, createPublicMetadata } from "@/lib/seo";
-import { catalogueModuleKeys, getModule } from "@/platform/modules/registry";
+import { getModule, publicCatalogueModuleKeys } from "@/platform/modules/registry";
 import { RESOURCE_ARTICLES } from "@/lib/resource-articles";
 import nextConfig from "../next.config";
 
@@ -17,10 +17,12 @@ describe("public SEO", () => {
     expect(urls).not.toContain(`${SITE_URL}/features`);
     expect(urls).not.toContain(`${SITE_URL}/about`);
     expect(urls).not.toContain(`${SITE_URL}/login`);
-    for (const key of catalogueModuleKeys) {
+    // Every publicly listed module has a landing page; unlisted modules (Contracts) have none yet.
+    for (const key of publicCatalogueModuleKeys) {
       expect(key in MODULE_SEO).toBe(true);
       expect(urls).toContain(`${SITE_URL}/modules/${key}`);
     }
+    expect(urls).not.toContain(`${SITE_URL}/modules/contracts`);
     expect(urls).not.toContain(`${SITE_URL}/modules/payroll`);
     expect(urls).not.toContain(`${SITE_URL}/modules/procurement`);
   });
@@ -129,7 +131,12 @@ describe("multi-module public positioning", () => {
     const { publicCatalogueModuleKeys, catalogueModuleKeys } = await import("@/platform/modules/registry");
     expect(publicCatalogueModuleKeys[0]).toBe("accounting");
     expect(publicCatalogueModuleKeys.indexOf("fleet")).toBeGreaterThan(publicCatalogueModuleKeys.indexOf("school"));
-    expect([...publicCatalogueModuleKeys].sort()).toEqual([...catalogueModuleKeys].sort());
+    // Every catalogue module is public unless it is deliberately unlisted (publicListing: false).
+    const { catalogueModuleRegistry } = await import("@/platform/modules/registry");
+    const listed = catalogueModuleRegistry.filter((module_) => module_.publicListing !== false).map((module_) => module_.key);
+    expect([...publicCatalogueModuleKeys].sort()).toEqual([...listed].sort());
+    expect(catalogueModuleKeys).toContain("contracts");
+    expect(publicCatalogueModuleKeys).not.toContain("contracts");
   });
 
   it("describes the suite without leading on a single vertical", async () => {

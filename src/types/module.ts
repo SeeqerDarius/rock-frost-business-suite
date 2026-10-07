@@ -49,6 +49,13 @@ export interface ModuleDefinition {
   permissionPrefix?: string;
   /** Hidden legacy capability behind a consolidated customer-facing product. */
   catalogueVisible?: boolean;
+  /**
+   * Whether the module is marketed on public surfaces (homepage, /modules,
+   * pricing, self-service signup, sitemap, login). False keeps a module fully
+   * available to subscribed organizations and platform operators while its
+   * public marketing assets are prepared. Defaults to true.
+   */
+  publicListing?: boolean;
   /** Stable customer-facing product key shared by consolidated capabilities. */
   productKey?: string;
 }

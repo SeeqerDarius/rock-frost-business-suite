@@ -16,6 +16,7 @@ import { projectsNavigation } from "@/modules/projects/navigation";
 import { hotelNavigation } from "@/modules/hotel/navigation";
 import { pharmacyNavigation } from "@/modules/pharmacy/navigation";
 import { hospitalNavigation } from "@/modules/hospital/navigation";
+import { contractsNavigation } from "@/modules/contracts/navigation";
 
 /**
  * Backs the shared Team directory at /app/<moduleKey>/staff for every module
@@ -59,6 +60,8 @@ function getSectionChrome(moduleKey: ModuleTeamKey, tenant: TenantContext): { se
       return { sectionLabel: "Pharmacy Management", navigation: pharmacyNavigation };
     case "hospital":
       return { sectionLabel: "Hospital Management", navigation: hospitalNavigation };
+    case "contracts":
+      return { sectionLabel: "Contract Management", navigation: contractsNavigation };
   }
 }
 

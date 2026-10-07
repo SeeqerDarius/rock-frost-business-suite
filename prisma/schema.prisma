@@ -491,6 +491,11 @@ model User {
   exchangeRatesRecorded           ExchangeRate[]
   taxRatesCreated                 TaxRate[]                        @relation("TaxRateCreatedBy")
   taxRulesCreated                 TaxRule[]                        @relation("TaxRuleCreatedBy")
+  contractsOwned                  Contract[]                       @relation("ContractOwner")
+  contractsCreated                Contract[]                       @relation("ContractCreatedBy")
+  contractDocumentsUploaded       ContractDocument[]               @relation("ContractDocumentUploadedBy")
+  contractVersionsChanged         ContractVersion[]                @relation("ContractVersionChangedBy")
+  contractClausesOwned            ContractClause[]                 @relation("ContractClauseOwner")
 }
 
 enum TwoFactorMethod {
@@ -847,6 +852,18 @@ model Organization {
   hospitalSettings                HospitalSettings[]
   supportConversations            SupportConversation[]
   supportMessages                 SupportMessage[]
+  contractSettings                ContractSettings?
+  contractCategories              ContractCategory[]
+  contractTypes                   ContractType[]
+  contracts                       Contract[]
+  contractParties                 ContractParty[]
+  contractDocuments               ContractDocument[]
+  contractVersions                ContractVersion[]
+  contractTemplates               ContractTemplate[]
+  contractClauses                 ContractClause[]
+  contractClauseLinks             ContractClauseLink[]
+  contractAccessGrants            ContractAccessGrant[]
+  contractLinks                   ContractLink[]
 
   @@index([industry])
   @@index([status])
@@ -968,6 +985,7 @@ model Branch {
   hotelProperties          HotelProperty[]
   schoolCampuses           SchoolCampus[]
   hospitalFacilities       HospitalFacility[]
+  contracts                Contract[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -1662,6 +1680,8 @@ model FileAsset {
   maintenanceAttachments FleetMaintenanceAttachment[]
   vehicleExpenseReceipts FleetVehicleExpense[]
   accountingAttachments  AccountingAttachment[]
+  content                FileContent?
+  contractDocument       ContractDocument?
 
   @@index([organizationId])
   @@index([branchId])
@@ -3159,12 +3179,13 @@ model AccountingContact {
   createdAt               DateTime              @default(now())
   updatedAt               DateTime              @updatedAt
 
-  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch       Branch?                @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  createdBy    User?                  @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  invoices     AccountingInvoice[]
-  bills        AccountingBill[]
-  creditNotes  AccountingCreditNote[]
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch          Branch?                @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  createdBy       User?                  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  invoices        AccountingInvoice[]
+  bills           AccountingBill[]
+  creditNotes     AccountingCreditNote[]
+  contractParties ContractParty[]
 
   @@index([organizationId])
   @@index([branchId])
@@ -8090,4 +8111,412 @@ model TaxLedgerEntry {
   @@index([organizationId, transactionDate])
   @@index([organizationId, jurisdictionCode, transactionDate])
   @@index([organizationId, sourceType, sourceId])
+}
+
+// ---------------------------------------------------------------------------
+// Contract Management (2026-10-06). An independently entitled module. Every
+// record is organization-scoped. Contract history is append-only: changes
+// create ContractVersion rows, documents are never replaced in place, and
+// removal is a recorded soft removal.
+// ---------------------------------------------------------------------------
+
+enum ContractStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  ACTIVE
+  EXPIRED
+  TERMINATED
+  CANCELLED
+  ARCHIVED
+}
+
+enum ContractRenewalType {
+  FIXED_TERM
+  EVERGREEN
+  AUTO_RENEWAL
+  MANUAL_RENEWAL
+  NO_RENEWAL
+}
+
+enum ContractRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ContractConfidentiality {
+  STANDARD
+  CONFIDENTIAL
+  RESTRICTED
+}
+
+enum ContractPartyRole {
+  BUYER
+  SELLER
+  CLIENT
+  VENDOR
+  EMPLOYER
+  EMPLOYEE
+  CONTRACTOR
+  OWNER
+  PARTNER
+  GUARANTOR
+  WITNESS
+  SERVICE_PROVIDER
+  LANDLORD
+  TENANT
+  OTHER
+}
+
+enum ContractDocumentType {
+  PRIMARY
+  SUPPORTING
+  AMENDMENT
+  ADDENDUM
+  SCHEDULE
+  EXHIBIT
+  EVIDENCE
+  CERTIFICATE
+  OTHER
+}
+
+enum ContractTemplateStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+enum ContractClauseStatus {
+  DRAFT
+  APPROVED
+  RETIRED
+}
+
+enum ContractClauseUsage {
+  RECOMMENDED
+  REQUIRED
+  OPTIONAL
+  RESTRICTED
+}
+
+enum ContractLinkType {
+  ACCOUNTING_CONTACT
+  ACCOUNTING_INVOICE
+  ACCOUNTING_BILL
+  FLEET_VEHICLE
+  FLEET_DRIVER
+  FLEET_OWNER
+  FLEET_WORK_AND_PAY
+  HR_EMPLOYEE
+  PROJECT
+}
+
+/// Organization-level Contracts configuration (numbering, alert policy, and
+/// confidential access policy).
+model ContractSettings {
+  organizationId          String   @id
+  /// Tokens: {PREFIX}, {YYYY}, {YY}, {MM}, {SEQ:n}. Example: CTR/{YYYY}/{SEQ:6}.
+  numberFormat            String   @default("{PREFIX}/{YYYY}/{SEQ:6}")
+  numberPrefix            String   @default("CTR")
+  /// Restart the sequence each calendar year when the format includes {YYYY}/{YY}.
+  resetSequenceYearly     Boolean  @default(true)
+  sequenceYear            Int?
+  nextSequence            Int      @default(1)
+  expiryAlertDays         Int[]    @default([90, 60, 30, 14, 7])
+  /// When false (default), holding contracts.view_confidential alone does not
+  /// open confidential contracts; access needs an explicit grant.
+  confidentialAdminAccess Boolean  @default(false)
+  updatedAt               DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model ContractCategory {
+  id             String   @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contracts    Contract[]
+  types        ContractType[]
+  templates    ContractTemplate[]
+
+  @@unique([organizationId, code])
+}
+
+model ContractType {
+  id             String   @id @default(cuid())
+  organizationId String
+  categoryId     String?
+  code           String
+  name           String
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     ContractCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  contracts    Contract[]
+
+  @@unique([organizationId, code])
+}
+
+model Contract {
+  id                    String                  @id @default(cuid())
+  organizationId        String
+  contractNumber        String
+  title                 String
+  categoryId            String?
+  typeId                String?
+  branchId              String?
+  ownerId               String?
+  department            String?
+  counterpartyName      String
+  value                 Decimal?                @db.Decimal(16, 2)
+  currency              String
+  taxTreatment          String?
+  startDate             DateTime?
+  effectiveDate         DateTime?
+  expirationDate        DateTime?
+  renewalDate           DateTime?
+  noticePeriodDays      Int?
+  renewalType           ContractRenewalType     @default(FIXED_TERM)
+  paymentTerms          String?
+  billingFrequency      String?
+  governingLaw          String?
+  governingJurisdiction String?
+  language              String?
+  status                ContractStatus          @default(DRAFT)
+  riskLevel             ContractRiskLevel       @default(LOW)
+  confidentiality       ContractConfidentiality @default(STANDARD)
+  description           String?                 @db.Text
+  /// Drafted contract text (for example rendered from a template).
+  body                  String?                 @db.Text
+  tags                  String[]
+  notes                 String?                 @db.Text
+  currentVersion        Int                     @default(1)
+  templateId            String?
+  templateVersion       Int?
+  archivedAt            DateTime?
+  createdById           String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     ContractCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  type         ContractType?         @relation(fields: [typeId], references: [id], onDelete: SetNull)
+  branch       Branch?               @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  owner        User?                 @relation("ContractOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy    User?                 @relation("ContractCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  template     ContractTemplate?     @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  parties      ContractParty[]
+  documents    ContractDocument[]
+  versions     ContractVersion[]
+  clauses      ContractClauseLink[]
+  accessGrants ContractAccessGrant[]
+  links        ContractLink[]
+
+  @@unique([organizationId, contractNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, expirationDate])
+  @@index([organizationId, renewalDate])
+  @@index([organizationId, ownerId])
+  @@index([organizationId, counterpartyName])
+  @@index([organizationId, categoryId])
+  @@index([organizationId, currency])
+  @@index([organizationId, startDate])
+  @@index([tags], type: Gin)
+}
+
+model ContractParty {
+  id                 String            @id @default(cuid())
+  organizationId     String
+  contractId         String
+  role               ContractPartyRole
+  customRole         String?
+  name               String
+  legalName          String?
+  email              String?
+  phone              String?
+  address            String?
+  taxId              String?
+  registrationNumber String?
+  contactId          String?
+  isPrimary          Boolean           @default(false)
+  signatoryName      String?
+  signatoryTitle     String?
+  sortOrder          Int               @default(0)
+  createdAt          DateTime          @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract           @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contact      AccountingContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([contractId])
+  @@index([organizationId, name])
+}
+
+/// Private bytes for a FileAsset, served only through authorized routes.
+model FileContent {
+  fileAssetId String   @id
+  data        Bytes
+  createdAt   DateTime @default(now())
+
+  fileAsset FileAsset @relation(fields: [fileAssetId], references: [id], onDelete: Cascade)
+}
+
+/// Immutable document version. A new upload of the same document type and
+/// title is a new version that supersedes the previous one; nothing is
+/// overwritten. Removal is a recorded soft removal.
+model ContractDocument {
+  id             String               @id @default(cuid())
+  organizationId String
+  contractId     String
+  documentType   ContractDocumentType
+  title          String
+  version        Int                  @default(1)
+  fileAssetId    String               @unique
+  checksumSha256 String
+  supersedesId   String?
+  uploadedById   String?
+  createdAt      DateTime             @default(now())
+  removedAt      DateTime?
+  removedById    String?
+  removalReason  String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  fileAsset    FileAsset    @relation(fields: [fileAssetId], references: [id], onDelete: Restrict)
+  uploadedBy   User?        @relation("ContractDocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([contractId, documentType])
+  @@index([organizationId, createdAt])
+}
+
+/// Append-only snapshot of a contract after each significant change.
+model ContractVersion {
+  id             String   @id @default(cuid())
+  organizationId String
+  contractId     String
+  version        Int
+  snapshot       Json
+  changedFields  String[]
+  changes        Json?
+  reason         String?
+  changedById    String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  changedBy    User?        @relation("ContractVersionChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@unique([contractId, version])
+  @@index([organizationId, createdAt])
+}
+
+/// Template version. Editing a template creates a new version; contracts
+/// record the version they were drafted from and are never rewritten.
+model ContractTemplate {
+  id             String                 @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  categoryId     String?
+  description    String?
+  body           String                 @db.Text
+  version        Int                    @default(1)
+  status         ContractTemplateStatus @default(DRAFT)
+  supersedesId   String?
+  createdById    String?
+  createdAt      DateTime               @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     ContractCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  contracts    Contract[]
+
+  @@unique([organizationId, code, version])
+}
+
+/// Clause library entry version.
+model ContractClause {
+  id             String               @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  category       String
+  body           String               @db.Text
+  jurisdiction   String?
+  language       String               @default("en")
+  status         ContractClauseStatus @default(DRAFT)
+  usage          ContractClauseUsage  @default(OPTIONAL)
+  ownerId        String?
+  version        Int                  @default(1)
+  effectiveFrom  DateTime?
+  supersedesId   String?
+  createdById    String?
+  createdAt      DateTime             @default(now())
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        User?                @relation("ContractClauseOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  uses         ContractClauseLink[]
+
+  @@unique([organizationId, code, version])
+  @@index([organizationId, category])
+}
+
+/// A specific clause version attached to a contract.
+model ContractClauseLink {
+  id             String   @id @default(cuid())
+  organizationId String
+  contractId     String
+  clauseId       String
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract       @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  clause       ContractClause @relation(fields: [clauseId], references: [id], onDelete: Restrict)
+
+  @@unique([contractId, clauseId])
+}
+
+/// Explicit access to a confidential or restricted contract.
+model ContractAccessGrant {
+  id             String   @id @default(cuid())
+  organizationId String
+  contractId     String
+  userId         String?
+  roleId         String?
+  department     String?
+  grantedById    String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@index([organizationId, userId])
+}
+
+/// Relationship to a record in another module (validated in the same
+/// organization). No other module's data is copied.
+model ContractLink {
+  id             String           @id @default(cuid())
+  organizationId String
+  contractId     String
+  linkType       ContractLinkType
+  entityId       String
+  label          String?
+  createdById    String?
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@unique([contractId, linkType, entityId])
+  @@index([organizationId, linkType, entityId])
 }

@@ -15,6 +15,7 @@ import {
   Pill,
   Hospital,
   BedDouble,
+  FileSignature,
 } from "lucide-react";
 import type { ModuleDefinition } from "@/types/module";
 import { fleetNavigation } from "@/modules/fleet/navigation";
@@ -33,6 +34,7 @@ import { schoolNavigation } from "@/modules/school/navigation";
 import { hostelNavigation } from "@/modules/hostel/navigation";
 import { pharmacyNavigation } from "@/modules/pharmacy/navigation";
 import { hospitalNavigation } from "@/modules/hospital/navigation";
+import { contractsNavigation } from "@/modules/contracts/navigation";
 
 /**
  * The module registry. Every business module the platform can offer is declared
@@ -210,6 +212,19 @@ const moduleDefinitions = [
     status: "available",
     permissionPrefix: "hospital.",
   },
+  {
+    key: "contracts",
+    name: "Contract Management",
+    description: "Contract lifecycle management: contracts, parties, private versioned documents, templates, clause library, confidentiality, and version history.",
+    icon: FileSignature,
+    routePrefix: "/app/contracts",
+    navigation: contractsNavigation,
+    status: "available",
+    permissionPrefix: "contracts.",
+    // Available to subscribed organizations; public marketing (screenshot,
+    // module page copy, public pricing) is prepared separately.
+    publicListing: false,
+  },
 ] as const satisfies readonly ModuleDefinition[];
 
 export type BusinessModuleKey = (typeof moduleDefinitions)[number]["key"];
@@ -237,10 +252,15 @@ export function publicModuleRank(key: string): number {
   return rank === -1 ? PUBLIC_MODULE_ORDER.length : rank;
 }
 
-export const publicCatalogueModuleRegistry: readonly ModuleDefinition[] = [...catalogueModuleRegistry].sort(
+export const publicCatalogueModuleRegistry: readonly ModuleDefinition[] = catalogueModuleRegistry.filter((module_) => module_.publicListing !== false).sort(
   (a, b) => publicModuleRank(a.key) - publicModuleRank(b.key),
 );
 export const publicCatalogueModuleKeys = publicCatalogueModuleRegistry.map((module_) => module_.key);
+
+/** Whether a module may appear on public marketing, pricing, and self-service signup. */
+export function isPubliclyListedModule(key: string): boolean {
+  return publicCatalogueModuleRegistry.some((module_) => module_.key === key);
+}
 
 export function getModule(key: string): ModuleDefinition | undefined {
   return moduleRegistry.find((mod) => mod.key === key);
