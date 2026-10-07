@@ -78,6 +78,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     where: { id: tenant.organizationId },
     select: { metadata: true, status: true, createdAt: true, logoUrl: true, name: true },
   });
+  const moduleBrandings = platformIdentity ? [] : await db.organizationModuleBranding.findMany({
+    where: { organizationId: tenant.organizationId, moduleKey: { in: tenant.enabledModuleKeys } },
+    select: { moduleKey: true, displayName: true, hasLogo: true, primaryColor: true, accentColor: true, surfaceColor: true },
+  });
   const metadata = organization?.metadata;
   const workspaceSettings = metadata && typeof metadata === "object" && !Array.isArray(metadata)
     ? (metadata as Record<string, unknown>).workspaceSettings
@@ -105,6 +109,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <OrganizationBrandingProvider branding={{
       logoUrl: organization?.logoUrl ?? null,
       name: organization?.name ?? null,
+      modules: Object.fromEntries(moduleBrandings.map((moduleBranding) => [moduleBranding.moduleKey, {
+        displayName: moduleBranding.displayName,
+        logoUrl: moduleBranding.hasLogo ? `/api/organization/modules/${encodeURIComponent(moduleBranding.moduleKey)}/logo` : null,
+        primaryColor: moduleBranding.primaryColor,
+        accentColor: moduleBranding.accentColor,
+        surfaceColor: moduleBranding.surfaceColor,
+      }])),
       workspaceStatusLabel: !platformIdentity && !isNarrowFleetSelfServiceRole(tenant)
         ? organization?.status === "TRIAL"
           ? `Trial workspace · ${trialDaysRemaining} day${trialDaysRemaining === 1 ? "" : "s"} remaining`

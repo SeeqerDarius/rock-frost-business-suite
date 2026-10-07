@@ -92,6 +92,10 @@ Three rules make the difference between sections and a long scroll worth anythin
 - **Put the irreversible surfaces behind their own section**, so nobody reaches them while scrolling past for a phone number.
 - **Nest a setting inside what it affects.** A control's position is a claim about its scope, so a control that reaches five things must not sit inside one of them.
 
+## Tenant module branding
+
+`OrganizationModuleBranding` supplies an optional tenant-scoped display name, logo, primary, accent, and surface color for each subscribed module. `AppShell` applies the active module palette as CSS custom properties on its own wrapper, never on the document root, so another module or platform workspace cannot inherit the colors. Foreground colors for primary/accent/surface are selected from black or white based on relative luminance. New controls must retain readable contrast and expose an inherited-default/reset path. When no module override exists, keep the established organization identity and global theme tokens.
+
 ## Reference points (inspiration only, never copy proprietary UI)
 
 Linear, Stripe Dashboard, Ramp, Vercel, Notion, Shopify Admin — used only to calibrate information density, restraint, and interaction polish, not as a source of literal design assets.
