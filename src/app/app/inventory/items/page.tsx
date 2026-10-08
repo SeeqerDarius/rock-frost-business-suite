@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listItems, listCategories, getInventorySettings } from "@/modules/inventory/service";
 import { listTaxCodes } from "@/modules/accounting/tax-service";
 import { upsertItem } from "./actions";
@@ -186,6 +186,7 @@ export default async function InventoryItemsPage({
 }) {
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("inventory");
+  const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.INVENTORY_ITEMS_MANAGE);
   const [items, categories, settings, taxCodes] = await Promise.all([
     listItems(tenant.organizationId),
@@ -246,7 +247,7 @@ export default async function InventoryItemsPage({
                   <TableCell className="font-mono text-xs">{item.sku}</TableCell>
                   <TableCell className="font-medium">{item.name}</TableCell>
                   <TableCell className="text-muted-foreground">{item.category?.name ?? "-"}</TableCell>
-                  <TableCell className="text-muted-foreground">{formatMoney(item.costPrice, tenant.organization.currency)}</TableCell>
+                  <TableCell className="text-muted-foreground">{money(item.costPrice, tenant.organization.currency)}</TableCell>
                   <TableCell>
                     {item.trackInventory ? (
                       <Badge variant={lowStock ? "destructive" : "outline"}>

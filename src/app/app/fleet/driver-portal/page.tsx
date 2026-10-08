@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { organizationNumberLocale } from "@/lib/org-format";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -452,14 +453,14 @@ export default async function DriverPortalPage({
                       <TabsTrigger value="contract">Work & Pay</TabsTrigger>
                     </TabsList>
                     <TabsContent value="vehicle" className="mt-6">
-                      <PeriodicTrendChart data={trends.vehicleRevenue} series={[{ key: "revenue", label: "Remitted" }]} currency={currency} />
+                      <PeriodicTrendChart data={trends.vehicleRevenue} series={[{ key: "revenue", label: "Remitted" }]} currency={currency} locale={organizationNumberLocale(tenant.organization)} />
                     </TabsContent>
                     <TabsContent value="contract" className="mt-6">
-                      <PeriodicTrendChart data={trends.workAndPay} series={[{ key: "revenue", label: "Paid" }]} currency={currency} />
+                      <PeriodicTrendChart data={trends.workAndPay} series={[{ key: "revenue", label: "Paid" }]} currency={currency} locale={organizationNumberLocale(tenant.organization)} />
                     </TabsContent>
                   </Tabs>
                 ) : (
-                  <PeriodicTrendChart data={trends.vehicleRevenue} series={[{ key: "revenue", label: "Remitted" }]} currency={currency} />
+                  <PeriodicTrendChart data={trends.vehicleRevenue} series={[{ key: "revenue", label: "Remitted" }]} currency={currency} locale={organizationNumberLocale(tenant.organization)} />
                 )}
               </CardContent>
             </Card>

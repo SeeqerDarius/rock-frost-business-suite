@@ -34,6 +34,15 @@ function numberLocale(presentation: OrganizationPresentation): string {
   return NUMBER_FORMATS[presentation.numberFormat].locale ?? presentation.locale;
 }
 
+/**
+ * The locale an organization's numbers and money are written in (its
+ * number-format setting, else its locale). A plain string, so it can be
+ * passed to client components and used as formatMoney's third argument.
+ */
+export function organizationNumberLocale(source: PresentationSource | null | undefined): string {
+  return numberLocale(resolveOrganizationPresentation(source));
+}
+
 type Amount = { toString(): string } | number | string | null | undefined;
 
 function toNumber(value: Amount): number {

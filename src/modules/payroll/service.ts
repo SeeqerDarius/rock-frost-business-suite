@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { sendSms } from "@/lib/sms";
 import { payrollPayslipIssuedSms } from "@/lib/sms-templates";
 import { formatMoney } from "@/lib/currency";
+import { organizationNumberLocale } from "@/lib/org-format";
 import { claimSchoolPayrollInputsForRun, listSchoolPayrollInputsForRun } from "@/modules/school/payroll-integration";
 
 /**
@@ -228,14 +229,14 @@ export async function processRun(organizationId: string, runId: string) {
   if (settings.smsNotificationsEnabled) {
     const [payslips, organization] = await Promise.all([
       db.payrollPayslip.findMany({ where: { payrollRunId: runId }, include: { employee: true } }),
-      db.organization.findUnique({ where: { id: organizationId }, select: { currency: true } }),
+      db.organization.findUnique({ where: { id: organizationId }, select: { currency: true, locale: true, numberFormat: true } }),
     ]);
     await Promise.all(payslips.map((payslip) => {
       const phone = payslip.employee.mobilePhone || payslip.employee.phone;
       if (!phone) return undefined;
       return sendSms({
         to: phone,
-        ...payrollPayslipIssuedSms({ employeeName: payslip.employee.fullName, netPay: formatMoney(payslip.netPay, organization?.currency), payDate: run.payDate }),
+        ...payrollPayslipIssuedSms({ employeeName: payslip.employee.fullName, netPay: formatMoney(payslip.netPay, organization?.currency, organizationNumberLocale(organization)), payDate: run.payDate }),
         purpose: "PAYROLL_PAYSLIP_ISSUED",
         organizationId,
         relatedType: "PayrollPayslip",

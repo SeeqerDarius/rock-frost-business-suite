@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card";
 import { WorkflowLinks } from "@/components/dashboard/workflow-links";
 import { PrerequisiteNotice, SectionCard } from "@/components/school/section-card";
-import { formatMoney } from "@/components/school/format";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getSchoolAcademicSetup } from "@/modules/school/service";
@@ -22,7 +22,7 @@ export default async function SchoolOverviewPage() {
   const [dashboard, [years, classes]] = await Promise.all([getSchoolOperationalDashboard(tenant.organizationId, { financial: canFinance, analytics: canAnalytics }), getSchoolAcademicSetup(tenant.organizationId)]);
   const todayRate = rate(dashboard.attendanceToday);
   const termRate = rate(dashboard.attendanceTerm);
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
   const stats = [
     { label: "Active students", value: dashboard.activeStudents, description: "Active student records now", icon: <Users className="size-4" />, href: "/app/school/students?status=ACTIVE" },
     { label: "New admissions", value: dashboard.newAdmissions, description: dashboard.period ? `Since ${dashboard.period} began` : "No current academic period", icon: <UserRoundCheck className="size-4" />, href: "/app/school/students" },

@@ -5,7 +5,8 @@ import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card"
 import { SectionCard } from "@/components/school/section-card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDate, formatMoney } from "@/components/school/format";
+import { formatDate } from "@/components/school/format";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { resolveSchoolPortalScope, getSchoolPortalStudentSummary } from "@/modules/school/portal-service";
@@ -13,6 +14,7 @@ import { isSchoolPortalGranted } from "@/lib/platform-communications";
 
 export default async function SchoolPortalPage({ searchParams }: { searchParams: Promise<{ studentId?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
+  const money = createOrganizationFormatter(tenant.organization).money;
 
   if (!hasPermission(tenant, PERMISSIONS.SCHOOL_PORTAL_VIEW)) {
     return (
@@ -80,7 +82,7 @@ export default async function SchoolPortalPage({ searchParams }: { searchParams:
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <OverviewMetricCard label="Class" value={summary.currentClassName ?? "Not enrolled"} description={`Admission ${summary.student.admissionNumber}`} icon={<GraduationCap className="size-5" />} />
         <OverviewMetricCard label="Attendance" value={summary.attendance.presentRate !== null ? `${summary.attendance.presentRate}%` : "No data"} description="Present or late, all time" icon={<CalendarCheck className="size-5" />} />
-        <OverviewMetricCard label="Outstanding fees" value={formatMoney(summary.fees.outstandingTotal)} description="Across all issued invoices" icon={<Receipt className="size-5" />} />
+        <OverviewMetricCard label="Outstanding fees" value={money(summary.fees.outstandingTotal)} description="Across all issued invoices" icon={<Receipt className="size-5" />} />
         <OverviewMetricCard label="Class position" value={summary.broadsheetPosition ? `${summary.broadsheetPosition.position} of ${summary.broadsheetPosition.outOf}` : "Not ranked"} description="Most recent published exam's term" icon={<ShieldAlert className="size-5" />} />
       </div>
 
@@ -128,7 +130,7 @@ export default async function SchoolPortalPage({ searchParams }: { searchParams:
                 <TableRow key={invoice.id}>
                   <TableCell className="font-mono text-xs">{invoice.invoiceNumber}</TableCell>
                   <TableCell>{invoice.description}</TableCell>
-                  <TableCell className="text-center tabular-nums">{formatMoney(invoice.amount)}</TableCell>
+                  <TableCell className="text-center tabular-nums">{money(invoice.amount)}</TableCell>
                   <TableCell className="text-center"><Badge variant="outline">{invoice.status}</Badge></TableCell>
                   <TableCell className="hidden text-muted-foreground sm:table-cell">{invoice.dueDate ? formatDate(invoice.dueDate) : "-"}</TableCell>
                 </TableRow>

@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { getAccountingSummary, getStatementOfFinancialPosition, listAccounts, listJournalEntries } from "@/modules/accounting/service";
 import { ReportExportLinks } from "@/components/reports/report-export-links";
 
@@ -40,7 +40,7 @@ export default async function AccountingReportsPage() {
   ]);
 
   const currency = tenant.organization.currency;
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
 
   const revenueAccounts = accounts.filter((account) => account.type === "REVENUE").sort((a, b) => a.code.localeCompare(b.code));
   const revenueEntries = journalEntries

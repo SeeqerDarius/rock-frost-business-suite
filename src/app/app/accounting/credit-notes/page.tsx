@@ -12,6 +12,7 @@ import { LineItemsEditor } from "@/components/forms/line-items-editor";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createOrganizationFormatter } from "@/lib/org-format";
+import { ContactSelect } from "@/components/forms/contact-select";
 import { CurrencyFields } from "@/components/forms/currency-fields";
 import { listAccounts, listCreditNotes, listInvoices, listContacts } from "@/modules/accounting/service";
 import { listTaxCodes } from "@/modules/accounting/tax-service";
@@ -67,10 +68,7 @@ export default async function AccountingCreditNotesPage({
             {customerContacts.length > 0 ? (
               <div className="space-y-2">
                 <Label htmlFor="contactId">Contact (optional)</Label>
-                <select id="contactId" name="contactId" className="h-10 w-full rounded-md border bg-background px-3">
-                  <option value="">Enter details manually</option>
-                  {customerContacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.name}</option>)}
-                </select>
+                <ContactSelect contacts={customerContacts.map((contact) => ({ id: contact.id, name: contact.name, currency: contact.currency }))} currencyFieldId="credit-note-currency" />
               </div>
             ) : null}
             <div className="space-y-2">

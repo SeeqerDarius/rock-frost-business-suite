@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { getReceivablesAgeing, getPayablesAgeing } from "@/modules/accounting/service";
 import { ReportDownloadLinks } from "@/components/reports/report-download-links";
 
@@ -21,9 +21,7 @@ export default async function AccountingAgeingPage() {
       </div>
     );
   }
-
-  const currency = tenant.organization.currency ?? "GHS";
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
   const [receivables, payables] = await Promise.all([getReceivablesAgeing(tenant.organizationId), getPayablesAgeing(tenant.organizationId)]);
 
   return (

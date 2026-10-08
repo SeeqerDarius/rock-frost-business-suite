@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listOrders, listVendors, listRequests, getSettings } from "@/modules/procurement/service";
 import { listItems, listWarehouses } from "@/modules/inventory/service";
 import { createNewOrder, sendExistingOrder, cancelExistingOrder, receiveExistingOrderLine } from "./actions";
@@ -41,6 +41,7 @@ export default async function ProcurementOrdersPage({
 }) {
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("procurement");
+  const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.PROCUREMENT_ORDERS_MANAGE);
   const canReceive = hasPermission(tenant, PERMISSIONS.PROCUREMENT_RECEIPTS_MANAGE);
   const currency = tenant.organization.currency;
@@ -188,7 +189,7 @@ export default async function ProcurementOrdersPage({
                       <div>
                         <p>{line.description}</p>
                         <p className="text-xs text-muted-foreground">
-                          {line.receivedQuantity} / {line.quantity} received · {formatMoney(line.unitCost, currency)} each
+                          {line.receivedQuantity} / {line.quantity} received · {money(line.unitCost, currency)} each
                         </p>
                       </div>
                       {canReceiveLine ? (

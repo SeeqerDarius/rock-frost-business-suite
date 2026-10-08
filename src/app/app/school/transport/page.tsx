@@ -9,7 +9,7 @@ import { FormFeedback, ReadOnlyNotice } from "@/components/school/form-feedback"
 import { FieldGrid, SelectField, TextField } from "@/components/school/form-fields";
 import { PrerequisiteNotice, SectionCard } from "@/components/school/section-card";
 import { RecordSearch } from "@/components/school/record-search";
-import { formatMoney } from "@/components/school/format";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listSchoolCampuses, listSchoolStudentChoices, listSchoolTransport } from "@/modules/school/service";
@@ -22,6 +22,7 @@ function readStops(value: unknown): string[] {
 
 export default async function SchoolTransportPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; studentQ?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
+  const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE);
   const [campuses, students, routes] = await Promise.all([
     listSchoolCampuses(tenant.organizationId),
@@ -106,7 +107,7 @@ export default async function SchoolTransportPage({ searchParams }: { searchPara
             <SectionCard
               key={route.id}
               title={`${route.name} · ${route.code}`}
-              description={`${route.campus.name} · ${route.vehicle ?? "No vehicle recorded"} · Driver: ${route.driverName ?? "Not recorded"} · ${formatMoney(route.fee)} per term`}
+              description={`${route.campus.name} · ${route.vehicle ?? "No vehicle recorded"} · Driver: ${route.driverName ?? "Not recorded"} · ${money(route.fee)} per term`}
               actions={
                 <>
                   <Badge variant="outline">{assignments.length} student{assignments.length === 1 ? "" : "s"}</Badge>

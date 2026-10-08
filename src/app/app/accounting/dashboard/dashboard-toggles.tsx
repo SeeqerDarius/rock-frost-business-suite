@@ -33,7 +33,7 @@ function ToggleGroup<T extends string>({ value, options, onChange }: { value: T;
  * bucket up front) - switching view never re-queries or changes the
  * underlying values, per docs/DASHBOARD_KPI_STANDARD.md.
  */
-export function RevenueTrendSection({ data, currency }: { data: Record<TrendGranularity, RevenueTrendPoint[]>; currency?: string | null }) {
+export function RevenueTrendSection({ data, currency, locale }: { data: Record<TrendGranularity, RevenueTrendPoint[]>; currency?: string | null; locale?: string | null }) {
   const [view, setView] = useState<"invoices" | "overdue">("invoices");
   const series = view === "invoices"
     ? [{ key: "total", label: "Total" }, { key: "paid", label: "Paid" }, { key: "unpaid", label: "Unpaid" }, { key: "refund", label: "Refund" }]
@@ -49,7 +49,7 @@ export function RevenueTrendSection({ data, currency }: { data: Record<TrendGran
       <div className="flex justify-end">
         <ToggleGroup value={view} options={[{ value: "invoices", label: "Invoices" }, { value: "overdue", label: "Overdue" }]} onChange={setView} />
       </div>
-      <PeriodicTrendChart data={mapped} series={series} currency={currency} />
+      <PeriodicTrendChart data={mapped} series={series} currency={currency} locale={locale} />
     </div>
   );
 }
@@ -60,7 +60,7 @@ export function RevenueTrendSection({ data, currency }: { data: Record<TrendGran
  * date) and a cash series (liquidity-account journal lines by debit/credit)
  * for every bucket up front, so the toggle only changes which fields render.
  */
-export function ProfitLossSection({ data, currency }: { data: Record<TrendGranularity, ProfitLossTrendPoint[]>; currency?: string | null }) {
+export function ProfitLossSection({ data, currency, locale }: { data: Record<TrendGranularity, ProfitLossTrendPoint[]>; currency?: string | null; locale?: string | null }) {
   const [basis, setBasis] = useState<"accrual" | "cash">("accrual");
   const mapped: Record<TrendGranularity, Record<string, string | number>[]> = {
     days: mapPoints(data.days, basis),
@@ -78,6 +78,7 @@ export function ProfitLossSection({ data, currency }: { data: Record<TrendGranul
         bars={[{ key: "income", label: "Income" }, { key: "expenses", label: "Expenses" }]}
         line={{ key: "profit", label: "Profit" }}
         currency={currency}
+        locale={locale}
       />
     </div>
   );

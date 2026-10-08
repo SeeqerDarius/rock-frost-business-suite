@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { EmptyState } from "@/components/feedback/empty-state";
 import { PeriodicTrendChart, BreakdownDonutChart } from "@/components/dashboard/charts";
 import { requireModuleAccess } from "@/lib/auth/module-access";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter, organizationNumberLocale } from "@/lib/org-format";
 import { getAccountingSummary, getAccountingOverviewTrends } from "@/modules/accounting/service";
 
 export default async function AccountingOverviewPage() {
@@ -20,8 +20,7 @@ export default async function AccountingOverviewPage() {
     getAccountingSummary(tenant.organizationId),
     getAccountingOverviewTrends(tenant.organizationId),
   ]);
-  const currency = tenant.organization.currency;
-  const money = (value: number) => formatMoney(value, currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
 
   const stats = [
     { label: "Cash balance", value: money(summary.cashBalance), description: "Combined balance across cash accounts", icon: <Wallet className="size-4" />, href: "/app/accounting/accounts" },
@@ -55,7 +54,7 @@ export default async function AccountingOverviewPage() {
             <TabsContent value="invoices" className="mt-6 grid gap-8 lg:grid-cols-2">
               <div>
                 <p className="mb-2 text-xs font-medium text-muted-foreground">Invoiced</p>
-                <PeriodicTrendChart data={trends.trends} series={[{ key: "invoiced", label: "Invoiced" }]} currency={tenant.organization.currency} />
+                <PeriodicTrendChart data={trends.trends} series={[{ key: "invoiced", label: "Invoiced" }]} currency={tenant.organization.currency} locale={organizationNumberLocale(tenant.organization)} />
               </div>
               <div>
                 <p className="mb-2 text-xs font-medium text-muted-foreground">By status</p>
@@ -68,7 +67,7 @@ export default async function AccountingOverviewPage() {
               <PeriodicTrendChart
                 data={trends.trends}
                 series={[{ key: "invoiced", label: "Invoiced" }, { key: "expenses", label: "Expenses" }]}
-                currency={tenant.organization.currency}
+                currency={tenant.organization.currency} locale={organizationNumberLocale(tenant.organization)}
               />
             </TabsContent>
 

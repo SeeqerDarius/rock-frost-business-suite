@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listExpenses, listExpenseCategories } from "@/modules/accounting/service";
 import { createNewExpense, approveExistingExpense, rejectExistingExpense, payExistingExpense } from "./actions";
 
@@ -37,6 +37,7 @@ export default async function AccountingExpensesPage({
 }) {
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("accounting");
+  const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_EXPENSES_MANAGE);
   const [expenses, categories] = await Promise.all([
     listExpenses(tenant.organizationId),
@@ -120,7 +121,7 @@ export default async function AccountingExpensesPage({
                 <TableCell className="font-mono text-xs">{expense.expenseNumber}</TableCell>
                 <TableCell className="font-medium">{expense.vendorName}</TableCell>
                 <TableCell className="text-muted-foreground">{expense.category?.name ?? "-"}</TableCell>
-                <TableCell className="text-muted-foreground">{formatMoney(expense.amount, tenant.organization.currency)}</TableCell>
+                <TableCell className="text-muted-foreground">{money(expense.amount, tenant.organization.currency)}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[expense.status]}>{expense.status}</Badge>
                 </TableCell>

@@ -1041,7 +1041,7 @@ export async function recordInvoicePayment(organizationId: string, id: string, i
 
     const remaining = new Prisma.Decimal(locked.amount).minus(locked.amountPaid).minus(locked.amountCredited);
     if (paymentAmount.greaterThan(remaining)) {
-      throw new InvalidPaymentError(`Payment of ${formatMoney(paymentAmount)} exceeds the remaining balance of ${formatMoney(remaining)}.`);
+      throw new InvalidPaymentError(`Payment of ${formatMoney(paymentAmount, fx.currency)} exceeds the remaining balance of ${formatMoney(remaining, fx.currency)}.`);
     }
 
     // Only fetched once the payment is actually valid — no point creating
@@ -1522,7 +1522,7 @@ export async function recordBillPayment(organizationId: string, id: string, inpu
 
     const remaining = new Prisma.Decimal(locked.amount).minus(locked.amountPaid);
     if (paymentAmount.greaterThan(remaining)) {
-      throw new InvalidPaymentError(`Payment of ${formatMoney(paymentAmount)} exceeds the remaining balance of ${formatMoney(remaining)}.`);
+      throw new InvalidPaymentError(`Payment of ${formatMoney(paymentAmount, fx.currency)} exceeds the remaining balance of ${formatMoney(remaining, fx.currency)}.`);
     }
 
     const payingAccount = await tx.accountingAccount.findFirst({ where: { id: input.accountId, organizationId, active: true, liquidityType: { in: ["CASH", "BANK", "MOBILE_MONEY"] } } });
@@ -1714,7 +1714,7 @@ export async function applyCreditNoteToInvoice(organizationId: string, creditNot
   if ((creditNote.currency ?? baseCurrency) !== fx.currency) throw new CreditNoteStateError(`A ${creditNote.currency ?? baseCurrency} credit note cannot be applied to a ${fx.currency} invoice.`);
   const outstanding = new Prisma.Decimal(invoice.amount).minus(invoice.amountPaid).minus(invoice.amountCredited);
   if (new Prisma.Decimal(creditNote.amount).greaterThan(outstanding)) {
-    throw new CreditNoteStateError(`Credit note of ${formatMoney(creditNote.amount)} exceeds the invoice's outstanding balance of ${formatMoney(outstanding)}.`);
+    throw new CreditNoteStateError(`Credit note of ${formatMoney(creditNote.amount, fx.currency)} exceeds the invoice's outstanding balance of ${formatMoney(outstanding, fx.currency)}.`);
   }
 
   const accounts = await ensureDefaultAccounts(organizationId);
@@ -2027,7 +2027,8 @@ export async function recordPettyCashExpense(
     const lines = await tx.accountingJournalLine.findMany({ where: { accountId: fund.accountId } });
     const balance = new Prisma.Decimal(computeBalance("ASSET", lines));
     if (amount.greaterThan(balance)) {
-      throw new InvalidPaymentError(`Expense of ${formatMoney(amount)} exceeds the fund's available balance of ${formatMoney(balance)}.`);
+      const currency = await getBaseCurrency(organizationId);
+      throw new InvalidPaymentError(`Expense of ${formatMoney(amount, currency)} exceeds the fund's available balance of ${formatMoney(balance, currency)}.`);
     }
 
     const entry = await postJournalEntry(tx, organizationId, {

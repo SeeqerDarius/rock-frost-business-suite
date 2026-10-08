@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listAccounts } from "@/modules/accounting/service";
 import { upsertAccount, loadGhanaSmeChart, importAccountsCsvAction } from "./actions";
 
@@ -85,6 +85,7 @@ export default async function AccountingAccountsPage({
 }) {
   const { saved, added, imported, skipped, error } = await searchParams;
   const tenant = await requireModuleAccess("accounting");
+  const orgMoney = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_ACCOUNTS_MANAGE);
   const accounts = await listAccounts(tenant.organizationId);
 
@@ -143,7 +144,7 @@ export default async function AccountingAccountsPage({
                 {account.isSystem ? <Badge variant="outline" className="ml-2">System</Badge> : null}
               </TableCell>
               <TableCell className="text-muted-foreground">{TYPE_LABELS[account.type]}</TableCell>
-              <TableCell className="text-muted-foreground">{formatMoney(account.balance, tenant.organization.currency)}</TableCell>
+              <TableCell className="text-muted-foreground">{orgMoney(account.balance, tenant.organization.currency)}</TableCell>
               <TableCell>
                 <Badge variant={account.active ? "default" : "outline"}>{account.active ? "Active" : "Inactive"}</Badge>
               </TableCell>

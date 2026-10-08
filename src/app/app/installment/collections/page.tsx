@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { resolveInstallmentAccessScope } from "@/modules/installment/access";
 import { getActivityReport } from "@/modules/installment/service";
 
@@ -13,6 +13,7 @@ const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default async function InstallmentCollectionsPage() {
   const tenant = await requireModuleAccess("installment");
+  const money = createOrganizationFormatter(tenant.organization).money;
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_VIEW)) {
     return (
       <div className="space-y-6">
@@ -50,13 +51,13 @@ export default async function InstallmentCollectionsPage() {
         <Card>
           <CardHeader>
             <CardDescription>Expected this week</CardDescription>
-            <CardTitle className="text-3xl">{formatMoney(weekExpected, currency)}</CardTitle>
+            <CardTitle className="text-3xl">{money(weekExpected, currency)}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader>
             <CardDescription>Collected this week</CardDescription>
-            <CardTitle className="text-3xl">{formatMoney(weekActual, currency)}</CardTitle>
+            <CardTitle className="text-3xl">{money(weekActual, currency)}</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -79,7 +80,7 @@ export default async function InstallmentCollectionsPage() {
                     {WEEKDAY_LABELS[index]} · {day.date.toLocaleDateString()}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Expected {formatMoney(day.expectedAmount, currency)} · Collected {formatMoney(day.actualAmount, currency)}
+                    Expected {money(day.expectedAmount, currency)} · Collected {money(day.actualAmount, currency)}
                   </p>
                 </div>
                 {day.expectedAmount > 0 ? <Badge variant={met ? "default" : "outline"}>{met ? "Met" : "Behind"}</Badge> : null}

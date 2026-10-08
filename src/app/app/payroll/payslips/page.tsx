@@ -4,11 +4,12 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listPayslips } from "@/modules/payroll/service";
 
 export default async function PayrollPayslipsPage() {
   const tenant = await requireModuleAccess("payroll");
+  const money = createOrganizationFormatter(tenant.organization).money;
 
   if (!hasPermission(tenant, PERMISSIONS.PAYROLL_PAYSLIPS_VIEW)) {
     return (
@@ -47,10 +48,10 @@ export default async function PayrollPayslipsPage() {
                 <TableCell className="text-muted-foreground">
                   {slip.payrollRun.periodStart.toLocaleDateString()} – {slip.payrollRun.periodEnd.toLocaleDateString()}
                 </TableCell>
-                <TableCell className="text-muted-foreground">{formatMoney(slip.grossPay, currency)}</TableCell>
-                <TableCell className="text-muted-foreground">{formatMoney(slip.taxDeduction, currency)}</TableCell>
-                <TableCell className="text-muted-foreground">{formatMoney(slip.otherDeductions, currency)}</TableCell>
-                <TableCell className="font-medium">{formatMoney(slip.netPay, currency)}</TableCell>
+                <TableCell className="text-muted-foreground">{money(slip.grossPay, currency)}</TableCell>
+                <TableCell className="text-muted-foreground">{money(slip.taxDeduction, currency)}</TableCell>
+                <TableCell className="text-muted-foreground">{money(slip.otherDeductions, currency)}</TableCell>
+                <TableCell className="font-medium">{money(slip.netPay, currency)}</TableCell>
               </TableRow>
             ))}
           </TableBody>

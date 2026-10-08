@@ -4,12 +4,13 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { getPayrollSummary } from "@/modules/payroll/service";
 import { ReportExportLinks } from "@/components/reports/report-export-links";
 
 export default async function PayrollReportsPage() {
   const tenant = await requireModuleAccess("payroll");
+  const money = createOrganizationFormatter(tenant.organization).money;
 
   if (!hasPermission(tenant, PERMISSIONS.PAYROLL_REPORTS_VIEW)) {
     return (
@@ -27,8 +28,8 @@ export default async function PayrollReportsPage() {
     { label: "Missing compensation", value: summary.employeesWithoutCompensationCount },
     { label: "Draft runs", value: summary.draftRunCount },
     { label: "Completed runs", value: summary.completedRunCount },
-    { label: "Last run gross pay", value: formatMoney(summary.lastRunTotalGross, tenant.organization.currency) },
-    { label: "Last run net pay", value: formatMoney(summary.lastRunTotalNet, tenant.organization.currency) },
+    { label: "Last run gross pay", value: money(summary.lastRunTotalGross, tenant.organization.currency) },
+    { label: "Last run net pay", value: money(summary.lastRunTotalNet, tenant.organization.currency) },
   ];
 
   return (

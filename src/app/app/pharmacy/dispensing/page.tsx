@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listDispensings, listMedicines, listPatients, listPendingControlledDispenses, listPrescriptions } from "@/modules/pharmacy/service";
 import { approveControlledDispenseAction, rejectControlledDispenseAction, reverseCompletedDispensing } from "../actions";
 import { PharmacyStatusBanner } from "../status-banner";
@@ -22,6 +22,7 @@ export default async function Page({
 }) {
   const { saved, error } = await searchParams;
   const t = await requireModuleAccess("pharmacy");
+  const money = createOrganizationFormatter(t.organization).money;
   const canApprove = hasPermission(t, PERMISSIONS.PHARMACY_RESTRICTED_APPROVE);
   const currency = t.organization.currency ?? "GHS";
   const [sales, meds, patients, rx, pending] = await Promise.all([
@@ -77,7 +78,7 @@ export default async function Page({
           <CardContent className="space-y-3">
             {pending.map((x) => (
               <div key={x.id} className="rounded-md border p-3 text-sm">
-                <p>{x.dispensingNumber} · {x.patient?.fullName ?? "Walk-in"} · {formatMoney(x.total, currency)} · requested {x.dispensedAt.toLocaleString()}</p>
+                <p>{x.dispensingNumber} · {x.patient?.fullName ?? "Walk-in"} · {money(x.total, currency)} · requested {x.dispensedAt.toLocaleString()}</p>
                 {canApprove ? (
                   <div className="mt-2 flex flex-wrap gap-2">
                     <form action={approveControlledDispenseAction}>
@@ -128,7 +129,7 @@ export default async function Page({
                 </TableCell>
                 <TableCell>{x.patient?.fullName ?? "Walk-in"}</TableCell>
                 <TableCell>{x.lines.map((l) => <div key={l.id}>{l.medicine.name} · {l.batch.batchNumber} · {l.quantity}</div>)}</TableCell>
-                <TableCell>{formatMoney(x.total, currency)}</TableCell>
+                <TableCell>{money(x.total, currency)}</TableCell>
                 <TableCell>
                   <Badge variant={x.status === "COMPLETED" ? "outline" : "destructive"}>{x.status}</Badge>
                   {x.status === "COMPLETED" && (

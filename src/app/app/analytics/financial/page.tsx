@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { getFinancialOverview } from "@/modules/analytics/service";
 
 export default async function AnalyticsFinancialPage() {
@@ -21,7 +21,7 @@ export default async function AnalyticsFinancialPage() {
   }
 
   const { accounting, payroll } = await getFinancialOverview(tenant.organizationId, tenant.enabledModuleKeys);
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
 
   if (!accounting && !payroll) {
     return (

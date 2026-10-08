@@ -14,7 +14,8 @@ import { FieldGrid, SelectField, TextField } from "@/components/school/form-fiel
 import { PrerequisiteNotice, SectionCard } from "@/components/school/section-card";
 import { RecordSearch } from "@/components/school/record-search";
 import { StatusBadge } from "@/components/school/status-badge";
-import { formatDate, formatMoney, humanizeStatus } from "@/components/school/format";
+import { formatDate, humanizeStatus } from "@/components/school/format";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getSchoolAcademicSetup, getSchoolFeeInvoiceSummary, listSchoolCampuses, listSchoolFeeInvoicePage, listSchoolFeeStructures, listSchoolStudentChoices } from "@/modules/school/service";
@@ -28,6 +29,7 @@ const INVOICE_STATUSES = ["DRAFT", "ISSUED", "PART_PAID", "PAID", "VOID"] as con
 
 export default async function SchoolFeesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; status?: string; page?: string; issued?: string; skipped?: string; posting?: string; studentQ?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
+  const orgMoney = createOrganizationFormatter(tenant.organization).money;
 
   if (!hasPermission(tenant, PERMISSIONS.SCHOOL_FEES_MANAGE)) {
     return (
@@ -148,7 +150,7 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
             <Card key={tile.label}>
               <CardContent className="pt-6">
                 <dt className="text-xs text-muted-foreground">{tile.label}</dt>
-                <dd className="mt-1 text-2xl font-semibold tabular-nums">{formatMoney(tile.value)}</dd>
+                <dd className="mt-1 text-2xl font-semibold tabular-nums">{orgMoney(tile.value)}</dd>
                 <p className="mt-1 text-xs text-muted-foreground">{tile.hint}</p>
               </CardContent>
             </Card>
@@ -181,7 +183,7 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
                     {structure.term ? ` · ${structure.term.name}` : " · All terms"}
                     {structure.class ? ` · ${structure.class.name}` : " · All classes"}
                   </TableCell>
-                  <TableCell className="tabular-nums">{formatMoney(structure.amount)}</TableCell>
+                  <TableCell className="tabular-nums">{orgMoney(structure.amount)}</TableCell>
                   <TableCell className="hidden text-muted-foreground lg:table-cell">{formatDate(structure.dueDate)}</TableCell>
                   <TableCell className="tabular-nums">{structure._count.invoices}</TableCell>
                   <TableCell className="text-right">
@@ -267,7 +269,7 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
                           <span className="block text-xs text-muted-foreground">{invoice.description}</span>
                           {invoice.payments.map((payment) => (
                             <span key={payment.id} className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                              <Link className="text-muted-foreground underline underline-offset-2" href={`/app/school/fees/receipt/${payment.id}`} target="_blank">Receipt {payment.receiptNumber}: {formatMoney(payment.amount)}</Link>
+                              <Link className="text-muted-foreground underline underline-offset-2" href={`/app/school/fees/receipt/${payment.id}`} target="_blank">Receipt {payment.receiptNumber}: {orgMoney(payment.amount)}</Link>
                               <Badge variant={payment.postingStatus === "FAILED" ? "destructive" : payment.postingStatus === "POSTED" ? "default" : "outline"}>
                                 {payment.postingStatus === "NOT_REQUIRED" ? "Accounting inactive" : `Accounting ${humanizeStatus(payment.postingStatus)}`}
                               </Badge>
@@ -279,7 +281,7 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
                               ) : null}
                               {payment.refunds.map((refund) => (
                                 <span key={refund.id} className="ml-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                  Refund {formatMoney(refund.amount)} · {humanizeStatus(refund.method)} · {refund.reason} · {formatDate(refund.createdAt)}
+                                  Refund {orgMoney(refund.amount)} · {humanizeStatus(refund.method)} · {refund.reason} · {formatDate(refund.createdAt)}
                                   <Badge variant={refund.postingStatus === "FAILED" ? "destructive" : refund.postingStatus === "POSTED" ? "default" : "outline"}>Accounting {humanizeStatus(refund.postingStatus)}</Badge>
                                   {refund.postingStatus !== "POSTED" && refund.postingStatus !== "NOT_REQUIRED" ? <form action={retrySchoolFeeRefundPostingAction}><input type="hidden" name="refundId" value={refund.id} /><Button type="submit" size="xs" variant="outline">Retry refund posting</Button></form> : null}
                                 </span>
@@ -288,7 +290,7 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
                                 <EntityDialog
                                   trigger={<Button type="button" size="xs" variant="ghost">Record refund</Button>}
                                   title={`Refund receipt ${payment.receiptNumber}`}
-                                  description={`Remaining refundable amount: ${formatMoney(paymentNet(payment))}. This creates a separate audit record and keeps the original receipt unchanged.`}
+                                  description={`Remaining refundable amount: ${orgMoney(paymentNet(payment))}. This creates a separate audit record and keeps the original receipt unchanged.`}
                                   action={recordSchoolFeeRefundAction}
                                   submitLabel="Record refund"
                                 >
@@ -313,18 +315,18 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
                           {invoice.dueDate ? <span className="block text-xs">Due {formatDate(invoice.dueDate)}</span> : null}
                         </TableCell>
                         <TableCell className="tabular-nums">
-                          {formatMoney(invoice.amount.minus(invoice.discount))}
-                          {invoice.discount.gt(0) ? <span className="block text-xs text-muted-foreground">after {formatMoney(invoice.discount)} discount</span> : null}
+                          {orgMoney(invoice.amount.minus(invoice.discount))}
+                          {invoice.discount.gt(0) ? <span className="block text-xs text-muted-foreground">after {orgMoney(invoice.discount)} discount</span> : null}
                         </TableCell>
-                        <TableCell className="hidden tabular-nums sm:table-cell">{formatMoney(paid)}</TableCell>
-                        <TableCell className="font-medium tabular-nums">{formatMoney(balance)}</TableCell>
+                        <TableCell className="hidden tabular-nums sm:table-cell">{orgMoney(paid)}</TableCell>
+                        <TableCell className="font-medium tabular-nums">{orgMoney(balance)}</TableCell>
                         <TableCell><StatusBadge status={invoice.status} /></TableCell>
                         <TableCell className="text-right">
                           {isOpen && balance.gt(0) ? (
                             <EntityDialog
                               trigger={<Button size="sm" variant="ghost">Record payment</Button>}
                               title={`Record a payment for ${invoice.invoiceNumber}`}
-                              description={`${invoice.student.firstName} ${invoice.student.lastName} · Outstanding ${formatMoney(balance)}. A receipt number is generated automatically.`}
+                              description={`${invoice.student.firstName} ${invoice.student.lastName} · Outstanding ${orgMoney(balance)}. A receipt number is generated automatically.`}
                               action={recordFeePaymentAction}
                               submitLabel="Record payment"
                             >
@@ -339,7 +341,7 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
                                 max={balance.toString()}
                                 defaultValue={balance.toFixed(2)}
                                 required
-                                hint={`Cannot exceed the outstanding ${formatMoney(balance)}.`}
+                                hint={`Cannot exceed the outstanding ${orgMoney(balance)}.`}
                               />
                               <SelectField
                                 id={`payment-method-${invoice.id}`}

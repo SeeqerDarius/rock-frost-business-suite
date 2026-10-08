@@ -233,9 +233,9 @@ render and badges those rows "Overdue", but the stored status stays
 status. `LOST` and `DAMAGED` exist in the schema with no action to set them,
 and no fines are modelled despite the page previously advertising them.
 
-**SC-8 — No per-organization currency.** `formatMoney` is hard-coded to GHS,
-matching the previous Overview card. Hotel stores currency per property;
-School has no equivalent field.
+**SC-8: resolved 2026-10-08.** School amounts use the organization currency
+and number format through the organization formatter; the GHS-only School
+`formatMoney` helper was removed in the formatting sweep.
 
 **SC-9 — No edit or deactivate anywhere.** Campuses, classes, subjects,
 books, and routes can be created but never edited or deactivated, though

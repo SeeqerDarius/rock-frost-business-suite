@@ -91,7 +91,7 @@ The main checkout's uncommitted Payroll, School, SEO, and media work is outside 
 ### Known limitations of Increment 1
 
 - Accounting documents were single-currency in this increment; Increment 2 below adds multi-currency documents.
-- About 170 existing `formatMoney()` call sites still format with the currency-level default locale. Ghana tenants are unaffected; a non-GHS tenant's amounts are labeled correctly only where the call passes the organization currency. Migrating call sites to `createOrganizationFormatter()` is part of Increment 2.
+- Since the formatting sweep (2026-10-08), every module formats money with the organization's currency and number format (see "Formatting sweep" below).
 - No live FX provider is connected; manual rates are the source of truth.
 - The interface language remains English; `defaultLanguage` is stored for generated documents.
 
@@ -135,9 +135,8 @@ An explicit period-end action on `/app/accounting/exchange-rates` (preview with 
 
 ### Known limitations of Increment 2
 
-- Customer default currency is stored but not yet applied automatically when a contact is selected on a new document; the user selects the currency.
+- Choosing a contact with a default currency on a new invoice, bill, or credit note pre-selects that currency; the user can change it before saving.
 - Procurement supplier invoices, POS, Fleet, School, and other modules that post to Accounting remain base-currency.
-- Legacy `formatMoney()` call sites outside the Accounting document pages still use currency-level locale defaults (no change for Ghana tenants). That sweep is now a separate formatting increment.
 - Printable documents still use the existing (Ghana-oriented) tax layout; jurisdiction-specific invoice templates arrive with the tax packs.
 - No live FX provider is connected.
 
@@ -226,6 +225,6 @@ Read from `TaxLedgerEntry` (base currency) over local calendar days in the organ
 
 ## Remaining increments
 
-2. **Formatting sweep:** migrate remaining `formatMoney()` call sites across modules to `createOrganizationFormatter()`, and apply contact default currencies on new documents.
+2. **Formatting sweep (done 2026-10-08):** module pages, dashboard widgets, charts, the POS sell screen, Fleet owner statements, the invoice and bill PDF, and the payslip SMS format money with the organization formatter or `formatMoney(value, currency, organizationNumberLocale(organization))`; the School helper that hard-coded GHS was removed; new invoices, bills, and credit notes pre-select a contact's default currency. `test/money-formatting-sweep.test.ts` fails if new code calls `formatMoney` without a currency or without the organization locale outside the documented exceptions (Rock Frost's own GHS platform billing pages, and service error messages, which use the document or base currency).
 3. **Tax follow-ups:** US payroll tax posting into the federal accounts, EU reduced-rate catalogs, a VIES registry provider, OSS return exports, per-line tax categories, and credit notes and Procurement on the tax engine.
 4. **Contracts:** core (5a), lifecycle (5b), and integrations and reporting (5c) implemented (`docs/CONTRACTS_MODULE.md`); an electronic signature provider and public listing remain.
