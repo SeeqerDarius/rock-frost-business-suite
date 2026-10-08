@@ -189,7 +189,7 @@ export type PostModuleRevenueResult =
   | { posted: true; journalEntryId: string }
   | { posted: false; reason: "accounting-not-enabled" | "error" };
 
-export async function postProcurementInvoiceAccrual(organizationId: string, input: { invoiceId: string; invoiceNumber: string; vendorName: string; taxCodeId?: string | null; taxableAmount: string; vatAmount: string; nhilAmount: string; getfundAmount: string; totalAmount: string; invoiceDate: Date; description: string; actorId?: string | null; branchId?: string | null }): Promise<PostModuleRevenueResult> {
+export async function postProcurementInvoiceAccrual(organizationId: string, input: { invoiceId: string; invoiceNumber: string; vendorName: string; taxCodeId?: string | null; taxRuleId?: string | null; taxableAmount: string; vatAmount: string; nhilAmount: string; getfundAmount: string; totalAmount: string; invoiceDate: Date; description: string; actorId?: string | null; branchId?: string | null }): Promise<PostModuleRevenueResult> {
   try {
     if (!(await isModuleActiveForOrg(db, organizationId, "accounting"))) return { posted: false, reason: "accounting-not-enabled" };
     const entry = await postProcurementTaxAccrual(organizationId, input);

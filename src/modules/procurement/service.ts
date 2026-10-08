@@ -6,6 +6,8 @@ import { Prisma, type ProcurementRequestStatus, type ProcurementOrderStatus } fr
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { isModuleActiveForOrg, postProcurementInvoiceAccrual, postProcurementSupplierPayment } from "@/lib/accounting-integration";
 import { calculateTax } from "@/modules/accounting/tax-service";
+import { documentTaxLineRows } from "@/modules/accounting/service";
+import { resolveDocumentTax } from "@/modules/tax/service";
 import {
   getOrganizationModuleConfiguration,
   updateOrganizationModuleConfigurationValues,
@@ -400,8 +402,9 @@ export async function listSupplierPaymentAccounts(organizationId: string) {
 
 export async function createSupplierInvoice(
   organizationId: string,
-  input: { vendorId: string; orderId: string; invoiceNumber: string; invoiceDate: Date; dueDate?: Date | null; taxCodeId?: string | null; createdById?: string | null; lines: Array<{ orderLineId: string; quantity: number; unitCost: string }> },
+  input: { vendorId: string; orderId: string; invoiceNumber: string; invoiceDate: Date; dueDate?: Date | null; taxCodeId?: string | null; taxRuleId?: string | null; createdById?: string | null; lines: Array<{ orderLineId: string; quantity: number; unitCost: string }> },
 ) {
+  if (input.taxCodeId && input.taxRuleId) throw new InvoiceMatchError("Choose either a legacy tax code or a tax rule, not both.");
   if (!input.invoiceNumber.trim() || input.lines.length === 0 || input.lines.length > 100) throw new InvoiceMatchError("Invoice number and lines are required.");
   const aggregated = new Map<string, { orderLineId: string; quantity: number; unitCost: string }>();
   for (const line of input.lines) {
@@ -434,6 +437,23 @@ export async function createSupplierInvoice(
       if (line.quantity + (invoicedByLine.get(line.orderLineId) ?? 0) > ordered.receivedQuantity) throw new InvoiceMatchError("Invoice quantity exceeds the remaining received quantity.");
       if (!cost.equals(ordered.unitCost)) exceptionNote = "Invoice unit cost does not match the purchase order.";
     }
+    if (input.taxRuleId) {
+      // Purchase order costs exclude tax; the engine adds each component from the rates in effect on the invoice date.
+      const resolved = await resolveDocumentTax(organizationId, { ruleId: input.taxRuleId, date: input.invoiceDate, amount: total, pricesIncludeTax: false });
+      const calc = resolved.calculation;
+      const created = await tx.procurementSupplierInvoice.create({
+        data: {
+          organizationId, vendorId: input.vendorId, orderId: input.orderId,
+          invoiceNumber: input.invoiceNumber.trim(), invoiceDate: input.invoiceDate, dueDate: input.dueDate,
+          createdById: input.createdById, taxRuleId: resolved.rule.id, taxTreatment: resolved.treatment, taxableAmount: calc.taxableAmount, taxAmount: calc.totalTax, totalAmount: calc.grossAmount,
+          status: exceptionNote ? "EXCEPTION" : "MATCHED", exceptionNote,
+          lines: { create: lines.map((line) => ({ ...line, description: orderLines.get(line.orderLineId)!.description })) },
+        },
+        include: { lines: true },
+      });
+      if (calc.lines.length) await tx.documentTaxLine.createMany({ data: documentTaxLineRows(organizationId, "SUPPLIER_INVOICE", created.id, resolved) });
+      return created;
+    }
     const tax = await calculateTax(organizationId, total, input.taxCodeId, input.invoiceDate);
     return tx.procurementSupplierInvoice.create({
       data: {
@@ -464,7 +484,7 @@ export async function reviewSupplierInvoice(organizationId: string, invoiceId: s
   });
   if (decision === "APPROVE") {
     const receiptBranchIds = [...new Set(reviewed.order.receipts.map((receipt) => receipt.warehouse?.branchId).filter((branchId): branchId is string => Boolean(branchId)))];
-    const posting = await postProcurementInvoiceAccrual(organizationId, { invoiceId: reviewed.id, invoiceNumber: reviewed.invoiceNumber, vendorName: reviewed.vendor.name, taxCodeId: reviewed.taxCodeId, taxableAmount: reviewed.taxableAmount.toString(), vatAmount: reviewed.vatAmount.toString(), nhilAmount: reviewed.nhilAmount.toString(), getfundAmount: reviewed.getfundAmount.toString(), totalAmount: reviewed.totalAmount.toString(), invoiceDate: reviewed.invoiceDate, description: `Supplier invoice ${reviewed.invoiceNumber}`, actorId, branchId: receiptBranchIds.length === 1 ? receiptBranchIds[0] : null });
+    const posting = await postProcurementInvoiceAccrual(organizationId, { invoiceId: reviewed.id, invoiceNumber: reviewed.invoiceNumber, vendorName: reviewed.vendor.name, taxCodeId: reviewed.taxCodeId, taxRuleId: reviewed.taxRuleId, taxableAmount: reviewed.taxableAmount.toString(), vatAmount: reviewed.vatAmount.toString(), nhilAmount: reviewed.nhilAmount.toString(), getfundAmount: reviewed.getfundAmount.toString(), totalAmount: reviewed.totalAmount.toString(), invoiceDate: reviewed.invoiceDate, description: `Supplier invoice ${reviewed.invoiceNumber}`, actorId, branchId: receiptBranchIds.length === 1 ? receiptBranchIds[0] : null });
     if (!posting.posted && posting.reason === "error") {
       await db.procurementSupplierInvoice.updateMany({ where: { id: reviewed.id, organizationId, status: "APPROVED", approvedById: actorId }, data: { status: "MATCHED", approvedById: null, approvedAt: null } });
       throw new InvoiceApprovalError("Accounting could not record the supplier liability. The approval was not saved.");

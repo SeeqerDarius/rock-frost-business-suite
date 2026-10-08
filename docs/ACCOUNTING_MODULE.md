@@ -102,6 +102,10 @@ Customer receipts are explicit immutable allocation records rather than only an 
 
 The Receivables page groups invoices by normalized customer email, falling back to normalized customer name when no email is available. It shows invoiced, paid, outstanding, and overdue balances plus statement-style invoice and receipt history. `accounting.receivables.manage` controls receipt entry separately from invoice creation.
 
+# Credit notes and supplier invoices in the tax engine (2026-10-10)
+
+Credit notes and Procurement supplier invoices can use a tax rule as well as a legacy tax code. Settling any credit note (applied or refunded) now records a negative adjustment in the working VAT return and the tax ledger, which it previously did not, and approved supplier invoices write tax ledger rows. Details: `docs/GLOBAL_EXPANSION_ARCHITECTURE.md`, "Tax follow-ups, part 1".
+
 # Contacts, multi-line invoices, bills, and credit notes (2026-08-31)
 
 **Contacts.** `AccountingContact` (`/app/accounting/contacts`, `accounting.contacts.manage`) is a shared customer/supplier party record - `type` is `CUSTOMER`, `SUPPLIER`, or `BOTH`. `fleetOwnerId`/`procurementVendorId`/`crmContactId` are deliberately plain, unenforced string references to that other module's own party record - a convenience cross-reference a manager can fill in by hand, not a forced migration of Fleet's or Procurement's own party models, which keep operating exactly as before. Invoices, bills, and credit notes each gained an optional `contactId`; the invoice/bill/credit-note itself still stores its own name/email snapshot fields (`customerName`, `supplierName`, etc.), so picking a contact only pre-fills the form - a contact's name changing later never rewrites a historical document.
