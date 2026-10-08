@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listDeals, listContacts, listAssignableUsers } from "@/modules/crm/service";
 import { upsertDeal, changeDealStage } from "./actions";
 
@@ -120,6 +120,7 @@ export default async function CrmDealsPage({
 }) {
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("crm");
+  const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.CRM_DEALS_MANAGE);
   const [deals, contacts, users] = await Promise.all([
     listDeals(tenant.organizationId),
@@ -181,7 +182,7 @@ export default async function CrmDealsPage({
                 <TableRow key={deal.id}>
                   <TableCell className="font-medium">{deal.title}</TableCell>
                   <TableCell className="text-muted-foreground">{deal.contact?.fullName ?? "-"}</TableCell>
-                  <TableCell className="text-muted-foreground">{formatMoney(deal.value, tenant.organization.currency)}</TableCell>
+                  <TableCell className="text-muted-foreground">{money(deal.value, tenant.organization.currency)}</TableCell>
                   <TableCell>
                     <Badge variant={STAGE_BADGE[deal.stage]}>{STAGE_LABELS[deal.stage]}</Badge>
                   </TableCell>

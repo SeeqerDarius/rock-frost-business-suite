@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { db } from "@/lib/db";
 import { requireModuleAccess } from "@/lib/auth/module-access";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { isRoleAssignableToOrganization, resolveAssignableModuleKeys, roleDisplayName } from "@/lib/administration-roles";
 import { getEmployeeProfile, getEmployeeStatusHistory, listManagerCandidates, listPlanTemplates, listPendingPlanActivities, listEmployeeSkills, listSkillTypes, listJobPositions } from "@/modules/hr/service";
@@ -57,6 +57,7 @@ export default async function HrEmployeeProfilePage({
   const { employeeId } = await params;
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("hr");
+  const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_EDIT) || hasPermission(tenant, PERMISSIONS.HR_EMPLOYEES_MANAGE);
   const canLaunchPlans = hasPermission(tenant, PERMISSIONS.HR_ONBOARDING_MANAGE);
   const [employee, statusHistory, managers, onboardingTemplates, offboardingTemplates, pendingActivities, roles, assignableModuleKeys, employeeSkills, skillTypes, jobPositions] = await Promise.all([
@@ -352,7 +353,7 @@ export default async function HrEmployeeProfilePage({
         <TabsContent value="payroll" className="space-y-6 pt-4">
           {employee.payrollCompensation ? (
             <dl className="grid gap-4 sm:grid-cols-3">
-              <div><dt className="text-xs text-muted-foreground">Base salary</dt><dd className="text-sm">{formatMoney(employee.payrollCompensation.baseSalary, tenant.organization.currency)}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Base salary</dt><dd className="text-sm">{money(employee.payrollCompensation.baseSalary, tenant.organization.currency)}</dd></div>
               <div><dt className="text-xs text-muted-foreground">Pay frequency</dt><dd className="text-sm">{employee.payrollCompensation.payFrequency}</dd></div>
               <div><dt className="text-xs text-muted-foreground">Effective date</dt><dd className="text-sm">{employee.payrollCompensation.effectiveDate.toLocaleDateString()}</dd></div>
             </dl>
@@ -368,7 +369,7 @@ export default async function HrEmployeeProfilePage({
                 {employee.payslips.map((slip) => (
                   <li key={slip.id} className="flex items-center justify-between rounded-md border px-3 py-2">
                     <span className="text-muted-foreground">{slip.createdAt.toLocaleDateString()}</span>
-                    <span>Net {formatMoney(slip.netPay, tenant.organization.currency)}</span>
+                    <span>Net {money(slip.netPay, tenant.organization.currency)}</span>
                   </li>
                 ))}
               </ul>

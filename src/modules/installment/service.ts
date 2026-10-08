@@ -8,6 +8,7 @@ import type {
 } from "@prisma/client";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { formatMoney } from "@/lib/currency";
+import { getBaseCurrency } from "@/modules/accounting/multi-currency";
 import type { InstallmentAccessScope } from "@/modules/installment/access";
 
 export type { InstallmentAccessScope } from "@/modules/installment/access";
@@ -711,7 +712,7 @@ export async function createAccount(
   const depositAmount = data.initialDeposit ? new Prisma.Decimal(data.initialDeposit) : new Prisma.Decimal(0);
 
   if (minimumDeposit.greaterThan(0) && depositAmount.lessThan(minimumDeposit)) {
-    throw new MinimumDepositError(`A minimum deposit of ${formatMoney(minimumDeposit)} is required to open this account.`);
+    throw new MinimumDepositError(`A minimum deposit of ${formatMoney(minimumDeposit, await getBaseCurrency(organizationId))} is required to open this account.`);
   }
 
   // Regenerated fresh on every retry attempt (not hoisted above the retried

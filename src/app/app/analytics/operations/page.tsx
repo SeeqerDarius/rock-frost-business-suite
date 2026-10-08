@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { getOperationsOverview } from "@/modules/analytics/service";
 
 export default async function AnalyticsOperationsPage() {
@@ -23,7 +23,7 @@ export default async function AnalyticsOperationsPage() {
   }
 
   const { fleet, inventory, procurement } = await getOperationsOverview(tenant.organizationId, tenant.enabledModuleKeys);
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
 
   if (!fleet && !inventory && !procurement) {
     return (

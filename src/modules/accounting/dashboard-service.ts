@@ -234,11 +234,11 @@ function pickTone(value: number | null, bands: GaugeBand[]): GaugeDefinition["to
   return bands[bands.length - 1]?.tone ?? "neutral";
 }
 
-function formatGaugeValue(value: number, unit: GaugeUnit, currency?: string | null) {
+function formatGaugeValue(value: number, unit: GaugeUnit, currency?: string | null, locale?: string | null) {
   if (unit === "percent") return `${value.toFixed(1)}%`;
   if (unit === "ratio") return `${value.toFixed(2)}x`;
   if (unit === "days") return `${value.toFixed(1)} days`;
-  return formatMoney(value, currency);
+  return formatMoney(value, currency, locale);
 }
 
 function buildGauge(
@@ -252,8 +252,9 @@ function buildGauge(
   max: number,
   bands: GaugeBand[],
   currency?: string | null,
+  locale?: string | null,
 ): GaugeDefinition {
-  const displayValue = value === null ? "Not available" : formatGaugeValue(value, unit, currency);
+  const displayValue = value === null ? "Not available" : formatGaugeValue(value, unit, currency, locale);
   return { key, label, formula, interpretation, value, displayValue, min, max, unit, currency, tone: pickTone(value, bands) };
 }
 
@@ -262,7 +263,7 @@ export interface FinancialBenchmarks {
   gauges: GaugeDefinition[];
 }
 
-export async function getFinancialBenchmarks(organizationId: string, preset: DashboardPeriodPreset, currency?: string | null, now: Date = new Date()): Promise<FinancialBenchmarks> {
+export async function getFinancialBenchmarks(organizationId: string, preset: DashboardPeriodPreset, currency?: string | null, now: Date = new Date(), locale?: string | null): Promise<FinancialBenchmarks> {
   const period = resolveDashboardPeriod(preset, now);
   const f = await computePeriodFinancials(organizationId, period);
 
@@ -301,7 +302,7 @@ export async function getFinancialBenchmarks(organizationId: string, preset: Das
       cashFlowRatio, "ratio", -1, 2, [{ max: 0, tone: "red" }, { max: 0.4, tone: "amber" }, { max: 2, tone: "green" }]),
     buildGauge("workingCapital", "Working capital", "Total assets − Total liabilities",
       "The cushion left after settling every liability with every asset. A currency amount, not a ratio - there is no universal band across organizations of different sizes.",
-      workingCapital, "money", -workingCapitalRange, workingCapitalRange, [{ max: 0, tone: "red" }, { max: workingCapitalRange, tone: "green" }], currency),
+      workingCapital, "money", -workingCapitalRange, workingCapitalRange, [{ max: 0, tone: "red" }, { max: workingCapitalRange, tone: "green" }], currency, locale),
     buildGauge("quickRatio", "Quick ratio", "(Cash + bank + mobile money + receivables) / Total liabilities",
       "Coverage of liabilities from assets that can be turned into cash quickly, without waiting to sell anything.",
       quickRatio, "ratio", 0, 3, [{ max: 0.5, tone: "red" }, { max: 1, tone: "amber" }, { max: 3, tone: "green" }]),

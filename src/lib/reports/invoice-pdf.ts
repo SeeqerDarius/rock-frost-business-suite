@@ -21,6 +21,8 @@ export interface PrintableDocumentInput {
   counterpartyEmail?: string | null;
   counterpartyTin?: string | null;
   currency: string;
+  /** The organization number locale; defaults to the currency's usual locale. */
+  locale?: string | null;
   lines: PrintableDocumentLine[];
   taxableAmount: number;
   vatAmount: number;
@@ -54,7 +56,7 @@ export function buildPrintableDocumentPdf(input: PrintableDocumentInput): Promis
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    const money = (value: number) => formatMoney(value, input.currency);
+    const money = (value: number) => formatMoney(value, input.currency, input.locale);
     const left = doc.page.margins.left;
     const right = doc.page.width - doc.page.margins.right;
     const usableWidth = right - left;

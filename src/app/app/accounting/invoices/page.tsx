@@ -15,6 +15,7 @@ import { LineItemsEditor } from "@/components/forms/line-items-editor";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createOrganizationFormatter } from "@/lib/org-format";
+import { ContactSelect } from "@/components/forms/contact-select";
 import { CurrencyFields, SettlementRateField } from "@/components/forms/currency-fields";
 import { baseTotal } from "@/modules/accounting/multi-currency";
 import { listAccounts, listInvoices, listContacts } from "@/modules/accounting/service";
@@ -72,10 +73,7 @@ export default async function AccountingInvoicesPage({
             {customerContacts.length > 0 ? (
               <div className="space-y-2">
                 <Label htmlFor="contactId">Contact (optional)</Label>
-                <select id="contactId" name="contactId" className="h-10 w-full rounded-md border bg-background px-3">
-                  <option value="">Enter details manually</option>
-                  {customerContacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.name}</option>)}
-                </select>
+                <ContactSelect contacts={customerContacts.map((contact) => ({ id: contact.id, name: contact.name, currency: contact.currency }))} currencyFieldId="invoice-currency" />
               </div>
             ) : null}
             <div className="space-y-2">

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentTenant } from "@/lib/tenant";
+import { organizationNumberLocale } from "@/lib/org-format";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
 import { getInvoiceForPrint, getBillForPrint } from "@/modules/accounting/service";
@@ -49,6 +50,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ type
       counterpartyTin: invoice.contact?.taxIdentificationNumber ?? null,
       // Printed in the document currency, not the organization base currency.
       currency: invoice.currency ?? tenant.organization.currency ?? "GHS",
+      locale: organizationNumberLocale(tenant.organization),
       lines: invoice.lines.map((line) => ({ description: line.description, quantity: Number(line.quantity), unitPrice: Number(line.unitPrice), lineTotal: Number(line.lineTotal) })),
       taxableAmount: Number(invoice.taxableAmount),
       vatAmount: Number(invoice.vatAmount),
@@ -76,6 +78,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ type
       counterpartyEmail: bill.supplierEmail,
       counterpartyTin: bill.contact?.taxIdentificationNumber ?? null,
       currency: bill.currency ?? tenant.organization.currency ?? "GHS",
+      locale: organizationNumberLocale(tenant.organization),
       lines: bill.lines.map((line) => ({ description: line.description, quantity: Number(line.quantity), unitPrice: Number(line.unitPrice), lineTotal: Number(line.lineTotal) })),
       taxableAmount: Number(bill.taxableAmount),
       vatAmount: Number(bill.vatAmount),

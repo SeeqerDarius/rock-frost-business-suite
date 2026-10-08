@@ -7,7 +7,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Button } from "@/components/ui/button";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { getGeneralLedgerForAccount, NotFoundError } from "@/modules/accounting/service";
 import { ReportDownloadLinks } from "@/components/reports/report-download-links";
 
@@ -24,7 +24,7 @@ export default async function AccountingGeneralLedgerAccountPage({ params }: { p
   }
 
   const currency = tenant.organization.currency ?? "GHS";
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
 
   let report;
   try {

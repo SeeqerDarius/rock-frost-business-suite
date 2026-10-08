@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { FormFeedback, ReadOnlyNotice } from "@/components/school/form-feedback";
 import { FieldGrid, SelectField, TextField } from "@/components/school/form-fields";
 import { SectionCard } from "@/components/school/section-card";
-import { formatMoney } from "@/components/school/format";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listSchoolPayrollAdjustments } from "@/modules/school/service";
@@ -21,6 +21,7 @@ const ADJUSTMENT_TYPES = ["Teaching allowance", "Substitute cover", "Overtime", 
 
 export default async function SchoolPayrollPage({ searchParams }: { searchParams: Promise<{ saved?: string; linked?: string; error?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
+  const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_PAYROLL_MANAGE);
   const [adjustments, eligibleEmployees, linkCandidates] = await Promise.all([
     listSchoolPayrollAdjustments(tenant.organizationId),
@@ -103,7 +104,7 @@ export default async function SchoolPayrollPage({ searchParams }: { searchParams
             <SectionCard
               key={period}
               title={period}
-              description={`${rows.length} input${rows.length === 1 ? "" : "s"} · ${formatMoney(total)} total`}
+              description={`${rows.length} input${rows.length === 1 ? "" : "s"} · ${money(total)} total`}
               actions={pending > 0 ? <Badge variant="secondary">{pending} pending</Badge> : <Badge>All processed</Badge>}
             >
               <Table>
@@ -125,7 +126,7 @@ export default async function SchoolPayrollPage({ searchParams }: { searchParams
                       </TableCell>
                       <TableCell><span>{row.type}</span><Badge variant="outline" className="ml-2">{row.category === "DEDUCTION" ? "Deduction" : "Earning"}</Badge></TableCell>
                       <TableCell className="font-medium">{row.description}</TableCell>
-                      <TableCell className="tabular-nums">{formatMoney(row.amount)}</TableCell>
+                      <TableCell className="tabular-nums">{money(row.amount)}</TableCell>
                       <TableCell>{row.processedAt ? <div className="space-y-1"><Badge>Processed</Badge>{row.payrollRunId ? <a className="block text-xs text-primary underline-offset-4 hover:underline" href="/app/payroll/runs">View Payroll runs</a> : null}</div> : <Badge variant="secondary">Pending</Badge>}</TableCell>
                       {canManage ? <TableCell className="text-right">
                         {(!row.employeeId || !eligibleEmployeeIds.has(row.employeeId)) && !row.processedAt ? (

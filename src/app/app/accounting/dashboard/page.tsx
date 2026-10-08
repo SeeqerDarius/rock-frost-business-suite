@@ -10,7 +10,7 @@ import { GaugeChart } from "@/components/dashboard/charts";
 import { RevenueTrendSection, ProfitLossSection } from "./dashboard-toggles";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter, organizationNumberLocale } from "@/lib/org-format";
 import { cn } from "@/lib/utils";
 import {
   getDashboardKpis,
@@ -33,9 +33,9 @@ function isPreset(value: string | undefined): value is DashboardPeriodPreset {
   return value === "month" || value === "quarter" || value === "year";
 }
 
-function formatRow(value: number | null, unit: ComparisonRow["unit"], currency?: string | null) {
+function formatRow(value: number | null, unit: ComparisonRow["unit"], money: (value: number) => string) {
   if (value === null) return "Not available";
-  if (unit === "money") return formatMoney(value, currency);
+  if (unit === "money") return money(value);
   if (unit === "percent") return `${value.toFixed(1)}%`;
   if (unit === "ratio") return `${value.toFixed(2)}x`;
   return `${value.toFixed(1)} days`;
@@ -53,7 +53,7 @@ function formatDelta(row: ComparisonRow) {
   return `${relative >= 0 ? "+" : ""}${relative.toFixed(1)}%`;
 }
 
-function ComparisonTable({ title, description, rows, currency }: { title: string; description: string; rows: ComparisonRow[]; currency?: string | null }) {
+function ComparisonTable({ title, description, rows, money }: { title: string; description: string; rows: ComparisonRow[]; money: (value: number) => string }) {
   return (
     <Card>
       <CardHeader>
@@ -78,8 +78,8 @@ function ComparisonTable({ title, description, rows, currency }: { title: string
               return (
                 <TableRow key={row.label}>
                   <TableCell className="text-muted-foreground">{row.label}</TableCell>
-                  <TableCell className="text-right font-mono text-xs">{formatRow(row.current, row.unit, currency)}</TableCell>
-                  <TableCell className="text-right font-mono text-xs text-muted-foreground">{formatRow(row.prior, row.unit, currency)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">{formatRow(row.current, row.unit, money)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs text-muted-foreground">{formatRow(row.prior, row.unit, money)}</TableCell>
                   <TableCell className={cn("text-right font-mono text-xs", positive && "text-emerald-600 dark:text-emerald-400", negative && "text-destructive")}>{delta}</TableCell>
                 </TableRow>
               );
@@ -110,12 +110,12 @@ export default async function AccountingFinancialDashboardPage({
 
   const preset: DashboardPeriodPreset = isPreset(presetParam) ? presetParam : "month";
   const currency = tenant.organization.currency ?? "GHS";
-  const money = (value: number) => formatMoney(value, currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
 
   const [kpis, comparison, benchmarks, topInvoices, revenueTrend, profitLossTrend] = await Promise.all([
     getDashboardKpis(tenant.organizationId, preset),
     getFinancialComparison(tenant.organizationId, preset),
-    getFinancialBenchmarks(tenant.organizationId, preset, currency),
+    getFinancialBenchmarks(tenant.organizationId, preset, currency, new Date(), organizationNumberLocale(tenant.organization)),
     getTopInvoices(tenant.organizationId, preset),
     getRevenueBreakdownTrend(tenant.organizationId),
     getProfitLossTrend(tenant.organizationId),
@@ -162,7 +162,7 @@ export default async function AccountingFinancialDashboardPage({
           <CardDescription>Invoiced revenue by paid, unpaid, and refunded status over time.</CardDescription>
         </CardHeader>
         <CardContent>
-          <RevenueTrendSection data={revenueTrend} currency={currency} />
+          <RevenueTrendSection data={revenueTrend} currency={currency} locale={organizationNumberLocale(tenant.organization)} />
         </CardContent>
       </Card>
 
@@ -172,18 +172,18 @@ export default async function AccountingFinancialDashboardPage({
           <CardDescription>Income and expenses by period, with total profit - on an accrual or cash basis.</CardDescription>
         </CardHeader>
         <CardContent>
-          <ProfitLossSection data={profitLossTrend} currency={currency} />
+          <ProfitLossSection data={profitLossTrend} currency={currency} locale={organizationNumberLocale(tenant.organization)} />
         </CardContent>
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <ComparisonTable title="Cash" description="Cash movement across cash, bank, and mobile-money accounts." rows={comparison.cash} currency={currency} />
-        <ComparisonTable title="Profitability" description="Income, cost of revenue, and net profit." rows={comparison.profitability} currency={currency} />
-        <ComparisonTable title="Performance" description="Margins and returns as a share of revenue or assets." rows={comparison.performance} currency={currency} />
-        <ComparisonTable title="Balance sheet" description="Receivable, payables, and net assets as of today." rows={comparison.balanceSheet} currency={currency} />
-        <ComparisonTable title="Position" description="How long customers take to pay and suppliers are paid." rows={comparison.position} currency={currency} />
-        <ComparisonTable title="Solvency" description="Debt coverage and equity strength. Permanence, financial balance, and long-term working capital require a short-term/long-term account split not yet tracked, so they read as not available." rows={comparison.solvency} currency={currency} />
-        <ComparisonTable title="Liquidity" description="Coverage of liabilities from cash and near-cash assets." rows={comparison.liquidity} currency={currency} />
+        <ComparisonTable title="Cash" description="Cash movement across cash, bank, and mobile-money accounts." rows={comparison.cash} money={money} />
+        <ComparisonTable title="Profitability" description="Income, cost of revenue, and net profit." rows={comparison.profitability} money={money} />
+        <ComparisonTable title="Performance" description="Margins and returns as a share of revenue or assets." rows={comparison.performance} money={money} />
+        <ComparisonTable title="Balance sheet" description="Receivable, payables, and net assets as of today." rows={comparison.balanceSheet} money={money} />
+        <ComparisonTable title="Position" description="How long customers take to pay and suppliers are paid." rows={comparison.position} money={money} />
+        <ComparisonTable title="Solvency" description="Debt coverage and equity strength. Permanence, financial balance, and long-term working capital require a short-term/long-term account split not yet tracked, so they read as not available." rows={comparison.solvency} money={money} />
+        <ComparisonTable title="Liquidity" description="Coverage of liabilities from cash and near-cash assets." rows={comparison.liquidity} money={money} />
       </div>
 
       <Card>
@@ -241,7 +241,7 @@ export default async function AccountingFinancialDashboardPage({
                 min={gauge.min}
                 max={gauge.max}
                 unit={gauge.unit}
-                currency={gauge.currency}
+                currency={gauge.currency} locale={organizationNumberLocale(tenant.organization)}
                 tone={gauge.tone}
                 label={gauge.label}
                 formula={gauge.formula}

@@ -2,11 +2,13 @@ import { notFound } from "next/navigation";
 import { PrintSchoolFeeReceiptButton } from "./print-button";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatDate, formatMoney, humanizeStatus } from "@/components/school/format";
+import { formatDate, humanizeStatus } from "@/components/school/format";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { getSchoolFeePaymentReceipt } from "@/modules/school/service";
 
 export default async function SchoolFeeReceiptPage({ params }: { params: Promise<{ paymentId: string }> }) {
   const [{ paymentId }, tenant] = await Promise.all([params, requireModuleAccess("school")]);
+  const money = createOrganizationFormatter(tenant.organization).money;
   if (!hasPermission(tenant, PERMISSIONS.SCHOOL_FEES_MANAGE) && !hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENT_FINANCE_VIEW)) notFound();
   const receipt = await getSchoolFeePaymentReceipt(tenant.organizationId, paymentId);
   if (!receipt) notFound();
@@ -32,13 +34,13 @@ export default async function SchoolFeeReceiptPage({ params }: { params: Promise
           <div className="flex justify-between gap-4"><span className="text-muted-foreground">Invoice</span><span>{receipt.invoice.invoiceNumber}</span></div>
           <div className="flex justify-between gap-4"><span className="text-muted-foreground">Charge</span><span className="text-right">{receipt.invoice.description}</span></div>
           <div className="flex justify-between gap-4"><span className="text-muted-foreground">Academic period</span><span>{receipt.invoice.academicYear.name}{receipt.invoice.term ? ` · ${receipt.invoice.term.name}` : ""}</span></div>
-          <div className="flex justify-between gap-4"><span className="text-muted-foreground">Invoice total</span><span>{formatMoney(paidToward, organization.currency)}</span></div>
+          <div className="flex justify-between gap-4"><span className="text-muted-foreground">Invoice total</span><span>{money(paidToward, organization.currency)}</span></div>
           {receipt.invoice.dueDate ? <div className="flex justify-between gap-4"><span className="text-muted-foreground">Due date</span><span>{formatDate(receipt.invoice.dueDate)}</span></div> : null}
         </section>
         <section className="space-y-2 border-t pt-4 text-sm">
           <div className="flex justify-between gap-4"><span className="text-muted-foreground">Payment method</span><span>{humanizeStatus(receipt.method)}</span></div>
           {receipt.reference ? <div className="flex justify-between gap-4"><span className="text-muted-foreground">Reference</span><span>{receipt.reference}</span></div> : null}
-          <div className="flex justify-between gap-4 border-t pt-3 text-base font-semibold"><span>Amount received</span><span>{formatMoney(receipt.amount, organization.currency)}</span></div>
+          <div className="flex justify-between gap-4 border-t pt-3 text-base font-semibold"><span>Amount received</span><span>{money(receipt.amount, organization.currency)}</span></div>
         </section>
         <p className="text-center text-xs text-muted-foreground">Keep this receipt for your records.</p>
       </article>

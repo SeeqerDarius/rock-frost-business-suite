@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listSales } from "@/modules/pos/service";
 import { returnSale, resumeSale } from "./actions";
 import { ReturnFields } from "./return-fields";
@@ -36,6 +36,7 @@ export default async function PosSalesPage({
 }) {
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("pos");
+  const orgMoney = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.POS_SALES_MANAGE);
   const canReturn = hasPermission(tenant, PERMISSIONS.POS_RETURNS_MANAGE);
   const sales = await listSales(tenant.organizationId);
@@ -78,7 +79,7 @@ export default async function PosSalesPage({
                 <TableCell className="text-muted-foreground">{sale.register.name}</TableCell>
                 <TableCell className="text-muted-foreground">{sale.customerName ?? "-"}</TableCell>
                 <TableCell className="text-muted-foreground">{sale.soldBy?.name ?? "-"}</TableCell>
-                <TableCell className="font-medium">{formatMoney(sale.total, tenant.organization.currency)}</TableCell>
+                <TableCell className="font-medium">{orgMoney(sale.total, tenant.organization.currency)}</TableCell>
                 <TableCell className="text-muted-foreground">{sale.paymentMethod}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[sale.status]}>{sale.status}</Badge>

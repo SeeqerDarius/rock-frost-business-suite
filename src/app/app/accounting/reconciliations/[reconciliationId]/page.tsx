@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { cn } from "@/lib/utils";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { getReconciliation, listBankStatementLines, suggestReconciliationMatches } from "@/modules/accounting/service";
 import { FileClock } from "lucide-react";
 import { importBankStatementLinesAction, confirmMatchAction, ignoreLineAction, completeDraftReconciliationAction } from "./actions";
@@ -46,7 +46,7 @@ export default async function ReconciliationWorkspacePage({
   const reconciliation = await getReconciliation(tenant.organizationId, reconciliationId);
   if (!reconciliation) redirect("/app/accounting/cashbook?error=not-found");
 
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
 
   if (reconciliation.status !== "DRAFT") {
     return (

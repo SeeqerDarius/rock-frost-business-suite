@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listRuns } from "@/modules/payroll/service";
 import { createNewRun, processExistingRun, cancelExistingRun, retryPayrollAccountingPosting } from "./actions";
 
@@ -47,6 +47,7 @@ export default async function PayrollRunsPage({
 }) {
   const { saved, error, posting } = await searchParams;
   const tenant = await requireModuleAccess("payroll");
+  const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.PAYROLL_RUNS_MANAGE);
   const runs = await listRuns(tenant.organizationId);
   const today = new Date().toISOString().slice(0, 10);
@@ -103,7 +104,7 @@ export default async function PayrollRunsPage({
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Pay date {run.payDate.toLocaleDateString()}
-                    {run.payslips.length > 0 ? ` · ${run.payslips.length} payslip${run.payslips.length === 1 ? "" : "s"} · ${formatMoney(totalNet, tenant.organization.currency)} net` : ""}
+                    {run.payslips.length > 0 ? ` · ${run.payslips.length} payslip${run.payslips.length === 1 ? "" : "s"} · ${money(totalNet, tenant.organization.currency)} net` : ""}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">

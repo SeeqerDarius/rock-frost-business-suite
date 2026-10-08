@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import {
   listCustomers,
   listAccounts,
@@ -15,6 +15,7 @@ import { resolveInstallmentAccessScope } from "@/modules/installment/access";
 
 export default async function InstallmentOverviewPage() {
   const tenant = await requireModuleAccess("installment");
+  const money = createOrganizationFormatter(tenant.organization).money;
 
   if (!hasPermission(tenant, PERMISSIONS.HIREPURCHASE_VIEW)) {
     return (
@@ -56,7 +57,7 @@ export default async function InstallmentOverviewPage() {
     ...(canManageProducts
       ? [{ label: "Products", value: products.length, description: "Products available for installment sale", icon: <Package className="size-4" />, href: "/app/installment/products" }]
       : []),
-    { label: "Outstanding balance", value: formatMoney(outstandingBalance, tenant.organization.currency), description: "Total balance still owed across accounts", icon: <Wallet className="size-4" />, href: "/app/installment/accounts" },
+    { label: "Outstanding balance", value: money(outstandingBalance, tenant.organization.currency), description: "Total balance still owed across accounts", icon: <Wallet className="size-4" />, href: "/app/installment/accounts" },
   ];
 
   return (

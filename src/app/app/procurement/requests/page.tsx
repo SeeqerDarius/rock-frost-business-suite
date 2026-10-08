@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listRequests } from "@/modules/procurement/service";
 import { listItems } from "@/modules/inventory/service";
 import { createNewRequest, approveExistingRequest, rejectExistingRequest } from "./actions";
@@ -37,6 +37,7 @@ export default async function ProcurementRequestsPage({
 }) {
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("procurement");
+  const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.PROCUREMENT_REQUESTS_MANAGE);
   const canApprove = hasPermission(tenant, PERMISSIONS.PROCUREMENT_REQUESTS_APPROVE);
   const [requests, items] = await Promise.all([listRequests(tenant.organizationId), listItems(tenant.organizationId)]);
@@ -88,7 +89,7 @@ export default async function ProcurementRequestsPage({
                 <TableCell className="font-mono text-xs">{request.requestNumber}</TableCell>
                 <TableCell className="font-medium">{request.lines.length > 1 ? `${request.lines.length} requested items` : request.description}</TableCell>
                 <TableCell className="text-muted-foreground">{request.lines.reduce((sum, line) => sum + line.quantity, 0)}</TableCell>
-                <TableCell className="text-muted-foreground">{request.lines.some((line) => line.estimatedCost) ? formatMoney(request.lines.reduce((sum, line) => sum + Number(line.estimatedCost ?? 0), 0), tenant.organization.currency) : "-"}</TableCell>
+                <TableCell className="text-muted-foreground">{request.lines.some((line) => line.estimatedCost) ? money(request.lines.reduce((sum, line) => sum + Number(line.estimatedCost ?? 0), 0), tenant.organization.currency) : "-"}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[request.status]}>{request.status}</Badge>
                 </TableCell>

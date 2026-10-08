@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listMedicines } from "@/modules/pharmacy/service";
 import { addMedicine } from "../actions";
 import { PharmacyStatusBanner } from "../status-banner";
@@ -31,6 +31,7 @@ export default async function Page({
 }) {
   const { saved, error } = await searchParams;
   const t = await requireModuleAccess("pharmacy");
+  const money = createOrganizationFormatter(t.organization).money;
   const items = await listMedicines(t.organizationId);
   const can = hasPermission(t, PERMISSIONS.PHARMACY_MEDICINES_MANAGE);
   const currency = t.organization.currency;
@@ -126,7 +127,7 @@ export default async function Page({
                   <div className="text-xs text-muted-foreground">{[i.genericName, i.strength, i.dosageForm].filter(Boolean).join(" · ")}</div>
                 </TableCell>
                 <TableCell><Badge variant={i.medicineClass === "CONTROLLED" ? "destructive" : "outline"}>{i.medicineClass.replaceAll("_", " ")}</Badge></TableCell>
-                <TableCell>{formatMoney(i.sellingPrice, currency)}</TableCell>
+                <TableCell>{money(i.sellingPrice, currency)}</TableCell>
                 <TableCell>{i.batches.filter((b) => b.status === "AVAILABLE" && b.expiryDate > new Date()).reduce((s, b) => s + b.quantity, 0)} {i.unit}</TableCell>
               </TableRow>
             ))}

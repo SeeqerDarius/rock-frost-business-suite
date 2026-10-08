@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { getTrialBalance } from "@/modules/accounting/service";
 import { ReportDownloadLinks } from "@/components/reports/report-download-links";
 
@@ -20,7 +20,7 @@ export default async function AccountingTrialBalancePage() {
   }
 
   const currency = tenant.organization.currency ?? "GHS";
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
   const report = await getTrialBalance(tenant.organizationId);
   const isBalanced = Math.abs(report.totalDebit - report.totalCredit) < 0.01;
 

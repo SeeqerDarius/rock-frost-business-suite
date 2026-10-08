@@ -98,20 +98,23 @@ export function TrendChart({
   data,
   series,
   currency,
+  locale,
   valueFormat = "money",
   target,
 }: {
   data: Record<string, string | number>[];
   series: { key: string; label: string }[];
   currency?: string | null;
+  /** The organization's number locale (organizationNumberLocale). */
+  locale?: string | null;
   valueFormat?: "money" | "count" | "percentage";
   target?: { amount: number; label: string; actualKey: string };
 }) {
   const [style, setStyle] = useTrendChartStyle();
   const hasData = data.length > 0 && data.some((row) => series.some((s) => row[s.key] !== undefined && row[s.key] !== null && Number.isFinite(Number(row[s.key]))));
   if (!hasData) return <NoData label="No activity yet for this period." />;
-  const formatValue = (value: number) => valueFormat === "money" ? formatMoney(value, currency) : valueFormat === "percentage" ? `${value}%` : new Intl.NumberFormat("en-US").format(value);
-  const compactMoney = (value: number) => `${currency ?? "GHS"} ${Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
+  const formatValue = (value: number) => valueFormat === "money" ? formatMoney(value, currency, locale) : valueFormat === "percentage" ? `${value}%` : new Intl.NumberFormat(locale ?? "en-US").format(value);
+  const compactMoney = (value: number) => `${currency ?? "GHS"} ${Intl.NumberFormat(locale ?? "en", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
   const latest = data[data.length - 1];
   const actual = target && latest ? Number(latest[target.actualKey] ?? 0) : 0;
   const remaining = target ? Math.max(target.amount - actual, 0) : 0;
@@ -146,12 +149,15 @@ export function PeriodicTrendChart({
   data,
   series,
   currency,
+  locale,
   valueFormat = "money",
   defaultPeriod = "months",
 }: {
   data: Record<TrendGranularity, Record<string, string | number>[]>;
   series: { key: string; label: string }[];
   currency?: string | null;
+  /** The organization's number locale (organizationNumberLocale). */
+  locale?: string | null;
   valueFormat?: "money" | "count" | "percentage";
   defaultPeriod?: TrendGranularity;
 }) {
@@ -177,7 +183,7 @@ export function PeriodicTrendChart({
           ))}
         </div>
       </div>
-      <TrendChart data={data[period]} series={series} currency={currency} valueFormat={valueFormat} />
+      <TrendChart data={data[period]} series={series} currency={currency} locale={locale} valueFormat={valueFormat} />
     </div>
   );
 }
@@ -185,18 +191,21 @@ export function PeriodicTrendChart({
 export function BreakdownDonutChart({
   data,
   currency,
+  locale,
   className,
   valueFormat = "money",
 }: {
   data: { label: string; value: number }[];
   currency?: string | null;
+  /** The organization's number locale (organizationNumberLocale). */
+  locale?: string | null;
   className?: string;
   /** "count" renders the tooltip as a plain number (e.g. vehicles by status) instead of running it through formatMoney. */
   valueFormat?: "money" | "count";
 }) {
   const total = data.reduce((sum, d) => sum + d.value, 0);
   if (total <= 0) return <NoData label="No data available yet." />;
-  const formatValue = (value: number) => (valueFormat === "count" ? new Intl.NumberFormat("en-US").format(value) : formatMoney(value, currency));
+  const formatValue = (value: number) => (valueFormat === "count" ? new Intl.NumberFormat(locale ?? "en-US").format(value) : formatMoney(value, currency, locale));
 
   return (
     <div className={cn("flex flex-col items-center gap-4 sm:flex-row", className)}>
@@ -237,11 +246,11 @@ const GAUGE_TONE_COLORS: Record<GaugeTone, string> = {
   neutral: "var(--muted-foreground)",
 };
 
-function formatGaugeBound(value: number, unit: GaugeUnit, currency?: string | null) {
+function formatGaugeBound(value: number, unit: GaugeUnit, currency?: string | null, locale?: string | null) {
   if (unit === "percent") return `${value.toFixed(0)}%`;
   if (unit === "ratio") return `${value.toFixed(1)}x`;
   if (unit === "days") return `${value.toFixed(0)}d`;
-  return formatMoney(value, currency);
+  return formatMoney(value, currency, locale);
 }
 
 /**
@@ -256,6 +265,7 @@ export function GaugeChart({
   max,
   unit,
   currency,
+  locale,
   tone,
   label,
   formula,
@@ -267,6 +277,8 @@ export function GaugeChart({
   max: number;
   unit: GaugeUnit;
   currency?: string | null;
+  /** The organization's number locale (organizationNumberLocale). */
+  locale?: string | null;
   tone: GaugeTone;
   label: string;
   formula: string;
@@ -286,8 +298,8 @@ export function GaugeChart({
           </RadialBarChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-x-3 bottom-0 flex items-end justify-between text-[10px] text-muted-foreground">
-          <span>{formatGaugeBound(min, unit, currency)}</span>
-          <span>{formatGaugeBound(max, unit, currency)}</span>
+          <span>{formatGaugeBound(min, unit, currency, locale)}</span>
+          <span>{formatGaugeBound(max, unit, currency, locale)}</span>
         </div>
         <div className="pointer-events-none absolute inset-x-0 top-1/2 text-center text-lg font-semibold tabular-nums" style={{ color }}>
           {displayValue}
@@ -305,15 +317,18 @@ export function ComposedTrendChart({
   bars,
   line,
   currency,
+  locale,
 }: {
   data: Record<string, string | number>[];
   bars: { key: string; label: string }[];
   line: { key: string; label: string };
   currency?: string | null;
+  /** The organization's number locale (organizationNumberLocale). */
+  locale?: string | null;
 }) {
   const hasData = data.length > 0 && data.some((row) => [...bars.map((b) => b.key), line.key].some((key) => row[key] !== undefined && row[key] !== null && Number.isFinite(Number(row[key]))));
   if (!hasData) return <NoData label="No activity yet for this period." />;
-  const compactMoney = (value: number) => `${currency ?? "GHS"} ${Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
+  const compactMoney = (value: number) => `${currency ?? "GHS"} ${Intl.NumberFormat(locale ?? "en", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
 
   return (
     <div className="space-y-3">
@@ -322,7 +337,7 @@ export function ComposedTrendChart({
           <ComposedChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
             <XAxis dataKey="label" interval="preserveStartEnd" minTickGap={24} tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
             <YAxis width={72} tickFormatter={compactMoney} tickLine={false} axisLine={false} fontSize={11} stroke="var(--muted-foreground)" />
-            <Tooltip labelFormatter={(label) => `Period: ${label}`} contentStyle={tooltipStyle} formatter={((value: number, name: string) => [formatMoney(value, currency), name]) as (...args: unknown[]) => [string, string]} />
+            <Tooltip labelFormatter={(label) => `Period: ${label}`} contentStyle={tooltipStyle} formatter={((value: number, name: string) => [formatMoney(value, currency, locale), name]) as (...args: unknown[]) => [string, string]} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             {bars.map((bar, i) => <Bar key={bar.key} dataKey={bar.key} name={bar.label} fill={CHART_COLORS[i % CHART_COLORS.length]} radius={[4, 4, 0, 0]} isAnimationActive={false} />)}
             <Line type="monotone" dataKey={line.key} name={line.label} stroke={CHART_COLORS[bars.length % CHART_COLORS.length]} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} isAnimationActive={false} />
@@ -332,7 +347,7 @@ export function ComposedTrendChart({
       <ChartDataTable
         caption={`Trend data: ${[...bars.map((b) => b.label), line.label].join(", ")}`}
         columns={[...bars.map((b) => b.label), line.label]}
-        rows={data.map((row) => ({ label: String(row.label), values: [...bars.map((b) => formatMoney(Number(row[b.key]), currency)), formatMoney(Number(row[line.key]), currency)] }))}
+        rows={data.map((row) => ({ label: String(row.label), values: [...bars.map((b) => formatMoney(Number(row[b.key]), currency, locale)), formatMoney(Number(row[line.key]), currency, locale)] }))}
       />
     </div>
   );
@@ -344,12 +359,15 @@ export function PeriodicComposedTrendChart({
   bars,
   line,
   currency,
+  locale,
   defaultPeriod = "months",
 }: {
   data: Record<TrendGranularity, Record<string, string | number>[]>;
   bars: { key: string; label: string }[];
   line: { key: string; label: string };
   currency?: string | null;
+  /** The organization's number locale (organizationNumberLocale). */
+  locale?: string | null;
   defaultPeriod?: TrendGranularity;
 }) {
   const [period, setPeriod] = useState<TrendGranularity>(defaultPeriod);
@@ -374,7 +392,7 @@ export function PeriodicComposedTrendChart({
           ))}
         </div>
       </div>
-      <ComposedTrendChart data={data[period]} bars={bars} line={line} currency={currency} />
+      <ComposedTrendChart data={data[period]} bars={bars} line={line} currency={currency} locale={locale} />
     </div>
   );
 }

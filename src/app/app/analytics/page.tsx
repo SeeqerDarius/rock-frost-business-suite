@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { IconBadge } from "@/components/ui/icon-badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { getAnalyticsOverview } from "@/modules/analytics/service";
 
 interface ModuleSnapshot {
@@ -32,7 +32,7 @@ export default async function AnalyticsOverviewPage() {
   }
 
   const summary = await getAnalyticsOverview(tenant.organizationId, tenant.enabledModuleKeys);
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
 
   const attentionCandidates: (AttentionQueueItem | null)[] = [
     summary.financial.accounting?.overdueInvoiceCount ? { id: "overdue-invoices", title: "Overdue invoices", value: summary.financial.accounting.overdueInvoiceCount, description: `${money(summary.financial.accounting.outstandingInvoiceTotal)} remains outstanding across sent and overdue invoices.`, href: "/app/accounting/invoices", severity: "urgent" } : null,

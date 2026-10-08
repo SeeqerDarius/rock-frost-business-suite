@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { getInstallmentSummary, getStaffPerformanceReport } from "@/modules/installment/service";
 import { ReportExportLinks } from "@/components/reports/report-export-links";
 
@@ -27,7 +27,7 @@ export default async function InstallmentReportsPage() {
   const summary = await getInstallmentSummary(tenant.organizationId);
   const staffPerformance = await getStaffPerformanceReport(tenant.organizationId);
   const currency = tenant.organization.currency;
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
 
   const stats = [
     { label: "Expected receivables", value: money(summary.expectedReceivables) },

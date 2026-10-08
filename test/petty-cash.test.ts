@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockDb = {
   accountingAccount: { findMany: vi.fn(), createMany: vi.fn(), count: vi.fn() },
+  organization: { findUnique: vi.fn(async () => ({ currency: "GHS" })) },
   accountingPettyCashFund: { findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn(), count: vi.fn() },
   accountingPettyCashTransaction: { create: vi.fn() },
   accountingJournalEntry: { create: vi.fn(), count: vi.fn(), findFirst: vi.fn() },

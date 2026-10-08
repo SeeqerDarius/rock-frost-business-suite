@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listPayments } from "@/modules/pos/service";
 
 const METHOD_LABEL: Record<string, string> = {
@@ -31,7 +31,7 @@ export default async function PosPaymentsPage() {
     totals[payment.method] = (totals[payment.method] ?? 0) + Number(payment.amount);
     return totals;
   }, {});
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
 
   return (
     <div className="space-y-6">

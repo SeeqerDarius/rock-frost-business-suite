@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listJournalEntries, listAccounts, listRecurringTemplates } from "@/modules/accounting/service";
 import {
   createJournalEntry,
@@ -44,6 +44,7 @@ export default async function AccountingJournalPage({
 }) {
   const { saved, submitted, error } = await searchParams;
   const tenant = await requireModuleAccess("accounting");
+  const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_ACCOUNTS_MANAGE);
   const canReverse = hasPermission(tenant, PERMISSIONS.ACCOUNTING_JOURNALS_REVERSE);
   const canApprove = hasPermission(tenant, PERMISSIONS.ACCOUNTING_JOURNAL_APPROVE);
@@ -241,7 +242,7 @@ export default async function AccountingJournalPage({
                   <div key={line.id} className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>{line.account.code} - {line.account.name}</span>
                     <span>
-                      {Number(line.debit) > 0 ? `Dr ${formatMoney(line.debit, tenant.organization.currency)}` : `Cr ${formatMoney(line.credit, tenant.organization.currency)}`}
+                      {Number(line.debit) > 0 ? `Dr ${money(line.debit, tenant.organization.currency)}` : `Cr ${money(line.credit, tenant.organization.currency)}`}
                     </span>
                   </div>
                 ))}

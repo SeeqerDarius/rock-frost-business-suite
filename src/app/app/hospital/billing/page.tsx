@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { requireModuleAccess } from "@/lib/auth/module-access";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listHospitalInvoices, listHospitalFacilities, listHospitalPatients } from "@/modules/hospital/service";
 import { createInvoiceAction, recordPaymentAction, voidInvoiceAction, createInsuranceClaimAction } from "../actions";
 
 export default async function HospitalBillingPage() {
   const tenant = await requireModuleAccess("hospital");
+  const orgMoney = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.HOSPITAL_BILLING_MANAGE);
   const [invoices, facilities, patients] = await Promise.all([
     listHospitalInvoices(tenant.organizationId),
@@ -56,7 +57,7 @@ export default async function HospitalBillingPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="font-medium">{invoice.invoiceNumber} · {invoice.patient.firstName} {invoice.patient.lastName}</p>
-                    <p className="text-sm text-muted-foreground">Total {formatMoney(invoice.total, tenant.organization.currency)} · Paid {formatMoney(paid, tenant.organization.currency)} · Balance {formatMoney(balance, tenant.organization.currency)} · issued {invoice.issuedAt.toLocaleDateString()}</p>
+                    <p className="text-sm text-muted-foreground">Total {orgMoney(invoice.total, tenant.organization.currency)} · Paid {orgMoney(paid, tenant.organization.currency)} · Balance {orgMoney(balance, tenant.organization.currency)} · issued {invoice.issuedAt.toLocaleDateString()}</p>
                   </div>
                   <Badge variant="outline">{invoice.status.replaceAll("_", " ")}</Badge>
                 </div>

@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listCompensation, listEmployeesWithoutCompensation } from "@/modules/payroll/service";
 import { createPayrollEmployee, saveCompensation } from "./actions";
 
@@ -31,6 +31,7 @@ export default async function PayrollCompensationPage({
 }) {
   const { saved, employeeCreated, error } = await searchParams;
   const tenant = await requireModuleAccess("payroll");
+  const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.PAYROLL_COMPENSATION_MANAGE);
   const [compensations, uncoveredEmployees] = await Promise.all([
     listCompensation(tenant.organizationId),
@@ -142,7 +143,7 @@ export default async function PayrollCompensationPage({
             {compensations.map((comp) => (
               <TableRow key={comp.id}>
                 <TableCell className="font-medium">{comp.employee.fullName}</TableCell>
-                <TableCell className="text-muted-foreground">{formatMoney(comp.baseSalary, tenant.organization.currency)}</TableCell>
+                <TableCell className="text-muted-foreground">{money(comp.baseSalary, tenant.organization.currency)}</TableCell>
                 <TableCell>
                   <Badge variant="outline">{FREQUENCY_ITEMS[comp.payFrequency] ?? comp.payFrequency}</Badge>
                 </TableCell>

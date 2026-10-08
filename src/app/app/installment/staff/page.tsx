@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import {
   listAssignableStaffUsers,
   listStaff,
@@ -119,6 +119,7 @@ export default async function InstallmentStaffPage({
 }) {
   const { saved, deleted, error } = await searchParams;
   const tenant = await requireModuleAccess("installment");
+  const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_STAFF_MANAGE);
 
   if (!canManage) {
@@ -216,7 +217,7 @@ export default async function InstallmentStaffPage({
                 <TableCell className="font-medium">{staff.code}</TableCell>
                 <TableCell>{staff.fullName}</TableCell>
                 <TableCell className="text-muted-foreground">{staff.phone ?? "-"}</TableCell>
-                <TableCell className="text-muted-foreground">{formatMoney(effectiveSalaries[index], currency)}</TableCell>
+                <TableCell className="text-muted-foreground">{money(effectiveSalaries[index], currency)}</TableCell>
                 <TableCell className="text-muted-foreground">
                   {staff.userId ? loginLabels.get(staff.userId) ?? "Inactive or unavailable login" : "Not linked"}
                 </TableCell>
@@ -318,7 +319,7 @@ export default async function InstallmentStaffPage({
                   <TableCell>{staffList.find((staff) => staff.id === payment.staffId)?.fullName ?? "Former staff"}</TableCell>
                   <TableCell>{payment.salaryMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</TableCell>
                   <TableCell>{payment.paymentDate.toLocaleDateString()}</TableCell>
-                  <TableCell>{formatMoney(payment.amount, currency)}</TableCell>
+                  <TableCell>{money(payment.amount, currency)}</TableCell>
                   <TableCell className="text-right">
                     <form action={removeSalaryPayment}>
                       <input type="hidden" name="id" value={payment.id} />
