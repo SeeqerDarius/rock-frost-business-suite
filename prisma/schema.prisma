@@ -3364,6 +3364,11 @@ model AccountingCreditNote {
   nhilAmount         Decimal                    @default(0) @db.Decimal(12, 2)
   getfundAmount      Decimal                    @default(0) @db.Decimal(12, 2)
   taxCodeId          String?
+  /// Set when the credit note's tax comes from the tax engine (a TaxRule);
+  /// components are in DocumentTaxLine and the total in taxAmount.
+  taxRuleId          String?
+  taxTreatment       TaxTreatment?
+  taxAmount          Decimal                    @default(0) @db.Decimal(14, 2)
   invoiceId          String?
   /// Multi-currency snapshot (2026-10-06). Document amounts are in
   /// `currency` (null = the organization's base currency for legacy rows).
@@ -4520,6 +4525,10 @@ model ProcurementSupplierInvoice {
   nhilAmount     Decimal                          @default(0) @db.Decimal(12, 2)
   getfundAmount  Decimal                          @default(0) @db.Decimal(12, 2)
   taxCodeId      String?
+  /// Set when tax comes from the tax engine (a TaxRule); components are in DocumentTaxLine.
+  taxRuleId      String?
+  taxTreatment   TaxTreatment?
+  taxAmount      Decimal                          @default(0) @db.Decimal(14, 2)
   amountPaid     Decimal                          @default(0) @db.Decimal(12, 2)
   exceptionNote  String?                          @db.Text
   createdById    String?
@@ -7920,6 +7929,7 @@ enum TaxDocumentType {
   INVOICE
   BILL
   CREDIT_NOTE
+  SUPPLIER_INVOICE
 }
 
 model TaxJurisdiction {

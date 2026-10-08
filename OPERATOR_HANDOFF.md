@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-10: Tax follow-ups, part 1 (credit notes and supplier invoices on the tax engine)
+
+- **Scope**: credit notes and Procurement supplier invoices can be taxed by a tax rule (snapshot, per-component posting, tax ledger rows). Fixes two reporting gaps: settled credit notes (legacy and engine) now reduce output tax in the working VAT return and tax ledger (previously journal only, so returns overstated output tax), and approved legacy supplier invoices now write tax ledger rows (previously missing from jurisdiction reports). Details: `docs/GLOBAL_EXPANSION_ARCHITECTURE.md`, "Tax follow-ups, part 1".
+- **Important files**: `prisma/schema.prisma`, `src/modules/accounting/service.ts` (`createEngineDocument` for credit notes, `settleEngineCreditNote`, `recordLegacyCreditNoteTax`, `documentTaxLineRows`, `postEngineProcurementAccrual`), `src/modules/procurement/service.ts`, `src/lib/accounting-integration.ts`, `src/app/app/accounting/credit-notes/{page,actions}.tsx`, `src/app/app/procurement/invoices/{page,actions}.tsx`; tests `test/integration/tenant-isolation/tax-engine-coverage.test.ts` and `test/accounting-contacts-bills-credit-notes.test.ts`.
+- **Migration**: `20261010090000_tax_engine_coverage` (nullable or defaulted columns on two tables and one enum value; no data changed). Historical credit notes and supplier invoices are not back-filled into the tax records; the fix applies to settlements and approvals from this release.
+- **Validation (local)**: `npx tsc --noEmit` passed; `npm run lint` 0 errors (2 pre-existing warnings); `npm run test` 191 files / 1,487 tests passed; `npm run build` passed; `git diff --check` clean; no em dashes added. The real-Postgres suite `tax-engine-coverage.test.ts` runs in CI against the disposable database.
+- **Remaining risks**: credit notes settled before this release remain absent from the working return and tax ledger (an accountant may need a manual adjustment for open periods); per-line tax categories, EU reduced rates, VIES, OSS export, and payroll statutory deductions are later parts.
+
 ## 2026-10-08: Formatting sweep production verification
 
 - PR [#67](https://github.com/SeeqerDarius/rock-frost-business-suite/pull/67) merged as `e34bcbc9cd2be14b385211b87b3a0a9e18ee80e1` after validate, integration, and security passed (GitHub's Vercel status stayed pending while Vercel reported the preview READY, as on earlier PRs).

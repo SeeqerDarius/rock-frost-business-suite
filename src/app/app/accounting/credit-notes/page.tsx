@@ -15,10 +15,13 @@ import { createOrganizationFormatter } from "@/lib/org-format";
 import { ContactSelect } from "@/components/forms/contact-select";
 import { CurrencyFields } from "@/components/forms/currency-fields";
 import { listAccounts, listCreditNotes, listInvoices, listContacts } from "@/modules/accounting/service";
+import { db } from "@/lib/db";
+import { listApplicableRules } from "@/modules/tax/service";
 import { listTaxCodes } from "@/modules/accounting/tax-service";
 import { createNewCreditNote, applyCreditNote, refundExistingCreditNote, voidExistingCreditNote } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
+  "tax-rule": "That tax rule could not be applied on the document date. Check its rates and effective dates in Tax and Compliance.",
   forbidden: "You don't have permission to manage credit notes.",
   "missing-fields": "All required fields must be filled in.",
   "invalid-lines": "Every line needs a description, a quantity greater than zero, and a non-negative unit price.",
@@ -54,6 +57,8 @@ export default async function AccountingCreditNotesPage({
     listTaxCodes(tenant.organizationId),
     listContacts(tenant.organizationId),
   ]);
+  const [taxRules, pricing] = await Promise.all([listApplicableRules(tenant.organizationId), db.organization.findUnique({ where: { id: tenant.organizationId }, select: { pricesIncludeTax: true } })]);
+  const pricesIncludeTax = pricing?.pricesIncludeTax ?? false;
   const openInvoices = invoices.filter((invoice) => invoice.status === "SENT" || invoice.status === "OVERDUE");
   const refundAccounts = accounts.filter((account) => account.active && account.liquidityType !== "NONE");
   const customerContacts = contacts.filter((contact) => contact.type === "CUSTOMER" || contact.type === "BOTH");
@@ -89,8 +94,16 @@ export default async function AccountingCreditNotesPage({
               <Label htmlFor="taxCodeId">Tax treatment</Label>
               <select id="taxCodeId" name="taxCodeId" className="h-10 w-full rounded-md border bg-background px-3">
                 <option value="">No tax</option>
-                {taxCodes.filter((taxCode) => taxCode.active).map((taxCode) => <option key={taxCode.id} value={taxCode.id}>{taxCode.code}: {taxCode.name} ({Number(taxCode.vatRate) + Number(taxCode.nhilRate) + Number(taxCode.getfundRate)}%)</option>)}
+                {taxRules.length ? (
+                  <optgroup label="Tax rules">
+                    {taxRules.map((rule) => <option key={rule.id} value={`rule:${rule.id}`}>{rule.code}: {rule.name}</option>)}
+                  </optgroup>
+                ) : null}
+                <optgroup label="Tax codes">
+                  {taxCodes.filter((taxCode) => taxCode.active).map((taxCode) => <option key={taxCode.id} value={taxCode.id}>{taxCode.code}: {taxCode.name} ({Number(taxCode.vatRate) + Number(taxCode.nhilRate) + Number(taxCode.getfundRate)}%)</option>)}
+                </optgroup>
               </select>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="pricesIncludeTax" defaultChecked={pricesIncludeTax} className="size-4" />Line prices include tax (applies to tax rules)</label>
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>

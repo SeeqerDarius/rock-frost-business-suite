@@ -1087,7 +1087,8 @@ export async function recordInvoicePayment(organizationId: string, id: string, i
   }, { timeout: 20_000 });
 }
 
-export async function postProcurementTaxAccrual(organizationId: string, input: { invoiceId: string; invoiceNumber: string; vendorName: string; invoiceDate: Date; taxCodeId?: string | null; taxableAmount: Prisma.Decimal.Value; vatAmount: Prisma.Decimal.Value; nhilAmount: Prisma.Decimal.Value; getfundAmount: Prisma.Decimal.Value; totalAmount: Prisma.Decimal.Value; actorId?: string | null; branchId?: string | null }) {
+export async function postProcurementTaxAccrual(organizationId: string, input: { invoiceId: string; invoiceNumber: string; vendorName: string; invoiceDate: Date; taxCodeId?: string | null; taxRuleId?: string | null; taxableAmount: Prisma.Decimal.Value; vatAmount: Prisma.Decimal.Value; nhilAmount: Prisma.Decimal.Value; getfundAmount: Prisma.Decimal.Value; totalAmount: Prisma.Decimal.Value; actorId?: string | null; branchId?: string | null }) {
+  if (input.taxRuleId) return postEngineProcurementAccrual(organizationId, input);
   const accounts = await ensureDefaultAccounts(organizationId);
   const findAccount = (code: string) => { const account = accounts.find((candidate) => candidate.code === code); if (!account) throw new Error(`Default account ${code} missing.`); return account; };
   const [inventory, inputVat, inputNhil, inputGetfund, payable] = [findAccount("1200"), findAccount("1300"), findAccount("1310"), findAccount("1320"), findAccount("2000")];
@@ -1097,6 +1098,29 @@ export async function postProcurementTaxAccrual(organizationId: string, input: {
   return db.$transaction(async (tx) => {
     const entry = await postJournalEntry(tx, organizationId, { sourceModule: "procurement", sourceType: "PROCUREMENT_SUPPLIER_INVOICE", sourceId: input.invoiceId, postingPurpose: "APPROVED", branchId: input.branchId, entryDate: input.invoiceDate, description: `Supplier invoice ${input.invoiceNumber}`, createdById: input.actorId, lines: [{ accountId: inventory.id, debit: new Prisma.Decimal(input.taxableAmount).toString() }, ...(vatAmount.isPositive() ? [{ accountId: inputVat.id, debit: vatAmount.toString() }] : []), ...(nhilAmount.isPositive() ? [{ accountId: inputNhil.id, debit: nhilAmount.toString() }] : []), ...(getfundAmount.isPositive() ? [{ accountId: inputGetfund.id, debit: getfundAmount.toString() }] : []), { accountId: payable.id, credit: new Prisma.Decimal(input.totalAmount).toString() }] });
     await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: input.taxCodeId, direction: "INPUT", transactionDate: input.invoiceDate, sourceType: "PROCUREMENT_SUPPLIER_INVOICE", sourceId: input.invoiceId, documentNumber: input.invoiceNumber, counterparty: input.vendorName, taxableAmount: input.taxableAmount, vatAmount: input.vatAmount, nhilAmount: input.nhilAmount, getfundAmount: input.getfundAmount } });
+    // Supplier invoices feed the jurisdiction tax reports like Accounting bills do.
+    await writeLegacyTaxLedger(tx, organizationId, { direction: "INPUT", sourceType: "PROCUREMENT_SUPPLIER_INVOICE", sourceId: input.invoiceId, documentNumber: input.invoiceNumber, counterparty: input.vendorName, contactId: null, transactionDate: input.invoiceDate, taxCodeId: input.taxCodeId ?? null, taxable: new Prisma.Decimal(input.taxableAmount), vat: vatAmount, nhil: nhilAmount, getfund: getfundAmount, fx: { currency: await getBaseCurrency(organizationId), isForeign: false }, exchangeRate: 1 });
+    return entry;
+  });
+}
+
+/**
+ * Accrues an approved supplier invoice taxed by the tax engine: debit
+ * inventory and each recoverable input tax component (non-recoverable tax is
+ * added to inventory cost), credit accounts payable. Self-assessed components
+ * credit their output account. Reads the stored DocumentTaxLine snapshot.
+ */
+async function postEngineProcurementAccrual(organizationId: string, input: { invoiceId: string; invoiceNumber: string; vendorName: string; invoiceDate: Date; taxableAmount: Prisma.Decimal.Value; totalAmount: Prisma.Decimal.Value; actorId?: string | null; branchId?: string | null }) {
+  const taxLines = await db.documentTaxLine.findMany({ where: { organizationId, documentType: "SUPPLIER_INVOICE", documentId: input.invoiceId }, orderBy: { sortOrder: "asc" } });
+  const accounts = await ensureDefaultAccounts(organizationId);
+  const account = (code: string) => { const found = accounts.find((candidate) => candidate.code === code); if (!found) throw new Error(`Default account ${code} missing.`); return found; };
+  const taxAccountIds = await ensureTaxAccounts(organizationId, requiredTaxAccountCodes(taxLines, "PURCHASE"));
+  const fx = { currency: await getBaseCurrency(organizationId), isForeign: false, rate: 1 };
+  const posting = buildPurchasePosting({ taxableAmount: new Prisma.Decimal(input.taxableAmount), amount: new Prisma.Decimal(input.totalAmount), lines: taxLines, fx, expenseAccountId: account("1200").id, payableAccountId: account("2000").id, accountIds: taxAccountIds });
+  return db.$transaction(async (tx) => {
+    const entry = await postJournalEntry(tx, organizationId, { sourceModule: "procurement", sourceType: "PROCUREMENT_SUPPLIER_INVOICE", sourceId: input.invoiceId, postingPurpose: "APPROVED", branchId: input.branchId, entryDate: input.invoiceDate, description: `Supplier invoice ${input.invoiceNumber}`, createdById: input.actorId, lines: posting.journal });
+    await tx.accountingTaxTransaction.create({ data: { organizationId, direction: "INPUT", transactionDate: input.invoiceDate, sourceType: "PROCUREMENT_SUPPLIER_INVOICE", sourceId: input.invoiceId, documentNumber: input.invoiceNumber, counterparty: input.vendorName, taxableAmount: posting.taxableBase, vatAmount: posting.legacy.vat, nhilAmount: posting.legacy.nhil, getfundAmount: posting.legacy.getfund } });
+    if (posting.ledger.length) await tx.taxLedgerEntry.createMany({ data: ledgerData(organizationId, posting.ledger, { direction: "INPUT", sourceType: "PROCUREMENT_SUPPLIER_INVOICE", sourceId: input.invoiceId, documentNumber: input.invoiceNumber, counterparty: input.vendorName, contactId: null, transactionDate: input.invoiceDate, customerExempt: false, fx, exchangeRate: 1 }) });
     return entry;
   });
 }
@@ -1156,7 +1180,7 @@ export async function voidInvoice(organizationId: string, id: string) {
 
 // --- Tax engine documents ---
 
-type EngineDocumentInput = (InvoiceInput & { customerName: string }) | (BillInput & { supplierName: string });
+type EngineDocumentInput = (InvoiceInput & { customerName: string }) | (BillInput & { supplierName: string }) | CreditNoteInput;
 
 /**
  * Creates an invoice or bill whose tax comes from a TaxRule. Tax is computed
@@ -1166,14 +1190,16 @@ type EngineDocumentInput = (InvoiceInput & { customerName: string }) | (BillInpu
  */
 type InvoiceWithLines = Prisma.AccountingInvoiceGetPayload<{ include: { lines: true } }>;
 type BillWithLines = Prisma.AccountingBillGetPayload<{ include: { lines: true } }>;
+type CreditNoteWithLines = Prisma.AccountingCreditNoteGetPayload<{ include: { lines: true } }>;
 function createEngineDocument(organizationId: string, documentType: "INVOICE", data: InvoiceInput, createdById?: string | null): Promise<InvoiceWithLines>;
 function createEngineDocument(organizationId: string, documentType: "BILL", data: BillInput, createdById?: string | null): Promise<BillWithLines>;
-async function createEngineDocument(organizationId: string, documentType: "INVOICE" | "BILL", data: EngineDocumentInput, createdById?: string | null): Promise<InvoiceWithLines | BillWithLines> {
+function createEngineDocument(organizationId: string, documentType: "CREDIT_NOTE", data: CreditNoteInput, createdById?: string | null): Promise<CreditNoteWithLines>;
+async function createEngineDocument(organizationId: string, documentType: "INVOICE" | "BILL" | "CREDIT_NOTE", data: EngineDocumentInput, createdById?: string | null): Promise<InvoiceWithLines | BillWithLines | CreditNoteWithLines> {
   if (data.taxCodeId) throw new TaxEngineError("Choose either a legacy tax code or a tax rule, not both.");
   const { lines, taxableAmount } = computeLineItems(data.lines);
   const organization = await db.organization.findUnique({ where: { id: organizationId }, select: { pricesIncludeTax: true } });
   if (!organization) throw new NotFoundError("Organization not found.");
-  const date = documentType === "INVOICE" ? (data as InvoiceInput).issueDate : (data as BillInput).billDate;
+  const date = documentType === "BILL" ? (data as BillInput).billDate : (data as InvoiceInput | CreditNoteInput).issueDate;
   if (data.contactId) {
     const contact = await db.accountingContact.findFirst({ where: { id: data.contactId, organizationId }, select: { id: true } });
     if (!contact) throw new NotFoundError("Contact not found.");
@@ -1195,6 +1221,10 @@ async function createEngineDocument(organizationId: string, documentType: "INVOI
       const input = data as InvoiceInput;
       created = await tx.accountingInvoice.create({ data: { ...common, invoiceNumber: await generateInvoiceNumber(organizationId), customerName: input.customerName, customerEmail: input.customerEmail, issueDate: input.issueDate, dueDate: input.dueDate }, include: { lines: true } });
       documentId = created.id;
+    } else if (documentType === "CREDIT_NOTE") {
+      const input = data as CreditNoteInput;
+      created = await tx.accountingCreditNote.create({ data: { ...common, creditNoteNumber: await generateCreditNoteNumber(organizationId), branchId: input.branchId, customerName: input.customerName, customerEmail: input.customerEmail, issueDate: input.issueDate }, include: { lines: true } });
+      documentId = created.id;
     } else {
       const input = data as BillInput;
       const expenseAccount = await tx.accountingAccount.findFirst({ where: { id: input.expenseAccountId, organizationId, type: "EXPENSE" } });
@@ -1202,21 +1232,22 @@ async function createEngineDocument(organizationId: string, documentType: "INVOI
       created = await tx.accountingBill.create({ data: { ...common, billNumber: await generateBillNumber(organizationId), branchId: input.branchId, supplierName: input.supplierName, supplierEmail: input.supplierEmail, expenseAccountId: expenseAccount.id, billDate: input.billDate, dueDate: input.dueDate }, include: { lines: true } });
       documentId = created.id;
     }
-    if (calc.lines.length) {
-      await tx.documentTaxLine.createMany({
-        data: calc.lines.map((line, index) => {
-          const accounts = resolved.accounts.get(line.code);
-          return {
-            organizationId, documentType, documentId, taxRateId: line.rateId, code: line.code, name: line.name, taxKind: accounts?.taxKind ?? "OTHER",
-            jurisdictionCode: line.jurisdictionCode, jurisdictionLevel: line.jurisdictionLevel, authorityName: line.authorityName, rate: line.rate, compound: line.compound, recoverable: line.recoverable,
-            treatment: resolved.treatment, taxableAmount: line.taxableAmount, taxAmount: line.taxAmount, selfAssessedAmount: line.selfAssessedAmount,
-            outputAccountCode: accounts?.outputAccountCode ?? null, inputAccountCode: accounts?.inputAccountCode ?? null, sortOrder: index,
-          };
-        }),
-      });
-    }
+    if (calc.lines.length) await tx.documentTaxLine.createMany({ data: documentTaxLineRows(organizationId, documentType, documentId, resolved) });
     return created;
   }));
+}
+
+/** The immutable per-component tax snapshot stored with an engine-taxed document. */
+export function documentTaxLineRows(organizationId: string, documentType: "INVOICE" | "BILL" | "CREDIT_NOTE" | "SUPPLIER_INVOICE", documentId: string, resolved: Awaited<ReturnType<typeof resolveDocumentTax>>) {
+  return resolved.calculation.lines.map((line, index) => {
+    const accounts = resolved.accounts.get(line.code);
+    return {
+      organizationId, documentType, documentId, taxRateId: line.rateId, code: line.code, name: line.name, taxKind: accounts?.taxKind ?? "OTHER",
+      jurisdictionCode: line.jurisdictionCode, jurisdictionLevel: line.jurisdictionLevel, authorityName: line.authorityName, rate: line.rate, compound: line.compound, recoverable: line.recoverable,
+      treatment: resolved.treatment, taxableAmount: line.taxableAmount, taxAmount: line.taxAmount, selfAssessedAmount: line.selfAssessedAmount,
+      outputAccountCode: accounts?.outputAccountCode ?? null, inputAccountCode: accounts?.inputAccountCode ?? null, sortOrder: index,
+    };
+  });
 }
 
 function ledgerData(organizationId: string, rows: LedgerRow[], context: { direction: "OUTPUT" | "INPUT" | "ADJUSTMENT"; sourceType: string; sourceId: string; documentNumber: string; counterparty: string; contactId: string | null; transactionDate: Date; customerExempt: boolean; fx: { currency: string; isForeign: boolean }; exchangeRate: Prisma.Decimal.Value; negate?: boolean }) {
@@ -1654,9 +1685,14 @@ interface CreditNoteInput {
   branchId?: string | null;
   currency?: string | null;
   exchangeRate?: string | null;
+  /** Tax engine rule. Mutually exclusive with taxCodeId. */
+  taxRuleId?: string | null;
+  /** Whether entered line prices include tax; defaults to the organization setting. */
+  pricesIncludeTax?: boolean | null;
 }
 
 export async function createCreditNote(organizationId: string, data: CreditNoteInput, createdById?: string | null) {
+  if (data.taxRuleId) return createEngineDocument(organizationId, "CREDIT_NOTE", data, createdById);
   const { lines, taxableAmount } = computeLineItems(data.lines);
   const tax = await calculateTax(organizationId, taxableAmount, data.taxCodeId, data.issueDate);
   const fx = await resolveDocumentFx(organizationId, { currency: data.currency, date: data.issueDate, manualRate: data.exchangeRate });
@@ -1717,6 +1753,8 @@ export async function applyCreditNoteToInvoice(organizationId: string, creditNot
     throw new CreditNoteStateError(`Credit note of ${formatMoney(creditNote.amount, fx.currency)} exceeds the invoice's outstanding balance of ${formatMoney(outstanding, fx.currency)}.`);
   }
 
+  if (creditNote.taxRuleId) return settleEngineCreditNote(organizationId, creditNote, { kind: "APPLY", invoice, outstanding, fx }, actorId);
+
   const accounts = await ensureDefaultAccounts(organizationId);
   const findAccount = (code: string) => { const account = accounts.find((candidate) => candidate.code === code); if (!account) throw new Error(`Default account ${code} missing.`); return account; };
   const [ar, revenue, vatPayable, nhilPayable, getfundPayable] = [findAccount("1100"), findAccount("4000"), findAccount("2100"), findAccount("2110"), findAccount("2120")];
@@ -1755,6 +1793,8 @@ export async function applyCreditNoteToInvoice(organizationId: string, creditNot
       ],
     });
 
+    await recordLegacyCreditNoteTax(tx, organizationId, creditNote, { taxable: posted.taxable, vat: posted.vat, nhil: posted.nhil, getfund: posted.getfund }, fx, base ? invoice.exchangeRate : creditNote.exchangeRate);
+
     const updatedInvoice = await tx.accountingInvoice.update({ where: { id: invoiceId }, data: { amountCredited: { increment: creditNote.amount }, baseAmountSettled: { increment: fx.isForeign ? settledBase : creditNote.amount } } });
     const isFullyPaid = new Prisma.Decimal(updatedInvoice.amountPaid).plus(updatedInvoice.amountCredited).greaterThanOrEqualTo(updatedInvoice.amount);
     if (isFullyPaid) await tx.accountingInvoice.update({ where: { id: invoiceId }, data: { status: "PAID", paidAt: new Date() } });
@@ -1783,6 +1823,7 @@ export async function refundCreditNote(organizationId: string, creditNoteId: str
   const baseCurrency = await getBaseCurrency(organizationId);
   const fx = docFx(creditNote, baseCurrency);
   assertAccountCurrency(refundAccount, fx.currency, baseCurrency);
+  if (creditNote.taxRuleId) return settleEngineCreditNote(organizationId, creditNote, { kind: "REFUND", refundAccountId: refundAccount.id, fx }, actorId);
   const posted = postedComponents(creditNote, fx.isForeign);
 
   return db.$transaction(async (tx) => {
@@ -1806,8 +1847,86 @@ export async function refundCreditNote(organizationId: string, creditNoteId: str
         { accountId: refundAccount.id, credit: posted.total.toString(), ...lineFx(fx, creditNote.amount) },
       ],
     });
+    await recordLegacyCreditNoteTax(tx, organizationId, creditNote, posted, fx, creditNote.exchangeRate);
 
     return tx.accountingCreditNote.findUniqueOrThrow({ where: { id: creditNoteId } });
+  });
+}
+
+type CreditNoteRecord = NonNullable<Awaited<ReturnType<typeof db.accountingCreditNote.findFirst>>>;
+
+/**
+ * A settled credit note reduces output tax. Records the reduction in the
+ * working VAT return and the tax ledger (negative adjustment rows), dated
+ * when the credit note is applied or refunded, matching its journal entry.
+ */
+async function recordLegacyCreditNoteTax(tx: TxClient, organizationId: string, creditNote: CreditNoteRecord, posted: { taxable: Prisma.Decimal; vat: Prisma.Decimal; nhil: Prisma.Decimal; getfund: Prisma.Decimal }, fx: { currency: string; isForeign: boolean }, exchangeRate: Prisma.Decimal.Value) {
+  const now = new Date();
+  await tx.accountingTaxTransaction.create({ data: { organizationId, taxCodeId: creditNote.taxCodeId, direction: "ADJUSTMENT", transactionDate: now, sourceType: "ACCOUNTING_CREDIT_NOTE", sourceId: creditNote.id, documentNumber: creditNote.creditNoteNumber, counterparty: creditNote.customerName, taxableAmount: posted.taxable.negated(), vatAmount: posted.vat.negated(), nhilAmount: posted.nhil.negated(), getfundAmount: posted.getfund.negated(), notes: "Credit note settled", ...(fx.isForeign ? { currency: fx.currency, exchangeRate } : {}) } });
+  await writeLegacyTaxLedger(tx, organizationId, { direction: "ADJUSTMENT", sourceType: "ACCOUNTING_CREDIT_NOTE", sourceId: creditNote.id, documentNumber: creditNote.creditNoteNumber, counterparty: creditNote.customerName, contactId: creditNote.contactId, transactionDate: now, taxCodeId: creditNote.taxCodeId, taxable: posted.taxable.negated(), vat: posted.vat.negated(), nhil: posted.nhil.negated(), getfund: posted.getfund.negated(), fx, exchangeRate });
+}
+
+type EngineCreditSettlement =
+  | { kind: "APPLY"; invoice: NonNullable<Awaited<ReturnType<typeof db.accountingInvoice.findFirst>>>; outstanding: Prisma.Decimal; fx: { currency: string; isForeign: boolean; rate: Prisma.Decimal.Value } }
+  | { kind: "REFUND"; refundAccountId: string; fx: { currency: string; isForeign: boolean; rate: Prisma.Decimal.Value } };
+
+/**
+ * Settles a credit note taxed by the tax engine: debit revenue and each
+ * output tax component from the stored DocumentTaxLine snapshot, credit the
+ * receivable (applied to an invoice, at the invoice's booked rate) or the
+ * refund account. Tax ledger rows are negative adjustments per component.
+ */
+async function settleEngineCreditNote(organizationId: string, creditNote: CreditNoteRecord, settlement: EngineCreditSettlement, actorId?: string | null) {
+  const taxLines = await db.documentTaxLine.findMany({ where: { organizationId, documentType: "CREDIT_NOTE", documentId: creditNote.id }, orderBy: { sortOrder: "asc" } });
+  const accounts = await ensureDefaultAccounts(organizationId);
+  const account = (code: string) => { const found = accounts.find((candidate) => candidate.code === code); if (!found) throw new Error(`Default account ${code} missing.`); return found; };
+  const taxAccountIds = await ensureTaxAccounts(organizationId, requiredTaxAccountCodes(taxLines, "SALE"));
+  const apply = settlement.kind === "APPLY";
+  // Applied credits are valued at the invoice's booked rate (they adjust that invoice).
+  const fx = apply ? { ...settlement.fx, rate: settlement.invoice.exchangeRate } : settlement.fx;
+  const settleAccountId = apply ? account("1100").id : settlement.refundAccountId;
+  const posting = buildSalesPosting({ taxableAmount: creditNote.taxableAmount, amount: creditNote.amount, lines: taxLines, fx, receivableAccountId: settleAccountId, revenueAccountId: account("4000").id, accountIds: taxAccountIds });
+  const journal = reverseJournal(posting.journal);
+  let settledBase = posting.total;
+  let extraLines: { accountId: string; debit?: string; credit?: string }[] = [];
+  if (apply && fx.isForeign && new Prisma.Decimal(creditNote.amount).equals(settlement.outstanding)) {
+    // The final credit relieves exactly the remaining base carrying amount.
+    settledBase = baseOutstanding(settlement.invoice);
+    const rounding = posting.total.minus(settledBase);
+    if (!rounding.isZero()) {
+      const settleLine = journal.find((line) => line.accountId === settleAccountId && line.credit);
+      if (settleLine) settleLine.credit = settledBase.toFixed(2);
+      extraLines = fxDifferenceLines(rounding, (await ensureFxAccounts(organizationId)).realized);
+    }
+  }
+  const customerExempt = await isCustomerExempt(organizationId, creditNote);
+  const now = new Date();
+  return db.$transaction(async (tx) => {
+    const claimed = await tx.accountingCreditNote.updateMany({
+      where: { id: creditNote.id, status: "DRAFT" },
+      data: apply
+        ? { status: "APPLIED", invoiceId: settlement.invoice.id, settledAt: now, ...(fx.isForeign ? { exchangeRate: settlement.invoice.exchangeRate, exchangeRateSource: "INVOICE", baseAmount: posting.total } : {}) }
+        : { status: "REFUNDED", settledAt: now },
+    });
+    if (claimed.count === 0) throw new CreditNoteStateError(apply ? "This credit note can no longer be applied." : "This credit note can no longer be refunded.");
+    await postJournalEntry(tx, organizationId, {
+      entryDate: now,
+      description: apply ? `Credit note ${creditNote.creditNoteNumber} applied to invoice ${settlement.invoice.invoiceNumber}` : `Credit note ${creditNote.creditNoteNumber} refunded to ${creditNote.customerName}`,
+      sourceModule: "accounting",
+      sourceType: "ACCOUNTING_CREDIT_NOTE",
+      sourceId: creditNote.id,
+      postingPurpose: apply ? "APPLIED" : "REFUNDED",
+      branchId: apply ? settlement.invoice.branchId : creditNote.branchId,
+      createdById: actorId,
+      lines: [...journal, ...extraLines],
+    });
+    await tx.accountingTaxTransaction.create({ data: { organizationId, direction: "ADJUSTMENT", transactionDate: now, sourceType: "ACCOUNTING_CREDIT_NOTE", sourceId: creditNote.id, documentNumber: creditNote.creditNoteNumber, counterparty: creditNote.customerName, taxableAmount: posting.taxableBase.negated(), vatAmount: posting.legacy.vat.negated(), nhilAmount: posting.legacy.nhil.negated(), getfundAmount: posting.legacy.getfund.negated(), notes: "Credit note settled", ...(fx.isForeign ? { currency: fx.currency, exchangeRate: fx.rate } : {}) } });
+    if (posting.ledger.length) await tx.taxLedgerEntry.createMany({ data: ledgerData(organizationId, posting.ledger, { direction: "ADJUSTMENT", sourceType: "ACCOUNTING_CREDIT_NOTE", sourceId: creditNote.id, documentNumber: creditNote.creditNoteNumber, counterparty: creditNote.customerName, contactId: creditNote.contactId, transactionDate: now, customerExempt, fx, exchangeRate: fx.rate, negate: true }) });
+    if (apply) {
+      const updatedInvoice = await tx.accountingInvoice.update({ where: { id: settlement.invoice.id }, data: { amountCredited: { increment: creditNote.amount }, baseAmountSettled: { increment: settledBase } } });
+      if (new Prisma.Decimal(updatedInvoice.amountPaid).plus(updatedInvoice.amountCredited).greaterThanOrEqualTo(updatedInvoice.amount)) await tx.accountingInvoice.update({ where: { id: settlement.invoice.id }, data: { status: "PAID", paidAt: now } });
+    }
+    return tx.accountingCreditNote.findUniqueOrThrow({ where: { id: creditNote.id } });
   });
 }
 
