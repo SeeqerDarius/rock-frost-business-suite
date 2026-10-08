@@ -19,8 +19,8 @@ const run: Parameters<typeof postPayrollRunAccounting>[1] = {
   createdAt: new Date("2026-10-01T00:00:00Z"),
   updatedAt: new Date("2026-10-01T00:00:00Z"),
   payslips: [
-    { id: "slip-1", organizationId: "org-1", payrollRunId: "run-1", employeeId: "employee-1", createdAt: new Date(), grossPay: new Prisma.Decimal("1000.00"), netPay: new Prisma.Decimal("800.00"), taxDeduction: new Prisma.Decimal("200.00"), otherDeductions: new Prisma.Decimal("0") },
-    { id: "slip-2", organizationId: "org-1", payrollRunId: "run-1", employeeId: "employee-2", createdAt: new Date(), grossPay: new Prisma.Decimal("500.00"), netPay: new Prisma.Decimal("400.00"), taxDeduction: new Prisma.Decimal("100.00"), otherDeductions: new Prisma.Decimal("0") },
+    { id: "slip-1", organizationId: "org-1", payrollRunId: "run-1", employeeId: "employee-1", createdAt: new Date(), grossPay: new Prisma.Decimal("1000.00"), netPay: new Prisma.Decimal("800.00"), taxDeduction: new Prisma.Decimal("200.00"), otherDeductions: new Prisma.Decimal("0"), employerContributions: new Prisma.Decimal("0") },
+    { id: "slip-2", organizationId: "org-1", payrollRunId: "run-1", employeeId: "employee-2", createdAt: new Date(), grossPay: new Prisma.Decimal("500.00"), netPay: new Prisma.Decimal("400.00"), taxDeduction: new Prisma.Decimal("100.00"), otherDeductions: new Prisma.Decimal("0"), employerContributions: new Prisma.Decimal("0") },
   ],
 };
 

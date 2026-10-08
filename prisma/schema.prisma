@@ -751,6 +751,8 @@ model Organization {
   payrollRuns                     PayrollRun[]
   payrollPayslips                 PayrollPayslip[]
   payrollSettings                 PayrollSettings?
+  payrollDeductionRules           PayrollDeductionRule[]
+  payrollPayslipDeductions        PayrollPayslipDeduction[]
   posRegisters                    PosRegister[]
   posSessions                     PosSession[]
   posSales                        PosSale[]
@@ -4625,14 +4627,18 @@ enum PayrollRunPostingStatus {
 }
 
 model PayrollCompensation {
-  id             String   @id @default(cuid())
-  organizationId String
-  employeeId     String   @unique
-  baseSalary     Decimal  @db.Decimal(12, 2)
-  payFrequency   String   @default("MONTHLY")
-  effectiveDate  DateTime
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  organizationId        String
+  employeeId            String   @unique
+  baseSalary            Decimal  @db.Decimal(12, 2)
+  payFrequency          String   @default("MONTHLY")
+  effectiveDate         DateTime
+  /// Withholding filing status (e.g. SINGLE) that selects deduction rules scoped to a status; null uses rules for all statuses.
+  filingStatus          String?
+  /// Extra income tax withheld each pay period at the employee's request (e.g. US Form W-4 step 4(c)).
+  additionalWithholding Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employee     HrEmployee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
@@ -4663,19 +4669,22 @@ model PayrollRun {
 }
 
 model PayrollPayslip {
-  id              String   @id @default(cuid())
-  organizationId  String
-  payrollRunId    String
-  employeeId      String
-  grossPay        Decimal  @db.Decimal(12, 2)
-  taxDeduction    Decimal  @default(0) @db.Decimal(12, 2)
-  otherDeductions Decimal  @default(0) @db.Decimal(12, 2)
-  netPay          Decimal  @db.Decimal(12, 2)
-  createdAt       DateTime @default(now())
+  id                    String   @id @default(cuid())
+  organizationId        String
+  payrollRunId          String
+  employeeId            String
+  grossPay              Decimal  @db.Decimal(12, 2)
+  taxDeduction          Decimal  @default(0) @db.Decimal(12, 2)
+  otherDeductions       Decimal  @default(0) @db.Decimal(12, 2)
+  netPay                Decimal  @db.Decimal(12, 2)
+  /// Employer contributions (not deducted from pay) calculated by deduction rules.
+  employerContributions Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt             DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  payrollRun   PayrollRun   @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
-  employee     HrEmployee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payrollRun   PayrollRun                @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employee     HrEmployee                @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  deductions   PayrollPayslipDeduction[]
 
   @@unique([payrollRunId, employeeId])
   @@index([organizationId])
@@ -4683,17 +4692,108 @@ model PayrollPayslip {
 }
 
 model PayrollSettings {
-  id                      String   @id @default(cuid())
-  organizationId          String   @unique
-  defaultTaxRate          Decimal  @default(0) @db.Decimal(5, 4)
+  id                      String               @id @default(cuid())
+  organizationId          String               @unique
+  defaultTaxRate          Decimal              @default(0) @db.Decimal(5, 4)
   /**
    * Sends each employee an SMS (via mNotify, see src/lib/sms.ts) when their payslip is issued - see docs/SMS_INTEGRATION.md.
    */
-  smsNotificationsEnabled Boolean  @default(false)
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  smsNotificationsEnabled Boolean              @default(false)
+  /// FLAT_RATE applies defaultTaxRate; RULES applies confirmed PayrollDeductionRule rows for the pay date's tax year.
+  deductionMode           PayrollDeductionMode @default(FLAT_RATE)
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+enum PayrollDeductionMode {
+  FLAT_RATE
+  RULES
+}
+
+enum PayrollDeductionKind {
+  /// Income tax withheld from the employee (reduces net pay, recorded as taxDeduction).
+  EMPLOYEE_WITHHOLDING
+  /// Employee share of a contribution, e.g. social security (reduces net pay).
+  EMPLOYEE_CONTRIBUTION
+  /// Employer contribution or employer payroll tax (an expense, not deducted from pay).
+  EMPLOYER_CONTRIBUTION
+}
+
+enum PayrollDeductionMethod {
+  /// rate % of subject wages, optionally capped by an annual wage base and/or applied only above an annual wage floor.
+  PERCENTAGE
+  /// Progressive brackets on annualized wages less an annual allowance, de-annualized per pay period.
+  BRACKETS
+}
+
+/// Configurable statutory deduction for one tax year. Figures are entered or
+/// confirmed by an administrator; a run uses only confirmed, active rules in
+/// effect on its pay date.
+model PayrollDeductionRule {
+  id                   String                 @id @default(cuid())
+  organizationId       String
+  code                 String
+  name                 String
+  kind                 PayrollDeductionKind
+  method               PayrollDeductionMethod
+  taxYear              Int
+  /// Percentage (e.g. 6.2) for PERCENTAGE rules.
+  rate                 Decimal?               @db.Decimal(9, 4)
+  /// BRACKETS: [{ "from": "0", "rate": "10" }, ...] annual amounts, ascending.
+  brackets             Json?
+  /// BRACKETS: annual amount subtracted before applying brackets.
+  annualAllowance      Decimal?               @db.Decimal(14, 2)
+  /// Annual cap on wages subject to the rule (e.g. a social security wage base).
+  wageBase             Decimal?               @db.Decimal(14, 2)
+  /// The rule applies only to year-to-date wages above this annual amount.
+  wageFloor            Decimal?               @db.Decimal(14, 2)
+  /// Applies only to employees with this filing status; null applies to all.
+  filingStatus         String?
+  liabilityAccountCode String
+  /// Employer contributions only: the expense account debited.
+  expenseAccountCode   String?
+  sourceReference      String?
+  templateKey          String?
+  effectiveFrom        DateTime               @db.Date
+  effectiveTo          DateTime?              @db.Date
+  active               Boolean                @default(true)
+  confirmedAt          DateTime?
+  confirmedById        String?
+  sortOrder            Int                    @default(0)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, code, taxYear])
+  @@index([organizationId, taxYear])
+}
+
+/// Per-payslip result of one deduction rule, kept as an immutable snapshot
+/// (rule figures can change later) and used for year-to-date wage caps.
+model PayrollPayslipDeduction {
+  id                   String               @id @default(cuid())
+  organizationId       String
+  payslipId            String
+  employeeId           String
+  ruleId               String?
+  code                 String
+  name                 String
+  kind                 PayrollDeductionKind
+  taxYear              Int
+  subjectWages         Decimal              @db.Decimal(14, 2)
+  amount               Decimal              @db.Decimal(12, 2)
+  liabilityAccountCode String
+  expenseAccountCode   String?
+  createdAt            DateTime             @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payslip      PayrollPayslip @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, employeeId, taxYear, code])
+  @@index([payslipId])
 }
 
 enum PosSessionStatus {

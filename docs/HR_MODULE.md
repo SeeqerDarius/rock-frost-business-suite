@@ -1,5 +1,7 @@
 # HR module
 
+> **Payroll statutory deductions (2026-10-08).** Payroll can apply configurable deduction rules per tax year instead of the flat tax rate: income tax withholding (annualized brackets), employee and employer contributions with annual wage bases and thresholds, and a US federal template whose yearly figures the administrator enters and confirms. See `docs/GLOBAL_EXPANSION_ARCHITECTURE.md`, "Tax follow-ups, part 5".
+
 ## Employee model
 
 `HrEmployee` (`prisma/schema.prisma`) is the core record: `employeeNumber` (unique per organization, generated from a configurable prefix, see `getHrSettings`/`generateEmployeeNumber` in `src/modules/hr/service.ts`), `fullName`, `email`, `phone` (work phone), `mobilePhone`, `tags` (`String[]`, free-form), `photoData` (an optional base64 data-URI, same pattern as `InventoryItem.imageData`/School `photoData` — see "Employee photos" below), `jobTitle`, `department` (plain string, not a separate entity — see "Departments" below), `hireDate`, `terminationDate`, `status` (`HrEmployeeStatus`), `payrollEligible`, `managerId` (a self-relation, `manager`/`reports`, used for the org chart), and `userId` (optional link to a platform `User` account).

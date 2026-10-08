@@ -17,6 +17,9 @@ import {
   getPayrollRunForPostingRetry,
 } from "@/modules/payroll/service";
 import { postPayrollRunAccounting } from "@/modules/payroll/accounting";
+import { PayrollDeductionError } from "@/modules/payroll/statutory";
+import { PAYROLL_FLASH_COOKIE } from "@/modules/payroll/flash";
+import { cookies } from "next/headers";
 import { cuid, dateInput, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
 
@@ -130,6 +133,19 @@ export async function processExistingRun(formData: FormData): Promise<void> {
         status: "FAILURE",
       });
       redirect(`/app/payroll/runs?error=school-inputs-${error.reason}`);
+    }
+    if (error instanceof PayrollDeductionError) {
+      await logAuditEvent({
+        organizationId: tenant.organizationId,
+        userId: session?.user?.id,
+        module: "payroll",
+        action: "payroll.processed",
+        entityName: "PayrollRun",
+        entityId: id,
+        status: "FAILURE",
+      });
+      (await cookies()).set(PAYROLL_FLASH_COOKIE, error.message.slice(0, 300), { httpOnly: true, sameSite: "strict", secure: process.env.NODE_ENV === "production", path: "/app/payroll", maxAge: 30 });
+      redirect("/app/payroll/runs?error=deductions");
     }
     if (error instanceof NotFoundError) redirect("/app/payroll/runs?error=not-found");
     throw error;
