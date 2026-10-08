@@ -883,6 +883,7 @@ model Organization {
   contractSignatures              ContractSignature[]
   contractReminders               ContractReminder[]
   contractBillingLines            ContractBillingLine[]
+  vatNumberChecks                 VatNumberCheck[]
 
   @@index([industry])
   @@index([status])
@@ -3211,6 +3212,7 @@ model AccountingContact {
   countryCode             String?
   vatNumber               String?
   taxExemptions           TaxExemption[]
+  vatNumberChecks         VatNumberCheck[]
   fleetOwnerId            String?
   procurementVendorId     String?
   crmContactId            String?
@@ -8099,6 +8101,40 @@ model TaxExemption {
 
 /// Immutable tax-line snapshot of a document, written when the document is
 /// created from a tax rule. Amounts are in the document currency.
+enum VatNumberCheckStatus {
+  /// The registry confirmed the number (or, for FORMAT checks, the shape is valid).
+  VALID
+  INVALID
+  /// The registry could not be reached; only the format was checked.
+  UNAVAILABLE
+}
+
+/// Evidence of a VAT number check, kept per check so the result in force on
+/// a supply date can be shown later (for example for intra-EU reverse charge).
+model VatNumberCheck {
+  id                 String               @id @default(cuid())
+  organizationId     String
+  contactId          String?
+  countryCode        String
+  vatNumber          String
+  /// FORMAT (shape only) or REGISTRY (for example VIES).
+  level              String
+  status             VatNumberCheckStatus
+  provider           String
+  registeredName     String?
+  registeredAddress  String?              @db.Text
+  /// VIES consultation number, returned when the organization's own VAT number is sent as the requester.
+  consultationNumber String?
+  message            String
+  checkedById        String?
+  checkedAt          DateTime             @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact      AccountingContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, contactId, checkedAt])
+}
+
 model DocumentTaxLine {
   id                 String          @id @default(cuid())
   organizationId     String

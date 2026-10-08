@@ -68,7 +68,8 @@ export async function getTaxReport(organizationId: string, input: { from: string
     const group = groupOf(entry);
     const row = rows.get(group.key) ?? emptyRow(group.key, group.label, group.level);
     const taxableKey = `${group.key}|${entry.sourceType}|${entry.sourceId}|${entry.direction}`;
-    const isSale = entry.direction === "OUTPUT" || (entry.direction === "ADJUSTMENT" && entry.sourceType.includes("INVOICE"));
+    // Sale-side adjustments: voided invoices and settled credit notes reduce sales.
+    const isSale = entry.direction === "OUTPUT" || (entry.direction === "ADJUSTMENT" && (entry.sourceType.includes("INVOICE") || entry.sourceType.includes("CREDIT_NOTE")));
     if (isSale && !countedTaxable.has(taxableKey)) {
       countedTaxable.add(taxableKey);
       const taxable = entry.taxableAmount;
@@ -157,4 +158,50 @@ export async function getTaxLiabilitiesByClass(organizationId: string, asOf: str
     const accounts = balances.filter((balance) => klass.codes.includes(balance.code));
     return { key: klass.key, label: klass.label, balance: accounts.reduce((sum, account) => sum + account.balance, 0), accounts: accounts.map((account) => ({ code: account.code, name: account.name, balance: account.balance })) };
   }).filter((klass) => klass.accounts.length > 0);
+}
+
+export type OssRow = { memberState: string; rate: Prisma.Decimal; taxableAmount: Prisma.Decimal; vatAmount: Prisma.Decimal; documents: number };
+
+/**
+ * OSS (One-Stop-Shop) return worksheet: B2C supplies taxed at another member
+ * state's VAT rate, by member state of consumption and rate, from the tax
+ * ledger in the base currency. Settled credit notes and voids appear as
+ * negative amounts in the period they post; corrections to a previously
+ * filed quarter must still be declared in that quarter's correction section.
+ * This is a worksheet for preparing the return, not a filing file.
+ */
+export async function getOssReturn(organizationId: string, input: { from: string; to: string }) {
+  const organization = await db.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { timezone: true, currency: true, jurisdictionCode: true } });
+  const home = organization.jurisdictionCode ?? "";
+  const established = /^EU-[A-Z]{2}$/.test(home);
+  const { start, end } = zonedDateRange(input.from, input.to, organization.timezone);
+  const entries = established
+    ? await db.taxLedgerEntry.findMany({
+        where: {
+          organizationId, transactionDate: { gte: start, lt: end }, taxKind: "VAT", treatment: "STANDARD",
+          jurisdictionCode: { startsWith: "EU-", notIn: [home, "EU-OSS", "EU-IOSS"] },
+          OR: [{ direction: "OUTPUT" }, { direction: "ADJUSTMENT", sourceType: { contains: "INVOICE" } }, { direction: "ADJUSTMENT", sourceType: { contains: "CREDIT_NOTE" } }],
+        },
+        select: { jurisdictionCode: true, rate: true, taxableAmount: true, taxAmount: true, sourceType: true, sourceId: true, direction: true },
+        take: 50_000,
+      })
+    : [];
+  const rows = new Map<string, OssRow>();
+  const counted = new Set<string>();
+  for (const entry of entries) {
+    const memberState = entry.jurisdictionCode.slice(3);
+    const key = `${memberState}|${entry.rate.toFixed(4)}`;
+    const row = rows.get(key) ?? { memberState, rate: entry.rate, taxableAmount: ZERO, vatAmount: ZERO, documents: 0 };
+    const docKey = `${key}|${entry.sourceType}|${entry.sourceId}|${entry.direction}`;
+    if (!counted.has(docKey)) {
+      counted.add(docKey);
+      row.taxableAmount = row.taxableAmount.plus(entry.taxableAmount);
+      row.documents += 1;
+    }
+    row.vatAmount = row.vatAmount.plus(entry.taxAmount);
+    rows.set(key, row);
+  }
+  const sorted = [...rows.values()].sort((a, b) => a.memberState.localeCompare(b.memberState) || b.rate.comparedTo(a.rate));
+  const totalVat = sorted.reduce((sum, row) => sum.plus(row.vatAmount), ZERO);
+  return { established, homeMemberState: established ? home.slice(3) : null, baseCurrency: organization.currency, rows: sorted, totalVat };
 }

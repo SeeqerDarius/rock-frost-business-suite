@@ -13,17 +13,18 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
 import { createOrganizationFormatter, zonedDateParts } from "@/lib/org-format";
 import { cn } from "@/lib/utils";
-import { getExemptionReport, getTaxLiabilitiesByClass, getTaxReport, type TaxReportView } from "@/modules/tax/reports";
+import { getExemptionReport, getTaxLiabilitiesByClass, getTaxReport, type TaxReportView, getOssReturn } from "@/modules/tax/reports";
 
 export const metadata = { title: "Tax reports" };
 
-const VIEWS: { key: TaxReportView | "exemptions" | "liabilities"; label: string; description: string }[] = [
+const VIEWS: { key: TaxReportView | "exemptions" | "liabilities" | "oss"; label: string; description: string }[] = [
   { key: "jurisdiction", label: "By jurisdiction", description: "Taxable, exempt, zero-rated, and non-taxable sales with tax collected and input tax for each jurisdiction (state, county, city, member state, or country)." },
   { key: "level", label: "By level", description: "Totals by jurisdiction level, for example state, county, and city sales tax." },
   { key: "kind", label: "By tax kind", description: "VAT, sales tax, use tax, levies, and excise kept apart." },
   { key: "authority", label: "By authority", description: "Totals by the tax authority each rate belongs to." },
   { key: "period", label: "By month", description: "Tax liability by month in the organization timezone." },
   { key: "exemptions", label: "Customer exemptions", description: "Exempt sales by customer with the certificates on file." },
+  { key: "oss", label: "OSS return", description: "One-Stop-Shop worksheet: B2C supplies taxed at another member state's VAT rate, by member state of consumption and rate. Use it to complete the quarterly OSS return in your member state of identification's portal; settled credit notes appear as negative amounts in the period they post, and corrections to a previously filed quarter must be declared in that quarter's correction section." },
   { key: "liabilities", label: "Liabilities by class", description: "Ledger balances for sales tax, VAT and levies, payroll and employment taxes, income tax, excise, and withholding, kept separate." },
 ];
 
@@ -46,7 +47,10 @@ export default async function TaxReportsPage({ searchParams }: { searchParams: P
   const money = (value: { toString(): string } | number) => format.money(value.toString());
   const query = (extra: Record<string, string>) => new URLSearchParams({ from, to, view: view.key, ...extra }).toString();
 
-  const report = view.key !== "exemptions" && view.key !== "liabilities" ? await getTaxReport(tenant.organizationId, { from, to, view: view.key }) : null;
+  const oss = view.key === "oss" ? await getOssReturn(tenant.organizationId, { from, to }) : null;
+  const quarterStart = (offset: number) => { const month = Math.floor((Number(today.month) - 1) / 3) * 3 + offset * 3; const date = new Date(Date.UTC(Number(today.year), month, 1)); return date; };
+  const quarterLink = (offset: number) => { const startDate = quarterStart(offset); const endDate = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth() + 3, 0)); return { label: `Q${Math.floor(startDate.getUTCMonth() / 3) + 1} ${startDate.getUTCFullYear()}`, href: `?${new URLSearchParams({ view: "oss", from: startDate.toISOString().slice(0, 10), to: endDate.toISOString().slice(0, 10) }).toString()}` }; };
+  const report = view.key !== "exemptions" && view.key !== "liabilities" && view.key !== "oss" ? await getTaxReport(tenant.organizationId, { from, to, view: view.key }) : null;
   const exemptions = view.key === "exemptions" ? await getExemptionReport(tenant.organizationId, { from, to }) : null;
   const liabilities = view.key === "liabilities" ? await getTaxLiabilitiesByClass(tenant.organizationId, to) : null;
 
@@ -118,6 +122,24 @@ export default async function TaxReportsPage({ searchParams }: { searchParams: P
                 <TableBody>{exemptions.map((row) => <TableRow key={row.contactId ?? row.customer}><TableCell className="font-medium">{row.customer}</TableCell><TableCell className="text-sm">{row.certificates.join("; ") || "None recorded"}</TableCell><TableCell className="text-xs">{row.documents.join(", ")}</TableCell><TableCell className="text-right tabular-nums">{money(row.exemptSales)}</TableCell></TableRow>)}</TableBody>
               </Table>
             )
+          ) : null}
+
+          {oss ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2 text-sm">{[-1, 0].map((offset) => { const link = quarterLink(offset); return <Link key={link.label} href={link.href} className="rounded-md border px-3 py-1 hover:bg-muted">{link.label}</Link>; })}</div>
+              {!oss.established ? <p className="text-sm text-muted-foreground">The OSS return applies to organizations established in an EU member state. Set the organization&apos;s tax jurisdiction to its member state (for example EU-DE) in Localization and apply the EU pack in Tax and Compliance.</p> : oss.rows.length === 0 ? <EmptyState icon={FileBarChart} title="No OSS supplies in this period" description="Invoices taxed with an OSS B2C rule for another member state appear here once they are sent." /> : (
+                <>
+                  {oss.baseCurrency !== "EUR" ? <p className="text-sm text-muted-foreground">Amounts are in {oss.baseCurrency}. OSS returns are declared in euro; convert using the European Central Bank rate on the last day of the quarter.</p> : null}
+                  <Table>
+                    <TableHeader><TableRow><TableHead>Member state of consumption</TableHead><TableHead className="text-right">VAT rate</TableHead><TableHead className="text-right">Taxable amount</TableHead><TableHead className="text-right">VAT</TableHead><TableHead className="text-right">Documents</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {oss.rows.map((row) => <TableRow key={`${row.memberState}-${row.rate.toString()}`}><TableCell className="font-medium">{row.memberState}</TableCell><TableCell className="text-right tabular-nums">{row.rate.toString()}%</TableCell><TableCell className="text-right tabular-nums">{money(row.taxableAmount)}</TableCell><TableCell className="text-right tabular-nums">{money(row.vatAmount)}</TableCell><TableCell className="text-right tabular-nums">{row.documents}</TableCell></TableRow>)}
+                      <TableRow><TableCell className="font-semibold" colSpan={3}>Total VAT due under OSS</TableCell><TableCell className="text-right font-semibold tabular-nums">{money(oss.totalVat)}</TableCell><TableCell /></TableRow>
+                    </TableBody>
+                  </Table>
+                </>
+              )}
+            </div>
           ) : null}
 
           {liabilities ? (

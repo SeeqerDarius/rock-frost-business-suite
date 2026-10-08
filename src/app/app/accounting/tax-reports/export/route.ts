@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentTenant } from "@/lib/tenant";
 import { canAccessModule, hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getExemptionReport, getTaxReport, type TaxReportView } from "@/modules/tax/reports";
+import { getExemptionReport, getOssReturn, getTaxReport, type TaxReportView } from "@/modules/tax/reports";
 
 const VIEWS: TaxReportView[] = ["jurisdiction", "level", "kind", "authority", "period"];
 
@@ -22,7 +22,10 @@ export async function GET(request: Request) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return NextResponse.json({ error: "Invalid period" }, { status: 400 });
 
   let lines: string[][];
-  if (view === "exemptions") {
+  if (view === "oss") {
+    const oss = await getOssReturn(tenant.organizationId, { from, to });
+    lines = [["Member state of consumption", "VAT rate", "Taxable amount", "VAT", "Documents", "Currency"], ...oss.rows.map((row) => [row.memberState, row.rate.toString(), row.taxableAmount.toFixed(2), row.vatAmount.toFixed(2), String(row.documents), oss.baseCurrency]), ["Total", "", "", oss.totalVat.toFixed(2), "", oss.baseCurrency]];
+  } else if (view === "exemptions") {
     const rows = await getExemptionReport(tenant.organizationId, { from, to });
     lines = [["Customer", "Certificates", "Documents", "Exempt sales"], ...rows.map((row) => [row.customer, row.certificates.join("; "), row.documents.join(" "), row.exemptSales.toFixed(2)])];
   } else if ((VIEWS as string[]).includes(view)) {
