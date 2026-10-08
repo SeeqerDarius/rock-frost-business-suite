@@ -11,10 +11,10 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { PERMISSIONS } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
 import { zonedDateParts } from "@/lib/org-format";
-import { formatContractNumber } from "@/modules/contracts/rules";
+import { formatContractNumber, resolveRiskWeights, resolveValueThresholds, RISK_FACTORS } from "@/modules/contracts/rules";
 import { actorFromTenant, getContractFormOptions, getContractSettings } from "@/modules/contracts/service";
 import { listApprovalRules } from "@/modules/contracts/lifecycle";
-import { createApprovalRuleAction, createCategoryAction, createTypeAction, setApprovalRuleActiveAction, updateContractSettingsAction } from "../actions";
+import { createApprovalRuleAction, createCategoryAction, createTypeAction, setApprovalRuleActiveAction, updateContractSettingsAction, updateRiskSettingsAction } from "../actions";
 import { ContractsFlash, humanize, SELECT_CLASS } from "../_components/shared";
 
 export const metadata = { title: "Contract settings" };
@@ -44,13 +44,15 @@ export default async function ContractSettingsPage({ searchParams }: { searchPar
     rule.jurisdiction ? `jurisdiction ${rule.jurisdiction}` : null,
     rule.branchId ? `branch ${options.branches.find((branch) => branch.id === rule.branchId)?.name ?? "removed"}` : null,
   ].filter(Boolean).join(", ") || "every contract";
+  const riskWeights = resolveRiskWeights(settings.riskWeights);
+  const valueThresholds = resolveValueThresholds(settings.riskValueThresholds);
   const stepExamples = ["Legal review", "Finance approval", "Director sign-off", "Board approval", "Final sign-off"];
   const today = zonedDateParts(new Date(), tenant.organization.timezone ?? "UTC");
   const example = formatContractNumber(settings.numberFormat, settings.numberPrefix, { year: Number(today.year), month: Number(today.month) }, settings.nextSequence);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <PageHeader title="Contract settings" description="Numbering, categories and types, alerts, approval rules, and who may open confidential contracts." />
+      <PageHeader title="Contract settings" description="Numbering, categories and types, alerts, approval rules, risk scoring, and who may open confidential contracts." />
       <ContractsFlash saved={params.saved} error={params.error} savedMessage="Settings saved and recorded in the audit log." />
 
       <Card>
@@ -122,6 +124,24 @@ export default async function ContractSettingsPage({ searchParams }: { searchPar
               </li>
             ))}</ul>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Calculated risk</CardTitle><CardDescription>Each contract gets a 0 to 100 score from the factors below: under 20 is low, 20 to 44 medium, 45 to 69 high, and 70 or more critical. The score is guidance shown next to the risk level people assign; it never changes that level.</CardDescription></CardHeader>
+        <CardContent>
+          <form action={updateRiskSettingsAction} className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(Object.keys(RISK_FACTORS) as (keyof typeof RISK_FACTORS)[]).map((key) => (
+                <div key={key} className="flex items-center justify-between gap-3 rounded-md border p-2">
+                  <Label htmlFor={`weight-${key}`} className="text-sm font-normal">{RISK_FACTORS[key].label}</Label>
+                  <Input id={`weight-${key}`} name={`weight_${key}`} type="number" min={0} max={50} required defaultValue={riskWeights[key]} className="w-20" />
+                </div>
+              ))}
+            </div>
+            <div className="space-y-1.5"><Label htmlFor="thresholds">High-value thresholds</Label><Input id="thresholds" name="thresholds" defaultValue={Object.entries(valueThresholds).map(([currency, amount]) => `${currency}=${amount}`).join(", ")} placeholder={`${tenant.organization.currency ?? "GHS"}=500000, USD=50000`} /><p className="text-xs text-muted-foreground">Points from 0 to 50 per factor. A contract counts as high value only against the threshold for its own currency.</p></div>
+            <Button type="submit">Save risk settings</Button>
+          </form>
         </CardContent>
       </Card>
 

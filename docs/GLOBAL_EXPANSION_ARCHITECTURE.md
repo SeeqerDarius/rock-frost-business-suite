@@ -1,7 +1,7 @@
 # Global accounting and contract expansion: audit baseline
 
 **Audit date:** 2026-10-06  
-**Status:** Increments 1 to 4 (global foundation, multi-currency accounting, tax engine, jurisdiction packs and tax reports) and Increment 5a (Contract Management core) are live in production. Increment 5b (contract lifecycle) is implemented; see `docs/CONTRACTS_MODULE.md`. Contract integrations and reporting (5c) are outstanding.
+**Status:** Increments 1 to 4 (global foundation, multi-currency accounting, tax engine, jurisdiction packs and tax reports) and Increments 5a and 5b (Contract Management core and lifecycle) are live in production. Increment 5c (contract integrations, risk scoring, and reports) is implemented; see `docs/CONTRACTS_MODULE.md`.
 
 This document records the current reusable architecture and the gaps that must be closed before Rock Frost can claim global accounting or Contract Lifecycle Management. It is a delivery plan, not a claim that the expansion is complete.
 
@@ -228,4 +228,4 @@ Read from `TaxLedgerEntry` (base currency) over local calendar days in the organ
 
 2. **Formatting sweep:** migrate remaining `formatMoney()` call sites across modules to `createOrganizationFormatter()`, and apply contact default currencies on new documents.
 3. **Tax follow-ups:** US payroll tax posting into the federal accounts, EU reduced-rate catalogs, a VIES registry provider, OSS return exports, per-line tax categories, and credit notes and Procurement on the tax engine.
-4. **Contracts:** core (5a) and lifecycle (5b) implemented (`docs/CONTRACTS_MODULE.md`); integrations and reporting (5c) remain.
+4. **Contracts:** core (5a), lifecycle (5b), and integrations and reporting (5c) implemented (`docs/CONTRACTS_MODULE.md`); an electronic signature provider and public listing remain.

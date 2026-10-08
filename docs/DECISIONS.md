@@ -417,3 +417,17 @@ Reminders are delivered once per threshold band through a unique delivery
 log, so reruns cannot duplicate them. Internal acknowledgements are
 labelled as such and never presented as electronic signatures; an external
 provider will be added behind the reserved provider method.
+
+## 2026-10-09: Contract billing plans, links, and calculated risk
+
+**Decision:** Contract billing schedules are plans, not accounting. They
+never create invoices, bills, or journal entries; a line becomes invoiced
+only by linking an issued Accounting invoice or bill in the same
+organization and currency, and each document settles one line. Links to
+other modules are relationships only, require access to the target module
+to create, and reveal the target's details only to users who can access
+that module. Calculated risk is a transparent, configurable points score
+shown as guidance beside the risk level people assign; it never overwrites
+that level, compares values only against a threshold in the contract's own
+currency, and hides the value factor from users without financial access.
+Reports never add values across currencies.

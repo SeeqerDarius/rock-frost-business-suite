@@ -882,6 +882,7 @@ model Organization {
   contractRenewals                ContractRenewal[]
   contractSignatures              ContractSignature[]
   contractReminders               ContractReminder[]
+  contractBillingLines            ContractBillingLine[]
 
   @@index([industry])
   @@index([status])
@@ -8332,6 +8333,19 @@ enum ContractSignatureStatus {
   CANCELLED
 }
 
+enum ContractBillingDirection {
+  /// Money the organization expects to invoice.
+  RECEIVABLE
+  /// Money the organization expects to be billed.
+  PAYABLE
+}
+
+enum ContractBillingStatus {
+  PLANNED
+  INVOICED
+  CANCELLED
+}
+
 /// Organization-level Contracts configuration (numbering, alert policy, and
 /// confidential access policy).
 model ContractSettings {
@@ -8350,6 +8364,10 @@ model ContractSettings {
   /// When false (default), the person who submits a contract cannot approve it.
   allowSelfApproval       Boolean  @default(false)
   obligationReminderDays  Int[]    @default([14, 7, 1])
+  /// Points per calculated risk factor, e.g. {"overdueObligations": 15}. Null uses the defaults.
+  riskWeights             Json?
+  /// High-value threshold per currency, e.g. {"GHS": "500000.00"}. Values in other currencies are not compared.
+  riskValueThresholds     Json?
   updatedAt               DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -8455,6 +8473,7 @@ model Contract {
   renewals         ContractRenewal[]
   signatures       ContractSignature[]
   reminders        ContractReminder[]
+  billingLines     ContractBillingLine[]
 
   @@unique([organizationId, contractNumber])
   @@index([organizationId, status])
@@ -8892,6 +8911,36 @@ model ContractSignature {
   contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
 
   @@index([contractId, status])
+}
+
+/// Planned billing under a contract. A plan only: it never creates invoices,
+/// bills, or journal entries. A line is marked invoiced by linking the
+/// Accounting invoice (receivable) or bill (payable) raised for it.
+model ContractBillingLine {
+  id             String                   @id @default(cuid())
+  organizationId String
+  contractId     String
+  direction      ContractBillingDirection
+  dueDate        DateTime
+  amount         Decimal                  @db.Decimal(16, 2)
+  currency       String
+  description    String
+  status         ContractBillingStatus    @default(PLANNED)
+  invoiceId      String?
+  billId         String?
+  linkedAt       DateTime?
+  linkedById     String?
+  cancelledAt    DateTime?
+  cancelReason   String?
+  createdById    String?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status, dueDate])
+  @@index([contractId, dueDate])
 }
 
 /// Delivery log that keeps scheduled reminders idempotent: one row per
