@@ -29,6 +29,11 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // pdfkit reads its standard-font metrics (data/*.afm) relative to __dirname.
+  // Bundled, __dirname becomes a placeholder path that does not exist at
+  // runtime, so every PDF failed with ENOENT on Helvetica.afm. Loading it
+  // natively from node_modules keeps the real path (the files are traced).
+  serverExternalPackages: ["pdfkit"],
   outputFileTracingIncludes: {
     "/app/school/**/*": ["node_modules/@img/sharp*/**/*"],
     "/api/school/**/*": ["node_modules/@img/sharp*/**/*"],
