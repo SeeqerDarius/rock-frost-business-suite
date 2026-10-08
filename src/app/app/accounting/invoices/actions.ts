@@ -64,7 +64,7 @@ export async function createNewInvoice(formData: FormData): Promise<void> {
     redirect("/app/accounting/invoices?error=missing-fields");
   }
   const { contactId, customerName, customerEmail, description, issueDate, dueDate, taxCodeId, currency, exchangeRate } = parsed.data;
-  const lines = parseIndexedFormRows(formData, "lines", ["description", "quantity", "unitPrice"]) as unknown as LineItemInput[];
+  const lines = parseIndexedFormRows(formData, "lines", ["description", "quantity", "unitPrice", "taxRuleId"]) as unknown as LineItemInput[];
 
   const session = await getServerAuthSession();
   try {

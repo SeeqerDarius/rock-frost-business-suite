@@ -21,7 +21,7 @@ import { listTaxCodes } from "@/modules/accounting/tax-service";
 import { createNewCreditNote, applyCreditNote, refundExistingCreditNote, voidExistingCreditNote } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
-  "tax-rule": "That tax rule could not be applied on the document date. Check its rates and effective dates in Tax and Compliance.",
+  "tax-rule": "That tax rule could not be applied on the document date. Check its rates and effective dates in Tax and Compliance. Rules on individual lines also need a tax rule on the document.",
   forbidden: "You don't have permission to manage credit notes.",
   "missing-fields": "All required fields must be filled in.",
   "invalid-lines": "Every line needs a description, a quantity greater than zero, and a non-negative unit price.",
@@ -85,7 +85,7 @@ export default async function AccountingCreditNotesPage({
               <Input id="customerEmail" name="customerEmail" type="email" />
             </div>
             <CurrencyFields baseCurrency={currency} idPrefix="credit-note" />
-            <LineItemsEditor currency={currency} />
+            <LineItemsEditor currency={currency} taxRules={taxRules.map((rule) => ({ id: rule.id, label: `${rule.code}: ${rule.name}` }))} />
             <div className="space-y-2">
               <Label htmlFor="issueDate">Issue date</Label>
               <Input id="issueDate" name="issueDate" type="date" defaultValue={today} required />

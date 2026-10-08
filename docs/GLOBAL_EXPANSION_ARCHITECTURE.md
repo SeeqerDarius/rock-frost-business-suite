@@ -187,7 +187,7 @@ Sections: Overview (pack application, organization jurisdiction, pricing default
 ### Known limitations of Increment 3
 
 - Tax reports by jurisdiction (the data now exists in `TaxLedgerEntry`) and the US, EU, UK, CH, and NO packs are Increment 4.
-- Rules are selected per document (one rule for all lines); per-line categories are a later enhancement.
+- Rules are selected per document, and since the tax follow-ups (part 4) individual invoice, bill, and credit note lines can use a different rule (for example a reduced-rate or exempt line on a standard-rated invoice). Procurement supplier invoices still use one rule for the whole invoice.
 - No external tax-rate provider or VAT-number validation provider is connected yet. Their interfaces arrive with the packs.
 - Withholding tax remains on legacy tax codes.
 
@@ -256,8 +256,19 @@ No schema change.
 
 Tests: `test/eu-reduced-rate-catalog.test.ts` (27 member states, rates below standard, no duplicates, disputed values excluded, sources recorded, valid codes); `test/integration/tenant-isolation/tax-eu-reduced.test.ts` (real PostgreSQL: confirmation, establishment, and member-state checks; domestic and OSS rules; idempotency and audit; a 7% German invoice; a 5.5% French OSS supply in the worksheet).
 
+## Tax follow-ups, part 4: per-line tax rules (implemented 2026-10-08)
+
+Migration `20261012090000_line_tax_rules` (additive, nullable columns only): `taxRuleId` on `AccountingInvoiceLine`, `AccountingBillLine`, `AccountingCreditNoteLine`, and `DocumentTaxLine`.
+
+- **Entry.** When an organization has tax rules, the line editor on invoices, bills, and credit notes shows a "Line tax rule" column (default "Same as document"). A line rule needs a document tax rule; with a legacy tax code, line rules are refused.
+- **Calculation** (`resolveLineTaxGroups` in `src/modules/accounting/service.ts`). Lines are grouped by rule (a line without a rule uses the document rule). Each rule is resolved once, server-side, on the sum of its lines with the version, rates, customer exemption, and collection settings in effect on the document date, so tax is rounded per rule. With inclusive prices each group back-calculates its own base, and taxable plus tax still equals the entered gross exactly. The document's taxable amount, tax, and total are the sums of the groups.
+- **Snapshot and posting.** Each group writes its components to `DocumentTaxLine` with its own treatment and `taxRuleId`; each overridden line stores the resolved rule version. Sending, approving, voiding, and settling already post from those rows, so one balanced journal carries every component, and the tax ledger, reports, and OSS worksheet see each line's treatment. The document's `taxRuleId` and `taxTreatment` stay those of the document rule. A document with no line rules is calculated exactly as before.
+- **Printing.** Invoice and bill PDFs taxed by tax rules show a per-line Tax column (rate, layered rates, or the treatment such as Exempt) and a tax summary by component with its taxable amount, replacing the Ghana VAT, NHIL, and GETFund rows that only apply to legacy tax codes (`engineTaxPrintDetails`).
+
+Tests: `test/line-tax-print.test.ts` (line labels, summaries, layered components, rows saved before per-line rules, PDF tax column); `test/integration/tenant-isolation/tax-line-rules.test.ts` (real PostgreSQL: a standard, reduced, and exempt invoice with its snapshot, journal, and ledger; unchanged single-rule documents; inclusive prices per group; a mixed bill's input VAT; a mixed credit note reducing net VAT; a document rule required; another organization's rule refused).
+
 ## Remaining increments
 
 2. **Formatting sweep (done 2026-10-08):** module pages, dashboard widgets, charts, the POS sell screen, Fleet owner statements, the invoice and bill PDF, and the payslip SMS format money with the organization formatter or `formatMoney(value, currency, organizationNumberLocale(organization))`; the School helper that hard-coded GHS was removed; new invoices, bills, and credit notes pre-select a contact's default currency. `test/money-formatting-sweep.test.ts` fails if new code calls `formatMoney` without a currency or without the organization locale outside the documented exceptions (Rock Frost's own GHS platform billing pages, and service error messages, which use the document or base currency).
-3. **Tax follow-ups:** in progress. Done: credit notes and Procurement supplier invoices on the tax engine with their tax records (part 1), VIES VAT-number checks with stored evidence and an OSS return worksheet (part 2), and the EU reduced-rate reference catalog (part 3). Remaining: per-line tax categories and configurable payroll statutory deductions with US federal posting.
+3. **Tax follow-ups:** in progress. Done: credit notes and Procurement supplier invoices on the tax engine with their tax records (part 1), VIES VAT-number checks with stored evidence and an OSS return worksheet (part 2), the EU reduced-rate reference catalog (part 3), and per-line tax rules on invoices, bills, and credit notes (part 4). Remaining: configurable payroll statutory deductions with US federal posting.
 4. **Contracts:** core (5a), lifecycle (5b), and integrations and reporting (5c) implemented (`docs/CONTRACTS_MODULE.md`); an electronic signature provider and public listing remain.

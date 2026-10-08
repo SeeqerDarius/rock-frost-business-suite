@@ -3183,6 +3183,8 @@ model AccountingInvoiceLine {
   unitPrice   Decimal @db.Decimal(12, 2)
   lineTotal   Decimal @db.Decimal(12, 2)
   sortOrder   Int     @default(0)
+  /// Tax engine rule for this line when it differs from the document rule (the version in effect on the document date).
+  taxRuleId   String?
 
   invoice AccountingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
@@ -3305,6 +3307,8 @@ model AccountingBillLine {
   unitPrice   Decimal @db.Decimal(12, 2)
   lineTotal   Decimal @db.Decimal(12, 2)
   sortOrder   Int     @default(0)
+  /// Tax engine rule for this line when it differs from the document rule (the version in effect on the document date).
+  taxRuleId   String?
 
   bill AccountingBill @relation(fields: [billId], references: [id], onDelete: Cascade)
 
@@ -3412,6 +3416,8 @@ model AccountingCreditNoteLine {
   unitPrice    Decimal @db.Decimal(12, 2)
   lineTotal    Decimal @db.Decimal(12, 2)
   sortOrder    Int     @default(0)
+  /// Tax engine rule for this line when it differs from the document rule (the version in effect on the document date).
+  taxRuleId    String?
 
   creditNote AccountingCreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
 
@@ -8157,6 +8163,8 @@ model DocumentTaxLine {
   outputAccountCode  String?
   inputAccountCode   String?
   sortOrder          Int             @default(0)
+  /// The rule version that produced this component (documents with per-line rules have one group of rows per rule).
+  taxRuleId          String?
   createdAt          DateTime        @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)

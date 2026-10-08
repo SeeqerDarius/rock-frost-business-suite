@@ -62,7 +62,7 @@ export async function createNewCreditNote(formData: FormData): Promise<void> {
     redirect("/app/accounting/credit-notes?error=missing-fields");
   }
   const { contactId, customerName, customerEmail, description, issueDate, taxCodeId, taxRuleId, currency, exchangeRate } = parsed.data;
-  const lines = parseIndexedFormRows(formData, "lines", ["description", "quantity", "unitPrice"]) as unknown as LineItemInput[];
+  const lines = parseIndexedFormRows(formData, "lines", ["description", "quantity", "unitPrice", "taxRuleId"]) as unknown as LineItemInput[];
 
   const session = await getServerAuthSession();
   try {

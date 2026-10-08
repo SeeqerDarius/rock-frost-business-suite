@@ -33,7 +33,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-payment": "That payment amount is invalid or exceeds the remaining balance.",
   "not-found": "That invoice could not be found.",
   "period-closed": "The transaction date is in a closed accounting period.",
-  "tax-rule": "That tax rule could not be applied on the document date. Check its rates and effective dates in Tax and Compliance.",
+  "tax-rule": "That tax rule could not be applied on the document date. Check its rates and effective dates in Tax and Compliance. Rules on individual lines also need a tax rule on the document.",
   "fx-rate": "No exchange rate is recorded for that currency and date. Record one under Exchange Rates or enter a rate.",
 };
 
@@ -85,7 +85,7 @@ export default async function AccountingInvoicesPage({
               <Input id="customerEmail" name="customerEmail" type="email" />
             </div>
             <CurrencyFields baseCurrency={baseCurrency} idPrefix="invoice" />
-            <LineItemsEditor currency={baseCurrency} />
+            <LineItemsEditor currency={baseCurrency} taxRules={taxRules.map((rule) => ({ id: rule.id, label: `${rule.code}: ${rule.name}` }))} />
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="issueDate">Issue date</Label>

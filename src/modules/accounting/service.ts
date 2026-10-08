@@ -816,6 +816,50 @@ export function getBillForPrint(organizationId: string, id: string) {
   return db.accountingBill.findFirst({ where: { id, organizationId }, include: { lines: { orderBy: { sortOrder: "asc" } }, taxCode: true, contact: true } });
 }
 
+type PrintTaxRow = { taxRuleId: string | null; name: string; rate: Prisma.Decimal; treatment: string; taxableAmount: Prisma.Decimal; taxAmount: Prisma.Decimal };
+
+const NO_TAX_LABEL: Record<string, string> = { ZERO_RATED: "Zero-rated", EXEMPT: "Exempt", REVERSE_CHARGE: "Reverse charge", OUT_OF_SCOPE: "Out of scope" };
+const percent = (rate: Prisma.Decimal) => `${Number(rate.toString())}%`;
+
+/**
+ * Per-line rate labels and a tax summary by component for printing a
+ * document taxed by the tax engine, from its stored DocumentTaxLine
+ * snapshot. Rows written before per-line rules existed carry no rule and
+ * belong to the document rule.
+ */
+export function engineTaxPrintDetails(rows: PrintTaxRow[], documentRuleId: string, lineRuleIds: (string | null)[]) {
+  const byRule = new Map<string, PrintTaxRow[]>();
+  for (const row of rows) {
+    const key = row.taxRuleId ?? documentRuleId;
+    byRule.set(key, [...(byRule.get(key) ?? []), row]);
+  }
+  const ruleLabel = (ruleId: string) => {
+    const ruleRows = byRule.get(ruleId) ?? [];
+    if (!ruleRows.length) return "";
+    const treatment = ruleRows[0].treatment;
+    return NO_TAX_LABEL[treatment] ?? ruleRows.map((row) => percent(row.rate)).join(" + ");
+  };
+  const summary = new Map<string, { label: string; taxableAmount: Prisma.Decimal; taxAmount: Prisma.Decimal }>();
+  for (const row of rows) {
+    const label = NO_TAX_LABEL[row.treatment] ? `${row.name} (${NO_TAX_LABEL[row.treatment].toLowerCase()})` : `${row.name} ${percent(row.rate)}`;
+    const existing = summary.get(label);
+    if (existing) {
+      existing.taxableAmount = existing.taxableAmount.plus(row.taxableAmount);
+      existing.taxAmount = existing.taxAmount.plus(row.taxAmount);
+    } else {
+      summary.set(label, { label, taxableAmount: row.taxableAmount, taxAmount: row.taxAmount });
+    }
+  }
+  return { lineLabels: lineRuleIds.map((ruleId) => ruleLabel(ruleId ?? documentRuleId)), summary: [...summary.values()] };
+}
+
+/** Loads engineTaxPrintDetails() for a printed invoice or bill; null for legacy tax codes. */
+export async function getEngineTaxPrintDetails(organizationId: string, documentType: "INVOICE" | "BILL", document: { id: string; taxRuleId: string | null; lines: { taxRuleId: string | null }[] }) {
+  if (!document.taxRuleId) return null;
+  const rows = await db.documentTaxLine.findMany({ where: { organizationId, documentType, documentId: document.id }, orderBy: { sortOrder: "asc" } });
+  return engineTaxPrintDetails(rows, document.taxRuleId, document.lines.map((line) => line.taxRuleId));
+}
+
 export async function getReceivablesSummary(organizationId: string) {
   await sweepOverdueInvoices(organizationId);
   const invoices = await db.accountingInvoice.findMany({ where: { organizationId, status: { in: ["SENT", "OVERDUE", "PAID"] } }, include: { payments: { include: { account: true }, orderBy: { paymentDate: "asc" } } }, orderBy: [{ customerName: "asc" }, { issueDate: "asc" }] });
@@ -841,6 +885,8 @@ export interface LineItemInput {
   description: string;
   quantity: string;
   unitPrice: string;
+  /** Tax engine rule for this line; blank means the document's rule. Only valid when the document uses a tax rule. */
+  taxRuleId?: string | null;
 }
 
 interface ComputedLine {
@@ -849,6 +895,7 @@ interface ComputedLine {
   unitPrice: Prisma.Decimal;
   lineTotal: Prisma.Decimal;
   sortOrder: number;
+  taxRuleId: string | null;
 }
 
 /**
@@ -870,7 +917,7 @@ export function computeLineItems(lines: LineItemInput[]): { lines: ComputedLine[
     const unitPrice = new Prisma.Decimal(line.unitPrice || "0");
     if (!unitPrice.isFinite() || unitPrice.isNegative()) throw new InvalidLineItemsError(`Line ${index + 1}: unit price cannot be negative.`);
     const lineTotal = quantity.times(unitPrice).toDecimalPlaces(2);
-    return { description, quantity, unitPrice, lineTotal, sortOrder: index };
+    return { description, quantity, unitPrice, lineTotal, sortOrder: index, taxRuleId: line.taxRuleId?.trim() || null };
   });
   const taxableAmount = computed.reduce((sum, line) => sum.plus(line.lineTotal), new Prisma.Decimal(0));
   return { lines: computed, taxableAmount };
@@ -897,6 +944,7 @@ interface InvoiceInput {
 
 export async function createInvoice(organizationId: string, data: InvoiceInput, createdById?: string | null) {
   if (data.taxRuleId) return createEngineDocument(organizationId, "INVOICE", data, createdById);
+  assertNoLineRules(data.lines);
   const { lines, taxableAmount } = computeLineItems(data.lines);
   const tax = await calculateTax(organizationId, taxableAmount, data.taxCodeId, data.issueDate);
   const fx = await resolveDocumentFx(organizationId, { currency: data.currency, date: data.issueDate, manualRate: data.exchangeRate });
@@ -1196,7 +1244,7 @@ function createEngineDocument(organizationId: string, documentType: "BILL", data
 function createEngineDocument(organizationId: string, documentType: "CREDIT_NOTE", data: CreditNoteInput, createdById?: string | null): Promise<CreditNoteWithLines>;
 async function createEngineDocument(organizationId: string, documentType: "INVOICE" | "BILL" | "CREDIT_NOTE", data: EngineDocumentInput, createdById?: string | null): Promise<InvoiceWithLines | BillWithLines | CreditNoteWithLines> {
   if (data.taxCodeId) throw new TaxEngineError("Choose either a legacy tax code or a tax rule, not both.");
-  const { lines, taxableAmount } = computeLineItems(data.lines);
+  const { lines } = computeLineItems(data.lines);
   const organization = await db.organization.findUnique({ where: { id: organizationId }, select: { pricesIncludeTax: true } });
   if (!organization) throw new NotFoundError("Organization not found.");
   const date = documentType === "BILL" ? (data as BillInput).billDate : (data as InvoiceInput | CreditNoteInput).issueDate;
@@ -1204,15 +1252,16 @@ async function createEngineDocument(organizationId: string, documentType: "INVOI
     const contact = await db.accountingContact.findFirst({ where: { id: data.contactId, organizationId }, select: { id: true } });
     if (!contact) throw new NotFoundError("Contact not found.");
   }
-  const resolved = await resolveDocumentTax(organizationId, { ruleId: data.taxRuleId!, date, amount: taxableAmount, pricesIncludeTax: data.pricesIncludeTax ?? organization.pricesIncludeTax, contactId: data.contactId });
+  const { document: resolved, groups } = await resolveLineTaxGroups(organizationId, { documentRuleId: data.taxRuleId!, lines, date, pricesIncludeTax: data.pricesIncludeTax ?? organization.pricesIncludeTax, contactId: data.contactId });
   const fx = await resolveDocumentFx(organizationId, { currency: data.currency, date, manualRate: data.exchangeRate });
-  const calc = resolved.calculation;
-  const baseAmount = engineBaseTotal(calc.taxableAmount, calc.lines.map((line) => line.taxAmount), fx);
+  const calc = combineGroupCalculations(groups);
+  const baseAmount = engineBaseTotal(calc.taxableAmount, calc.taxAmounts, fx);
+  const lineRule = new Map(groups.filter((group) => group.selectedRuleId !== data.taxRuleId).map((group) => [group.selectedRuleId, group.resolved.rule.id]));
   const common = {
     organizationId, createdById, contactId: data.contactId, description: data.description,
     taxRuleId: resolved.rule.id, taxTreatment: resolved.treatment, taxableAmount: calc.taxableAmount, taxAmount: calc.totalTax, amount: calc.grossAmount,
     currency: fx.currency, exchangeRate: fx.rate, exchangeRateDate: fx.rateDate, exchangeRateSource: fx.rateSource, baseAmount,
-    lines: { create: lines.map((line) => ({ description: line.description, quantity: line.quantity, unitPrice: line.unitPrice, lineTotal: line.lineTotal, sortOrder: line.sortOrder })) },
+    lines: { create: lines.map((line) => ({ description: line.description, quantity: line.quantity, unitPrice: line.unitPrice, lineTotal: line.lineTotal, sortOrder: line.sortOrder, taxRuleId: line.taxRuleId && line.taxRuleId !== data.taxRuleId ? lineRule.get(line.taxRuleId) ?? null : null })) },
   };
   return createWithUniqueRetry(() => db.$transaction(async (tx) => {
     let documentId: string;
@@ -1232,20 +1281,63 @@ async function createEngineDocument(organizationId: string, documentType: "INVOI
       created = await tx.accountingBill.create({ data: { ...common, billNumber: await generateBillNumber(organizationId), branchId: input.branchId, supplierName: input.supplierName, supplierEmail: input.supplierEmail, expenseAccountId: expenseAccount.id, billDate: input.billDate, dueDate: input.dueDate }, include: { lines: true } });
       documentId = created.id;
     }
-    if (calc.lines.length) await tx.documentTaxLine.createMany({ data: documentTaxLineRows(organizationId, documentType, documentId, resolved) });
+    const rows = documentTaxLineRows(organizationId, documentType, documentId, groups.map((group) => group.resolved));
+    if (rows.length) await tx.documentTaxLine.createMany({ data: rows });
     return created;
   }));
 }
 
+/** Per-line rules are a tax engine feature; legacy tax codes apply one code to the whole document. */
+function assertNoLineRules(lines: LineItemInput[]) {
+  if (lines.some((line) => line.taxRuleId?.trim())) throw new TaxEngineError("Choose a tax rule for the document before choosing rules for individual lines.");
+}
+
+type ResolvedTax = Awaited<ReturnType<typeof resolveDocumentTax>>;
+
+/**
+ * Resolves tax for a document whose lines may carry their own rules. Lines
+ * without a rule use the document rule. Each distinct rule is calculated once
+ * on the sum of its lines (tax is rounded per rule, as on a VAT invoice
+ * summary), with the rule version, rates, customer exemption, and collection
+ * settings in effect on the document date. Groups follow the order in which
+ * their first line appears, with the document rule first.
+ */
+async function resolveLineTaxGroups(organizationId: string, input: { documentRuleId: string; lines: ComputedLine[]; date: Date; pricesIncludeTax: boolean; contactId?: string | null }) {
+  const amounts = new Map<string, Prisma.Decimal>([[input.documentRuleId, new Prisma.Decimal(0)]]);
+  for (const line of input.lines) {
+    const ruleId = line.taxRuleId ?? input.documentRuleId;
+    amounts.set(ruleId, (amounts.get(ruleId) ?? new Prisma.Decimal(0)).plus(line.lineTotal));
+  }
+  const groups: { selectedRuleId: string; lineCount: number; resolved: ResolvedTax }[] = [];
+  for (const [selectedRuleId, amount] of amounts) {
+    const resolved = await resolveDocumentTax(organizationId, { ruleId: selectedRuleId, date: input.date, amount, pricesIncludeTax: input.pricesIncludeTax, contactId: input.contactId });
+    groups.push({ selectedRuleId, lineCount: input.lines.filter((line) => (line.taxRuleId ?? input.documentRuleId) === selectedRuleId).length, resolved });
+  }
+  const document = groups[0].resolved;
+  return { document, groups: groups.filter((group) => group.lineCount > 0) };
+}
+
+function combineGroupCalculations(groups: { resolved: ResolvedTax }[]) {
+  const zero = new Prisma.Decimal(0);
+  const calculations = groups.map((group) => group.resolved.calculation);
+  return {
+    taxableAmount: calculations.reduce((sum, calc) => sum.plus(calc.taxableAmount), zero),
+    totalTax: calculations.reduce((sum, calc) => sum.plus(calc.totalTax), zero),
+    grossAmount: calculations.reduce((sum, calc) => sum.plus(calc.grossAmount), zero),
+    taxAmounts: calculations.flatMap((calc) => calc.lines.map((line) => line.taxAmount)),
+  };
+}
+
 /** The immutable per-component tax snapshot stored with an engine-taxed document. */
-export function documentTaxLineRows(organizationId: string, documentType: "INVOICE" | "BILL" | "CREDIT_NOTE" | "SUPPLIER_INVOICE", documentId: string, resolved: Awaited<ReturnType<typeof resolveDocumentTax>>) {
-  return resolved.calculation.lines.map((line, index) => {
+export function documentTaxLineRows(organizationId: string, documentType: "INVOICE" | "BILL" | "CREDIT_NOTE" | "SUPPLIER_INVOICE", documentId: string, resolvedGroups: ResolvedTax | ResolvedTax[]) {
+  const groups = Array.isArray(resolvedGroups) ? resolvedGroups : [resolvedGroups];
+  return groups.flatMap((resolved) => resolved.calculation.lines.map((line) => ({ resolved, line }))).map(({ resolved, line }, index) => {
     const accounts = resolved.accounts.get(line.code);
     return {
       organizationId, documentType, documentId, taxRateId: line.rateId, code: line.code, name: line.name, taxKind: accounts?.taxKind ?? "OTHER",
       jurisdictionCode: line.jurisdictionCode, jurisdictionLevel: line.jurisdictionLevel, authorityName: line.authorityName, rate: line.rate, compound: line.compound, recoverable: line.recoverable,
       treatment: resolved.treatment, taxableAmount: line.taxableAmount, taxAmount: line.taxAmount, selfAssessedAmount: line.selfAssessedAmount,
-      outputAccountCode: accounts?.outputAccountCode ?? null, inputAccountCode: accounts?.inputAccountCode ?? null, sortOrder: index,
+      outputAccountCode: accounts?.outputAccountCode ?? null, inputAccountCode: accounts?.inputAccountCode ?? null, sortOrder: index, taxRuleId: resolved.rule.id,
     };
   });
 }
@@ -1425,6 +1517,7 @@ interface BillInput {
 
 export async function createBill(organizationId: string, data: BillInput, createdById?: string | null) {
   if (data.taxRuleId) return createEngineDocument(organizationId, "BILL", data, createdById);
+  assertNoLineRules(data.lines);
   const { lines, taxableAmount } = computeLineItems(data.lines);
   const expenseAccount = await db.accountingAccount.findFirst({ where: { id: data.expenseAccountId, organizationId, type: "EXPENSE" } });
   if (!expenseAccount) throw new NotFoundError("Expense account not found.");
@@ -1693,6 +1786,7 @@ interface CreditNoteInput {
 
 export async function createCreditNote(organizationId: string, data: CreditNoteInput, createdById?: string | null) {
   if (data.taxRuleId) return createEngineDocument(organizationId, "CREDIT_NOTE", data, createdById);
+  assertNoLineRules(data.lines);
   const { lines, taxableAmount } = computeLineItems(data.lines);
   const tax = await calculateTax(organizationId, taxableAmount, data.taxCodeId, data.issueDate);
   const fx = await resolveDocumentFx(organizationId, { currency: data.currency, date: data.issueDate, manualRate: data.exchangeRate });
