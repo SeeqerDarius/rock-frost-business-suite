@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-08: Tax follow-ups, part 4 (per-line tax rules)
+
+- **Scope**: invoice, bill, and credit note lines can use their own tax rule when the document uses one; tax is resolved server-side per rule group with rounding per rule, stored as DocumentTaxLine rows per group (with `taxRuleId`), and posted in one balanced journal with each treatment in the tax ledger. Legacy tax codes refuse line rules. Invoice and bill PDFs for tax-rule documents gain a per-line Tax column and a tax summary by component. Procurement supplier invoices are unchanged (one rule per invoice). Details: `docs/GLOBAL_EXPANSION_ARCHITECTURE.md`, "Tax follow-ups, part 4". Note: the part 2 and part 3 entries below and their migration folder names carry 2026-10-11 although they shipped on 2026-10-08; migration folder names are left unchanged because they are applied in production.
+- **Important files**: `prisma/schema.prisma`, `src/modules/accounting/service.ts` (`resolveLineTaxGroups`, `documentTaxLineRows`, `engineTaxPrintDetails`), `src/components/forms/line-items-editor.tsx`, `src/app/app/accounting/{invoices,bills,credit-notes}/{page.tsx,actions.ts}`, `src/lib/reports/invoice-pdf.ts`, `src/app/api/accounting/documents/[type]/route.ts`; tests `test/line-tax-print.test.ts`, `test/integration/tenant-isolation/tax-line-rules.test.ts`.
+- **Migration**: `20261012090000_line_tax_rules` (four nullable TEXT columns, no backfill; existing rows read as the document rule).
+- **Validation (local)**: `npx tsc --noEmit` clean; `npm run lint` 0 errors (2 pre-existing warnings); `npx vitest run` 194 files, 1499 tests passed; `npm run build` compiled; `git diff --check` clean; no em dashes added. The migration and integration suite run in CI against the disposable database.
+- **Remaining risks**: the document-level `taxTreatment` reflects the document rule only (line treatments are in the snapshot and ledger); customer-exemption flags on ledger rows follow the document rule; Procurement supplier invoices have no per-line rules.
+
 ## 2026-10-11: Tax follow-ups, part 3 (EU reduced-rate reference catalog)
 
 - **Production verification (2026-10-08)**: PR #72 merged as `ff7b345`; CI validate (193 unit files), integration (including `tax-eu-reduced.test.ts`, 3 tests), and security passed on head `c0acd2c`. Vercel production deployment `dpl_8dt6m6qwcemhrLeE4YDU2GwciLHc` READY (no migration). `/api/health` 200; `/app/accounting/tax-compliance` and `?section=rates` 307 signed out; OSS export 401 signed out. Runtime errors since deploy: only the expected signed-out "No organization membership" group from these probes; the pre-existing School student-ID PDF font error is tracked separately.

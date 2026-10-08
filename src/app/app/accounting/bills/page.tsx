@@ -33,7 +33,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-payment": "That payment amount is invalid or exceeds the remaining balance.",
   "not-found": "That bill, expense account, or contact could not be found.",
   "period-closed": "The transaction date is in a closed accounting period.",
-  "tax-rule": "That tax rule could not be applied on the document date. Check its rates and effective dates in Tax and Compliance.",
+  "tax-rule": "That tax rule could not be applied on the document date. Check its rates and effective dates in Tax and Compliance. Rules on individual lines also need a tax rule on the document.",
   "fx-rate": "No exchange rate is recorded for that currency and date. Record one under Exchange Rates or enter a rate.",
   "missing-file": "Choose a file to attach.",
   "invalid-attachment": "That file must be a JPEG, PNG, WEBP, or PDF under 3 MB.",
@@ -94,7 +94,7 @@ export default async function AccountingBillsPage({
               <Input id="supplierEmail" name="supplierEmail" type="email" />
             </div>
             <CurrencyFields baseCurrency={currency} idPrefix="bill" />
-            <LineItemsEditor currency={currency} />
+            <LineItemsEditor currency={currency} taxRules={taxRules.map((rule) => ({ id: rule.id, label: `${rule.code}: ${rule.name}` }))} />
             <div className="space-y-2">
               <Label htmlFor="expenseAccountId">Expense account</Label>
               <select id="expenseAccountId" name="expenseAccountId" className="h-10 w-full rounded-md border bg-background px-3" required>

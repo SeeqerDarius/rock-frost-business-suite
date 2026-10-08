@@ -102,6 +102,10 @@ Customer receipts are explicit immutable allocation records rather than only an 
 
 The Receivables page groups invoices by normalized customer email, falling back to normalized customer name when no email is available. It shows invoiced, paid, outstanding, and overdue balances plus statement-style invoice and receipt history. `accounting.receivables.manage` controls receipt entry separately from invoice creation.
 
+# Per-line tax rules (2026-10-08)
+
+Invoice, bill, and credit note lines can use their own tax rule when the document uses a tax rule (for example reduced-rate or exempt items on a standard-rated invoice). Tax is calculated per rule, and PDFs show a per-line Tax column and a tax summary. Details: `docs/GLOBAL_EXPANSION_ARCHITECTURE.md`, "Tax follow-ups, part 4".
+
 # EU reduced-rate reference catalog (2026-10-11)
 
 EU organizations can apply reduced VAT rates from a reference catalog in Tax and Compliance, Rates, after confirming them against TEDB. Details: `docs/GLOBAL_EXPANSION_ARCHITECTURE.md`, "Tax follow-ups, part 3".
