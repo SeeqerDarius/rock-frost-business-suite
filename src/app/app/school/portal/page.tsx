@@ -1,4 +1,7 @@
-import { CalendarCheck, GraduationCap, IdCard, Lock, Receipt, ShieldAlert, ShieldOff, Users } from "lucide-react";
+import Link from "next/link";
+import { CalendarCheck, GraduationCap, IdCard, Lock, Megaphone, MessagesSquare, Receipt, ShieldAlert, ShieldOff, Users } from "lucide-react";
+import { UnreadBadge } from "@/components/school/communications";
+import { getGuardianUnreadSummary } from "@/modules/school/communications-service";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card";
@@ -63,7 +66,10 @@ export default async function SchoolPortalPage({ searchParams }: { searchParams:
     studentId = requested;
   }
 
-  const summary = await getSchoolPortalStudentSummary(tenant.organizationId, studentId);
+  const [summary, unread] = await Promise.all([
+    getSchoolPortalStudentSummary(tenant.organizationId, studentId),
+    scope.type === "guardian" ? getGuardianUnreadSummary(tenant.organizationId, tenant.userId) : Promise.resolve(null),
+  ]);
 
   return (
     <div className="mx-auto max-w-screen-lg space-y-6">
@@ -77,6 +83,21 @@ export default async function SchoolPortalPage({ searchParams }: { searchParams:
             </a>
           ))}
         </div>
+      ) : null}
+
+      {unread ? (
+        <nav aria-label="School communications" className="grid gap-3 sm:grid-cols-2">
+          <Link href="/app/school/portal/announcements" className="flex items-center justify-between gap-3 rounded-lg border p-4 hover:bg-muted/50">
+            <span className="flex items-center gap-2 font-medium"><Megaphone className="size-5 text-muted-foreground" />Announcements</span>
+            <UnreadBadge count={unread.announcements} label="new announcements" />
+          </Link>
+          {unread.messagingAvailable ? (
+            <Link href="/app/school/portal/messages" className="flex items-center justify-between gap-3 rounded-lg border p-4 hover:bg-muted/50">
+              <span className="flex items-center gap-2 font-medium"><MessagesSquare className="size-5 text-muted-foreground" />Messages</span>
+              <UnreadBadge count={unread.messages} label="unread messages" />
+            </Link>
+          ) : null}
+        </nav>
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -48,7 +48,7 @@ describe("organization feature add-on catalogue", () => {
   });
 
   it("nests a module-scoped add-on under its own module only", () => {
-    expect(moduleScopedAddons("school").map((addon) => addon.key)).toEqual(["schoolPortal"]);
+    expect(moduleScopedAddons("school").map((addon) => addon.key)).toEqual(["schoolPortal", "schoolGuardianMessaging"]);
     expect(moduleScopedAddons("hotel")).toEqual([]);
     expect(moduleScopedAddons("fleet")).toEqual([]);
   });

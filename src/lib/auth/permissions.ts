@@ -155,6 +155,10 @@ export const PERMISSIONS = {
   SCHOOL_DASHBOARD_FINANCIAL_VIEW: "school.dashboard_financial.view",
   SCHOOL_ANALYTICS_VIEW: "school.analytics.view",
   SCHOOL_PORTAL_VIEW: "school.portal.view",
+  /** Staff side of direct in-app conversations with guardians (scoped to the staff member's classes). */
+  SCHOOL_MESSAGES_MANAGE: "school.messages.manage",
+  /** Publish and withdraw School announcements. */
+  SCHOOL_ANNOUNCEMENTS_PUBLISH: "school.announcements.publish",
   HOSTEL_VIEW: "hostel.view",
   HOSTEL_BUILDINGS_MANAGE: "hostel.buildings.manage",
   HOSTEL_ALLOCATIONS_MANAGE: "hostel.allocations.manage",

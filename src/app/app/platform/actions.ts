@@ -204,6 +204,55 @@ export async function toggleOrganizationSmsNotifications(formData: FormData): Pr
 }
 
 /**
+ * Guardian messaging is a separate paid School add-on for direct in-app
+ * conversations between staff and guardians (it also needs the portal
+ * grant). See docs/SCHOOL_COMMUNICATIONS.md.
+ */
+export async function toggleSchoolGuardianMessaging(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const tenant = await requireCurrentTenant();
+  if (!isPlatformOperator(tenant)) {
+    return { ok: false, error: "You do not have permission to change guardian messaging." };
+  }
+  const parsed = parseWithSchema(offlineAccessSchema, { organizationId: String(formData.get("organizationId") ?? "").trim() });
+  if (!parsed.success) {
+    return { ok: false, error: "The organization selection is invalid." };
+  }
+  const { organizationId } = parsed.data;
+  const granted = formData.get("granted") === "true";
+
+  const [organization, session] = await Promise.all([
+    db.organization.findUnique({ where: { id: organizationId } }),
+    getServerAuthSession(),
+  ]);
+  if (!organization) {
+    return { ok: false, error: "The organization was not found." };
+  }
+
+  await db.organization.update({
+    where: { id: organizationId },
+    data: {
+      schoolGuardianMessagingGranted: granted,
+      schoolGuardianMessagingGrantedAt: granted ? new Date() : null,
+      schoolGuardianMessagingGrantedById: granted ? session?.user?.id : null,
+    },
+  });
+
+  await logAuditEvent({
+    organizationId,
+    userId: session?.user?.id,
+    module: "platform",
+    action: granted ? "school_guardian_messaging.platform_granted" : "school_guardian_messaging.platform_revoked",
+    entityName: "Organization",
+    entityId: organizationId,
+    metadata: { organization: organization.name },
+  });
+
+  revalidatePath(`/app/platform/organizations/${organizationId}`);
+  revalidatePath("/app/platform/organizations");
+  return { ok: true };
+}
+
+/**
  * The School Parent/Student portal is the same kind of paid add-on, gating
  * /app/school/portal and /app/school/portal-access regardless of role or
  * permission. See docs/SCHOOL_PARENT_STUDENT_PORTAL.md.
