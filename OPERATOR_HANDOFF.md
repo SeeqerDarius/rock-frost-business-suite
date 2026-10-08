@@ -2,6 +2,8 @@
 
 ## 2026-10-11: Tax follow-ups, part 3 (EU reduced-rate reference catalog)
 
+- **Production verification (2026-10-08)**: PR #72 merged as `ff7b345`; CI validate (193 unit files), integration (including `tax-eu-reduced.test.ts`, 3 tests), and security passed on head `c0acd2c`. Vercel production deployment `dpl_8dt6m6qwcemhrLeE4YDU2GwciLHc` READY (no migration). `/api/health` 200; `/app/accounting/tax-compliance` and `?section=rates` 307 signed out; OSS export 401 signed out. Runtime errors since deploy: only the expected signed-out "No organization membership" group from these probes; the pre-existing School student-ID PDF font error is tracked separately.
+
 - **Scope**: an EU reduced-rate reference catalog (owner's choice of option) in Tax and Compliance, Rates, for EU organizations. Rates both published sources agree on can be applied after the administrator confirms them against TEDB; disputed rates (Finland, Lithuania, and one-source values for Austria, Cyprus, Greece) are shown as unconfirmed and cannot be applied. Applying creates ordinary versionable rates with a domestic `REDUCED` rule for the home state and OSS rules for others; idempotent and audited. The OSS worksheet now includes reduced-rate supplies. Details: `docs/GLOBAL_EXPANSION_ARCHITECTURE.md`, "Tax follow-ups, part 3".
 - **Important files**: `src/modules/tax/packs/eu-reduced-rates.ts`, `src/modules/tax/{service,reports}.ts`, `src/app/app/accounting/tax-compliance/{page.tsx,actions.ts}`; tests `test/eu-reduced-rate-catalog.test.ts`, `test/integration/tenant-isolation/tax-eu-reduced.test.ts`.
 - **Migration**: none.
