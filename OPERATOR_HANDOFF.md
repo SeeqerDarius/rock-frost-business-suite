@@ -1,5 +1,12 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-08: Formatting sweep production verification
+
+- PR [#67](https://github.com/SeeqerDarius/rock-frost-business-suite/pull/67) merged as `e34bcbc9cd2be14b385211b87b3a0a9e18ee80e1` after validate, integration, and security passed (GitHub's Vercel status stayed pending while Vercel reported the preview READY, as on earlier PRs).
+- Production deployment `dpl_3BjhGDFJmVPcJLzfRt3TBVkkyqg7` is READY on `app.rockfrostgroup.com`. No migration.
+- Checks: `/api/health` 200; `/app/accounting/invoices`, `/app/school/fees`, `/app/pos/sell`, and `/app/fleet/investor` redirect (307) to `/login` signed out. Runtime errors (last hour): only the pre-existing signed-out `No organization membership` group from these probes.
+- Remaining: authenticated pages not visually verified; a signed-in check of a non-GHS organization (amounts, number format, and contact currency pre-selection) is recommended.
+
 ## 2026-10-08: Formatting sweep (organization money formatting and contact default currency)
 
 - **Scope**: every module page, dashboard widget, chart, the POS sell screen, Fleet owner workspace and statements, the invoice and bill PDF, and the payslip SMS now format money with the organization's currency and number-format setting (via `createOrganizationFormatter(...).money` or `formatMoney(value, currency, organizationNumberLocale(organization))`). The School `formatMoney` helper that hard-coded GHS (and ignored non-GHS schools) was removed; School fees, reports, payroll, portal, transport, and student pages use the organization currency. Accounting payment, credit-note, and petty-cash error messages now show the document or base currency instead of defaulting to GHS, and the installment minimum-deposit message uses the organization currency. New invoices, bills, and credit notes pre-select the chosen contact's default currency (new `ContactSelect`; the user can still change it). Ghana organizations see no output change (same currency and locale).
