@@ -10,6 +10,8 @@ import { ensureRevenueAccountsForOrg } from "@/lib/accounting-integration";
 import { getModulePriceMap, getPricingBundleMap, type PricingBundleKey } from "@/lib/pricing";
 import { getModule, type BusinessModuleKey } from "@/platform/modules/registry";
 import { expandProductModuleKeys, productGroupKeys } from "@/platform/modules/product-groups";
+import { moduleTierCatalogue } from "@/platform/entitlements/catalogue";
+import { tierRank, type PlanTier } from "@/platform/entitlements/tiers";
 
 const AWAITING_ACTIVATION_STATUSES = ["DRAFT", "PENDING_PAYMENT", "PAST_DUE"] as const;
 
@@ -853,4 +855,87 @@ export async function cancelSubscription(input: { subscriptionId: string; actorI
     }, tx);
     return subscription;
   });
+}
+
+/**
+ * Changes the plan tier on one subscription.
+ *
+ * A downgrade can take features and headroom away from a customer who is
+ * using them, so this refuses one that the organization's current usage
+ * already exceeds and names every breach. An operator who genuinely intends
+ * it (a customer who agreed to shed campuses, say) has to bring the usage
+ * down first, which is the honest order of operations: the alternative is a
+ * school that silently cannot admit a student the next morning.
+ *
+ * Upgrades are never blocked. Features unlock on the next request, since
+ * `resolveOrganizationEntitlements()` is deliberately uncached.
+ */
+export class TierDowngradeBlockedError extends Error {
+  constructor(public readonly breaches: Array<{ name: string; used: number; ceiling: number }>) {
+    super(
+      `This organization exceeds that plan: ${breaches
+        .map((breach) => `${breach.name} ${breach.used} of ${breach.ceiling}`)
+        .join(", ")}. Reduce usage before downgrading.`,
+    );
+    this.name = "TierDowngradeBlockedError";
+  }
+}
+
+export async function updateSubscriptionTier(input: { subscriptionId: string; tier: PlanTier; actorId: string }) {
+  const subscription = await db.subscription.findUnique({
+    where: { id: input.subscriptionId },
+    include: { module: true },
+  });
+  if (!subscription) throw new Error("Subscription not found.");
+  if (subscription.tier === input.tier) return subscription;
+
+  if (tierRank(input.tier) < tierRank(subscription.tier)) {
+    const breaches = await findTierLimitBreaches(subscription.organizationId, subscription.module.code, input.tier);
+    if (breaches.length > 0) throw new TierDowngradeBlockedError(breaches);
+  }
+
+  return db.$transaction(async (tx) => {
+    const updated = await tx.subscription.update({ where: { id: subscription.id }, data: { tier: input.tier } });
+    await logAuditEvent({
+      organizationId: subscription.organizationId,
+      userId: input.actorId,
+      module: "platform",
+      action: "subscription.tier_updated",
+      entityName: "Subscription",
+      entityId: subscription.id,
+      metadata: { previousTier: subscription.tier, tier: input.tier, moduleId: subscription.moduleId },
+    }, tx);
+    return updated;
+  });
+}
+
+/**
+ * Which of a tier's ceilings the organization's live usage already exceeds.
+ * Counted the same way the creating services count, so the answer here and
+ * the error a user would hit cannot disagree.
+ */
+async function findTierLimitBreaches(organizationId: string, moduleCode: string, tier: PlanTier) {
+  const breaches: Array<{ name: string; used: number; ceiling: number }> = [];
+  for (const limit of moduleTierCatalogue(moduleCode).limits) {
+    const ceiling = limit.byTier[tier];
+    if (ceiling === null) continue;
+    const used = await countForLimit(organizationId, limit.key);
+    if (used === null || used <= ceiling) continue;
+    breaches.push({ name: limit.name, used, ceiling });
+  }
+  return breaches;
+}
+
+/**
+ * Usage for one limit key. Returns null for a key with no counter yet, so an
+ * unknown key never blocks a tier change on a number nobody computed.
+ */
+async function countForLimit(organizationId: string, limitKey: string): Promise<number | null> {
+  if (limitKey === "school.students") {
+    return db.schoolStudent.count({ where: { organizationId, status: { in: ["ACTIVE", "APPLICANT", "SUSPENDED"] } } });
+  }
+  if (limitKey === "school.campuses") {
+    return db.schoolCampus.count({ where: { organizationId, active: true } });
+  }
+  return null;
 }

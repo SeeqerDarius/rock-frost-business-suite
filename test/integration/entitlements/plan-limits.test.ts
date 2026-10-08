@@ -113,6 +113,56 @@ describe("plan limits (real Postgres)", () => {
     expect(await testDb.schoolCampus.count({ where: { organizationId: org.organizationId } })).toBe(4);
   });
 
+  it("refuses a downgrade the organization's usage already exceeds, and names every breach", async () => {
+    // The dangerous direction. Applying this silently would leave a school
+    // unable to admit a student the next morning with no warning to anyone,
+    // so the operator is told to reduce usage first.
+    const { createSchoolCampus } = await import("@/modules/school/service");
+    const { updateSubscriptionTier, TierDowngradeBlockedError } = await import("@/platform/subscriptions/service");
+    await setSchoolTier("PLATINUM");
+    await createSchoolCampus(org.organizationId, { code: "MAIN", name: "Main" });
+    await createSchoolCampus(org.organizationId, { code: "ANNEX", name: "Annex" });
+
+    const subscription = await testDb.subscription.findFirstOrThrow({ where: { organizationId: org.organizationId } });
+    await expect(
+      updateSubscriptionTier({ subscriptionId: subscription.id, tier: "BASIC", actorId: org.userId }),
+    ).rejects.toBeInstanceOf(TierDowngradeBlockedError);
+
+    // The stored tier is untouched: a refused change must not half-apply.
+    const after = await testDb.subscription.findUniqueOrThrow({ where: { id: subscription.id } });
+    expect(after.tier).toBe("PLATINUM");
+  });
+
+  it("allows a downgrade once usage fits, and records both tiers in the audit log", async () => {
+    const { createSchoolCampus } = await import("@/modules/school/service");
+    const { updateSubscriptionTier } = await import("@/platform/subscriptions/service");
+    await setSchoolTier("PLATINUM");
+    await createSchoolCampus(org.organizationId, { code: "MAIN", name: "Main" });
+
+    const subscription = await testDb.subscription.findFirstOrThrow({ where: { organizationId: org.organizationId } });
+    const updated = await updateSubscriptionTier({ subscriptionId: subscription.id, tier: "BASIC", actorId: org.userId });
+    expect(updated.tier).toBe("BASIC");
+
+    const audit = await testDb.auditLog.findFirst({
+      where: { organizationId: org.organizationId, action: "subscription.tier_updated" },
+      orderBy: { createdAt: "desc" },
+    });
+    // logAuditEvent() stores its `metadata` input in the `changes` column.
+    expect(audit?.changes).toMatchObject({ previousTier: "PLATINUM", tier: "BASIC" });
+  });
+
+  it("never blocks an upgrade, whatever the current usage", async () => {
+    const { createSchoolCampus } = await import("@/modules/school/service");
+    const { updateSubscriptionTier } = await import("@/platform/subscriptions/service");
+    await setSchoolTier("PLATINUM");
+    for (const code of ["C1", "C2", "C3", "C4"]) {
+      await createSchoolCampus(org.organizationId, { code, name: `Campus ${code}` });
+    }
+    const subscription = await testDb.subscription.findFirstOrThrow({ where: { organizationId: org.organizationId } });
+    const updated = await updateSubscriptionTier({ subscriptionId: subscription.id, tier: "ENTERPRISE", actorId: org.userId });
+    expect(updated.tier).toBe("ENTERPRISE");
+  });
+
   it("counts enrolled students only, so withdrawn history never consumes the plan", async () => {
     const { createSchoolStudent } = await import("@/modules/school/service");
     const { resolveModuleLimit } = await import("@/platform/entitlements/resolve");
