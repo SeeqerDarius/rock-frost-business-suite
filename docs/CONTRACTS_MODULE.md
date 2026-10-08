@@ -6,7 +6,7 @@
 
 - Module key `contracts`, route prefix `/app/contracts`, permission prefix `contracts.`. It is a normal catalogue module, so platform operators can enable it, subscriptions can entitle it, and access is enforced server-side by `requireModuleAccess("contracts")` on every page and action, plus `canAccessModule` on route handlers. `actorFromTenant()` passes permissions through `hasPermission()`, so contract permissions are inert whenever the organization is not entitled.
 - `publicListing: false`: Contracts is not yet marketed on public surfaces (homepage, `/modules`, public pricing, self-service signup, sitemap, login). The public module page, screenshot, and public price will be added when marketing assets exist. Setting `publicListing` to true (and adding `MODULE_SEO.contracts` and a screenshot) publishes it.
-- Provisional pricing seed: GHS 449 per month, GHS 4,490 per year, 8 seats, GHS 25 per extra seat (create-once seed; operators edit it at `/app/platform/subscriptions`). The owner should confirm the commercial price before public listing.
+- Pricing (confirmed by the owner on 2026-10-08): GHS 449 per month, GHS 4,490 per year, 8 seats included, GHS 25 per extra seat (create-once seed, in production since Increment 5a; operators edit it at `/app/platform/subscriptions`). It appears on the public pricing page and self-service signup once Contracts is publicly listed.
 
 ## Permissions and roles
 
@@ -66,4 +66,4 @@ Integration tables and columns: `ContractBillingLine` (planned receivable or pay
 
 1. **Electronic signature provider:** an adapter for a provider the owner selects, using the reserved `PROVIDER` signature method.
 2. **Reverse links:** showing linked contracts on Accounting, Fleet, HR, and Projects pages once those modules have per-record pages.
-3. **Public listing:** marketing page, screenshot, and confirmed public price.
+3. **Public listing:** the price is confirmed. Listing needs a real screenshot of the Contracts module captured from the Affordit Ventures test workspace (test records only, per `docs/DESIGN_SYSTEM.md`), a `MODULE_SEO.contracts` entry, and `publicListing: true` in the registry. The owner chose to list later.

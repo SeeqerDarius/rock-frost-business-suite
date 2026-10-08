@@ -1,5 +1,14 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-08: Increment 5c production verification and Contracts price confirmation
+
+- PR [#64](https://github.com/SeeqerDarius/rock-frost-business-suite/pull/64) merged as `5fce32278e8900b631d4f910e20054757cfbd973` after validate, integration (including `contracts-integrations.test.ts` against real Postgres), and security passed. GitHub's Vercel status stayed "pending" although Vercel reported the preview deployment READY (the same stale status occurred on PR #62); the Vercel API was used as the source of truth.
+- Production deployment `dpl_8GLA3jSpGMghTbB4q4Ag6MEPLAKB` is READY and aliased to `app.rockfrostgroup.com`. Build log: `Applying migration 20261009090000_contracts_integrations`, applied successfully.
+- Checks: `/api/health` 200; `/app/contracts/reports` redirects (307) to `/login` signed out; `/api/contracts/reports/register` returns 401 signed out. Runtime errors (24 hours): only the pre-existing signed-out `No organization membership` group from verification probes, plus one `Health check failed` (missing `DATABASE_URL`) on preview deployment `dpl_5H8mPuRugkxwcYiTgavXKgLcxVst` from another agent's branch `codex/module-branding-20261007`, not production.
+- The first `/api/cron/contract-reminders` run could not be confirmed from logs: the Hobby plan keeps runtime logs for one hour. Check `Contract-reminders cron completed` in Vercel logs within an hour of a 07:00 UTC run, or the `ContractReminder` table.
+- **Pricing**: the owner confirmed Contracts at GHS 449 per month, GHS 4,490 per year, 8 seats, GHS 25 per extra seat (the seeded plan already in production; no data change). Seed comment and `docs/CONTRACTS_MODULE.md` updated.
+- **Public listing deferred by the owner**: Contracts stays `publicListing: false` until a real screenshot is captured from the Affordit Ventures test workspace; then add `MODULE_SCREENSHOTS.contracts`, `MODULE_SEO.contracts`, set `publicListing: true`, and update `test/seo.test.ts`.
+
 ## 2026-10-09: Global expansion Increment 5c, contract integrations, risk, and reports
 
 - **Scope**: linked records (Accounting contacts, invoices, bills; Fleet vehicles, drivers, owners, Work and Pay agreements; HR employees; projects), module-gated and organization-scoped, with details hidden from users without module access; billing schedules (recurring plans or single lines, receivable or payable, in the contract currency) marked invoiced by linking an issued invoice or bill of the same currency, never creating documents or journal entries; calculated risk (configurable points, per-currency high-value thresholds, shown on the contract overview); ten reports at `/app/contracts/reports` with CSV and Excel export via `GET /api/contracts/reports/[report]` (audited, no-store, 10,000-row cap). New detail tabs: linked records and billing schedule (financial access only). Settings: calculated risk section. Details: `docs/CONTRACTS_MODULE.md`.

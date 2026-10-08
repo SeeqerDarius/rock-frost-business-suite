@@ -546,8 +546,9 @@ export const MODULE_PRICING_SEED: ModulePricingSeed[] = [
   { moduleKey: "hostel", monthlyGhs: 449, annualGhs: 4490, includedSeats: 8, additionalSeatGhs: 25 },
   { moduleKey: "pharmacy", monthlyGhs: 999, annualGhs: 9990, includedSeats: 15, additionalSeatGhs: 45 },
   { moduleKey: "hospital", monthlyGhs: 2499, annualGhs: 24990, includedSeats: 30, additionalSeatGhs: 60 },
-  // Provisional: for operator-arranged subscriptions until the owner confirms
-  // public pricing. Editable at /app/platform/subscriptions.
+  // Confirmed by the owner on 2026-10-08. Shown publicly once Contracts is
+  // listed (it needs a real product screenshot first). Editable at
+  // /app/platform/subscriptions.
   { moduleKey: "contracts", monthlyGhs: 449, annualGhs: 4490, includedSeats: 8, additionalSeatGhs: 25 },
 ];
 
