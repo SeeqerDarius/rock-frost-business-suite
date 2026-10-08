@@ -220,7 +220,7 @@ Read from `TaxLedgerEntry` (base currency) over local calendar days in the organ
 ### Known limitations of Increment 4
 
 - US local rates and taxability by product are configured by the organization or a future provider; Rock Frost does not determine economic nexus. The nexus status is the administrator's record.
-- EU reduced rates, OSS return file formats, and VIES registry checks are not included; OSS and IOSS are readiness (scheme registrations, destination rules, reporting by member state of consumption).
+- EU reduced rates (reference catalog), VIES registry checks, and an OSS worksheet were added in the tax follow-ups (parts 2 and 3); official OSS filing file formats are not produced.
 - Payroll does not yet post US employment taxes into the new accounts automatically; the accounts and the liability report are ready for it.
 
 ## Tax follow-ups, part 1: engine coverage (implemented 2026-10-10)
@@ -246,8 +246,18 @@ Migration `20261011090000_vat_number_checks` (additive): `VatNumberCheck` (evide
 
 Tests: `test/vies-provider.test.ts` (registry responses, Greece and Northern Ireland prefixes, hidden names, requester fields, outages never invalid, malformed input not sent, enablement); `test/integration/tenant-isolation/tax-vies-oss.test.ts` (real PostgreSQL: OSS worksheet by member state and rate net of a settled credit note and excluding domestic and B2B sales, non-EU organizations, credit notes reducing reported sales, check evidence with requester details, an outage recorded as unavailable, cross-organization refusal).
 
+## Tax follow-ups, part 3: EU reduced-rate reference catalog (implemented 2026-10-11)
+
+No schema change.
+
+- **Catalog** (`src/modules/tax/packs/eu-reduced-rates.ts`): reduced, super-reduced, and parking VAT rates for the 27 member states, compiled 2026-10-11 from two published tables (VATupdate as of 1 January 2026 and Eurofiscalis as of 28 September 2026), because the European Commission publishes rates only through its interactive Taxes in Europe Database (TEDB). Only rates both tables agree on are applicable. Disputed values are listed as unconfirmed and cannot be applied: Finland (14% or 13.5%), Lithuania (9% or 12%), and one-source values for Austria (4.9%), Cyprus (3%), and Greece (4%). The catalog does not say which goods or services each rate covers; that is decided by each member state.
+- **Applying** (Tax and Compliance, Rates, for organizations with an EU home jurisdiction and the EU pack): the administrator selects member states, an effective date, and confirms they checked the rates against TEDB or the national authority. `applyEuReducedRates` creates ordinary effective-dated rates (`EU-{CC}-RED-{rate}`, VAT, accounts 2100/1300, source reference naming TEDB and the catalog sources) with a `REDUCED` treatment rule: a domestic rule for the home member state (`EU-{CC}-REDUCED-{rate}`) and an OSS B2C destination rule for others (`EU-{CC}-OSS-B2C-RED-{rate}`). It is idempotent and audited (`tax_pack.eu_reduced_rates_applied`). Applied rates are changed later through normal rate versions, never by re-applying the catalog.
+- The OSS worksheet includes `REDUCED` as well as `STANDARD` supplies.
+
+Tests: `test/eu-reduced-rate-catalog.test.ts` (27 member states, rates below standard, no duplicates, disputed values excluded, sources recorded, valid codes); `test/integration/tenant-isolation/tax-eu-reduced.test.ts` (real PostgreSQL: confirmation, establishment, and member-state checks; domestic and OSS rules; idempotency and audit; a 7% German invoice; a 5.5% French OSS supply in the worksheet).
+
 ## Remaining increments
 
 2. **Formatting sweep (done 2026-10-08):** module pages, dashboard widgets, charts, the POS sell screen, Fleet owner statements, the invoice and bill PDF, and the payslip SMS format money with the organization formatter or `formatMoney(value, currency, organizationNumberLocale(organization))`; the School helper that hard-coded GHS was removed; new invoices, bills, and credit notes pre-select a contact's default currency. `test/money-formatting-sweep.test.ts` fails if new code calls `formatMoney` without a currency or without the organization locale outside the documented exceptions (Rock Frost's own GHS platform billing pages, and service error messages, which use the document or base currency).
-3. **Tax follow-ups:** in progress. Done: credit notes and Procurement supplier invoices on the tax engine with their tax records (part 1), and VIES VAT-number checks with stored evidence and an OSS return worksheet (part 2). Remaining: per-line tax categories, an EU reduced-rate catalog (pending the owner's choice of source), and configurable payroll statutory deductions with US federal posting.
+3. **Tax follow-ups:** in progress. Done: credit notes and Procurement supplier invoices on the tax engine with their tax records (part 1), VIES VAT-number checks with stored evidence and an OSS return worksheet (part 2), and the EU reduced-rate reference catalog (part 3). Remaining: per-line tax categories and configurable payroll statutory deductions with US federal posting.
 4. **Contracts:** core (5a), lifecycle (5b), and integrations and reporting (5c) implemented (`docs/CONTRACTS_MODULE.md`); an electronic signature provider and public listing remain.

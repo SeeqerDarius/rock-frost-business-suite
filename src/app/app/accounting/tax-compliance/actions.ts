@@ -18,6 +18,7 @@ import {
   setTaxRuleActive,
   TaxConfigurationError,
   upsertTaxRegistration,
+  applyEuReducedRates,
 } from "@/modules/tax/service";
 
 const PATH = "/app/accounting/tax-compliance";
@@ -115,5 +116,15 @@ export async function createExemptionAction(formData: FormData) {
   await run("exemptions", async () => createTaxExemption(tenant.organizationId, tenant.userId, {
     contactId: value(formData, "contactId"), jurisdictionCode: optional(formData, "jurisdictionCode"), exemptionType: z.enum(EXEMPTIONS).parse(value(formData, "exemptionType")),
     certificateNumber: optional(formData, "certificateNumber"), reason: optional(formData, "reason"), validFrom: date.parse(value(formData, "validFrom")), validTo: optional(formData, "validTo") ? date.parse(value(formData, "validTo")) : null,
+  }));
+}
+
+/** Applies reduced rates from the EU reference catalog after the administrator confirms them. */
+export async function applyEuReducedRatesAction(formData: FormData) {
+  const tenant = await authorize();
+  await run("rates", () => applyEuReducedRates(tenant.organizationId, tenant.userId, {
+    memberStates: formData.getAll("memberStates").map((entry) => String(entry)),
+    effectiveFrom: value(formData, "effectiveFrom"),
+    confirmed: formData.get("confirmed") === "on",
   }));
 }

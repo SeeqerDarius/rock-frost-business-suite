@@ -21,6 +21,8 @@ import { TAX_FLASH_COOKIE } from "@/modules/tax/flash";
 import { listJurisdictionPacks, packKeyForJurisdiction } from "@/modules/tax/packs";
 import { getTaxConfiguration } from "@/modules/tax/service";
 import { US_STATE_BASE_RATE_REFERENCE, US_STATES } from "@/modules/tax/packs/united-states";
+import { catalogRateCode, EU_REDUCED_CATALOG_COMPILED, EU_REDUCED_CATALOG_SOURCES, EU_REDUCED_RATE_CATALOG, KIND_LABEL, TEDB_URL } from "@/modules/tax/packs/eu-reduced-rates";
+import { EU_MEMBER_STATES } from "@/modules/tax/packs/europe";
 import {
   createCategoryAction,
   createExemptionAction,
@@ -29,6 +31,7 @@ import {
   createRateVersionAction,
   createRuleAction,
   provisionPackAction,
+  applyEuReducedRatesAction,
   saveRegistrationAction,
   toggleRuleAction,
 } from "./actions";
@@ -191,6 +194,44 @@ export default async function TaxCompliancePage({ searchParams }: { searchParams
               })}
             </div>
             <p className="mt-3 text-xs text-muted-foreground">* See the note on hover. Record state and local rates you collect under Rates, and your registrations under Registrations and nexus.</p>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {section === "rates" && suggestedPack === "EU" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>EU reduced-rate reference catalog</CardTitle>
+            <CardDescription>
+              Reduced, super-reduced, and parking VAT rates by member state, compiled {EU_REDUCED_CATALOG_COMPILED} from two published tables ({EU_REDUCED_CATALOG_SOURCES.map((item, index) => <span key={item.url}>{index ? "; " : ""}<a href={item.url} target="_blank" rel="noreferrer" className="underline underline-offset-2">{item.name}</a>, as of {item.asOf}</span>)}). Only rates both tables agree on can be applied; disputed rates are shown as unconfirmed. Each member state decides which goods and services a rate covers. Confirm every rate in the European Commission&apos;s <a href={TEDB_URL} target="_blank" rel="noreferrer" className="underline underline-offset-2">Taxes in Europe Database</a> or with the national tax authority before applying it. Applying creates ordinary rates you can version, with a domestic rule for your member state and an OSS rule for the others.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form action={applyEuReducedRatesAction} className="space-y-4">
+              <div className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                {EU_REDUCED_RATE_CATALOG.map((entry) => {
+                  const name = EU_MEMBER_STATES.find((state) => state.code === entry.countryCode)?.name ?? entry.countryCode;
+                  const applied = entry.rates.length > 0 && entry.rates.every((item) => latestRates.some((rate) => rate.code === catalogRateCode(entry.countryCode, item.rate)));
+                  return (
+                    <label key={entry.countryCode} className="flex items-start gap-2 border-b py-1.5">
+                      <input type="checkbox" name="memberStates" value={entry.countryCode} defaultChecked={organization.jurisdictionCode === `EU-${entry.countryCode}`} disabled={!canManage || entry.rates.length === 0 || applied} className="mt-0.5 size-4" />
+                      <span>
+                        <span className="font-medium">{name}</span>{applied ? <Badge variant="secondary" className="ml-2">Applied</Badge> : null}
+                        <span className="block text-xs text-muted-foreground">{entry.rates.length ? entry.rates.map((item) => `${item.rate}% ${KIND_LABEL[item.kind]}`).join(", ") : "No reduced rates"}</span>
+                        {entry.unconfirmed.map((item) => <span key={item.rate} className="block text-xs text-amber-700 dark:text-amber-400">Unconfirmed {item.rate}%: {item.note}</span>)}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              {canManage ? (
+                <div className="flex flex-wrap items-end gap-4">
+                  <div className="space-y-1.5"><Label htmlFor="eu-reduced-from" required>Apply from</Label><Input id="eu-reduced-from" name="effectiveFrom" type="date" defaultValue={today} required /></div>
+                  <label className="flex max-w-xl items-start gap-2 text-sm"><input type="checkbox" name="confirmed" required className="mt-0.5 size-4" />I have checked the selected rates against TEDB or the national tax authority, and I am responsible for applying the right rate to each supply.</label>
+                  <Button type="submit">Apply selected rates</Button>
+                </div>
+              ) : null}
+            </form>
           </CardContent>
         </Card>
       ) : null}

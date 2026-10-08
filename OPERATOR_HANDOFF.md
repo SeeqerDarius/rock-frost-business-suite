@@ -1,6 +1,16 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-11: Tax follow-ups, part 3 (EU reduced-rate reference catalog)
+
+- **Scope**: an EU reduced-rate reference catalog (owner's choice of option) in Tax and Compliance, Rates, for EU organizations. Rates both published sources agree on can be applied after the administrator confirms them against TEDB; disputed rates (Finland, Lithuania, and one-source values for Austria, Cyprus, Greece) are shown as unconfirmed and cannot be applied. Applying creates ordinary versionable rates with a domestic `REDUCED` rule for the home state and OSS rules for others; idempotent and audited. The OSS worksheet now includes reduced-rate supplies. Details: `docs/GLOBAL_EXPANSION_ARCHITECTURE.md`, "Tax follow-ups, part 3".
+- **Important files**: `src/modules/tax/packs/eu-reduced-rates.ts`, `src/modules/tax/{service,reports}.ts`, `src/app/app/accounting/tax-compliance/{page.tsx,actions.ts}`; tests `test/eu-reduced-rate-catalog.test.ts`, `test/integration/tenant-isolation/tax-eu-reduced.test.ts`.
+- **Migration**: none.
+- **Validation (local)**: `npx tsc --noEmit` clean; `npm run lint` 0 errors (2 pre-existing warnings); `npx vitest run` 193 files, 1496 tests passed; `npm run build` compiled; `git diff --check` clean; no em dashes added. Integration suite runs in CI.
+- **Remaining risks**: the catalog is a dated reference compiled from secondary sources and must be refreshed when member states change rates (rates already applied are changed through rate versions); it does not map rates to goods or services.
+
 ## 2026-10-11: Tax follow-ups, part 2 (VIES checks and OSS worksheet)
+
+- **Production verification (2026-10-08)**: PR #71 merged as `f4031cb`; CI validate, integration (68 files, including `tax-vies-oss.test.ts` with 5 tests), and security passed. Vercel production deployment `dpl_2pK5jMQhGGbbWx6jd8ek9ULmbJyb` READY; build log shows `Applying migration 20261011090000_vat_number_checks` and `All migrations have been successfully applied`. `/api/health` 200; `/app/accounting/contacts`, `/app/accounting/tax-reports?view=oss`, `/app/accounting/tax-compliance` 307 signed out; OSS export 401 signed out. Runtime errors in the last hour: only the pre-existing signed-out "No organization membership" group and an unrelated pre-existing School student-ID PDF font error (`pdfkit` `Helvetica.afm` missing, first seen 2026-10-02).
 
 - **Scope**: EU and Northern Ireland VAT numbers are checked with the European Commission's VIES REST service (format-only elsewhere), every check is stored as evidence (`VatNumberCheck`, audited) with a "Check VAT" action and latest-result badge on Contacts, outages fall back to a format check marked UNAVAILABLE without blocking saves, and the organization's own EU VAT number is sent as requester for a consultation number. Tax reports gains an "OSS return" worksheet with CSV export. Fixes tax reports so settled credit notes reduce reported sales. Details: `docs/GLOBAL_EXPANSION_ARCHITECTURE.md`, "Tax follow-ups, part 2".
 - **Important files**: `prisma/schema.prisma`, `src/modules/tax/{providers,vat-checks,reports}.ts`, `src/app/app/accounting/contacts/{page,actions}.tsx`, `src/app/app/accounting/tax-reports/{page.tsx,export/route.ts}`; tests `test/vies-provider.test.ts`, `test/integration/tenant-isolation/tax-vies-oss.test.ts`.
