@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { isValidCurrencyCode } from "@/lib/localization";
-import { validateVatNumber } from "@/modules/tax/providers";
+import { checkVatNumberForOrganization, recheckContactVatNumber, recordVatCheck, VatCheckError } from "@/modules/tax/vat-checks";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireModuleAccess } from "@/lib/auth/module-access";
@@ -50,10 +50,9 @@ export async function upsertContact(formData: FormData): Promise<void> {
   if (!parsed.success) {
     redirect("/app/accounting/contacts?error=invalid-input");
   }
-  if (parsed.data.vatNumber && parsed.data.countryCode) {
-    const check = await validateVatNumber(parsed.data.countryCode, parsed.data.vatNumber);
-    if (!check.valid) redirect("/app/accounting/contacts?error=invalid-vat");
-  }
+  // EU and Northern Ireland numbers are checked with VIES; others by format. A registry outage never blocks saving.
+  const vatCheck = parsed.data.vatNumber && parsed.data.countryCode ? await checkVatNumberForOrganization(tenant.organizationId, parsed.data.countryCode, parsed.data.vatNumber) : null;
+  if (vatCheck?.status === "INVALID") redirect(`/app/accounting/contacts?error=${vatCheck.level === "REGISTRY" ? "invalid-vat-registry" : "invalid-vat"}`);
 
   const data = {
     type: parsed.data.type,
@@ -68,21 +67,41 @@ export async function upsertContact(formData: FormData): Promise<void> {
   };
 
   const session = await getServerAuthSession();
+  let contactId: string;
   try {
     if (id) {
       const parsedId = parseWithSchema(cuid, id);
       if (!parsedId.success) redirect("/app/accounting/contacts?error=invalid-input");
-      await updateContact(tenant.organizationId, parsedId.data, data);
+      contactId = (await updateContact(tenant.organizationId, parsedId.data, data)).id;
     } else {
-      await createContact(tenant.organizationId, data, session?.user?.id ?? null);
+      contactId = (await createContact(tenant.organizationId, data, session?.user?.id ?? null)).id;
     }
   } catch (error) {
     if (error instanceof NotFoundError) redirect("/app/accounting/contacts?error=not-found");
     throw error;
   }
+  if (vatCheck) await recordVatCheck(tenant.organizationId, session?.user?.id ?? null, contactId, vatCheck);
 
   revalidatePath("/app/accounting/contacts");
-  redirect("/app/accounting/contacts?saved=1");
+  redirect(`/app/accounting/contacts?saved=1${vatCheck?.status === "UNAVAILABLE" ? "&vat=unavailable" : ""}`);
+}
+
+/** Checks a contact's VAT number again now (for example before a reverse-charge invoice) and keeps the result as evidence. */
+export async function recheckContactVatAction(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("accounting");
+  if (!hasPermission(tenant, PERMISSIONS.ACCOUNTING_CONTACTS_MANAGE)) redirect("/app/accounting/contacts?error=forbidden");
+  const parsedId = parseWithSchema(cuid, clean(formData.get("contactId")));
+  if (!parsedId.success) redirect("/app/accounting/contacts?error=invalid-input");
+  const session = await getServerAuthSession();
+  let status: string;
+  try {
+    status = (await recheckContactVatNumber(tenant.organizationId, session?.user?.id ?? null, parsedId.data)).status;
+  } catch (error) {
+    if (error instanceof VatCheckError) redirect("/app/accounting/contacts?error=vat-check");
+    throw error;
+  }
+  revalidatePath("/app/accounting/contacts");
+  redirect(`/app/accounting/contacts?saved=1&vat=${status.toLowerCase()}`);
 }
 
 const CONTACT_TYPES = new Set(["CUSTOMER", "SUPPLIER", "BOTH"]);

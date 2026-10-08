@@ -1,5 +1,14 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-11: Tax follow-ups, part 2 (VIES checks and OSS worksheet)
+
+- **Scope**: EU and Northern Ireland VAT numbers are checked with the European Commission's VIES REST service (format-only elsewhere), every check is stored as evidence (`VatNumberCheck`, audited) with a "Check VAT" action and latest-result badge on Contacts, outages fall back to a format check marked UNAVAILABLE without blocking saves, and the organization's own EU VAT number is sent as requester for a consultation number. Tax reports gains an "OSS return" worksheet with CSV export. Fixes tax reports so settled credit notes reduce reported sales. Details: `docs/GLOBAL_EXPANSION_ARCHITECTURE.md`, "Tax follow-ups, part 2".
+- **Important files**: `prisma/schema.prisma`, `src/modules/tax/{providers,vat-checks,reports}.ts`, `src/app/app/accounting/contacts/{page,actions}.tsx`, `src/app/app/accounting/tax-reports/{page.tsx,export/route.ts}`; tests `test/vies-provider.test.ts`, `test/integration/tenant-isolation/tax-vies-oss.test.ts`.
+- **Migration**: `20261011090000_vat_number_checks` (new table and enum only).
+- **Environment**: optional `VIES_ENABLED` (unset = on in production, off elsewhere). The production server makes outbound HTTPS calls to `ec.europa.eu` when a VIES check runs.
+- **Validation (local)**: `npx tsc --noEmit` passed; `npm run lint` 0 errors (2 pre-existing warnings); `npm run test` 192 files / 1,493 tests passed; `npm run build` passed; `git diff --check` clean; no em dashes added. The real-Postgres suite `tax-vies-oss.test.ts` runs in CI against the disposable database (VIES calls are mocked; tests never reach the registry).
+- **Remaining risks**: VIES availability varies by member state (handled as UNAVAILABLE); member states may hide names and addresses; the OSS worksheet is not a filing file and does not split corrections to earlier quarters; reduced-rate catalog awaits the owner's choice of source.
+
 ## 2026-10-10: Tax follow-ups, part 1 (credit notes and supplier invoices on the tax engine)
 
 - **Scope**: credit notes and Procurement supplier invoices can be taxed by a tax rule (snapshot, per-component posting, tax ledger rows). Fixes two reporting gaps: settled credit notes (legacy and engine) now reduce output tax in the working VAT return and tax ledger (previously journal only, so returns overstated output tax), and approved legacy supplier invoices now write tax ledger rows (previously missing from jurisdiction reports). Details: `docs/GLOBAL_EXPANSION_ARCHITECTURE.md`, "Tax follow-ups, part 1".

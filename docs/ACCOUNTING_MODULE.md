@@ -102,6 +102,10 @@ Customer receipts are explicit immutable allocation records rather than only an 
 
 The Receivables page groups invoices by normalized customer email, falling back to normalized customer name when no email is available. It shows invoiced, paid, outstanding, and overdue balances plus statement-style invoice and receipt history. `accounting.receivables.manage` controls receipt entry separately from invoice creation.
 
+# VIES VAT checks and the OSS worksheet (2026-10-11)
+
+Contacts with an EU or Northern Ireland VAT number are checked against VIES (stored as evidence, with a "Check VAT" action), and Tax reports has an OSS return worksheet. Details: `docs/GLOBAL_EXPANSION_ARCHITECTURE.md`, "Tax follow-ups, part 2".
+
 # Credit notes and supplier invoices in the tax engine (2026-10-10)
 
 Credit notes and Procurement supplier invoices can use a tax rule as well as a legacy tax code. Settling any credit note (applied or refunded) now records a negative adjustment in the working VAT return and the tax ledger, which it previously did not, and approved supplier invoices write tax ledger rows. Details: `docs/GLOBAL_EXPANSION_ARCHITECTURE.md`, "Tax follow-ups, part 1".
