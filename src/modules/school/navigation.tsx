@@ -1,10 +1,14 @@
 import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
-import { LayoutDashboard, School, Users, CalendarRange, Shapes, ClipboardCheck, Receipt, GraduationCap, CalendarClock, Bus, Library, Banknote, BarChart3, UserRoundCog, KeyRound, HeartHandshake, Repeat2 } from "lucide-react";
+import { LayoutDashboard, School, Users, CalendarRange, Shapes, ClipboardCheck, Receipt, GraduationCap, CalendarClock, Bus, Library, Banknote, BarChart3, UserRoundCog, KeyRound, HeartHandshake, Repeat2, MessagesSquare, Megaphone } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const schoolNavigation: ModuleNavItem[] = [
   { label: "My Portal", group: "Overview", href: "/app/school/portal", icon: <HeartHandshake className="size-4" />, description: "See your own or your child's attendance, results, fees, and digital ID." },
+  { label: "Portal Messages", shortLabel: "Messages", group: "Overview", href: "/app/school/portal/messages", icon: <MessagesSquare className="size-4" />, description: "Message your child's school and read replies, all inside the app." },
+  { label: "Portal Announcements", shortLabel: "Announcements", group: "Overview", href: "/app/school/portal/announcements", icon: <Megaphone className="size-4" />, description: "Read notices from your child's school." },
   { label: "School Overview", shortLabel: "Overview", group: "Overview", href: "/app/school", icon: <LayoutDashboard className="size-4" />, description: "See enrollment, attendance, fee, and library snapshots and jump into attendance, exams, or timetable workflows." },
+  { label: "Messages", group: "Communication", href: "/app/school/messages", icon: <MessagesSquare className="size-4" />, description: "Hold direct in-app conversations with guardians about students in your classes." },
+  { label: "Announcements", group: "Communication", href: "/app/school/announcements", icon: <Megaphone className="size-4" />, description: "Publish and read school notices for staff and guardians." },
   { label: "Students & Guardians", shortLabel: "Students", group: "People", href: "/app/school/students", icon: <Users className="size-4" />, description: "Admit students, link guardians, upload photos, and move students between applicant, active, suspended, withdrawn, and graduated status." },
   { label: "Classes & Enrollment", shortLabel: "Classes", group: "People", href: "/app/school/classes", icon: <Shapes className="size-4" />, description: "Create classes and subjects, enroll students into classes, and assign teachers to a class." },
   { label: "Academic Periods", group: "Academics", href: "/app/school/academic-periods", icon: <CalendarRange className="size-4" />, description: "Create academic years and terms and mark which one is current for the whole school." },

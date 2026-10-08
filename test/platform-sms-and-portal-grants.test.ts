@@ -20,7 +20,7 @@ vi.mock("@/modules/hr/service", () => ({ syncActiveOrganizationMembersToHr: vi.f
 vi.mock("@/lib/accounting-integration", () => ({ ensureRevenueAccountsForOrg: vi.fn() }));
 vi.mock("@/platform/trials/service", () => ({ assertTrialProductLimit: vi.fn(), TrialProductLimitError: class extends Error {} }));
 
-const { toggleOrganizationSmsNotifications, toggleSchoolPortalAccess } = await import("@/app/app/platform/actions");
+const { toggleOrganizationSmsNotifications, toggleSchoolPortalAccess, toggleSchoolGuardianMessaging } = await import("@/app/app/platform/actions");
 
 function data(fields: Record<string, string>) {
   const formData = new FormData();
@@ -54,6 +54,15 @@ describe.each([
     grantedByIdField: "schoolPortalGrantedById",
     grantedAction: "school_portal.platform_granted",
     revokedAction: "school_portal.platform_revoked",
+  },
+  {
+    name: "toggleSchoolGuardianMessaging",
+    action: () => toggleSchoolGuardianMessaging,
+    grantedField: "schoolGuardianMessagingGranted",
+    grantedAtField: "schoolGuardianMessagingGrantedAt",
+    grantedByIdField: "schoolGuardianMessagingGrantedById",
+    grantedAction: "school_guardian_messaging.platform_granted",
+    revokedAction: "school_guardian_messaging.platform_revoked",
   },
 ])("$name", ({ action, grantedField, grantedAtField, grantedByIdField, grantedAction, revokedAction }) => {
   beforeEach(() => {

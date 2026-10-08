@@ -567,71 +567,75 @@ model VerificationToken {
 }
 
 model Organization {
-  id                          String              @id @default(cuid())
-  name                        String
-  industry                    String?
-  tenantCode                  String              @unique
-  address                     String?
-  timezone                    String              @default("UTC")
-  billingEmail                String?
-  status                      OrganizationStatus  @default(TRIAL)
-  metadata                    Json?
-  createdAt                   DateTime            @default(now())
-  updatedAt                   DateTime            @updatedAt
-  businessRegistrationNumber  String?
-  taxNumber                   String?
-  country                     String?
-  region                      String?
-  city                        String?
-  phone                       String?
-  email                       String?
-  website                     String?
-  logoUrl                     String?
-  currency                    String              @default("GHS")
-  defaultLanguage             String              @default("en")
-  deletionRequestedAt         DateTime?
-  deletionScheduledFor        DateTime?
-  deletionRequestedById       String?
-  deletionPreviousStatus      OrganizationStatus?
-  offlineAccessGranted        Boolean             @default(false)
-  offlineAccessGrantedAt      DateTime?
-  offlineAccessGrantedById    String?
+  id                                 String              @id @default(cuid())
+  name                               String
+  industry                           String?
+  tenantCode                         String              @unique
+  address                            String?
+  timezone                           String              @default("UTC")
+  billingEmail                       String?
+  status                             OrganizationStatus  @default(TRIAL)
+  metadata                           Json?
+  createdAt                          DateTime            @default(now())
+  updatedAt                          DateTime            @updatedAt
+  businessRegistrationNumber         String?
+  taxNumber                          String?
+  country                            String?
+  region                             String?
+  city                               String?
+  phone                              String?
+  email                              String?
+  website                            String?
+  logoUrl                            String?
+  currency                           String              @default("GHS")
+  defaultLanguage                    String              @default("en")
+  deletionRequestedAt                DateTime?
+  deletionScheduledFor               DateTime?
+  deletionRequestedById              String?
+  deletionPreviousStatus             OrganizationStatus?
+  offlineAccessGranted               Boolean             @default(false)
+  offlineAccessGrantedAt             DateTime?
+  offlineAccessGrantedById           String?
   /// Same shape and intent as offlineAccessGranted: a platform-operator-only
   /// entitlement for an organization that has separately arranged (and pays
   /// for) SMS notifications, gating every module's own smsNotificationsEnabled
   /// toggle (School/Hotel/Pharmacy/Payroll/Hospital) regardless of what that
   /// organization's own admin has configured. See docs/SMS_INTEGRATION.md.
-  smsNotificationsGranted     Boolean             @default(false)
-  smsNotificationsGrantedAt   DateTime?
-  smsNotificationsGrantedById String?
+  smsNotificationsGranted            Boolean             @default(false)
+  smsNotificationsGrantedAt          DateTime?
+  smsNotificationsGrantedById        String?
   /// Same shape: a platform-operator-only entitlement for a School customer
   /// that has separately arranged (and pays for) the Parent/Student portal
   /// add-on. Gates /app/school/portal and /app/school/portal-access
   /// regardless of role/permission. See docs/SCHOOL_PARENT_STUDENT_PORTAL.md.
-  schoolPortalGranted         Boolean             @default(false)
-  schoolPortalGrantedAt       DateTime?
-  schoolPortalGrantedById     String?
+  schoolPortalGranted                Boolean             @default(false)
+  schoolPortalGrantedAt              DateTime?
+  schoolPortalGrantedById            String?
+  /// Paid, operator-granted School add-on: direct in-app conversations between staff and guardians (default off). See docs/SCHOOL_COMMUNICATIONS.md.
+  schoolGuardianMessagingGranted     Boolean             @default(false)
+  schoolGuardianMessagingGrantedAt   DateTime?
+  schoolGuardianMessagingGrantedById String?
   /// Global localization (2026-10-06). `country` stores an ISO 3166-1
   /// alpha-2 code for new writes; legacy rows may hold a country name and are
   /// normalized through src/lib/localization.ts. `currency` above is the
   /// authoritative accounting base currency and is changed only through the
   /// guarded localization settings action (never from IP/browser locale).
-  legalName                   String?
-  tradingName                 String?
-  postalCode                  String?
-  legalEntityType             String?
-  vatRegistrationNumber       String?
+  legalName                          String?
+  tradingName                        String?
+  postalCode                         String?
+  legalEntityType                    String?
+  vatRegistrationNumber              String?
   /// BCP 47 locale for number/date/currency presentation. Null means
   /// "derive from the base currency" so existing organizations keep en-GH.
-  locale                      String?
-  dateFormat                  String              @default("LOCALE")
-  numberFormat                String              @default("LOCALE")
-  fiscalYearStartMonth        Int                 @default(1)
-  accountingBasis             AccountingBasis     @default(ACCRUAL)
-  pricesIncludeTax            Boolean             @default(false)
+  locale                             String?
+  dateFormat                         String              @default("LOCALE")
+  numberFormat                       String              @default("LOCALE")
+  fiscalYearStartMonth               Int                 @default(1)
+  accountingBasis                    AccountingBasis     @default(ACCRUAL)
+  pricesIncludeTax                   Boolean             @default(false)
   /// Tax jurisdiction code (GH, US, EU-DE, GB, CH, NO...). Selects the
   /// jurisdiction pack; null means no pack has been chosen yet.
-  jurisdictionCode            String?
+  jurisdictionCode                   String?
 
   members                         OrganizationMember[]
   invitations                     Invitation[]
@@ -780,6 +784,11 @@ model Organization {
   schoolAcademicYears             SchoolAcademicYear[]
   schoolTerms                     SchoolTerm[]
   schoolGuardians                 SchoolGuardian[]
+  schoolConversations             SchoolConversation[]
+  schoolMessages                  SchoolMessage[]
+  schoolConversationReadStates    SchoolConversationReadState[]
+  schoolAnnouncements             SchoolAnnouncement[]
+  schoolAnnouncementReads         SchoolAnnouncementRead[]
   schoolStudents                  SchoolStudent[]
   schoolStudentGuardians          SchoolStudentGuardian[]
   schoolClasses                   SchoolClass[]
@@ -4796,6 +4805,129 @@ model PayrollPayslipDeduction {
   @@index([payslipId])
 }
 
+enum SchoolConversationStatus {
+  OPEN
+  CLOSED
+}
+
+enum SchoolMessageSenderSide {
+  STAFF
+  GUARDIAN
+}
+
+enum SchoolAnnouncementAudience {
+  /// Staff with School access only.
+  STAFF
+  /// Every guardian with a portal account.
+  ALL_GUARDIANS
+  /// Guardians of students actively enrolled in classId.
+  CLASS_GUARDIANS
+  /// Staff and every guardian.
+  EVERYONE
+}
+
+/// A direct in-app conversation between school staff and one guardian about
+/// one student. The student anchors authorization: staff see it only within
+/// their class scope, and the guardian only while still linked to the student.
+model SchoolConversation {
+  id             String                   @id @default(cuid())
+  organizationId String
+  studentId      String
+  guardianId     String
+  subject        String
+  status         SchoolConversationStatus @default(OPEN)
+  startedBySide  SchoolMessageSenderSide
+  createdById    String
+  lastMessageAt  DateTime                 @default(now())
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  organization Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      SchoolStudent                 @relation(fields: [organizationId, studentId], references: [organizationId, id], onDelete: Cascade)
+  guardian     SchoolGuardian                @relation(fields: [organizationId, guardianId], references: [organizationId, id], onDelete: Cascade)
+  messages     SchoolMessage[]
+  readStates   SchoolConversationReadState[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId, guardianId, lastMessageAt])
+  @@index([organizationId, studentId])
+  @@index([organizationId, lastMessageAt])
+}
+
+model SchoolMessage {
+  id              String                  @id @default(cuid())
+  organizationId  String
+  conversationId  String
+  senderUserId    String
+  senderSide      SchoolMessageSenderSide
+  /// Display name captured when sent, so history stays readable if the account changes.
+  senderName      String
+  body            String                  @db.Text
+  /// Generated per form render; a repeated submit of the same form is ignored.
+  clientRequestId String
+  createdAt       DateTime                @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversation SchoolConversation @relation(fields: [organizationId, conversationId], references: [organizationId, id], onDelete: Cascade)
+
+  @@unique([conversationId, clientRequestId])
+  @@index([organizationId, conversationId, createdAt])
+}
+
+model SchoolConversationReadState {
+  id             String   @id @default(cuid())
+  organizationId String
+  conversationId String
+  userId         String
+  lastReadAt     DateTime @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversation SchoolConversation @relation(fields: [organizationId, conversationId], references: [organizationId, id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([organizationId, userId])
+}
+
+model SchoolAnnouncement {
+  id              String                     @id @default(cuid())
+  organizationId  String
+  title           String
+  body            String                     @db.Text
+  audience        SchoolAnnouncementAudience
+  classId         String?
+  publishedById   String
+  publishedByName String
+  clientRequestId String
+  publishedAt     DateTime                   @default(now())
+  withdrawnAt     DateTime?
+  withdrawnById   String?
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  class        SchoolClass?             @relation(fields: [organizationId, classId], references: [organizationId, id], onDelete: Restrict)
+  reads        SchoolAnnouncementRead[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, clientRequestId])
+  @@index([organizationId, publishedAt])
+  @@index([organizationId, classId])
+}
+
+model SchoolAnnouncementRead {
+  id             String   @id @default(cuid())
+  organizationId String
+  announcementId String
+  userId         String
+  readAt         DateTime @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  announcement SchoolAnnouncement @relation(fields: [organizationId, announcementId], references: [organizationId, id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
+  @@index([organizationId, userId])
+}
+
 enum PosSessionStatus {
   OPEN
   CLOSED
@@ -5666,7 +5798,10 @@ model SchoolGuardian {
   portalUser   User?                   @relation("SchoolGuardianPortalUser", fields: [userId], references: [id], onDelete: SetNull)
   students     SchoolStudentGuardian[]
 
+  conversations SchoolConversation[]
+
   @@unique([organizationId, guardianNumber])
+  @@unique([organizationId, id])
   @@index([organizationId, phone])
 }
 
@@ -5717,7 +5852,10 @@ model SchoolStudent {
   conductRecords    SchoolConductRecord[]
   documents         SchoolStudentDocument[]
 
+  conversations SchoolConversation[]
+
   @@unique([organizationId, admissionNumber])
+  @@unique([organizationId, id])
   @@index([organizationId, status])
   @@index([campusId])
 }
@@ -5759,7 +5897,10 @@ model SchoolClass {
   feeStructures SchoolFeeStructure[]
   teachers      SchoolClassTeacher[]
 
+  announcements SchoolAnnouncement[]
+
   @@unique([campusId, code])
+  @@unique([organizationId, id])
   @@index([organizationId, active])
 }
 

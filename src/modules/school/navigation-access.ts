@@ -1,5 +1,5 @@
 import type { TenantContext } from "@/lib/tenant";
-import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { hasPermission, isSchoolParentRole, PERMISSIONS } from "@/lib/auth/permissions";
 import type { ModuleNavItem } from "@/types/module";
 import { schoolNavigation } from "@/modules/school/navigation";
 
@@ -15,7 +15,9 @@ import { schoolNavigation } from "@/modules/school/navigation";
  * re-enforces this independently, so this filter is a UX convenience, not
  * the actual security boundary.
  */
-export function getSchoolNavigationForTenant(tenant: TenantContext, schoolPortalGranted: boolean): ModuleNavItem[] {
+export function getSchoolNavigationForTenant(tenant: TenantContext, schoolPortalGranted: boolean, guardianMessagingGranted = false): ModuleNavItem[] {
+  // Direct messaging needs both paid add-ons (guardians reply from the portal).
+  const messagingAvailable = schoolPortalGranted && guardianMessagingGranted;
   const routeAccess: Array<[string, boolean]> = [
     ["/app/school", hasPermission(tenant, PERMISSIONS.SCHOOL_VIEW)],
     ["/app/school/students", hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENTS_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENT_PROFILE_VIEW)],
@@ -35,6 +37,10 @@ export function getSchoolNavigationForTenant(tenant: TenantContext, schoolPortal
     ["/app/school/reports", hasPermission(tenant, PERMISSIONS.SCHOOL_REPORTS_VIEW)],
     ["/app/school/settings", hasPermission(tenant, PERMISSIONS.SCHOOL_SETTINGS_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_VIEW)],
     ["/app/school/portal", schoolPortalGranted && hasPermission(tenant, PERMISSIONS.SCHOOL_PORTAL_VIEW)],
+    ["/app/school/portal/messages", messagingAvailable && hasPermission(tenant, PERMISSIONS.SCHOOL_PORTAL_VIEW) && isSchoolParentRole(tenant)],
+    ["/app/school/portal/announcements", schoolPortalGranted && hasPermission(tenant, PERMISSIONS.SCHOOL_PORTAL_VIEW) && isSchoolParentRole(tenant)],
+    ["/app/school/messages", messagingAvailable && hasPermission(tenant, PERMISSIONS.SCHOOL_MESSAGES_MANAGE)],
+    ["/app/school/announcements", hasPermission(tenant, PERMISSIONS.SCHOOL_VIEW)],
   ];
   const allowedRoutes = new Set(routeAccess.filter(([, allowed]) => allowed).map(([href]) => href));
   return schoolNavigation.filter((item) => allowedRoutes.has(item.href));
