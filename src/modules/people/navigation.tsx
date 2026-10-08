@@ -1,5 +1,5 @@
 import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
-import { LayoutGrid, UsersRound, CalendarClock, ClipboardCheck, BarChart3, Banknote, PlayCircle, ReceiptText } from "lucide-react";
+import { LayoutGrid, UsersRound, CalendarClock, ClipboardCheck, BarChart3, Banknote, PlayCircle, ReceiptText, Scale } from "lucide-react";
 import type { TenantContext } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import type { ModuleNavItem } from "@/types/module";
@@ -27,6 +27,7 @@ export function getPeopleAndPayrollNavigation(tenant: TenantContext): ModuleNavI
     if (hasPermission(tenant, PERMISSIONS.PAYROLL_RUNS_MANAGE)) items.push({ label: "Payroll Runs", href: "/app/payroll/runs", icon: <PlayCircle className="size-4" />, group: "Payroll" });
     if (hasPermission(tenant, PERMISSIONS.PAYROLL_PAYSLIPS_VIEW)) items.push({ label: "Payslips", href: "/app/payroll/payslips", icon: <ReceiptText className="size-4" />, group: "Payroll" });
     if (hasPermission(tenant, PERMISSIONS.PAYROLL_REPORTS_VIEW)) items.push({ label: "Payroll Reports", href: "/app/payroll/reports", icon: <BarChart3 className="size-4" />, group: "Payroll" });
+    if (hasPermission(tenant, PERMISSIONS.PAYROLL_SETTINGS_MANAGE)) items.push({ label: "Deductions", href: "/app/payroll/deductions", icon: <Scale className="size-4" />, group: "Payroll" });
     if (hasPermission(tenant, PERMISSIONS.PAYROLL_SETTINGS_MANAGE)) items.push({ label: "Payroll Settings", href: "/app/payroll/settings", icon: <AnimatedSettingsIcon size={16} />, group: "Payroll" });
   }
 

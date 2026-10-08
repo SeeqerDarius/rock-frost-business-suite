@@ -1,3 +1,5 @@
+import { cookies } from "next/headers";
+import { PAYROLL_FLASH_COOKIE } from "@/modules/payroll/flash";
 import { PlayCircle, Plus } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
@@ -50,6 +52,7 @@ export default async function PayrollRunsPage({
   const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.PAYROLL_RUNS_MANAGE);
   const runs = await listRuns(tenant.organizationId);
+  const deductionFlash = error === "deductions" ? (await cookies()).get(PAYROLL_FLASH_COOKIE)?.value : undefined;
   const today = new Date().toISOString().slice(0, 10);
 
   return (
@@ -84,6 +87,11 @@ export default async function PayrollRunsPage({
       {posting === "failed" ? <div role="status" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">The payroll run completed, but its Accounting accrual did not post. The payslips remain available. Retry posting from the run row below.</div> : null}
       {posting === "inactive" ? <div role="status" className="rounded-md border px-3 py-2 text-sm text-muted-foreground">The payroll run completed. Accounting is not active for this organization, so no journal entry was created.</div> : null}
       {posting === "complete" ? <div role="status" className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">Payroll Accounting posting is up to date.</div> : null}
+      {error === "deductions" ? (
+        <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {deductionFlash ?? "Payroll deduction rules need attention in Payroll, Deductions."} The run was not processed.
+        </div>
+      ) : null}
       {error && ERROR_MESSAGES[error] ? (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {ERROR_MESSAGES[error]}

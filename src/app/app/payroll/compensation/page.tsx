@@ -11,7 +11,26 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { createOrganizationFormatter } from "@/lib/org-format";
-import { listCompensation, listEmployeesWithoutCompensation } from "@/modules/payroll/service";
+import { getSettings, listCompensation, listEmployeesWithoutCompensation } from "@/modules/payroll/service";
+import { FILING_STATUSES } from "@/modules/payroll/deduction-rules";
+
+function WithholdingFields({ idSuffix, filingStatus, additionalWithholding, currency }: { idSuffix: string; filingStatus?: string | null; additionalWithholding?: string; currency?: string | null }) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div className="space-y-2">
+        <Label htmlFor={`filingStatus-${idSuffix}`}>Filing status</Label>
+        <select id={`filingStatus-${idSuffix}`} name="filingStatus" defaultValue={filingStatus ?? ""} className="h-10 w-full rounded-md border bg-background px-3 text-sm">
+          <option value="">Not set</option>
+          {FILING_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+        </select>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`additionalWithholding-${idSuffix}`}>Extra withholding per period ({currency})</Label>
+        <Input id={`additionalWithholding-${idSuffix}`} name="additionalWithholding" type="number" step="0.01" min="0" defaultValue={additionalWithholding ?? "0"} />
+      </div>
+    </div>
+  );
+}
 import { createPayrollEmployee, saveCompensation } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -33,10 +52,12 @@ export default async function PayrollCompensationPage({
   const tenant = await requireModuleAccess("payroll");
   const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.PAYROLL_COMPENSATION_MANAGE);
-  const [compensations, uncoveredEmployees] = await Promise.all([
+  const [compensations, uncoveredEmployees, payrollSettings] = await Promise.all([
     listCompensation(tenant.organizationId),
     listEmployeesWithoutCompensation(tenant.organizationId),
+    getSettings(tenant.organizationId),
   ]);
+  const usesRules = payrollSettings.deductionMode === "RULES";
   const employeeItems: Record<string, string> = Object.fromEntries(uncoveredEmployees.map((e) => [e.id, e.fullName]));
   const today = new Date().toISOString().slice(0, 10);
 
@@ -100,6 +121,7 @@ export default async function PayrollCompensationPage({
               <Label htmlFor="effectiveDate">Effective date</Label>
               <Input id="effectiveDate" name="effectiveDate" type="date" defaultValue={today} required />
             </div>
+            {usesRules ? <WithholdingFields idSuffix="new" currency={tenant.organization.currency} /> : null}
           </EntityDialog>) : null}
         </div> : null}
       </div>
@@ -188,6 +210,7 @@ export default async function PayrollCompensationPage({
                           required
                         />
                       </div>
+                      {usesRules ? <WithholdingFields idSuffix={comp.id} filingStatus={comp.filingStatus} additionalWithholding={comp.additionalWithholding.toString()} currency={tenant.organization.currency} /> : <><input type="hidden" name="filingStatus" value={comp.filingStatus ?? ""} /><input type="hidden" name="additionalWithholding" value={comp.additionalWithholding.toString()} /></>}
                     </EntityDialog>
                   </TableCell>
                 ) : null}

@@ -16,11 +16,15 @@ function clean(value: FormDataEntryValue | null) {
 
 const PAY_FREQUENCIES = ["MONTHLY", "BIWEEKLY", "WEEKLY"] as const;
 
+const FILING_STATUSES = ["SINGLE", "MARRIED_JOINTLY", "HEAD_OF_HOUSEHOLD"] as const;
+
 const compensationSchema = z.object({
   employeeId: cuid,
   baseSalary: moneyAmount,
   payFrequency: z.enum(PAY_FREQUENCIES).optional(),
   effectiveDate: dateInput,
+  filingStatus: z.enum(FILING_STATUSES).nullable(),
+  additionalWithholding: moneyAmount.nullable(),
 });
 
 const payrollEmployeeSchema = z.object({
@@ -64,11 +68,13 @@ export async function saveCompensation(formData: FormData): Promise<void> {
     baseSalary: clean(formData.get("baseSalary")),
     payFrequency: clean(formData.get("payFrequency")),
     effectiveDate: clean(formData.get("effectiveDate")),
+    filingStatus: clean(formData.get("filingStatus")),
+    additionalWithholding: clean(formData.get("additionalWithholding")),
   });
   if (!parsed.success) {
     redirect("/app/payroll/compensation?error=missing-fields");
   }
-  const { employeeId, baseSalary, payFrequency, effectiveDate } = parsed.data;
+  const { employeeId, baseSalary, payFrequency, effectiveDate, filingStatus, additionalWithholding } = parsed.data;
 
   try {
     await setCompensation(tenant.organizationId, {
@@ -76,6 +82,8 @@ export async function saveCompensation(formData: FormData): Promise<void> {
       baseSalary,
       payFrequency: payFrequency ?? "MONTHLY",
       effectiveDate,
+      filingStatus,
+      additionalWithholding: additionalWithholding ?? "0",
     });
   } catch (error) {
     if (error instanceof NotFoundError) redirect("/app/payroll/compensation?error=not-found");

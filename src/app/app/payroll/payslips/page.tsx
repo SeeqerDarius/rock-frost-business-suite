@@ -39,6 +39,7 @@ export default async function PayrollPayslipsPage() {
               <TableHead>Tax deduction ({currency})</TableHead>
               <TableHead>Other deductions ({currency})</TableHead>
               <TableHead>Net pay ({currency})</TableHead>
+              <TableHead>Employer contributions ({currency})</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -50,8 +51,23 @@ export default async function PayrollPayslipsPage() {
                 </TableCell>
                 <TableCell className="text-muted-foreground">{money(slip.grossPay, currency)}</TableCell>
                 <TableCell className="text-muted-foreground">{money(slip.taxDeduction, currency)}</TableCell>
-                <TableCell className="text-muted-foreground">{money(slip.otherDeductions, currency)}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {money(slip.otherDeductions, currency)}
+                  {slip.deductions.length ? (
+                    <ul className="mt-1 space-y-0.5 text-xs">
+                      {slip.deductions.filter((line) => line.kind !== "EMPLOYER_CONTRIBUTION").map((line) => <li key={line.id}>{line.name}: {money(line.amount, currency)}</li>)}
+                    </ul>
+                  ) : null}
+                </TableCell>
                 <TableCell className="font-medium">{money(slip.netPay, currency)}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {money(slip.employerContributions, currency)}
+                  {slip.deductions.some((line) => line.kind === "EMPLOYER_CONTRIBUTION") ? (
+                    <ul className="mt-1 space-y-0.5 text-xs">
+                      {slip.deductions.filter((line) => line.kind === "EMPLOYER_CONTRIBUTION").map((line) => <li key={line.id}>{line.name}: {money(line.amount, currency)}</li>)}
+                    </ul>
+                  ) : null}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
