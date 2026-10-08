@@ -56,7 +56,7 @@ describe("getSchoolNavigationForTenant", () => {
     const tenant = buildTenant({ role: "Parent", permissions: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.SCHOOL_PORTAL_VIEW, PERMISSIONS.AI_ASSISTANT_USE] });
     expect(getSchoolNavigationForTenant(tenant, true).map((item) => item.href)).toEqual(["/app/school/portal", "/app/school/portal/announcements"]);
     // Portal messages also need the guardian messaging add-on.
-    expect(getSchoolNavigationForTenant(tenant, true, true).map((item) => item.href)).toEqual(["/app/school/portal", "/app/school/portal/messages", "/app/school/portal/announcements"]);
+    expect(getSchoolNavigationForTenant(tenant, true, true).map((item) => item.href)).toEqual(["/app/school/portal", "/app/school/portal/announcements", "/app/school/chats"]);
     expect(getSchoolNavigationForTenant(tenant, false, true)).toEqual([]);
     expect(getSchoolNavigationForTenant(tenant, false)).toEqual([]);
   });
@@ -66,16 +66,15 @@ describe("getSchoolNavigationForTenant", () => {
     expect(getSchoolNavigationForTenant(tenant, true, true).map((item) => item.href)).toEqual(["/app/school/portal"]);
   });
 
-  it("shows staff Messages only with the messaging permission and both add-ons, and Announcements to any School staff", () => {
+  it("shows staff Chats with the messaging permission alone (staff chat needs no add-on), and Announcements to any School staff", () => {
     const teacher = buildTenant({ role: "Teacher", permissions: [PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_MESSAGES_MANAGE] });
     const viewer = buildTenant({ role: "School Viewer", permissions: [PERMISSIONS.SCHOOL_VIEW] });
     const hrefs = (tenant: TenantContext, portal: boolean, messaging: boolean) => getSchoolNavigationForTenant(tenant, portal, messaging).map((item) => item.href);
-    expect(hrefs(teacher, true, true)).toContain("/app/school/messages");
-    expect(hrefs(teacher, true, false)).not.toContain("/app/school/messages");
-    expect(hrefs(teacher, false, true)).not.toContain("/app/school/messages");
-    expect(hrefs(viewer, true, true)).not.toContain("/app/school/messages");
+    expect(hrefs(teacher, true, true)).toContain("/app/school/chats");
+    expect(hrefs(teacher, false, false)).toContain("/app/school/chats");
+    expect(hrefs(viewer, true, true)).not.toContain("/app/school/chats");
     expect(hrefs(viewer, false, false)).toContain("/app/school/announcements");
-    expect(hrefs(teacher, true, true)).not.toContain("/app/school/portal/messages");
+    expect(hrefs(teacher, true, true)).not.toContain("/app/school/portal/announcements");
   });
 
   it("never shows the portal link to staff without SCHOOL_PORTAL_VIEW", () => {

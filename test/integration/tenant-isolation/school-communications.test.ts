@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import bcrypt from "bcryptjs";
 import * as school from "@/modules/school/service";
 import * as comms from "@/modules/school/communications-service";
+import * as chat from "@/modules/school/chat-service";
 import { cleanupTestOrg, createTestOrg, type TestOrg } from "../setup/fixtures";
 import { testDb } from "../setup/db";
 
@@ -70,107 +71,181 @@ afterAll(async () => {
 
 const grant = (portal: boolean, messaging: boolean) => testDb.organization.update({ where: { id: orgA.organizationId }, data: { schoolPortalGranted: portal, schoolGuardianMessagingGranted: messaging } });
 
-describe("School communications entitlements (real Postgres)", () => {
-  it("keeps direct messaging off until both the portal and guardian messaging add-ons are granted", async () => {
-    await grant(true, false);
-    await expect(comms.listStaffConversations(staff(orgA, admin.id))).rejects.toMatchObject({ code: "unavailable" });
-    await expect(comms.startGuardianConversation(orgA.organizationId, guardianOne.user!.id, { studentId: studentOne.id, subject: "Hello", body: "Hi", clientRequestId: rid() })).rejects.toMatchObject({ code: "unavailable" });
-    await grant(false, true);
-    expect(await comms.isGuardianMessagingAvailable(orgA.organizationId)).toBe(false);
+const staffViewer = (userId: string, canBroadcast = false, org: TestOrg = orgA): chat.ChatViewer => ({ kind: "staff", organizationId: org.organizationId, userId, name: `Staff ${userId.slice(-4)}`, canBroadcast });
+const guardianViewer = async (userId: string) => {
+  const viewer = await chat.resolveChatViewer({ organizationId: orgA.organizationId, userId }, (permission) => permission === "school.portal.view");
+  if (!viewer) throw new Error("expected a guardian viewer");
+  return viewer;
+};
+const unreadBell = (userId: string) => testDb.notification.count({ where: { organizationId: orgA.organizationId, userId, type: "SCHOOL_CHAT_MESSAGE", readAt: null } });
+
+let teacherTwo: { id: string };
+let dmId: string;
+let groupId: string;
+
+describe("School chat entitlements (real Postgres)", () => {
+  it("lets staff chat with staff on School alone, and needs both add-ons for anything with a guardian", async () => {
+    await grant(false, false);
+    teacherTwo = await addMember(orgA, "Teacher", "teacher-two");
+    await school.assignSchoolClassTeacher(orgA.organizationId, classTwo.id, teacherTwo.id);
+    const staffChat = await chat.startDirectChat(staffViewer(teacherOne.id), admin.id);
+    await chat.sendChatMessage(staffViewer(teacherOne.id), { chatId: staffChat.chatId, body: "Staff meeting at 3?", clientRequestId: rid() });
+    expect(await chat.unreadChatTotal(staffViewer(admin.id))).toBe(1);
+    await expect(chat.startDirectChat(staffViewer(teacherOne.id), guardianOne.user!.id)).rejects.toMatchObject({ code: "unavailable" });
+    const guardian = await guardianViewer(guardianOne.user!.id);
+    expect(await chat.listChats(guardian)).toEqual([]);
+    await expect(chat.startDirectChat(guardian, teacherOne.id)).rejects.toMatchObject({ code: "unavailable" });
     await grant(true, true);
-    expect(await comms.isGuardianMessagingAvailable(orgA.organizationId)).toBe(true);
-  });
+  }, 60_000);
 });
 
-describe("School conversations (real Postgres)", () => {
-  let conversationId: string;
+describe("School chat (real Postgres)", () => {
+  it("applies class scope both ways and never lets guardians message each other", async () => {
+    const teacher = staffViewer(teacherOne.id);
+    const one = await guardianViewer(guardianOne.user!.id);
+    const two = await guardianViewer(guardianTwo.user!.id);
+    dmId = (await chat.startDirectChat(teacher, guardianOne.user!.id)).chatId;
+    expect((await chat.startDirectChat(one, teacherOne.id)).chatId).toBe(dmId);
+    await expect(chat.startDirectChat(teacher, guardianTwo.user!.id)).rejects.toMatchObject({ code: "forbidden" });
+    await expect(chat.startDirectChat(two, teacherOne.id)).rejects.toMatchObject({ code: "forbidden" });
+    await expect(chat.startDirectChat(one, guardianTwo.user!.id)).rejects.toMatchObject({ code: "forbidden" });
+    expect((await chat.startDirectChat(two, admin.id)).created).toBe(true);
+    const contacts = await chat.listChatContacts(two);
+    expect(contacts.staff.map((member) => member.userId)).toContain(admin.id);
+    expect(contacts.staff.map((member) => member.userId)).not.toContain(teacherOne.id);
+    expect(contacts.guardians).toEqual([]);
+    const teacherContacts = await chat.listChatContacts(teacher);
+    expect(teacherContacts.guardians.map((guardian) => guardian.userId)).toEqual([guardianOne.user!.id]);
+  }, 60_000);
 
-  it("limits a class teacher to students in their classes and guardians with portal accounts", async () => {
-    const teacher = staff(orgA, teacherOne.id);
-    const students = await comms.listMessageableStudents(teacher);
-    expect(students.map((student) => student.id)).toEqual([studentOne.id]);
-    expect(students[0].guardians.map((guardian) => guardian.id)).toEqual([guardianOne.guardian.id]);
-    await expect(comms.startStaffConversation(teacher, { studentId: studentTwo.id, guardianId: guardianTwo.guardian.id, subject: "Homework", body: "Hello", clientRequestId: rid() })).rejects.toMatchObject({ code: "not-found" });
-    await expect(comms.startStaffConversation(teacher, { studentId: studentOne.id, guardianId: guardianTwo.guardian.id, subject: "Homework", body: "Hello", clientRequestId: rid() })).rejects.toMatchObject({ code: "not-found" });
-    await expect(comms.startStaffConversation(teacher, { studentId: studentOne.id, guardianId: noPortalGuardian.guardian.id, subject: "Homework", body: "Hello", clientRequestId: rid() })).rejects.toMatchObject({ code: "invalid" });
-    await expect(comms.startStaffConversation(staff(orgA, teacherOne.id, { canManageMessages: false }), { studentId: studentOne.id, guardianId: guardianOne.guardian.id, subject: "Homework", body: "Hello", clientRequestId: rid() })).rejects.toMatchObject({ code: "forbidden" });
-  });
-
-  it("rejects invalid input before writing anything", async () => {
-    const teacher = staff(orgA, teacherOne.id);
-    const before = await testDb.schoolConversation.count({ where: { organizationId: orgA.organizationId } });
-    await expect(comms.startStaffConversation(teacher, { studentId: studentOne.id, guardianId: guardianOne.guardian.id, subject: " ", body: "Hello", clientRequestId: rid() })).rejects.toMatchObject({ code: "invalid" });
-    await expect(comms.startStaffConversation(teacher, { studentId: studentOne.id, guardianId: guardianOne.guardian.id, subject: "Hi there", body: "   ", clientRequestId: rid() })).rejects.toMatchObject({ code: "invalid" });
-    await expect(comms.startStaffConversation(teacher, { studentId: studentOne.id, guardianId: guardianOne.guardian.id, subject: "Hi there", body: "x".repeat(4001), clientRequestId: rid() })).rejects.toMatchObject({ code: "invalid" });
-    await expect(comms.startStaffConversation(teacher, { studentId: studentOne.id, guardianId: guardianOne.guardian.id, subject: "Hi there", body: "Hello", clientRequestId: "bad id!" })).rejects.toMatchObject({ code: "invalid" });
-    expect(await testDb.schoolConversation.count({ where: { organizationId: orgA.organizationId } })).toBe(before);
-  });
-
-  it("starts a conversation once per submitted form and tracks unread state for each reader", async () => {
-    const teacher = staff(orgA, teacherOne.id);
+  it("sends once per form, tracks unread and seen state, and notifies through one bell entry per chat", async () => {
+    const teacher = staffViewer(teacherOne.id);
+    const one = await guardianViewer(guardianOne.user!.id);
     const requestId = rid();
-    const first = await comms.startStaffConversation(teacher, { studentId: studentOne.id, guardianId: guardianOne.guardian.id, subject: "Reading progress", body: "Ama read very well today.", clientRequestId: requestId });
-    const repeat = await comms.startStaffConversation(teacher, { studentId: studentOne.id, guardianId: guardianOne.guardian.id, subject: "Reading progress", body: "Ama read very well today.", clientRequestId: requestId });
-    expect(repeat).toEqual({ conversationId: first.conversationId, duplicate: true });
-    conversationId = first.conversationId;
-    expect(await testDb.schoolMessage.count({ where: { conversationId } })).toBe(1);
+    await chat.sendChatMessage(teacher, { chatId: dmId, body: "Ama did well in maths today.", clientRequestId: requestId });
+    expect(await chat.sendChatMessage(teacher, { chatId: dmId, body: "Ama did well in maths today.", clientRequestId: requestId })).toMatchObject({ duplicate: true });
+    expect(await testDb.schoolChatMessage.count({ where: { chatId: dmId } })).toBe(1);
+    await chat.sendChatMessage(teacher, { chatId: dmId, body: "Homework is page 12.", clientRequestId: rid() });
+    expect(await chat.unreadChatTotal(one)).toBe(2);
+    expect(await unreadBell(guardianOne.user!.id)).toBe(1);
+    const bell = await testDb.notification.findFirstOrThrow({ where: { userId: guardianOne.user!.id, type: "SCHOOL_CHAT_MESSAGE", readAt: null } });
+    expect(bell.message).toContain("Homework is page 12.");
 
-    const guardianUserId = guardianOne.user!.id;
-    expect((await comms.getGuardianUnreadSummary(orgA.organizationId, guardianUserId)).messages).toBe(1);
-    const thread = await comms.getGuardianConversation(orgA.organizationId, guardianUserId, conversationId);
-    expect(thread.messages.map((message) => message.senderSide)).toEqual(["STAFF"]);
-    expect((await comms.getGuardianUnreadSummary(orgA.organizationId, guardianUserId)).messages).toBe(0);
+    const opened = await chat.getChat(one, dmId);
+    expect(opened.messages.map((message) => message.body)).toEqual(["Ama did well in maths today.", "Homework is page 12."]);
+    expect(await chat.unreadChatTotal(one)).toBe(0);
+    expect(await unreadBell(guardianOne.user!.id)).toBe(0);
+    expect((await chat.getChat(teacher, dmId)).messages.every((message) => message.seenByAll)).toBe(true);
 
-    const replyId = rid();
-    await comms.sendGuardianMessage(orgA.organizationId, guardianUserId, { conversationId, body: "Thank you!", clientRequestId: replyId });
-    expect(await comms.sendGuardianMessage(orgA.organizationId, guardianUserId, { conversationId, body: "Thank you!", clientRequestId: replyId })).toMatchObject({ duplicate: true });
-    expect(await testDb.schoolMessage.count({ where: { conversationId } })).toBe(2);
+    await chat.setChatPreferences(one, dmId, { mute: "always" });
+    await chat.sendChatMessage(teacher, { chatId: dmId, body: "Reminder: sports kit tomorrow.", clientRequestId: rid() });
+    expect(await unreadBell(guardianOne.user!.id)).toBe(0);
+    await chat.setChatPreferences(one, dmId, { mute: "off", pinned: true });
+    expect((await chat.listChats(one))[0]).toMatchObject({ id: dmId, pinned: true, unread: 1 });
+  }, 60_000);
 
-    // The teacher and an unrestricted administrator each see the reply as unread until they open it.
-    expect((await comms.getStaffUnreadSummary(teacher)).messages).toBe(1);
-    expect((await comms.getStaffUnreadSummary(staff(orgA, admin.id))).messages).toBe(2);
-    const staffList = await comms.listStaffConversations(teacher);
-    expect(staffList.find((row) => row.id === conversationId)?.unread).toBe(1);
-    await comms.getStaffConversation(teacher, conversationId);
-    expect((await comms.getStaffUnreadSummary(teacher)).messages).toBe(0);
-  });
+  it("supports replies, edits within 15 minutes, delete for everyone, and reactions", async () => {
+    const teacher = staffViewer(teacherOne.id);
+    const one = await guardianViewer(guardianOne.user!.id);
+    const original = await testDb.schoolChatMessage.findFirstOrThrow({ where: { chatId: dmId, body: "Homework is page 12." } });
+    await chat.sendChatMessage(one, { chatId: dmId, body: "Thank you, will check.", clientRequestId: rid(), replyToId: original.id });
+    const withReply = await chat.getChat(teacher, dmId);
+    expect(withReply.messages.at(-1)?.replyTo).toMatchObject({ id: original.id, preview: "Homework is page 12." });
 
-  it("never shows a conversation to an out-of-scope teacher, another guardian, a student account, or another organization", async () => {
-    const otherTeacher = await addMember(orgA, "Teacher", "teacher-two");
-    await school.assignSchoolClassTeacher(orgA.organizationId, classTwo.id, otherTeacher.id);
-    await expect(comms.getStaffConversation(staff(orgA, otherTeacher.id), conversationId)).rejects.toMatchObject({ code: "not-found" });
-    expect((await comms.listStaffConversations(staff(orgA, otherTeacher.id))).map((row) => row.id)).not.toContain(conversationId);
-    await expect(comms.getGuardianConversation(orgA.organizationId, guardianTwo.user!.id, conversationId)).rejects.toMatchObject({ code: "not-found" });
-    await expect(comms.sendGuardianMessage(orgA.organizationId, guardianTwo.user!.id, { conversationId, body: "Not mine", clientRequestId: rid() })).rejects.toMatchObject({ code: "not-found" });
-    const studentUser = await makeUser("student-login");
-    await testDb.schoolStudent.update({ where: { id: studentTwo.id }, data: { userId: studentUser.id } });
-    await expect(comms.listGuardianConversations(orgA.organizationId, studentUser.id)).rejects.toMatchObject({ code: "forbidden" });
+    await chat.editChatMessage(teacher, { messageId: original.id, body: "Homework is page 14." });
+    await expect(chat.editChatMessage(one, { messageId: original.id, body: "Changed" })).rejects.toMatchObject({ code: "forbidden" });
+    await testDb.schoolChatMessage.update({ where: { id: original.id }, data: { createdAt: new Date(Date.now() - 20 * 60 * 1000) } });
+    await expect(chat.editChatMessage(teacher, { messageId: original.id, body: "Too late" })).rejects.toMatchObject({ code: "invalid" });
+
+    await chat.reactToChatMessage(one, { messageId: original.id, emoji: "👍" });
+    await chat.reactToChatMessage(one, { messageId: original.id, emoji: "❤️" });
+    expect(await testDb.schoolChatReaction.findMany({ where: { messageId: original.id }, select: { emoji: true } })).toEqual([{ emoji: "❤️" }]);
+    await chat.reactToChatMessage(one, { messageId: original.id, emoji: "❤️" });
+    expect(await testDb.schoolChatReaction.count({ where: { messageId: original.id } })).toBe(0);
+
+    await expect(chat.deleteChatMessage(one, original.id)).rejects.toMatchObject({ code: "forbidden" });
+    await chat.deleteChatMessage(teacher, original.id);
+    const deleted = (await chat.getChat(one, dmId)).messages.find((message) => message.id === original.id);
+    expect(deleted).toMatchObject({ deleted: true, body: "" });
+  }, 60_000);
+
+  it("shares photos and documents only with members of the chat", async () => {
+    const one = await guardianViewer(guardianOne.user!.id);
+    const two = await guardianViewer(guardianTwo.user!.id);
+    await chat.sendChatMessage(one, { chatId: dmId, body: "Signed form attached", clientRequestId: rid(), attachment: { fileName: "form.pdf", mimeType: "application/pdf", size: 6, dataUrl: "data:application/pdf;base64,JVBERi0x" } });
+    const message = await testDb.schoolChatMessage.findFirstOrThrow({ where: { chatId: dmId, kind: "ATTACHMENT" } });
+    const file = await chat.getChatAttachment(staffViewer(teacherOne.id), message.id);
+    expect(file.bytes.subarray(0, 5).toString()).toBe("%PDF-");
+    await expect(chat.getChatAttachment(two, message.id)).rejects.toMatchObject({ code: "not-found" });
+    await expect(chat.getChatAttachment(staffViewer(orgB.userId, false, orgB), message.id)).rejects.toMatchObject({ code: "not-found" });
+  }, 60_000);
+
+  it("lets only staff create groups, with admin controls, announcement mode, removal, and leaving", async () => {
+    const adminViewer = staffViewer(admin.id);
+    const one = await guardianViewer(guardianOne.user!.id);
+    const two = await guardianViewer(guardianTwo.user!.id);
+    await expect(chat.createGroupChat(staffViewer(teacherOne.id), { name: "Mixed parents", memberUserIds: [guardianTwo.user!.id] })).rejects.toMatchObject({ code: "forbidden" });
+    groupId = (await chat.createGroupChat(adminViewer, { name: "Year group parents", memberUserIds: [teacherOne.id, guardianOne.user!.id, guardianTwo.user!.id] })).chatId;
+    expect(await testDb.schoolChatMessage.count({ where: { chatId: groupId, kind: "SYSTEM" } })).toBe(1);
+    expect((await chat.getChat(two, groupId)).members).toHaveLength(4);
+    expect(await unreadBell(guardianTwo.user!.id)).toBeGreaterThan(0);
+
+    await chat.updateGroupSettings(adminViewer, groupId, { name: "Year group parents", onlyAdminsCanPost: true });
+    await expect(chat.sendChatMessage(one, { chatId: groupId, body: "Hello all", clientRequestId: rid() })).rejects.toMatchObject({ code: "forbidden" });
+    await expect(chat.sendChatMessage(staffViewer(teacherOne.id), { chatId: groupId, body: "Hello", clientRequestId: rid() })).rejects.toMatchObject({ code: "forbidden" });
+    await chat.sendChatMessage(adminViewer, { chatId: groupId, body: "Welcome to the group.", clientRequestId: rid() });
+    await chat.setGroupAdmin(adminViewer, groupId, teacherOne.id, true);
+    await chat.sendChatMessage(staffViewer(teacherOne.id), { chatId: groupId, body: "Hello from your teacher.", clientRequestId: rid() });
+    await expect(chat.setGroupAdmin(adminViewer, groupId, guardianOne.user!.id, true)).rejects.toMatchObject({ code: "invalid" });
+    await expect(chat.addGroupMembers(staffViewer(teacherOne.id), groupId, [noPortalGuardian.guardian.id])).rejects.toThrow();
+
+    await chat.updateGroupSettings(adminViewer, groupId, { name: "Year group parents", onlyAdminsCanPost: false });
+    const sent = await chat.sendChatMessage(one, { chatId: groupId, body: "Off-topic message", clientRequestId: rid() });
+    await chat.deleteChatMessage(adminViewer, sent.messageId!);
+    expect(await testDb.auditLog.count({ where: { organizationId: orgA.organizationId, action: "school.chat.message_removed_by_admin", entityId: sent.messageId! } })).toBe(1);
+
+    await chat.removeGroupMember(adminViewer, groupId, guardianTwo.user!.id);
+    await expect(chat.getChat(two, groupId)).rejects.toMatchObject({ code: "not-found" });
+    expect((await chat.listChats(two)).map((item) => item.id)).not.toContain(groupId);
+    await chat.leaveChat(one, groupId);
+    await expect(chat.getChat(one, groupId)).rejects.toMatchObject({ code: "not-found" });
+    await expect(chat.leaveChat(one, dmId)).rejects.toMatchObject({ code: "invalid" });
+  }, 90_000);
+
+  it("delivers broadcast lists privately into each recipient's own chat", async () => {
+    const broadcaster = staffViewer(admin.id, true);
+    await expect(chat.broadcastMessage(staffViewer(teacherOne.id), { audience: "ALL_STAFF", body: "Hi", clientRequestId: rid() })).rejects.toMatchObject({ code: "forbidden" });
+    const requestId = rid();
+    expect(await chat.broadcastMessage(broadcaster, { audience: "CLASS_GUARDIANS", classId: classOne.id, body: "Class One trip on Friday.", clientRequestId: requestId })).toMatchObject({ recipients: 1, duplicate: false });
+    expect(await chat.broadcastMessage(broadcaster, { audience: "CLASS_GUARDIANS", classId: classOne.id, body: "Class One trip on Friday.", clientRequestId: requestId })).toMatchObject({ duplicate: true });
+    expect(await chat.broadcastMessage(broadcaster, { audience: "ALL_GUARDIANS", body: "School closes early on Monday.", clientRequestId: rid() })).toMatchObject({ recipients: 2 });
+    const one = await guardianViewer(guardianOne.user!.id);
+    const two = await guardianViewer(guardianTwo.user!.id);
+    const oneChat = (await chat.listChats(one)).find((item) => item.type === "DIRECT" && item.preview.includes("School closes early"));
+    expect(oneChat).toBeTruthy();
+    const oneMessages = (await chat.getChat(one, oneChat!.id)).messages;
+    expect(oneMessages.filter((message) => message.broadcast).map((message) => message.body)).toEqual(["Class One trip on Friday.", "School closes early on Monday."]);
+    const twoChats = await chat.listChats(two);
+    const twoBroadcast = twoChats.find((item) => item.preview.includes("School closes early"));
+    expect((await chat.getChat(two, twoBroadcast!.id)).messages.map((message) => message.body)).not.toContain("Class One trip on Friday.");
+    expect(twoBroadcast!.id).not.toBe(oneChat!.id);
+  }, 90_000);
+
+  it("never exposes chats across organizations, including at the database level", async () => {
+    const outsider = staffViewer(orgB.userId, false, orgB);
     await testDb.organization.update({ where: { id: orgB.organizationId }, data: { schoolPortalGranted: true, schoolGuardianMessagingGranted: true } });
-    await expect(comms.getStaffConversation(staff(orgB, orgB.userId), conversationId)).rejects.toMatchObject({ code: "not-found" });
-    await expect(comms.sendStaffMessage(staff(orgB, orgB.userId), { conversationId, body: "Cross tenant", clientRequestId: rid() })).rejects.toMatchObject({ code: "not-found" });
-  });
+    await expect(chat.getChat(outsider, dmId)).rejects.toMatchObject({ code: "not-found" });
+    await expect(chat.sendChatMessage(outsider, { chatId: dmId, body: "Cross tenant", clientRequestId: rid() })).rejects.toMatchObject({ code: "not-found" });
+    await expect(chat.startDirectChat(outsider, guardianOne.user!.id)).rejects.toThrow();
+    await expect(testDb.schoolChatMember.create({ data: { organizationId: orgB.organizationId, chatId: dmId, userId: orgB.userId, side: "STAFF", displayName: "Outsider" } })).rejects.toThrow();
+  }, 60_000);
 
-  it("rejects a conversation row that points at another organization's student at the database level", async () => {
-    await expect(testDb.schoolConversation.create({ data: { organizationId: orgB.organizationId, studentId: studentOne.id, guardianId: guardianOne.guardian.id, subject: "Cross tenant", startedBySide: "STAFF", createdById: orgB.userId } })).rejects.toThrow();
-  });
-
-  it("removes guardian access when the student link is removed, and blocks replies on closed conversations", async () => {
-    const teacher = staff(orgA, teacherOne.id);
-    await comms.setConversationStatus(teacher, conversationId, "CLOSED");
-    await expect(comms.sendGuardianMessage(orgA.organizationId, guardianOne.user!.id, { conversationId, body: "One more thing", clientRequestId: rid() })).rejects.toMatchObject({ code: "closed" });
-    await expect(comms.sendStaffMessage(teacher, { conversationId, body: "Reply", clientRequestId: rid() })).rejects.toMatchObject({ code: "closed" });
-    await comms.setConversationStatus(teacher, conversationId, "OPEN");
+  it("ends a guardian's access when they no longer have a linked child", async () => {
     await testDb.schoolStudentGuardian.deleteMany({ where: { guardianId: guardianOne.guardian.id, studentId: studentOne.id } });
-    await expect(comms.getGuardianConversation(orgA.organizationId, guardianOne.user!.id, conversationId)).rejects.toMatchObject({ code: "not-found" });
+    expect(await chat.resolveChatViewer({ organizationId: orgA.organizationId, userId: guardianOne.user!.id }, (permission) => permission === "school.portal.view")).toBeNull();
+    await expect(chat.sendChatMessage(staffViewer(teacherOne.id), { chatId: dmId, body: "Are you there?", clientRequestId: rid() })).rejects.toMatchObject({ code: "forbidden" });
     await testDb.schoolStudentGuardian.create({ data: { organizationId: orgA.organizationId, studentId: studentOne.id, guardianId: guardianOne.guardian.id, relationship: "Parent", primary: true } });
-    expect(await testDb.auditLog.count({ where: { organizationId: orgA.organizationId, entityId: conversationId, action: { in: ["school.conversation.started", "school.conversation.closed", "school.conversation.reopened"] } } })).toBe(3);
-  });
-
-  it("lets a guardian start a conversation only about their own linked child", async () => {
-    await expect(comms.startGuardianConversation(orgA.organizationId, guardianOne.user!.id, { studentId: studentTwo.id, subject: "Question", body: "Hello", clientRequestId: rid() })).rejects.toMatchObject({ code: "not-found" });
-    const started = await comms.startGuardianConversation(orgA.organizationId, guardianOne.user!.id, { studentId: studentOne.id, subject: "Sick day", body: "Ama is unwell today.", clientRequestId: rid() });
-    expect((await comms.listStaffConversations(staff(orgA, teacherOne.id))).map((row) => row.id)).toContain(started.conversationId);
-  });
+  }, 60_000);
 });
 
 describe("School announcements (real Postgres)", () => {

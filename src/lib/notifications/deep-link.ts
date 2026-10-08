@@ -37,6 +37,10 @@ export function getNotificationHref(notification: NotificationLinkContext, isFle
       return "/app/fleet/driver-portal";
     case "MODULE_REQUEST_UPDATE":
       return "/app/module-requests";
+    case "SCHOOL_CHAT_MESSAGE": {
+      const chatId = notification.metadata && typeof notification.metadata === "object" && !Array.isArray(notification.metadata) ? (notification.metadata as Record<string, unknown>).chatId : null;
+      return typeof chatId === "string" && /^[a-z0-9]{8,40}$/i.test(chatId) ? `/app/school/chats/${chatId}` : "/app/school/chats";
+    }
     case "CONTRACT_APPROVAL_REQUESTED":
       return "/app/contracts/approvals";
     case "CONTRACT_APPROVED":

@@ -1,80 +1,91 @@
-# School in-app communications
+# School in-app communications: chat and announcements
 
-Direct conversations between school staff and guardians, and school
-announcements, inside the app. **No SMS, WhatsApp, email, or push
-notification is sent** by any of this; people see new items when they open
-the app (unread badges on My Portal, the conversation lists, and the
-announcement lists). Implemented 2026-10-08.
+School has two communication features, both inside the app: **chat**
+(WhatsApp-style direct chats, groups, and broadcast lists between staff and
+guardians) and **announcements** (notices to staff and guardians). No SMS,
+WhatsApp, or email is sent. New chat messages raise an in-app notification
+(the bell) and, for people who opt in on a device, a browser or phone push
+notification.
+
+Chat replaced the first release's student-anchored conversations
+(2026-10-08) on 2026-10-09. The migration copied those conversations into
+chat as groups; the old `SchoolConversation`, `SchoolMessage`, and
+`SchoolConversationReadState` tables remain in the database unused, and
+`/app/school/messages` and `/app/school/portal/messages` redirect to
+`/app/school/chats`.
+
+## Who can chat with whom
+
+Enforced on the server in `src/modules/school/chat-service.ts` for every read and write.
+
+| From | Can start a direct chat with | Can create groups and broadcasts |
+|---|---|---|
+| Staff with `school.messages.manage` | Any other messaging staff member; guardians whose children are in their scope | Groups: yes. Broadcasts: with `school.announcements.publish` |
+| Guardian (Parent portal account) | Messaging staff whose scope includes one of their children | No |
+
+- **Scope**: a staff member assigned to classes (`SchoolClassTeacher`) reaches students actively enrolled in those classes; staff with no class assignment reach every student. Guardians reach staff by the same rule in reverse, so a guardian sees their children's class teachers and the unassigned office and administration staff.
+- **Guardians never message guardians directly.** They see other guardians only as fellow members of a group a staff member created. Guardians cannot be group admins.
+- **Membership is the access rule.** A chat is visible only to its current members; removed or departed members lose access. A guardian member must still be a guardian of the organization with at least one linked child, and a direct chat stops accepting messages if its two people can no longer reach each other (for example, the child moved class).
+- **Paid add-ons**: any chat with a guardian in it needs both the Parent and Student portal and the Guardian messaging add-on (operator-granted, default off, no price in code). Staff-only chats need only School. Revoking an add-on hides guardian chats without deleting them.
+
+## Features
+
+- **Direct chats**: one chat per pair of people (deduplicated by a sorted pair key).
+- **Groups**: name, description, optional class, up to 500 members. The creator is an admin. Admins (staff) add and remove members, make other staff admins, rename the group, and can switch on **announcement mode** (only admins send). Anyone can leave; if the last admin leaves, the longest-standing staff member becomes admin. System messages record group events.
+- **Broadcast lists**: a staff member with the announcements permission sends one message to all staff, all reachable guardians, the guardians of one class, or chosen people. It lands in each recipient's own direct chat with the sender, so replies stay private. Up to 1,000 recipients; deduplicated by request id.
+- **Messages**: text (up to 4,000 characters) with emoji, photos (JPEG, PNG, WEBP) and PDFs up to 4 MB (photos are downscaled in the browser first; the server checks the real file signature), replies with a quoted preview, edit your own text for 15 minutes, delete for everyone (your own; group admins can remove anyone's message in their group, audited), and one emoji reaction per person per message.
+- **Read state**: unread counts per chat, single tick (sent) and double tick (seen; blue when everyone has seen it), and "Seen by" names in groups.
+- **Organizing**: search the chat list, search within a chat, pin, mute (8 hours, 1 week, always), and archive (an archived chat returns when a new message arrives).
+- **Live updates**: an open chat refreshes every 4 seconds and the chat list every 8 seconds while the tab is visible.
+- **Safe sending**: each composer render carries a request id with a unique constraint per chat, so a double click or retry records one message; the send button disables while sending; a draft survives live refreshes because the composer only resets after your own send.
+
+## Notifications
+
+- **In-app bell**: each new message creates or updates one unread `Notification` (type `SCHOOL_CHAT_MESSAGE`, `metadata.chatId`) per recipient per chat, so a busy chat does not flood the bell. Opening the chat marks it read. Muted members get no notification. The bell links to the chat.
+- **Web push** (`src/lib/web-push.ts`, `public/sw.js`): a person opts in per device from the chat list ("Get notified of new messages"). Subscriptions are stored in `WebPushSubscription`; pushes are sent after the response (`after()`), never block sending, and subscriptions the push service reports gone are deleted. The notification shows the chat or sender name and a short preview, and opens the chat. **Push needs `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT`** (generate the keys once with `npx web-push generate-vapid-keys`); without them the opt-in control is hidden and only the in-app bell works.
 
 ## Data model
 
-Migration `20261014090000_school_communications` (additive only):
+Migration `20261015090000_school_chat` (additive; it also copies the 2026-10-08 conversations):
 
 | Table | Purpose |
 |---|---|
-| `SchoolConversation` | One conversation between the school and one guardian about one student: subject, status (`OPEN`/`CLOSED`), which side started it, `lastMessageAt`. |
-| `SchoolMessage` | Text message (1 to 4,000 characters), sender user, sender side (`STAFF`/`GUARDIAN`), sender display name captured at send time, and `clientRequestId`. |
-| `SchoolConversationReadState` | Per reader: `lastReadAt` for a conversation. Unread = messages from other people after it. |
-| `SchoolAnnouncement` | Title, body, audience (`STAFF`, `ALL_GUARDIANS`, `CLASS_GUARDIANS` with a class, `EVERYONE`), publisher, withdrawn state, and `clientRequestId`. |
-| `SchoolAnnouncementRead` | Per reader: when an announcement was read. |
+| `SchoolChat` | `DIRECT` (with a unique `directKey`) or `GROUP` (with a name), optional student and class context, announcement mode, `lastMessageAt`. |
+| `SchoolChatMember` | Chat member: side (staff or guardian), role (admin or member), display name, `lastReadAt`, `mutedUntil`, `pinnedAt`, `archivedAt`, `leftAt`. |
+| `SchoolChatMessage` | `TEXT`, `ATTACHMENT` (FileAsset reference plus name, type, and size snapshot), or `SYSTEM`; reply link, broadcast link, edit and delete stamps, request id. |
+| `SchoolChatReaction` | One emoji per person per message. |
+| `SchoolChatBroadcast` | One broadcast send: audience, optional class, body, recipient count, request id. |
+| `WebPushSubscription` | A user's push endpoint and keys for one device. |
 
-Also: `Organization.schoolGuardianMessagingGranted` (+ `GrantedAt`, `GrantedById`), default `false`.
+Protections: chats, members, and messages are linked by composite `(organizationId, id)` foreign keys, so the database rejects a member or message pointing at another organization's chat; CHECK constraints cover chat type and name, message kind (text needs text, attachments need a file, system messages have no sender), lengths, attachment size, guardians never being admins, and broadcast class consistency. Attachments are served only to current chat members by `/api/school/chats/attachments/[messageId]` with `nosniff` and a sandboxing content security policy. The Server Action body limit is 5 MB to fit a 4 MB attachment.
 
-Protections:
+## Announcements
 
-- Every table carries `organizationId`. Conversations reference the student and guardian, messages and read states reference the conversation, and announcements reference the class through **composite `(organizationId, id)` foreign keys** (new unique keys on `SchoolStudent`, `SchoolGuardian`, and `SchoolClass`), so the database itself rejects a row that points at another organization's record.
-- CHECK constraints: subject and title 2 to 120 characters, message and announcement 1 to 4,000 characters (after trimming), and `classId` present exactly when the audience is `CLASS_GUARDIANS`.
-- `@@unique([conversationId, clientRequestId])` on messages and `@@unique([organizationId, clientRequestId])` on announcements: every form render carries a fresh request id, so a double click or retried request records one message or announcement. The submit button also disables itself while sending.
-- Indexes for the list views (`organizationId, guardianId, lastMessageAt`; `organizationId, lastMessageAt`; `organizationId, conversationId, createdAt`; `organizationId, publishedAt`) and the per-user read lookups.
-
-Messages are text only. There are no attachments. Fee, payment, attendance,
-and library details are not copied into conversations; the conversation
-header shows the student's current class from the existing enrollment
-records, and guardians keep using My Portal for fees and results.
-
-## Authorization
-
-All checks run on the server in `src/modules/school/communications-service.ts` on every read and write. Pages and actions only decide which screen to show.
-
-- **Staff messaging** needs the new `school.messages.manage` permission (granted to School Administrator, Academic Head, Teacher, Admissions Officer, and Bursar; Organization Owner and Admin hold every permission). A staff member assigned to classes (`SchoolClassTeacher`) reaches only students **actively enrolled** in those classes, the same rule `resolveTeacherClassScope()` applies to attendance and results. Staff with no class assignment reach every student. An out-of-scope or missing conversation returns "not found" either way, so ids cannot be probed.
-- **Starting a conversation (staff)**: the student must be in scope and the guardian must be linked to that student (`SchoolStudentGuardian`) and have a portal account, so the message can actually be read.
-- **Guardians** are resolved from their own login (`resolveSchoolPortalScope()`), never from form input. A guardian sees a conversation only while it is theirs **and** the student is still linked to them; removing the link removes access. A guardian can start a conversation only about their own linked child. Student portal accounts have no messaging and no announcements.
-- **Closed conversations** accept no new messages from either side until staff reopen them.
-- **Announcements**: publishing and withdrawing need the new `school.announcements.publish` permission (School Administrator, Academic Head, and organization administrators). Every School staff member (`school.view`) sees announcements in the app; staff-audience ones count as unread for them. Guardians see `ALL_GUARDIANS` and `EVERYONE` announcements, plus `CLASS_GUARDIANS` announcements for classes where one of their linked students is actively enrolled. Withdrawn announcements disappear for everyone except publishers, who still see them marked Withdrawn.
-- Audit events (ids only, never message text): `school.conversation.started`, `.closed`, `.reopened`, `school.announcement.published`, `.withdrawn`.
-
-## Paid guardian messaging
-
-The existing billing model can represent and enforce this, because it already sells operator-granted, per-organization add-ons. Guardian messaging is one of those add-ons: `schoolGuardianMessaging` in `src/platform/organizations/feature-addons.ts`, scoped to School and toggled by a platform operator from the organization's Configuration pane (`toggleSchoolGuardianMessaging()` in `src/app/app/platform/actions.ts`, audited as `school_guardian_messaging.platform_granted` or `_revoked`). It is **off by default**, and no price is set in code; pricing stays with the operator.
-
-- Direct conversations need **both** the Parent and Student portal grant and the Guardian messaging grant (`isGuardianMessagingAvailable()`), because guardians read and reply from My Portal. Without both, the staff Messages page and the portal Messages page show a "not enabled" state and every service call refuses with `unavailable`. Navigation hides the links too, but that is only a convenience.
-- Announcements are part of School itself. Guardians read them in My Portal, so they need the portal grant.
-- Revoking a grant hides the screens without deleting any conversation history.
+Unchanged from the first release: staff with `school.announcements.publish` publish to staff, all guardians, one class's guardians, or everyone, and can withdraw them; per-user read state; guardians read them in My Portal (`/app/school/portal/announcements`), which needs the portal add-on. See `communications-service.ts`.
 
 ## Screens
 
-| Route | Who | What |
-|---|---|---|
-| `/app/school/messages` | Staff with messaging permission | Conversation list (open, closed, all) with unread badges and last-message preview; "New conversation" (student and guardian, subject, first message). |
-| `/app/school/messages/[conversationId]` | Same | Message history (most recent 200, oldest first), reply box, close or reopen. Opening marks it read. |
-| `/app/school/announcements` | All School staff | Announcements with audience and New badges; publishers also see read counts, publish, and withdraw. Opening marks staff announcements read. |
-| `/app/school/portal/messages` | Guardians | Their conversations with unread badges; "Message the school" about one of their children. |
-| `/app/school/portal/messages/[conversationId]` | Guardians | Message history and reply box. |
-| `/app/school/portal/announcements` | Guardians | Announcements for them. Opening marks them read. |
+| Route | What |
+|---|---|
+| `/app/school/chats` | Chat list (search, unread badges, pinned and muted markers, archived link, notification opt-in) beside the open chat; on phones, one pane at a time. |
+| `/app/school/chats/[chatId]` | Conversation: day dividers, bubbles, replies, attachments, reactions, ticks, message menu (react, reply, edit, delete), search, and chat menu (group info, pin, mute, archive). |
+| `/app/school/chats/[chatId]/info` | Group members and admins, add members, settings, leave. |
+| `/app/school/chats/new` | Start a direct chat (people you can reach, searchable by name or child) or create a group. |
+| `/app/school/chats/broadcast` | Broadcast list send. |
+| `/app/school/chats/archived` | Archived chats. |
+| `/app/school/announcements`, `/app/school/portal/announcements` | Announcements for staff and guardians. |
 
-My Portal shows Announcements and Messages entry points with unread counts. Screens use labelled form controls, list semantics, `role="status"` and `role="alert"` result banners, `time` elements, and layouts that work at phone width. Error text from the server travels in a short-lived httpOnly cookie (`school-comms-flash`), never in the URL.
+Guardians reach Chats from My Portal (with an unread count) and the School menu.
 
 ## Tests
 
-- `test/school-communications.test.ts`: permission gate before any data access, both add-ons required, input validation before writes, repeated form submission, publish permission and class check.
-- `test/school-portal-access.test.ts`: navigation by role and grant (Parent, Student, staff with and without messaging).
-- `test/platform-sms-and-portal-grants.test.ts`: the operator-only Guardian messaging toggle.
-- `test/platform-organization-configuration.test.ts`: the add-on nests under School.
-- `test/integration/tenant-isolation/school-communications.test.ts` (real PostgreSQL, the disposable CI database): add-on gating; class-teacher scope; guardian link and portal-account requirements; invalid input; idempotent sends; unread and read state for a guardian, a class teacher, and an unrestricted administrator; out-of-scope teacher, other guardian, student account, and other organization all refused; the database rejecting a cross-organization row; closed conversations; access removed with the student link; guardian-started conversations; announcement permission, audience CHECK, class targeting, read state, deduplication, withdrawal, and portal revocation.
+- `test/school-chat.test.ts`: attachment signature, type, and size checks; group and broadcast permissions; input validation; non-members get not found; push off without keys; bell deep link.
+- `test/school-communications.test.ts`, `test/school-portal-access.test.ts`, `test/platform-sms-and-portal-grants.test.ts`, `test/platform-organization-configuration.test.ts`, `test/profile-image-upload.test.ts`: actor building, announcement checks, navigation by role and add-on, the operator toggle, and the 5 MB body limit.
+- `test/integration/tenant-isolation/school-communications.test.ts` (real PostgreSQL, the disposable CI database): staff chat without add-ons and guardian chat blocked without them; class scope in both directions and no guardian-to-guardian chats; idempotent sends, unread and seen state, one bell entry per chat, muting; replies, the edit window, delete for everyone, reactions; attachments only for members and never across organizations; groups (staff-only creation, scope on members, announcement mode, admins, moderation audit, removal, leaving); broadcast lists delivered privately per recipient with deduplication; cross-organization refusal including the database foreign key; access ending when a guardian loses their last linked child; and the announcement suite.
 
 ## Known limits
 
-- In-app only: nobody is alerted outside the app when a message arrives.
-- Text only, no attachments.
-- Staff see conversations by student scope, not by named participant: every staff member with messaging permission and the student in scope can read and reply.
-- Lists show the 100 most recent conversations or announcements, and a conversation shows its 200 most recent messages.
+- Live updates are polling (4 to 8 seconds), not instant; there are no typing indicators.
+- Voice notes are not supported. Attachments are stored as database data URIs like other attachments in this app.
+- Chat history shows the latest 100 messages of a chat (search finds older ones within that window only).
+- Push needs the VAPID keys configured in production, and iPhones only show web push for the app once it is added to the Home Screen.

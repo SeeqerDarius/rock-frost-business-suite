@@ -16,6 +16,7 @@ describe("profile image upload limits", () => {
   });
 
   it("keeps a bounded multipart envelope above the application file limit", () => {
-    expect(nextConfig.experimental?.serverActions?.bodySizeLimit).toBe("2mb");
+    // 5 MB: above the 1 MiB profile photo limit and the 4 MB School chat attachment limit, with room for the multipart envelope.
+    expect(nextConfig.experimental?.serverActions?.bodySizeLimit).toBe("5mb");
   });
 });
