@@ -102,6 +102,10 @@ Customer receipts are explicit immutable allocation records rather than only an 
 
 The Receivables page groups invoices by normalized customer email, falling back to normalized customer name when no email is available. It shows invoiced, paid, outstanding, and overdue balances plus statement-style invoice and receipt history. `accounting.receivables.manage` controls receipt entry separately from invoice creation.
 
+# EU reduced-rate reference catalog (2026-10-11)
+
+EU organizations can apply reduced VAT rates from a reference catalog in Tax and Compliance, Rates, after confirming them against TEDB. Details: `docs/GLOBAL_EXPANSION_ARCHITECTURE.md`, "Tax follow-ups, part 3".
+
 # VIES VAT checks and the OSS worksheet (2026-10-11)
 
 Contacts with an EU or Northern Ireland VAT number are checked against VIES (stored as evidence, with a "Check VAT" action), and Tax reports has an OSS return worksheet. Details: `docs/GLOBAL_EXPANSION_ARCHITECTURE.md`, "Tax follow-ups, part 2".

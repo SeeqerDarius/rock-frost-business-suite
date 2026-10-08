@@ -4,6 +4,8 @@ import { Prisma, type TaxExemptionType, type TaxFilingFrequency, type TaxJurisdi
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
 import { calculateTaxes, type TaxCalculation, type TaxComponentInput } from "./engine";
+import { catalogEntry, catalogRateCode, EU_REDUCED_CATALOG_COMPILED, EU_REDUCED_CATALOG_SOURCES, KIND_LABEL, TEDB_URL } from "./packs/eu-reduced-rates";
+import { EU_MEMBER_STATES } from "./packs/europe";
 import { getJurisdictionPack, homeCountryForJurisdiction } from "./packs";
 
 export class TaxConfigurationError extends Error {}
@@ -331,4 +333,52 @@ export async function resolveDocumentTax(organizationId: string, input: { ruleId
   const treatment: TaxTreatment = customerExempt && (rule.treatment === "STANDARD" || rule.treatment === "REDUCED") ? "EXEMPT" : rule.treatment;
   const calculation = calculateTaxes({ amount: input.amount, components, treatment, pricesIncludeTax: input.pricesIncludeTax });
   return { rule: { id: rule.id, code: rule.code, name: rule.name, jurisdictionCode: rule.jurisdiction.code, treatment: rule.treatment }, treatment, customerExempt, skippedComponents, calculation, accounts };
+}
+
+// --- EU reduced-rate reference catalog ---------------------------------------
+
+/**
+ * Creates reduced VAT rates from the reference catalog for the chosen member
+ * states, with a domestic rule for the organization's own member state and
+ * an OSS B2C rule for the others. The administrator must confirm the rates
+ * against TEDB or the national authority first. Idempotent: existing rate and
+ * rule codes are left unchanged, so applied rates can be versioned normally.
+ */
+export async function applyEuReducedRates(organizationId: string, actorId: string, input: { memberStates: string[]; effectiveFrom: string; confirmed: boolean }) {
+  if (!input.confirmed) throw new TaxConfigurationError("Confirm that you have checked these rates against TEDB or the national tax authority.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.effectiveFrom)) throw new TaxConfigurationError("Choose the date the rates apply from.");
+  const organization = await db.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { jurisdictionCode: true } });
+  const home = /^EU-[A-Z]{2}$/.test(organization.jurisdictionCode ?? "") ? organization.jurisdictionCode!.slice(3) : null;
+  if (!home) throw new TaxConfigurationError("Set the organization's tax jurisdiction to its EU member state and apply the EU pack first.");
+  const states = [...new Set(input.memberStates.map((code) => code.toUpperCase()))];
+  if (!states.length) throw new TaxConfigurationError("Choose at least one member state.");
+  const source = `${TEDB_URL} (reference catalog compiled ${EU_REDUCED_CATALOG_COMPILED} from ${EU_REDUCED_CATALOG_SOURCES.map((item) => `${item.name}, ${item.asOf}`).join("; ")})`;
+  let ratesCreated = 0;
+  let rulesCreated = 0;
+  for (const countryCode of states) {
+    const entry = catalogEntry(countryCode);
+    const state = EU_MEMBER_STATES.find((candidate) => candidate.code === countryCode);
+    if (!entry || !state) throw new TaxConfigurationError(`${countryCode} is not an EU member state.`);
+    if (!(await db.taxJurisdiction.findUnique({ where: { organizationId_code: { organizationId, code: `EU-${countryCode}` } }, select: { id: true } }))) throw new TaxConfigurationError("Apply the EU pack in Tax and Compliance first.");
+    for (const item of entry.rates) {
+      const rateCode = catalogRateCode(countryCode, item.rate);
+      if (!(await db.taxRate.findFirst({ where: { organizationId, code: rateCode }, select: { id: true } }))) {
+        await createTaxRate(organizationId, actorId, { code: rateCode, name: `${state.name} ${KIND_LABEL[item.kind]} VAT ${item.rate}%`, jurisdictionCode: `EU-${countryCode}`, taxKind: "VAT", rate: item.rate, effectiveFrom: input.effectiveFrom, sourceReference: source, outputAccountCode: "2100", inputAccountCode: "1300" });
+        ratesCreated += 1;
+      }
+      const domestic = countryCode === home;
+      const ruleCode = domestic ? `EU-${countryCode}-REDUCED-${item.rate.replace(".", "_")}` : `EU-${countryCode}-OSS-B2C-RED-${item.rate.replace(".", "_")}`;
+      if (!(await db.taxRule.findFirst({ where: { organizationId, code: ruleCode }, select: { id: true } }))) {
+        const categoryCode = domestic ? "REDUCED" : "OSS_B2C";
+        const hasCategory = await db.taxCategory.findUnique({ where: { organizationId_code: { organizationId, code: categoryCode } }, select: { id: true } });
+        await createTaxRule(organizationId, actorId, {
+          code: ruleCode, name: domestic ? `${state.name} ${KIND_LABEL[item.kind]} rate ${item.rate}% (domestic)` : `OSS B2C sale to ${state.name} at ${item.rate}% (destination VAT)`,
+          jurisdictionCode: `EU-${countryCode}`, categoryCode: hasCategory ? categoryCode : null, treatment: "REDUCED", rateCodes: [rateCode], effectiveFrom: input.effectiveFrom, sourceReference: source,
+        });
+        rulesCreated += 1;
+      }
+    }
+  }
+  await logAuditEvent({ organizationId, userId: actorId, module: "accounting", action: "tax_pack.eu_reduced_rates_applied", entityName: "TaxRate", entityId: organizationId, metadata: { memberStates: states, effectiveFrom: input.effectiveFrom, ratesCreated, rulesCreated, catalogCompiled: EU_REDUCED_CATALOG_COMPILED } });
+  return { ratesCreated, rulesCreated };
 }

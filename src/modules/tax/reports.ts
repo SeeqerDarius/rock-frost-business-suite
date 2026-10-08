@@ -178,7 +178,7 @@ export async function getOssReturn(organizationId: string, input: { from: string
   const entries = established
     ? await db.taxLedgerEntry.findMany({
         where: {
-          organizationId, transactionDate: { gte: start, lt: end }, taxKind: "VAT", treatment: "STANDARD",
+          organizationId, transactionDate: { gte: start, lt: end }, taxKind: "VAT", treatment: { in: ["STANDARD", "REDUCED"] },
           jurisdictionCode: { startsWith: "EU-", notIn: [home, "EU-OSS", "EU-IOSS"] },
           OR: [{ direction: "OUTPUT" }, { direction: "ADJUSTMENT", sourceType: { contains: "INVOICE" } }, { direction: "ADJUSTMENT", sourceType: { contains: "CREDIT_NOTE" } }],
         },
