@@ -9,6 +9,12 @@
 - **Validation (local)**: `npx tsc --noEmit` passed; `npm run lint` 0 errors (2 pre-existing warnings); `npm run test` 192 files / 1,493 tests passed; `npm run build` passed; `git diff --check` clean; no em dashes added. The real-Postgres suite `tax-vies-oss.test.ts` runs in CI against the disposable database (VIES calls are mocked; tests never reach the registry).
 - **Remaining risks**: VIES availability varies by member state (handled as UNAVAILABLE); member states may hide names and addresses; the OSS worksheet is not a filing file and does not split corrections to earlier quarters; reduced-rate catalog awaits the owner's choice of source.
 
+## 2026-10-10: Tax follow-ups part 1 production verification
+
+- PR [#69](https://github.com/SeeqerDarius/rock-frost-business-suite/pull/69) merged as `5adfa323e5cf3aa43e4e3556dab800ad8b0533a0` after validate, integration (all 7 tests of `tax-engine-coverage.test.ts` against real Postgres), and security passed.
+- Production deployment `dpl_DZHMZh9XLRmWXU4shgs26CkEknMN` is READY; build log shows `Applying migration 20261010090000_tax_engine_coverage` and all migrations applied.
+- Checks: `/api/health` 200; `/app/accounting/credit-notes` and `/app/procurement/invoices` redirect (307) to `/login` signed out. Runtime errors (30 minutes): only the pre-existing signed-out `No organization membership` group from these probes.
+
 ## 2026-10-10: Tax follow-ups, part 1 (credit notes and supplier invoices on the tax engine)
 
 - **Scope**: credit notes and Procurement supplier invoices can be taxed by a tax rule (snapshot, per-component posting, tax ledger rows). Fixes two reporting gaps: settled credit notes (legacy and engine) now reduce output tax in the working VAT return and tax ledger (previously journal only, so returns overstated output tax), and approved legacy supplier invoices now write tax ledger rows (previously missing from jurisdiction reports). Details: `docs/GLOBAL_EXPANSION_ARCHITECTURE.md`, "Tax follow-ups, part 1".
