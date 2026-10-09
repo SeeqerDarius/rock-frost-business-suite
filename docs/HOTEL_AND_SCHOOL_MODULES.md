@@ -118,7 +118,7 @@ ranking-gated exam broadsheet, School as a fifth SMS-notifying module
 organization's own detail page, plus its own per-campus toggle), and a
 Parent/Student self-service portal (a separate paid per-organization
 add-on) with its own narrow-scoped roles and a dedicated Portal Access
-management page. In-app announcements and direct staff and guardian conversations are described in `docs/SCHOOL_COMMUNICATIONS.md`. See `docs/SCHOOL_PARENT_STUDENT_PORTAL.md` for the full
+management page. In-app announcements and School chat (direct chats, groups, broadcast lists, and notifications) are described in `docs/SCHOOL_COMMUNICATIONS.md`. See `docs/SCHOOL_PARENT_STUDENT_PORTAL.md` for the full
 design.
 
 ### Release S2 — teaching, assessment, and communication

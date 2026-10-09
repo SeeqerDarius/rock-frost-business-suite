@@ -42,13 +42,17 @@ const nextConfig: NextConfig = {
     return [
       { source: "/modules/payroll", destination: "/modules/hr", permanent: true },
       { source: "/modules/procurement", destination: "/modules/inventory", permanent: true },
+      // School conversations became School chat (2026-10-09).
+      { source: "/app/school/messages/:path*", destination: "/app/school/chats", permanent: false },
+      { source: "/app/school/portal/messages/:path*", destination: "/app/school/chats", permanent: false },
     ];
   },
   experimental: {
     serverActions: {
       // Profile photos are capped at 1 MiB by application validation, but the
       // multipart Server Action envelope adds headers/metadata above that size.
-      bodySizeLimit: "2mb",
+      // School chat attachments are capped at 4 MB (src/lib/school-chat-attachment.ts).
+      bodySizeLimit: "5mb",
     },
   },
   async headers() {

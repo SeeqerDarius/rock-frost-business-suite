@@ -37,9 +37,9 @@ export function getSchoolNavigationForTenant(tenant: TenantContext, schoolPortal
     ["/app/school/reports", hasPermission(tenant, PERMISSIONS.SCHOOL_REPORTS_VIEW)],
     ["/app/school/settings", hasPermission(tenant, PERMISSIONS.SCHOOL_SETTINGS_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_VIEW)],
     ["/app/school/portal", schoolPortalGranted && hasPermission(tenant, PERMISSIONS.SCHOOL_PORTAL_VIEW)],
-    ["/app/school/portal/messages", messagingAvailable && hasPermission(tenant, PERMISSIONS.SCHOOL_PORTAL_VIEW) && isSchoolParentRole(tenant)],
     ["/app/school/portal/announcements", schoolPortalGranted && hasPermission(tenant, PERMISSIONS.SCHOOL_PORTAL_VIEW) && isSchoolParentRole(tenant)],
-    ["/app/school/messages", messagingAvailable && hasPermission(tenant, PERMISSIONS.SCHOOL_MESSAGES_MANAGE)],
+    // Staff chat with staff on School alone; chats with guardians (and a guardian's own Chats link) need both add-ons.
+    ["/app/school/chats", hasPermission(tenant, PERMISSIONS.SCHOOL_MESSAGES_MANAGE) || (messagingAvailable && hasPermission(tenant, PERMISSIONS.SCHOOL_PORTAL_VIEW) && isSchoolParentRole(tenant))],
     ["/app/school/announcements", hasPermission(tenant, PERMISSIONS.SCHOOL_VIEW)],
   ];
   const allowedRoutes = new Set(routeAccess.filter(([, allowed]) => allowed).map(([href]) => href));

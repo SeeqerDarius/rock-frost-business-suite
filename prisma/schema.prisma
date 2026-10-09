@@ -410,6 +410,7 @@ model User {
   invitationsCreated              Invitation[]                     @relation("InvitationsCreated")
   auditLogs                       AuditLog[]
   notifications                   Notification[]
+  webPushSubscriptions            WebPushSubscription[]
   uploadedFiles                   FileAsset[]
   fleetDriverProfiles             FleetDriver[]
   schoolClassTeacherAssignments   SchoolClassTeacher[]
@@ -789,6 +790,11 @@ model Organization {
   schoolConversationReadStates    SchoolConversationReadState[]
   schoolAnnouncements             SchoolAnnouncement[]
   schoolAnnouncementReads         SchoolAnnouncementRead[]
+  schoolChats                     SchoolChat[]
+  schoolChatMembers               SchoolChatMember[]
+  schoolChatMessages              SchoolChatMessage[]
+  schoolChatReactions             SchoolChatReaction[]
+  schoolChatBroadcasts            SchoolChatBroadcast[]
   schoolStudents                  SchoolStudent[]
   schoolStudentGuardians          SchoolStudentGuardian[]
   schoolClasses                   SchoolClass[]
@@ -4928,6 +4934,171 @@ model SchoolAnnouncementRead {
   @@index([organizationId, userId])
 }
 
+enum SchoolChatType {
+  DIRECT
+  GROUP
+}
+
+enum SchoolChatMemberRole {
+  ADMIN
+  MEMBER
+}
+
+enum SchoolChatMessageKind {
+  TEXT
+  ATTACHMENT
+  SYSTEM
+}
+
+enum SchoolChatBroadcastAudience {
+  ALL_GUARDIANS
+  CLASS_GUARDIANS
+  ALL_STAFF
+  SELECTED
+}
+
+/// In-app School chat (staff and guardians): a direct chat between two people
+/// or a staff-created group. Access is by membership, re-checked on every
+/// read and write. See docs/SCHOOL_COMMUNICATIONS.md.
+model SchoolChat {
+  id                String         @id @default(cuid())
+  organizationId    String
+  type              SchoolChatType
+  name              String?
+  description       String?
+  /// DIRECT chats: the two user ids sorted and joined, so a pair has one chat.
+  directKey         String?
+  /// Optional context: the student or class a chat is about.
+  studentId         String?
+  classId           String?
+  onlyAdminsCanPost Boolean        @default(false)
+  createdById       String
+  lastMessageAt     DateTime       @default(now())
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      SchoolStudent?      @relation(fields: [organizationId, studentId], references: [organizationId, id], onDelete: SetNull)
+  class        SchoolClass?        @relation(fields: [organizationId, classId], references: [organizationId, id], onDelete: SetNull)
+  members      SchoolChatMember[]
+  messages     SchoolChatMessage[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, directKey])
+  @@index([organizationId, lastMessageAt])
+}
+
+model SchoolChatMember {
+  id             String                  @id @default(cuid())
+  organizationId String
+  chatId         String
+  userId         String
+  side           SchoolMessageSenderSide
+  role           SchoolChatMemberRole    @default(MEMBER)
+  /// Display name captured when added, so lists stay readable.
+  displayName    String
+  addedById      String?
+  joinedAt       DateTime                @default(now())
+  leftAt         DateTime?
+  lastReadAt     DateTime                @default(now())
+  mutedUntil     DateTime?
+  pinnedAt       DateTime?
+  archivedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  chat         SchoolChat   @relation(fields: [organizationId, chatId], references: [organizationId, id], onDelete: Cascade)
+
+  @@unique([chatId, userId])
+  @@index([organizationId, userId, leftAt])
+}
+
+model SchoolChatMessage {
+  id                 String                   @id @default(cuid())
+  organizationId     String
+  chatId             String
+  /// Null for system messages.
+  senderUserId       String?
+  senderSide         SchoolMessageSenderSide?
+  senderName         String
+  kind               SchoolChatMessageKind    @default(TEXT)
+  body               String                   @default("") @db.Text
+  replyToId          String?
+  /// ATTACHMENT messages: FileAsset holding the validated file, with a snapshot of its name, type, and size.
+  attachmentAssetId  String?
+  attachmentName     String?
+  attachmentMimeType String?
+  attachmentSize     Int?
+  broadcastId        String?
+  editedAt           DateTime?
+  deletedAt          DateTime?
+  deletedById        String?
+  /// Generated per form render; a repeated submit of the same form is ignored.
+  clientRequestId    String
+  createdAt          DateTime                 @default(now())
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  chat         SchoolChat           @relation(fields: [organizationId, chatId], references: [organizationId, id], onDelete: Cascade)
+  replyTo      SchoolChatMessage?   @relation("SchoolChatReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies      SchoolChatMessage[]  @relation("SchoolChatReply")
+  reactions    SchoolChatReaction[]
+
+  @@unique([chatId, clientRequestId])
+  @@index([organizationId, chatId, createdAt])
+  @@index([organizationId, broadcastId])
+}
+
+model SchoolChatReaction {
+  id             String   @id @default(cuid())
+  organizationId String
+  messageId      String
+  userId         String
+  emoji          String
+  createdAt      DateTime @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  message      SchoolChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([organizationId, messageId])
+}
+
+/// A broadcast list send: one message delivered into each recipient's own
+/// direct chat with the sender, so replies stay private.
+model SchoolChatBroadcast {
+  id              String                      @id @default(cuid())
+  organizationId  String
+  senderUserId    String
+  audience        SchoolChatBroadcastAudience
+  classId         String?
+  body            String                      @db.Text
+  recipientCount  Int
+  clientRequestId String
+  createdAt       DateTime                    @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  class        SchoolClass? @relation(fields: [organizationId, classId], references: [organizationId, id], onDelete: SetNull)
+
+  @@unique([organizationId, clientRequestId])
+  @@index([organizationId, createdAt])
+}
+
+/// A browser or phone that opted in to web push notifications for a user.
+model WebPushSubscription {
+  id           String    @id @default(cuid())
+  userId       String
+  endpoint     String    @unique
+  p256dh       String
+  auth         String
+  userAgent    String?
+  failureCount Int       @default(0)
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
 enum PosSessionStatus {
   OPEN
   CLOSED
@@ -5853,6 +6024,7 @@ model SchoolStudent {
   documents         SchoolStudentDocument[]
 
   conversations SchoolConversation[]
+  chats         SchoolChat[]
 
   @@unique([organizationId, admissionNumber])
   @@unique([organizationId, id])
@@ -5897,7 +6069,9 @@ model SchoolClass {
   feeStructures SchoolFeeStructure[]
   teachers      SchoolClassTeacher[]
 
-  announcements SchoolAnnouncement[]
+  announcements  SchoolAnnouncement[]
+  chats          SchoolChat[]
+  chatBroadcasts SchoolChatBroadcast[]
 
   @@unique([campusId, code])
   @@unique([organizationId, id])

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CalendarCheck, GraduationCap, IdCard, Lock, Megaphone, MessagesSquare, Receipt, ShieldAlert, ShieldOff, Users } from "lucide-react";
 import { UnreadBadge } from "@/components/school/communications";
 import { getGuardianUnreadSummary } from "@/modules/school/communications-service";
+import { resolveChatViewer, unreadChatTotal } from "@/modules/school/chat-service";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { OverviewMetricCard } from "@/components/dashboard/overview-metric-card";
@@ -70,6 +71,8 @@ export default async function SchoolPortalPage({ searchParams }: { searchParams:
     getSchoolPortalStudentSummary(tenant.organizationId, studentId),
     scope.type === "guardian" ? getGuardianUnreadSummary(tenant.organizationId, tenant.userId) : Promise.resolve(null),
   ]);
+  const chatViewer = unread?.messagingAvailable ? await resolveChatViewer(tenant, (permission) => hasPermission(tenant, permission)) : null;
+  const unreadChats = chatViewer ? await unreadChatTotal(chatViewer) : 0;
 
   return (
     <div className="mx-auto max-w-screen-lg space-y-6">
@@ -92,9 +95,9 @@ export default async function SchoolPortalPage({ searchParams }: { searchParams:
             <UnreadBadge count={unread.announcements} label="new announcements" />
           </Link>
           {unread.messagingAvailable ? (
-            <Link href="/app/school/portal/messages" className="flex items-center justify-between gap-3 rounded-lg border p-4 hover:bg-muted/50">
-              <span className="flex items-center gap-2 font-medium"><MessagesSquare className="size-5 text-muted-foreground" />Messages</span>
-              <UnreadBadge count={unread.messages} label="unread messages" />
+            <Link href="/app/school/chats" className="flex items-center justify-between gap-3 rounded-lg border p-4 hover:bg-muted/50">
+              <span className="flex items-center gap-2 font-medium"><MessagesSquare className="size-5 text-muted-foreground" />Chats</span>
+              <UnreadBadge count={unreadChats} label="unread messages" />
             </Link>
           ) : null}
         </nav>

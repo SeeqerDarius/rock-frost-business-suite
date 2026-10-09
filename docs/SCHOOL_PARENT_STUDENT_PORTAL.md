@@ -1,6 +1,6 @@
 # School: Ghana grading/broadsheet, SMS notifications, and the Parent/Student portal
 
-> **In-app communications (2026-10-08).** Guardians also read school announcements and, with the separate Guardian messaging add-on, hold direct conversations with staff from My Portal. See `docs/SCHOOL_COMMUNICATIONS.md`.
+> **In-app communications (2026-10-08).** Guardians also read school announcements and, with the separate Guardian messaging add-on, use School chat with their children's staff (and groups staff add them to) from My Portal. See `docs/SCHOOL_COMMUNICATIONS.md`.
 
 Three additive features on top of the existing School Management module
 (`docs/HOTEL_AND_SCHOOL_MODULES.md`). All three are optional and off by
