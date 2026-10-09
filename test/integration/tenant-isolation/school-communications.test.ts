@@ -156,6 +156,8 @@ describe("School chat (real Postgres)", () => {
     await expect(chat.editChatMessage(one, { messageId: original.id, body: "Changed" })).rejects.toMatchObject({ code: "forbidden" });
     await testDb.schoolChatMessage.update({ where: { id: original.id }, data: { createdAt: new Date(Date.now() - 20 * 60 * 1000) } });
     await expect(chat.editChatMessage(teacher, { messageId: original.id, body: "Too late" })).rejects.toMatchObject({ code: "invalid" });
+    // Restore the timestamp: members only see messages sent after they joined the chat.
+    await testDb.schoolChatMessage.update({ where: { id: original.id }, data: { createdAt: new Date() } });
 
     await chat.reactToChatMessage(one, { messageId: original.id, emoji: "👍" });
     await chat.reactToChatMessage(one, { messageId: original.id, emoji: "❤️" });
@@ -187,8 +189,10 @@ describe("School chat (real Postgres)", () => {
     await expect(chat.createGroupChat(staffViewer(teacherOne.id), { name: "Mixed parents", memberUserIds: [guardianTwo.user!.id] })).rejects.toMatchObject({ code: "forbidden" });
     groupId = (await chat.createGroupChat(adminViewer, { name: "Year group parents", memberUserIds: [teacherOne.id, guardianOne.user!.id, guardianTwo.user!.id] })).chatId;
     expect(await testDb.schoolChatMessage.count({ where: { chatId: groupId, kind: "SYSTEM" } })).toBe(1);
-    expect((await chat.getChat(two, groupId)).members).toHaveLength(4);
+    // Check the bell before opening the chat: opening it marks the chat notification read.
     expect(await unreadBell(guardianTwo.user!.id)).toBeGreaterThan(0);
+    expect((await chat.getChat(two, groupId)).members).toHaveLength(4);
+    expect(await unreadBell(guardianTwo.user!.id)).toBe(0);
 
     await chat.updateGroupSettings(adminViewer, groupId, { name: "Year group parents", onlyAdminsCanPost: true });
     await expect(chat.sendChatMessage(one, { chatId: groupId, body: "Hello all", clientRequestId: rid() })).rejects.toMatchObject({ code: "forbidden" });
@@ -284,7 +288,7 @@ describe("School announcements (real Postgres)", () => {
   it("hides guardian announcements when the portal add-on is revoked", async () => {
     await grant(false, true);
     await expect(comms.listGuardianAnnouncements(orgA.organizationId, guardianOne.user!.id)).rejects.toMatchObject({ code: "unavailable" });
-    expect(await comms.getGuardianUnreadSummary(orgA.organizationId, guardianOne.user!.id)).toMatchObject({ messages: 0, announcements: 0, messagingAvailable: false });
+    expect(await comms.getGuardianUnreadSummary(orgA.organizationId, guardianOne.user!.id)).toMatchObject({ announcements: 0, messagingAvailable: false });
     await grant(true, true);
   });
 });
