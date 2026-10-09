@@ -98,6 +98,15 @@ call applies once, not twice. As of the clinical-upgrades tranche this is a
 documented requirement for the future integration, not a delivered
 mechanism; no request-id field exists yet on either side.
 
+School payroll adjustments are owned and recorded by School. HR supplies the
+same-organization eligible employee directory through public service calls,
+and `src/modules/school/payroll-integration.ts` exposes pending School inputs
+to Payroll inside the Payroll-run transaction. Payroll claims those inputs
+with the run in the same transaction, so failed runs leave them pending. This
+contract passes typed data and adjustment IDs; Payroll must not query or write
+School Prisma models directly. Employee and PayrollRun relations include the
+organization ID so database constraints also enforce tenant identity.
+
 1. Add its entry to `src/platform/modules/registry.ts` (key, name, description, icon, `routePrefix` — must be `/app`-prefixed, e.g. `/app/crm` — status).
 2. If it has real navigation, add `src/modules/<key>/navigation.tsx` and reference it from the registry entry. Every `href` in it must also be `/app`-prefixed.
 3. Create its route tree under `src/app/app/<key>/` with its own `layout.tsx` wrapping `AppShell` with that module's navigation — copy the pattern from `app/fleet/layout.tsx` or `app/installment/layout.tsx`.

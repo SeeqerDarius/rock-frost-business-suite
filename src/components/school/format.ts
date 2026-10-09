@@ -1,19 +1,10 @@
-import type { Prisma } from "@prisma/client";
-
 /**
- * Shared School display formatting.
- *
- * Currency is GHS to match the existing School Overview card, which was the
- * only School surface that formatted money before this change; every other
- * page printed a bare `toFixed(2)`. School has no per-organization currency
- * setting yet — see docs/SCHOOL_UI_CUSTOMER_READINESS.md.
+ * Shared School display formatting. Money is formatted with the
+ * organization formatter (createOrganizationFormatter in @/lib/org-format),
+ * so School amounts follow the organization currency and number format.
  */
 
 const dateOnly = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-
-export function formatMoney(value: Prisma.Decimal | number | string, currencyCode = "GHS") {
-  return new Intl.NumberFormat("en-GH", { style: "currency", currency: currencyCode }).format(Number(value));
-}
 
 export function formatDate(value: Date | null | undefined) {
   return value ? dateOnly.format(value) : "-";

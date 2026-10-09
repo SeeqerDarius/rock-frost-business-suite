@@ -9,6 +9,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  */
 
 const mockDb = {
+  // Base currency lookup used by multi-currency posting; these suites cover base-currency documents.
+  organization: { findUnique: vi.fn(async () => ({ currency: "GHS" })) },
   inventoryItem: { findFirst: vi.fn() },
   inventoryWarehouse: { findFirst: vi.fn() },
   inventoryStock: { createMany: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
@@ -31,6 +33,7 @@ const mockDb = {
   payrollRun: { findFirst: vi.fn(), updateMany: vi.fn() },
   payrollCompensation: { findMany: vi.fn() },
   payrollSettings: { upsert: vi.fn() },
+  schoolPayrollAdjustment: { findMany: vi.fn(), updateMany: vi.fn() },
 
   hrEmployee: { findFirst: vi.fn() },
   hirePurchaseAccount: { findFirst: vi.fn() },
@@ -65,6 +68,7 @@ beforeEach(() => {
   txPassthrough();
   mockDb.accountingPeriod.findFirst.mockResolvedValue(null);
   mockDb.accountingJournalEntry.count.mockResolvedValue(0);
+  mockDb.schoolPayrollAdjustment.findMany.mockResolvedValue([]);
 });
 
 describe("Inventory — quantity validation, warehouse IDOR, atomic guard", () => {

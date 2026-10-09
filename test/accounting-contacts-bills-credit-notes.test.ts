@@ -7,10 +7,13 @@ vi.mock("@/platform/module-requests/configuration", () => ({
 }));
 
 const mockDb = {
+  // Base currency lookup used by multi-currency posting; these suites cover base-currency documents.
+  organization: { findUnique: vi.fn(async () => ({ currency: "GHS" })) },
   accountingContact: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
   accountingAccount: { count: vi.fn(), findMany: vi.fn(), createMany: vi.fn(), findFirst: vi.fn() },
   accountingJournalEntry: { create: vi.fn(), count: vi.fn(), findFirst: vi.fn() },
   accountingTaxTransaction: { create: vi.fn() },
+  taxLedgerEntry: { createMany: vi.fn() },
   accountingPeriod: { findFirst: vi.fn() },
   accountingBill: { count: vi.fn(), create: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn(), update: vi.fn(), findUniqueOrThrow: vi.fn() },
   accountingPayablePayment: { create: vi.fn() },
@@ -212,7 +215,7 @@ describe("Credit note applied to an invoice reduces its outstanding balance", ()
     expect(result.status).toBe("APPLIED");
     expect(mockDb.accountingInvoice.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "invoice-1" },
-      data: { amountCredited: { increment: creditNote.amount } },
+      data: { amountCredited: { increment: creditNote.amount }, baseAmountSettled: { increment: creditNote.amount } },
     }));
     // Debit Revenue (taxableAmount) + Debit VAT payable (vatAmount) = Credit AR (amount, gross) - must balance exactly.
     const journalCall = mockDb.accountingJournalEntry.create.mock.calls[0][0];
@@ -220,6 +223,9 @@ describe("Credit note applied to an invoice reduces its outstanding balance", ()
     const totalCredit = journalCall.data.lines.create.reduce((sum: number, line: { credit?: string }) => sum + Number(line.credit ?? 0), 0);
     expect(totalDebit).toBeCloseTo(totalCredit, 2);
     expect(totalCredit).toBeCloseTo(115, 2);
+    // The credit note reduces output tax in the working return and the tax ledger.
+    expect(mockDb.accountingTaxTransaction.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ direction: "ADJUSTMENT", sourceType: "ACCOUNTING_CREDIT_NOTE" }) }));
+    expect(mockDb.taxLedgerEntry.createMany).toHaveBeenCalled();
   });
 
   it("applyCreditNoteToInvoice rejects a credit note larger than the invoice's outstanding balance", async () => {

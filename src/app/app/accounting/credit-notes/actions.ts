@@ -18,7 +18,9 @@ import {
   AccountingPeriodLockedError,
   type LineItemInput,
 } from "@/modules/accounting/service";
-import { shortText, longText, email, cuid, dateInput, parseIndexedFormRows, parseWithSchema } from "@/lib/validation";
+import { TaxConfigurationError as TaxEngineError } from "@/modules/tax/service";
+import { shortText, longText, email, cuid, dateInput, parseIndexedFormRows, currencyCode, exchangeRateInput, parseWithSchema } from "@/lib/validation";
+import { ExchangeRateError } from "@/modules/globalization/fx";
 import { logAuditEvent } from "@/lib/audit";
 
 function clean(value: FormDataEntryValue | null) {
@@ -33,6 +35,9 @@ const createCreditNoteSchema = z.object({
   description: longText.nullable().optional(),
   issueDate: dateInput,
   taxCodeId: cuid.nullable().optional(),
+  taxRuleId: cuid.nullable().optional(),
+  currency: currencyCode.nullable().optional(),
+  exchangeRate: exchangeRateInput.nullable().optional(),
 });
 
 export async function createNewCreditNote(formData: FormData): Promise<void> {
@@ -47,23 +52,29 @@ export async function createNewCreditNote(formData: FormData): Promise<void> {
     customerEmail: clean(formData.get("customerEmail")),
     description: clean(formData.get("description")),
     issueDate: clean(formData.get("issueDate")),
-    taxCodeId: clean(formData.get("taxCodeId")),
+    // A "rule:<id>" value selects a tax engine rule instead of a legacy tax code.
+    taxCodeId: clean(formData.get("taxCodeId"))?.startsWith("rule:") ? null : clean(formData.get("taxCodeId")),
+    taxRuleId: clean(formData.get("taxCodeId"))?.startsWith("rule:") ? clean(formData.get("taxCodeId"))!.slice(5) : null,
+    currency: clean(formData.get("currency")),
+    exchangeRate: clean(formData.get("exchangeRate")),
   });
   if (!parsed.success) {
     redirect("/app/accounting/credit-notes?error=missing-fields");
   }
-  const { contactId, customerName, customerEmail, description, issueDate, taxCodeId } = parsed.data;
-  const lines = parseIndexedFormRows(formData, "lines", ["description", "quantity", "unitPrice"]) as unknown as LineItemInput[];
+  const { contactId, customerName, customerEmail, description, issueDate, taxCodeId, taxRuleId, currency, exchangeRate } = parsed.data;
+  const lines = parseIndexedFormRows(formData, "lines", ["description", "quantity", "unitPrice", "taxRuleId"]) as unknown as LineItemInput[];
 
   const session = await getServerAuthSession();
   try {
     await createCreditNote(
       tenant.organizationId,
-      { contactId: contactId ?? null, customerName, customerEmail: customerEmail ?? null, description: description ?? null, lines, issueDate, taxCodeId: taxCodeId ?? null },
+      { contactId: contactId ?? null, customerName, customerEmail: customerEmail ?? null, description: description ?? null, lines, issueDate, taxCodeId: taxCodeId ?? null, taxRuleId: taxRuleId ?? null, pricesIncludeTax: formData.get("pricesIncludeTax") === "on", currency: currency ?? null, exchangeRate: exchangeRate ?? null },
       session?.user?.id ?? null,
     );
   } catch (error) {
     if (error instanceof InvalidLineItemsError) redirect("/app/accounting/credit-notes?error=invalid-lines");
+    if (error instanceof ExchangeRateError) redirect("/app/accounting/credit-notes?error=fx-rate");
+    if (error instanceof TaxEngineError) redirect("/app/accounting/credit-notes?error=tax-rule");
     throw error;
   }
 

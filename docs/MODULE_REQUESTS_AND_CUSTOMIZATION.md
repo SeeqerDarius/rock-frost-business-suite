@@ -15,6 +15,14 @@ Organization administrators with `org.settings.manage` can use `/app/module-requ
 - an integration; or
 - a data migration.
 
+The new-request form lets the administrator tick several existing modules at once. The submission creates one
+request per selected module (in a single transaction, so either all are created or none are), each titled with the
+module name appended when more than one module was selected. Keeping one request per module means platform operators
+still review, quote, reject, or approve-and-enable each module independently, and the schema keeps a single optional
+`moduleId` per request. Leaving every module unchecked creates one request with no module (custom module,
+integration, or migration). Demo, enable, and customize requests require at least one module. The server action
+still accepts the legacy single `moduleId` field.
+
 The request stores the organization and authenticated requester automatically. The requester can see the
 customer-visible timeline, status, decision, assignee, and quotation/reference value, and can add more information.
 Internal operator notes are never returned by the tenant page.

@@ -16,12 +16,13 @@ import { FormFeedback, ReadOnlyNotice } from "@/components/school/form-feedback"
 import { FieldGrid, SelectField, TextField } from "@/components/school/form-fields";
 import { PrerequisiteNotice, SectionCard } from "@/components/school/section-card";
 import { RecordSearch } from "@/components/school/record-search";
+import { RecordPagination } from "@/components/school/record-pagination";
 import { StatusBadge } from "@/components/school/status-badge";
 import { formatDate, humanizeStatus } from "@/components/school/format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listSchoolCampuses, listSchoolGuardians, listSchoolStudents, listSchoolStudentPhotoIds, listSchoolGuardianPhotoIds } from "@/modules/school/service";
-import { createStudentAction, transitionStudentAction, updateStudentPhotoAction, updateGuardianAction, updateGuardianPhotoAction } from "../actions";
+import { listSchoolCampuses, listSchoolGuardians, listSchoolStudentPage, listSchoolStudentPhotoIds, listSchoolGuardianPhotoIds } from "@/modules/school/service";
+import { createGuardianAction, createStudentAction, manageStudentGuardiansAction, transitionStudentAction, updateStudentProfileAction, updateStudentPhotoAction, updateGuardianAction, updateGuardianPhotoAction } from "../actions";
 import { StudentGuardianFields } from "./student-guardian-fields";
 
 function PhotoThumb({ hasPhoto, src, alt }: { hasPhoto: boolean; src: string; alt: string }) {
@@ -51,25 +52,20 @@ const ALLOWED_TRANSITIONS: Record<SchoolStudentStatus, SchoolStudentStatus[]> = 
 
 const STATUS_FILTERS: SchoolStudentStatus[] = ["APPLICANT", "ACTIVE", "SUSPENDED", "WITHDRAWN", "GRADUATED"];
 
-export default async function SchoolStudentsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; status?: string }> }) {
+export default async function SchoolStudentsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; status?: string; page?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENTS_MANAGE);
-  const [students, guardians, campuses, studentPhotoIds, guardianPhotoIds] = await Promise.all([
-    listSchoolStudents(tenant.organizationId),
+  const statusFilter = STATUS_FILTERS.find((status) => status === query.status);
+  const requestedPage = query.page && /^\d{1,6}$/.test(query.page) ? Number(query.page) : 1;
+  const [studentPage, guardians, campuses, guardianPhotoIds] = await Promise.all([
+    listSchoolStudentPage(tenant.organizationId, { query: query.q, status: statusFilter, page: requestedPage }),
     listSchoolGuardians(tenant.organizationId),
     listSchoolCampuses(tenant.organizationId),
-    listSchoolStudentPhotoIds(tenant.organizationId),
     listSchoolGuardianPhotoIds(tenant.organizationId),
   ]);
 
-  // The service returns the full student list for the organization, so the
-  // search and status filter are applied to the rows already loaded here.
-  const search = query.q?.trim().toLowerCase() ?? "";
-  const statusFilter = STATUS_FILTERS.find((status) => status === query.status);
-  const visible = students.filter((student) => {
-    const matchesSearch = search === "" || `${student.firstName} ${student.lastName} ${student.admissionNumber}`.toLowerCase().includes(search);
-    return matchesSearch && (!statusFilter || student.status === statusFilter);
-  });
+  const students = studentPage.rows;
+  const studentPhotoIds = await listSchoolStudentPhotoIds(tenant.organizationId, students.map((student) => student.id));
 
   const campusOptions = campuses.map((campus) => ({ value: campus.id, label: campus.name }));
   const guardianOptions = guardians.map((guardian) => ({ value: guardian.id, label: `${guardian.lastName}, ${guardian.firstName} (${guardian.guardianNumber})` }));
@@ -112,13 +108,13 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
       <FormFeedback
         saved={query.saved}
         error={query.error}
-        savedMessage="The student record is up to date."
+        savedMessage="Student or family contact saved."
         stateMessage="That status change isn't allowed from the student's current status: withdrawn and graduated records are final."
       />
       {!canManage ? <ReadOnlyNotice>Your role can review students and guardians but cannot admit or change them.</ReadOnlyNotice> : null}
       <PrerequisiteNotice items={[{ satisfied: campuses.length > 0, label: "Create a campus", href: "/app/school/campuses" }]} />
 
-      {students.length === 0 ? (
+      {studentPage.total === 0 ? (
         <EmptyState
           icon={Users}
           title="No students yet"
@@ -134,7 +130,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
         </TabsList>
 
         <TabsContent value="students" className="space-y-6">
-          <SectionCard title="Students" description={`${students.length} student${students.length === 1 ? "" : "s"} on record.`}>
+          <SectionCard title="Students" description={`${studentPage.total} student${studentPage.total === 1 ? "" : "s"} on record.`}>
             <div className="space-y-4">
               <RecordSearch
                 action={PATH}
@@ -142,7 +138,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
                 placeholder="Name or admission number"
                 defaultValue={query.q}
                 isFiltered={Boolean(query.q || statusFilter)}
-                resultSummary={`Showing ${visible.length} of ${students.length}`}
+                resultSummary={`Showing ${students.length} of ${studentPage.total}`}
                 filters={
                   <div className="w-40 space-y-1.5">
                     <Label htmlFor="student-status-filter">Status</Label>
@@ -159,7 +155,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
                 }
               />
 
-              {visible.length === 0 ? (
+              {students.length === 0 ? (
                 <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">No students match this search.</p>
               ) : (
                 <Table>
@@ -176,7 +172,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {visible.map((student) => {
+                    {students.map((student) => {
                       const primaryGuardian = student.guardians.find((link) => link.primary) ?? student.guardians[0];
                       const activeEnrollment = student.enrollments.find((enrollment) => enrollment.status === "ACTIVE");
                       const transitions = ALLOWED_TRANSITIONS[student.status];
@@ -225,32 +221,98 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
                           <TableCell><StatusBadge status={student.status} /></TableCell>
                           {canManage ? (
                             <TableCell className="text-right">
-                              {transitions.length > 0 ? (
+                              <div className="flex flex-wrap justify-end gap-2">
                                 <EntityDialog
-                                  trigger={<Button size="sm" variant="ghost">Change status</Button>}
-                                  title={`Change status for ${student.firstName} ${student.lastName}`}
-                                  description={`Currently ${humanizeStatus(student.status).toLowerCase()}. Withdrawing or graduating a student also closes their active enrollments.`}
-                                  action={transitionStudentAction}
-                                  submitLabel="Change status"
+                                  trigger={<Button size="sm" variant="outline"><Pencil />Edit profile</Button>}
+                                  title={`Edit ${student.firstName} ${student.lastName}`}
+                                  description="Update the student's name, date of birth, gender, or admission date. Campus, admission number, status, and class history remain unchanged."
+                                  action={updateStudentProfileAction}
+                                  submitLabel="Save profile"
                                 >
                                   <input type="hidden" name="studentId" value={student.id} />
-                                  <SelectField
-                                    id={`transition-${student.id}`}
-                                    name="toStatus"
-                                    label="New status"
-                                    required
-                                    placeholder="Select a new status…"
-                                    options={transitions.map((status) => ({ value: status, label: humanizeStatus(status) }))}
-                                  />
-                                  <div className="space-y-1.5">
-                                    <Label htmlFor={`transition-reason-${student.id}`}>Reason</Label>
-                                    <Textarea id={`transition-reason-${student.id}`} name="reason" rows={3} maxLength={5000} />
-                                    <p className="text-xs leading-relaxed text-muted-foreground">Optional, but recorded permanently in the student&apos;s lifecycle history.</p>
+                                  <input type="hidden" name="updatedAt" value={student.updatedAt.toISOString()} />
+                                  <input type="hidden" name="q" value={query.q ?? ""} />
+                                  <input type="hidden" name="status" value={statusFilter ?? ""} />
+                                  <input type="hidden" name="page" value={studentPage.page} />
+                                  <FieldGrid>
+                                    <TextField id={`student-edit-first-${student.id}`} name="firstName" label="First name" required maxLength={200} defaultValue={student.firstName} />
+                                    <TextField id={`student-edit-last-${student.id}`} name="lastName" label="Last name" required maxLength={200} defaultValue={student.lastName} />
+                                  </FieldGrid>
+                                  <FieldGrid>
+                                    <TextField id={`student-edit-dob-${student.id}`} name="dateOfBirth" label="Date of birth" type="date" defaultValue={student.dateOfBirth?.toISOString().slice(0, 10) ?? ""} />
+                                    <TextField id={`student-edit-gender-${student.id}`} name="gender" label="Gender" maxLength={100} defaultValue={student.gender ?? ""} />
+                                  </FieldGrid>
+                                  <TextField id={`student-edit-admission-date-${student.id}`} name="admissionDate" label="Admission date" type="date" defaultValue={student.admissionDate?.toISOString().slice(0, 10) ?? ""} />
+                                </EntityDialog>
+                                <EntityDialog
+                                  trigger={<Button size="sm" variant="outline"><Users />Family links</Button>}
+                                  title={`Family contacts for ${student.firstName} ${student.lastName}`}
+                                  description="Choose the primary contact, record pickup authorization, link another guardian, or remove an outdated relationship. A student must keep one primary contact while linked guardians remain."
+                                  action={manageStudentGuardiansAction}
+                                  submitLabel="Save family links"
+                                  contentClassName="sm:max-w-2xl"
+                                >
+                                  <input type="hidden" name="studentId" value={student.id} />
+                                  <input type="hidden" name="q" value={query.q ?? ""} />
+                                  <input type="hidden" name="status" value={statusFilter ?? ""} />
+                                  <input type="hidden" name="page" value={studentPage.page} />
+                                  {student.guardians.length ? (
+                                    <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+                                      {student.guardians.map((link, index) => (
+                                        <fieldset key={link.guardianId} className="space-y-3 rounded-lg border p-3">
+                                          <legend className="px-1 text-sm font-medium">{link.guardian.firstName} {link.guardian.lastName} · {link.guardian.phone}</legend>
+                                          <input type="hidden" name="linkedGuardianId" value={link.guardianId} />
+                                          <TextField id={`family-relationship-${student.id}-${link.guardianId}`} name={`relationship_${link.guardianId}`} label="Relationship" required maxLength={200} defaultValue={link.relationship} />
+                                          <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+                                            <label className="inline-flex items-center gap-2"><input type="radio" name="primaryGuardianId" value={link.guardianId} defaultChecked={link.primary || (!student.guardians.some((item) => item.primary) && index === 0)} />Primary contact</label>
+                                            <label className="inline-flex items-center gap-2"><input type="checkbox" name="pickupGuardianId" value={link.guardianId} defaultChecked={link.authorizedPickup} />Authorized to pick up</label>
+                                            <label className="inline-flex items-center gap-2 text-destructive"><input type="checkbox" name="removeGuardianId" value={link.guardianId} />Remove this link</label>
+                                          </div>
+                                        </fieldset>
+                                      ))}
+                                    </div>
+                                  ) : <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">No guardian is linked yet. Choose one below and mark them as the primary contact.</p>}
+                                  <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+                                    <p className="text-sm font-medium">Link another guardian</p>
+                                    <SelectField
+                                      id={`family-add-guardian-${student.id}`}
+                                      name="newGuardianId"
+                                      label="Guardian"
+                                      options={guardianOptions.filter((option) => !student.guardians.some((link) => link.guardianId === option.value))}
+                                      placeholder="Leave empty to skip"
+                                    />
+                                    <TextField id={`family-new-relationship-${student.id}`} name="newRelationship" label="Relationship" maxLength={200} />
+                                    <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+                                      <label className="inline-flex items-center gap-2"><input type="radio" name="primaryGuardianId" value="new" defaultChecked={student.guardians.length === 0} />Make the new guardian primary</label>
+                                      <label className="inline-flex items-center gap-2"><input type="checkbox" name="newAuthorizedPickup" />Authorize pickup</label>
+                                    </div>
                                   </div>
                                 </EntityDialog>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">Final</span>
-                              )}
+                                {transitions.length > 0 ? (
+                                  <EntityDialog
+                                    trigger={<Button size="sm" variant="ghost">Change status</Button>}
+                                    title={`Change status for ${student.firstName} ${student.lastName}`}
+                                    description={`Currently ${humanizeStatus(student.status).toLowerCase()}. Withdrawing or graduating a student also closes their active enrollments.`}
+                                    action={transitionStudentAction}
+                                    submitLabel="Change status"
+                                  >
+                                    <input type="hidden" name="studentId" value={student.id} />
+                                    <SelectField
+                                      id={`transition-${student.id}`}
+                                      name="toStatus"
+                                      label="New status"
+                                      required
+                                      placeholder="Select a new status…"
+                                      options={transitions.map((status) => ({ value: status, label: humanizeStatus(status) }))}
+                                    />
+                                    <div className="space-y-1.5">
+                                      <Label htmlFor={`transition-reason-${student.id}`}>Reason</Label>
+                                      <Textarea id={`transition-reason-${student.id}`} name="reason" rows={3} maxLength={5000} />
+                                      <p className="text-xs leading-relaxed text-muted-foreground">Optional, but recorded permanently in the student&apos;s lifecycle history.</p>
+                                    </div>
+                                  </EntityDialog>
+                                ) : <span className="self-center text-xs text-muted-foreground">Final status</span>}
+                              </div>
                             </TableCell>
                           ) : null}
                         </TableRow>
@@ -259,12 +321,30 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
                   </TableBody>
                 </Table>
               )}
+              <RecordPagination path={PATH} page={studentPage.page} pageCount={studentPage.pageCount} filters={{ q: query.q, status: statusFilter }} label="Student list" />
             </div>
           </SectionCard>
         </TabsContent>
 
         <TabsContent value="guardians" className="space-y-6">
-          <SectionCard title="Guardians" description={`${guardians.length} guardian${guardians.length === 1 ? "" : "s"} on record.`}>
+          <SectionCard
+            title="Guardians"
+            description={`${guardians.length} guardian${guardians.length === 1 ? "" : "s"} on record.`}
+            actions={canManage ? (
+              <EntityDialog trigger={<Button size="sm"><Plus />Add guardian</Button>} title="Add a guardian" description="Create a guardian record first, then link them to one or more students from the Family links action." action={createGuardianAction} submitLabel="Save guardian">
+                <FieldGrid>
+                  <TextField id="guardian-new-first" name="firstName" label="First name" required maxLength={200} />
+                  <TextField id="guardian-new-last" name="lastName" label="Last name" required maxLength={200} />
+                </FieldGrid>
+                <FieldGrid>
+                  <TextField id="guardian-new-phone" name="phone" label="Phone" type="tel" required maxLength={200} />
+                  <TextField id="guardian-new-email" name="email" label="Email" type="email" maxLength={320} />
+                </FieldGrid>
+                <TextField id="guardian-new-occupation" name="occupation" label="Occupation" maxLength={200} />
+                <div className="space-y-1.5"><Label htmlFor="guardian-new-address">Address</Label><Textarea id="guardian-new-address" name="address" rows={3} maxLength={5000} /></div>
+              </EntityDialog>
+            ) : undefined}
+          >
             {guardians.length === 0 ? (
               <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
                 No guardians yet. A primary guardian is created automatically during the first student admission.

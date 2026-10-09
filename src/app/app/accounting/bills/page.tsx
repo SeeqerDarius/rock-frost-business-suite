@@ -14,9 +14,14 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { LineItemsEditor } from "@/components/forms/line-items-editor";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
+import { ContactSelect } from "@/components/forms/contact-select";
+import { CurrencyFields, SettlementRateField } from "@/components/forms/currency-fields";
+import { baseTotal } from "@/modules/accounting/multi-currency";
 import { listAccounts, listBills, listContacts, listAccountingAttachmentsByType } from "@/modules/accounting/service";
 import { listTaxCodes } from "@/modules/accounting/tax-service";
+import { listApplicableRules } from "@/modules/tax/service";
+import { db } from "@/lib/db";
 import { createNewBill, approveExistingBill, payBill, voidExistingBill, uploadBillAttachment, deleteBillAttachmentAction } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -28,6 +33,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-payment": "That payment amount is invalid or exceeds the remaining balance.",
   "not-found": "That bill, expense account, or contact could not be found.",
   "period-closed": "The transaction date is in a closed accounting period.",
+  "tax-rule": "That tax rule could not be applied on the document date. Check its rates and effective dates in Tax and Compliance. Rules on individual lines also need a tax rule on the document.",
+  "fx-rate": "No exchange rate is recorded for that currency and date. Record one under Exchange Rates or enter a rate.",
   "missing-file": "Choose a file to attach.",
   "invalid-attachment": "That file must be a JPEG, PNG, WEBP, or PDF under 3 MB.",
 };
@@ -49,9 +56,12 @@ export default async function AccountingBillsPage({
   const tenant = await requireModuleAccess("accounting");
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_BILLS_MANAGE);
   const canPay = hasPermission(tenant, PERMISSIONS.ACCOUNTING_PAYABLES_MANAGE);
-  const currency = tenant.organization.currency ?? "GHS";
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, currency);
+  const format = createOrganizationFormatter(tenant.organization);
+  const currency = format.presentation.currency;
+  const money = (value: Parameters<typeof format.money>[0], documentCurrency?: string | null) => format.money(value, documentCurrency ?? currency);
   const [bills, accounts, taxCodes, contacts, attachments] = await Promise.all([listBills(tenant.organizationId), listAccounts(tenant.organizationId), listTaxCodes(tenant.organizationId), listContacts(tenant.organizationId), listAccountingAttachmentsByType(tenant.organizationId, "BILL")]);
+  const [taxRules, pricing] = await Promise.all([listApplicableRules(tenant.organizationId), db.organization.findUnique({ where: { id: tenant.organizationId }, select: { pricesIncludeTax: true } })]);
+  const pricesIncludeTax = pricing?.pricesIncludeTax ?? false;
   const attachmentsByBillId = new Map<string, typeof attachments>();
   for (const attachment of attachments) {
     const list = attachmentsByBillId.get(attachment.entityId) ?? [];
@@ -72,10 +82,7 @@ export default async function AccountingBillsPage({
             {supplierContacts.length > 0 ? (
               <div className="space-y-2">
                 <Label htmlFor="contactId">Contact (optional)</Label>
-                <select id="contactId" name="contactId" className="h-10 w-full rounded-md border bg-background px-3">
-                  <option value="">Enter details manually</option>
-                  {supplierContacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.name}</option>)}
-                </select>
+                <ContactSelect contacts={supplierContacts.map((contact) => ({ id: contact.id, name: contact.name, currency: contact.currency }))} currencyFieldId="bill-currency" />
               </div>
             ) : null}
             <div className="space-y-2">
@@ -86,7 +93,8 @@ export default async function AccountingBillsPage({
               <Label htmlFor="supplierEmail">Supplier email</Label>
               <Input id="supplierEmail" name="supplierEmail" type="email" />
             </div>
-            <LineItemsEditor currency={currency} />
+            <CurrencyFields baseCurrency={currency} idPrefix="bill" />
+            <LineItemsEditor currency={currency} taxRules={taxRules.map((rule) => ({ id: rule.id, label: `${rule.code}: ${rule.name}` }))} />
             <div className="space-y-2">
               <Label htmlFor="expenseAccountId">Expense account</Label>
               <select id="expenseAccountId" name="expenseAccountId" className="h-10 w-full rounded-md border bg-background px-3" required>
@@ -107,8 +115,16 @@ export default async function AccountingBillsPage({
               <Label htmlFor="taxCodeId">Tax treatment</Label>
               <select id="taxCodeId" name="taxCodeId" className="h-10 w-full rounded-md border bg-background px-3">
                 <option value="">No tax</option>
-                {taxCodes.filter((taxCode) => taxCode.active).map((taxCode) => <option key={taxCode.id} value={taxCode.id}>{taxCode.code}: {taxCode.name} ({Number(taxCode.vatRate) + Number(taxCode.nhilRate) + Number(taxCode.getfundRate)}%)</option>)}
+                {taxRules.length ? (
+                  <optgroup label="Tax rules">
+                    {taxRules.map((rule) => <option key={rule.id} value={`rule:${rule.id}`}>{rule.code}: {rule.name}</option>)}
+                  </optgroup>
+                ) : null}
+                <optgroup label="Tax codes">
+                  {taxCodes.filter((taxCode) => taxCode.active).map((taxCode) => <option key={taxCode.id} value={taxCode.id}>{taxCode.code}: {taxCode.name} ({Number(taxCode.vatRate) + Number(taxCode.nhilRate) + Number(taxCode.getfundRate)}%)</option>)}
+                </optgroup>
               </select>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="pricesIncludeTax" defaultChecked={pricesIncludeTax} className="size-4" />Line prices include tax (applies to tax rules)</label>
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
@@ -143,8 +159,8 @@ export default async function AccountingBillsPage({
             <TableRow>
               <TableHead>Number</TableHead>
               <TableHead>Supplier</TableHead>
-              <TableHead>Amount ({currency})</TableHead>
-              <TableHead>Paid ({currency})</TableHead>
+              <TableHead>Amount</TableHead>
+              <TableHead>Paid</TableHead>
               <TableHead>Due</TableHead>
               <TableHead>Status</TableHead>
               {canManage || canPay ? <TableHead /> : null}
@@ -160,14 +176,14 @@ export default async function AccountingBillsPage({
                     <details className="mt-1 text-xs font-normal text-muted-foreground">
                       <summary className="cursor-pointer">{bill.lines.length} line{bill.lines.length === 1 ? "" : "s"}</summary>
                       <div className="mt-1 space-y-0.5">
-                        {bill.lines.map((line) => <p key={line.id}>{line.description}: {Number(line.quantity)} x {money(line.unitPrice)} = {money(line.lineTotal)}</p>)}
+                        {bill.lines.map((line) => <p key={line.id}>{line.description}: {Number(line.quantity)} x {money(line.unitPrice, bill.currency)} = {money(line.lineTotal, bill.currency)}</p>)}
                       </div>
                     </details>
                   ) : null}
                 </TableCell>
-                <TableCell className="text-muted-foreground"><div>{money(bill.amount)}</div>{bill.taxCode ? <div className="text-xs">Tax {money(Number(bill.vatAmount) + Number(bill.nhilAmount) + Number(bill.getfundAmount))} ({bill.taxCode.code})</div> : null}</TableCell>
-                <TableCell className="text-muted-foreground">{money(bill.amountPaid)}</TableCell>
-                <TableCell className="text-muted-foreground">{bill.dueDate.toLocaleDateString()}</TableCell>
+                <TableCell className="text-muted-foreground"><div>{money(bill.amount, bill.currency)}</div>{bill.currency && bill.currency !== currency ? <div className="text-xs">{money(baseTotal(bill))} at {format.number(bill.exchangeRate.toString(), { maximumFractionDigits: 6 })}</div> : null}{bill.taxAmount.greaterThan(0) ? <div className="text-xs">Tax {money(bill.taxAmount, bill.currency)}{bill.taxCode ? ` (${bill.taxCode.code})` : bill.taxTreatment ? " (tax rule)" : ""}</div> : null}</TableCell>
+                <TableCell className="text-muted-foreground">{money(bill.amountPaid, bill.currency)}</TableCell>
+                <TableCell className="text-muted-foreground">{format.date(bill.dueDate)}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[bill.status]}>{bill.status.replaceAll("_", " ")}</Badge>
                 </TableCell>
@@ -193,7 +209,7 @@ export default async function AccountingBillsPage({
                         >
                           <input type="hidden" name="id" value={bill.id} />
                           <div className="space-y-2">
-                            <Label htmlFor={`bill-pay-amount-${bill.id}`}>Amount ({currency})</Label>
+                            <Label htmlFor={`bill-pay-amount-${bill.id}`}>Amount ({bill.currency ?? currency})</Label>
                             <Input id={`bill-pay-amount-${bill.id}`} name="amount" type="number" step="0.01" defaultValue={(Number(bill.amount) - Number(bill.amountPaid)).toFixed(2)} required />
                           </div>
                           <div className="space-y-2">
@@ -201,7 +217,8 @@ export default async function AccountingBillsPage({
                             <Input id={`bill-pay-date-${bill.id}`} name="paymentDate" type="date" defaultValue={today} required />
                           </div>
                           <div className="space-y-2"><Label htmlFor={`bill-pay-method-${bill.id}`}>Payment method</Label><select id={`bill-pay-method-${bill.id}`} name="paymentMethod" className="h-10 w-full rounded-md border bg-background px-3"><option value="BANK_TRANSFER">Bank transfer</option><option value="CASH">Cash</option><option value="MOBILE_MONEY">Mobile money</option><option value="CARD">Card</option><option value="CHEQUE">Cheque</option><option value="OTHER">Other</option></select></div>
-                          <div className="space-y-2"><Label htmlFor={`bill-pay-account-${bill.id}`}>Paying account</Label><select id={`bill-pay-account-${bill.id}`} name="accountId" className="h-10 w-full rounded-md border bg-background px-3" required>{payingAccounts.map((account) => <option key={account.id} value={account.id}>{account.code} {account.name}</option>)}</select></div>
+                          {bill.currency && bill.currency !== currency ? <SettlementRateField id={`bill-pay-rate-${bill.id}`} currency={bill.currency} baseCurrency={currency} /> : null}
+                          <div className="space-y-2"><Label htmlFor={`bill-pay-account-${bill.id}`}>Paying account</Label><select id={`bill-pay-account-${bill.id}`} name="accountId" className="h-10 w-full rounded-md border bg-background px-3" required>{payingAccounts.filter((account) => !account.currency || account.currency === currency || account.currency === bill.currency).map((account) => <option key={account.id} value={account.id}>{account.code} {account.name}{account.currency && account.currency !== currency ? ` (${account.currency})` : ""}</option>)}</select></div>
                           <div className="space-y-2"><Label htmlFor={`bill-pay-reference-${bill.id}`}>Reference</Label><Input id={`bill-pay-reference-${bill.id}`} name="reference" /></div>
                           <div className="space-y-2"><Label htmlFor={`bill-pay-notes-${bill.id}`}>Notes</Label><Textarea id={`bill-pay-notes-${bill.id}`} name="notes" rows={2} /></div>
                         </EntityDialog>
@@ -216,7 +233,7 @@ export default async function AccountingBillsPage({
                   </TableCell>
                 ) : null}
               </TableRow>
-              {bill.payments.length ? <TableRow><TableCell colSpan={7} className="bg-muted/30"><div className="space-y-1 text-xs"><p className="font-medium">Payment history</p>{bill.payments.map((payment) => <p key={payment.id} className="text-muted-foreground">{payment.paymentDate.toLocaleDateString()}: {money(payment.amount)} via {payment.paymentMethod.replaceAll("_", " ")} from {payment.account.name}{payment.reference ? `, reference ${payment.reference}` : ""}{Number(payment.withholdingTaxAmount) > 0 ? ` (includes ${money(payment.withholdingTaxAmount)} withheld)` : ""}</p>)}</div></TableCell></TableRow> : null}
+              {bill.payments.length ? <TableRow><TableCell colSpan={7} className="bg-muted/30"><div className="space-y-1 text-xs"><p className="font-medium">Payment history</p>{bill.payments.map((payment) => <p key={payment.id} className="text-muted-foreground">{format.date(payment.paymentDate)}: {money(payment.amount, bill.currency)}{Number(payment.realizedFxAmount) !== 0 ? ` (realized FX ${Number(payment.realizedFxAmount) > 0 ? "gain" : "loss"} ${money(payment.realizedFxAmount.abs())})` : ""} via {payment.paymentMethod.replaceAll("_", " ")} from {payment.account.name}{payment.reference ? `, reference ${payment.reference}` : ""}{Number(payment.withholdingTaxAmount) > 0 ? ` (includes ${money(payment.withholdingTaxAmount, bill.currency)} withheld)` : ""}</p>)}</div></TableCell></TableRow> : null}
               <TableRow><TableCell colSpan={7} className="bg-muted/30">
                 <div className="space-y-1 text-xs">
                   <p className="font-medium">Attachments</p>

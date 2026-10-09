@@ -155,6 +155,10 @@ export const PERMISSIONS = {
   SCHOOL_DASHBOARD_FINANCIAL_VIEW: "school.dashboard_financial.view",
   SCHOOL_ANALYTICS_VIEW: "school.analytics.view",
   SCHOOL_PORTAL_VIEW: "school.portal.view",
+  /** Staff side of direct in-app conversations with guardians (scoped to the staff member's classes). */
+  SCHOOL_MESSAGES_MANAGE: "school.messages.manage",
+  /** Publish and withdraw School announcements. */
+  SCHOOL_ANNOUNCEMENTS_PUBLISH: "school.announcements.publish",
   HOSTEL_VIEW: "hostel.view",
   HOSTEL_BUILDINGS_MANAGE: "hostel.buildings.manage",
   HOSTEL_ALLOCATIONS_MANAGE: "hostel.allocations.manage",
@@ -187,6 +191,19 @@ export const PERMISSIONS = {
   HOSPITAL_BILLING_MANAGE: "hospital.billing.manage",
   HOSPITAL_REPORTS_VIEW: "hospital.reports.view",
   HOSPITAL_SETTINGS_MANAGE: "hospital.settings.manage",
+  CONTRACTS_VIEW: "contracts.view",
+  CONTRACTS_CREATE: "contracts.create",
+  CONTRACTS_UPDATE: "contracts.update",
+  CONTRACTS_DELETE: "contracts.delete",
+  CONTRACTS_APPROVE: "contracts.approve",
+  CONTRACTS_TERMINATE: "contracts.terminate",
+  CONTRACTS_RENEW: "contracts.renew",
+  CONTRACTS_MANAGE_TEMPLATES: "contracts.manage_templates",
+  CONTRACTS_MANAGE_CLAUSES: "contracts.manage_clauses",
+  CONTRACTS_VIEW_FINANCIALS: "contracts.view_financials",
+  CONTRACTS_VIEW_CONFIDENTIAL: "contracts.view_confidential",
+  CONTRACTS_MANAGE_SETTINGS: "contracts.manage_settings",
+  CONTRACTS_EXPORT: "contracts.export",
 } as const;
 
 export function hasPermission(tenant: TenantContext, key: string): boolean {

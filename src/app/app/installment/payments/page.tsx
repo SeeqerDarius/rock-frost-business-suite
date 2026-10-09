@@ -11,7 +11,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { resolveInstallmentAccessScope } from "@/modules/installment/access";
 import {
   listPayments,
@@ -50,6 +50,7 @@ export default async function InstallmentPaymentsPage({
 }) {
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("installment");
+  const money = createOrganizationFormatter(tenant.organization).money;
   const canManagePayments = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_PAYMENTS_MANAGE);
   const canManageCredits = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_CREDITS_MANAGE);
 
@@ -86,7 +87,7 @@ export default async function InstallmentPaymentsPage({
   const currency = tenant.organization.currency;
   const payableAccounts = accounts.filter((a) => a.status !== "CANCELLED" && a.status !== "SUSPENDED" && a.status !== "CLOSED" && a.status !== "ARCHIVED" && Number(a.balance) > 0);
   const accountItems: Record<string, string> = Object.fromEntries(
-    payableAccounts.map((a) => [a.id, `${a.customer.fullName} - ${a.product.name} (bal. ${formatMoney(a.balance, currency)})`])
+    payableAccounts.map((a) => [a.id, `${a.customer.fullName} - ${a.product.name} (bal. ${money(a.balance, currency)})`])
   );
 
   return (
@@ -176,7 +177,7 @@ export default async function InstallmentPaymentsPage({
                   <TableCell className="text-muted-foreground">{payment.account.customer.fullName}</TableCell>
                   <TableCell className="text-muted-foreground">{payment.paymentDate.toLocaleDateString()}</TableCell>
                   <TableCell className="text-muted-foreground">{payment.method}</TableCell>
-                  <TableCell className="text-muted-foreground">{formatMoney(payment.amount, currency)}</TableCell>
+                  <TableCell className="text-muted-foreground">{money(payment.amount, currency)}</TableCell>
                   {canManagePayments ? (
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
@@ -253,14 +254,14 @@ export default async function InstallmentPaymentsPage({
               {credits.map((credit) => {
                 const applicableAccounts = accounts.filter((a) => a.customerId === credit.customerId && Number(a.balance) > 0);
                 const applicableAccountItems: Record<string, string> = Object.fromEntries(
-                  applicableAccounts.map((a) => [a.id, `${a.product.name} (bal. ${formatMoney(a.balance, currency)})`])
+                  applicableAccounts.map((a) => [a.id, `${a.product.name} (bal. ${money(a.balance, currency)})`])
                 );
 
                 return (
                   <div key={credit.id} className="flex items-center justify-between rounded-lg border p-3">
                     <div>
                       <p className="text-sm font-medium">
-                        {credit.customer.fullName} - {formatMoney(credit.remainingAmount, currency)}
+                        {credit.customer.fullName} - {money(credit.remainingAmount, currency)}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {credit.source.replaceAll("_", " ")} · {credit.notes}
@@ -278,7 +279,7 @@ export default async function InstallmentPaymentsPage({
                                 </Button>
                               }
                               title="Apply credit to an account"
-                              description={`Apply up to ${formatMoney(credit.remainingAmount, currency)} toward another account for this customer.`}
+                              description={`Apply up to ${money(credit.remainingAmount, currency)} toward another account for this customer.`}
                               action={applyCredit}
                               submitLabel="Apply"
                             >

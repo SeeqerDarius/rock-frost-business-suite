@@ -43,7 +43,9 @@ export async function upsertAccount(formData: FormData): Promise<void> {
   }
   const { id, code, name, type, liquidityType } = parsed.data;
 
-  const data = { code, name, type, liquidityType, bankName: clean(formData.get("bankName")), accountNumberLast4: clean(formData.get("accountNumberLast4")), active: formData.get("active") === "on" };
+  const currency = clean(formData.get("currency"))?.toUpperCase() ?? null;
+  if (currency && !/^[A-Z]{3}$/.test(currency)) redirect("/app/accounting/accounts?error=missing-fields");
+  const data = { code, name, type, liquidityType, bankName: clean(formData.get("bankName")), accountNumberLast4: clean(formData.get("accountNumberLast4")), currency, active: formData.get("active") === "on" };
 
   try {
     if (id) {

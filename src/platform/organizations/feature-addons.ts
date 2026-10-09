@@ -8,7 +8,7 @@ import { OFFLINE_SUPPORTED_MODULES } from "@/lib/pwa/policy";
  */
 export const SMS_NOTIFICATION_MODULES = ["payroll", "hotel", "school", "pharmacy", "hospital"] as const;
 
-export type OrganizationAddonKey = "offlineAccess" | "smsNotifications" | "schoolPortal";
+export type OrganizationAddonKey = "offlineAccess" | "smsNotifications" | "schoolPortal" | "schoolGuardianMessaging";
 
 /**
  * Every operator-granted, per-organization feature add-on the platform sells
@@ -36,8 +36,8 @@ export type OrganizationAddonKey = "offlineAccess" | "smsNotifications" | "schoo
 export interface OrganizationAddonDefinition {
   key: OrganizationAddonKey;
   /** The column on `Organization` holding the grant. */
-  grantField: "offlineAccessGranted" | "smsNotificationsGranted" | "schoolPortalGranted";
-  grantedAtField: "offlineAccessGrantedAt" | "smsNotificationsGrantedAt" | "schoolPortalGrantedAt";
+  grantField: "offlineAccessGranted" | "smsNotificationsGranted" | "schoolPortalGranted" | "schoolGuardianMessagingGranted";
+  grantedAtField: "offlineAccessGrantedAt" | "smsNotificationsGrantedAt" | "schoolPortalGrantedAt" | "schoolGuardianMessagingGrantedAt";
   name: string;
   scope: "organization" | "module";
   moduleKeys: readonly string[];
@@ -82,6 +82,17 @@ export const ORGANIZATION_ADDONS: readonly OrganizationAddonDefinition[] = [
     summary: "Opens the self-service portal where guardians and students sign in to see results, fees, and attendance.",
     afterGranting: "School staff invite each guardian or student from Portal Access. Nobody gets in without an invitation.",
     whileUngranted: "Portal Access and My Portal stay hidden, even for an account that was invited earlier.",
+  },
+  {
+    key: "schoolGuardianMessaging",
+    grantField: "schoolGuardianMessagingGranted",
+    grantedAtField: "schoolGuardianMessagingGrantedAt",
+    name: "Guardian messaging",
+    scope: "module",
+    moduleKeys: ["school"],
+    summary: "Opens direct in-app conversations between school staff and guardians about their own children. No SMS or email is sent.",
+    afterGranting: "It also needs the Parent and Student portal, since guardians read and reply from My Portal. Staff need the School messaging permission and only reach students in their own classes.",
+    whileUngranted: "Messages stay hidden for staff and guardians. School announcements are not affected.",
   },
 ];
 

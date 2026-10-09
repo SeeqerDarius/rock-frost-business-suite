@@ -65,3 +65,18 @@ export async function isOrganizationSmsNotificationsGranted(organizationId: stri
 export async function isSchoolPortalGranted(organizationId: string): Promise<boolean> {
   return hasModuleFeature(organizationId, "school.portal");
 }
+
+/**
+ * Guardian messaging is a separate paid School add-on
+ * (`Organization.schoolGuardianMessagingGranted`, default off) for direct
+ * in-app conversations between staff and guardians. It only works together
+ * with the portal grant above, since guardians reach their conversations
+ * through the portal. See docs/SCHOOL_COMMUNICATIONS.md.
+ */
+export async function isSchoolGuardianMessagingGranted(organizationId: string): Promise<boolean> {
+  const organization = await db.organization.findUnique({
+    where: { id: organizationId },
+    select: { schoolGuardianMessagingGranted: true },
+  });
+  return organization?.schoolGuardianMessagingGranted ?? false;
+}

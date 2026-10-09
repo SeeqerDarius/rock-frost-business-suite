@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { getCrmSummary } from "@/modules/crm/service";
 import { ReportExportLinks } from "@/components/reports/report-export-links";
 
@@ -17,6 +17,7 @@ const STAGE_LABELS: Record<string, string> = {
 
 export default async function CrmReportsPage() {
   const tenant = await requireModuleAccess("crm");
+  const money = createOrganizationFormatter(tenant.organization).money;
 
   if (!hasPermission(tenant, PERMISSIONS.CRM_REPORTS_VIEW)) {
     return (
@@ -30,10 +31,10 @@ export default async function CrmReportsPage() {
   const summary = await getCrmSummary(tenant.organizationId);
 
   const stats = [
-    { label: "Open pipeline value", value: formatMoney(summary.pipelineValue, tenant.organization.currency) },
-    { label: "Won value (all time)", value: formatMoney(summary.wonValue, tenant.organization.currency) },
+    { label: "Open pipeline value", value: money(summary.pipelineValue, tenant.organization.currency) },
+    { label: "Won value (all time)", value: money(summary.wonValue, tenant.organization.currency) },
     { label: "Win rate", value: `${summary.winRate.toFixed(0)}%` },
-    { label: "Won this month", value: `${summary.wonThisMonthCount} (${formatMoney(summary.wonThisMonthValue, tenant.organization.currency)})` },
+    { label: "Won this month", value: `${summary.wonThisMonthCount} (${money(summary.wonThisMonthValue, tenant.organization.currency)})` },
   ];
 
   return (

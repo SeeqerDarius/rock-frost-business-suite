@@ -4,12 +4,13 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { getPosSummary } from "@/modules/pos/service";
 import { ReportExportLinks } from "@/components/reports/report-export-links";
 
 export default async function PosReportsPage() {
   const tenant = await requireModuleAccess("pos");
+  const money = createOrganizationFormatter(tenant.organization).money;
 
   if (!hasPermission(tenant, PERMISSIONS.POS_REPORTS_VIEW)) {
     return (
@@ -26,9 +27,9 @@ export default async function PosReportsPage() {
     { label: "Registers", value: summary.registerCount },
     { label: "Open sessions", value: summary.openSessionCount },
     { label: "Today's sales", value: summary.todaysSalesCount },
-    { label: "Today's sales total", value: formatMoney(summary.todaysSalesTotal, tenant.organization.currency) },
+    { label: "Today's sales total", value: money(summary.todaysSalesTotal, tenant.organization.currency) },
     { label: "All-time sales", value: summary.allTimeSalesCount },
-    { label: "All-time sales total", value: formatMoney(summary.allTimeSalesTotal, tenant.organization.currency) },
+    { label: "All-time sales total", value: money(summary.allTimeSalesTotal, tenant.organization.currency) },
     { label: "Refunded sales", value: summary.refundedCount },
   ];
 

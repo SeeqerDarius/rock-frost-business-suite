@@ -47,9 +47,15 @@ School is the only module with a real ladder today.
 | SMS notifications | | yes | yes |
 | Reports and exports | | yes | yes |
 | Parent and Student portal | | | yes |
+| Guardian messaging | | | yes |
 | School payroll inputs | | | yes |
 | Enrolled students | 200 | 1,500 | Unlimited |
 | Campuses | 1 | 3 | Unlimited |
+
+`/app/school/chats` is deliberately **not** route-gated either. Staff chat with staff
+needs no add-on, so gating the route would take it from Basic and Pro, which nobody
+bought; only the guardian branch of that route checks `school.guardianMessaging`, and
+only together with the portal guardians read it from.
 
 `/app/school/campuses` is deliberately **not** route-gated. The campus count is the
 limit, so the page has to stay reachable for a Basic school to manage the one campus
@@ -74,12 +80,24 @@ retroactively. Three layers:
    operator picks explicitly, because over-granting silently is worse than having to choose.
 2. A module enabled through the legacy `OrganizationModule.enabled` path with **no
    subscription row** resolves at `UNTIERED_LEGACY_TIER` (also Platinum), for the same reason.
-3. The pre-existing `Organization.smsNotificationsGranted` and `schoolPortalGranted`
-   columns became **overrides, never gates**: set adds a feature, unset takes nothing
-   away. They stopped being the primary mechanism but never revoke an add-on an operator
-   already granted.
+3. The pre-existing add-on columns (`smsNotificationsGranted`, `schoolPortalGranted`,
+   `schoolGuardianMessagingGranted`) keep working, with a deliberate asymmetry:
 
-Tiers therefore only ever restrict an agreement created after they shipped.
+   - **With a subscription for that module**, the tier decides and a set column can
+     only *add*. An organization granted the portal on a Pro plan keeps it.
+   - **With no subscription**, the column is **authoritative in both directions**. In
+     that world the columns *are* the entitlement system: they are the only record of
+     what an operator decided about each add-on. The first version of this let the
+     grandfathered Platinum tier grant an add-on anyway, which silently reversed
+     deliberate revocations and handed SMS to organizations that never bought it. That
+     is the opposite of what grandfathering is for.
+
+   Depth features no column speaks for (fees, exams, timetables and the rest) always
+   come from the grandfathered tier, so an unsubscribed organization keeps everything
+   it had before tiers.
+
+Tiers therefore only ever restrict an agreement created after they shipped, and they
+never reverse an add-on decision an operator already made.
 
 ## SMS, specifically
 

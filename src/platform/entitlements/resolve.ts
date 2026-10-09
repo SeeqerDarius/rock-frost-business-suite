@@ -58,6 +58,7 @@ export interface ModuleEntitlement {
 const LEGACY_OVERRIDES = [
   { field: "smsNotificationsGranted", features: ["school.sms"] },
   { field: "schoolPortalGranted", features: ["school.portal"] },
+  { field: "schoolGuardianMessagingGranted", features: ["school.guardianMessaging"] },
   { field: "offlineAccessGranted", features: [] as string[] },
 ] as const;
 
@@ -68,7 +69,12 @@ export async function resolveOrganizationEntitlements(organizationId: string): P
   const [organization, enabledModules, activeSubscriptions] = await Promise.all([
     db.organization.findUnique({
       where: { id: organizationId },
-      select: { smsNotificationsGranted: true, schoolPortalGranted: true, offlineAccessGranted: true },
+      select: {
+        smsNotificationsGranted: true,
+        schoolPortalGranted: true,
+        schoolGuardianMessagingGranted: true,
+        offlineAccessGranted: true,
+      },
     }),
     db.organizationModule.findMany({
       where: { organizationId, enabled: true, module: { status: "ACTIVE" } },
@@ -97,9 +103,12 @@ export async function resolveOrganizationEntitlements(organizationId: string): P
     }
   }
 
-  const overrideFeatures = new Set(
+  const grantedFeatures = new Set(
     LEGACY_OVERRIDES.filter((override) => organization[override.field]).flatMap((override) => override.features),
   );
+  // Every feature some legacy column speaks for, granted or not. Needed
+  // because an unset column is only silent where a tier has taken over.
+  const legacyGovernedFeatures = new Set(LEGACY_OVERRIDES.flatMap((override) => override.features));
 
   const entitlements: OrganizationEntitlements = new Map();
   for (const assignment of enabledModules) {
@@ -107,9 +116,27 @@ export async function resolveOrganizationEntitlements(organizationId: string): P
     const subscribedTier = tierByModuleKey.get(moduleKey);
     const tier = subscribedTier ?? UNTIERED_LEGACY_TIER;
     const features = new Set(featuresIncludedAt(moduleKey, tier));
-    for (const feature of overrideFeatures) {
+
+    // An organization with no subscription for this module is grandfathered
+    // to UNTIERED_LEGACY_TIER so it keeps the depth it has always had. But in
+    // that world the legacy columns ARE the entitlement system: they are the
+    // only record of what an operator decided about each add-on. Letting the
+    // grandfathered tier grant one anyway would quietly reverse a deliberate
+    // revocation, which is the opposite of what grandfathering is for. So
+    // for an unsubscribed module the column stays authoritative over the
+    // feature it speaks for, in both directions.
+    if (!subscribedTier) {
+      for (const feature of legacyGovernedFeatures) {
+        if (feature.startsWith(`${moduleKey}.`) && !grantedFeatures.has(feature)) features.delete(feature);
+      }
+    }
+
+    // Where a real tiered agreement exists, the tier decides and a set
+    // column can only add: it never takes away what the customer paid for.
+    for (const feature of grantedFeatures) {
       if (feature.startsWith(`${moduleKey}.`)) features.add(feature);
     }
+
     entitlements.set(moduleKey, {
       moduleKey,
       tier,

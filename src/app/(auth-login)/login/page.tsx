@@ -10,11 +10,12 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/auth/password-input";
 import { Logo } from "@/components/layout/logo";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { getAccountLockStatus, requestLoginSmsCode } from "@/lib/auth/actions";
 import { buildSurfaceUrl, classifyAppSurface, type AppSurface } from "@/lib/app-surfaces";
 import { TurnstileWidget } from "@/components/security/turnstile-widget";
 import { verifyLoginBotProtection } from "@/lib/auth/actions";
-import { catalogueModuleRegistry } from "@/platform/modules/registry";
+import { publicCatalogueModuleRegistry } from "@/platform/modules/registry";
 import { cn } from "@/lib/utils";
 import styles from "./login.module.css";
 
@@ -34,7 +35,7 @@ const subscribeToHostname = () => () => {};
 
 /* ---------------- Illustration panel: 3D scene + cycling module chips ---------------- */
 
-const MODULE_NAMES = catalogueModuleRegistry.map((module_) => module_.name);
+const MODULE_NAMES = publicCatalogueModuleRegistry.map((module_) => module_.name);
 
 const CHIP_SLOTS = [
   { className: styles.chipA, delay: "0.95s", floatDuration: "5.6s", floatDelay: "1.9s", intervalMs: 3600 },
@@ -334,7 +335,10 @@ export default function LoginPage() {
         </div>
       </section>
 
-      <section className="flex items-center justify-center p-6 sm:p-10">
+      <section className="relative flex items-center justify-center p-6 sm:p-10">
+        <div className="absolute right-4 top-4">
+          <ThemeToggle />
+        </div>
         <div className="w-full max-w-sm">
           <Logo className="mb-8" />
           <h1 className="mb-1 text-2xl font-bold text-balance">Welcome back</h1>

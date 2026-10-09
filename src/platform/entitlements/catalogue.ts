@@ -143,7 +143,18 @@ const SCHOOL: ModuleTierCatalogue = {
       name: "Parent and Student portal",
       summary: "Guardians and students sign in to see results, fees, attendance, and digital ID.",
       minTier: "PLATINUM",
-      routes: ["/app/school/portal", "/app/school/portal-access"],
+      routes: ["/app/school/portal", "/app/school/portal-access", "/app/school/portal/announcements"],
+    },
+    {
+      key: "school.guardianMessaging",
+      name: "Guardian messaging",
+      summary: "Direct in-app conversations between school staff and guardians about their own children.",
+      minTier: "PLATINUM",
+      // Deliberately claims no routes. /app/school/chats is open to staff on
+      // any plan for staff-to-staff chat; this feature only decides whether
+      // guardians may take part, which navigation-access.ts applies to the
+      // guardian branch of that route alone. Gating the route itself would
+      // take staff chat away from Basic and Pro, which nobody bought.
     },
     {
       key: "school.payroll",
@@ -173,6 +184,7 @@ const SCHOOL: ModuleTierCatalogue = {
 
 /** Every module the platform sells, keyed by module key. */
 const MODULE_KEYS_WITH_PENDING_TIERS = [
+  "contracts",
   "fleet",
   "installment",
   "crm",

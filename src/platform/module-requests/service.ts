@@ -20,57 +20,105 @@ export interface CreateModuleRequestInput {
   expectedUsers?: number | null;
 }
 
+type TransactionClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
 export async function createModuleRequest(input: CreateModuleRequestInput) {
   if (input.moduleId) {
     const module_ = await db.module.findUnique({ where: { id: input.moduleId } });
     if (!module_) throw new Error("The selected module does not exist.");
   }
 
+  return db.$transaction((tx) => createModuleRequestInTransaction(tx, input));
+}
+
+const MAX_TITLE_LENGTH = 200;
+
+/** Builds a per-module title so each request in a multi-module submission stays identifiable in both queues. */
+export function moduleScopedTitle(title: string, moduleName: string) {
+  const suffix = ` (${moduleName})`;
+  if (title.length + suffix.length <= MAX_TITLE_LENGTH) return `${title}${suffix}`;
+  return `${title.slice(0, Math.max(0, MAX_TITLE_LENGTH - suffix.length - 3)).trimEnd()}...${suffix}`;
+}
+
+/**
+ * Creates one request per selected module in a single transaction, so an
+ * organization can ask for several modules at once while operators still
+ * review, quote, and approve-and-enable each module independently. With no
+ * modules selected (custom module, integration, migration) it creates one
+ * request without a module, matching `createModuleRequest`.
+ */
+export async function createModuleRequestsForModules({
+  moduleIds: requestedModuleIds,
+  ...base
+}: Omit<CreateModuleRequestInput, "moduleId"> & { moduleIds: string[] }) {
+  const moduleIds = [...new Set(requestedModuleIds)];
+  if (moduleIds.length === 0) {
+    return [await createModuleRequest({ ...base, moduleId: null })];
+  }
+
+  const modules = await db.module.findMany({ where: { id: { in: moduleIds } }, select: { id: true, name: true } });
+  if (modules.length !== moduleIds.length) throw new Error("A selected module does not exist.");
+  const nameById = new Map(modules.map((module_) => [module_.id, module_.name]));
+
   return db.$transaction(async (tx) => {
-    const request = await tx.moduleRequest.create({
-      data: {
-        organizationId: input.organizationId,
-        moduleId: input.moduleId ?? null,
-        requestedById: input.requestedById,
-        contactSubmissionId: input.contactSubmissionId ?? null,
-        type: input.type,
-        priority: input.priority ?? "NORMAL",
-        title: input.title,
-        businessJustification: input.businessJustification,
-        customizationDetails: input.customizationDetails ?? null,
-        expectedUsers: input.expectedUsers ?? null,
-        events: {
-          create: {
-            authorId: input.requestedById,
-            toStatus: "SUBMITTED",
-            note: "Request submitted.",
-          },
+    const requests = [];
+    for (const moduleId of moduleIds) {
+      requests.push(
+        await createModuleRequestInTransaction(tx, {
+          ...base,
+          moduleId,
+          title: moduleIds.length > 1 ? moduleScopedTitle(base.title, nameById.get(moduleId) ?? "") : base.title,
+        }),
+      );
+    }
+    return requests;
+  });
+}
+
+async function createModuleRequestInTransaction(tx: TransactionClient, input: CreateModuleRequestInput) {
+  const request = await tx.moduleRequest.create({
+    data: {
+      organizationId: input.organizationId,
+      moduleId: input.moduleId ?? null,
+      requestedById: input.requestedById,
+      contactSubmissionId: input.contactSubmissionId ?? null,
+      type: input.type,
+      priority: input.priority ?? "NORMAL",
+      title: input.title,
+      businessJustification: input.businessJustification,
+      customizationDetails: input.customizationDetails ?? null,
+      expectedUsers: input.expectedUsers ?? null,
+      events: {
+        create: {
+          authorId: input.requestedById,
+          toStatus: "SUBMITTED",
+          note: "Request submitted.",
         },
       },
-    });
-
-    if (input.contactSubmissionId) {
-      await tx.contactSubmission.update({
-        where: { id: input.contactSubmissionId },
-        data: { status: "LINKED", organizationId: input.organizationId },
-      });
-    }
-
-    await logAuditEvent(
-      {
-        organizationId: input.organizationId,
-        userId: input.requestedById,
-        module: "platform",
-        action: "module_request.created",
-        entityName: "ModuleRequest",
-        entityId: request.id,
-        metadata: { type: input.type, moduleId: input.moduleId ?? null, title: input.title },
-      },
-      tx,
-    );
-
-    return request;
+    },
   });
+
+  if (input.contactSubmissionId) {
+    await tx.contactSubmission.update({
+      where: { id: input.contactSubmissionId },
+      data: { status: "LINKED", organizationId: input.organizationId },
+    });
+  }
+
+  await logAuditEvent(
+    {
+      organizationId: input.organizationId,
+      userId: input.requestedById,
+      module: "platform",
+      action: "module_request.created",
+      entityName: "ModuleRequest",
+      entityId: request.id,
+      metadata: { type: input.type, moduleId: input.moduleId ?? null, title: input.title },
+    },
+    tx,
+  );
+
+  return request;
 }
 
 export interface UpdateModuleRequestInput {

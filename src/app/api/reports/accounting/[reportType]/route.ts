@@ -9,7 +9,7 @@ import {
   getCashFlowStatement,
   NotFoundError,
 } from "@/modules/accounting/service";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { buildReportExcelWorkbook, buildReportPdf, buildReportCsv, type ReportExportInput } from "@/lib/reports/export";
 
 /**
@@ -33,7 +33,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ repo
   }
 
   const currency = tenant.organization.currency ?? "GHS";
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
   const generatedAt = new Date();
 
   let input: ReportExportInput;

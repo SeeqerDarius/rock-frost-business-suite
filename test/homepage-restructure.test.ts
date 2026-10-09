@@ -17,10 +17,10 @@ describe("homepage restructure", () => {
 
   it("adds real product screenshot spotlights for three distinct modules", () => {
     expect(homepage).toContain('<ModuleShowcase moduleKey="accounting" />');
-    expect(homepage).toContain('<ModuleShowcase moduleKey="fleet" />');
+    expect(homepage).toContain('<ModuleShowcase moduleKey="school" />');
     expect(homepage).toContain('<ModuleShowcase moduleKey="pharmacy" />');
     expect(homepage).toContain('href="/modules/accounting"');
-    expect(homepage).toContain('href="/modules/fleet"');
+    expect(homepage).toContain('href="/modules/school"');
     expect(homepage).toContain('href="/modules/pharmacy"');
   });
 

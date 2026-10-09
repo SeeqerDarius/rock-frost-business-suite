@@ -12,8 +12,14 @@ import {
   cancelRun,
   RunStateError,
   NoCompensationError,
+  SchoolPayrollInputError,
   NotFoundError,
+  getPayrollRunForPostingRetry,
 } from "@/modules/payroll/service";
+import { postPayrollRunAccounting } from "@/modules/payroll/accounting";
+import { PayrollDeductionError } from "@/modules/payroll/statutory";
+import { PAYROLL_FLASH_COOKIE } from "@/modules/payroll/flash";
+import { cookies } from "next/headers";
 import { cuid, dateInput, parseWithSchema } from "@/lib/validation";
 import { logAuditEvent } from "@/lib/audit";
 
@@ -67,9 +73,22 @@ export async function processExistingRun(formData: FormData): Promise<void> {
   if (!parsed.success) return;
   const { id } = parsed.data;
   const session = await getServerAuthSession();
+  let postingState: "failed" | "inactive" | null = null;
 
   try {
     const run = await processRun(tenant.organizationId, id);
+    const completedRun = await getPayrollRunForPostingRetry(tenant.organizationId, run.id);
+    if (completedRun) {
+      try {
+        const posting = await postPayrollRunAccounting(tenant.organizationId, completedRun, session?.user?.id);
+        if (!posting.posted) postingState = posting.reason === "error" ? "failed" : "inactive";
+      } catch (error) {
+        postingState = "failed";
+        console.error("[payroll:accounting-posting] status update failed", { organizationId: tenant.organizationId, runId: run.id, error });
+      }
+    } else {
+      postingState = "failed";
+    }
     await logAuditEvent({
       organizationId: tenant.organizationId,
       userId: session?.user?.id,
@@ -103,13 +122,58 @@ export async function processExistingRun(formData: FormData): Promise<void> {
       });
       redirect("/app/payroll/runs?error=no-compensation");
     }
+    if (error instanceof SchoolPayrollInputError) {
+      await logAuditEvent({
+        organizationId: tenant.organizationId,
+        userId: session?.user?.id,
+        module: "payroll",
+        action: "payroll.processed",
+        entityName: "PayrollRun",
+        entityId: id,
+        status: "FAILURE",
+      });
+      redirect(`/app/payroll/runs?error=school-inputs-${error.reason}`);
+    }
+    if (error instanceof PayrollDeductionError) {
+      await logAuditEvent({
+        organizationId: tenant.organizationId,
+        userId: session?.user?.id,
+        module: "payroll",
+        action: "payroll.processed",
+        entityName: "PayrollRun",
+        entityId: id,
+        status: "FAILURE",
+      });
+      (await cookies()).set(PAYROLL_FLASH_COOKIE, error.message.slice(0, 300), { httpOnly: true, sameSite: "strict", secure: process.env.NODE_ENV === "production", path: "/app/payroll", maxAge: 30 });
+      redirect("/app/payroll/runs?error=deductions");
+    }
     if (error instanceof NotFoundError) redirect("/app/payroll/runs?error=not-found");
     throw error;
   }
 
   revalidatePath("/app/payroll/runs");
   revalidatePath("/app/payroll/payslips");
-  redirect("/app/payroll/runs?saved=1");
+  redirect(`/app/payroll/runs?saved=1${postingState ? `&posting=${postingState}` : ""}`);
+}
+
+export async function retryPayrollAccountingPosting(formData: FormData): Promise<void> {
+  const tenant = await requireModuleAccess("payroll");
+  if (!hasPermission(tenant, PERMISSIONS.PAYROLL_RUNS_MANAGE)) redirect("/app/payroll/runs?error=forbidden");
+  const parsed = parseWithSchema(idSchema, { id: clean(formData.get("id")) });
+  if (!parsed.success) redirect("/app/payroll/runs?error=invalid-state");
+  const session = await getServerAuthSession();
+  const run = await getPayrollRunForPostingRetry(tenant.organizationId, parsed.data.id);
+  if (!run) redirect("/app/payroll/runs?error=posting-not-retryable");
+  let postingState: "failed" | "inactive" | null = null;
+  try {
+    const result = await postPayrollRunAccounting(tenant.organizationId, run, session?.user?.id);
+    if (!result.posted) postingState = result.reason === "error" ? "failed" : "inactive";
+  } catch (error) {
+    postingState = "failed";
+    console.error("[payroll:accounting-retry] failed", { organizationId: tenant.organizationId, runId: run.id, actorId: session?.user?.id, error });
+  }
+  revalidatePath("/app/payroll/runs");
+  redirect(`/app/payroll/runs?posting=${postingState ?? "complete"}`);
 }
 
 export async function cancelExistingRun(formData: FormData): Promise<void> {

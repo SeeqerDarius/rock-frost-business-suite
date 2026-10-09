@@ -14,12 +14,21 @@ The indexable surface is deliberately limited to:
 - `/`
 - `/solutions`
 - `/modules`
-- `/modules/{module-key}` for all sixteen available modules, including dedicated
-  Hotel, School, Hostel, Pharmacy, and Hospital metadata, features, canonical
-  URLs, and acquisition links
+- `/modules/{module-key}` for all fourteen catalogue-visible modules, including
+  dedicated Hotel, School, Hostel, Pharmacy, and Hospital metadata, features,
+  canonical URLs, and acquisition links. Payroll and Procurement are real
+  modules (`catalogueVisible: false` in `src/platform/modules/registry.ts`)
+  excluded from the public catalogue, sitemap, and `generateStaticParams`,
+  and `next.config.ts` permanently redirects `/modules/payroll` to
+  `/modules/hr` and `/modules/procurement` to `/modules/inventory`. Never add
+  either retired URL to the sitemap or link to it internally; `test/seo.test.ts`
+  asserts both the sitemap exclusion and the redirects
 - `/industries`
 - `/company`
 - `/contact`
+- `/resources` and `/resources/{article-slug}` for the supporting guides
+  registered in `src/lib/resource-articles.ts`, each linking to the module or
+  page its topic relates to
 - `/terms`
 - `/privacy`
 - `/cookie-policy`
@@ -82,6 +91,59 @@ content must remain specific to implemented product behavior. Regulatory,
 certification, customer-result, and automated-compliance claims require direct
 evidence before publication.
 
+Each of the five expanded modules also carries optional `ghana`,
+`integrations`, and `security` arrays on its `ModuleSeoContent` entry (Ghana
+operating notes, only-verified cross-module integrations, and
+permissions/scoping notes). Verify an `integrations` claim against the actual
+source before adding it, such as `src/lib/accounting-integration.ts`'s
+`MODULE_REVENUE_ACCOUNTS` for a module that posts revenue into Accounting, or
+a module's own service code for a direct cross-module import. The HR and
+Payroll page deliberately does not claim automated PAYE tax-band calculation
+or SSNIT contribution handling: `src/modules/payroll/service.ts` only applies
+one flat, organization-wide tax rate to gross pay. Its FAQ says so directly
+rather than implying broader statutory automation. Do not expand that claim
+until PAYE/SSNIT calculation is a real, tested feature.
+
+The Company page title previously double-appended "Rock Frost" (the root
+layout's `title.template` already adds `| Rock Frost`, and the page's own
+title also ended in "Rock Frost Technologies") and its description ran to 179
+characters; both are now a single, non-redundant title and a description
+under 160 characters. CRM's title was expanded from the bare "CRM Software"
+past the template suffix to describe who it is for.
+
+### Multi-module positioning (2026-10-06)
+
+Search summaries (including AI answers comparing Rock Frost Accounting to
+standalone accounting packages) described the suite as aimed at "logistics
+and consumer finance". The cause was public copy, not crawling: the module
+registry lists Fleet and Installment first, so every public list, the
+`/industries` page (only transport, retail and consumer finance), the default
+description, the homepage spotlight and the share image led with Fleet. The
+owner asked for the suite to be presented as broad. Now:
+
+- `PUBLIC_MODULE_ORDER` in `src/platform/modules/registry.ts` sets the order
+  for public surfaces (homepage grid, `/modules`, pricing, contact, sitemap,
+  module-page related links): cross-industry modules first (Accounting, HR,
+  Inventory, POS, CRM), then industry suites. In-app navigation keeps the
+  registry order.
+- `DEFAULT_DESCRIPTION`, the homepage hero, the Company portfolio card, the
+  homepage FAQ, `/solutions` and the share image list Accounting first and
+  name the industry suites together. The homepage spotlights Accounting,
+  School and Pharmacy.
+- `/industries` covers eight sectors (Education, Healthcare, Hospitality,
+  Retail & Distribution, Professional Services, Transport & Logistics,
+  Installment Sales, Multi-department), each linking to its modules.
+- The Accounting module page has a full content block (Ghana VAT, NHIL,
+  GETFund and withholding tax codes, verified revenue integrations, period
+  locking), and `/resources/accounting-software-ghana-guide` targets
+  accounting buyer searches. All claims were checked against
+  `src/modules/accounting/tax-service.ts`, `docs/ACCOUNTING_MODULE.md` and
+  `MODULE_REVENUE_ACCOUNTS`.
+
+The Fleet pilot CTA and Fleet-specific contact flow stay in place for
+Fleet-intent visitors; only the site-wide emphasis changed. Search results and
+AI summaries update only after recrawl.
+
 `src/app/opengraph-image.tsx` provides the 1200×630 social-sharing image.
 `src/app/sitemap.ts` and `src/app/robots.ts` generate their production
 responses; there must not be competing static copies in `public/`.
@@ -105,6 +167,12 @@ Instead, the expensive reads themselves are wrapped in Next's Data Cache via
   query (`src/lib/platform-marketing.ts`, `src/app/(public)/page.tsx`)
 - `getPublicContactDetails` (`src/lib/public-contact.ts`), the sole data read
   on `/contact`
+- `listPublishedTestimonials` (`src/lib/customer-feedback.ts`), the homepage's
+  published-testimonials read. This one ran uncached on every homepage
+  request until the 2026-09-06 sprint; `moderateFeedbackAction`
+  (`src/app/app/platform/feedback/actions.ts`) calls
+  `updateTag(PUBLIC_MARKETING_CACHE_TAG)` after a moderation write so a newly
+  published testimonial does not wait out the 5-minute window.
 
 This does not make the route itself cacheable at Vercel's edge (it is still
 "dynamic" from the routing layer's perspective, by design), but it removes the
@@ -136,6 +204,19 @@ The owner must complete these external actions after deployment:
 5. Monitor Page Indexing, Core Web Vitals, search queries, clicks, impressions,
    and click-through rate. SEO is an ongoing measurement process; technical
    completeness does not guarantee a ranking position.
+6. Build local authority: a complete Google Business Profile; consistent
+   company name, address, and contact information across every listing;
+   submissions to credible Ghanaian business and technology directories;
+   customer case studies with measurable results; links from customers,
+   implementation partners, and industry associations; and genuine reviews
+   and testimonials. None of this can be done from the application; it is the
+   owner's manual follow-up.
+7. Track monthly, not from three-day fluctuations (a query with a handful of
+   impressions has statistically weak position data): non-branded
+   impressions, queries entering the top 50/20/10, organic demo requests,
+   click-through rate, indexed page count, rankings by module, and
+   conversions by landing page. This lives in Search Console and the CRM, not
+   in this codebase.
 
 The verification TXT value is account-specific and must never be invented or
 committed without the owner's actual value. On 2026-07-28 the application-side

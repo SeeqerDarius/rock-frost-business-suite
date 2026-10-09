@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { getCurrentTenant } from "@/lib/tenant";
+import { organizationNumberLocale } from "@/lib/org-format";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
-import { getInvoiceForPrint, getBillForPrint } from "@/modules/accounting/service";
+import { getInvoiceForPrint, getBillForPrint, getEngineTaxPrintDetails } from "@/modules/accounting/service";
 import { buildPrintableDocumentPdf, type PrintableDocumentInput } from "@/lib/reports/invoice-pdf";
 
 /**
@@ -37,6 +38,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ type
     }
     const invoice = await getInvoiceForPrint(tenant.organizationId, id);
     if (!invoice) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+    const engineTax = await getEngineTaxPrintDetails(tenant.organizationId, "INVOICE", invoice);
     input = {
       documentType: "INVOICE",
       documentNumber: invoice.invoiceNumber,
@@ -47,12 +49,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ type
       counterpartyName: invoice.customerName,
       counterpartyEmail: invoice.customerEmail,
       counterpartyTin: invoice.contact?.taxIdentificationNumber ?? null,
-      currency: tenant.organization.currency ?? "GHS",
-      lines: invoice.lines.map((line) => ({ description: line.description, quantity: Number(line.quantity), unitPrice: Number(line.unitPrice), lineTotal: Number(line.lineTotal) })),
+      // Printed in the document currency, not the organization base currency.
+      currency: invoice.currency ?? tenant.organization.currency ?? "GHS",
+      locale: organizationNumberLocale(tenant.organization),
+      lines: invoice.lines.map((line, index) => ({ description: line.description, quantity: Number(line.quantity), unitPrice: Number(line.unitPrice), lineTotal: Number(line.lineTotal), taxLabel: engineTax?.lineLabels[index] })),
       taxableAmount: Number(invoice.taxableAmount),
       vatAmount: Number(invoice.vatAmount),
       nhilAmount: Number(invoice.nhilAmount),
       getfundAmount: Number(invoice.getfundAmount),
+      taxSummary: engineTax?.summary.map((row) => ({ label: row.label, taxableAmount: Number(row.taxableAmount), taxAmount: Number(row.taxAmount) })),
       amount: Number(invoice.amount),
       amountPaid: Number(invoice.amountPaid) + Number(invoice.amountCredited),
       notes: invoice.description,
@@ -64,6 +69,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ type
     }
     const bill = await getBillForPrint(tenant.organizationId, id);
     if (!bill) return NextResponse.json({ error: "Bill not found" }, { status: 404 });
+    const engineTax = await getEngineTaxPrintDetails(tenant.organizationId, "BILL", bill);
     input = {
       documentType: "BILL",
       documentNumber: bill.billNumber,
@@ -74,12 +80,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ type
       counterpartyName: bill.supplierName,
       counterpartyEmail: bill.supplierEmail,
       counterpartyTin: bill.contact?.taxIdentificationNumber ?? null,
-      currency: tenant.organization.currency ?? "GHS",
-      lines: bill.lines.map((line) => ({ description: line.description, quantity: Number(line.quantity), unitPrice: Number(line.unitPrice), lineTotal: Number(line.lineTotal) })),
+      currency: bill.currency ?? tenant.organization.currency ?? "GHS",
+      locale: organizationNumberLocale(tenant.organization),
+      lines: bill.lines.map((line, index) => ({ description: line.description, quantity: Number(line.quantity), unitPrice: Number(line.unitPrice), lineTotal: Number(line.lineTotal), taxLabel: engineTax?.lineLabels[index] })),
       taxableAmount: Number(bill.taxableAmount),
       vatAmount: Number(bill.vatAmount),
       nhilAmount: Number(bill.nhilAmount),
       getfundAmount: Number(bill.getfundAmount),
+      taxSummary: engineTax?.summary.map((row) => ({ label: row.label, taxableAmount: Number(row.taxableAmount), taxAmount: Number(row.taxAmount) })),
       amount: Number(bill.amount),
       amountPaid: Number(bill.amountPaid),
       notes: bill.description,

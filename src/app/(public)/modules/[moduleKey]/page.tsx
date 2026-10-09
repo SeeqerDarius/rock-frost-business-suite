@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { JsonLd } from "@/components/seo/json-ld";
-import { catalogueModuleRegistry, getModule } from "@/platform/modules/registry";
+import { getModule, isPubliclyListedModule, publicCatalogueModuleRegistry } from "@/platform/modules/registry";
 import { createPublicMetadata, MODULE_SEO, SITE_URL } from "@/lib/seo";
 import { PublicHero } from "@/components/marketing/public-hero";
 import { ModuleShowcase } from "@/components/marketing/module-showcase";
@@ -13,7 +13,7 @@ import { ConversionButtonLink } from "@/components/marketing/conversion-link";
 type ModuleKey = keyof typeof MODULE_SEO;
 
 export function generateStaticParams() {
-  return catalogueModuleRegistry.map(({ key: moduleKey }) => ({ moduleKey }));
+  return publicCatalogueModuleRegistry.map(({ key: moduleKey }) => ({ moduleKey }));
 }
 
 export async function generateMetadata({
@@ -40,9 +40,9 @@ export default async function ModuleLandingPage({
   const { moduleKey } = await params;
   const seo = MODULE_SEO[moduleKey as ModuleKey];
   const module_ = getModule(moduleKey);
-  if (!seo || !module_) notFound();
+  if (!seo || !module_ || !isPubliclyListedModule(moduleKey)) notFound();
 
-  const related = catalogueModuleRegistry.filter((item) => item.key !== moduleKey).slice(0, 3);
+  const related = publicCatalogueModuleRegistry.filter((item) => item.key !== moduleKey).slice(0, 3);
   const content = "content" in seo ? seo.content : undefined;
   const faqSchema = content
     ? {
@@ -153,6 +153,59 @@ export default async function ModuleLandingPage({
           </div>
         </div>
       </section>
+
+      {content && (content.ghana || content.integrations || content.security) ? (
+        <section className="public-section-tint">
+          <div className="mx-auto max-w-6xl px-6 py-20">
+            <div className="grid gap-10 lg:grid-cols-3">
+              {content.ghana ? (
+                <div>
+                  <p className="public-eyebrow">Built for Ghana</p>
+                  <h2 className="mt-2 text-xl font-semibold">How it fits daily operations</h2>
+                  <ul className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
+                    {content.ghana.map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {content.integrations ? (
+                <div>
+                  <p className="public-eyebrow">Integrates with</p>
+                  <h2 className="mt-2 text-xl font-semibold">Connected Rock Frost modules</h2>
+                  <ul className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
+                    {content.integrations.map((integration) => {
+                      const linkedModule = getModule(integration.module);
+                      return (
+                        <li key={integration.module}>
+                          {linkedModule ? (
+                            <Link href={`/modules/${integration.module}`} className="font-medium text-foreground underline-offset-4 hover:underline">
+                              {linkedModule.name}
+                            </Link>
+                          ) : null}
+                          {linkedModule ? " " : ""}
+                          {integration.note}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ) : null}
+              {content.security ? (
+                <div>
+                  <p className="public-eyebrow">Security and permissions</p>
+                  <h2 className="mt-2 text-xl font-semibold">Your data, your organization</h2>
+                  <ul className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
+                    {content.security.map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {content ? (
         <section className="mx-auto max-w-6xl px-6 py-20">

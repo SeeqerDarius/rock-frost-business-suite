@@ -24,18 +24,27 @@ const STATE_REASONS: Record<string, string> = {
   "future-attendance": "Attendance cannot be recorded for a future date.",
   "attendance-closed": "The campus attendance correction window has closed for that date.",
   "payment-exceeds-balance": "The payment cannot exceed the invoice's outstanding balance.",
+  "refund-exceeds-balance": "The refund cannot exceed the payment's remaining refundable amount.",
   "timetable-conflict": "That period conflicts with an existing class, teacher, or room booking.",
   "marks-out-of-range": "Marks must be between zero and the exam's total marks.",
   "book-unavailable": "No copy of that book is currently available.",
   "stale-record": "The record changed in another request. Refresh and try again.",
   "guardian-duplicate": "A guardian with this name and phone already exists. Use the existing guardian record instead.",
+  "rollover-capacity": "One or more destination classes do not have enough places. Increase class capacity or choose other classes, then review the batch again.",
+  "rollover-campus-mismatch": "A destination class must be at the same campus as its source class.",
+  "closed-rollover-target": "The destination academic year is archived. Choose an open year.",
+  "incomplete-rollover-mapping": "Map every source class with active learners before continuing.",
+  "invalid-rollover-years": "Choose two different academic years.",
+  "invalid-rollover-mapping": "The class mapping is empty or too large. Reload the preview and try again.",
+  "rollover-too-large": "The batch is larger than 5,000 learners. Move one campus or class group at a time.",
+  "stale-rollover-preview": "Learners or enrollments changed after the preview. Reload it and confirm the latest data.",
 };
 
 const GENERIC: Record<SchoolErrorCode, { title: string; description: string }> = {
   forbidden: { title: "You don't have permission to do that", description: "Your role does not include this School permission. An organization administrator can grant it." },
   invalid: { title: "Nothing was saved", description: "Some values were missing or in the wrong format. Check the highlighted form and submit again." },
   state: { title: "That change isn't allowed right now", description: "The record's current status or a school rule blocked this change. Refresh to see the latest state." },
-  "not-found": { title: "That record could not be found", description: "It may have been removed or belongs to another campus. Refresh the page and try again." },
+  "not-found": { title: "That record could not be found", description: "It may have been removed or belongs to another record or organization. Refresh the page and try again." },
   "wrong-password": { title: "Password incorrect", description: "The password you entered doesn't match your account. Nothing was deleted." },
 };
 

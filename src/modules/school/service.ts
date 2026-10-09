@@ -1,11 +1,13 @@
 import "server-only";
 
-import { Prisma, type HotelPaymentMethod, type SchoolAttendanceStatus, type SchoolStudentStatus } from "@prisma/client";
+import { Prisma, type HotelPaymentMethod, type SchoolAttendanceStatus, type SchoolInvoiceStatus, type SchoolLibraryLoanStatus, type SchoolStudentStatus } from "@prisma/client";
 import { db } from "@/lib/db";
+import { logAuditEvent } from "@/lib/audit";
 import { createWithUniqueRetry } from "@/lib/unique-retry";
 import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@/lib/trend-buckets";
 import { sendSms } from "@/lib/sms";
 import { schoolAttendanceAbsentSms, schoolExamResultsPublishedSms, schoolFeePaymentReceivedSms } from "@/lib/sms-templates";
+import { getSchoolPayrollEligibleEmployee, getSchoolPayrollLinkCandidate, listSchoolPayrollLinkCandidates } from "@/modules/hr/service";
 import { assertWithinModuleLimit } from "@/platform/entitlements/resolve";
 
 export class SchoolStateError extends Error {
@@ -137,6 +139,87 @@ export function listSchoolStudents(organizationId: string) {
   return db.schoolStudent.findMany({ where: { organizationId }, include: { campus: true, guardians: { include: { guardian: true } }, enrollments: { include: { class: true, academicYear: true } }, lifecycleEvents: { orderBy: { createdAt: "desc" }, take: 10 } }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] });
 }
 
+/**
+ * Small tenant-scoped student choice set for operational forms. The cap
+ * prevents large organizations from transferring every student into a
+ * select; callers expose a separate search field so users can narrow choices.
+ */
+export async function listSchoolStudentChoices(organizationId: string, input: { query?: string; activeOnly?: boolean; take?: number } = {}) {
+  const take = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.take) ? input.take! : 50)));
+  const terms = input.query?.trim().split(/\s+/).filter(Boolean) ?? [];
+  const where: Prisma.SchoolStudentWhereInput = {
+    organizationId,
+    ...(input.activeOnly ? { status: "ACTIVE" } : {}),
+    ...(terms.length ? { AND: terms.map((term) => ({ OR: [
+      { firstName: { contains: term, mode: "insensitive" as const } },
+      { lastName: { contains: term, mode: "insensitive" as const } },
+      { admissionNumber: { contains: term, mode: "insensitive" as const } },
+    ] })) } : {}),
+  };
+  const [total, rows] = await Promise.all([
+    db.schoolStudent.count({ where }),
+    db.schoolStudent.findMany({
+      where,
+      select: {
+        id: true,
+        admissionNumber: true,
+        firstName: true,
+        lastName: true,
+        enrollments: { where: { status: "ACTIVE" }, orderBy: [{ enrolledAt: "desc" }, { id: "asc" }], take: 1, select: { classId: true } },
+      },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { id: "asc" }],
+      take,
+    }),
+  ]);
+  return { rows, total, take };
+}
+
+export async function listSchoolStudentPage(organizationId: string, input: { query?: string; status?: SchoolStudentStatus; page?: number; pageSize?: number } = {}) {
+  const pageSize = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.pageSize) ? input.pageSize! : 50)));
+  const requestedPage = Math.max(1, Math.floor(Number.isFinite(input.page) ? input.page! : 1));
+  const query = input.query?.trim().split(/\s+/).filter(Boolean) ?? [];
+  const where: Prisma.SchoolStudentWhereInput = {
+    organizationId,
+    ...(input.status ? { status: input.status } : {}),
+    ...(query.length ? { AND: query.map((term) => ({ OR: [
+      { firstName: { contains: term, mode: "insensitive" as const } },
+      { lastName: { contains: term, mode: "insensitive" as const } },
+      { admissionNumber: { contains: term, mode: "insensitive" as const } },
+    ] })) } : {}),
+  };
+  const total = await db.schoolStudent.count({ where });
+  const pageCount = Math.ceil(total / pageSize);
+  const page = pageCount === 0 ? 1 : Math.min(requestedPage, pageCount);
+  const rows = await db.schoolStudent.findMany({
+    where,
+    select: {
+      id: true,
+      admissionNumber: true,
+      firstName: true,
+      lastName: true,
+      dateOfBirth: true,
+      admissionDate: true,
+      gender: true,
+      status: true,
+      updatedAt: true,
+      campus: { select: { name: true } },
+      guardians: {
+        orderBy: [{ primary: "desc" }, { id: "asc" }],
+        select: { guardianId: true, relationship: true, primary: true, authorizedPickup: true, guardian: { select: { firstName: true, lastName: true, phone: true } } },
+      },
+      enrollments: {
+        where: { status: "ACTIVE" },
+        orderBy: [{ enrolledAt: "desc" }, { id: "asc" }],
+        select: { status: true, class: { select: { name: true } }, academicYear: { select: { name: true } } },
+      },
+    },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { id: "asc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+  });
+  return { rows, total, page, pageSize, pageCount };
+}
+
 export function createSchoolStudent(organizationId: string, data: { campusId: string; firstName: string; lastName: string; dateOfBirth?: Date | null; gender?: string | null; admissionDate?: Date | null; medicalNotes?: string | null }) {
   return createWithUniqueRetry(async () => {
     const campus = await db.schoolCampus.findFirst({ where: { id: data.campusId, organizationId, active: true } });
@@ -256,6 +339,28 @@ export async function transitionSchoolStudent(
   });
 }
 
+/**
+ * Edits student identity and admission dates without changing the immutable
+ * admission number, campus, status, or enrollment history. The caller submits
+ * the version it displayed so a concurrent edit cannot silently overwrite it.
+ */
+export async function updateSchoolStudentProfile(
+  organizationId: string,
+  studentId: string,
+  expectedUpdatedAt: Date,
+  data: { firstName: string; lastName: string; dateOfBirth?: Date | null; gender?: string | null; admissionDate?: Date | null },
+) {
+  const existing = await db.schoolStudent.findFirst({ where: { id: studentId, organizationId }, select: { id: true } });
+  if (!existing) throw new SchoolNotFoundError("Student not found.");
+
+  const result = await db.schoolStudent.updateMany({
+    where: { id: studentId, organizationId, updatedAt: expectedUpdatedAt },
+    data: { ...data, updatedAt: new Date(Math.max(Date.now(), expectedUpdatedAt.getTime() + 1)) },
+  });
+  if (result.count !== 1) throw new SchoolStateError("This student profile changed in another request. Reload the record and try again.", "stale-record");
+  return db.schoolStudent.findFirstOrThrow({ where: { id: studentId, organizationId } });
+}
+
 export function createSchoolGuardian(organizationId: string, data: { firstName: string; lastName: string; email?: string | null; phone: string; address?: string | null; occupation?: string | null }) {
   return createWithUniqueRetry(async () => db.schoolGuardian.create({ data: { organizationId, guardianNumber: await nextCode(organizationId, "GRD", () => db.schoolGuardian.count({ where: { organizationId } })), ...data } }));
 }
@@ -370,7 +475,178 @@ export function getSchoolAcademicSetup(organizationId: string) {
   ]);
 }
 
-export function listSchoolGuardians(organizationId: string) { return db.schoolGuardian.findMany({ where: { organizationId }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] }); }
+export function listSchoolAcademicYears(organizationId: string) {
+  return db.schoolAcademicYear.findMany({ where: { organizationId }, select: { id: true, name: true, closedAt: true, startDate: true, endDate: true, current: true }, orderBy: { startDate: "desc" } });
+}
+
+export async function getSchoolEnrollmentRolloverPreview(organizationId: string, academicYearId: string) {
+  const year = await db.schoolAcademicYear.findFirst({
+    where: { id: academicYearId, organizationId },
+    select: {
+      id: true,
+      name: true,
+      enrollments: {
+        where: { status: "ACTIVE", student: { status: "ACTIVE" } },
+        select: { id: true, studentId: true, classId: true, class: { select: { id: true, code: true, name: true, campusId: true, campus: { select: { name: true } } } } },
+        orderBy: [{ class: { name: "asc" } }, { studentId: "asc" }],
+        take: 5001,
+      },
+    },
+  });
+  if (!year) throw new SchoolNotFoundError("Academic year not found.");
+  if (year.enrollments.length > 5000) throw new SchoolStateError("This rollover exceeds the safe batch size of 5,000 learners. Split the work by campus or class.", "rollover-too-large");
+  const classes = new Map<string, { id: string; code: string; name: string; campusId: string; campusName: string; learners: number }>();
+  for (const enrollment of year.enrollments) {
+    const group = classes.get(enrollment.classId) ?? {
+      id: enrollment.class.id,
+      code: enrollment.class.code,
+      name: enrollment.class.name,
+      campusId: enrollment.class.campusId,
+      campusName: enrollment.class.campus.name,
+      learners: 0,
+    };
+    group.learners += 1;
+    classes.set(enrollment.classId, group);
+  }
+  return { year: { id: year.id, name: year.name }, totalLearners: year.enrollments.length, classes: [...classes.values()] };
+}
+
+export async function listSchoolRolloverTargetClasses(organizationId: string, academicYearId: string) {
+  const [classes, counts] = await Promise.all([
+    db.schoolClass.findMany({
+      where: { organizationId, active: true },
+      select: { id: true, code: true, name: true, campusId: true, capacity: true, campus: { select: { name: true } } },
+      orderBy: [{ campus: { name: "asc" } }, { name: "asc" }, { id: "asc" }],
+    }),
+    db.schoolEnrollment.groupBy({
+      by: ["classId"],
+      where: { organizationId, academicYearId, status: "ACTIVE" },
+      _count: { _all: true },
+    }),
+  ]);
+  const enrollmentByClass = new Map(counts.map((row) => [row.classId, row._count._all]));
+  return classes.map(({ campus, ...row }) => ({ ...row, campusName: campus.name, currentEnrollment: enrollmentByClass.get(row.id) ?? 0 }));
+}
+
+export async function rollOverSchoolEnrollments(
+  organizationId: string,
+  sourceYearId: string,
+  targetYearId: string,
+  classMapping: Record<string, string>,
+  expectedLearnersByClass: Record<string, number>,
+  changedById?: string,
+) {
+  if (sourceYearId === targetYearId) throw new SchoolStateError("Choose two different academic years.", "invalid-rollover-years");
+  const mappings = Object.entries(classMapping);
+  if (mappings.length === 0 || mappings.length > 250) throw new SchoolStateError("The rollover class mapping is empty or too large.", "invalid-rollover-mapping");
+  // Explicit row locks serialize source/target year and destination-class writes.
+  // Keep READ COMMITTED so capacity counts see rows committed while waiting on those locks.
+  return db.$transaction(async (tx) => {
+    const years = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "SchoolAcademicYear"
+      WHERE "organizationId" = ${organizationId} AND "id" IN (${Prisma.join([sourceYearId, targetYearId])})
+      ORDER BY "id" FOR UPDATE
+    `;
+    if (years.length !== 2) throw new SchoolNotFoundError("One or both academic years could not be found.");
+    const [sourceYear, targetYear] = await Promise.all([
+      tx.schoolAcademicYear.findFirst({ where: { id: sourceYearId, organizationId }, select: { id: true, name: true } }),
+      tx.schoolAcademicYear.findFirst({ where: { id: targetYearId, organizationId }, select: { id: true, name: true, closedAt: true } }),
+    ]);
+    if (!sourceYear || !targetYear) throw new SchoolNotFoundError("One or both academic years could not be found.");
+    if (targetYear.closedAt) throw new SchoolStateError("The destination academic year is archived.", "closed-rollover-target");
+
+    const classIds = [...new Set(mappings.map(([, classId]) => classId))];
+    const lockedClasses = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "SchoolClass"
+      WHERE "organizationId" = ${organizationId} AND "id" IN (${Prisma.join(classIds)}) AND "active" = true
+      ORDER BY "id" FOR UPDATE
+    `;
+    if (lockedClasses.length !== classIds.length) throw new SchoolNotFoundError("A destination class could not be found or is inactive.");
+    const classes = await tx.schoolClass.findMany({ where: { organizationId, id: { in: classIds }, active: true }, select: { id: true, campusId: true, capacity: true } });
+    const targetClassById = new Map(classes.map((schoolClass) => [schoolClass.id, schoolClass]));
+
+    const sourceEnrollments = await tx.schoolEnrollment.findMany({
+      where: { organizationId, academicYearId: sourceYearId, status: "ACTIVE", student: { status: "ACTIVE" } },
+      select: { id: true, studentId: true, classId: true, campusId: true },
+      orderBy: [{ studentId: "asc" }, { id: "asc" }],
+      take: 5001,
+    });
+    if (sourceEnrollments.length > 5000) throw new SchoolStateError("This rollover exceeds the safe batch size of 5,000 learners. Split the work by campus or class.", "rollover-too-large");
+    const sourceClassIds = new Set(sourceEnrollments.map((enrollment) => enrollment.classId));
+    if ([...sourceClassIds].some((classId) => !classMapping[classId])) throw new SchoolStateError("Map every class that has active learners before continuing.", "incomplete-rollover-mapping");
+    if (mappings.length !== sourceClassIds.size || mappings.some(([classId]) => !sourceClassIds.has(classId))) throw new SchoolStateError("The source classes changed. Reload the rollover preview.", "stale-rollover-preview");
+    const actualByClass = new Map<string, number>();
+    for (const enrollment of sourceEnrollments) actualByClass.set(enrollment.classId, (actualByClass.get(enrollment.classId) ?? 0) + 1);
+    if (Object.keys(expectedLearnersByClass).length !== actualByClass.size || [...actualByClass].some(([classId, count]) => expectedLearnersByClass[classId] !== count)) {
+      throw new SchoolStateError("Learner counts changed after the preview. Review the latest counts before continuing.", "stale-rollover-preview");
+    }
+    for (const enrollment of sourceEnrollments) {
+      const targetClass = targetClassById.get(classMapping[enrollment.classId]);
+      if (!targetClass || targetClass.campusId !== enrollment.campusId) throw new SchoolStateError("Each learner must stay mapped to a class at the same campus.", "rollover-campus-mismatch");
+    }
+    const studentIds = [...new Set(sourceEnrollments.map((enrollment) => enrollment.studentId))];
+    if (studentIds.length) {
+      const lockedStudents = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "SchoolStudent"
+        WHERE "organizationId" = ${organizationId} AND "id" IN (${Prisma.join(studentIds)}) AND "status" = 'ACTIVE'::"SchoolStudentStatus"
+        ORDER BY "id" FOR UPDATE
+      `;
+      if (lockedStudents.length !== studentIds.length) throw new SchoolStateError("A learner's status changed. Reload the rollover preview.", "stale-rollover-preview");
+    }
+    const existingTargets = studentIds.length ? await tx.schoolEnrollment.findMany({
+      where: { organizationId, academicYearId: targetYearId, studentId: { in: studentIds } },
+      select: { studentId: true },
+    }) : [];
+    const alreadyEnrolled = new Set(existingTargets.map((enrollment) => enrollment.studentId));
+    const eligible = sourceEnrollments.filter((enrollment) => !alreadyEnrolled.has(enrollment.studentId));
+    const plannedByClass = new Map<string, number>();
+    for (const enrollment of eligible) {
+      const targetClassId = classMapping[enrollment.classId];
+      plannedByClass.set(targetClassId, (plannedByClass.get(targetClassId) ?? 0) + 1);
+    }
+    for (const [classId, planned] of plannedByClass) {
+      const targetClass = targetClassById.get(classId)!;
+      if (targetClass.capacity !== null) {
+        const currentCount = await tx.schoolEnrollment.count({ where: { organizationId, academicYearId: targetYearId, classId, status: "ACTIVE" } });
+        if (currentCount + planned > targetClass.capacity) throw new SchoolStateError("A destination class does not have enough capacity for this rollover.", "rollover-capacity");
+      }
+    }
+
+    if (eligible.length) {
+      await tx.schoolEnrollment.createMany({ data: eligible.map((enrollment) => ({
+        organizationId,
+        campusId: enrollment.campusId,
+        academicYearId: targetYearId,
+        studentId: enrollment.studentId,
+        classId: classMapping[enrollment.classId],
+      })) });
+    }
+    if (sourceEnrollments.length) {
+      await tx.schoolEnrollment.updateMany({
+        where: { organizationId, id: { in: sourceEnrollments.map((enrollment) => enrollment.id) }, status: "ACTIVE" },
+        data: { status: "COMPLETED", endedAt: new Date() },
+      });
+    }
+    await logAuditEvent({
+      organizationId,
+      module: "school",
+      action: "STUDENT_ENROLLMENTS_ROLLED_OVER",
+      entityName: "SchoolAcademicYear",
+      entityId: targetYearId,
+      userId: changedById,
+      metadata: { sourceYearId, sourceYearName: sourceYear.name, targetYearId, targetYearName: targetYear.name, eligible: eligible.length, alreadyEnrolled: alreadyEnrolled.size, completedSourceEnrollments: sourceEnrollments.length, classMapping },
+    }, tx);
+    return { created: eligible.length, alreadyEnrolled: alreadyEnrolled.size, sourceCompleted: sourceEnrollments.length };
+  });
+}
+
+export function listSchoolGuardians(organizationId: string) {
+  return db.schoolGuardian.findMany({
+    where: { organizationId },
+    select: { id: true, guardianNumber: true, firstName: true, lastName: true, phone: true, email: true, occupation: true, address: true },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { id: "asc" }],
+  });
+}
 
 /**
  * Passport/profile photo storage mirrors InventoryItem.imageData - a
@@ -380,8 +656,8 @@ export function listSchoolGuardians(organizationId: string) { return db.schoolGu
  * payload small).
  */
 /** Cheap id-only lookup for rendering a table's photo column without pulling every row's base64 image data into the list query. */
-export async function listSchoolStudentPhotoIds(organizationId: string) {
-  const rows = await db.schoolStudent.findMany({ where: { organizationId, photoData: { not: null } }, select: { id: true } });
+export async function listSchoolStudentPhotoIds(organizationId: string, studentIds?: string[]) {
+  const rows = await db.schoolStudent.findMany({ where: { organizationId, photoData: { not: null }, ...(studentIds ? { id: { in: studentIds } } : {}) }, select: { id: true } });
   return new Set(rows.map((row) => row.id));
 }
 
@@ -408,17 +684,135 @@ export async function updateSchoolGuardianPhoto(organizationId: string, id: stri
   if (result.count === 0) throw new SchoolNotFoundError("Guardian not found.");
 }
 export function listSchoolAttendance(organizationId: string) { return db.schoolAttendance.findMany({ where: { organizationId }, include: { student: true, class: true, term: true }, orderBy: { date: "desc" }, take: 250 }); }
+export async function listSchoolAttendancePage(organizationId: string, input: { query?: string; status?: SchoolAttendanceStatus; page?: number; pageSize?: number } = {}) {
+  const pageSize = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.pageSize) ? input.pageSize! : 50)));
+  const requestedPage = Math.max(1, Math.floor(Number.isFinite(input.page) ? input.page! : 1));
+  const terms = input.query?.trim().split(/\s+/).filter(Boolean) ?? [];
+  const where: Prisma.SchoolAttendanceWhereInput = {
+    organizationId,
+    ...(input.status ? { status: input.status } : {}),
+    ...(terms.length ? { AND: terms.map((term) => ({ OR: [
+      { student: { firstName: { contains: term, mode: "insensitive" as const } } },
+      { student: { lastName: { contains: term, mode: "insensitive" as const } } },
+      { student: { admissionNumber: { contains: term, mode: "insensitive" as const } } },
+      { class: { name: { contains: term, mode: "insensitive" as const } } },
+    ] })) } : {}),
+  };
+  const total = await db.schoolAttendance.count({ where });
+  const pageCount = Math.ceil(total / pageSize);
+  const page = pageCount === 0 ? 1 : Math.min(requestedPage, pageCount);
+  const rows = await db.schoolAttendance.findMany({ where, select: {
+    id: true, date: true, status: true, reason: true,
+    student: { select: { firstName: true, lastName: true, admissionNumber: true } },
+    class: { select: { name: true } }, term: { select: { name: true } },
+  }, orderBy: [{ date: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize });
+  return { rows, total, page, pageSize, pageCount };
+}
+
+/**
+ * Saves the full set of family links from the student record in one locked
+ * transaction. Every guardian reference is revalidated against the tenant,
+ * and a linked student keeps exactly one primary contact whenever any links
+ * remain. This is used by the post-admission family-contact editor.
+ */
+export async function updateSchoolStudentGuardianLinks(
+  organizationId: string,
+  studentId: string,
+  input: {
+    links: Array<{ guardianId: string; relationship: string; authorizedPickup: boolean; remove: boolean }>;
+    add?: { guardianId: string; relationship: string; authorizedPickup: boolean };
+    primaryGuardianId?: string;
+  },
+  changedById?: string,
+) {
+  return db.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "SchoolStudent" WHERE "id" = ${studentId} AND "organizationId" = ${organizationId} FOR UPDATE`;
+    if (!locked.length) throw new SchoolNotFoundError("Student not found.");
+
+    const existing = await tx.schoolStudentGuardian.findMany({ where: { organizationId, studentId }, select: { guardianId: true, primary: true } });
+    const linkedIds = new Set(existing.map((link) => link.guardianId));
+    const suppliedIds = new Set(input.links.map((link) => link.guardianId));
+    if (suppliedIds.size !== input.links.length || suppliedIds.size !== linkedIds.size || [...suppliedIds].some((id) => !linkedIds.has(id))) {
+      throw new SchoolStateError("The family links changed. Reload the student and try again.", "stale-family-links");
+    }
+
+    const kept = input.links.filter((link) => !link.remove);
+    if (input.add) {
+      const guardian = await tx.schoolGuardian.findFirst({ where: { id: input.add.guardianId, organizationId }, select: { id: true } });
+      if (!guardian) throw new SchoolNotFoundError("Guardian not found.");
+      if (linkedIds.has(guardian.id)) throw new SchoolStateError("This guardian is already linked to the student.", "guardian-already-linked");
+    }
+    const remainingIds = new Set([...kept.map((link) => link.guardianId), ...(input.add ? [input.add.guardianId] : [])]);
+    if (input.primaryGuardianId && !remainingIds.has(input.primaryGuardianId)) {
+      throw new SchoolStateError("Choose a primary contact that will remain linked to this student.", "invalid-primary-guardian");
+    }
+    const previousPrimary = existing.find((link) => link.primary)?.guardianId;
+    const primaryGuardianId = input.primaryGuardianId && remainingIds.has(input.primaryGuardianId)
+      ? input.primaryGuardianId
+      : previousPrimary && remainingIds.has(previousPrimary)
+        ? previousPrimary
+        : remainingIds.values().next().value;
+
+    await tx.schoolStudentGuardian.deleteMany({ where: { organizationId, studentId, guardianId: { in: input.links.filter((link) => link.remove).map((link) => link.guardianId) } } });
+    for (const link of kept) {
+      await tx.schoolStudentGuardian.updateMany({
+        where: { organizationId, studentId, guardianId: link.guardianId },
+        data: { relationship: link.relationship, primary: link.guardianId === primaryGuardianId, authorizedPickup: link.authorizedPickup },
+      });
+    }
+    if (input.add) {
+      await tx.schoolStudentGuardian.create({
+        data: { organizationId, studentId, guardianId: input.add.guardianId, relationship: input.add.relationship, primary: input.add.guardianId === primaryGuardianId, authorizedPickup: input.add.authorizedPickup },
+      });
+    }
+    const result = await tx.schoolStudentGuardian.findMany({ where: { organizationId, studentId }, include: { guardian: { select: { id: true, firstName: true, lastName: true, phone: true } } }, orderBy: [{ primary: "desc" }, { guardian: { lastName: "asc" } }] });
+    if (changedById) {
+      await logAuditEvent({
+        organizationId,
+        module: "school",
+        action: "STUDENT_GUARDIAN_LINKS_UPDATED",
+        entityName: "SchoolStudent",
+        entityId: studentId,
+        userId: changedById,
+        metadata: { links: result.map(({ guardianId, relationship, primary, authorizedPickup }) => ({ guardianId, relationship, primary, authorizedPickup })) },
+      }, tx);
+    }
+    return result;
+  }, { isolationLevel: "Serializable" });
+}
 export function listSchoolTimetable(organizationId: string) { return db.schoolTimetableEntry.findMany({ where: { organizationId }, include: { campus: true, term: true, class: true, subject: true }, orderBy: [{ dayOfWeek: "asc" }, { startsAt: "asc" }] }); }
 
 export async function enrollSchoolStudent(organizationId: string, data: { campusId: string; academicYearId: string; studentId: string; classId: string }) {
-  const [student, year, class_] = await Promise.all([
-    db.schoolStudent.findFirst({ where: { id: data.studentId, organizationId, campusId: data.campusId, status: "ACTIVE" } }),
-    db.schoolAcademicYear.findFirst({ where: { id: data.academicYearId, organizationId } }),
-    db.schoolClass.findFirst({ where: { id: data.classId, organizationId, campusId: data.campusId, active: true }, include: { _count: { select: { enrollments: { where: { academicYearId: data.academicYearId, status: "ACTIVE" } } } } } }),
-  ]);
-  if (!student || !year || !class_) throw new SchoolNotFoundError("Student, academic year, or class not found.");
-  if (class_.capacity && class_._count.enrollments >= class_.capacity) throw new SchoolStateError("Class capacity has been reached.", "class-capacity");
-  return db.schoolEnrollment.create({ data: { organizationId, ...data } });
+  // The year and class locks serialize capacity checks. READ COMMITTED refreshes
+  // the count after any transaction this request had to wait behind.
+  return db.$transaction(async (tx) => {
+    const lockedYear = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "SchoolAcademicYear"
+      WHERE "id" = ${data.academicYearId} AND "organizationId" = ${organizationId}
+      FOR UPDATE
+    `;
+    if (!lockedYear.length) throw new SchoolNotFoundError("Student, academic year, or class not found.");
+    const lockedClass = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "SchoolClass"
+      WHERE "id" = ${data.classId} AND "organizationId" = ${organizationId} AND "campusId" = ${data.campusId} AND "active" = true
+      FOR UPDATE
+    `;
+    if (!lockedClass.length) throw new SchoolNotFoundError("Student, academic year, or class not found.");
+    const [student, year, class_] = await Promise.all([
+      tx.schoolStudent.findFirst({ where: { id: data.studentId, organizationId, campusId: data.campusId, status: "ACTIVE" }, select: { id: true } }),
+      tx.schoolAcademicYear.findFirst({ where: { id: data.academicYearId, organizationId }, select: { id: true, closedAt: true } }),
+      tx.schoolClass.findFirst({ where: { id: data.classId, organizationId, campusId: data.campusId, active: true }, select: { id: true, capacity: true } }),
+    ]);
+    if (!student || !year || !class_) throw new SchoolNotFoundError("Student, academic year, or class not found.");
+    if (year.closedAt) throw new SchoolStateError("A closed academic year cannot receive new enrollments.", "closed-rollover-target");
+    const existing = await tx.schoolEnrollment.findUnique({ where: { studentId_academicYearId: { studentId: data.studentId, academicYearId: data.academicYearId } }, select: { id: true } });
+    if (existing) throw new SchoolStateError("This student already has an enrollment in that academic year.", "already-enrolled");
+    if (class_.capacity !== null) {
+      const enrolled = await tx.schoolEnrollment.count({ where: { organizationId, academicYearId: data.academicYearId, classId: class_.id, status: "ACTIVE" } });
+      if (enrolled >= class_.capacity) throw new SchoolStateError("Class capacity has been reached.", "class-capacity");
+    }
+    return tx.schoolEnrollment.create({ data: { organizationId, ...data } });
+  });
 }
 
 export async function recordSchoolAttendance(organizationId: string, actingUserId: string, data: { termId: string; classId: string; studentId: string; date: Date; status: SchoolAttendanceStatus; reason?: string | null }) {
@@ -576,6 +970,49 @@ export async function recordSchoolAttendanceBulk(
 export function listSchoolFeeInvoices(organizationId: string) {
   return db.schoolFeeInvoice.findMany({ where: { organizationId }, include: { student: true, payments: true, academicYear: true, term: true }, orderBy: { createdAt: "desc" } });
 }
+export async function listSchoolFeeInvoicePage(organizationId: string, input: { query?: string; status?: SchoolInvoiceStatus; page?: number; pageSize?: number } = {}) {
+  const pageSize = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.pageSize) ? input.pageSize! : 50)));
+  const requestedPage = Math.max(1, Math.floor(Number.isFinite(input.page) ? input.page! : 1));
+  const terms = input.query?.trim().split(/\s+/).filter(Boolean) ?? [];
+  const where: Prisma.SchoolFeeInvoiceWhereInput = {
+    organizationId,
+    ...(input.status ? { status: input.status } : {}),
+    ...(terms.length ? { AND: terms.map((term) => ({ OR: [
+      { invoiceNumber: { contains: term, mode: "insensitive" as const } },
+      { description: { contains: term, mode: "insensitive" as const } },
+      { student: { firstName: { contains: term, mode: "insensitive" as const } } },
+      { student: { lastName: { contains: term, mode: "insensitive" as const } } },
+      { student: { admissionNumber: { contains: term, mode: "insensitive" as const } } },
+    ] })) } : {}),
+  };
+  const total = await db.schoolFeeInvoice.count({ where });
+  const pageCount = Math.ceil(total / pageSize);
+  const page = pageCount === 0 ? 1 : Math.min(requestedPage, pageCount);
+  const rows = await db.schoolFeeInvoice.findMany({ where, select: {
+    id: true, invoiceNumber: true, description: true, amount: true, discount: true,
+    status: true, dueDate: true, createdAt: true,
+    student: { select: { firstName: true, lastName: true, admissionNumber: true } },
+    academicYear: { select: { name: true } }, term: { select: { name: true } },
+    payments: { select: { id: true, amount: true, refundedAt: true, receiptNumber: true, postingStatus: true, method: true, refunds: { select: { id: true, amount: true, method: true, reason: true, reference: true, createdAt: true, postingStatus: true }, orderBy: { createdAt: "desc" } } } },
+  }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize });
+  return { rows, total, page, pageSize, pageCount };
+}
+
+export async function getSchoolFeeInvoiceSummary(organizationId: string) {
+  const [invoices, payments, refunds, openInvoices, openPayments, openRefunds] = await Promise.all([
+    db.schoolFeeInvoice.aggregate({ where: { organizationId, status: { in: ["ISSUED", "PART_PAID", "PAID"] } }, _sum: { amount: true, discount: true } }),
+    db.schoolFeePayment.aggregate({ where: { organizationId, refundedAt: null }, _sum: { amount: true } }),
+    db.schoolFeeRefund.aggregate({ where: { organizationId, payment: { refundedAt: null } }, _sum: { amount: true } }),
+    db.schoolFeeInvoice.aggregate({ where: { organizationId, status: { in: ["ISSUED", "PART_PAID"] } }, _sum: { amount: true, discount: true } }),
+    db.schoolFeePayment.aggregate({ where: { organizationId, refundedAt: null, invoice: { status: { in: ["ISSUED", "PART_PAID"] } } }, _sum: { amount: true } }),
+    db.schoolFeeRefund.aggregate({ where: { organizationId, payment: { refundedAt: null, invoice: { status: { in: ["ISSUED", "PART_PAID"] } } } }, _sum: { amount: true } }),
+  ]);
+  return {
+    billed: (invoices._sum.amount ?? new Prisma.Decimal(0)).minus(invoices._sum.discount ?? 0),
+    collected: (payments._sum.amount ?? new Prisma.Decimal(0)).minus(refunds._sum.amount ?? 0),
+    outstanding: (openInvoices._sum.amount ?? new Prisma.Decimal(0)).minus(openInvoices._sum.discount ?? 0).minus(openPayments._sum.amount ?? 0).plus(openRefunds._sum.amount ?? 0),
+  };
+}
 
 export async function createSchoolFeeInvoice(organizationId: string, data: { academicYearId: string; termId?: string | null; studentId: string; description: string; amount: Prisma.Decimal.Value; discount?: Prisma.Decimal.Value; dueDate?: Date | null }) {
   const [student, year, term] = await Promise.all([
@@ -591,9 +1028,10 @@ export async function createSchoolFeeInvoice(organizationId: string, data: { aca
 export async function recordSchoolFeePayment(organizationId: string, invoiceId: string, data: { amount: Prisma.Decimal.Value; method: HotelPaymentMethod; reference?: string | null }) {
   const { payment, notify } = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${organizationId}:school-receipt`}))`;
-    const invoice = await tx.schoolFeeInvoice.findFirst({ where: { id: invoiceId, organizationId, status: { in: ["ISSUED", "PART_PAID"] } }, include: { payments: true, student: { include: { campus: { include: { settings: true } } } } } });
+    await tx.$queryRaw`SELECT id FROM "SchoolFeeInvoice" WHERE id = ${invoiceId} AND "organizationId" = ${organizationId} FOR UPDATE`;
+    const invoice = await tx.schoolFeeInvoice.findFirst({ where: { id: invoiceId, organizationId, status: { in: ["ISSUED", "PART_PAID"] } }, include: { payments: { include: { refunds: true } }, student: { include: { campus: { include: { settings: true } } } } } });
     if (!invoice) throw new SchoolNotFoundError("Open invoice not found.");
-    const paid = invoice.payments.filter((p) => !p.refundedAt).reduce((sum, p) => sum.plus(p.amount), new Prisma.Decimal(0));
+    const paid = invoice.payments.reduce((sum, p) => sum.plus(p.refundedAt ? 0 : p.amount.minus(p.refunds.reduce((refundSum, refund) => refundSum.plus(refund.amount), new Prisma.Decimal(0)))), new Prisma.Decimal(0));
     const due = invoice.amount.minus(invoice.discount).minus(paid);
     const amount = decimal(data.amount);
     if (amount.lte(0) || amount.gt(due)) throw new SchoolStateError("Payment exceeds the outstanding invoice balance.", "payment-exceeds-balance");
@@ -615,6 +1053,78 @@ export async function recordSchoolFeePayment(organizationId: string, invoiceId: 
     body: (guardianName) => schoolFeePaymentReceivedSms({ guardianName, studentName: notify.studentName, amount: `GHS ${Number(payment.amount).toFixed(2)}`, receiptNumber: payment.receiptNumber }).body,
   });
   return payment;
+}
+
+export async function recordSchoolFeeRefund(organizationId: string, paymentId: string, actorId: string, data: { amount: Prisma.Decimal.Value; method: HotelPaymentMethod; reason: string; reference?: string | null }) {
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "SchoolFeePayment" WHERE id = ${paymentId} AND "organizationId" = ${organizationId} FOR UPDATE`;
+    const payment = await tx.schoolFeePayment.findFirst({ where: { id: paymentId, organizationId }, include: { refunds: true, invoice: true } });
+    if (!payment) throw new SchoolNotFoundError("Fee payment not found.");
+    await tx.$queryRaw`SELECT id FROM "SchoolFeeInvoice" WHERE id = ${payment.invoiceId} AND "organizationId" = ${organizationId} FOR UPDATE`;
+    const invoice = await tx.schoolFeeInvoice.findFirst({ where: { id: payment.invoiceId, organizationId } });
+    if (!invoice) throw new SchoolNotFoundError("Fee invoice not found.");
+    const alreadyRefunded = payment.refunds.reduce((sum, refund) => sum.plus(refund.amount), new Prisma.Decimal(0));
+    const remaining = payment.refundedAt ? new Prisma.Decimal(0) : payment.amount.minus(alreadyRefunded);
+    const amount = decimal(data.amount);
+    if (amount.lte(0) || amount.gt(remaining)) throw new SchoolStateError("Refund exceeds the remaining refundable amount.", "refund-exceeds-balance");
+    const refund = await tx.schoolFeeRefund.create({ data: { organizationId, paymentId, ...data, amount, createdById: actorId } });
+    const totalRefunded = alreadyRefunded.plus(amount);
+    if (totalRefunded.gte(payment.amount)) await tx.schoolFeePayment.update({ where: { id: payment.id }, data: { refundedAt: new Date() } });
+    if (invoice.status !== "VOID" && invoice.status !== "DRAFT") {
+      const invoicePayments = await tx.schoolFeePayment.findMany({ where: { invoiceId: payment.invoiceId, organizationId }, include: { refunds: { select: { amount: true } } } });
+      const collected = invoicePayments.reduce((sum, item) => sum.plus(item.refundedAt ? 0 : item.amount.minus(item.refunds.reduce((refundSum, row) => refundSum.plus(row.amount), new Prisma.Decimal(0)))), new Prisma.Decimal(0));
+      const due = invoice.amount.minus(invoice.discount);
+      const status = collected.gte(due) ? "PAID" : collected.gt(0) ? "PART_PAID" : "ISSUED";
+      await tx.schoolFeeInvoice.update({ where: { id: payment.invoiceId }, data: { status } });
+    }
+    return refund;
+  }, { timeout: 15_000 });
+}
+
+export function getSchoolFeeRefundForPostingRetry(organizationId: string, refundId: string) {
+  return db.schoolFeeRefund.findFirst({ where: { id: refundId, organizationId, postingStatus: { in: ["PENDING", "FAILED", "NOT_REQUIRED"] } }, select: { id: true, amount: true, createdAt: true, reason: true, reference: true } });
+}
+
+export function getSchoolFeePaymentForPostingRetry(organizationId: string, paymentId: string) {
+  return db.schoolFeePayment.findFirst({
+    where: { id: paymentId, organizationId, refundedAt: null, postingStatus: { in: ["PENDING", "FAILED", "NOT_REQUIRED"] } },
+    select: { id: true, amount: true, receivedAt: true, receiptNumber: true },
+  });
+}
+
+export function getSchoolFeePaymentReceipt(organizationId: string, paymentId: string) {
+  return db.schoolFeePayment.findFirst({
+    where: { id: paymentId, organizationId },
+    select: {
+      id: true,
+      amount: true,
+      method: true,
+      reference: true,
+      receivedAt: true,
+      receiptNumber: true,
+      organization: { select: { name: true, address: true, phone: true, email: true, currency: true } },
+      invoice: {
+        select: {
+          invoiceNumber: true,
+          description: true,
+          amount: true,
+          discount: true,
+          dueDate: true,
+          academicYear: { select: { name: true } },
+          term: { select: { name: true } },
+        },
+      },
+      student: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          admissionNumber: true,
+          campus: { select: { name: true } },
+        },
+      },
+    },
+  });
 }
 
 export function listSchoolFeeStructures(organizationId: string) {
@@ -805,30 +1315,141 @@ export async function returnSchoolLibraryBook(organizationId: string, loanId: st
 }
 
 export function listSchoolLibrary(organizationId: string) { return Promise.all([db.schoolLibraryBook.findMany({ where: { organizationId }, orderBy: { title: "asc" } }), db.schoolLibraryLoan.findMany({ where: { organizationId }, include: { book: true, student: true }, orderBy: { borrowedAt: "desc" } })]); }
+export function listSchoolLibraryLoans(organizationId: string) { return db.schoolLibraryLoan.findMany({ where: { organizationId }, include: { book: { select: { title: true } }, student: { select: { firstName: true, lastName: true, admissionNumber: true } } }, orderBy: [{ borrowedAt: "desc" }, { id: "desc" }] }); }
+
+export async function listSchoolLibraryLoanPage(organizationId: string, input: { query?: string; status?: SchoolLibraryLoanStatus; showAll?: boolean; page?: number; pageSize?: number } = {}) {
+  const pageSize = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.pageSize) ? input.pageSize! : 50)));
+  const requestedPage = Math.max(1, Math.floor(Number.isFinite(input.page) ? input.page! : 1));
+  const terms = input.query?.trim().split(/\s+/).filter(Boolean) ?? [];
+  const states = input.status ? [input.status] : input.showAll ? undefined : (["BORROWED", "OVERDUE"] as const);
+  const where: Prisma.SchoolLibraryLoanWhereInput = {
+    organizationId,
+    ...(states ? { status: { in: [...states] } } : {}),
+    ...(terms.length ? { AND: terms.map((term) => ({ OR: [
+      { book: { title: { contains: term, mode: "insensitive" as const } } },
+      { student: { firstName: { contains: term, mode: "insensitive" as const } } },
+      { student: { lastName: { contains: term, mode: "insensitive" as const } } },
+      { student: { admissionNumber: { contains: term, mode: "insensitive" as const } } },
+    ] })) } : {}),
+  };
+  const [total, overdueCount] = await Promise.all([
+    db.schoolLibraryLoan.count({ where }),
+    db.schoolLibraryLoan.count({ where: { organizationId, status: { in: ["BORROWED", "OVERDUE"] }, dueAt: { lt: new Date() } } }),
+  ]);
+  const pageCount = Math.ceil(total / pageSize);
+  const page = pageCount === 0 ? 1 : Math.min(requestedPage, pageCount);
+  const rows = await db.schoolLibraryLoan.findMany({
+    where,
+    select: {
+      id: true, status: true, borrowedAt: true, dueAt: true, returnedAt: true,
+      book: { select: { title: true } },
+      student: { select: { firstName: true, lastName: true, admissionNumber: true } },
+    },
+    orderBy: [{ borrowedAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+  });
+  return { rows, total, overdueCount, page, pageSize, pageCount };
+}
+export async function listSchoolLibraryBookChoices(organizationId: string, input: { query?: string; take?: number } = {}) {
+  const take = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.take) ? input.take! : 50)));
+  const query = input.query?.trim();
+  const where: Prisma.SchoolLibraryBookWhereInput = {
+    organizationId,
+    availableCopies: { gt: 0 },
+    ...(query ? { OR: [
+      { title: { contains: query, mode: "insensitive" } },
+      { author: { contains: query, mode: "insensitive" } },
+      { accessionCode: { contains: query, mode: "insensitive" } },
+    ] } : {}),
+  };
+  const [total, rows] = await Promise.all([
+    db.schoolLibraryBook.count({ where }),
+    db.schoolLibraryBook.findMany({ where, select: { id: true, title: true, availableCopies: true }, orderBy: [{ title: "asc" }, { id: "asc" }], take }),
+  ]);
+  return { rows, total, take };
+}
+export async function listSchoolLibraryBookPage(organizationId: string, input: { query?: string; page?: number; pageSize?: number } = {}) {
+  const pageSize = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.pageSize) ? input.pageSize! : 50)));
+  const requestedPage = Math.max(1, Math.floor(Number.isFinite(input.page) ? input.page! : 1));
+  const terms = input.query?.trim().split(/\s+/).filter(Boolean) ?? [];
+  const where: Prisma.SchoolLibraryBookWhereInput = {
+    organizationId,
+    ...(terms.length ? { AND: terms.map((term) => ({ OR: [
+      { title: { contains: term, mode: "insensitive" as const } },
+      { author: { contains: term, mode: "insensitive" as const } },
+      { accessionCode: { contains: term, mode: "insensitive" as const } },
+      { isbn: { contains: term, mode: "insensitive" as const } },
+      { category: { contains: term, mode: "insensitive" as const } },
+    ] })) } : {}),
+  };
+  const total = await db.schoolLibraryBook.count({ where });
+  const pageCount = Math.ceil(total / pageSize);
+  const page = pageCount === 0 ? 1 : Math.min(requestedPage, pageCount);
+  const rows = await db.schoolLibraryBook.findMany({ where, select: {
+    id: true, accessionCode: true, isbn: true, title: true, author: true, category: true,
+    totalCopies: true, availableCopies: true,
+  }, orderBy: [{ title: "asc" }, { id: "asc" }], skip: (page - 1) * pageSize, take: pageSize });
+  return { rows, total, page, pageSize, pageCount };
+}
 export function createSchoolLibraryBook(organizationId: string, data: { accessionCode: string; isbn?: string | null; title: string; author?: string | null; category?: string | null; totalCopies: number }) { if(data.totalCopies<1) throw new SchoolStateError("At least one copy is required."); return db.schoolLibraryBook.create({ data: { organizationId, ...data, availableCopies: data.totalCopies } }); }
 
 export function listSchoolTransport(organizationId: string) { return db.schoolTransportRoute.findMany({ where: { organizationId }, include: { campus: true, assignments: { include: { student: true } } }, orderBy: { name: "asc" } }); }
 export async function createSchoolTransportRoute(organizationId: string, data: { campusId: string; code: string; name: string; vehicle?: string | null; driverName?: string | null; stops?: string[]; fee: Prisma.Decimal.Value }) { if(!(await db.schoolCampus.findFirst({where:{id:data.campusId,organizationId}}))) throw new SchoolNotFoundError("Campus not found."); return db.schoolTransportRoute.create({data:{organizationId,...data,stops:data.stops ?? Prisma.JsonNull,fee:decimal(data.fee)}}); }
 export async function assignSchoolTransport(organizationId:string,routeId:string,studentId:string,stopName?:string|null){const [route,student]=await Promise.all([db.schoolTransportRoute.findFirst({where:{id:routeId,organizationId,active:true}}),db.schoolStudent.findFirst({where:{id:studentId,organizationId,status:"ACTIVE"}})]);if(!route||!student)throw new SchoolNotFoundError("Route or student not found.");return db.schoolTransportAssignment.upsert({where:{routeId_studentId:{routeId,studentId}},update:{stopName,active:true},create:{organizationId,routeId,studentId,stopName}});}
 
-export function listSchoolPayrollAdjustments(organizationId:string){return db.schoolPayrollAdjustment.findMany({where:{organizationId},orderBy:{createdAt:"desc"}});}
-export function createSchoolPayrollAdjustment(organizationId:string,data:{employeeId:string;period:string;type:string;description:string;amount:Prisma.Decimal.Value}){return db.schoolPayrollAdjustment.create({data:{organizationId,...data,amount:decimal(data.amount)}});}
+export async function listSchoolPayrollAdjustments(organizationId: string) {
+  const adjustments = await db.schoolPayrollAdjustment.findMany({ where: { organizationId }, orderBy: [{ period: "desc" }, { createdAt: "desc" }] });
+  const employees = await listSchoolPayrollLinkCandidates(organizationId);
+  const employeeById = new Map(employees.map((employee) => [employee.id, employee]));
+  return adjustments.map((adjustment) => ({
+    ...adjustment,
+    employee: adjustment.employeeId ? employeeById.get(adjustment.employeeId) ?? null : null,
+  }));
+}
+
+export async function createSchoolPayrollAdjustment(
+  organizationId: string,
+  data: { employeeId: string; period: string; type: string; category: "EARNING" | "DEDUCTION"; description: string; amount: Prisma.Decimal.Value },
+) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(data.period)) throw new SchoolStateError("Choose a valid payroll month.", "invalid-period");
+  const amount = decimal(data.amount);
+  if (!amount.isFinite() || amount.lte(0)) throw new SchoolStateError("The payroll input amount must be greater than zero.", "invalid-amount");
+  const employee = await getSchoolPayrollEligibleEmployee(organizationId, data.employeeId);
+  if (!employee) throw new SchoolNotFoundError("Payroll-eligible HR employee not found.");
+  return db.schoolPayrollAdjustment.create({ data: { organizationId, ...data, amount } });
+}
+
+export async function assignPendingSchoolPayrollEmployee(organizationId: string, adjustmentId: string, employeeId: string) {
+  const [adjustment, employee] = await Promise.all([
+    db.schoolPayrollAdjustment.findFirst({ where: { id: adjustmentId, organizationId, processedAt: null, payrollRunId: null } }),
+    getSchoolPayrollLinkCandidate(organizationId, employeeId),
+  ]);
+  if (!adjustment || !employee) throw new SchoolNotFoundError("Pending School payroll input or HR employee not found.");
+  const updated = await db.schoolPayrollAdjustment.updateMany({
+    where: { id: adjustmentId, organizationId, employeeId: adjustment.employeeId, legacyEmployeeId: adjustment.legacyEmployeeId, processedAt: null, payrollRunId: null },
+    data: { employeeId: employee.id, legacyEmployeeId: null },
+  });
+  if (updated.count !== 1) throw new SchoolStateError("This legacy payroll input changed in another request. Refresh and try again.", "stale-record");
+  return db.schoolPayrollAdjustment.findFirstOrThrow({ where: { id: adjustmentId, organizationId } });
+}
 
 export function listSchoolSettings(organizationId:string){return db.schoolCampus.findMany({where:{organizationId},include:{settings:true},orderBy:{name:"asc"}});}
 export async function upsertSchoolSettings(organizationId:string,data:{campusId:string;attendanceCloseDays:number;receiptPrefix:string;allowRanking:boolean;smsNotificationsEnabled:boolean;gradingScale?:Prisma.InputJsonValue}){if(!(await db.schoolCampus.findFirst({where:{id:data.campusId,organizationId}})))throw new SchoolNotFoundError("Campus not found.");const values={attendanceCloseDays:data.attendanceCloseDays,receiptPrefix:data.receiptPrefix,allowRanking:data.allowRanking,smsNotificationsEnabled:data.smsNotificationsEnabled,gradingScale:data.gradingScale};return db.schoolSettings.upsert({where:{campusId:data.campusId},update:values,create:{organizationId,...data}});}
 
 export async function getSchoolSummary(organizationId: string) {
-  const [students, classes, attendance, invoices, payments, overdueLoans, routes] = await Promise.all([
+  const [students, classes, attendance, invoices, payments, refunds, overdueLoans, routes] = await Promise.all([
     db.schoolStudent.count({ where: { organizationId, status: "ACTIVE" } }),
     db.schoolClass.count({ where: { organizationId, active: true } }),
     db.schoolAttendance.groupBy({ by: ["status"], where: { organizationId }, _count: true }),
-    db.schoolFeeInvoice.findMany({ where: { organizationId, status: { in: ["ISSUED", "PART_PAID"] } }, include: { payments: true } }),
+    db.schoolFeeInvoice.findMany({ where: { organizationId, status: { in: ["ISSUED", "PART_PAID"] } }, include: { payments: { include: { refunds: true } } } }),
     db.schoolFeePayment.aggregate({ where: { organizationId, refundedAt: null }, _sum: { amount: true } }),
+    db.schoolFeeRefund.aggregate({ where: { organizationId, payment: { refundedAt: null } }, _sum: { amount: true } }),
     db.schoolLibraryLoan.count({ where: { organizationId, status: { in: ["BORROWED", "OVERDUE"] }, dueAt: { lt: new Date() } } }),
     db.schoolTransportRoute.count({ where: { organizationId, active: true } }),
   ]);
-  const outstanding = invoices.reduce((total, invoice) => total.plus(invoice.amount.minus(invoice.discount).minus(invoice.payments.filter((p) => !p.refundedAt).reduce((sum, p) => sum.plus(p.amount), new Prisma.Decimal(0)))), new Prisma.Decimal(0));
-  return { activeStudents: students, activeClasses: classes, attendance: Object.fromEntries(attendance.map((item) => [item.status, item._count])), collections: payments._sum.amount ?? new Prisma.Decimal(0), outstanding, overdueLoans, activeRoutes: routes };
+  const outstanding = invoices.reduce((total, invoice) => total.plus(invoice.amount.minus(invoice.discount).minus(invoice.payments.reduce((sum, p) => sum.plus(p.refundedAt ? 0 : p.amount.minus(p.refunds.reduce((refundSum, refund) => refundSum.plus(refund.amount), new Prisma.Decimal(0)))), new Prisma.Decimal(0)))), new Prisma.Decimal(0));
+  return { activeStudents: students, activeClasses: classes, attendance: Object.fromEntries(attendance.map((item) => [item.status, item._count])), collections: (payments._sum.amount ?? new Prisma.Decimal(0)).minus(refunds._sum.amount ?? 0), outstanding, overdueLoans, activeRoutes: routes };
 }
 
 export async function getSchoolReportAnalytics(
@@ -851,15 +1472,16 @@ export async function getSchoolReportAnalytics(
     ? { ...(filters.campusId ? { campusId: filters.campusId } : {}), ...(filters.classId ? { enrollments: { some: { classId: filters.classId } } } : {}) }
     : undefined;
 
-  const [attendance, payments, classes] = await Promise.all([
+  const [attendance, payments, refunds, classes] = await Promise.all([
     db.schoolAttendance.findMany({
       where: { organizationId, date: { gte: lookback, lt: queryEnd }, ...(filters.classId ? { classId: filters.classId } : {}), ...(filters.campusId ? { class: { campusId: filters.campusId } } : {}) },
       select: { date: true, status: true, classId: true },
     }),
     db.schoolFeePayment.findMany({
-      where: { organizationId, refundedAt: null, receivedAt: { gte: lookback, lt: queryEnd }, ...(studentWhere ? { student: studentWhere } : {}) },
-      select: { receivedAt: true, amount: true },
+      where: { organizationId, receivedAt: { gte: lookback, lt: queryEnd }, ...(studentWhere ? { student: studentWhere } : {}) },
+      select: { receivedAt: true, amount: true, refundedAt: true, refunds: { select: { id: true } } },
     }),
+    db.schoolFeeRefund.findMany({ where: { organizationId, createdAt: { gte: lookback, lt: queryEnd }, ...(studentWhere ? { payment: { student: studentWhere } } : {}) }, select: { createdAt: true, amount: true } }),
     db.schoolClass.findMany({ where: classWhere, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
 
@@ -871,7 +1493,7 @@ export async function getSchoolReportAnalytics(
       attendanceRate: marks.length > 0 ? Math.round((healthy / marks.length) * 100) : null,
       absent: marks.filter((record) => record.status === "ABSENT").length,
       marked: marks.length,
-      collections: payments.filter((payment) => inRange(payment.receivedAt, start, end)).reduce((sum, payment) => sum + Number(payment.amount), 0),
+      collections: payments.filter((payment) => inRange(payment.receivedAt, start, end) && (!payment.refundedAt || payment.refunds.length > 0)).reduce((sum, payment) => sum + Number(payment.amount), 0) - refunds.filter((refund) => inRange(refund.createdAt, start, end)).reduce((sum, refund) => sum + Number(refund.amount), 0),
     };
   };
   const current = summarize(from, toExclusive);

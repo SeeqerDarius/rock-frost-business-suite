@@ -125,18 +125,25 @@ describe("per-module SMS entitlement (real Postgres)", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("grandfathers an organization whose module is enabled with no subscription row", async () => {
-    // createTestOrg enables every module without creating subscriptions,
-    // which is the shape of a real pre-tier customer. They resolve at
-    // UNTIERED_LEGACY_TIER (Platinum), so School SMS stays available even
-    // with the override revoked.
+  it("leaves SMS off for a grandfathered organization that never bought it", async () => {
+    // Grandfathering keeps an organization's *depth* (fees, exams and the
+    // rest, which had no gate before tiers). It must not also hand over an
+    // add-on nobody ever granted: for a module with no subscription the
+    // legacy column is the only record of that decision, so it stays
+    // authoritative. An earlier version of this test asserted the opposite
+    // and was encoding a real bug, which main's own portal test caught.
     const fetchSpy = stubProvider();
     const { sendSms } = await import("@/lib/sms");
+    const { hasModuleFeature } = await import("@/platform/entitlements/resolve");
     await testDb.organization.update({ where: { id: org.organizationId }, data: { smsNotificationsGranted: false } });
 
-    const allowed = await sendSms({ to: "0241234567", body: "test", purpose: "TEST_GRANDFATHER", organizationId: org.organizationId, moduleKey: "school" });
-    expect(allowed).toEqual({ ok: true });
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const denied = await sendSms({ to: "0241234567", body: "test", purpose: "TEST_GRANDFATHER", organizationId: org.organizationId, moduleKey: "school" });
+    expect(denied).toEqual({ ok: false, error: "SMS notifications are not enabled for this organization." });
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    // But the depth it always had is untouched.
+    expect(await hasModuleFeature(org.organizationId, "school.fees")).toBe(true);
+    expect(await hasModuleFeature(org.organizationId, "school.exams")).toBe(true);
   });
 
   it("still sends a 2FA OTP code when nothing entitles the organization to SMS", async () => {

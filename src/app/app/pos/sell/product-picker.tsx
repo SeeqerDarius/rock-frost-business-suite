@@ -45,6 +45,7 @@ export function ProductPicker({
   onItemCreated,
   isOnline = true,
   currency,
+  locale,
 }: {
   items: PickerItem[];
   categories: PickerCategory[];
@@ -56,6 +57,7 @@ export function ProductPicker({
    * already-catalogued items stays available offline; adding a new one waits. */
   isOnline?: boolean;
   currency: string;
+  locale: string;
 }) {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("all");
@@ -173,7 +175,7 @@ export function ProductPicker({
               </span>
             )}
             <span className="line-clamp-2 text-xs leading-tight font-medium">{item.name}</span>
-            <span className="text-xs text-muted-foreground">{formatMoney(item.price, currency)}</span>
+            <span className="text-xs text-muted-foreground">{formatMoney(item.price, currency, locale)}</span>
           </button>
         ))}
       </div>

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listPettyCashFunds, listExpenseCategories } from "@/modules/accounting/service";
 import { createFundAction, recordExpenseAction, replenishFundAction, closeFundAction } from "./actions";
 
@@ -32,7 +32,7 @@ export default async function PettyCashPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("accounting");
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_CASHBOOK_MANAGE);
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
   const [funds, categories] = await Promise.all([
     listPettyCashFunds(tenant.organizationId),
     listExpenseCategories(tenant.organizationId),

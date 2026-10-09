@@ -13,32 +13,44 @@ import { StatusBadge } from "@/components/school/status-badge";
 import { formatDate } from "@/components/school/format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { listSchoolLibrary, listSchoolStudents } from "@/modules/school/service";
+import { listSchoolLibraryBookChoices, listSchoolLibraryBookPage, listSchoolLibraryLoanPage, listSchoolStudentChoices } from "@/modules/school/service";
+import { RecordPagination } from "@/components/school/record-pagination";
 import { borrowBookAction, createLibraryBookAction, returnBookAction } from "../actions";
 import { schoolPlanGate } from "@/components/school/plan-gate";
 
 const PATH = "/app/school/library";
 
-export default async function SchoolLibraryPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; view?: string }> }) {
+export default async function SchoolLibraryPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; loansQ?: string; view?: string; page?: string; loansPage?: string; studentQ?: string; bookQ?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
   // Plan gate. Navigation already hides this page when the plan does
   // not include it, but a hidden link is not a boundary.
   const gate = await schoolPlanGate(tenant.organizationId, "school.services", "Library", "Catalogue, copy availability, and circulation.");
   if (gate) return gate;
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_LIBRARY_MANAGE);
-  const [[books, loans], students] = await Promise.all([listSchoolLibrary(tenant.organizationId), listSchoolStudents(tenant.organizationId)]);
+  const requestedPage = query.page && /^\d{1,6}$/.test(query.page) ? Number(query.page) : 1;
+  const requestedLoanPage = query.loansPage && /^\d{1,6}$/.test(query.loansPage) ? Number(query.loansPage) : 1;
+  const showReturned = query.view === "all";
+  const [bookPage, loanPage, availableBooks, students] = await Promise.all([
+    listSchoolLibraryBookPage(tenant.organizationId, { query: query.q, page: requestedPage }),
+    listSchoolLibraryLoanPage(tenant.organizationId, { query: query.loansQ, showAll: showReturned, page: requestedLoanPage }),
+    listSchoolLibraryBookChoices(tenant.organizationId, { query: query.bookQ }),
+    listSchoolStudentChoices(tenant.organizationId, { query: query.studentQ, activeOnly: true }),
+  ]);
+  const books = bookPage.rows;
 
   const now = new Date();
-  const openLoans = loans.filter((loan) => loan.status === "BORROWED" || loan.status === "OVERDUE");
-  const overdueCount = openLoans.filter((loan) => loan.dueAt < now).length;
-  const availableBooks = books.filter((book) => book.availableCopies > 0);
+  const loans = loanPage.rows;
+  const overdueCount = loanPage.overdueCount;
+  const visibleBooks = books;
 
-  // listSchoolLibrary returns the whole catalogue, so search filters the rows already loaded here.
-  const search = query.q?.trim().toLowerCase() ?? "";
-  const visibleBooks = books.filter((book) => search === "" || `${book.title} ${book.author ?? ""} ${book.accessionCode} ${book.isbn ?? ""} ${book.category ?? ""}`.toLowerCase().includes(search));
-
-  const showReturned = query.view === "all";
-  const visibleLoans = showReturned ? loans : openLoans;
+  const visibleLoans = loans;
+  const loanViewParams = new URLSearchParams();
+  if (query.q) loanViewParams.set("q", query.q);
+  if (query.loansQ) loanViewParams.set("loansQ", query.loansQ);
+  if (query.studentQ) loanViewParams.set("studentQ", query.studentQ);
+  if (query.bookQ) loanViewParams.set("bookQ", query.bookQ);
+  if (!showReturned) loanViewParams.set("view", "all");
+  const loanViewHref = loanViewParams.size ? `${PATH}?${loanViewParams.toString()}` : PATH;
 
   const newBookDialog = (
     <EntityDialog
@@ -74,7 +86,7 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
         name="bookId"
         label="Book"
         required
-        options={availableBooks.map((book) => ({ value: book.id, label: `${book.title} (${book.availableCopies} available)` }))}
+        options={availableBooks.rows.map((book) => ({ value: book.id, label: `${book.title} (${book.availableCopies} available)` }))}
         emptyHint="No copies are currently available."
       />
       <SelectField
@@ -82,9 +94,9 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
         name="studentId"
         label="Student"
         required
-        options={students.filter((student) => student.status === "ACTIVE").map((student) => ({ value: student.id, label: `${student.lastName}, ${student.firstName} (${student.admissionNumber})` }))}
+        options={students.rows.map((student) => ({ value: student.id, label: `${student.lastName}, ${student.firstName} (${student.admissionNumber})` }))}
         emptyHint="Only active students can borrow."
-        hint="Only active students are listed."
+        hint="Only active students are listed. Search by name or admission number above."
       />
       <TextField id="borrow-due" name="dueAt" label="Due date" type="date" required hint="When the student must return the book." />
     </EntityDialog>
@@ -95,7 +107,7 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
       <PageHeader
         title="Library"
         description="Catalogue, copy availability, and circulation."
-        actions={canManage ? <>{newBookDialog}{availableBooks.length > 0 ? issueDialog : null}</> : undefined}
+        actions={canManage ? <>{newBookDialog}{availableBooks.total > 0 && students.total > 0 ? issueDialog : null}</> : undefined}
       />
 
       <FormFeedback
@@ -104,9 +116,13 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
         savedMessage="The library record is up to date."
         stateMessage="No copy of that book is available, or the loan is already closed."
       />
+      <div className="space-y-3">
+        <RecordSearch action={PATH} queryName="studentQ" label="Find a student for a library loan" placeholder="Name or admission number" defaultValue={query.studentQ} hiddenFilters={{ q: query.q, loansQ: query.loansQ, bookQ: query.bookQ, view: showReturned ? "all" : undefined }} resultSummary={`Showing ${students.rows.length} of ${students.total} active students`} />
+        <RecordSearch action={PATH} queryName="bookQ" label="Find a book to issue" placeholder="Title, author, or accession code" defaultValue={query.bookQ} hiddenFilters={{ q: query.q, loansQ: query.loansQ, studentQ: query.studentQ, view: showReturned ? "all" : undefined }} resultSummary={`Showing ${availableBooks.rows.length} of ${availableBooks.total} books with available copies`} />
+      </div>
       {!canManage ? <ReadOnlyNotice>Your role can review the library but cannot add books or manage loans.</ReadOnlyNotice> : null}
 
-      {books.length === 0 ? (
+      {bookPage.total === 0 && !query.q?.trim() ? (
         <EmptyState
           icon={Library}
           title="No books in the catalogue yet"
@@ -121,15 +137,25 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
             actions={
               <>
                 {overdueCount > 0 ? <Badge variant="destructive">{overdueCount} overdue</Badge> : null}
-                <Button size="sm" variant="outline" nativeButton={false} render={<a href={showReturned ? PATH : `${PATH}?view=all`} />}>
+                <Button size="sm" variant="outline" nativeButton={false} render={<a href={loanViewHref} />}>
                   {showReturned ? "Show open loans only" : "Show all loans"}
                 </Button>
               </>
             }
           >
+            <div className="space-y-4">
+            <RecordSearch
+              action={PATH}
+              queryName="loansQ"
+              label="Search loan history"
+              placeholder="Book, student, or admission number"
+              defaultValue={query.loansQ}
+              hiddenFilters={{ q: query.q, studentQ: query.studentQ, bookQ: query.bookQ, view: showReturned ? "all" : undefined }}
+              resultSummary={`Showing ${visibleLoans.length} of ${loanPage.total}`}
+            />
             {visibleLoans.length === 0 ? (
               <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-                {showReturned ? "No loans recorded yet." : "No books are currently on loan."}
+                {query.loansQ?.trim() ? "No loans match this search." : showReturned ? "No loans recorded yet." : "No books are currently on loan."}
               </p>
             ) : (
               <Table>
@@ -173,16 +199,19 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
                 </TableBody>
               </Table>
             )}
+            <RecordPagination path={PATH} page={loanPage.page} pageCount={loanPage.pageCount} filters={{ q: query.q, loansQ: query.loansQ, studentQ: query.studentQ, bookQ: query.bookQ, view: showReturned ? "all" : undefined }} label="Library loan history" queryName="loansPage" />
+            </div>
           </SectionCard>
 
-          <SectionCard title="Catalogue" description={`${books.length} title${books.length === 1 ? "" : "s"} on record.`}>
+          <SectionCard title="Catalogue" description={`${bookPage.total} title${bookPage.total === 1 ? "" : "s"} on record.`}>
             <div className="space-y-4">
               <RecordSearch
                 action={PATH}
                 label="Search the catalogue"
                 placeholder="Title, author, accession code, or ISBN"
                 defaultValue={query.q}
-                resultSummary={`Showing ${visibleBooks.length} of ${books.length}`}
+                hiddenFilters={{ loansQ: query.loansQ, studentQ: query.studentQ, bookQ: query.bookQ, view: showReturned ? "all" : undefined }}
+                resultSummary={`Showing ${visibleBooks.length} of ${bookPage.total}`}
               />
               {visibleBooks.length === 0 ? (
                 <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">No books match this search.</p>
@@ -216,6 +245,7 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
                   </TableBody>
                 </Table>
               )}
+              <RecordPagination path={PATH} page={bookPage.page} pageCount={bookPage.pageCount} filters={{ q: query.q, loansQ: query.loansQ, studentQ: query.studentQ, bookQ: query.bookQ, view: showReturned ? "all" : undefined }} label="Library catalogue" />
             </div>
           </SectionCard>
         </>

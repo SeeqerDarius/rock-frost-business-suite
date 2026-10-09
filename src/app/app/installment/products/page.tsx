@@ -12,7 +12,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listProducts, listProductCategories, getInstallmentSettings, getProcurementList } from "@/modules/installment/service";
 import { upsertProduct, addProductCategory, manageProductCategory, manageProductLifecycle } from "./actions";
 
@@ -107,6 +107,7 @@ export default async function InstallmentProductsPage({
 }) {
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("installment");
+  const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.HIREPURCHASE_PRODUCTS_MANAGE);
 
   if (!canManage) {
@@ -214,7 +215,7 @@ export default async function InstallmentProductsPage({
                     <div>
                       <p className="text-sm font-medium">{item.productName}</p>
                       <p className="text-xs text-muted-foreground">
-                        {item.quantity} unit{item.quantity === 1 ? "" : "s"} · avg {(item.averageProgress * 100).toFixed(0)}% paid · est. cost {formatMoney(item.totalCost, currency)}
+                        {item.quantity} unit{item.quantity === 1 ? "" : "s"} · avg {(item.averageProgress * 100).toFixed(0)}% paid · est. cost {money(item.totalCost, currency)}
                       </p>
                     </div>
                   </div>
@@ -244,9 +245,9 @@ export default async function InstallmentProductsPage({
               <TableRow key={product.id}>
                 <TableCell className="font-medium">{product.name}</TableCell>
                 <TableCell className="text-muted-foreground">{product.category}</TableCell>
-                <TableCell className="text-muted-foreground">{formatMoney(product.price, currency)}</TableCell>
+                <TableCell className="text-muted-foreground">{money(product.price, currency)}</TableCell>
                 <TableCell className="text-muted-foreground">
-                  {formatMoney(product.dailyAmount, currency)} × {product.duration}d
+                  {money(product.dailyAmount, currency)} × {product.duration}d
                 </TableCell>
                 <TableCell>
                   <Badge variant={product.active ? "default" : "outline"}>{product.active ? "Active" : "Inactive"}</Badge>

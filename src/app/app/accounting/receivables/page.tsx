@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { getReceivablesSummary } from "@/modules/accounting/service";
 
 export default async function AccountingReceivablesPage() {
@@ -14,7 +14,7 @@ export default async function AccountingReceivablesPage() {
   const customers = await getReceivablesSummary(tenant.organizationId);
   const totalOutstanding = customers.reduce((sum, customer) => sum + Number(customer.outstanding), 0);
   const totalOverdue = customers.reduce((sum, customer) => sum + Number(customer.overdue), 0);
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
 
   return <div className="space-y-6">
     <PageHeader title="Accounts Receivable" description="Customer balances, allocated receipts, overdue exposure, and statement history." />

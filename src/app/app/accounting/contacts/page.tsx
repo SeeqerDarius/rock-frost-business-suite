@@ -1,4 +1,5 @@
 import { Contact, Plus, Upload } from "lucide-react";
+import { listCountries, SUPPORTED_CURRENCIES } from "@/lib/localization";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -12,9 +13,13 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listContacts } from "@/modules/accounting/service";
-import { upsertContact, importContactsCsvAction } from "./actions";
+import { latestVatChecks } from "@/modules/tax/vat-checks";
+import { recheckContactVatAction, upsertContact, importContactsCsvAction } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
+  "invalid-vat": "That VAT/GST number does not match the expected format for the selected country.",
+  "invalid-vat-registry": "The EU VIES registry reports that this VAT number is not valid for intra-EU transactions. Check the number with the customer or supplier.",
+  "vat-check": "Add the contact's country and VAT number before checking it.",
   forbidden: "You don't have permission to manage contacts.",
   "invalid-input": "Please check that the name and email are valid.",
   "not-found": "That contact could not be found.",
@@ -28,7 +33,17 @@ const ERROR_MESSAGES: Record<string, string> = {
 const TYPE_LABELS: Record<string, string> = { CUSTOMER: "Customer", SUPPLIER: "Supplier", BOTH: "Customer and supplier" };
 const TYPE_BADGE: Record<string, "default" | "secondary" | "outline"> = { CUSTOMER: "default", SUPPLIER: "secondary", BOTH: "outline" };
 
-function ContactFields({ contact }: { contact?: { id: string; type: string; name: string; email: string | null; phone: string | null; address: string | null; taxIdentificationNumber: string | null } }) {
+/** Latest VAT check: registry-confirmed, not valid, registry unavailable, or format only. */
+function VatCheckBadge({ check }: { check: { status: string; level: string; checkedAt: Date; registeredName: string | null; consultationNumber: string | null } | null }) {
+  if (!check) return <div className="text-xs text-muted-foreground">Not checked</div>;
+  const date = check.checkedAt.toISOString().slice(0, 10);
+  if (check.status === "INVALID") return <Badge variant="destructive" className="mt-1">Not valid ({date})</Badge>;
+  if (check.status === "UNAVAILABLE") return <Badge variant="outline" className="mt-1">Registry unavailable ({date})</Badge>;
+  if (check.level === "REGISTRY") return <div className="mt-1 space-y-0.5"><Badge variant="secondary">VIES confirmed {date}</Badge>{check.registeredName ? <div className="text-xs text-muted-foreground">{check.registeredName}</div> : null}{check.consultationNumber ? <div className="text-xs text-muted-foreground">Consultation {check.consultationNumber}</div> : null}</div>;
+  return <Badge variant="outline" className="mt-1">Format only ({date})</Badge>;
+}
+
+function ContactFields({ contact }: { contact?: { id: string; type: string; name: string; email: string | null; phone: string | null; address: string | null; taxIdentificationNumber: string | null; currency: string | null; countryCode: string | null; vatNumber: string | null } }) {
   const idSuffix = contact ? `-${contact.id}` : "";
   return (
     <>
@@ -63,8 +78,28 @@ function ContactFields({ contact }: { contact?: { id: string; type: string; name
         </div>
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`taxIdentificationNumber${idSuffix}`}>TIN (Ghana Tax Identification Number)</Label>
-        <Input id={`taxIdentificationNumber${idSuffix}`} name="taxIdentificationNumber" defaultValue={contact?.taxIdentificationNumber ?? ""} />
+        <Label htmlFor={`taxIdentificationNumber${idSuffix}`}>Tax identification number</Label>
+        <Input id={`taxIdentificationNumber${idSuffix}`} name="taxIdentificationNumber" defaultValue={contact?.taxIdentificationNumber ?? ""} placeholder="TIN, EIN, or national tax ID" />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="space-y-2">
+          <Label htmlFor={`countryCode${idSuffix}`}>Country</Label>
+          <select id={`countryCode${idSuffix}`} name="countryCode" defaultValue={contact?.countryCode ?? ""} className="h-10 w-full rounded-md border bg-background px-3">
+            <option value="">Not specified</option>
+            {listCountries().map((country) => <option key={country.code} value={country.code}>{country.name}</option>)}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`vatNumber${idSuffix}`}>VAT/GST number</Label>
+          <Input id={`vatNumber${idSuffix}`} name="vatNumber" defaultValue={contact?.vatNumber ?? ""} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`currency${idSuffix}`}>Default currency</Label>
+          <select id={`currency${idSuffix}`} name="currency" defaultValue={contact?.currency ?? ""} className="h-10 w-full rounded-md border bg-background px-3">
+            <option value="">Base currency</option>
+            {SUPPORTED_CURRENCIES.map((code) => <option key={code} value={code}>{code}</option>)}
+          </select>
+        </div>
       </div>
       <div className="space-y-2">
         <Label htmlFor={`address${idSuffix}`}>Address</Label>
@@ -77,12 +112,18 @@ function ContactFields({ contact }: { contact?: { id: string; type: string; name
 export default async function AccountingContactsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; imported?: string; skipped?: string; error?: string }>;
+  searchParams: Promise<{ saved?: string; imported?: string; skipped?: string; error?: string; vat?: string }>;
 }) {
-  const { saved, imported, skipped, error } = await searchParams;
+  const { saved, imported, skipped, error, vat } = await searchParams;
   const tenant = await requireModuleAccess("accounting");
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_CONTACTS_MANAGE);
   const contacts = await listContacts(tenant.organizationId);
+  const vatChecks = await latestVatChecks(tenant.organizationId, contacts.filter((contact) => contact.vatNumber).map((contact) => contact.id));
+  const vatNotice: Record<string, string> = {
+    valid: " The VAT number was confirmed and the result recorded.",
+    invalid: " The VAT number was reported as not valid; the result is recorded.",
+    unavailable: " The VAT registry could not be reached, so only the number's format was checked. Check it again later.",
+  };
 
   return (
     <div className="space-y-6">
@@ -104,6 +145,7 @@ export default async function AccountingContactsPage({
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400">
           Saved.
           {imported !== undefined ? ` Imported ${imported} contact${imported === "1" ? "" : "s"}.${Number(skipped) > 0 ? ` Skipped ${skipped} duplicate or invalid row${skipped === "1" ? "" : "s"}.` : ""}` : ""}
+          {vat && vatNotice[vat] ? vatNotice[vat] : ""}
         </div>
       ) : null}
       {error && ERROR_MESSAGES[error] ? (
@@ -123,6 +165,7 @@ export default async function AccountingContactsPage({
               <TableHead>Email</TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>TIN</TableHead>
+              <TableHead>VAT number</TableHead>
               {canManage ? <TableHead /> : null}
             </TableRow>
           </TableHeader>
@@ -136,11 +179,27 @@ export default async function AccountingContactsPage({
                 <TableCell className="text-muted-foreground">{contact.email ?? "-"}</TableCell>
                 <TableCell className="text-muted-foreground">{contact.phone ?? "-"}</TableCell>
                 <TableCell className="text-muted-foreground">{contact.taxIdentificationNumber ?? "-"}</TableCell>
+                <TableCell className="text-sm">
+                  {contact.vatNumber ? (
+                    <>
+                      <div className="text-muted-foreground">{contact.countryCode ? `${contact.countryCode} ` : ""}{contact.vatNumber}</div>
+                      <VatCheckBadge check={vatChecks.get(contact.id) ?? null} />
+                    </>
+                  ) : "-"}
+                </TableCell>
                 {canManage ? (
                   <TableCell className="text-right">
-                    <EntityDialog trigger={<Button size="sm" variant="ghost">Edit</Button>} title="Edit contact" action={upsertContact} submitLabel="Save changes">
-                      <ContactFields contact={contact} />
-                    </EntityDialog>
+                    <div className="flex justify-end gap-1">
+                      {contact.vatNumber && contact.countryCode ? (
+                        <form action={recheckContactVatAction}>
+                          <input type="hidden" name="contactId" value={contact.id} />
+                          <Button size="sm" variant="ghost" type="submit">Check VAT</Button>
+                        </form>
+                      ) : null}
+                      <EntityDialog trigger={<Button size="sm" variant="ghost">Edit</Button>} title="Edit contact" action={upsertContact} submitLabel="Save changes">
+                        <ContactFields contact={contact} />
+                      </EntityDialog>
+                    </div>
                   </TableCell>
                 ) : null}
               </TableRow>

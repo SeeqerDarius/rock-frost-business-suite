@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listAccounts, getCashbook, listReconciliations } from "@/modules/accounting/service";
 import { createOpeningBalance, reconcileAccount, startBankStatementImport } from "./actions";
 
@@ -18,7 +18,7 @@ export default async function CashbookPage({ searchParams }: { searchParams: Pro
   const [accounts, entries, reconciliations] = await Promise.all([listAccounts(tenant.organizationId), getCashbook(tenant.organizationId), listReconciliations(tenant.organizationId)]);
   const liquidity = accounts.filter((account) => account.liquidityType !== "NONE");
   const canCashbook = hasPermission(tenant, PERMISSIONS.ACCOUNTING_CASHBOOK_MANAGE); const canReconcile = hasPermission(tenant, PERMISSIONS.ACCOUNTING_RECONCILIATIONS_MANAGE);
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, tenant.organization.currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
   return <div className="space-y-6"><PageHeader title="Cash and bank" description="Control opening balances, cashbook movements, bank balances, and period reconciliations." />
     {params.saved || params.reconciled ? <p className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm">Accounting record saved.</p> : null}
     {params.error ? <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{params.error === "period-closed" ? "The transaction date is in a closed accounting period." : "The accounting control could not be completed. Review the values and permissions."}</p> : null}

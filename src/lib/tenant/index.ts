@@ -4,13 +4,13 @@ import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { moduleRegistry } from "@/platform/modules/registry";
-import { expandProductModuleKeys, primaryProductKey } from "@/platform/modules/product-groups";
 import { hasPlatformRole } from "@/lib/auth/platform-identity";
+import { ACTIVE_ORGANIZATION_STATUSES, entitledModuleKeysForOrganization } from "./entitlements";
 
 export const ACTIVE_ORG_COOKIE = "active_org";
 
 /** Organization statuses under which the organization may be used normally. */
-export const ACTIVE_ORGANIZATION_STATUSES = new Set(["ACTIVE", "TRIAL"]);
+export { ACTIVE_ORGANIZATION_STATUSES, entitledModuleKeysForOrganization } from "./entitlements";
 
 export interface TenantContext {
   userId: string;
@@ -23,6 +23,10 @@ export interface TenantContext {
     status: string;
     currency?: string;
     timezone?: string;
+    /** Presentation settings; see src/lib/org-format.ts. Null locale derives from currency. */
+    locale?: string | null;
+    dateFormat?: string;
+    numberFormat?: string;
   };
   role: string | null;
   roleId: string | null;
@@ -121,47 +125,8 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
     return null;
   }
 
-  const [enabledModules, subscriptionModules, activeSubscriptions] = await Promise.all([
-    db.organizationModule.findMany({
-      where: { organizationId: membership.organizationId, enabled: true, module: { status: "ACTIVE" } },
-      include: { module: true },
-    }),
-    // A CANCELLED subscription is deliberately excluded from gating: once an
-    // agreement is cancelled, an operator re-enabling the module directly
-    // (OrganizationModule.enabled) is a real, current decision that must not
-    // be permanently overridden by a defunct record. PENDING_PAYMENT,
-    // PAST_DUE, DRAFT, and EXPIRED still gate access - those represent an
-    // agreement that is unpaid, lapsed, or still awaiting action, not one
-    // the platform has closed out.
-    db.subscription.findMany({
-      where: { organizationId: membership.organizationId, status: { not: "CANCELLED" } },
-      select: { moduleId: true, entitledModuleKeys: true, module: { select: { code: true } } },
-      distinct: ["moduleId"],
-    }),
-    db.subscription.findMany({
-      where: {
-        organizationId: membership.organizationId,
-        status: "ACTIVE",
-        startsAt: { lte: new Date() },
-        endsAt: { gt: new Date() },
-      },
-      select: { moduleId: true, entitledModuleKeys: true, module: { select: { code: true } } },
-    }),
-  ]);
-
   const permissions = membership.role?.rolePermissions.map((rp) => rp.permission.key) ?? [];
-  const subscriptionProductKey = (item: { moduleId: string; module?: { code: string } }) =>
-    primaryProductKey(item.module?.code ?? enabledModules.find((assignment) => assignment.moduleId === item.moduleId)?.module.code ?? item.moduleId);
-  const subscriptionControlled = new Set(subscriptionModules.flatMap((item) =>
-    item.entitledModuleKeys?.length ? item.entitledModuleKeys.map(primaryProductKey) : [subscriptionProductKey(item)]));
-  const paidAndCurrent = new Set(activeSubscriptions.flatMap((item) =>
-    item.entitledModuleKeys?.length ? item.entitledModuleKeys.map(primaryProductKey) : [subscriptionProductKey(item)]));
-  const enabledModuleKeys = expandProductModuleKeys(enabledModules
-    .filter((om) => {
-      const productKey = primaryProductKey(om.module.code);
-      return !subscriptionControlled.has(productKey) || paidAndCurrent.has(productKey);
-    })
-    .map((om) => om.module.code));
+  const enabledModuleKeys = await entitledModuleKeysForOrganization(membership.organizationId);
   const accessibleModuleKeys = enabledModuleKeys.filter((key) => {
     const module_ = moduleRegistry.find((mod) => mod.key === key);
     if (!module_ || module_.status !== "available") return false;
@@ -182,6 +147,9 @@ export async function getCurrentTenant(): Promise<TenantContext | null> {
       status: membership.organization.status,
       currency: membership.organization.currency,
       timezone: membership.organization.timezone,
+      locale: membership.organization.locale,
+      dateFormat: membership.organization.dateFormat,
+      numberFormat: membership.organization.numberFormat,
     },
     role: membership.role?.name ?? null,
     roleId: membership.roleId,

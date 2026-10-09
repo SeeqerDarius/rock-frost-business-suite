@@ -1,5 +1,19 @@
 # Architecture & Tooling Decisions
 
+## 2026-10-05 - The CI dependency audit gates production (runtime) dependencies only; the shadcn CLI is a devDependency
+
+**Decision:** The CI security job now runs `npm audit --omit=dev --audit-level=high`, and `shadcn` (a component CLI whose only runtime-free use is the build-time `@import "shadcn/tailwind.css"` in `globals.css`, alongside the already-dev `tailwindcss`) moved from `dependencies` to `devDependencies` at the same `^4.13.1` range. The lockfile change only marks its subtree `"dev": true`; no versions changed.
+
+**Why:** GHSA-vfj7-8cjw-p6xm (`braces <= 3.0.3`, high, no patched release) entered the npm advisory feed after the last green `main` run and reaches the project only through build and lint tooling (`shadcn` → `fast-glob` → `micromatch`, `eslint-config-next`, `ts-morph`). None of it ships in the deployed server bundle, but the full-tree audit blocked every release. The owner chose to gate runtime dependencies, matching the existing guidance in `docs/OPERATIONS_AND_MONITORING.md`. Dev-tooling advisories should still be reviewed with a full `npm audit` on dependency changes; when a patched `braces` ships, update the lockfile.
+
+## 2026-10-01 - Clear audited dependency fixes with a security-clean lockfile and preserve the single-worker integration contract on Vitest 4
+
+**Decision:** Resolve the CI security audit findings by upgrading Next.js and its matching ESLint config to 16.3.8, Sharp to 0.35.4, and Vitest to 4.1.11, then regenerate the lockfile and apply the remaining compatible transitive security fixes. Keep the PostgreSQL integration runner on the forks pool with `maxWorkers: 1`, `fileParallelism: false`, and `isolate: false`.
+
+**Why:** The initial release PR's `npm audit --audit-level=high` failed on direct Next.js/Sharp/Vitest advisories and vulnerable transitive dependencies. A clean audit is a release requirement. Vitest 4 removes `poolOptions`; using the documented worker limit retains the integration suite's deliberate single shared module graph and prevents concurrent files from racing in the shared disposable database. The Payroll tenant-isolation fixture also now activates its employees through the HR lifecycle before processing a run, matching the production eligibility rule.
+
+**Validation and gate:** A clean `npm ci --ignore-scripts` reported zero vulnerabilities; after Prisma Client generation, the full unit suite passed 1,347/1,347, targeted accounting tests passed 6/6, TypeScript passed, ESLint passed with two existing PWA hook warnings, and the Next.js 16.3.8 production build generated all 249 pages. The disposable-Postgres integration suite remains a required PR gate because no local disposable test URL is configured. See the current dated entry in `OPERATOR_HANDOFF.md` for the release state.
+
 ## 2026-08-29 - Online Collections activation, Phase B3: the guided wizard previews the readiness check with `commit: false`, never as a side effect of a page load
 
 **Decision:** `runSettlementReadinessCheck()` (Phase B1) gained a `commit` option, defaulting to `true` so every existing caller and test keeps its original committing behavior unchanged. The guided activation wizard's readiness step calls it with `commit: false` on every ordinary page render (a GET request), then calls it again with `commit: true` only from the explicit "Activate" Server Action the administrator submits.
@@ -285,4 +299,135 @@ All three are safe for unrestricted commercial, closed-source use.
 - Environment variable names (recorded in a private, non-committed migration note — values were never printed or committed).
 - Approved brand assets (`public/RFG.png`, favicon, apple-touch-icon, OG image, manifest, robots.txt, sitemap.xml).
 
+---
+
+## 2026-10-01 — Reliable Accounting delivery for School fees and Payroll
+
+**Decision:** Keep School fee collection and Payroll completion authoritative in their source modules, then post to Accounting through its public, idempotent service. Record delivery status on the source records and let users with the source-module permission retry. A posting failure must not erase a real fee receipt or completed payroll run.
+
+**Accounting treatment:** School collections continue through the School revenue account. Payroll accrues gross wages as a debit to `5190 Payroll Salaries and Wages`, credits net pay to `2230 Payroll Net Payable`, and credits aggregate deductions to `2220 Payroll Deductions Payable`. The account numbers avoid existing rent, payroll template, and Fleet accounts. Decimal totals are validated as balanced before posting. This does not model employee disbursements or statutory deduction classifications.
+
+**Delivery states:** `PENDING`, `POSTED`, `FAILED`, and `NOT_REQUIRED` distinguish an unattempted posting, successful posting, recoverable failure, and Accounting being inactive. Retry queries are organization-scoped and use the same source identity, so repeated attempts cannot create duplicate journals. Refunded School payments are not offered for retry.
+
+**Migration and release gate:** additive status enums/columns/indexes are in migrations `20261001090000_school_fee_accounting_retry` and `20261001100000_payroll_accounting_accrual`. Apply and test these on the guarded disposable PostgreSQL service before production release.
+
 **What was NOT preserved:** the previous `app/`, `components/`, and `lib/` implementation code, and the previous roadmap/architecture docs (archived under `docs/archive/previous-implementation/`, marked obsolete, not authoritative).
+
+## 2026-10-01 — Process School payroll inputs through Payroll
+
+**Decision:** School remains the owner of its education-specific adjustment
+records, while HR remains the employee authority and Payroll owns run
+calculation. School adjustments link to an HR employee using a
+same-organization database relation. During migration, matching legacy IDs
+are linked; unmatched values are retained in a separate legacy field for
+authorized recovery instead of being discarded or guessed.
+
+Payroll consumes pending earnings and deductions only in a full calendar
+month run. Earnings increase gross before the organization's configured
+default tax rate is applied; deductions reduce net and flow to the existing
+generic deductions payable Accounting account. Linking, processing and run
+completion are organization-scoped and atomic. A failed run does not mark
+inputs processed. Partial-month proration, statutory deduction types and
+salary disbursement remain separate decisions.
+
+## 2026-10-06 — Global localization lives on Organization; exchange rates are append-only
+
+**Decision:** Organization localization (legal identity, base currency,
+locale, date and number formats, fiscal year, accounting basis, tax
+jurisdiction) extends the existing `Organization` row instead of a separate
+settings table, because every request already loads the organization and the
+values are tenant identity. Country behavior comes from one catalog in
+`src/lib/localization.ts`, not country conditionals across the app. The base
+currency comes only from saved settings (IP and browser locale may only
+suggest a country during signup) and is locked once accounting records exist,
+for tenant administrators and platform operators alike. Exchange rates are
+organization-scoped, append-only rows; documents will snapshot the rate they
+used, so recording or correcting a rate never changes history. A provider
+interface allows a live FX feed later without coupling Accounting to a vendor.
+
+## 2026-10-06 — Multi-currency documents keep their own currency and a fixed rate
+
+**Decision:** Accounting documents store amounts in their own currency with
+an exchange rate fixed at creation, and the ledger stays in the base currency.
+Each posted component is converted at the stored rate (so voids reproduce the
+original postings exactly) and receivables/payables are relieved at the booked
+rate, with settlement differences posted as realized FX. Base-currency
+documents post byte-identical journals to preserve existing behavior.
+Unrealized FX is an explicit, user-run revaluation that reverses the next day
+rather than a change to any document's carrying amount. Credit notes adjust
+their invoice at the invoice's rate. FX accounts are created lazily so
+single-currency charts are unchanged.
+
+## 2026-10-06 — Tax engine: tenant-scoped versioned configuration, pure calculation, document snapshots
+
+**Decision:** Tax configuration (jurisdictions, rates, rules, registrations,
+exemptions) is tenant-scoped data seeded from static, versioned jurisdiction
+packs; packs never run at calculation time and re-applying one never
+overwrites administrator changes. Calculation is a pure Decimal engine with
+no country logic. A rate change is a new version from a future date and a
+document stores an immutable tax-line snapshot, so history never
+recalculates. Each component posts to its own account by kind so sales tax,
+VAT, levies, use tax, and excise never share one balance. Legacy tax codes
+remain fully supported; both paths write the same per-component tax ledger so
+reporting reads one source. Collection is skipped only where an administrator
+has explicitly disabled it; the system never infers legal nexus.
+
+## 2026-10-06 — The US pack seeds structure, not sales tax rates
+
+**Decision:** The US jurisdiction pack seeds every state, nexus tracking,
+categories, and separate federal/employment/excise accounts, but creates no
+sales tax rates or rules. Sales tax depends on state, county, city, district,
+product taxability, and the organization's own nexus, and rates change often;
+seeding rates would present unverified legal determinations as configuration.
+Reference state base rates are shown as suggestions to verify. The EU pack is
+built per home member state (EU VAT is per country, not one jurisdiction),
+and the UK, Switzerland, and Norway are separate packs. VAT numbers are only
+format-checked until a registry provider is configured, and the UI says so.
+
+## 2026-10-07 — Contracts: separate public listing from availability; private document storage
+
+**Decision:** A module can be fully available (catalogue, entitlement,
+operator enablement, subscriptions) while not marketed publicly, through a
+`publicListing` flag that public pages, pricing, self-service signup, the
+sitemap, and the login page respect. Contract Management launches this way
+until its marketing page, screenshot, and confirmed price exist. Contract
+documents use private storage (bytes in `FileContent`, never public URLs),
+served only by an authorized route that re-checks organization, entitlement,
+permission, and confidentiality, verifies a SHA-256 checksum, and audits the
+download. Uploads use a route handler capped at 4 MB because of the platform
+request-body limit; an object store with direct uploads can replace the
+database backend behind the same adapter. Confidential contracts are not
+opened by an administrator permission alone unless the organization enables
+that policy, and restricted contracts always need an explicit grant.
+
+## 2026-10-08: Contract approvals, reminders, and segregation of duties
+
+**Decision:** Contract approval is rule-based. The first active rule by
+priority whose conditions match a draft decides an ordered chain of member
+or role steps, copied into the approval round at submission so later rule
+edits never change a running request. Value thresholds apply only in their
+own currency; currencies are never converted for approval. A contract under
+approval is locked, and changing an approved contract returns it to draft.
+By default nobody approves their own submission or applies their own
+amendment (organizations can opt out for very small teams). The current
+step's approver may open a confidential contract only while that step is
+pending. Scheduled jobs send reminders but never change a contract's
+status: renewal, expiry, and termination are always human decisions.
+Reminders are delivered once per threshold band through a unique delivery
+log, so reruns cannot duplicate them. Internal acknowledgements are
+labelled as such and never presented as electronic signatures; an external
+provider will be added behind the reserved provider method.
+
+## 2026-10-09: Contract billing plans, links, and calculated risk
+
+**Decision:** Contract billing schedules are plans, not accounting. They
+never create invoices, bills, or journal entries; a line becomes invoiced
+only by linking an issued Accounting invoice or bill in the same
+organization and currency, and each document settles one line. Links to
+other modules are relationships only, require access to the target module
+to create, and reveal the target's details only to users who can access
+that module. Calculated risk is a transparent, configurable points score
+shown as guidance beside the risk level people assign; it never overwrites
+that level, compares values only against a threshold in the contract's own
+currency, and hides the value factor from users without financial access.
+Reports never add values across currencies.

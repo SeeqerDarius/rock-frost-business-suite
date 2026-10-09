@@ -20,8 +20,8 @@ import { createPublicMetadata } from "@/lib/seo";
 import { PublicHero } from "@/components/marketing/public-hero";
 
 export const metadata = createPublicMetadata({
-  title: "Technology Company Ghana | Rock Frost Technologies",
-  description: "Rock Frost Technologies designs premium business software, e-commerce platforms, websites, integrations, cloud systems, and tailored digital solutions for ambitious organizations.",
+  title: "Custom Software Development Company in Ghana",
+  description: "Rock Frost Technologies builds custom business software, e-commerce platforms, websites and cloud systems for ambitious Ghanaian organizations.",
   path: "/company",
   keywords: ["software development company Ghana", "ecommerce website development Ghana", "IT solutions company Ghana", "custom business software Africa", "Rock Frost Technologies"],
 });
@@ -57,7 +57,7 @@ export default function CompanyPage() {
       <div className="mx-auto max-w-6xl px-6 py-20">
         <div className="grid gap-12 lg:grid-cols-[.8fr_1.2fr] lg:items-start"><div><p className="text-sm font-medium text-blue-300">Selected work</p><h2 className="mt-3 text-3xl font-semibold tracking-tight">Digital products built for real organizations.</h2><p className="mt-4 leading-7 text-zinc-400">Our portfolio spans proprietary platforms and commissioned client solutions. Each engagement is shaped around the client’s identity, customers, workflows, and commercial objectives.</p></div>
           <div className="space-y-4">
-            <PortfolioCard icon={Landmark} title="Rock Frost Business Suite" type="Proprietary SaaS platform" description="A secure modular operating platform covering fleet, installment sales, CRM, inventory, accounting, HR, payroll, procurement, projects, analytics, POS, hotel, school, pharmacy, and hospital operations." href="/modules" />
+            <PortfolioCard icon={Landmark} title="Rock Frost Business Suite" type="Proprietary SaaS platform" description="A secure modular operating platform covering accounting, HR and payroll, inventory and procurement, POS, CRM, projects, analytics, and industry operations for schools, hostels, hospitals, pharmacies, hotels, fleets, and installment sales." href="/modules" />
             <PortfolioCard icon={Network} title="HR Network / Connect" type="Professional network website" description="A digital presence created for an HR-focused professional community, supporting visibility, connection, events, and stakeholder engagement." />
             <PortfolioCard icon={ShoppingBag} title="Blend & Beam" type="E-commerce website" description="An online retail experience for beauty, salon, barbering, and lifestyle products, including product discovery, catalogue organization, pricing, and commerce journeys." href="https://blendandbeam.com/" external />
             <PortfolioCard icon={Code2} title="Bespoke technology solutions" type="Confidential and commissioned work" description="Websites, internal tools, operational systems, integrations, automation, and technology support delivered for organizations with requirements beyond an off-the-shelf product." />

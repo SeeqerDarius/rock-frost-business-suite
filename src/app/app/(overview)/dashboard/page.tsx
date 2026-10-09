@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { organizationNumberLocale } from "@/lib/org-format";
 import { LayoutGrid } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
@@ -93,11 +94,11 @@ export default async function OrganizationDashboardPage({ searchParams }: { sear
               </TabsList>
               <TabsContent value="trend" className="mt-6">
                 <p className="mb-2 text-xs font-medium text-muted-foreground">Posted revenue across every module</p>
-                <PeriodicTrendChart data={revenueInsights.trends} series={[{ key: "revenue", label: "Revenue" }]} currency={tenant.organization.currency} />
+                <PeriodicTrendChart data={revenueInsights.trends} series={[{ key: "revenue", label: "Revenue" }]} currency={tenant.organization.currency} locale={organizationNumberLocale(tenant.organization)} />
               </TabsContent>
               <TabsContent value="by-module" className="mt-6">
                 <p className="mb-2 text-xs font-medium text-muted-foreground">Lifetime revenue by module</p>
-                <BreakdownDonutChart data={revenueInsights.byModule} currency={tenant.organization.currency} />
+                <BreakdownDonutChart data={revenueInsights.byModule} currency={tenant.organization.currency} locale={organizationNumberLocale(tenant.organization)} />
               </TabsContent>
             </Tabs>
           </CardContent>

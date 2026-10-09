@@ -50,7 +50,7 @@ function appendPriceDigit(field: string, digit: string): string {
   return field + digit;
 }
 
-export function SaleCart({ items: initialItems, categories: initialCategories, organizationId, userId, currency }: { items: PickerItem[]; categories: PickerCategory[]; organizationId: string; userId: string; currency: string }) {
+export function SaleCart({ items: initialItems, categories: initialCategories, organizationId, userId, currency, locale }: { items: PickerItem[]; categories: PickerCategory[]; organizationId: string; userId: string; currency: string; locale: string }) {
   const [items, setItems] = useState(initialItems);
   const [categories, setCategories] = useState(initialCategories);
   const [nextKey, setNextKey] = useState(2);
@@ -274,9 +274,9 @@ export function SaleCart({ items: initialItems, categories: initialCategories, o
                     className="h-7"
                   />
                 )}
-                <p className="text-xs text-muted-foreground">{line.quantity} x {formatMoney(line.unitPrice, currency)}</p>
+                <p className="text-xs text-muted-foreground">{line.quantity} x {formatMoney(line.unitPrice, currency, locale)}</p>
               </div>
-              <p className="w-20 shrink-0 text-right font-medium">{formatMoney(lineTotal(line), currency)}</p>
+              <p className="w-20 shrink-0 text-right font-medium">{formatMoney(lineTotal(line), currency, locale)}</p>
               <Button type="button" variant="ghost" size="icon" aria-label="Remove line" onClick={(event) => { event.stopPropagation(); removeLine(line.key); }}>
                 <Trash2 />
               </Button>
@@ -301,7 +301,7 @@ export function SaleCart({ items: initialItems, categories: initialCategories, o
         </div>
 
         <div className="rounded-lg border p-3">
-          <div className="mb-3 flex items-center justify-between"><p className="font-medium">Payments</p><p className="text-lg font-semibold">Total {formatMoney(total, currency)}</p></div>
+          <div className="mb-3 flex items-center justify-between"><p className="font-medium">Payments</p><p className="text-lg font-semibold">Total {formatMoney(total, currency, locale)}</p></div>
           {!suspended ? payments.map((payment, index) => (
             <div key={payment.key} className="mb-2 grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
               <select className="h-8 rounded-lg border bg-background px-2 text-sm" value={payment.method} onChange={(event) => setPayments((current) => current.map((entry) => entry.key === payment.key ? { ...entry, method: event.target.value } : entry))}>
@@ -328,7 +328,7 @@ export function SaleCart({ items: initialItems, categories: initialCategories, o
 
       <div>
         <Label className="mb-2 block">Products</Label>
-        <ProductPicker items={items} categories={categories} onAddItem={addToCart} onItemCreated={onItemCreated} isOnline={isOnline} currency={currency} />
+        <ProductPicker items={items} categories={categories} onAddItem={addToCart} onItemCreated={onItemCreated} isOnline={isOnline} currency={currency} locale={locale} />
       </div>
     </div>
   );

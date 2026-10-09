@@ -1,5 +1,6 @@
 import { BarChart3, Lock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
+import { organizationNumberLocale } from "@/lib/org-format";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { PeriodicTrendChart, BreakdownDonutChart } from "@/components/dashboard/charts";
@@ -93,7 +94,7 @@ export default async function FleetReportsPage() {
             <CardDescription>Verified fleet payments over time.</CardDescription>
           </CardHeader>
           <CardContent>
-            <PeriodicTrendChart data={paymentTrends.trends} series={[{ key: "revenue", label: "Revenue" }]} currency={currency} />
+            <PeriodicTrendChart data={paymentTrends.trends} series={[{ key: "revenue", label: "Revenue" }]} currency={currency} locale={organizationNumberLocale(tenant.organization)} />
           </CardContent>
         </Card>
       </div>

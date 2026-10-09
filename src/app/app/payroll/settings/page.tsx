@@ -50,7 +50,7 @@ export default async function PayrollSettingsPage({
             <Percent className="size-5 text-muted-foreground" />
             <CardTitle>Default tax rate</CardTitle>
           </div>
-          <CardDescription>Applied as a flat deduction against gross pay when a run is processed.</CardDescription>
+          <CardDescription>{settings.deductionMode === "RULES" ? "Not used while Payroll, Deductions is set to deduction rules. " : "Applied as a flat deduction against gross pay when a run is processed. "}Statutory deductions with wage caps and employer contributions are configured in Payroll, Deductions.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <form action={saveDefaultTaxRate} className="space-y-4">

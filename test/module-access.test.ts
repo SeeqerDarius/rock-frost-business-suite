@@ -38,6 +38,7 @@ const MODULE_KEYS = [
   "projects",
   "school",
   "hostel",
+  "contracts",
 ] as const;
 
 function tenant(overrides: Record<string, unknown> = {}) {
@@ -176,7 +177,16 @@ describe("module authorization source coverage", () => {
     // 136, up from 135: the School exam broadsheet page, requireModuleAccess("school").
     // 138, up from 136: the School parent/student portal page and the
     // staff-facing Portal Access page, both requireModuleAccess("school").
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(138);
+    // 139, up from 138: the School fee receipt page requires School access.
+    // 140, up from 139: the School academic-year rollover page requires School access.
+    // 141, up from 140: the Accounting Exchange Rates page, requireModuleAccess("accounting").
+    // 142, up from 141: the Accounting Tax and Compliance page, requireModuleAccess("accounting").
+    // 143, up from 142: the Accounting Tax Reports page, requireModuleAccess("accounting").
+    // 151, up from 143: Contract Management joins the sweep with 8 guarded pages (dashboard, register, new, detail, edit, templates, clauses, settings).
+    // 156, up from 155: the Payroll Deductions page, requireModuleAccess("payroll").
+    // 162, up from 156: School communications adds six guarded pages (Messages, a conversation, Announcements, and the portal's Messages, conversation, and Announcements), requireModuleAccess("school").
+    // 164, up from 162: School chat replaces the four conversation pages (staff and portal list and detail) with six (chat list, a chat, group info, new chat, broadcast, archived), requireModuleAccess("school").
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(164);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
     // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
     // all Hostel Server Actions, same shape as School's) joins the sweep
@@ -198,7 +208,13 @@ describe("module authorization source coverage", () => {
     // 68, up from 67: the bank-reconciliation workspace's actions.ts, requireModuleAccess("accounting").
     // 69 adds School Staff invitation and access-management actions.
     // 70, up from 69: the School Portal Access actions.ts (guardian/student portal invites), requireModuleAccess("school").
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(70);
+    // 71, up from 70: the Accounting Exchange Rates actions.ts, requireModuleAccess("accounting").
+    // 72, up from 71: the Accounting Tax and Compliance actions.ts, requireModuleAccess("accounting").
+    // 73, up from 72: Contract Management's single actions.ts, requireModuleAccess("contracts").
+    // 74, up from 73: the Payroll Deductions actions.ts, requireModuleAccess("payroll").
+    // 77, up from 74: School communications adds three guarded actions files (messages, announcements, portal messages), requireModuleAccess("school").
+    // 76, down from 77: one School chat actions file replaces the staff and portal conversation actions files.
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(76);
 
     for (const { moduleKey, filePath } of guardedFiles) {
       const source = readFileSync(filePath, "utf8");

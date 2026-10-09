@@ -59,7 +59,7 @@ function seedOnePeriod() {
   mocks.getAccountBalancesAsOf.mockResolvedValueOnce(ACCOUNTS_AT_END).mockResolvedValueOnce(ACCOUNTS_AT_START);
   mocks.getCashFlowStatement.mockResolvedValueOnce(CASH_FLOW);
   mockDb.accountingJournalEntry.findMany.mockResolvedValueOnce(JOURNAL_ENTRIES);
-  mockDb.accountingInvoice.aggregate.mockResolvedValueOnce({ _sum: { amount: "25000.00" } });
+  mockDb.accountingInvoice.aggregate.mockResolvedValueOnce({ _sum: { baseAmount: "25000.00" } });
   mockDb.accountingBill.findMany.mockResolvedValueOnce([{ amount: "18000.00" }]);
 }
 
@@ -115,7 +115,7 @@ describe("getFinancialBenchmarks: ratio formulas against a hand-computed fixture
     mocks.getAccountBalancesAsOf.mockResolvedValueOnce([]).mockResolvedValueOnce([]); // no accounts at all -> zero liabilities/equity/income
     mocks.getCashFlowStatement.mockResolvedValueOnce({ ...CASH_FLOW, operating: 0, cashReceived: 0, cashSpent: 0 });
     mockDb.accountingJournalEntry.findMany.mockResolvedValueOnce([]);
-    mockDb.accountingInvoice.aggregate.mockResolvedValueOnce({ _sum: { amount: null } });
+    mockDb.accountingInvoice.aggregate.mockResolvedValueOnce({ _sum: { baseAmount: null } });
     mockDb.accountingBill.findMany.mockResolvedValueOnce([]);
 
     const result = await dashboard.getFinancialBenchmarks(ORG, "month", "GHS", NOW);
@@ -152,7 +152,7 @@ describe("getFinancialComparison: current vs prior period, with the correct out-
     mockDb.accountingJournalEntry.findMany.mockResolvedValueOnce([
       { lines: [{ debit: "0.00", credit: "20000.00", account: { type: "REVENUE" } }, { debit: "16000.00", credit: "0.00", account: { type: "EXPENSE" } }] },
     ]);
-    mockDb.accountingInvoice.aggregate.mockResolvedValueOnce({ _sum: { amount: "20000.00" } });
+    mockDb.accountingInvoice.aggregate.mockResolvedValueOnce({ _sum: { baseAmount: "20000.00" } });
     mockDb.accountingBill.findMany.mockResolvedValueOnce([{ amount: "16000.00" }]);
 
     const result = await dashboard.getFinancialComparison(ORG, "month", NOW);
@@ -191,6 +191,7 @@ describe("getTopInvoices", () => {
     expect(rows[1].createdByName).toBe("Mitchell Admin");
     expect(rows[1].outstanding).toBeCloseTo(0, 2);
     const callArg = mockDb.accountingInvoice.findMany.mock.calls[0][0];
-    expect(callArg.orderBy).toEqual({ amount: "desc" });
+    // Ranked by base-currency value so mixed-currency invoices compare correctly.
+    expect(callArg.orderBy).toEqual({ baseAmount: "desc" });
   });
 });

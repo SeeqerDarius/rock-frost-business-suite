@@ -1,3 +1,5 @@
+import { cookies } from "next/headers";
+import { PAYROLL_FLASH_COOKIE } from "@/modules/payroll/flash";
 import { PlayCircle, Plus } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
@@ -8,9 +10,9 @@ import { Input } from "@/components/ui/input";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { listRuns } from "@/modules/payroll/service";
-import { createNewRun, processExistingRun, cancelExistingRun } from "./actions";
+import { createNewRun, processExistingRun, cancelExistingRun, retryPayrollAccountingPosting } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
   forbidden: "You don't have permission to manage payroll runs.",
@@ -18,6 +20,12 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-state": "That action isn't valid for this run's current status.",
   "no-compensation": "No active employees have compensation set up yet. Add compensation before processing.",
   "not-found": "That payroll run could not be found.",
+  "posting-not-retryable": "That Payroll run is not available for Accounting posting. Refresh the page and check its status.",
+  "school-inputs-unlinked": "A School payroll input still needs an HR employee link. Open School Payroll and link the input before processing this month.",
+  "school-inputs-employee-ineligible": "A School payroll input belongs to an employee without active Payroll compensation. Check the employee's HR status and Payroll compensation before processing.",
+  "school-inputs-period-mismatch": "School payroll inputs are monthly. Process them with a run covering the full calendar month, or adjust the run dates.",
+  "school-inputs-deductions-exceed-net": "A School payroll deduction is greater than the employee's take-home pay. Correct the input before processing this run.",
+  "school-inputs-changed": "A School payroll input changed while this run was being processed. Refresh and try again.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
@@ -27,21 +35,30 @@ const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "seco
   CANCELLED: "destructive",
 };
 
+const POSTING_STATUS_BADGE: Record<string, "default" | "outline" | "destructive"> = {
+  PENDING: "outline",
+  POSTED: "default",
+  FAILED: "destructive",
+  NOT_REQUIRED: "outline",
+};
+
 export default async function PayrollRunsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string }>;
+  searchParams: Promise<{ saved?: string; error?: string; posting?: string }>;
 }) {
-  const { saved, error } = await searchParams;
+  const { saved, error, posting } = await searchParams;
   const tenant = await requireModuleAccess("payroll");
+  const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.PAYROLL_RUNS_MANAGE);
   const runs = await listRuns(tenant.organizationId);
+  const deductionFlash = error === "deductions" ? (await cookies()).get(PAYROLL_FLASH_COOKIE)?.value : undefined;
   const today = new Date().toISOString().slice(0, 10);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <PageHeader title="Runs" description="Payroll runs: each processes every active employee with compensation on record." />
+        <PageHeader title="Runs" description="Runs calculate payroll-eligible employees with compensation on record. A full calendar-month run also includes linked, pending School earnings and deductions for that month." />
         {canManage ? (
           <EntityDialog trigger={<Button size="sm"><Plus />New run</Button>} title="New payroll run" action={createNewRun}>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -67,6 +84,14 @@ export default async function PayrollRunsPage({
           Saved.
         </div>
       ) : null}
+      {posting === "failed" ? <div role="status" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">The payroll run completed, but its Accounting accrual did not post. The payslips remain available. Retry posting from the run row below.</div> : null}
+      {posting === "inactive" ? <div role="status" className="rounded-md border px-3 py-2 text-sm text-muted-foreground">The payroll run completed. Accounting is not active for this organization, so no journal entry was created.</div> : null}
+      {posting === "complete" ? <div role="status" className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">Payroll Accounting posting is up to date.</div> : null}
+      {error === "deductions" ? (
+        <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {deductionFlash ?? "Payroll deduction rules need attention in Payroll, Deductions."} The run was not processed.
+        </div>
+      ) : null}
       {error && ERROR_MESSAGES[error] ? (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {ERROR_MESSAGES[error]}
@@ -87,11 +112,18 @@ export default async function PayrollRunsPage({
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Pay date {run.payDate.toLocaleDateString()}
-                    {run.payslips.length > 0 ? ` · ${run.payslips.length} payslip${run.payslips.length === 1 ? "" : "s"} · ${formatMoney(totalNet, tenant.organization.currency)} net` : ""}
+                    {run.payslips.length > 0 ? ` · ${run.payslips.length} payslip${run.payslips.length === 1 ? "" : "s"} · ${money(totalNet, tenant.organization.currency)} net` : ""}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant={STATUS_BADGE[run.status]}>{run.status}</Badge>
+                  {run.status === "COMPLETED" ? <Badge variant={POSTING_STATUS_BADGE[run.postingStatus]}>{run.postingStatus === "NOT_REQUIRED" ? "Accounting inactive" : `Accounting ${run.postingStatus.toLowerCase()}`}</Badge> : null}
+                  {canManage && run.status === "COMPLETED" && run.postingStatus !== "POSTED" ? (
+                    <form action={retryPayrollAccountingPosting}>
+                      <input type="hidden" name="id" value={run.id} />
+                      <Button type="submit" size="sm" variant="outline">{run.postingStatus === "FAILED" ? "Retry posting" : "Post to Accounting"}</Button>
+                    </form>
+                  ) : null}
                   {canManage && run.status === "DRAFT" ? (
                     <>
                       <form action={processExistingRun}>

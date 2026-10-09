@@ -8,6 +8,13 @@ import { getAccountingSummary } from "@/modules/accounting/service";
 import { getHrSummary } from "@/modules/hr/service";
 import { getProcurementSummary } from "@/modules/procurement/service";
 import { getPayrollSummary } from "@/modules/payroll/service";
+import { getPosSummary } from "@/modules/pos/service";
+import { getProjectsSummary } from "@/modules/projects/service";
+import { getHotelSummary } from "@/modules/hotel/service";
+import { getSchoolSummary } from "@/modules/school/service";
+import { getHostelSummary } from "@/modules/hostel/service";
+import { getPharmacySummary } from "@/modules/pharmacy/service";
+import { getHospitalSummary } from "@/modules/hospital/service";
 
 /**
  * Analytics owns no database tables of its own — it is a pure aggregation
@@ -53,14 +60,27 @@ export async function getPeopleOverview(organizationId: string, enabledModules: 
 }
 
 export async function getAnalyticsOverview(organizationId: string, enabledModules: string[]) {
-  const [financial, sales, operations, people] = await Promise.all([
+  const [financial, sales, operations, people, pos, projects, hotel, school, hostel, pharmacy, hospital] = await Promise.all([
     getFinancialOverview(organizationId, enabledModules),
     getSalesOverview(organizationId, enabledModules),
     getOperationsOverview(organizationId, enabledModules),
     getPeopleOverview(organizationId, enabledModules),
+    has(enabledModules, "pos") ? getPosSummary(organizationId) : null,
+    has(enabledModules, "projects") ? getProjectsSummary(organizationId) : null,
+    has(enabledModules, "hotel") ? getHotelSummary(organizationId) : null,
+    has(enabledModules, "school") ? getSchoolSummary(organizationId) : null,
+    has(enabledModules, "hostel") ? getHostelSummary(organizationId) : null,
+    has(enabledModules, "pharmacy") ? getPharmacySummary(organizationId) : null,
+    has(enabledModules, "hospital") ? getHospitalSummary(organizationId) : null,
   ]);
 
-  const totalRevenue = (financial.accounting?.totalRevenue ?? 0) + (sales.installment?.totalCollected ?? 0);
+  // Accounting receives confirmed source-module revenue postings whenever it
+  // is enabled. It is therefore the canonical organization-wide revenue
+  // record. Adding Installment collections on top of its ledger balance
+  // double-counted the same confirmed money for organizations using both
+  // modules. When Accounting is not enabled, Installment collections remain
+  // the only comparable fallback exposed by the existing Analytics contract.
+  const totalRevenue = financial.accounting?.totalRevenue ?? sales.installment?.totalCollected ?? 0;
   const cashBalance = financial.accounting?.cashBalance ?? 0;
   const netIncome = financial.accounting?.netIncome ?? 0;
   const pipelineValue = sales.crm?.pipelineValue ?? 0;
@@ -70,22 +90,36 @@ export async function getAnalyticsOverview(organizationId: string, enabledModule
   const openOrderValue = operations.procurement?.openOrderValue ?? 0;
   const lastPayrollNet = financial.payroll?.lastRunTotalNet ?? 0;
 
-  const enabledCount = [
-    "fleet",
-    "installment",
-    "crm",
-    "inventory",
-    "accounting",
-    "hr",
-    "procurement",
-    "payroll",
-  ].filter((key) => has(enabledModules, key)).length;
+  const contributingSummaries = [
+    financial.accounting,
+    financial.payroll,
+    sales.crm,
+    sales.installment,
+    operations.fleet,
+    operations.inventory,
+    operations.procurement,
+    people.hr,
+    pos,
+    projects,
+    hotel,
+    school,
+    hostel,
+    pharmacy,
+    hospital,
+  ];
 
   return {
     financial,
     sales,
     operations,
     people,
+    pos,
+    projects,
+    hotel,
+    school,
+    hostel,
+    pharmacy,
+    hospital,
     totalRevenue,
     cashBalance,
     netIncome,
@@ -95,6 +129,6 @@ export async function getAnalyticsOverview(organizationId: string, enabledModule
     stockValue,
     openOrderValue,
     lastPayrollNet,
-    enabledModuleCount: enabledCount,
+    enabledModuleCount: contributingSummaries.filter(Boolean).length,
   };
 }

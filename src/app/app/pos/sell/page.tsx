@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { organizationNumberLocale } from "@/lib/org-format";
 import { listRegisters } from "@/modules/pos/service";
 import { listItems, listCategories } from "@/modules/inventory/service";
 import { SaleCart } from "./sale-cart";
@@ -80,6 +81,7 @@ export default async function PosSellPage() {
               organizationId={tenant.organizationId}
               userId={tenant.userId}
               currency={tenant.organization.currency ?? "GHS"}
+              locale={organizationNumberLocale(tenant.organization)}
             />
           </form>
         </CardContent>

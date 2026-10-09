@@ -7,6 +7,14 @@ const sidebarNav = fs.readFileSync("src/components/navigation/sidebar-nav.tsx", 
 const badge = fs.readFileSync("src/components/notifications/notification-badge.tsx", "utf8");
 
 describe("getNotificationHref", () => {
+  it("routes contract notifications to the contract tab or the approvals queue", () => {
+    expect(getNotificationHref({ type: "CONTRACT_APPROVAL_REQUESTED", metadata: { contractId: "ckcontract0001" } }, false)).toBe("/app/contracts/approvals");
+    expect(getNotificationHref({ type: "CONTRACT_OBLIGATION_REMINDER", metadata: { contractId: "ckcontract0001" } }, false)).toBe("/app/contracts/ckcontract0001?tab=obligations");
+    expect(getNotificationHref({ type: "CONTRACT_REJECTED", metadata: { contractId: "ckcontract0001" } }, false)).toBe("/app/contracts/ckcontract0001?tab=approvals");
+    expect(getNotificationHref({ type: "CONTRACT_EXPIRY_REMINDER", metadata: { contractId: "../../evil" } }, false)).toBe("/app/contracts");
+    expect(getNotificationHref({ type: "CONTRACT_TERMINATED", metadata: null }, false)).toBeNull();
+  });
+
   it("routes a Vehicle Owner to their own per-vehicle page when a vehicleId is known", () => {
     expect(getNotificationHref({ type: "FLEET_DOCUMENT_RENEWAL", metadata: { vehicleId: "vehicle-1" } }, true)).toBe(
       "/app/fleet/investor/vehicles/vehicle-1",

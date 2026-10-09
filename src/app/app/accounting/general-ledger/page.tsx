@@ -6,7 +6,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Button } from "@/components/ui/button";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { getGeneralLedgerAccounts } from "@/modules/accounting/service";
 
 export default async function AccountingGeneralLedgerPage() {
@@ -21,7 +21,7 @@ export default async function AccountingGeneralLedgerPage() {
   }
 
   const currency = tenant.organization.currency ?? "GHS";
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, currency);
+  const money = createOrganizationFormatter(tenant.organization).money;
   const accounts = await getGeneralLedgerAccounts(tenant.organizationId);
 
   return (

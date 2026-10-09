@@ -9,6 +9,7 @@ const primaryLinks = [
   { label: "Pricing", href: "/pricing" },
   { label: "Industries", href: "/industries" },
   { label: "Company", href: "/company" },
+  { label: "Resources", href: "/resources" },
   { label: "Contact", href: "/contact" },
 ];
 

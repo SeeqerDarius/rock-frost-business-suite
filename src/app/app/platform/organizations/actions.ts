@@ -21,6 +21,8 @@ import { requireCurrentTenant } from "@/lib/tenant";
 import { cuid, email, longText, parseWithSchema, shortText } from "@/lib/validation";
 import { createModuleRequest } from "@/platform/module-requests/service";
 import { isPlatformUser } from "@/lib/auth/platform-identity";
+import { getCountryProfile, isValidCurrencyCode, isValidTimeZone, normalizeCountryCode } from "@/lib/localization";
+import { getAccountingHistoryState } from "@/modules/globalization/organization-localization";
 
 const tenantCode = z.string().trim().toLowerCase().min(3).max(50).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const optionalText = z.union([shortText, z.literal("")]);
@@ -38,8 +40,8 @@ const organizationSchema = z.object({
   region: optionalText,
   city: optionalText,
   address: z.union([longText, z.literal("")]),
-  currency: z.string().trim().min(3).max(3).transform((value) => value.toUpperCase()),
-  timezone: z.string().trim().min(1).max(100),
+  currency: z.string().trim().min(3).max(3).transform((value) => value.toUpperCase()).refine(isValidCurrencyCode, "Invalid currency"),
+  timezone: z.string().trim().min(1).max(100).refine(isValidTimeZone, "Invalid timezone"),
   defaultLanguage: z.string().trim().min(2).max(20),
 });
 
@@ -85,7 +87,11 @@ async function assertNotPlatformAnchor(organizationId: string) {
 }
 
 function organizationData(data: z.infer<typeof organizationSchema>) {
+  // Store recognized countries as ISO codes and derive the tax jurisdiction
+  // from the same catalog tenant settings use.
+  const countryCode = normalizeCountryCode(data.country);
   return {
+    ...(countryCode ? { jurisdictionCode: getCountryProfile(countryCode).jurisdictionCode } : {}),
     name: data.name,
     tenantCode: data.tenantCode,
     industry: data.industry || null,
@@ -93,7 +99,7 @@ function organizationData(data: z.infer<typeof organizationSchema>) {
     email: data.email || null,
     phone: data.phone || null,
     website: data.website || null,
-    country: data.country || null,
+    country: countryCode ?? (data.country || null),
     region: data.region || null,
     city: data.city || null,
     address: data.address || null,
@@ -222,6 +228,13 @@ export async function updateOrganizationProfile(formData: FormData): Promise<voi
     where: { tenantCode: parsed.data.tenantCode, id: { not: parsed.data.organizationId } },
   });
   if (duplicate) redirect(`/app/platform/organizations/${parsed.data.organizationId}?error=tenant-code`);
+
+  // The base currency lock applies to platform operators too: once ledger
+  // records exist, changing it would re-label historical amounts.
+  const current = await db.organization.findUnique({ where: { id: parsed.data.organizationId }, select: { currency: true } });
+  if (current && current.currency !== parsed.data.currency && (await getAccountingHistoryState(parsed.data.organizationId)).hasAccountingHistory) {
+    redirect(`/app/platform/organizations/${parsed.data.organizationId}?error=currency-locked`);
+  }
 
   await db.$transaction(async (tx) => {
     const organization = await tx.organization.update({

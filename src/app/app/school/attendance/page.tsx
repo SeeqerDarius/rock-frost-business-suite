@@ -12,7 +12,8 @@ import { formatDate, humanizeStatus } from "@/components/school/format";
 import { AttendanceRosterForm } from "./attendance-roster-form";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getSchoolAcademicSetup, getSchoolAttendanceRoster, listSchoolAttendance } from "@/modules/school/service";
+import { getSchoolAcademicSetup, getSchoolAttendanceRoster, listSchoolAttendancePage } from "@/modules/school/service";
+import { RecordPagination } from "@/components/school/record-pagination";
 
 const PATH = "/app/school/attendance";
 const STATUSES = ["PRESENT", "ABSENT", "LATE", "EXCUSED"] as const;
@@ -23,14 +24,17 @@ const SELECT_CLASS = "h-8 w-full min-w-0 rounded-lg border border-input bg-trans
 export default async function SchoolAttendancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string; count?: string; skipped?: string; q?: string; status?: string; termId?: string; classId?: string; date?: string }>;
+  searchParams: Promise<{ saved?: string; error?: string; count?: string; skipped?: string; q?: string; status?: string; page?: string; termId?: string; classId?: string; date?: string }>;
 }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_ATTENDANCE_MANAGE);
-  const [[years, classes], records] = await Promise.all([
+  const statusFilter = STATUSES.find((status) => status === query.status);
+  const requestedPage = query.page && /^\d{1,6}$/.test(query.page) ? Number(query.page) : 1;
+  const [[years, classes], attendancePage] = await Promise.all([
     getSchoolAcademicSetup(tenant.organizationId),
-    listSchoolAttendance(tenant.organizationId),
+    listSchoolAttendancePage(tenant.organizationId, { query: query.q, status: statusFilter, page: requestedPage }),
   ]);
+  const records = attendancePage.rows;
 
   const termOptions = years.flatMap((year) => year.terms.map((term) => ({ value: term.id, label: `${year.name} · ${term.name}${term.current ? " (current)" : ""}`, current: term.current })));
   const today = new Date().toISOString().slice(0, 10);
@@ -64,14 +68,7 @@ export default async function SchoolAttendancePage({
     ? `Attendance saved for ${query.count} student${query.count === "1" ? "" : "s"}.${query.skipped ? ` ${query.skipped} skipped: no longer actively enrolled in this class.` : ""}`
     : "Attendance has been recorded.";
 
-  // listSchoolAttendance returns the 250 most recent records; search and the
-  // status filter apply to that window only.
-  const search = query.q?.trim().toLowerCase() ?? "";
-  const statusFilter = STATUSES.find((status) => status === query.status);
-  const visible = records.filter((record) => {
-    const matchesSearch = search === "" || `${record.student.firstName} ${record.student.lastName} ${record.student.admissionNumber} ${record.class.name}`.toLowerCase().includes(search);
-    return matchesSearch && (!statusFilter || record.status === statusFilter);
-  });
+  const visible = records;
 
   const rosterFilterForm = (
     <form method="GET" className="flex flex-wrap items-end gap-3">
@@ -135,14 +132,14 @@ export default async function SchoolAttendancePage({
         </SectionCard>
       ) : null}
 
-      {records.length === 0 ? (
+      {attendancePage.total === 0 && !query.q?.trim() && !statusFilter ? (
         <EmptyState
           icon={ClipboardCheck}
           title="No attendance records yet"
           description="Take attendance for a class above to get started."
         />
       ) : (
-        <SectionCard title="Recent attendance" description="The 250 most recent records, newest first.">
+        <SectionCard title="Recent attendance" description={`${attendancePage.total} matching records, newest first.`}>
           <div className="space-y-4">
             <RecordSearch
               action={PATH}
@@ -150,7 +147,7 @@ export default async function SchoolAttendancePage({
               placeholder="Student name, admission number, or class"
               defaultValue={query.q}
               isFiltered={Boolean(query.q || statusFilter)}
-              resultSummary={`Showing ${visible.length} of ${records.length}`}
+              resultSummary={`Showing ${visible.length} of ${attendancePage.total}`}
               filters={
                 <div className="w-40 space-y-1.5">
                   <Label htmlFor="attendance-status-filter">Status</Label>
@@ -199,6 +196,7 @@ export default async function SchoolAttendancePage({
                 </TableBody>
               </Table>
             )}
+            <RecordPagination path={PATH} page={attendancePage.page} pageCount={attendancePage.pageCount} filters={{ q: query.q, status: statusFilter }} label="Attendance history" />
           </div>
         </SectionCard>
       )}

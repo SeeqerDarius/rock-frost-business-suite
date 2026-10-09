@@ -10,7 +10,9 @@ export default async function SchoolLayout({ children }: { children: React.React
   const tenant = await requireCurrentTenant();
   if (!canAccessModule(tenant, "school")) return <div className="flex min-h-screen items-center justify-center px-6"><EmptyState icon={Lock} title="School Management isn't available to you" description="Your organization must enable School Management and your role must include School permissions." /></div>;
   // The sidebar shows only the pages this organization's School plan
-  // includes. Each page still re-checks its own feature server-side, so a
+  // includes. One resolve call now answers for the portal, guardian
+  // messaging and every other feature, replacing the two separate boolean
+  // reads. Each page still re-checks its own feature server-side, so a
   // hidden link is never the boundary.
   const entitlement = await resolveModuleTier(tenant.organizationId, "school");
   const navigation = getSchoolNavigationForTenant(tenant, entitlement?.features ?? new Set());

@@ -168,6 +168,10 @@ export const PERMISSIONS = {
   SCHOOL_DASHBOARD_FINANCIAL_VIEW: "school.dashboard_financial.view",
   SCHOOL_ANALYTICS_VIEW: "school.analytics.view",
   SCHOOL_PORTAL_VIEW: "school.portal.view",
+  /** Staff side of direct in-app conversations with guardians (scoped to the staff member's classes). */
+  SCHOOL_MESSAGES_MANAGE: "school.messages.manage",
+  /** Publish and withdraw School announcements. */
+  SCHOOL_ANNOUNCEMENTS_PUBLISH: "school.announcements.publish",
   HOSTEL_VIEW: "hostel.view",
   HOSTEL_BUILDINGS_MANAGE: "hostel.buildings.manage",
   HOSTEL_ALLOCATIONS_MANAGE: "hostel.allocations.manage",
@@ -200,6 +204,19 @@ export const PERMISSIONS = {
   HOSPITAL_BILLING_MANAGE: "hospital.billing.manage",
   HOSPITAL_REPORTS_VIEW: "hospital.reports.view",
   HOSPITAL_SETTINGS_MANAGE: "hospital.settings.manage",
+  CONTRACTS_VIEW: "contracts.view",
+  CONTRACTS_CREATE: "contracts.create",
+  CONTRACTS_UPDATE: "contracts.update",
+  CONTRACTS_DELETE: "contracts.delete",
+  CONTRACTS_APPROVE: "contracts.approve",
+  CONTRACTS_TERMINATE: "contracts.terminate",
+  CONTRACTS_RENEW: "contracts.renew",
+  CONTRACTS_MANAGE_TEMPLATES: "contracts.manage_templates",
+  CONTRACTS_MANAGE_CLAUSES: "contracts.manage_clauses",
+  CONTRACTS_VIEW_FINANCIALS: "contracts.view_financials",
+  CONTRACTS_VIEW_CONFIDENTIAL: "contracts.view_confidential",
+  CONTRACTS_MANAGE_SETTINGS: "contracts.manage_settings",
+  CONTRACTS_EXPORT: "contracts.export",
 } as const;
 
 export const ALL_PERMISSIONS = Object.values(PERMISSIONS);
@@ -253,6 +270,9 @@ export const SYSTEM_ROLES: { name: string; description: string }[] = [
   { name: "Hospital Pharmacist", description: "Hospital medication-order review role for the dispensing-integration boundary." },
   { name: "Billing Officer", description: "Hospital invoicing, payment, and insurance-claim role." },
   { name: "Records Officer", description: "Hospital patient-record and reporting role." },
+  { name: "Contract Manager", description: "Full Contract Management role: drafting, documents, templates, clauses, approvals, renewals, termination, and settings." },
+  { name: "Contract Reviewer", description: "Contract review and approval role with financial visibility." },
+  { name: "Contract Viewer", description: "Read-only Contract Management role for standard contracts." },
 ];
 
 function moduleRolePermissions(keys: (typeof ALL_PERMISSIONS)[number][]) {
@@ -427,11 +447,12 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     PERMISSIONS.SCHOOL_STUDENT_FINANCE_VIEW, PERMISSIONS.SCHOOL_ATTENDANCE_VIEW, PERMISSIONS.SCHOOL_CONDUCT_VIEW,
     PERMISSIONS.SCHOOL_CONDUCT_MANAGE, PERMISSIONS.SCHOOL_DIGITAL_ID_MANAGE, PERMISSIONS.SCHOOL_HOSTEL_PROFILE_VIEW,
     PERMISSIONS.SCHOOL_DASHBOARD_FINANCIAL_VIEW, PERMISSIONS.SCHOOL_ANALYTICS_VIEW,
+    PERMISSIONS.SCHOOL_MESSAGES_MANAGE, PERMISSIONS.SCHOOL_ANNOUNCEMENTS_PUBLISH,
   ]),
-  "Admissions Officer": moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_STUDENTS_MANAGE, PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE, PERMISSIONS.SCHOOL_STUDENT_PROFILE_VIEW, PERMISSIONS.SCHOOL_DIGITAL_ID_MANAGE]),
-  Teacher: moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_ATTENDANCE_MANAGE, PERMISSIONS.SCHOOL_EXAMS_MANAGE, PERMISSIONS.SCHOOL_TIMETABLES_MANAGE, PERMISSIONS.SCHOOL_STUDENT_PROFILE_VIEW, PERMISSIONS.SCHOOL_ACADEMIC_PERFORMANCE_VIEW, PERMISSIONS.SCHOOL_ATTENDANCE_VIEW, PERMISSIONS.SCHOOL_CONDUCT_VIEW]),
-  "Academic Head": moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_ACADEMICS_MANAGE, PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE, PERMISSIONS.SCHOOL_ATTENDANCE_MANAGE, PERMISSIONS.SCHOOL_EXAMS_MANAGE, PERMISSIONS.SCHOOL_EXAMS_PUBLISH, PERMISSIONS.SCHOOL_TIMETABLES_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW, PERMISSIONS.SCHOOL_STUDENT_PROFILE_VIEW, PERMISSIONS.SCHOOL_STUDENT_MEDICAL_VIEW, PERMISSIONS.SCHOOL_ACADEMIC_PERFORMANCE_VIEW, PERMISSIONS.SCHOOL_ATTENDANCE_VIEW, PERMISSIONS.SCHOOL_CONDUCT_VIEW, PERMISSIONS.SCHOOL_CONDUCT_MANAGE, PERMISSIONS.SCHOOL_ANALYTICS_VIEW]),
-  Bursar: moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_FEES_MANAGE, PERMISSIONS.SCHOOL_PAYROLL_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW, PERMISSIONS.SCHOOL_STUDENT_PROFILE_VIEW, PERMISSIONS.SCHOOL_STUDENT_FINANCE_VIEW, PERMISSIONS.SCHOOL_DASHBOARD_FINANCIAL_VIEW]),
+  "Admissions Officer": moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_STUDENTS_MANAGE, PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE, PERMISSIONS.SCHOOL_STUDENT_PROFILE_VIEW, PERMISSIONS.SCHOOL_DIGITAL_ID_MANAGE, PERMISSIONS.SCHOOL_MESSAGES_MANAGE]),
+  Teacher: moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_ATTENDANCE_MANAGE, PERMISSIONS.SCHOOL_EXAMS_MANAGE, PERMISSIONS.SCHOOL_TIMETABLES_MANAGE, PERMISSIONS.SCHOOL_STUDENT_PROFILE_VIEW, PERMISSIONS.SCHOOL_ACADEMIC_PERFORMANCE_VIEW, PERMISSIONS.SCHOOL_ATTENDANCE_VIEW, PERMISSIONS.SCHOOL_CONDUCT_VIEW, PERMISSIONS.SCHOOL_MESSAGES_MANAGE]),
+  "Academic Head": moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_ACADEMICS_MANAGE, PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE, PERMISSIONS.SCHOOL_ATTENDANCE_MANAGE, PERMISSIONS.SCHOOL_EXAMS_MANAGE, PERMISSIONS.SCHOOL_EXAMS_PUBLISH, PERMISSIONS.SCHOOL_TIMETABLES_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW, PERMISSIONS.SCHOOL_STUDENT_PROFILE_VIEW, PERMISSIONS.SCHOOL_STUDENT_MEDICAL_VIEW, PERMISSIONS.SCHOOL_ACADEMIC_PERFORMANCE_VIEW, PERMISSIONS.SCHOOL_ATTENDANCE_VIEW, PERMISSIONS.SCHOOL_CONDUCT_VIEW, PERMISSIONS.SCHOOL_CONDUCT_MANAGE, PERMISSIONS.SCHOOL_ANALYTICS_VIEW, PERMISSIONS.SCHOOL_MESSAGES_MANAGE, PERMISSIONS.SCHOOL_ANNOUNCEMENTS_PUBLISH]),
+  Bursar: moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_FEES_MANAGE, PERMISSIONS.SCHOOL_PAYROLL_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW, PERMISSIONS.SCHOOL_STUDENT_PROFILE_VIEW, PERMISSIONS.SCHOOL_STUDENT_FINANCE_VIEW, PERMISSIONS.SCHOOL_DASHBOARD_FINANCIAL_VIEW, PERMISSIONS.SCHOOL_MESSAGES_MANAGE]),
   Librarian: moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_LIBRARY_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW]),
   "Transport Manager": moduleRolePermissions([PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE, PERMISSIONS.SCHOOL_REPORTS_VIEW]),
   // Deliberately not run through moduleRolePermissions() and not SCHOOL_VIEW -
@@ -471,6 +492,15 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   "Hospital Pharmacist": moduleRolePermissions([PERMISSIONS.HOSPITAL_VIEW, PERMISSIONS.HOSPITAL_MEDICATIONS_MANAGE]),
   "Billing Officer": moduleRolePermissions([PERMISSIONS.HOSPITAL_VIEW, PERMISSIONS.HOSPITAL_BILLING_MANAGE, PERMISSIONS.HOSPITAL_REPORTS_VIEW]),
   "Records Officer": moduleRolePermissions([PERMISSIONS.HOSPITAL_VIEW, PERMISSIONS.HOSPITAL_PATIENTS_MANAGE, PERMISSIONS.HOSPITAL_REPORTS_VIEW]),
+  // Confidential contracts still require an explicit grant or the
+  // organization's confidential-access policy; see docs/CONTRACTS_MODULE.md.
+  "Contract Manager": moduleRolePermissions([
+    PERMISSIONS.CONTRACTS_VIEW, PERMISSIONS.CONTRACTS_CREATE, PERMISSIONS.CONTRACTS_UPDATE, PERMISSIONS.CONTRACTS_DELETE, PERMISSIONS.CONTRACTS_APPROVE,
+    PERMISSIONS.CONTRACTS_TERMINATE, PERMISSIONS.CONTRACTS_RENEW, PERMISSIONS.CONTRACTS_MANAGE_TEMPLATES, PERMISSIONS.CONTRACTS_MANAGE_CLAUSES,
+    PERMISSIONS.CONTRACTS_VIEW_FINANCIALS, PERMISSIONS.CONTRACTS_VIEW_CONFIDENTIAL, PERMISSIONS.CONTRACTS_MANAGE_SETTINGS, PERMISSIONS.CONTRACTS_EXPORT,
+  ]),
+  "Contract Reviewer": moduleRolePermissions([PERMISSIONS.CONTRACTS_VIEW, PERMISSIONS.CONTRACTS_APPROVE, PERMISSIONS.CONTRACTS_VIEW_FINANCIALS, PERMISSIONS.CONTRACTS_EXPORT]),
+  "Contract Viewer": moduleRolePermissions([PERMISSIONS.CONTRACTS_VIEW]),
 };
 
 /** Matches the `key`/`name` pairs in src/platform/modules/registry.ts. Keep in sync when adding a module. */
@@ -491,6 +521,7 @@ export const MODULES: { code: string; name: string }[] = [
   { code: "hostel", name: "Hostel Management" },
   { code: "pharmacy", name: "Pharmacy Management" },
   { code: "hospital", name: "Hospital Management" },
+  { code: "contracts", name: "Contract Management" },
 ];
 
 export type ModulePricingSeed = {
@@ -520,6 +551,10 @@ export const MODULE_PRICING_SEED: ModulePricingSeed[] = [
   { moduleKey: "hostel", monthlyGhs: 449, annualGhs: 4490, includedSeats: 8, additionalSeatGhs: 25 },
   { moduleKey: "pharmacy", monthlyGhs: 999, annualGhs: 9990, includedSeats: 15, additionalSeatGhs: 45 },
   { moduleKey: "hospital", monthlyGhs: 2499, annualGhs: 24990, includedSeats: 30, additionalSeatGhs: 60 },
+  // Confirmed by the owner on 2026-10-08. Shown publicly once Contracts is
+  // listed (it needs a real product screenshot first). Editable at
+  // /app/platform/subscriptions.
+  { moduleKey: "contracts", monthlyGhs: 449, annualGhs: 4490, includedSeats: 8, additionalSeatGhs: 25 },
 ];
 
 /**

@@ -14,6 +14,7 @@ import { SchoolDashboardWidget } from "@/modules/school/dashboard-widget";
 import { HostelDashboardWidget } from "@/modules/hostel/dashboard-widget";
 import { PharmacyDashboardWidget } from "@/modules/pharmacy/dashboard-widget";
 import { HospitalDashboardWidget } from "@/modules/hospital/dashboard-widget";
+import { ContractsDashboardWidget } from "@/modules/contracts/dashboard-widget";
 
 /**
  * Per-module dashboard summary widgets, keyed by module key. Deliberately a
@@ -48,4 +49,5 @@ export const dashboardWidgets: Record<string, ComponentType<{ linkable?: boolean
   hostel: HostelDashboardWidget,
   pharmacy: PharmacyDashboardWidget,
   hospital: HospitalDashboardWidget,
+  contracts: ContractsDashboardWidget,
 };

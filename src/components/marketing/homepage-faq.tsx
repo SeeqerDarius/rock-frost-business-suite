@@ -1,4 +1,5 @@
 import { ChevronDown } from "lucide-react";
+import { JsonLd } from "@/components/seo/json-ld";
 
 const FAQS = [
   {
@@ -7,7 +8,7 @@ const FAQS = [
   },
   {
     question: "Which businesses is this built for?",
-    answer: "Any organization that wants Fleet, Installment Sales, CRM, Inventory & Procurement, Accounting, HR & Payroll, Analytics, Point of Sale, Project Management, Hotel, School, Hostel, Pharmacy, or Hospital management, on one platform instead of separate tools per department.",
+    answer: "Any organization that wants Accounting, HR & Payroll, Inventory & Procurement, Point of Sale, CRM, Project Management, Analytics, or industry management for a School, Hostel, Hospital, Pharmacy, Hotel, Fleet, or Installment Sales business, on one platform instead of separate tools per department.",
   },
   {
     question: "Can I try it before committing?",
@@ -26,6 +27,15 @@ const FAQS = [
 export function HomepageFaq() {
   return (
     <section className="public-section-tint">
+      <JsonLd data={{
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: FAQS.map((faq) => ({
+          "@type": "Question",
+          name: faq.question,
+          acceptedAnswer: { "@type": "Answer", text: faq.answer },
+        })),
+      }} />
       <div className="mx-auto max-w-3xl px-6 py-20">
         <div className="space-y-2">
           <p className="public-eyebrow">FAQ</p>

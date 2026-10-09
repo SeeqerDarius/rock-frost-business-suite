@@ -14,23 +14,27 @@ import { FieldGrid, SelectField, TextField } from "@/components/school/form-fiel
 import { PrerequisiteNotice, SectionCard } from "@/components/school/section-card";
 import { RecordSearch } from "@/components/school/record-search";
 import { StatusBadge } from "@/components/school/status-badge";
-import { formatDate, formatMoney, humanizeStatus } from "@/components/school/format";
+import { formatDate, humanizeStatus } from "@/components/school/format";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getSchoolAcademicSetup, listSchoolCampuses, listSchoolFeeInvoices, listSchoolFeeStructures, listSchoolStudents } from "@/modules/school/service";
-import { createFeeInvoiceAction, createFeeStructureAction, issueFeeStructureAction, recordFeePaymentAction } from "../actions";
+import { getSchoolAcademicSetup, getSchoolFeeInvoiceSummary, listSchoolCampuses, listSchoolFeeInvoicePage, listSchoolFeeStructures, listSchoolStudentChoices } from "@/modules/school/service";
+import { RecordPagination } from "@/components/school/record-pagination";
+import Link from "next/link";
+import { createFeeInvoiceAction, createFeeStructureAction, issueFeeStructureAction, recordFeePaymentAction, retrySchoolFeePostingAction, recordSchoolFeeRefundAction, retrySchoolFeeRefundPostingAction } from "../actions";
 import { schoolPlanGate } from "@/components/school/plan-gate";
 
 const PATH = "/app/school/fees";
 const PAYMENT_METHODS = ["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "ONLINE", "OTHER"] as const;
-const INVOICE_STATUSES = ["ISSUED", "PART_PAID", "PAID", "CANCELLED"] as const;
+const INVOICE_STATUSES = ["DRAFT", "ISSUED", "PART_PAID", "PAID", "VOID"] as const;
 
-export default async function SchoolFeesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; status?: string; issued?: string; skipped?: string }> }) {
+export default async function SchoolFeesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; status?: string; page?: string; issued?: string; skipped?: string; posting?: string; studentQ?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
   // Plan gate. Navigation already hides this page when the plan does
   // not include it, but a hidden link is not a boundary.
   const gate = await schoolPlanGate(tenant.organizationId, "school.fees", "Fees & Payments", "Student invoices, discounts, receipts, and arrears.");
   if (gate) return gate;
+  const orgMoney = createOrganizationFormatter(tenant.organization).money;
 
   if (!hasPermission(tenant, PERMISSIONS.SCHOOL_FEES_MANAGE)) {
     return (
@@ -41,38 +45,27 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
     );
   }
 
-  const [[years, classes], campuses, students, invoices, structures] = await Promise.all([
+  const statusFilter = INVOICE_STATUSES.find((status) => status === query.status);
+  const requestedPage = query.page && /^\d{1,6}$/.test(query.page) ? Number(query.page) : 1;
+  const [[years, classes], campuses, students, invoicePage, structures, totals] = await Promise.all([
     getSchoolAcademicSetup(tenant.organizationId),
     listSchoolCampuses(tenant.organizationId),
-    listSchoolStudents(tenant.organizationId),
-    listSchoolFeeInvoices(tenant.organizationId),
+    listSchoolStudentChoices(tenant.organizationId, { query: query.studentQ }),
+    listSchoolFeeInvoicePage(tenant.organizationId, { query: query.q, status: statusFilter, page: requestedPage }),
     listSchoolFeeStructures(tenant.organizationId),
+    getSchoolFeeInvoiceSummary(tenant.organizationId),
   ]);
+  const invoices = invoicePage.rows;
 
   const yearOptions = years.map((year) => ({ value: year.id, label: year.current ? `${year.name} (current)` : year.name }));
   const termOptions = years.flatMap((year) => year.terms.map((term) => ({ value: term.id, label: `${year.name} · ${term.name}${term.current ? " (current)" : ""}` })));
-  const studentOptions = students.map((student) => ({ value: student.id, label: `${student.lastName}, ${student.firstName} (${student.admissionNumber})` }));
+  const studentOptions = students.rows.map((student) => ({ value: student.id, label: `${student.lastName}, ${student.firstName} (${student.admissionNumber})` }));
 
-  const paidOn = (invoice: (typeof invoices)[number]) => invoice.payments.filter((payment) => !payment.refundedAt).reduce((sum, payment) => sum.plus(payment.amount), new Prisma.Decimal(0));
+  const paymentNet = (payment: (typeof invoices)[number]["payments"][number]) => payment.refundedAt ? new Prisma.Decimal(0) : payment.amount.minus(payment.refunds.reduce((sum, refund) => sum.plus(refund.amount), new Prisma.Decimal(0)));
+  const paidOn = (invoice: (typeof invoices)[number]) => invoice.payments.reduce((sum, payment) => sum.plus(paymentNet(payment)), new Prisma.Decimal(0));
   const balanceOf = (invoice: (typeof invoices)[number]) => invoice.amount.minus(invoice.discount).minus(paidOn(invoice));
 
-  const totals = invoices.reduce(
-    (accumulator, invoice) => ({
-      billed: accumulator.billed.plus(invoice.amount.minus(invoice.discount)),
-      collected: accumulator.collected.plus(paidOn(invoice)),
-      outstanding: invoice.status === "ISSUED" || invoice.status === "PART_PAID" ? accumulator.outstanding.plus(balanceOf(invoice)) : accumulator.outstanding,
-    }),
-    { billed: new Prisma.Decimal(0), collected: new Prisma.Decimal(0), outstanding: new Prisma.Decimal(0) },
-  );
-
-  // listSchoolFeeInvoices returns every invoice for the organization, so the
-  // search and status filter are applied to the rows already loaded here.
-  const search = query.q?.trim().toLowerCase() ?? "";
-  const statusFilter = INVOICE_STATUSES.find((status) => status === query.status);
-  const visible = invoices.filter((invoice) => {
-    const matchesSearch = search === "" || `${invoice.invoiceNumber} ${invoice.student.firstName} ${invoice.student.lastName} ${invoice.student.admissionNumber} ${invoice.description}`.toLowerCase().includes(search);
-    return matchesSearch && (!statusFilter || invoice.status === statusFilter);
-  });
+  const visible = invoices;
 
   const newStructureDialog = (
     <EntityDialog
@@ -140,14 +133,19 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
         savedMessage={query.issued !== undefined ? `${query.issued} invoice${query.issued === "1" ? " was" : "s were"} issued${query.skipped && query.skipped !== "0" ? `; ${query.skipped} already-billed student${query.skipped === "1" ? " was" : "s were"} skipped` : ""}.` : "The fee record is up to date."}
         stateMessage="Check the amounts: a discount cannot exceed the invoice amount, and a payment cannot exceed the outstanding balance."
       />
+      <RecordSearch action={PATH} queryName="studentQ" label="Find a student for an invoice" placeholder="Name or admission number" defaultValue={query.studentQ} hiddenFilters={{ q: query.q, status: statusFilter, page: query.page }} resultSummary={`Showing ${students.rows.length} of ${students.total} students`} />
+      {query.posting === "failed" ? <div role="status" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">The fee payment or refund was recorded, but its Accounting entry did not post. Use the retry action beside that item.</div> : null}
+      {query.posting === "complete" ? <div role="status" className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">Accounting posting is up to date.</div> : null}
+      {query.error === "posting-not-retryable" ? <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">That payment is unavailable for posting. Refresh the fee list and check its current status.</div> : null}
+      {query.error === "refund-posting-not-retryable" ? <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">That refund is unavailable for posting. Refresh the fee list and check its current status.</div> : null}
       <PrerequisiteNotice
         items={[
-          { satisfied: students.length > 0, label: "Admit a student", href: "/app/school/students" },
+          { satisfied: students.total > 0, label: "Admit a student", href: "/app/school/students" },
           { satisfied: years.length > 0, label: "Create an academic year", href: "/app/school/academic-periods" },
         ]}
       />
 
-      {invoices.length > 0 ? (
+      {invoicePage.total > 0 ? (
         <dl className="grid gap-4 sm:grid-cols-3">
           {[
             { label: "Billed", value: totals.billed, hint: "Invoice amounts after discounts" },
@@ -157,7 +155,7 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
             <Card key={tile.label}>
               <CardContent className="pt-6">
                 <dt className="text-xs text-muted-foreground">{tile.label}</dt>
-                <dd className="mt-1 text-2xl font-semibold tabular-nums">{formatMoney(tile.value)}</dd>
+                <dd className="mt-1 text-2xl font-semibold tabular-nums">{orgMoney(tile.value)}</dd>
                 <p className="mt-1 text-xs text-muted-foreground">{tile.hint}</p>
               </CardContent>
             </Card>
@@ -190,7 +188,7 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
                     {structure.term ? ` · ${structure.term.name}` : " · All terms"}
                     {structure.class ? ` · ${structure.class.name}` : " · All classes"}
                   </TableCell>
-                  <TableCell className="tabular-nums">{formatMoney(structure.amount)}</TableCell>
+                  <TableCell className="tabular-nums">{orgMoney(structure.amount)}</TableCell>
                   <TableCell className="hidden text-muted-foreground lg:table-cell">{formatDate(structure.dueDate)}</TableCell>
                   <TableCell className="tabular-nums">{structure._count.invoices}</TableCell>
                   <TableCell className="text-right">
@@ -214,23 +212,24 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
         </SectionCard>
       ) : null}
 
-      {invoices.length === 0 ? (
+      {invoicePage.total === 0 && !query.q?.trim() && !statusFilter ? (
         <EmptyState
           icon={Receipt}
           title="No fee invoices yet"
           description="Issue an invoice to a single student, or create a fee structure to bill a whole class or campus at once."
-          action={students.length > 0 && years.length > 0 ? newInvoiceDialog : undefined}
+          action={students.total > 0 && years.length > 0 ? newInvoiceDialog : undefined}
         />
       ) : (
-        <SectionCard title="Invoices" description={`${invoices.length} invoice${invoices.length === 1 ? "" : "s"}, newest first.`}>
+        <SectionCard title="Invoices" description={`${invoicePage.total} invoice${invoicePage.total === 1 ? "" : "s"}, newest first.`}>
           <div className="space-y-4">
             <RecordSearch
               action={PATH}
               label="Search invoices"
               placeholder="Invoice number, student, or description"
               defaultValue={query.q}
+              hiddenFilters={{ studentQ: query.studentQ }}
               isFiltered={Boolean(query.q || statusFilter)}
-              resultSummary={`Showing ${visible.length} of ${invoices.length}`}
+              resultSummary={`Showing ${visible.length} of ${invoicePage.total}`}
               filters={
                 <div className="w-40 space-y-1.5">
                   <Label htmlFor="invoice-status-filter">Status</Label>
@@ -273,6 +272,44 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
                         <TableCell>
                           <span className="font-mono text-xs">{invoice.invoiceNumber}</span>
                           <span className="block text-xs text-muted-foreground">{invoice.description}</span>
+                          {invoice.payments.map((payment) => (
+                            <span key={payment.id} className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                              <Link className="text-muted-foreground underline underline-offset-2" href={`/app/school/fees/receipt/${payment.id}`} target="_blank">Receipt {payment.receiptNumber}: {orgMoney(payment.amount)}</Link>
+                              <Badge variant={payment.postingStatus === "FAILED" ? "destructive" : payment.postingStatus === "POSTED" ? "default" : "outline"}>
+                                {payment.postingStatus === "NOT_REQUIRED" ? "Accounting inactive" : `Accounting ${humanizeStatus(payment.postingStatus)}`}
+                              </Badge>
+                              {!payment.refundedAt && payment.postingStatus !== "POSTED" ? (
+                                <form action={retrySchoolFeePostingAction}>
+                                  <input type="hidden" name="paymentId" value={payment.id} />
+                                  <Button type="submit" size="xs" variant="outline">Retry posting</Button>
+                                </form>
+                              ) : null}
+                              {payment.refunds.map((refund) => (
+                                <span key={refund.id} className="ml-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                  Refund {orgMoney(refund.amount)} · {humanizeStatus(refund.method)} · {refund.reason} · {formatDate(refund.createdAt)}
+                                  <Badge variant={refund.postingStatus === "FAILED" ? "destructive" : refund.postingStatus === "POSTED" ? "default" : "outline"}>Accounting {humanizeStatus(refund.postingStatus)}</Badge>
+                                  {refund.postingStatus !== "POSTED" && refund.postingStatus !== "NOT_REQUIRED" ? <form action={retrySchoolFeeRefundPostingAction}><input type="hidden" name="refundId" value={refund.id} /><Button type="submit" size="xs" variant="outline">Retry refund posting</Button></form> : null}
+                                </span>
+                              ))}
+                              {paymentNet(payment).gt(0) ? (
+                                <EntityDialog
+                                  trigger={<Button type="button" size="xs" variant="ghost">Record refund</Button>}
+                                  title={`Refund receipt ${payment.receiptNumber}`}
+                                  description={`Remaining refundable amount: ${orgMoney(paymentNet(payment))}. This creates a separate audit record and keeps the original receipt unchanged.`}
+                                  action={recordSchoolFeeRefundAction}
+                                  submitLabel="Record refund"
+                                >
+                                  <input type="hidden" name="paymentId" value={payment.id} />
+                                  <FieldGrid>
+                                    <TextField id={`refund-amount-${payment.id}`} name="amount" label="Refund amount" type="number" step="0.01" min="0.01" max={paymentNet(payment).toString()} required />
+                                    <SelectField id={`refund-method-${payment.id}`} name="method" label="Refund method" required options={PAYMENT_METHODS.map((method) => ({ value: method, label: humanizeStatus(method) }))} />
+                                  </FieldGrid>
+                                  <TextField id={`refund-reference-${payment.id}`} name="reference" label="Refund reference" hint="Optional transaction reference." />
+                                  <div className="space-y-2"><Label htmlFor={`refund-reason-${payment.id}`}>Reason</Label><Textarea id={`refund-reason-${payment.id}`} name="reason" required minLength={3} maxLength={1000} /></div>
+                                </EntityDialog>
+                              ) : null}
+                            </span>
+                          ))}
                         </TableCell>
                         <TableCell>
                           <span className="font-medium">{invoice.student.firstName} {invoice.student.lastName}</span>
@@ -283,18 +320,18 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
                           {invoice.dueDate ? <span className="block text-xs">Due {formatDate(invoice.dueDate)}</span> : null}
                         </TableCell>
                         <TableCell className="tabular-nums">
-                          {formatMoney(invoice.amount.minus(invoice.discount))}
-                          {invoice.discount.gt(0) ? <span className="block text-xs text-muted-foreground">after {formatMoney(invoice.discount)} discount</span> : null}
+                          {orgMoney(invoice.amount.minus(invoice.discount))}
+                          {invoice.discount.gt(0) ? <span className="block text-xs text-muted-foreground">after {orgMoney(invoice.discount)} discount</span> : null}
                         </TableCell>
-                        <TableCell className="hidden tabular-nums sm:table-cell">{formatMoney(paid)}</TableCell>
-                        <TableCell className="font-medium tabular-nums">{formatMoney(balance)}</TableCell>
+                        <TableCell className="hidden tabular-nums sm:table-cell">{orgMoney(paid)}</TableCell>
+                        <TableCell className="font-medium tabular-nums">{orgMoney(balance)}</TableCell>
                         <TableCell><StatusBadge status={invoice.status} /></TableCell>
                         <TableCell className="text-right">
                           {isOpen && balance.gt(0) ? (
                             <EntityDialog
                               trigger={<Button size="sm" variant="ghost">Record payment</Button>}
                               title={`Record a payment for ${invoice.invoiceNumber}`}
-                              description={`${invoice.student.firstName} ${invoice.student.lastName} · Outstanding ${formatMoney(balance)}. A receipt number is generated automatically.`}
+                              description={`${invoice.student.firstName} ${invoice.student.lastName} · Outstanding ${orgMoney(balance)}. A receipt number is generated automatically.`}
                               action={recordFeePaymentAction}
                               submitLabel="Record payment"
                             >
@@ -309,7 +346,7 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
                                 max={balance.toString()}
                                 defaultValue={balance.toFixed(2)}
                                 required
-                                hint={`Cannot exceed the outstanding ${formatMoney(balance)}.`}
+                                hint={`Cannot exceed the outstanding ${orgMoney(balance)}.`}
                               />
                               <SelectField
                                 id={`payment-method-${invoice.id}`}
@@ -330,6 +367,7 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
                 </TableBody>
               </Table>
             )}
+            <RecordPagination path={PATH} page={invoicePage.page} pageCount={invoicePage.pageCount} filters={{ q: query.q, status: statusFilter, studentQ: query.studentQ }} label="Invoice list" />
           </div>
         </SectionCard>
       )}

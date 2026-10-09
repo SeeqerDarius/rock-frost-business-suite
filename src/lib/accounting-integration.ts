@@ -189,7 +189,7 @@ export type PostModuleRevenueResult =
   | { posted: true; journalEntryId: string }
   | { posted: false; reason: "accounting-not-enabled" | "error" };
 
-export async function postProcurementInvoiceAccrual(organizationId: string, input: { invoiceId: string; invoiceNumber: string; vendorName: string; taxCodeId?: string | null; taxableAmount: string; vatAmount: string; nhilAmount: string; getfundAmount: string; totalAmount: string; invoiceDate: Date; description: string; actorId?: string | null; branchId?: string | null }): Promise<PostModuleRevenueResult> {
+export async function postProcurementInvoiceAccrual(organizationId: string, input: { invoiceId: string; invoiceNumber: string; vendorName: string; taxCodeId?: string | null; taxRuleId?: string | null; taxableAmount: string; vatAmount: string; nhilAmount: string; getfundAmount: string; totalAmount: string; invoiceDate: Date; description: string; actorId?: string | null; branchId?: string | null }): Promise<PostModuleRevenueResult> {
   try {
     if (!(await isModuleActiveForOrg(db, organizationId, "accounting"))) return { posted: false, reason: "accounting-not-enabled" };
     const entry = await postProcurementTaxAccrual(organizationId, input);
@@ -220,6 +220,77 @@ export async function postProcurementSupplierPayment(organizationId: string, inp
     return { posted: true, journalEntryId: entry.id };
   } catch (error) {
     console.error("[accounting-integration] Failed to post supplier payment:", { organizationId, paymentId: input.paymentId, error });
+    return { posted: false, reason: "error" };
+  }
+}
+
+/**
+ * Accrues a completed Payroll run: debit gross salaries, credit net salaries
+ * payable and generic payroll deductions payable. Disbursements and statutory
+ * deduction classifications are separate workflows.
+ */
+export async function postPayrollRunAccrual(organizationId: string, input: {
+  runId: string;
+  payDate: Date;
+  grossPay: string;
+  netPay: string;
+  deductions: string;
+  /**
+   * Statutory deduction rule amounts by account. Liabilities cover employee
+   * deductions and employer contributions; employer expenses are debited.
+   * Deductions not covered by rules (e.g. School payroll deductions or a flat
+   * tax rate) stay on 2220.
+   */
+  statutory?: { liabilities: { accountCode: string; amount: string }[]; employerExpenses: { accountCode: string; amount: string }[] };
+  description: string;
+  actorId?: string | null;
+}): Promise<PostModuleRevenueResult> {
+  try {
+    if (!(await isModuleActiveForOrg(db, organizationId, "accounting"))) return { posted: false, reason: "accounting-not-enabled" };
+    const grossPay = new Prisma.Decimal(input.grossPay);
+    const netPay = new Prisma.Decimal(input.netPay);
+    const deductions = new Prisma.Decimal(input.deductions);
+    if (grossPay.lte(0) || netPay.lt(0) || deductions.lt(0) || !grossPay.eq(netPay.plus(deductions))) {
+      throw new Error("Payroll accrual totals do not balance.");
+    }
+    const accounts = await ensureDefaultAccounts(organizationId);
+    const salaryExpense = accounts.find((account) => account.code === "5190" && account.type === "EXPENSE");
+    const salaryPayable = accounts.find((account) => account.code === "2230" && account.type === "LIABILITY");
+    const deductionPayable = accounts.find((account) => account.code === "2220" && account.type === "LIABILITY");
+    if (!salaryExpense || !salaryPayable || !deductionPayable) throw new Error("Payroll control accounts are unavailable.");
+    const statutory = input.statutory ?? { liabilities: [], employerExpenses: [] };
+    const sum = (rows: { amount: string }[]) => rows.reduce((total, row) => total.plus(row.amount), new Prisma.Decimal(0));
+    const employerTotal = sum(statutory.employerExpenses);
+    const ruleEmployeeDeductions = sum(statutory.liabilities).minus(employerTotal);
+    const otherDeductions = deductions.minus(ruleEmployeeDeductions);
+    if (otherDeductions.isNegative() || employerTotal.isNegative()) throw new Error("Payroll statutory deductions exceed the run's deductions.");
+    const codes = [...new Set([...statutory.liabilities, ...statutory.employerExpenses].map((row) => row.accountCode))];
+    const mapped = codes.length ? await db.accountingAccount.findMany({ where: { organizationId, code: { in: codes } }, select: { id: true, code: true, type: true } }) : [];
+    const accountFor = (code: string, type: "LIABILITY" | "EXPENSE") => {
+      const found = mapped.find((account) => account.code === code && account.type === type);
+      if (!found) throw new Error(`Payroll deduction account ${code} (${type.toLowerCase()}) is missing from the chart of accounts.`);
+      return found.id;
+    };
+    const lines = [
+      { accountId: salaryExpense.id, debit: grossPay.toFixed(2) },
+      ...statutory.employerExpenses.map((row) => ({ accountId: accountFor(row.accountCode, "EXPENSE"), debit: new Prisma.Decimal(row.amount).toFixed(2) })),
+      ...(netPay.gt(0) ? [{ accountId: salaryPayable.id, credit: netPay.toFixed(2) }] : []),
+      ...statutory.liabilities.map((row) => ({ accountId: accountFor(row.accountCode, "LIABILITY"), credit: new Prisma.Decimal(row.amount).toFixed(2) })),
+      ...(otherDeductions.gt(0) ? [{ accountId: deductionPayable.id, credit: otherDeductions.toFixed(2) }] : []),
+    ];
+    const entry = await postSourceJournalEntry(organizationId, {
+      sourceModule: "payroll",
+      sourceType: "PAYROLL_RUN",
+      sourceId: input.runId,
+      postingPurpose: "COMPLETED_ACCRUAL",
+      entryDate: input.payDate,
+      description: input.description,
+      createdById: input.actorId,
+      lines,
+    });
+    return { posted: true, journalEntryId: entry.id };
+  } catch (error) {
+    console.error("[accounting-integration] Failed to accrue Payroll run:", { organizationId, runId: input.runId, error });
     return { posted: false, reason: "error" };
   }
 }

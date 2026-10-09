@@ -163,6 +163,41 @@ describe("plan limits (real Postgres)", () => {
     expect(updated.tier).toBe("ENTERPRISE");
   });
 
+  it("lets a revoked add-on stay revoked on a grandfathered organization", async () => {
+    // Grandfathering exists so nobody LOSES access. It must not also hand
+    // back something an operator deliberately switched off: for a module
+    // with no subscription the legacy columns are the only record of that
+    // decision, so they stay authoritative in both directions.
+    const { hasModuleFeature } = await import("@/platform/entitlements/resolve");
+    await testDb.subscription.deleteMany({ where: { organizationId: org.organizationId } });
+
+    await testDb.organization.update({ where: { id: org.organizationId }, data: { schoolPortalGranted: false } });
+    expect(await hasModuleFeature(org.organizationId, "school.portal")).toBe(false);
+
+    await testDb.organization.update({ where: { id: org.organizationId }, data: { schoolPortalGranted: true } });
+    expect(await hasModuleFeature(org.organizationId, "school.portal")).toBe(true);
+
+    // Depth features no column speaks for still come from the grandfathered
+    // tier, so the organization keeps everything it had before tiers.
+    expect(await hasModuleFeature(org.organizationId, "school.fees")).toBe(true);
+    expect(await hasModuleFeature(org.organizationId, "school.exams")).toBe(true);
+  });
+
+  it("lets a set add-on column add a feature the paid tier does not include", async () => {
+    // The other direction, where a real agreement exists: the tier decides,
+    // and a column an operator already set can only add.
+    const { hasModuleFeature } = await import("@/platform/entitlements/resolve");
+    await setSchoolTier("PRO");
+    await testDb.organization.update({ where: { id: org.organizationId }, data: { schoolPortalGranted: true } });
+
+    // Pro does not include the portal, but this organization was granted it.
+    expect(await hasModuleFeature(org.organizationId, "school.portal")).toBe(true);
+
+    await testDb.organization.update({ where: { id: org.organizationId }, data: { schoolPortalGranted: false } });
+    expect(await hasModuleFeature(org.organizationId, "school.portal")).toBe(false);
+    await testDb.organization.update({ where: { id: org.organizationId }, data: { schoolPortalGranted: true } });
+  });
+
   it("counts enrolled students only, so withdrawn history never consumes the plan", async () => {
     const { createSchoolStudent } = await import("@/modules/school/service");
     const { resolveModuleLimit } = await import("@/platform/entitlements/resolve");

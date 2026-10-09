@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { catalogueModuleRegistry } from "@/platform/modules/registry";
+import { publicCatalogueModuleRegistry } from "@/platform/modules/registry";
 import { MODULE_SCREENSHOTS } from "@/components/marketing/module-showcase";
 
 describe("module marketing screenshot coverage", () => {
-  it("every catalogue-visible module has a real product screenshot configured", () => {
-    const missing = catalogueModuleRegistry
+  it("every publicly listed module has a real product screenshot configured", () => {
+    const missing = publicCatalogueModuleRegistry
       .map((module_) => module_.key)
       .filter((key) => !MODULE_SCREENSHOTS[key]);
     expect(missing).toEqual([]);

@@ -8,6 +8,8 @@ export interface PrintableDocumentLine {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
+  /** Tax rate or treatment for the line (documents taxed by tax rules). */
+  taxLabel?: string;
 }
 
 export interface PrintableDocumentInput {
@@ -21,11 +23,15 @@ export interface PrintableDocumentInput {
   counterpartyEmail?: string | null;
   counterpartyTin?: string | null;
   currency: string;
+  /** The organization number locale; defaults to the currency's usual locale. */
+  locale?: string | null;
   lines: PrintableDocumentLine[];
   taxableAmount: number;
   vatAmount: number;
   nhilAmount: number;
   getfundAmount: number;
+  /** Tax by component for documents taxed by tax rules; replaces the VAT/NHIL/GETFund rows when present. */
+  taxSummary?: { label: string; taxableAmount: number; taxAmount: number }[];
   amount: number;
   amountPaid?: number;
   notes?: string | null;
@@ -54,7 +60,7 @@ export function buildPrintableDocumentPdf(input: PrintableDocumentInput): Promis
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    const money = (value: number) => formatMoney(value, input.currency);
+    const money = (value: number) => formatMoney(value, input.currency, input.locale);
     const left = doc.page.margins.left;
     const right = doc.page.width - doc.page.margins.right;
     const usableWidth = right - left;
@@ -80,12 +86,21 @@ export function buildPrintableDocumentPdf(input: PrintableDocumentInput): Promis
     if (input.counterpartyTin) doc.text(`TIN: ${input.counterpartyTin}`);
 
     doc.moveDown(1.5);
-    const columns = [
-      { header: "Description", width: 0.5, align: "left" as const },
-      { header: "Qty", width: 0.12, align: "right" as const },
-      { header: "Unit price", width: 0.19, align: "right" as const },
-      { header: "Amount", width: 0.19, align: "right" as const },
-    ];
+    const withLineTax = input.lines.some((line) => line.taxLabel);
+    const columns = withLineTax
+      ? [
+          { header: "Description", width: 0.4, align: "left" as const },
+          { header: "Qty", width: 0.1, align: "right" as const },
+          { header: "Unit price", width: 0.17, align: "right" as const },
+          { header: "Tax", width: 0.16, align: "right" as const },
+          { header: "Amount", width: 0.17, align: "right" as const },
+        ]
+      : [
+          { header: "Description", width: 0.5, align: "left" as const },
+          { header: "Qty", width: 0.12, align: "right" as const },
+          { header: "Unit price", width: 0.19, align: "right" as const },
+          { header: "Amount", width: 0.19, align: "right" as const },
+        ];
     const columnWidths = columns.map((column) => usableWidth * column.width);
     const rowHeight = 18;
 
@@ -117,24 +132,28 @@ export function buildPrintableDocumentPdf(input: PrintableDocumentInput): Promis
     y += rowHeight;
     for (const line of input.lines) {
       y = ensureRoomFor(y, rowHeight);
-      drawLineRow(y, [line.description, line.quantity.toString(), money(line.unitPrice), money(line.lineTotal)], false);
+      drawLineRow(y, withLineTax ? [line.description, line.quantity.toString(), money(line.unitPrice), line.taxLabel ?? "", money(line.lineTotal)] : [line.description, line.quantity.toString(), money(line.unitPrice), money(line.lineTotal)], false);
       y += rowHeight;
     }
 
     y += 10;
-    y = ensureRoomFor(y, rowHeight * 6);
-    const totalsX = left + usableWidth * 0.6;
-    const totalsWidth = usableWidth * 0.4;
+    y = ensureRoomFor(y, rowHeight * (6 + (input.taxSummary?.length ?? 0)));
+    const totalsX = left + usableWidth * (input.taxSummary ? 0.4 : 0.6);
+    const totalsWidth = usableWidth * (input.taxSummary ? 0.6 : 0.4);
     function totalsRow(label: string, value: string, bold = false) {
       doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(9).fillColor("#000000");
-      doc.text(label, totalsX, y, { width: totalsWidth * 0.6, align: "left" });
-      doc.text(value, totalsX + totalsWidth * 0.6, y, { width: totalsWidth * 0.4, align: "right" });
+      doc.text(label, totalsX, y, { width: totalsWidth * 0.7, align: "left", lineBreak: false, ellipsis: true });
+      doc.text(value, totalsX + totalsWidth * 0.7, y, { width: totalsWidth * 0.3, align: "right" });
       y += 14;
     }
     totalsRow("Subtotal", money(input.taxableAmount));
-    if (input.vatAmount) totalsRow("VAT", money(input.vatAmount));
-    if (input.nhilAmount) totalsRow("NHIL", money(input.nhilAmount));
-    if (input.getfundAmount) totalsRow("GETFund Levy", money(input.getfundAmount));
+    if (input.taxSummary) {
+      for (const row of input.taxSummary) totalsRow(`${row.label} on ${money(row.taxableAmount)}`, money(row.taxAmount));
+    } else {
+      if (input.vatAmount) totalsRow("VAT", money(input.vatAmount));
+      if (input.nhilAmount) totalsRow("NHIL", money(input.nhilAmount));
+      if (input.getfundAmount) totalsRow("GETFund Levy", money(input.getfundAmount));
+    }
     totalsRow("Total", money(input.amount), true);
     if (input.amountPaid !== undefined) {
       totalsRow("Paid", money(input.amountPaid));

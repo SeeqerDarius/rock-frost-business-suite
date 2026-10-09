@@ -301,6 +301,18 @@ enum FleetPaymentPostingStatus {
   FAILED
 }
 
+enum SchoolFeePaymentPostingStatus {
+  PENDING
+  POSTED
+  FAILED
+  NOT_REQUIRED
+}
+
+enum SchoolPayrollAdjustmentCategory {
+  EARNING
+  DEDUCTION
+}
+
 enum FleetSalesTargetPeriod {
   DAILY
   WEEKLY
@@ -410,11 +422,12 @@ model User {
   invitationsCreated              Invitation[]                     @relation("InvitationsCreated")
   auditLogs                       AuditLog[]
   notifications                   Notification[]
+  webPushSubscriptions            WebPushSubscription[]
   uploadedFiles                   FileAsset[]
   fleetDriverProfiles             FleetDriver[]
   schoolClassTeacherAssignments   SchoolClassTeacher[]
-  schoolGuardianPortalProfile     SchoolGuardian?                   @relation("SchoolGuardianPortalUser")
-  schoolStudentPortalProfile      SchoolStudent?                    @relation("SchoolStudentPortalUser")
+  schoolGuardianPortalProfile     SchoolGuardian?                  @relation("SchoolGuardianPortalUser")
+  schoolStudentPortalProfile      SchoolStudent?                   @relation("SchoolStudentPortalUser")
   hostelWardenAssignments         HostelWarden[]
   fleetOwnerProfiles              FleetOwner[]
   fleetMechanicProfiles           FleetMechanic[]
@@ -488,6 +501,20 @@ model User {
   schoolIdCardsPrinted            SchoolDigitalIdCard[]            @relation("SchoolIdCardPrintedBy")
   schoolConductReported           SchoolConductRecord[]            @relation("SchoolConductReportedBy")
   schoolConductReviewed           SchoolConductRecord[]            @relation("SchoolConductReviewedBy")
+  exchangeRatesRecorded           ExchangeRate[]
+  taxRatesCreated                 TaxRate[]                        @relation("TaxRateCreatedBy")
+  taxRulesCreated                 TaxRule[]                        @relation("TaxRuleCreatedBy")
+  contractsOwned                  Contract[]                       @relation("ContractOwner")
+  contractsCreated                Contract[]                       @relation("ContractCreatedBy")
+  contractDocumentsUploaded       ContractDocument[]               @relation("ContractDocumentUploadedBy")
+  contractVersionsChanged         ContractVersion[]                @relation("ContractVersionChangedBy")
+  contractClausesOwned            ContractClause[]                 @relation("ContractClauseOwner")
+  contractApprovalsRequested      ContractApprovalRequest[]        @relation("ContractApprovalRequestedBy")
+  contractApprovalStepsAssigned   ContractApprovalStep[]           @relation("ContractApprovalStepApprover")
+  contractApprovalStepsDecided    ContractApprovalStep[]           @relation("ContractApprovalStepDecidedBy")
+  contractComments                ContractComment[]                @relation("ContractCommentAuthor")
+  contractObligationsOwned        ContractObligation[]             @relation("ContractObligationOwner")
+  contractAmendmentsCreated       ContractAmendment[]              @relation("ContractAmendmentCreatedBy")
 }
 
 enum TwoFactorMethod {
@@ -553,56 +580,82 @@ model VerificationToken {
 }
 
 model Organization {
-  id                         String              @id @default(cuid())
-  name                       String
-  industry                   String?
-  tenantCode                 String              @unique
-  address                    String?
-  timezone                   String              @default("UTC")
-  billingEmail               String?
-  status                     OrganizationStatus  @default(TRIAL)
-  metadata                   Json?
-  createdAt                  DateTime            @default(now())
-  updatedAt                  DateTime            @updatedAt
-  businessRegistrationNumber String?
-  taxNumber                  String?
-  country                    String?
-  region                     String?
-  city                       String?
-  phone                      String?
-  email                      String?
-  website                    String?
-  logoUrl                    String?
-  currency                   String              @default("GHS")
-  defaultLanguage            String              @default("en")
-  deletionRequestedAt        DateTime?
-  deletionScheduledFor       DateTime?
-  deletionRequestedById      String?
-  deletionPreviousStatus     OrganizationStatus?
-  offlineAccessGranted       Boolean             @default(false)
-  offlineAccessGrantedAt     DateTime?
-  offlineAccessGrantedById   String?
+  id                                 String              @id @default(cuid())
+  name                               String
+  industry                           String?
+  tenantCode                         String              @unique
+  address                            String?
+  timezone                           String              @default("UTC")
+  billingEmail                       String?
+  status                             OrganizationStatus  @default(TRIAL)
+  metadata                           Json?
+  createdAt                          DateTime            @default(now())
+  updatedAt                          DateTime            @updatedAt
+  businessRegistrationNumber         String?
+  taxNumber                          String?
+  country                            String?
+  region                             String?
+  city                               String?
+  phone                              String?
+  email                              String?
+  website                            String?
+  logoUrl                            String?
+  currency                           String              @default("GHS")
+  defaultLanguage                    String              @default("en")
+  deletionRequestedAt                DateTime?
+  deletionScheduledFor               DateTime?
+  deletionRequestedById              String?
+  deletionPreviousStatus             OrganizationStatus?
+  offlineAccessGranted               Boolean             @default(false)
+  offlineAccessGrantedAt             DateTime?
+  offlineAccessGrantedById           String?
   /// Same shape and intent as offlineAccessGranted: a platform-operator-only
   /// entitlement for an organization that has separately arranged (and pays
   /// for) SMS notifications, gating every module's own smsNotificationsEnabled
   /// toggle (School/Hotel/Pharmacy/Payroll/Hospital) regardless of what that
   /// organization's own admin has configured. See docs/SMS_INTEGRATION.md.
-  smsNotificationsGranted    Boolean             @default(false)
-  smsNotificationsGrantedAt  DateTime?
-  smsNotificationsGrantedById String?
+  smsNotificationsGranted            Boolean             @default(false)
+  smsNotificationsGrantedAt          DateTime?
+  smsNotificationsGrantedById        String?
   /// Same shape: a platform-operator-only entitlement for a School customer
   /// that has separately arranged (and pays for) the Parent/Student portal
   /// add-on. Gates /app/school/portal and /app/school/portal-access
   /// regardless of role/permission. See docs/SCHOOL_PARENT_STUDENT_PORTAL.md.
-  schoolPortalGranted        Boolean             @default(false)
-  schoolPortalGrantedAt      DateTime?
-  schoolPortalGrantedById    String?
+  schoolPortalGranted                Boolean             @default(false)
+  schoolPortalGrantedAt              DateTime?
+  schoolPortalGrantedById            String?
+  /// Paid, operator-granted School add-on: direct in-app conversations between staff and guardians (default off). See docs/SCHOOL_COMMUNICATIONS.md.
+  schoolGuardianMessagingGranted     Boolean             @default(false)
+  schoolGuardianMessagingGrantedAt   DateTime?
+  schoolGuardianMessagingGrantedById String?
+  /// Global localization (2026-10-06). `country` stores an ISO 3166-1
+  /// alpha-2 code for new writes; legacy rows may hold a country name and are
+  /// normalized through src/lib/localization.ts. `currency` above is the
+  /// authoritative accounting base currency and is changed only through the
+  /// guarded localization settings action (never from IP/browser locale).
+  legalName                          String?
+  tradingName                        String?
+  postalCode                         String?
+  legalEntityType                    String?
+  vatRegistrationNumber              String?
+  /// BCP 47 locale for number/date/currency presentation. Null means
+  /// "derive from the base currency" so existing organizations keep en-GH.
+  locale                             String?
+  dateFormat                         String              @default("LOCALE")
+  numberFormat                       String              @default("LOCALE")
+  fiscalYearStartMonth               Int                 @default(1)
+  accountingBasis                    AccountingBasis     @default(ACCRUAL)
+  pricesIncludeTax                   Boolean             @default(false)
+  /// Tax jurisdiction code (GH, US, EU-DE, GB, CH, NO...). Selects the
+  /// jurisdiction pack; null means no pack has been chosen yet.
+  jurisdictionCode                   String?
 
   members                         OrganizationMember[]
   invitations                     Invitation[]
   branches                        Branch[]
   roles                           Role[]
   organizationModules             OrganizationModule[]
+  moduleBrandings                 OrganizationModuleBranding[]
   auditLogs                       AuditLog[]
   notifications                   Notification[]
   smsMessages                     SmsMessage[]
@@ -628,6 +681,16 @@ model Organization {
   fleetMaintenanceAttachments     FleetMaintenanceAttachment[]
   fleetPayments                   FleetPayment[]
   workAndPayContracts             FleetWorkAndPayContract[]
+  exchangeRates                   ExchangeRate[]
+  taxJurisdictions                TaxJurisdiction[]
+  taxAuthorities                  TaxAuthority[]
+  taxCategories                   TaxCategory[]
+  taxRates                        TaxRate[]
+  taxRules                        TaxRule[]
+  taxRegistrations                TaxRegistration[]
+  taxExemptions                   TaxExemption[]
+  documentTaxLines                DocumentTaxLine[]
+  taxLedgerEntries                TaxLedgerEntry[]
   settlementProfile               SettlementProfile?
   customerFeedback                CustomerFeedback[]
   operationalPayments             OperationalPayment[]
@@ -705,6 +768,8 @@ model Organization {
   payrollRuns                     PayrollRun[]
   payrollPayslips                 PayrollPayslip[]
   payrollSettings                 PayrollSettings?
+  payrollDeductionRules           PayrollDeductionRule[]
+  payrollPayslipDeductions        PayrollPayslipDeduction[]
   posRegisters                    PosRegister[]
   posSessions                     PosSession[]
   posSales                        PosSale[]
@@ -732,6 +797,16 @@ model Organization {
   schoolAcademicYears             SchoolAcademicYear[]
   schoolTerms                     SchoolTerm[]
   schoolGuardians                 SchoolGuardian[]
+  schoolConversations             SchoolConversation[]
+  schoolMessages                  SchoolMessage[]
+  schoolConversationReadStates    SchoolConversationReadState[]
+  schoolAnnouncements             SchoolAnnouncement[]
+  schoolAnnouncementReads         SchoolAnnouncementRead[]
+  schoolChats                     SchoolChat[]
+  schoolChatMembers               SchoolChatMember[]
+  schoolChatMessages              SchoolChatMessage[]
+  schoolChatReactions             SchoolChatReaction[]
+  schoolChatBroadcasts            SchoolChatBroadcast[]
   schoolStudents                  SchoolStudent[]
   schoolStudentGuardians          SchoolStudentGuardian[]
   schoolClasses                   SchoolClass[]
@@ -741,6 +816,7 @@ model Organization {
   schoolAttendance                SchoolAttendance[]
   schoolFeeInvoices               SchoolFeeInvoice[]
   schoolFeePayments               SchoolFeePayment[]
+  schoolFeeRefunds                SchoolFeeRefund[]
   schoolFeeStructures             SchoolFeeStructure[]
   schoolStudentLifecycleEvents    SchoolStudentLifecycleEvent[]
   schoolExams                     SchoolExam[]
@@ -812,6 +888,31 @@ model Organization {
   hospitalSettings                HospitalSettings[]
   supportConversations            SupportConversation[]
   supportMessages                 SupportMessage[]
+  contractSettings                ContractSettings?
+  contractCategories              ContractCategory[]
+  contractTypes                   ContractType[]
+  contracts                       Contract[]
+  contractParties                 ContractParty[]
+  contractDocuments               ContractDocument[]
+  contractVersions                ContractVersion[]
+  contractTemplates               ContractTemplate[]
+  contractClauses                 ContractClause[]
+  contractClauseLinks             ContractClauseLink[]
+  contractAccessGrants            ContractAccessGrant[]
+  contractLinks                   ContractLink[]
+  contractApprovalRules           ContractApprovalRule[]
+  contractApprovalRuleSteps       ContractApprovalRuleStep[]
+  contractApprovalRequests        ContractApprovalRequest[]
+  contractApprovalSteps           ContractApprovalStep[]
+  contractComments                ContractComment[]
+  contractObligations             ContractObligation[]
+  contractMilestones              ContractMilestone[]
+  contractAmendments              ContractAmendment[]
+  contractRenewals                ContractRenewal[]
+  contractSignatures              ContractSignature[]
+  contractReminders               ContractReminder[]
+  contractBillingLines            ContractBillingLine[]
+  vatNumberChecks                 VatNumberCheck[]
 
   @@index([industry])
   @@index([status])
@@ -933,6 +1034,7 @@ model Branch {
   hotelProperties          HotelProperty[]
   schoolCampuses           SchoolCampus[]
   hospitalFacilities       HospitalFacility[]
+  contracts                Contract[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -1062,6 +1164,26 @@ model OrganizationModule {
 
   @@unique([organizationId, moduleId])
   @@index([moduleId])
+}
+
+/// Tenant-owned presentation overrides for a subscribed business module.
+model OrganizationModuleBranding {
+  id             String   @id @default(cuid())
+  organizationId String
+  moduleKey      String
+  displayName    String?
+  logoUrl        String?  @db.Text
+  hasLogo        Boolean  @default(false)
+  primaryColor   String?  @db.VarChar(7)
+  accentColor    String?  @db.VarChar(7)
+  surfaceColor   String?  @db.VarChar(7)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, moduleKey])
+  @@index([organizationId])
 }
 
 model ModuleRequest {
@@ -1655,6 +1777,8 @@ model FileAsset {
   maintenanceAttachments FleetMaintenanceAttachment[]
   vehicleExpenseReceipts FleetVehicleExpense[]
   accountingAttachments  AccountingAttachment[]
+  content                FileContent?
+  contractDocument       ContractDocument?
 
   @@index([organizationId])
   @@index([branchId])
@@ -2738,6 +2862,41 @@ enum AccountingJournalStatus {
   REJECTED
 }
 
+enum AccountingBasis {
+  ACCRUAL
+  CASH
+}
+
+enum ExchangeRateSource {
+  MANUAL
+  PROVIDER
+}
+
+/// An organization-scoped exchange rate: 1 unit of fromCurrency equals
+/// `rate` units of toCurrency on rateDate. Rows are append-only. A correction
+/// is a newer row for the same pair/date (the latest createdAt wins for future
+/// documents); documents snapshot the rate they used, so recording or
+/// correcting a rate never changes a historical transaction.
+model ExchangeRate {
+  id             String             @id @default(cuid())
+  organizationId String
+  fromCurrency   String
+  toCurrency     String
+  rate           Decimal            @db.Decimal(20, 10)
+  rateDate       DateTime           @db.Date
+  source         ExchangeRateSource @default(MANUAL)
+  providerName   String?
+  notes          String?
+  createdById    String?
+  createdAt      DateTime           @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, fromCurrency, toCurrency, rateDate])
+  @@index([organizationId, createdAt])
+}
+
 enum AccountingTaxTreatment {
   STANDARD
   ZERO_RATED
@@ -2874,6 +3033,9 @@ model AccountingAccount {
   liquidityType          AccountingLiquidityType @default(NONE)
   bankName               String?
   accountNumberLast4     String?
+  /// Currency the account is held in (e.g. a USD bank account). Null = base
+  /// currency. Ledger balances are always kept in the base currency.
+  currency               String?
   openingBalancePostedAt DateTime?
   createdAt              DateTime                @default(now())
 
@@ -2993,39 +3155,58 @@ model AccountingExpenseCategory {
 }
 
 model AccountingInvoice {
-  id             String                  @id @default(cuid())
-  organizationId String
-  branchId       String?
-  invoiceNumber  String
-  contactId      String?
-  customerName   String
-  customerEmail  String?
-  description    String?                 @db.Text
-  amount         Decimal                 @db.Decimal(12, 2)
-  taxableAmount  Decimal                 @default(0) @db.Decimal(12, 2)
-  vatAmount      Decimal                 @default(0) @db.Decimal(12, 2)
-  nhilAmount     Decimal                 @default(0) @db.Decimal(12, 2)
-  getfundAmount  Decimal                 @default(0) @db.Decimal(12, 2)
+  id                 String                  @id @default(cuid())
+  organizationId     String
+  branchId           String?
+  invoiceNumber      String
+  contactId          String?
+  customerName       String
+  customerEmail      String?
+  description        String?                 @db.Text
+  amount             Decimal                 @db.Decimal(12, 2)
+  taxableAmount      Decimal                 @default(0) @db.Decimal(12, 2)
+  vatAmount          Decimal                 @default(0) @db.Decimal(12, 2)
+  nhilAmount         Decimal                 @default(0) @db.Decimal(12, 2)
+  getfundAmount      Decimal                 @default(0) @db.Decimal(12, 2)
   /// When true, the line total entered is treated as gross (tax already
   /// included) and taxableAmount is back-calculated from it via
   /// calculateTaxInclusive() instead of calculateTax() adding tax on top -
   /// false (the existing, unchanged behavior) for every invoice created
   /// before this column existed.
-  taxInclusive   Boolean                 @default(false)
-  taxCodeId      String?
-  amountPaid     Decimal                 @default(0) @db.Decimal(12, 2)
+  taxInclusive       Boolean                 @default(false)
+  taxCodeId          String?
+  amountPaid         Decimal                 @default(0) @db.Decimal(12, 2)
   /// Reduces outstanding balance the same way amountPaid does, but via an
   /// applied AccountingCreditNote rather than cash - kept as its own column
   /// (not folded into amountPaid) so cash-received figures never include a
   /// non-cash credit. Outstanding balance = amount - amountPaid - amountCredited.
-  amountCredited Decimal                 @default(0) @db.Decimal(12, 2)
-  issueDate      DateTime
-  dueDate        DateTime
-  status         AccountingInvoiceStatus @default(DRAFT)
-  paidAt         DateTime?
-  createdById    String?
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
+  amountCredited     Decimal                 @default(0) @db.Decimal(12, 2)
+  /// Multi-currency snapshot (2026-10-06). Document amounts are in
+  /// `currency` (null = the organization's base currency for legacy rows).
+  /// The rate is fixed when the document is created and never recalculated;
+  /// baseAmount is the base-currency equivalent posted to the ledger.
+  currency           String?
+  exchangeRate       Decimal                 @default(1) @db.Decimal(20, 10)
+  exchangeRateDate   DateTime?
+  exchangeRateSource String?
+  baseAmount         Decimal?                @db.Decimal(14, 2)
+  /// Set when the document's tax comes from the tax engine (a TaxRule) rather
+  /// than a legacy AccountingTaxCode. Its components are in DocumentTaxLine
+  /// and the total in taxAmount; vat/nhil/getfund columns stay zero.
+  taxRuleId          String?
+  taxTreatment       TaxTreatment?
+  taxAmount          Decimal                 @default(0) @db.Decimal(14, 2)
+  /// Base-currency carrying amount already relieved by payments and credits;
+  /// the final settlement relieves exactly the remainder, so no rounding
+  /// residue is left on the receivable/payable.
+  baseAmountSettled  Decimal                 @default(0) @db.Decimal(14, 2)
+  issueDate          DateTime
+  dueDate            DateTime
+  status             AccountingInvoiceStatus @default(DRAFT)
+  paidAt             DateTime?
+  createdById        String?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
 
   organization Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch       Branch?                       @relation(fields: [branchId], references: [id], onDelete: SetNull)
@@ -3038,6 +3219,7 @@ model AccountingInvoice {
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, status])
+  @@index([organizationId, currency])
   @@index([branchId])
   @@index([taxCodeId])
   @@index([contactId])
@@ -3058,6 +3240,8 @@ model AccountingInvoiceLine {
   unitPrice   Decimal @db.Decimal(12, 2)
   lineTotal   Decimal @db.Decimal(12, 2)
   sortOrder   Int     @default(0)
+  /// Tax engine rule for this line when it differs from the document rule (the version in effect on the document date).
+  taxRuleId   String?
 
   invoice AccountingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
@@ -3082,6 +3266,12 @@ model AccountingContact {
   phone                   String?
   address                 String?               @db.Text
   taxIdentificationNumber String?
+  /// Default document currency for this customer/supplier (null = base).
+  currency                String?
+  countryCode             String?
+  vatNumber               String?
+  taxExemptions           TaxExemption[]
+  vatNumberChecks         VatNumberCheck[]
   fleetOwnerId            String?
   procurementVendorId     String?
   crmContactId            String?
@@ -3089,12 +3279,13 @@ model AccountingContact {
   createdAt               DateTime              @default(now())
   updatedAt               DateTime              @updatedAt
 
-  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch       Branch?                @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  createdBy    User?                  @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  invoices     AccountingInvoice[]
-  bills        AccountingBill[]
-  creditNotes  AccountingCreditNote[]
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch          Branch?                @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  createdBy       User?                  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  invoices        AccountingInvoice[]
+  bills           AccountingBill[]
+  creditNotes     AccountingCreditNote[]
+  contractParties ContractParty[]
 
   @@index([organizationId])
   @@index([branchId])
@@ -3102,31 +3293,50 @@ model AccountingContact {
 }
 
 model AccountingBill {
-  id               String               @id @default(cuid())
-  organizationId   String
-  branchId         String?
-  billNumber       String
-  contactId        String?
-  supplierName     String
-  supplierEmail    String?
-  description      String?              @db.Text
-  expenseAccountId String
-  amount           Decimal              @db.Decimal(12, 2)
-  taxableAmount    Decimal              @default(0) @db.Decimal(12, 2)
-  vatAmount        Decimal              @default(0) @db.Decimal(12, 2)
-  nhilAmount       Decimal              @default(0) @db.Decimal(12, 2)
-  getfundAmount    Decimal              @default(0) @db.Decimal(12, 2)
+  id                 String               @id @default(cuid())
+  organizationId     String
+  branchId           String?
+  billNumber         String
+  contactId          String?
+  supplierName       String
+  supplierEmail      String?
+  description        String?              @db.Text
+  expenseAccountId   String
+  amount             Decimal              @db.Decimal(12, 2)
+  taxableAmount      Decimal              @default(0) @db.Decimal(12, 2)
+  vatAmount          Decimal              @default(0) @db.Decimal(12, 2)
+  nhilAmount         Decimal              @default(0) @db.Decimal(12, 2)
+  getfundAmount      Decimal              @default(0) @db.Decimal(12, 2)
   /// Same meaning as AccountingInvoice.taxInclusive.
-  taxInclusive     Boolean              @default(false)
-  taxCodeId        String?
-  amountPaid       Decimal              @default(0) @db.Decimal(12, 2)
-  billDate         DateTime
-  dueDate          DateTime
-  status           AccountingBillStatus @default(DRAFT)
-  paidAt           DateTime?
-  createdById      String?
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  taxInclusive       Boolean              @default(false)
+  taxCodeId          String?
+  amountPaid         Decimal              @default(0) @db.Decimal(12, 2)
+  /// Multi-currency snapshot (2026-10-06). Document amounts are in
+  /// `currency` (null = the organization's base currency for legacy rows).
+  /// The rate is fixed when the document is created and never recalculated;
+  /// baseAmount is the base-currency equivalent posted to the ledger.
+  currency           String?
+  exchangeRate       Decimal              @default(1) @db.Decimal(20, 10)
+  exchangeRateDate   DateTime?
+  exchangeRateSource String?
+  baseAmount         Decimal?             @db.Decimal(14, 2)
+  /// Set when the document's tax comes from the tax engine (a TaxRule) rather
+  /// than a legacy AccountingTaxCode. Its components are in DocumentTaxLine
+  /// and the total in taxAmount; vat/nhil/getfund columns stay zero.
+  taxRuleId          String?
+  taxTreatment       TaxTreatment?
+  taxAmount          Decimal              @default(0) @db.Decimal(14, 2)
+  /// Base-currency carrying amount already relieved by payments and credits;
+  /// the final settlement relieves exactly the remainder, so no rounding
+  /// residue is left on the receivable/payable.
+  baseAmountSettled  Decimal              @default(0) @db.Decimal(14, 2)
+  billDate           DateTime
+  dueDate            DateTime
+  status             AccountingBillStatus @default(DRAFT)
+  paidAt             DateTime?
+  createdById        String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
   organization   Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch         Branch?                    @relation(fields: [branchId], references: [id], onDelete: SetNull)
@@ -3139,6 +3349,7 @@ model AccountingBill {
 
   @@unique([organizationId, billNumber])
   @@index([organizationId, status])
+  @@index([organizationId, currency])
   @@index([branchId])
   @@index([taxCodeId])
   @@index([contactId])
@@ -3153,6 +3364,8 @@ model AccountingBillLine {
   unitPrice   Decimal @db.Decimal(12, 2)
   lineTotal   Decimal @db.Decimal(12, 2)
   sortOrder   Int     @default(0)
+  /// Tax engine rule for this line when it differs from the document rule (the version in effect on the document date).
+  taxRuleId   String?
 
   bill AccountingBill @relation(fields: [billId], references: [id], onDelete: Cascade)
 
@@ -3173,6 +3386,16 @@ model AccountingPayablePayment {
   /// Withholding Tax Payable account instead of paid as cash - zero unless the
   /// bill's tax code has a configured withholdingRate.
   withholdingTaxAmount Decimal  @default(0) @db.Decimal(12, 2)
+  /// Payment currency always equals the document currency. exchangeRate is the
+  /// settlement rate; baseAmount is the base value received/paid;
+  /// settledBaseAmount is the document carrying amount relieved; the
+  /// difference is realizedFxAmount (positive = gain).
+  currency             String?
+  exchangeRate         Decimal  @default(1) @db.Decimal(20, 10)
+  exchangeRateSource   String?
+  baseAmount           Decimal? @db.Decimal(14, 2)
+  settledBaseAmount    Decimal? @db.Decimal(14, 2)
+  realizedFxAmount     Decimal  @default(0) @db.Decimal(14, 2)
   paymentDate          DateTime
   reference            String?
   notes                String?  @db.Text
@@ -3190,27 +3413,41 @@ model AccountingPayablePayment {
 }
 
 model AccountingCreditNote {
-  id               String                     @id @default(cuid())
-  organizationId   String
-  branchId         String?
-  creditNoteNumber String
-  contactId        String?
-  customerName     String
-  customerEmail    String?
-  description      String?                    @db.Text
-  amount           Decimal                    @db.Decimal(12, 2)
-  taxableAmount    Decimal                    @default(0) @db.Decimal(12, 2)
-  vatAmount        Decimal                    @default(0) @db.Decimal(12, 2)
-  nhilAmount       Decimal                    @default(0) @db.Decimal(12, 2)
-  getfundAmount    Decimal                    @default(0) @db.Decimal(12, 2)
-  taxCodeId        String?
-  invoiceId        String?
-  issueDate        DateTime
-  status           AccountingCreditNoteStatus @default(DRAFT)
-  settledAt        DateTime?
-  createdById      String?
-  createdAt        DateTime                   @default(now())
-  updatedAt        DateTime                   @updatedAt
+  id                 String                     @id @default(cuid())
+  organizationId     String
+  branchId           String?
+  creditNoteNumber   String
+  contactId          String?
+  customerName       String
+  customerEmail      String?
+  description        String?                    @db.Text
+  amount             Decimal                    @db.Decimal(12, 2)
+  taxableAmount      Decimal                    @default(0) @db.Decimal(12, 2)
+  vatAmount          Decimal                    @default(0) @db.Decimal(12, 2)
+  nhilAmount         Decimal                    @default(0) @db.Decimal(12, 2)
+  getfundAmount      Decimal                    @default(0) @db.Decimal(12, 2)
+  taxCodeId          String?
+  /// Set when the credit note's tax comes from the tax engine (a TaxRule);
+  /// components are in DocumentTaxLine and the total in taxAmount.
+  taxRuleId          String?
+  taxTreatment       TaxTreatment?
+  taxAmount          Decimal                    @default(0) @db.Decimal(14, 2)
+  invoiceId          String?
+  /// Multi-currency snapshot (2026-10-06). Document amounts are in
+  /// `currency` (null = the organization's base currency for legacy rows).
+  /// The rate is fixed when the document is created and never recalculated;
+  /// baseAmount is the base-currency equivalent posted to the ledger.
+  currency           String?
+  exchangeRate       Decimal                    @default(1) @db.Decimal(20, 10)
+  exchangeRateDate   DateTime?
+  exchangeRateSource String?
+  baseAmount         Decimal?                   @db.Decimal(14, 2)
+  issueDate          DateTime
+  status             AccountingCreditNoteStatus @default(DRAFT)
+  settledAt          DateTime?
+  createdById        String?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
 
   organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch       Branch?                    @relation(fields: [branchId], references: [id], onDelete: SetNull)
@@ -3236,6 +3473,8 @@ model AccountingCreditNoteLine {
   unitPrice    Decimal @db.Decimal(12, 2)
   lineTotal    Decimal @db.Decimal(12, 2)
   sortOrder    Int     @default(0)
+  /// Tax engine rule for this line when it differs from the document rule (the version in effect on the document date).
+  taxRuleId    String?
 
   creditNote AccountingCreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
 
@@ -3293,6 +3532,10 @@ model AccountingTaxTransaction {
   nhilAmount      Decimal                @default(0) @db.Decimal(14, 2)
   getfundAmount   Decimal                @default(0) @db.Decimal(14, 2)
   notes           String?                @db.Text
+  /// Tax amounts above are always in the base currency. These record the
+  /// document's own currency and rate as evidence.
+  currency        String?
+  exchangeRate    Decimal?               @db.Decimal(20, 10)
   createdAt       DateTime               @default(now())
 
   organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -3326,17 +3569,27 @@ model AccountingTaxPeriod {
 }
 
 model AccountingReceivablePayment {
-  id             String   @id @default(cuid())
-  organizationId String
-  invoiceId      String
-  accountId      String
-  paymentMethod  String
-  amount         Decimal  @db.Decimal(12, 2)
-  paymentDate    DateTime
-  reference      String?
-  notes          String?  @db.Text
-  createdById    String?
-  createdAt      DateTime @default(now())
+  id                 String   @id @default(cuid())
+  organizationId     String
+  invoiceId          String
+  accountId          String
+  paymentMethod      String
+  amount             Decimal  @db.Decimal(12, 2)
+  /// Payment currency always equals the document currency. exchangeRate is the
+  /// settlement rate; baseAmount is the base value received/paid;
+  /// settledBaseAmount is the document carrying amount relieved; the
+  /// difference is realizedFxAmount (positive = gain).
+  currency           String?
+  exchangeRate       Decimal  @default(1) @db.Decimal(20, 10)
+  exchangeRateSource String?
+  baseAmount         Decimal? @db.Decimal(14, 2)
+  settledBaseAmount  Decimal? @db.Decimal(14, 2)
+  realizedFxAmount   Decimal  @default(0) @db.Decimal(14, 2)
+  paymentDate        DateTime
+  reference          String?
+  notes              String?  @db.Text
+  createdById        String?
+  createdAt          DateTime @default(now())
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoice      AccountingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
@@ -3432,11 +3685,16 @@ model AccountingPeriod {
 }
 
 model AccountingJournalLine {
-  id             String  @id @default(cuid())
-  journalEntryId String
-  accountId      String
-  debit          Decimal @default(0) @db.Decimal(12, 2)
-  credit         Decimal @default(0) @db.Decimal(12, 2)
+  id                  String   @id @default(cuid())
+  journalEntryId      String
+  accountId           String
+  debit               Decimal  @default(0) @db.Decimal(12, 2)
+  credit              Decimal  @default(0) @db.Decimal(12, 2)
+  /// Original transaction currency/amount and rate for a line converted
+  /// into the base currency. Null for base-currency lines.
+  transactionCurrency String?
+  transactionAmount   Decimal? @db.Decimal(14, 2)
+  exchangeRate        Decimal? @db.Decimal(20, 10)
 
   journalEntry       AccountingJournalEntry       @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
   account            AccountingAccount            @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -3675,23 +3933,25 @@ model HrEmployee {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
-  organization        Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch              Branch?                   @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  manager             HrEmployee?               @relation("EmployeeManager", fields: [managerId], references: [id], onDelete: SetNull)
-  reports             HrEmployee[]              @relation("EmployeeManager")
-  user                User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  leaveRequests       HrLeaveRequest[]
-  reviews             HrPerformanceReview[]
-  payrollCompensation PayrollCompensation?
-  payslips            PayrollPayslip[]
-  terminationRequests HrTerminationRequest[]
-  statusHistory       HrEmployeeStatusHistory[]
-  offboardingTasks    HrOffboardingTask[]
-  planInstances       HrPlanInstance[]
-  resumeEntries       HrResumeEntry[]
-  employeeSkills      HrEmployeeSkill[]
+  organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch                   Branch?                   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  manager                  HrEmployee?               @relation("EmployeeManager", fields: [managerId], references: [id], onDelete: SetNull)
+  reports                  HrEmployee[]              @relation("EmployeeManager")
+  user                     User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  leaveRequests            HrLeaveRequest[]
+  reviews                  HrPerformanceReview[]
+  payrollCompensation      PayrollCompensation?
+  payslips                 PayrollPayslip[]
+  terminationRequests      HrTerminationRequest[]
+  statusHistory            HrEmployeeStatusHistory[]
+  offboardingTasks         HrOffboardingTask[]
+  planInstances            HrPlanInstance[]
+  resumeEntries            HrResumeEntry[]
+  employeeSkills           HrEmployeeSkill[]
+  schoolPayrollAdjustments SchoolPayrollAdjustment[]
 
   @@unique([organizationId, employeeNumber])
+  @@unique([organizationId, id], map: "HrEmployee_organizationId_id_key")
   @@index([organizationId, status])
   @@index([branchId])
   @@index([managerId])
@@ -4330,6 +4590,10 @@ model ProcurementSupplierInvoice {
   nhilAmount     Decimal                          @default(0) @db.Decimal(12, 2)
   getfundAmount  Decimal                          @default(0) @db.Decimal(12, 2)
   taxCodeId      String?
+  /// Set when tax comes from the tax engine (a TaxRule); components are in DocumentTaxLine.
+  taxRuleId      String?
+  taxTreatment   TaxTreatment?
+  taxAmount      Decimal                          @default(0) @db.Decimal(14, 2)
   amountPaid     Decimal                          @default(0) @db.Decimal(12, 2)
   exceptionNote  String?                          @db.Text
   createdById    String?
@@ -4410,15 +4674,26 @@ enum PayrollRunStatus {
   CANCELLED
 }
 
+enum PayrollRunPostingStatus {
+  PENDING
+  POSTED
+  FAILED
+  NOT_REQUIRED
+}
+
 model PayrollCompensation {
-  id             String   @id @default(cuid())
-  organizationId String
-  employeeId     String   @unique
-  baseSalary     Decimal  @db.Decimal(12, 2)
-  payFrequency   String   @default("MONTHLY")
-  effectiveDate  DateTime
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  organizationId        String
+  employeeId            String   @unique
+  baseSalary            Decimal  @db.Decimal(12, 2)
+  payFrequency          String   @default("MONTHLY")
+  effectiveDate         DateTime
+  /// Withholding filing status (e.g. SINGLE) that selects deduction rules scoped to a status; null uses rules for all statuses.
+  filingStatus          String?
+  /// Extra income tax withheld each pay period at the employee's request (e.g. US Form W-4 step 4(c)).
+  additionalWithholding Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employee     HrEmployee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
@@ -4427,37 +4702,44 @@ model PayrollCompensation {
 }
 
 model PayrollRun {
-  id             String           @id @default(cuid())
+  id             String                  @id @default(cuid())
   organizationId String
   periodStart    DateTime
   periodEnd      DateTime
   payDate        DateTime
-  status         PayrollRunStatus @default(DRAFT)
+  status         PayrollRunStatus        @default(DRAFT)
+  postingStatus  PayrollRunPostingStatus @default(PENDING)
   createdById    String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
 
-  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy    User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  payslips     PayrollPayslip[]
+  organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy                User?                     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  payslips                 PayrollPayslip[]
+  schoolPayrollAdjustments SchoolPayrollAdjustment[]
 
+  @@unique([organizationId, id], map: "PayrollRun_organizationId_id_key")
   @@index([organizationId, status])
+  @@index([organizationId, postingStatus])
 }
 
 model PayrollPayslip {
-  id              String   @id @default(cuid())
-  organizationId  String
-  payrollRunId    String
-  employeeId      String
-  grossPay        Decimal  @db.Decimal(12, 2)
-  taxDeduction    Decimal  @default(0) @db.Decimal(12, 2)
-  otherDeductions Decimal  @default(0) @db.Decimal(12, 2)
-  netPay          Decimal  @db.Decimal(12, 2)
-  createdAt       DateTime @default(now())
+  id                    String   @id @default(cuid())
+  organizationId        String
+  payrollRunId          String
+  employeeId            String
+  grossPay              Decimal  @db.Decimal(12, 2)
+  taxDeduction          Decimal  @default(0) @db.Decimal(12, 2)
+  otherDeductions       Decimal  @default(0) @db.Decimal(12, 2)
+  netPay                Decimal  @db.Decimal(12, 2)
+  /// Employer contributions (not deducted from pay) calculated by deduction rules.
+  employerContributions Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt             DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  payrollRun   PayrollRun   @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
-  employee     HrEmployee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payrollRun   PayrollRun                @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employee     HrEmployee                @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  deductions   PayrollPayslipDeduction[]
 
   @@unique([payrollRunId, employeeId])
   @@index([organizationId])
@@ -4465,17 +4747,396 @@ model PayrollPayslip {
 }
 
 model PayrollSettings {
-  id                      String   @id @default(cuid())
-  organizationId          String   @unique
-  defaultTaxRate          Decimal  @default(0) @db.Decimal(5, 4)
+  id                      String               @id @default(cuid())
+  organizationId          String               @unique
+  defaultTaxRate          Decimal              @default(0) @db.Decimal(5, 4)
   /**
    * Sends each employee an SMS (via mNotify, see src/lib/sms.ts) when their payslip is issued - see docs/SMS_INTEGRATION.md.
    */
-  smsNotificationsEnabled Boolean  @default(false)
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  smsNotificationsEnabled Boolean              @default(false)
+  /// FLAT_RATE applies defaultTaxRate; RULES applies confirmed PayrollDeductionRule rows for the pay date's tax year.
+  deductionMode           PayrollDeductionMode @default(FLAT_RATE)
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+enum PayrollDeductionMode {
+  FLAT_RATE
+  RULES
+}
+
+enum PayrollDeductionKind {
+  /// Income tax withheld from the employee (reduces net pay, recorded as taxDeduction).
+  EMPLOYEE_WITHHOLDING
+  /// Employee share of a contribution, e.g. social security (reduces net pay).
+  EMPLOYEE_CONTRIBUTION
+  /// Employer contribution or employer payroll tax (an expense, not deducted from pay).
+  EMPLOYER_CONTRIBUTION
+}
+
+enum PayrollDeductionMethod {
+  /// rate % of subject wages, optionally capped by an annual wage base and/or applied only above an annual wage floor.
+  PERCENTAGE
+  /// Progressive brackets on annualized wages less an annual allowance, de-annualized per pay period.
+  BRACKETS
+}
+
+/// Configurable statutory deduction for one tax year. Figures are entered or
+/// confirmed by an administrator; a run uses only confirmed, active rules in
+/// effect on its pay date.
+model PayrollDeductionRule {
+  id                   String                 @id @default(cuid())
+  organizationId       String
+  code                 String
+  name                 String
+  kind                 PayrollDeductionKind
+  method               PayrollDeductionMethod
+  taxYear              Int
+  /// Percentage (e.g. 6.2) for PERCENTAGE rules.
+  rate                 Decimal?               @db.Decimal(9, 4)
+  /// BRACKETS: [{ "from": "0", "rate": "10" }, ...] annual amounts, ascending.
+  brackets             Json?
+  /// BRACKETS: annual amount subtracted before applying brackets.
+  annualAllowance      Decimal?               @db.Decimal(14, 2)
+  /// Annual cap on wages subject to the rule (e.g. a social security wage base).
+  wageBase             Decimal?               @db.Decimal(14, 2)
+  /// The rule applies only to year-to-date wages above this annual amount.
+  wageFloor            Decimal?               @db.Decimal(14, 2)
+  /// Applies only to employees with this filing status; null applies to all.
+  filingStatus         String?
+  liabilityAccountCode String
+  /// Employer contributions only: the expense account debited.
+  expenseAccountCode   String?
+  sourceReference      String?
+  templateKey          String?
+  effectiveFrom        DateTime               @db.Date
+  effectiveTo          DateTime?              @db.Date
+  active               Boolean                @default(true)
+  confirmedAt          DateTime?
+  confirmedById        String?
+  sortOrder            Int                    @default(0)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, code, taxYear])
+  @@index([organizationId, taxYear])
+}
+
+/// Per-payslip result of one deduction rule, kept as an immutable snapshot
+/// (rule figures can change later) and used for year-to-date wage caps.
+model PayrollPayslipDeduction {
+  id                   String               @id @default(cuid())
+  organizationId       String
+  payslipId            String
+  employeeId           String
+  ruleId               String?
+  code                 String
+  name                 String
+  kind                 PayrollDeductionKind
+  taxYear              Int
+  subjectWages         Decimal              @db.Decimal(14, 2)
+  amount               Decimal              @db.Decimal(12, 2)
+  liabilityAccountCode String
+  expenseAccountCode   String?
+  createdAt            DateTime             @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payslip      PayrollPayslip @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, employeeId, taxYear, code])
+  @@index([payslipId])
+}
+
+enum SchoolConversationStatus {
+  OPEN
+  CLOSED
+}
+
+enum SchoolMessageSenderSide {
+  STAFF
+  GUARDIAN
+}
+
+enum SchoolAnnouncementAudience {
+  /// Staff with School access only.
+  STAFF
+  /// Every guardian with a portal account.
+  ALL_GUARDIANS
+  /// Guardians of students actively enrolled in classId.
+  CLASS_GUARDIANS
+  /// Staff and every guardian.
+  EVERYONE
+}
+
+/// A direct in-app conversation between school staff and one guardian about
+/// one student. The student anchors authorization: staff see it only within
+/// their class scope, and the guardian only while still linked to the student.
+model SchoolConversation {
+  id             String                   @id @default(cuid())
+  organizationId String
+  studentId      String
+  guardianId     String
+  subject        String
+  status         SchoolConversationStatus @default(OPEN)
+  startedBySide  SchoolMessageSenderSide
+  createdById    String
+  lastMessageAt  DateTime                 @default(now())
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  organization Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      SchoolStudent                 @relation(fields: [organizationId, studentId], references: [organizationId, id], onDelete: Cascade)
+  guardian     SchoolGuardian                @relation(fields: [organizationId, guardianId], references: [organizationId, id], onDelete: Cascade)
+  messages     SchoolMessage[]
+  readStates   SchoolConversationReadState[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId, guardianId, lastMessageAt])
+  @@index([organizationId, studentId])
+  @@index([organizationId, lastMessageAt])
+}
+
+model SchoolMessage {
+  id              String                  @id @default(cuid())
+  organizationId  String
+  conversationId  String
+  senderUserId    String
+  senderSide      SchoolMessageSenderSide
+  /// Display name captured when sent, so history stays readable if the account changes.
+  senderName      String
+  body            String                  @db.Text
+  /// Generated per form render; a repeated submit of the same form is ignored.
+  clientRequestId String
+  createdAt       DateTime                @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversation SchoolConversation @relation(fields: [organizationId, conversationId], references: [organizationId, id], onDelete: Cascade)
+
+  @@unique([conversationId, clientRequestId])
+  @@index([organizationId, conversationId, createdAt])
+}
+
+model SchoolConversationReadState {
+  id             String   @id @default(cuid())
+  organizationId String
+  conversationId String
+  userId         String
+  lastReadAt     DateTime @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversation SchoolConversation @relation(fields: [organizationId, conversationId], references: [organizationId, id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([organizationId, userId])
+}
+
+model SchoolAnnouncement {
+  id              String                     @id @default(cuid())
+  organizationId  String
+  title           String
+  body            String                     @db.Text
+  audience        SchoolAnnouncementAudience
+  classId         String?
+  publishedById   String
+  publishedByName String
+  clientRequestId String
+  publishedAt     DateTime                   @default(now())
+  withdrawnAt     DateTime?
+  withdrawnById   String?
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  class        SchoolClass?             @relation(fields: [organizationId, classId], references: [organizationId, id], onDelete: Restrict)
+  reads        SchoolAnnouncementRead[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, clientRequestId])
+  @@index([organizationId, publishedAt])
+  @@index([organizationId, classId])
+}
+
+model SchoolAnnouncementRead {
+  id             String   @id @default(cuid())
+  organizationId String
+  announcementId String
+  userId         String
+  readAt         DateTime @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  announcement SchoolAnnouncement @relation(fields: [organizationId, announcementId], references: [organizationId, id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
+  @@index([organizationId, userId])
+}
+
+enum SchoolChatType {
+  DIRECT
+  GROUP
+}
+
+enum SchoolChatMemberRole {
+  ADMIN
+  MEMBER
+}
+
+enum SchoolChatMessageKind {
+  TEXT
+  ATTACHMENT
+  SYSTEM
+}
+
+enum SchoolChatBroadcastAudience {
+  ALL_GUARDIANS
+  CLASS_GUARDIANS
+  ALL_STAFF
+  SELECTED
+}
+
+/// In-app School chat (staff and guardians): a direct chat between two people
+/// or a staff-created group. Access is by membership, re-checked on every
+/// read and write. See docs/SCHOOL_COMMUNICATIONS.md.
+model SchoolChat {
+  id                String         @id @default(cuid())
+  organizationId    String
+  type              SchoolChatType
+  name              String?
+  description       String?
+  /// DIRECT chats: the two user ids sorted and joined, so a pair has one chat.
+  directKey         String?
+  /// Optional context: the student or class a chat is about.
+  studentId         String?
+  classId           String?
+  onlyAdminsCanPost Boolean        @default(false)
+  createdById       String
+  lastMessageAt     DateTime       @default(now())
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      SchoolStudent?      @relation(fields: [organizationId, studentId], references: [organizationId, id], onDelete: SetNull)
+  class        SchoolClass?        @relation(fields: [organizationId, classId], references: [organizationId, id], onDelete: SetNull)
+  members      SchoolChatMember[]
+  messages     SchoolChatMessage[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, directKey])
+  @@index([organizationId, lastMessageAt])
+}
+
+model SchoolChatMember {
+  id             String                  @id @default(cuid())
+  organizationId String
+  chatId         String
+  userId         String
+  side           SchoolMessageSenderSide
+  role           SchoolChatMemberRole    @default(MEMBER)
+  /// Display name captured when added, so lists stay readable.
+  displayName    String
+  addedById      String?
+  joinedAt       DateTime                @default(now())
+  leftAt         DateTime?
+  lastReadAt     DateTime                @default(now())
+  mutedUntil     DateTime?
+  pinnedAt       DateTime?
+  archivedAt     DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  chat         SchoolChat   @relation(fields: [organizationId, chatId], references: [organizationId, id], onDelete: Cascade)
+
+  @@unique([chatId, userId])
+  @@index([organizationId, userId, leftAt])
+}
+
+model SchoolChatMessage {
+  id                 String                   @id @default(cuid())
+  organizationId     String
+  chatId             String
+  /// Null for system messages.
+  senderUserId       String?
+  senderSide         SchoolMessageSenderSide?
+  senderName         String
+  kind               SchoolChatMessageKind    @default(TEXT)
+  body               String                   @default("") @db.Text
+  replyToId          String?
+  /// ATTACHMENT messages: FileAsset holding the validated file, with a snapshot of its name, type, and size.
+  attachmentAssetId  String?
+  attachmentName     String?
+  attachmentMimeType String?
+  attachmentSize     Int?
+  broadcastId        String?
+  editedAt           DateTime?
+  deletedAt          DateTime?
+  deletedById        String?
+  /// Generated per form render; a repeated submit of the same form is ignored.
+  clientRequestId    String
+  createdAt          DateTime                 @default(now())
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  chat         SchoolChat           @relation(fields: [organizationId, chatId], references: [organizationId, id], onDelete: Cascade)
+  replyTo      SchoolChatMessage?   @relation("SchoolChatReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies      SchoolChatMessage[]  @relation("SchoolChatReply")
+  reactions    SchoolChatReaction[]
+
+  @@unique([chatId, clientRequestId])
+  @@index([organizationId, chatId, createdAt])
+  @@index([organizationId, broadcastId])
+}
+
+model SchoolChatReaction {
+  id             String   @id @default(cuid())
+  organizationId String
+  messageId      String
+  userId         String
+  emoji          String
+  createdAt      DateTime @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  message      SchoolChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([organizationId, messageId])
+}
+
+/// A broadcast list send: one message delivered into each recipient's own
+/// direct chat with the sender, so replies stay private.
+model SchoolChatBroadcast {
+  id              String                      @id @default(cuid())
+  organizationId  String
+  senderUserId    String
+  audience        SchoolChatBroadcastAudience
+  classId         String?
+  body            String                      @db.Text
+  recipientCount  Int
+  clientRequestId String
+  createdAt       DateTime                    @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  class        SchoolClass? @relation(fields: [organizationId, classId], references: [organizationId, id], onDelete: SetNull)
+
+  @@unique([organizationId, clientRequestId])
+  @@index([organizationId, createdAt])
+}
+
+/// A browser or phone that opted in to web push notifications for a user.
+model WebPushSubscription {
+  id           String    @id @default(cuid())
+  userId       String
+  endpoint     String    @unique
+  p256dh       String
+  auth         String
+  userAgent    String?
+  failureCount Int       @default(0)
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 enum PosSessionStatus {
@@ -5348,7 +6009,10 @@ model SchoolGuardian {
   portalUser   User?                   @relation("SchoolGuardianPortalUser", fields: [userId], references: [id], onDelete: SetNull)
   students     SchoolStudentGuardian[]
 
+  conversations SchoolConversation[]
+
   @@unique([organizationId, guardianNumber])
+  @@unique([organizationId, id])
   @@index([organizationId, phone])
 }
 
@@ -5399,7 +6063,11 @@ model SchoolStudent {
   conductRecords    SchoolConductRecord[]
   documents         SchoolStudentDocument[]
 
+  conversations SchoolConversation[]
+  chats         SchoolChat[]
+
   @@unique([organizationId, admissionNumber])
+  @@unique([organizationId, id])
   @@index([organizationId, status])
   @@index([campusId])
 }
@@ -5441,7 +6109,12 @@ model SchoolClass {
   feeStructures SchoolFeeStructure[]
   teachers      SchoolClassTeacher[]
 
+  announcements  SchoolAnnouncement[]
+  chats          SchoolChat[]
+  chatBroadcasts SchoolChatBroadcast[]
+
   @@unique([campusId, code])
+  @@unique([organizationId, id])
   @@index([organizationId, active])
 }
 
@@ -5687,24 +6360,47 @@ model SchoolStudentDocument {
 }
 
 model SchoolFeePayment {
-  id             String             @id @default(cuid())
+  id             String                        @id @default(cuid())
   organizationId String
   invoiceId      String
   studentId      String
   receiptNumber  String
-  amount         Decimal            @db.Decimal(12, 2)
+  amount         Decimal                       @db.Decimal(12, 2)
   method         HotelPaymentMethod
   reference      String?
-  receivedAt     DateTime           @default(now())
+  receivedAt     DateTime                      @default(now())
   refundedAt     DateTime?
+  postingStatus  SchoolFeePaymentPostingStatus @default(PENDING)
 
-  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invoice      SchoolFeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  student      SchoolStudent    @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      SchoolFeeInvoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  student      SchoolStudent     @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  refunds      SchoolFeeRefund[]
 
   @@unique([organizationId, receiptNumber])
   @@index([organizationId, receivedAt])
   @@index([invoiceId])
+  @@index([organizationId, postingStatus])
+}
+
+model SchoolFeeRefund {
+  id             String                        @id @default(cuid())
+  organizationId String
+  paymentId      String
+  amount         Decimal                       @db.Decimal(12, 2)
+  method         HotelPaymentMethod
+  reason         String                        @db.Text
+  reference      String?
+  createdAt      DateTime                      @default(now())
+  createdById    String
+  postingStatus  SchoolFeePaymentPostingStatus @default(PENDING)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payment      SchoolFeePayment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@index([paymentId, createdAt])
+  @@index([organizationId, postingStatus])
 }
 
 model SchoolExam {
@@ -5854,20 +6550,29 @@ model SchoolLibraryLoan {
 }
 
 model SchoolPayrollAdjustment {
-  id             String    @id @default(cuid())
-  organizationId String
-  employeeId     String
-  period         String
-  type           String
-  description    String
-  amount         Decimal   @db.Decimal(12, 2)
-  processedAt    DateTime?
-  createdAt      DateTime  @default(now())
+  id               String                          @id @default(cuid())
+  organizationId   String
+  employeeId       String?
+  legacyEmployeeId String?
+  period           String
+  type             String
+  category         SchoolPayrollAdjustmentCategory @default(EARNING)
+  description      String
+  amount           Decimal                         @db.Decimal(12, 2)
+  processedAt      DateTime?
+  payrollRunId     String?
+  createdAt        DateTime                        @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     HrEmployee?  @relation(fields: [organizationId, employeeId], references: [organizationId, id], onDelete: Restrict)
+  payrollRun   PayrollRun?  @relation(fields: [organizationId, payrollRunId], references: [organizationId, id], onDelete: Restrict)
 
   @@index([organizationId, period])
+  @@index([organizationId, period, processedAt])
+  @@index([organizationId, employeeId])
   @@index([employeeId])
+  @@index([legacyEmployeeId])
+  @@index([payrollRunId])
 }
 
 model SchoolSettings {
@@ -7619,4 +8324,1150 @@ model UserPresence {
   activeConversationId String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// International tax engine (2026-10-06). Tenant-scoped, effective-dated, and
+// versioned. Jurisdiction packs seed these records; administrators can review
+// and change them. Rates and rules are never edited in place once used: a
+// change creates a new version, and documents keep immutable tax-line
+// snapshots, so historical transactions never recalculate.
+// ---------------------------------------------------------------------------
+
+enum TaxJurisdictionLevel {
+  SUPRANATIONAL
+  COUNTRY
+  STATE
+  COUNTY
+  CITY
+  DISTRICT
+}
+
+enum TaxKind {
+  VAT
+  GST
+  SALES
+  USE
+  LEVY
+  EXCISE
+  WITHHOLDING
+  PAYROLL
+  INCOME
+  OTHER
+}
+
+enum TaxTreatment {
+  STANDARD
+  REDUCED
+  ZERO_RATED
+  EXEMPT
+  REVERSE_CHARGE
+  OUT_OF_SCOPE
+}
+
+enum TaxRegistrationStatus {
+  NOT_REGISTERED
+  MONITORING
+  REGISTERED
+  DEREGISTERED
+}
+
+enum TaxFilingFrequency {
+  MONTHLY
+  QUARTERLY
+  SEMI_ANNUAL
+  ANNUAL
+}
+
+enum TaxExemptionType {
+  RESALE
+  GOVERNMENT
+  NON_PROFIT
+  DIPLOMATIC
+  EXPORT
+  OTHER
+}
+
+enum TaxDocumentType {
+  INVOICE
+  BILL
+  CREDIT_NOTE
+  SUPPLIER_INVOICE
+}
+
+model TaxJurisdiction {
+  id             String               @id @default(cuid())
+  organizationId String
+  /// GH, US, US-GA, US-GA-FULTON, EU, EU-DE, GB, CH, NO ...
+  code           String
+  name           String
+  level          TaxJurisdictionLevel
+  countryCode    String?
+  parentId       String?
+  packKey        String?
+  active         Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent        TaxJurisdiction?  @relation("TaxJurisdictionHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children      TaxJurisdiction[] @relation("TaxJurisdictionHierarchy")
+  authorities   TaxAuthority[]
+  rates         TaxRate[]
+  rules         TaxRule[]
+  registrations TaxRegistration[]
+  exemptions    TaxExemption[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, level])
+}
+
+model TaxAuthority {
+  id             String   @id @default(cuid())
+  organizationId String
+  jurisdictionId String
+  code           String
+  name           String
+  website        String?
+  createdAt      DateTime @default(now())
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jurisdiction TaxJurisdiction @relation(fields: [jurisdictionId], references: [id], onDelete: Cascade)
+  rates        TaxRate[]
+
+  @@unique([organizationId, code])
+}
+
+model TaxCategory {
+  id             String   @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  description    String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rules        TaxRule[]
+
+  @@unique([organizationId, code])
+}
+
+/// One tax component (e.g. Ghana VAT, Georgia state sales tax, German
+/// standard VAT). A rate change is a new version row; the previous version is
+/// closed with effectiveTo and never edited.
+model TaxRate {
+  id                String    @id @default(cuid())
+  organizationId    String
+  jurisdictionId    String
+  authorityId       String?
+  code              String
+  name              String
+  taxKind           TaxKind
+  rate              Decimal   @db.Decimal(9, 6)
+  compound          Boolean   @default(false)
+  recoverable       Boolean   @default(true)
+  effectiveFrom     DateTime
+  effectiveTo       DateTime?
+  version           Int       @default(1)
+  supersedesId      String?
+  sourceReference   String?
+  outputAccountCode String?
+  inputAccountCode  String?
+  createdById       String?
+  createdAt         DateTime  @default(now())
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jurisdiction TaxJurisdiction @relation(fields: [jurisdictionId], references: [id], onDelete: Restrict)
+  authority    TaxAuthority?   @relation(fields: [authorityId], references: [id], onDelete: SetNull)
+  createdBy    User?           @relation("TaxRateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, code, version])
+  @@index([organizationId, code, effectiveFrom])
+}
+
+/// Selects which rate components apply to a jurisdiction, category, and
+/// treatment. Versioned like TaxRate.
+model TaxRule {
+  id              String       @id @default(cuid())
+  organizationId  String
+  code            String
+  name            String
+  jurisdictionId  String
+  categoryId      String?
+  treatment       TaxTreatment @default(STANDARD)
+  /// TaxRate codes; the version effective on the document date is used.
+  rateCodes       String[]
+  effectiveFrom   DateTime
+  effectiveTo     DateTime?
+  version         Int          @default(1)
+  supersedesId    String?
+  active          Boolean      @default(true)
+  sourceReference String?
+  createdById     String?
+  createdAt       DateTime     @default(now())
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jurisdiction TaxJurisdiction @relation(fields: [jurisdictionId], references: [id], onDelete: Restrict)
+  category     TaxCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdBy    User?           @relation("TaxRuleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, code, version])
+  @@index([organizationId, active, effectiveFrom])
+}
+
+/// Registration, nexus, and collection status per jurisdiction. Statuses are
+/// administrator-entered facts; the system does not make legal nexus
+/// determinations.
+model TaxRegistration {
+  id                 String                @id @default(cuid())
+  organizationId     String
+  jurisdictionId     String
+  registrationNumber String?
+  status             TaxRegistrationStatus @default(NOT_REGISTERED)
+  collectionEnabled  Boolean               @default(false)
+  filingFrequency    TaxFilingFrequency?
+  effectiveFrom      DateTime?
+  effectiveTo        DateTime?
+  notes              String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jurisdiction TaxJurisdiction @relation(fields: [jurisdictionId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, jurisdictionId])
+}
+
+/// A customer's exemption (resale certificate, government, non-profit...).
+model TaxExemption {
+  id                String           @id @default(cuid())
+  organizationId    String
+  contactId         String
+  jurisdictionId    String?
+  exemptionType     TaxExemptionType
+  certificateNumber String?
+  reason            String?
+  validFrom         DateTime
+  validTo           DateTime?
+  createdById       String?
+  createdAt         DateTime         @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact      AccountingContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  jurisdiction TaxJurisdiction?  @relation(fields: [jurisdictionId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, contactId])
+}
+
+/// Immutable tax-line snapshot of a document, written when the document is
+/// created from a tax rule. Amounts are in the document currency.
+enum VatNumberCheckStatus {
+  /// The registry confirmed the number (or, for FORMAT checks, the shape is valid).
+  VALID
+  INVALID
+  /// The registry could not be reached; only the format was checked.
+  UNAVAILABLE
+}
+
+/// Evidence of a VAT number check, kept per check so the result in force on
+/// a supply date can be shown later (for example for intra-EU reverse charge).
+model VatNumberCheck {
+  id                 String               @id @default(cuid())
+  organizationId     String
+  contactId          String?
+  countryCode        String
+  vatNumber          String
+  /// FORMAT (shape only) or REGISTRY (for example VIES).
+  level              String
+  status             VatNumberCheckStatus
+  provider           String
+  registeredName     String?
+  registeredAddress  String?              @db.Text
+  /// VIES consultation number, returned when the organization's own VAT number is sent as the requester.
+  consultationNumber String?
+  message            String
+  checkedById        String?
+  checkedAt          DateTime             @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact      AccountingContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, contactId, checkedAt])
+}
+
+model DocumentTaxLine {
+  id                 String          @id @default(cuid())
+  organizationId     String
+  documentType       TaxDocumentType
+  documentId         String
+  taxRateId          String?
+  code               String
+  name               String
+  taxKind            TaxKind
+  jurisdictionCode   String
+  jurisdictionLevel  String?
+  authorityName      String?
+  rate               Decimal         @db.Decimal(9, 6)
+  compound           Boolean         @default(false)
+  recoverable        Boolean         @default(true)
+  treatment          TaxTreatment
+  taxableAmount      Decimal         @db.Decimal(14, 2)
+  taxAmount          Decimal         @db.Decimal(14, 2)
+  selfAssessedAmount Decimal         @default(0) @db.Decimal(14, 2)
+  outputAccountCode  String?
+  inputAccountCode   String?
+  sortOrder          Int             @default(0)
+  /// The rule version that produced this component (documents with per-line rules have one group of rows per rule).
+  taxRuleId          String?
+  createdAt          DateTime        @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, documentType, documentId])
+}
+
+/// Per-component tax evidence in the base currency, written when a document
+/// posts. Source for tax reports by jurisdiction, authority, and kind.
+model TaxLedgerEntry {
+  id                 String                 @id @default(cuid())
+  organizationId     String
+  direction          AccountingTaxDirection
+  sourceType         String
+  sourceId           String
+  documentNumber     String?
+  counterparty       String?
+  contactId          String?
+  transactionDate    DateTime
+  jurisdictionCode   String
+  jurisdictionLevel  String?
+  authorityName      String?
+  taxKind            TaxKind
+  rateCode           String
+  rate               Decimal                @db.Decimal(9, 6)
+  treatment          TaxTreatment
+  taxableAmount      Decimal                @db.Decimal(14, 2)
+  taxAmount          Decimal                @db.Decimal(14, 2)
+  selfAssessedAmount Decimal                @default(0) @db.Decimal(14, 2)
+  customerExempt     Boolean                @default(false)
+  currency           String?
+  exchangeRate       Decimal?               @db.Decimal(20, 10)
+  createdAt          DateTime               @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, transactionDate])
+  @@index([organizationId, jurisdictionCode, transactionDate])
+  @@index([organizationId, sourceType, sourceId])
+}
+
+// ---------------------------------------------------------------------------
+// Contract Management (2026-10-06). An independently entitled module. Every
+// record is organization-scoped. Contract history is append-only: changes
+// create ContractVersion rows, documents are never replaced in place, and
+// removal is a recorded soft removal.
+// ---------------------------------------------------------------------------
+
+enum ContractStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  ACTIVE
+  EXPIRED
+  TERMINATED
+  CANCELLED
+  ARCHIVED
+}
+
+enum ContractRenewalType {
+  FIXED_TERM
+  EVERGREEN
+  AUTO_RENEWAL
+  MANUAL_RENEWAL
+  NO_RENEWAL
+}
+
+enum ContractRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ContractConfidentiality {
+  STANDARD
+  CONFIDENTIAL
+  RESTRICTED
+}
+
+enum ContractPartyRole {
+  BUYER
+  SELLER
+  CLIENT
+  VENDOR
+  EMPLOYER
+  EMPLOYEE
+  CONTRACTOR
+  OWNER
+  PARTNER
+  GUARANTOR
+  WITNESS
+  SERVICE_PROVIDER
+  LANDLORD
+  TENANT
+  OTHER
+}
+
+enum ContractDocumentType {
+  PRIMARY
+  SUPPORTING
+  AMENDMENT
+  ADDENDUM
+  SCHEDULE
+  EXHIBIT
+  EVIDENCE
+  CERTIFICATE
+  OTHER
+}
+
+enum ContractTemplateStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+enum ContractClauseStatus {
+  DRAFT
+  APPROVED
+  RETIRED
+}
+
+enum ContractClauseUsage {
+  RECOMMENDED
+  REQUIRED
+  OPTIONAL
+  RESTRICTED
+}
+
+enum ContractLinkType {
+  ACCOUNTING_CONTACT
+  ACCOUNTING_INVOICE
+  ACCOUNTING_BILL
+  FLEET_VEHICLE
+  FLEET_DRIVER
+  FLEET_OWNER
+  FLEET_WORK_AND_PAY
+  HR_EMPLOYEE
+  PROJECT
+}
+
+enum ContractApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+  WITHDRAWN
+}
+
+enum ContractApprovalStepStatus {
+  WAITING
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+  SKIPPED
+}
+
+enum ContractObligationType {
+  DELIVERABLE
+  PAYMENT
+  REPORTING
+  COMPLIANCE
+  INSURANCE
+  NOTICE
+  OTHER
+}
+
+enum ContractObligationParty {
+  INTERNAL
+  COUNTERPARTY
+}
+
+enum ContractObligationStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  WAIVED
+}
+
+enum ContractRecurrence {
+  NONE
+  MONTHLY
+  QUARTERLY
+  SEMI_ANNUAL
+  ANNUAL
+}
+
+enum ContractMilestoneStatus {
+  PLANNED
+  ACHIEVED
+  MISSED
+  CANCELLED
+}
+
+enum ContractAmendmentStatus {
+  DRAFT
+  APPLIED
+  CANCELLED
+}
+
+enum ContractRenewalDecision {
+  RENEWED
+  NOT_RENEWING
+}
+
+enum ContractSignatureMethod {
+  /// An internal user acknowledges the contract in the application. Not an electronic signature.
+  INTERNAL_ACKNOWLEDGEMENT
+  /// A signature obtained outside the application (wet ink or another tool), recorded with evidence.
+  RECORDED_EXTERNAL
+  /// A configured electronic signature provider.
+  PROVIDER
+}
+
+enum ContractSignatureStatus {
+  PENDING
+  SIGNED
+  DECLINED
+  CANCELLED
+}
+
+enum ContractBillingDirection {
+  /// Money the organization expects to invoice.
+  RECEIVABLE
+  /// Money the organization expects to be billed.
+  PAYABLE
+}
+
+enum ContractBillingStatus {
+  PLANNED
+  INVOICED
+  CANCELLED
+}
+
+/// Organization-level Contracts configuration (numbering, alert policy, and
+/// confidential access policy).
+model ContractSettings {
+  organizationId          String   @id
+  /// Tokens: {PREFIX}, {YYYY}, {YY}, {MM}, {SEQ:n}. Example: CTR/{YYYY}/{SEQ:6}.
+  numberFormat            String   @default("{PREFIX}/{YYYY}/{SEQ:6}")
+  numberPrefix            String   @default("CTR")
+  /// Restart the sequence each calendar year when the format includes {YYYY}/{YY}.
+  resetSequenceYearly     Boolean  @default(true)
+  sequenceYear            Int?
+  nextSequence            Int      @default(1)
+  expiryAlertDays         Int[]    @default([90, 60, 30, 14, 7])
+  /// When false (default), holding contracts.view_confidential alone does not
+  /// open confidential contracts; access needs an explicit grant.
+  confidentialAdminAccess Boolean  @default(false)
+  /// When false (default), the person who submits a contract cannot approve it.
+  allowSelfApproval       Boolean  @default(false)
+  obligationReminderDays  Int[]    @default([14, 7, 1])
+  /// Points per calculated risk factor, e.g. {"overdueObligations": 15}. Null uses the defaults.
+  riskWeights             Json?
+  /// High-value threshold per currency, e.g. {"GHS": "500000.00"}. Values in other currencies are not compared.
+  riskValueThresholds     Json?
+  updatedAt               DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model ContractCategory {
+  id             String   @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contracts    Contract[]
+  types        ContractType[]
+  templates    ContractTemplate[]
+
+  @@unique([organizationId, code])
+}
+
+model ContractType {
+  id             String   @id @default(cuid())
+  organizationId String
+  categoryId     String?
+  code           String
+  name           String
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     ContractCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  contracts    Contract[]
+
+  @@unique([organizationId, code])
+}
+
+model Contract {
+  id                       String                  @id @default(cuid())
+  organizationId           String
+  contractNumber           String
+  title                    String
+  categoryId               String?
+  typeId                   String?
+  branchId                 String?
+  ownerId                  String?
+  department               String?
+  counterpartyName         String
+  value                    Decimal?                @db.Decimal(16, 2)
+  currency                 String
+  taxTreatment             String?
+  startDate                DateTime?
+  effectiveDate            DateTime?
+  expirationDate           DateTime?
+  renewalDate              DateTime?
+  noticePeriodDays         Int?
+  renewalType              ContractRenewalType     @default(FIXED_TERM)
+  paymentTerms             String?
+  billingFrequency         String?
+  governingLaw             String?
+  governingJurisdiction    String?
+  language                 String?
+  status                   ContractStatus          @default(DRAFT)
+  riskLevel                ContractRiskLevel       @default(LOW)
+  confidentiality          ContractConfidentiality @default(STANDARD)
+  description              String?                 @db.Text
+  /// Drafted contract text (for example rendered from a template).
+  body                     String?                 @db.Text
+  tags                     String[]
+  notes                    String?                 @db.Text
+  currentVersion           Int                     @default(1)
+  templateId               String?
+  templateVersion          Int?
+  /// Length of each renewal term, used to propose the next expiration date.
+  renewalTermMonths        Int?
+  noticeGivenAt            DateTime?
+  terminationEffectiveDate DateTime?
+  terminationReason        String?
+  terminatedAt             DateTime?
+  archivedAt               DateTime?
+  createdById              String?
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+
+  organization     Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category         ContractCategory?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  type             ContractType?             @relation(fields: [typeId], references: [id], onDelete: SetNull)
+  branch           Branch?                   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  owner            User?                     @relation("ContractOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy        User?                     @relation("ContractCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  template         ContractTemplate?         @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  parties          ContractParty[]
+  documents        ContractDocument[]
+  versions         ContractVersion[]
+  clauses          ContractClauseLink[]
+  accessGrants     ContractAccessGrant[]
+  links            ContractLink[]
+  approvalRequests ContractApprovalRequest[]
+  comments         ContractComment[]
+  obligations      ContractObligation[]
+  milestones       ContractMilestone[]
+  amendments       ContractAmendment[]
+  renewals         ContractRenewal[]
+  signatures       ContractSignature[]
+  reminders        ContractReminder[]
+  billingLines     ContractBillingLine[]
+
+  @@unique([organizationId, contractNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, expirationDate])
+  @@index([organizationId, renewalDate])
+  @@index([organizationId, ownerId])
+  @@index([organizationId, counterpartyName])
+  @@index([organizationId, categoryId])
+  @@index([organizationId, currency])
+  @@index([organizationId, startDate])
+  @@index([tags], type: Gin)
+}
+
+model ContractParty {
+  id                 String            @id @default(cuid())
+  organizationId     String
+  contractId         String
+  role               ContractPartyRole
+  customRole         String?
+  name               String
+  legalName          String?
+  email              String?
+  phone              String?
+  address            String?
+  taxId              String?
+  registrationNumber String?
+  contactId          String?
+  isPrimary          Boolean           @default(false)
+  signatoryName      String?
+  signatoryTitle     String?
+  sortOrder          Int               @default(0)
+  createdAt          DateTime          @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract           @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contact      AccountingContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([contractId])
+  @@index([organizationId, name])
+}
+
+/// Private bytes for a FileAsset, served only through authorized routes.
+model FileContent {
+  fileAssetId String   @id
+  data        Bytes
+  createdAt   DateTime @default(now())
+
+  fileAsset FileAsset @relation(fields: [fileAssetId], references: [id], onDelete: Cascade)
+}
+
+/// Immutable document version. A new upload of the same document type and
+/// title is a new version that supersedes the previous one; nothing is
+/// overwritten. Removal is a recorded soft removal.
+model ContractDocument {
+  id             String               @id @default(cuid())
+  organizationId String
+  contractId     String
+  documentType   ContractDocumentType
+  title          String
+  version        Int                  @default(1)
+  fileAssetId    String               @unique
+  checksumSha256 String
+  supersedesId   String?
+  uploadedById   String?
+  createdAt      DateTime             @default(now())
+  removedAt      DateTime?
+  removedById    String?
+  removalReason  String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  fileAsset    FileAsset    @relation(fields: [fileAssetId], references: [id], onDelete: Restrict)
+  uploadedBy   User?        @relation("ContractDocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([contractId, documentType])
+  @@index([organizationId, createdAt])
+}
+
+/// Append-only snapshot of a contract after each significant change.
+model ContractVersion {
+  id             String   @id @default(cuid())
+  organizationId String
+  contractId     String
+  version        Int
+  snapshot       Json
+  changedFields  String[]
+  changes        Json?
+  reason         String?
+  changedById    String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  changedBy    User?        @relation("ContractVersionChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@unique([contractId, version])
+  @@index([organizationId, createdAt])
+}
+
+/// Template version. Editing a template creates a new version; contracts
+/// record the version they were drafted from and are never rewritten.
+model ContractTemplate {
+  id             String                 @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  categoryId     String?
+  description    String?
+  body           String                 @db.Text
+  version        Int                    @default(1)
+  status         ContractTemplateStatus @default(DRAFT)
+  supersedesId   String?
+  createdById    String?
+  createdAt      DateTime               @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     ContractCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  contracts    Contract[]
+
+  @@unique([organizationId, code, version])
+}
+
+/// Clause library entry version.
+model ContractClause {
+  id             String               @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  category       String
+  body           String               @db.Text
+  jurisdiction   String?
+  language       String               @default("en")
+  status         ContractClauseStatus @default(DRAFT)
+  usage          ContractClauseUsage  @default(OPTIONAL)
+  ownerId        String?
+  version        Int                  @default(1)
+  effectiveFrom  DateTime?
+  supersedesId   String?
+  createdById    String?
+  createdAt      DateTime             @default(now())
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        User?                @relation("ContractClauseOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  uses         ContractClauseLink[]
+
+  @@unique([organizationId, code, version])
+  @@index([organizationId, category])
+}
+
+/// A specific clause version attached to a contract.
+model ContractClauseLink {
+  id             String   @id @default(cuid())
+  organizationId String
+  contractId     String
+  clauseId       String
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract       @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  clause       ContractClause @relation(fields: [clauseId], references: [id], onDelete: Restrict)
+
+  @@unique([contractId, clauseId])
+}
+
+/// Explicit access to a confidential or restricted contract.
+model ContractAccessGrant {
+  id             String   @id @default(cuid())
+  organizationId String
+  contractId     String
+  userId         String?
+  roleId         String?
+  department     String?
+  grantedById    String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@index([organizationId, userId])
+}
+
+/// Relationship to a record in another module (validated in the same
+/// organization). No other module's data is copied.
+model ContractLink {
+  id             String           @id @default(cuid())
+  organizationId String
+  contractId     String
+  linkType       ContractLinkType
+  entityId       String
+  label          String?
+  createdById    String?
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@unique([contractId, linkType, entityId])
+  @@index([organizationId, linkType, entityId])
+}
+
+/// Approval rule: the first active rule (lowest priority number) whose
+/// conditions all match a contract decides its approval chain.
+model ContractApprovalRule {
+  id             String             @id @default(cuid())
+  organizationId String
+  name           String
+  priority       Int                @default(100)
+  active         Boolean            @default(true)
+  /// Value threshold; always paired with a currency (values in different currencies are never compared).
+  minValue       Decimal?           @db.Decimal(16, 2)
+  currency       String?
+  categoryId     String?
+  typeId         String?
+  department     String?
+  minRiskLevel   ContractRiskLevel?
+  jurisdiction   String?
+  branchId       String?
+  createdById    String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  steps        ContractApprovalRuleStep[]
+
+  @@index([organizationId, active, priority])
+}
+
+model ContractApprovalRuleStep {
+  id             String  @id @default(cuid())
+  organizationId String
+  ruleId         String
+  stepOrder      Int
+  name           String
+  approverUserId String?
+  approverRoleId String?
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rule         ContractApprovalRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, stepOrder])
+}
+
+/// One approval round for a specific contract version. Steps are copied from
+/// the rule at submission, so later rule edits never change a running request.
+model ContractApprovalRequest {
+  id              String                 @id @default(cuid())
+  organizationId  String
+  contractId      String
+  contractVersion Int
+  ruleId          String?
+  ruleName        String
+  status          ContractApprovalStatus @default(PENDING)
+  requestedById   String?
+  requestedAt     DateTime               @default(now())
+  completedAt     DateTime?
+  note            String?
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract               @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  requestedBy  User?                  @relation("ContractApprovalRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  steps        ContractApprovalStep[]
+  comments     ContractComment[]
+
+  @@index([organizationId, status])
+  @@index([contractId, requestedAt])
+}
+
+model ContractApprovalStep {
+  id             String                     @id @default(cuid())
+  organizationId String
+  requestId      String
+  stepOrder      Int
+  name           String
+  approverUserId String?
+  approverRoleId String?
+  status         ContractApprovalStepStatus @default(WAITING)
+  activatedAt    DateTime?
+  escalated      Boolean                    @default(false)
+  decidedById    String?
+  decidedAt      DateTime?
+  comment        String?
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  request      ContractApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  approverUser User?                   @relation("ContractApprovalStepApprover", fields: [approverUserId], references: [id], onDelete: SetNull)
+  decidedBy    User?                   @relation("ContractApprovalStepDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@unique([requestId, stepOrder])
+  @@index([organizationId, status, approverUserId])
+  @@index([organizationId, status, approverRoleId])
+}
+
+model ContractComment {
+  id                String   @id @default(cuid())
+  organizationId    String
+  contractId        String
+  approvalRequestId String?
+  authorId          String?
+  body              String   @db.Text
+  createdAt         DateTime @default(now())
+
+  organization    Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract        Contract                 @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  approvalRequest ContractApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
+  author          User?                    @relation("ContractCommentAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([contractId, createdAt])
+}
+
+model ContractObligation {
+  id               String                   @id @default(cuid())
+  organizationId   String
+  contractId       String
+  title            String
+  description      String?                  @db.Text
+  obligationType   ContractObligationType   @default(OTHER)
+  responsibleParty ContractObligationParty  @default(INTERNAL)
+  ownerId          String?
+  dueDate          DateTime
+  recurrence       ContractRecurrence       @default(NONE)
+  status           ContractObligationStatus @default(OPEN)
+  completedAt      DateTime?
+  completedById    String?
+  resolutionNote   String?
+  /// Earlier occurrence of a recurring obligation.
+  previousId       String?
+  createdById      String?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  owner        User?        @relation("ContractObligationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, dueDate])
+  @@index([contractId, dueDate])
+}
+
+model ContractMilestone {
+  id             String                  @id @default(cuid())
+  organizationId String
+  contractId     String
+  title          String
+  description    String?                 @db.Text
+  dueDate        DateTime
+  amount         Decimal?                @db.Decimal(16, 2)
+  status         ContractMilestoneStatus @default(PLANNED)
+  achievedAt     DateTime?
+  note           String?
+  recordedById   String?
+  createdById    String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status, dueDate])
+  @@index([contractId, dueDate])
+}
+
+/// A recorded change to the contract terms. Applying it creates a new
+/// contract version; earlier versions are never rewritten.
+model ContractAmendment {
+  id              String                  @id @default(cuid())
+  organizationId  String
+  contractId      String
+  amendmentNumber Int
+  title           String
+  reason          String                  @db.Text
+  effectiveDate   DateTime?
+  /// Proposed field values, e.g. {"expirationDate": "2027-12-31", "value": "150000.00"}.
+  changes         Json
+  status          ContractAmendmentStatus @default(DRAFT)
+  appliedVersion  Int?
+  appliedAt       DateTime?
+  appliedById     String?
+  cancelledAt     DateTime?
+  cancelledById   String?
+  createdById     String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("ContractAmendmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([contractId, amendmentNumber])
+  @@index([organizationId, status])
+}
+
+model ContractRenewal {
+  id                     String                  @id @default(cuid())
+  organizationId         String
+  contractId             String
+  decision               ContractRenewalDecision
+  previousExpirationDate DateTime?
+  newExpirationDate      DateTime?
+  previousValue          Decimal?                @db.Decimal(16, 2)
+  newValue               Decimal?                @db.Decimal(16, 2)
+  reason                 String?
+  contractVersion        Int?
+  decidedById            String?
+  createdAt              DateTime                @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId, createdAt])
+}
+
+model ContractSignature {
+  id                String                  @id @default(cuid())
+  organizationId    String
+  contractId        String
+  documentId        String?
+  partyId           String?
+  method            ContractSignatureMethod
+  status            ContractSignatureStatus @default(PENDING)
+  signerName        String
+  signerEmail       String?
+  signerTitle       String?
+  signerUserId      String?
+  providerKey       String?
+  providerReference String?
+  evidenceNote      String?
+  requestedById     String?
+  requestedAt       DateTime                @default(now())
+  completedAt       DateTime?
+  recordedById      String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId, status])
+}
+
+/// Planned billing under a contract. A plan only: it never creates invoices,
+/// bills, or journal entries. A line is marked invoiced by linking the
+/// Accounting invoice (receivable) or bill (payable) raised for it.
+model ContractBillingLine {
+  id             String                   @id @default(cuid())
+  organizationId String
+  contractId     String
+  direction      ContractBillingDirection
+  dueDate        DateTime
+  amount         Decimal                  @db.Decimal(16, 2)
+  currency       String
+  description    String
+  status         ContractBillingStatus    @default(PLANNED)
+  invoiceId      String?
+  billId         String?
+  linkedAt       DateTime?
+  linkedById     String?
+  cancelledAt    DateTime?
+  cancelReason   String?
+  createdById    String?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status, dueDate])
+  @@index([contractId, dueDate])
+}
+
+/// Delivery log that keeps scheduled reminders idempotent: one row per
+/// reminder kind, target, threshold, and due date.
+model ContractReminder {
+  id              String   @id @default(cuid())
+  organizationId  String
+  contractId      String
+  kind            String
+  targetId        String
+  thresholdDays   Int
+  dueDate         DateTime
+  recipientUserId String?
+  sentAt          DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@unique([kind, targetId, thresholdDays, dueDate])
+  @@index([organizationId, sentAt])
 }

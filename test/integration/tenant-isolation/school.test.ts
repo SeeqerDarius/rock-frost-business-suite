@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import bcrypt from "bcryptjs";
 import * as school from "@/modules/school/service";
+import { postSchoolFeePaymentRevenue, postSchoolFeeRefundRevenue } from "@/modules/school/accounting";
 import * as studentProfile from "@/modules/school/student-profile-service";
 import * as portal from "@/modules/school/portal-service";
 import { cleanupTestOrg, createTestOrg, type TestOrg } from "../setup/fixtures";
@@ -46,6 +47,222 @@ afterAll(async () => {
 });
 
 describe("School service — real tenant isolation and customer-readiness guards", () => {
+  it("rolls active learners into a mapped next-year class atomically and preserves prior enrollment history", async () => {
+    const token = `Rollover${Date.now()}`;
+    const sourceYear = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} source`, startDate: new Date("2031-01-01"), endDate: new Date("2031-12-31") });
+    const targetYear = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} target`, startDate: new Date("2032-01-01"), endDate: new Date("2032-12-31") });
+    const sourceClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}A`, name: `${token} source class` });
+    const targetClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}B`, name: `${token} next class`, capacity: 3 });
+    const [first, second] = await Promise.all([
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Ama`, lastName: "One" }),
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Kojo`, lastName: "Two" }),
+    ]);
+    await Promise.all([
+      school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: sourceYear.id, studentId: first.id, classId: sourceClass.id }),
+      school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: sourceYear.id, studentId: second.id, classId: sourceClass.id }),
+      school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: targetYear.id, studentId: first.id, classId: targetClass.id }),
+    ]);
+
+    await expect(school.getSchoolEnrollmentRolloverPreview(orgB.organizationId, sourceYear.id)).rejects.toThrow(school.SchoolNotFoundError);
+    const preview = await school.getSchoolEnrollmentRolloverPreview(orgA.organizationId, sourceYear.id);
+    expect(preview).toMatchObject({ totalLearners: 2, classes: [{ id: sourceClass.id, learners: 2 }] });
+    await expect(school.rollOverSchoolEnrollments(orgA.organizationId, sourceYear.id, targetYear.id, { [sourceClass.id]: targetClass.id }, { [sourceClass.id]: 1 }, orgA.userId)).rejects.toMatchObject({ code: "stale-rollover-preview" });
+    const result = await school.rollOverSchoolEnrollments(orgA.organizationId, sourceYear.id, targetYear.id, { [sourceClass.id]: targetClass.id }, { [sourceClass.id]: 2 }, orgA.userId);
+    expect(result).toEqual({ created: 1, alreadyEnrolled: 1, sourceCompleted: 2 });
+    const targetEnrollments = await testDb.schoolEnrollment.findMany({ where: { organizationId: orgA.organizationId, academicYearId: targetYear.id, studentId: { in: [first.id, second.id] } }, orderBy: { studentId: "asc" } });
+    expect(targetEnrollments).toHaveLength(2);
+    expect(targetEnrollments.every((enrollment) => enrollment.classId === targetClass.id && enrollment.status === "ACTIVE")).toBe(true);
+    expect(await testDb.schoolEnrollment.count({ where: { organizationId: orgA.organizationId, academicYearId: sourceYear.id, status: "ACTIVE", studentId: { in: [first.id, second.id] } } })).toBe(0);
+    expect(await testDb.schoolEnrollment.count({ where: { organizationId: orgA.organizationId, academicYearId: sourceYear.id, status: "COMPLETED", studentId: { in: [first.id, second.id] } } })).toBe(2);
+    expect(await testDb.auditLog.count({ where: { organizationId: orgA.organizationId, action: "STUDENT_ENROLLMENTS_ROLLED_OVER", entityId: targetYear.id } })).toBe(1);
+  });
+
+  it("rolls back every enrollment when a destination class lacks capacity or belongs to another campus", async () => {
+    const token = `RolloverGuard${Date.now()}`;
+    const sourceYear = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} source`, startDate: new Date("2031-01-01"), endDate: new Date("2031-12-31") });
+    const targetYear = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} target`, startDate: new Date("2032-01-01"), endDate: new Date("2032-12-31") });
+    const sourceClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}A`, name: `${token} source class` });
+    const targetClass = await school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}B`, name: `${token} next class`, capacity: 1 });
+    const [first, second] = await Promise.all([
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Ama`, lastName: "One" }),
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Kojo`, lastName: "Two" }),
+    ]);
+    await Promise.all([first, second].map((student) => school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: sourceYear.id, studentId: student.id, classId: sourceClass.id })));
+    await expect(school.rollOverSchoolEnrollments(orgA.organizationId, sourceYear.id, targetYear.id, { [sourceClass.id]: targetClass.id }, { [sourceClass.id]: 2 }, orgA.userId)).rejects.toMatchObject({ code: "rollover-capacity" });
+    expect(await testDb.schoolEnrollment.count({ where: { organizationId: orgA.organizationId, academicYearId: targetYear.id } })).toBe(0);
+    expect(await testDb.schoolEnrollment.count({ where: { organizationId: orgA.organizationId, academicYearId: sourceYear.id, status: "ACTIVE" } })).toBe(2);
+
+    await expect(school.rollOverSchoolEnrollments(orgA.organizationId, sourceYear.id, targetYear.id, { [sourceClass.id]: (await school.createSchoolClass(orgB.organizationId, { campusId: campusB.id, code: `${token}X`, name: `${token} foreign class` })).id }, { [sourceClass.id]: 2 }, orgA.userId)).rejects.toThrow(school.SchoolNotFoundError);
+    expect(await testDb.schoolEnrollment.count({ where: { organizationId: orgA.organizationId, academicYearId: sourceYear.id, status: "ACTIVE" } })).toBe(2);
+  });
+
+  it("updates core student profile fields within the tenant and rejects stale or foreign edits", async () => {
+    const token = `ProfileEdit${Date.now()}`;
+    const student = await school.createSchoolStudent(orgA.organizationId, {
+      campusId: campusA.id,
+      firstName: "Ama",
+      lastName: token,
+      admissionDate: new Date("2031-01-15T00:00:00.000Z"),
+    });
+    const profile = {
+      firstName: "Abena",
+      lastName: token,
+      dateOfBirth: new Date("2015-05-20T00:00:00.000Z"),
+      gender: "Female",
+      admissionDate: new Date("2031-01-20T00:00:00.000Z"),
+    };
+
+    await expect(school.updateSchoolStudentProfile(orgB.organizationId, student.id, student.updatedAt, profile)).rejects.toThrow(school.SchoolNotFoundError);
+    const updated = await school.updateSchoolStudentProfile(orgA.organizationId, student.id, student.updatedAt, profile);
+
+    expect(updated).toMatchObject({
+      id: student.id,
+      admissionNumber: student.admissionNumber,
+      campusId: campusA.id,
+      status: "ACTIVE",
+      firstName: "Abena",
+      lastName: token,
+      gender: "Female",
+    });
+    expect(updated.dateOfBirth?.toISOString()).toBe("2015-05-20T00:00:00.000Z");
+    expect(updated.admissionDate?.toISOString()).toBe("2031-01-20T00:00:00.000Z");
+    await expect(school.updateSchoolStudentProfile(orgA.organizationId, student.id, student.updatedAt, profile)).rejects.toMatchObject({ code: "stale-record" });
+  });
+
+  it("searches and paginates student rows in the requested tenant only", async () => {
+    const searchToken = `Pagination${Date.now()}`;
+    const [first, second, foreign] = await Promise.all([
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Ama", lastName: `${searchToken} Alpha`, medicalNotes: "Private test note" }),
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Ama", lastName: `${searchToken} Beta` }),
+      school.createSchoolStudent(orgB.organizationId, { campusId: campusB.id, firstName: "Ama", lastName: `${searchToken} Foreign` }),
+    ]);
+
+    const pageOne = await school.listSchoolStudentPage(orgA.organizationId, { query: searchToken.toLowerCase(), page: 1, pageSize: 1 });
+    const pageTwo = await school.listSchoolStudentPage(orgA.organizationId, { query: searchToken, page: 2, pageSize: 1 });
+    const clamped = await school.listSchoolStudentPage(orgA.organizationId, { query: searchToken, page: 999, pageSize: 1 });
+    const fullNameSearch = await school.listSchoolStudentPage(orgA.organizationId, { query: `Ama ${searchToken}` });
+
+    expect(pageOne).toMatchObject({ total: 2, page: 1, pageSize: 1, pageCount: 2 });
+    expect(pageTwo).toMatchObject({ total: 2, page: 2, pageSize: 1, pageCount: 2 });
+    expect(pageOne.rows).toHaveLength(1);
+    expect(pageTwo.rows).toHaveLength(1);
+    expect(pageOne.rows[0].id).not.toBe(pageTwo.rows[0].id);
+    expect(new Set([...pageOne.rows, ...pageTwo.rows].map((row) => row.id))).toEqual(new Set([first.id, second.id]));
+    expect(clamped.page).toBe(2);
+    expect(pageOne.rows.some((row) => row.id === foreign.id)).toBe(false);
+    expect(fullNameSearch.total).toBe(2);
+    expect(pageOne.rows[0]).not.toHaveProperty("medicalNotes");
+    expect(pageOne.rows[0]).not.toHaveProperty("photoData");
+  });
+
+  it("bounds student form choices, searches names and admission numbers, and enforces tenant and status filters", async () => {
+    const token = `StudentChoice${Date.now()}`;
+    const [first, second, foreign] = await Promise.all([
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Ama", lastName: `${token} Alpha`, medicalNotes: "Private test note" }),
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Kojo", lastName: `${token} Beta` }),
+      school.createSchoolStudent(orgB.organizationId, { campusId: campusB.id, firstName: "Ama", lastName: `${token} Foreign` }),
+    ]);
+    await school.transitionSchoolStudent(orgA.organizationId, first.id, "WITHDRAWN");
+
+    const choices = await school.listSchoolStudentChoices(orgA.organizationId, { query: token, activeOnly: true, take: 1 });
+    const admissionSearch = await school.listSchoolStudentChoices(orgA.organizationId, { query: second.admissionNumber, activeOnly: true });
+
+    expect(choices).toMatchObject({ total: 1, take: 1 });
+    expect(choices.rows).toHaveLength(1);
+    expect(choices.rows[0].id).toBe(second.id);
+    expect(choices.rows[0].id).not.toBe(foreign.id);
+    expect(choices.rows[0]).not.toHaveProperty("medicalNotes");
+    expect(admissionSearch.rows.map((row) => row.id)).toEqual([second.id]);
+  });
+
+  it("searches and paginates fee, attendance, and catalogue lists within one tenant", async () => {
+    const token = `ListPage${Date.now()}`;
+    const [studentOne, studentTwo, foreignStudent] = await Promise.all([
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Ama`, lastName: "One" }),
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Kojo`, lastName: "Two" }),
+      school.createSchoolStudent(orgB.organizationId, { campusId: campusB.id, firstName: `${token} Foreign`, lastName: "Three" }),
+    ]);
+    const [yearA, yearB] = await Promise.all([
+      school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} A`, startDate: new Date("2031-01-01"), endDate: new Date("2031-12-31") }),
+      school.createSchoolAcademicYear(orgB.organizationId, { name: `${token} B`, startDate: new Date("2031-01-01"), endDate: new Date("2031-12-31") }),
+    ]);
+    const summaryBefore = await school.getSchoolFeeInvoiceSummary(orgA.organizationId);
+    const [invoiceOne, invoiceTwo] = await Promise.all([
+      school.createSchoolFeeInvoice(orgA.organizationId, { academicYearId: yearA.id, studentId: studentOne.id, description: `${token} One`, amount: "10" }),
+      school.createSchoolFeeInvoice(orgA.organizationId, { academicYearId: yearA.id, studentId: studentTwo.id, description: `${token} Two`, amount: "20" }),
+    ]);
+    await school.createSchoolFeeInvoice(orgB.organizationId, { academicYearId: yearB.id, studentId: foreignStudent.id, description: `${token} Foreign`, amount: "30" });
+    const feeFirst = await school.listSchoolFeeInvoicePage(orgA.organizationId, { query: token, page: 1, pageSize: 1 });
+    const feeSecond = await school.listSchoolFeeInvoicePage(orgA.organizationId, { query: token, page: 2, pageSize: 1 });
+    expect(feeFirst.total).toBe(2);
+    expect(feeFirst.rows).toHaveLength(1);
+    expect(feeSecond.rows).toHaveLength(1);
+    expect(new Set([...feeFirst.rows, ...feeSecond.rows].map((row) => row.id))).toEqual(new Set([invoiceOne.id, invoiceTwo.id]));
+    expect(feeFirst.rows[0].student).not.toHaveProperty("medicalNotes");
+    expect((await school.listSchoolFeeInvoicePage(orgA.organizationId, { query: token, status: "ISSUED", page: 999, pageSize: 1 })).page).toBe(2);
+    const summaryAfter = await school.getSchoolFeeInvoiceSummary(orgA.organizationId);
+    expect(summaryAfter.billed.minus(summaryBefore.billed).toNumber()).toBe(30);
+    expect(summaryAfter.outstanding.minus(summaryBefore.outstanding).toNumber()).toBe(30);
+
+    const [bookOne, bookTwo] = await Promise.all([
+      school.createSchoolLibraryBook(orgA.organizationId, { accessionCode: `${token}-A`, title: `${token} Alpha`, totalCopies: 2 }),
+      school.createSchoolLibraryBook(orgA.organizationId, { accessionCode: `${token}-B`, title: `${token} Beta`, totalCopies: 1 }),
+    ]);
+    await school.createSchoolLibraryBook(orgB.organizationId, { accessionCode: `${token}-X`, title: `${token} Foreign`, totalCopies: 1 });
+    const bookChoices = await school.listSchoolLibraryBookChoices(orgA.organizationId, { query: token, take: 1 });
+    expect(bookChoices).toMatchObject({ total: 2, take: 1 });
+    expect(bookChoices.rows).toHaveLength(1);
+    expect(bookChoices.rows[0].id).not.toBe((await testDb.schoolLibraryBook.findFirstOrThrow({ where: { organizationId: orgB.organizationId, title: `${token} Foreign` } })).id);
+    const booksOne = await school.listSchoolLibraryBookPage(orgA.organizationId, { query: token, page: 1, pageSize: 1 });
+    const booksTwo = await school.listSchoolLibraryBookPage(orgA.organizationId, { query: token, page: 2, pageSize: 1 });
+    expect(booksOne.total).toBe(2);
+    expect(new Set([...booksOne.rows, ...booksTwo.rows].map((row) => row.id))).toEqual(new Set([bookOne.id, bookTwo.id]));
+    expect(booksOne.rows[0]).not.toHaveProperty("organizationId");
+    const dueAt = new Date("2031-12-31T12:00:00.000Z");
+    const [loanOne, loanTwo] = await Promise.all([
+      school.borrowSchoolLibraryBook(orgA.organizationId, bookOne.id, studentOne.id, dueAt),
+      school.borrowSchoolLibraryBook(orgA.organizationId, bookTwo.id, studentTwo.id, dueAt),
+    ]);
+    await school.borrowSchoolLibraryBook(orgB.organizationId, (await testDb.schoolLibraryBook.findFirstOrThrow({ where: { organizationId: orgB.organizationId, title: `${token} Foreign` } })).id, foreignStudent.id, dueAt);
+    const loansOne = await school.listSchoolLibraryLoanPage(orgA.organizationId, { query: token, page: 1, pageSize: 1 });
+    const loansTwo = await school.listSchoolLibraryLoanPage(orgA.organizationId, { query: token, page: 2, pageSize: 1 });
+    expect(loansOne.total).toBe(2);
+    expect(loansOne.rows).toHaveLength(1);
+    expect(loansTwo.rows).toHaveLength(1);
+    expect(new Set([...loansOne.rows, ...loansTwo.rows].map((row) => row.id))).toEqual(new Set([loanOne.id, loanTwo.id]));
+    expect(loansOne.rows[0]).not.toHaveProperty("organizationId");
+    expect((await school.listSchoolLibraryLoanPage(orgA.organizationId, { query: token, showAll: true, page: 999, pageSize: 1 })).page).toBe(2);
+
+    const [termA, termB] = await Promise.all([
+      school.createSchoolTerm(orgA.organizationId, { academicYearId: yearA.id, name: `${token} Term A`, startDate: new Date("2031-01-01"), endDate: new Date("2031-12-31") }),
+      school.createSchoolTerm(orgB.organizationId, { academicYearId: yearB.id, name: `${token} Term B`, startDate: new Date("2031-01-01"), endDate: new Date("2031-12-31") }),
+    ]);
+    const [classA, classB] = await Promise.all([
+      school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}A`, name: `${token} Class A` }),
+      school.createSchoolClass(orgB.organizationId, { campusId: campusB.id, code: `${token}B`, name: `${token} Class B` }),
+    ]);
+    await Promise.all([
+      school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: yearA.id, studentId: studentOne.id, classId: classA.id }),
+      school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: yearA.id, studentId: studentTwo.id, classId: classA.id }),
+      school.enrollSchoolStudent(orgB.organizationId, { campusId: campusB.id, academicYearId: yearB.id, studentId: foreignStudent.id, classId: classB.id }),
+    ]);
+    const attendanceDate = new Date();
+    attendanceDate.setHours(0, 0, 0, 0);
+    await Promise.all([
+      school.recordSchoolAttendance(orgA.organizationId, orgA.userId, { termId: termA.id, classId: classA.id, studentId: studentOne.id, date: attendanceDate, status: "PRESENT" }),
+      school.recordSchoolAttendance(orgA.organizationId, orgA.userId, { termId: termA.id, classId: classA.id, studentId: studentTwo.id, date: attendanceDate, status: "ABSENT" }),
+      school.recordSchoolAttendance(orgB.organizationId, orgB.userId, { termId: termB.id, classId: classB.id, studentId: foreignStudent.id, date: attendanceDate, status: "PRESENT" }),
+    ]);
+    const attendanceOne = await school.listSchoolAttendancePage(orgA.organizationId, { query: token, page: 1, pageSize: 1 });
+    const attendanceTwo = await school.listSchoolAttendancePage(orgA.organizationId, { query: token, page: 2, pageSize: 1 });
+    expect(attendanceOne.total).toBe(2);
+    expect(attendanceOne.rows).toHaveLength(1);
+    expect(attendanceTwo.rows).toHaveLength(1);
+    expect(attendanceOne.rows.some((row) => row.student.firstName.includes("Foreign"))).toBe(false);
+    expect(attendanceOne.rows[0]).not.toHaveProperty("organizationId");
+    expect((await school.listSchoolAttendancePage(orgA.organizationId, { query: token, status: "ABSENT" })).total).toBe(1);
+  });
+
   it("issues, verifies, revokes, and tenant-isolates a digital student ID", async () => {
     process.env.AUTH_SECRET = "integration-only-school-id-signing-secret";
     const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Digital", lastName: "Identity" });
@@ -87,6 +304,44 @@ describe("School service — real tenant isolation and customer-readiness guards
     expect(count).toBe(1);
     expect(link).not.toBeNull();
     expect(link?.relationship).toBe("Mother");
+  });
+
+  it("manages post-admission family links, primary contact, pickup authorization, and removal atomically", async () => {
+    const student = await school.admitSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Family", lastName: `Managed-${Date.now()}` }, { firstName: "Ama", lastName: "Guardian", phone: `+23320${Date.now().toString().slice(-7)}`, relationship: "Mother" });
+    const [primary] = await testDb.schoolStudentGuardian.findMany({ where: { organizationId: orgA.organizationId, studentId: student.id }, select: { guardianId: true } });
+    expect(primary).toBeDefined();
+    const auntRecord = await school.createSchoolGuardian(orgA.organizationId, { firstName: "Akosua", lastName: "Aunt", phone: `+23324${Date.now().toString().slice(-7)}` });
+
+    const linked = await school.updateSchoolStudentGuardianLinks(orgA.organizationId, student.id, {
+      links: [{ guardianId: primary!.guardianId, relationship: "Mother", authorizedPickup: false, remove: false }],
+      add: { guardianId: auntRecord.id, relationship: "Aunt", authorizedPickup: true },
+      primaryGuardianId: auntRecord.id,
+    }, orgA.userId);
+    expect(linked).toHaveLength(2);
+    expect(linked.find((link) => link.guardianId === auntRecord.id)).toMatchObject({ primary: true, authorizedPickup: true, relationship: "Aunt" });
+    expect(linked.find((link) => link.guardianId === primary!.guardianId)?.primary).toBe(false);
+
+    const removed = await school.updateSchoolStudentGuardianLinks(orgA.organizationId, student.id, {
+      links: [
+        { guardianId: primary!.guardianId, relationship: "Mother", authorizedPickup: false, remove: true },
+        { guardianId: auntRecord.id, relationship: "Aunt", authorizedPickup: true, remove: false },
+      ],
+      primaryGuardianId: auntRecord.id,
+    }, orgA.userId);
+    expect(removed.map((link) => link.guardianId)).toEqual([auntRecord.id]);
+    expect(await testDb.auditLog.count({ where: { organizationId: orgA.organizationId, action: "STUDENT_GUARDIAN_LINKS_UPDATED", entityId: student.id } })).toBe(2);
+  });
+
+  it("rejects cross-tenant guardian links without changing the student's family contacts", async () => {
+    const student = await school.admitSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Family", lastName: `Tenant-${Date.now()}` }, { firstName: "Local", lastName: "Guardian", phone: `+23320${Date.now().toString().slice(-7)}`, relationship: "Mother" });
+    const [link] = await testDb.schoolStudentGuardian.findMany({ where: { organizationId: orgA.organizationId, studentId: student.id }, select: { guardianId: true, relationship: true } });
+    const foreignGuardian = await school.createSchoolGuardian(orgB.organizationId, { firstName: "Foreign", lastName: "Guardian", phone: `+23324${Date.now().toString().slice(-7)}` });
+    await expect(school.updateSchoolStudentGuardianLinks(orgA.organizationId, student.id, {
+      links: [{ ...link!, authorizedPickup: false, remove: false }],
+      add: { guardianId: foreignGuardian.id, relationship: "Aunt", authorizedPickup: true },
+      primaryGuardianId: foreignGuardian.id,
+    }, orgA.userId)).rejects.toThrow(school.SchoolNotFoundError);
+    expect(await testDb.schoolStudentGuardian.count({ where: { organizationId: orgA.organizationId, studentId: student.id } })).toBe(1);
   });
 
   it("rejects an existing guardian from another tenant during student admission", async () => {
@@ -137,6 +392,72 @@ describe("School service — real tenant isolation and customer-readiness guards
     const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: "2030", startDate: new Date("2030-01-01"), endDate: new Date("2030-12-31") });
     const invoice = await school.createSchoolFeeInvoice(orgA.organizationId, { academicYearId: year.id, studentId: student.id, description: "Tuition", amount: "100" });
     await expect(school.recordSchoolFeePayment(orgA.organizationId, invoice.id, { amount: "101", method: "CASH" })).rejects.toThrow(school.SchoolStateError);
+  });
+
+  it("posts a fee receipt once to the org ledger and keeps retry lookup tenant-scoped", async () => {
+    const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Ledger", lastName: "Student" });
+    const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: "2040", startDate: new Date("2040-01-01"), endDate: new Date("2040-12-31") });
+    const invoice = await school.createSchoolFeeInvoice(orgA.organizationId, { academicYearId: year.id, studentId: student.id, description: "Tuition", amount: "100.00" });
+    const payment = await school.recordSchoolFeePayment(orgA.organizationId, invoice.id, { amount: "100.00", method: "CASH" });
+    expect(await school.getSchoolFeePaymentForPostingRetry(orgB.organizationId, payment.id)).toBeNull();
+    expect(await school.getSchoolFeePaymentReceipt(orgB.organizationId, payment.id)).toBeNull();
+    const receipt = await school.getSchoolFeePaymentReceipt(orgA.organizationId, payment.id);
+    expect(receipt).toMatchObject({
+      id: payment.id,
+      receiptNumber: payment.receiptNumber,
+      invoice: { invoiceNumber: invoice.invoiceNumber, description: "Tuition" },
+      student: { id: student.id, firstName: "Ledger", lastName: "Student" },
+    });
+    expect(receipt?.amount.toString()).toBe("100");
+
+    await expect(postSchoolFeePaymentRevenue(orgA.organizationId, payment, orgA.userId)).resolves.toMatchObject({ posted: true });
+    const persisted = await testDb.schoolFeePayment.findFirstOrThrow({ where: { id: payment.id, organizationId: orgA.organizationId } });
+    expect(persisted.postingStatus).toBe("POSTED");
+    const journals = await testDb.accountingJournalEntry.findMany({ where: { organizationId: orgA.organizationId, sourceType: "SCHOOL_FEE_PAYMENT", sourceId: payment.id, postingPurpose: "COLLECTED" }, include: { lines: true } });
+    expect(journals).toHaveLength(1);
+    expect(journals[0].lines.reduce((sum, line) => sum + Number(line.debit), 0)).toBeCloseTo(100, 2);
+    expect(journals[0].lines.reduce((sum, line) => sum + Number(line.credit), 0)).toBeCloseTo(100, 2);
+  });
+
+  it("records partial fee refunds, reopens invoice balance, and posts auditable refund entries", async () => {
+    const startingSummary = await school.getSchoolFeeInvoiceSummary(orgA.organizationId);
+    const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Refund", lastName: "Student" });
+    const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: "2041", startDate: new Date("2041-01-01"), endDate: new Date("2041-12-31") });
+    const invoice = await school.createSchoolFeeInvoice(orgA.organizationId, { academicYearId: year.id, studentId: student.id, description: "Tuition", amount: "100.00" });
+    const payment = await school.recordSchoolFeePayment(orgA.organizationId, invoice.id, { amount: "100.00", method: "CASH" });
+    await postSchoolFeePaymentRevenue(orgA.organizationId, payment, orgA.userId);
+
+    const first = await school.recordSchoolFeeRefund(orgA.organizationId, payment.id, orgA.userId, { amount: "25.00", method: "CASH", reason: "Duplicate payment" });
+    expect(await school.getSchoolFeeRefundForPostingRetry(orgB.organizationId, first.id)).toBeNull();
+    expect(await school.getSchoolFeeRefundForPostingRetry(orgA.organizationId, first.id)).toMatchObject({ id: first.id, reason: "Duplicate payment" });
+    await expect(postSchoolFeeRefundRevenue(orgA.organizationId, first, orgA.userId)).resolves.toMatchObject({ posted: true });
+    expect((await testDb.schoolFeeInvoice.findUniqueOrThrow({ where: { id: invoice.id } })).status).toBe("PART_PAID");
+    const partialRefundSummary = await school.getSchoolFeeInvoiceSummary(orgA.organizationId);
+    expect(partialRefundSummary.outstanding.minus(startingSummary.outstanding).toString()).toBe("25");
+
+    const second = await school.recordSchoolFeeRefund(orgA.organizationId, payment.id, orgA.userId, { amount: "75.00", method: "MOBILE_MONEY", reason: "Remaining balance" });
+    await postSchoolFeeRefundRevenue(orgA.organizationId, second, orgA.userId);
+    expect((await testDb.schoolFeeInvoice.findUniqueOrThrow({ where: { id: invoice.id } })).status).toBe("ISSUED");
+    expect((await testDb.schoolFeePayment.findUniqueOrThrow({ where: { id: payment.id } })).refundedAt).toBeInstanceOf(Date);
+    expect(await school.getSchoolFeePaymentReceipt(orgA.organizationId, payment.id)).toMatchObject({ id: payment.id, receiptNumber: payment.receiptNumber });
+    expect(await school.getSchoolFeeRefundForPostingRetry(orgA.organizationId, second.id)).toBeNull();
+    const journals = await testDb.accountingJournalEntry.findMany({ where: { organizationId: orgA.organizationId, sourceType: "SCHOOL_FEE_REFUND", sourceId: { in: [first.id, second.id] }, postingPurpose: "REFUNDED" }, include: { lines: true } });
+    expect(journals).toHaveLength(2);
+    expect(journals.reduce((sum, entry) => sum + entry.lines.reduce((lineSum, line) => lineSum + Number(line.debit), 0), 0)).toBeCloseTo(100, 2);
+    const fullRefundSummary = await school.getSchoolFeeInvoiceSummary(orgA.organizationId);
+    expect(fullRefundSummary.outstanding.minus(startingSummary.outstanding).toString()).toBe("100");
+    expect(fullRefundSummary.collected.toString()).toBe(startingSummary.collected.toString());
+  });
+
+  it("serializes concurrent fee refunds so they cannot exceed the receipt value", async () => {
+    const student = await school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: "Concurrent", lastName: "Refund" });
+    const year = await school.createSchoolAcademicYear(orgA.organizationId, { name: "2042", startDate: new Date("2042-01-01"), endDate: new Date("2042-12-31") });
+    const invoice = await school.createSchoolFeeInvoice(orgA.organizationId, { academicYearId: year.id, studentId: student.id, description: "Tuition", amount: "100.00" });
+    const payment = await school.recordSchoolFeePayment(orgA.organizationId, invoice.id, { amount: "100.00", method: "CASH" });
+    const results = await Promise.allSettled([25, 75, 60].map((amount) => school.recordSchoolFeeRefund(orgA.organizationId, payment.id, orgA.userId, { amount, method: "CASH", reason: "Concurrent test refund" })));
+    const stored = await testDb.schoolFeeRefund.findMany({ where: { paymentId: payment.id } });
+    expect(stored.reduce((sum, item) => sum + Number(item.amount), 0)).toBeLessThanOrEqual(100);
+    expect(results.some((result) => result.status === "rejected")).toBe(true);
   });
 
   it("lists only its own campuses", async () => {

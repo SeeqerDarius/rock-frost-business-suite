@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { SectionCard } from "@/components/school/section-card";
 import { requireModuleAccess } from "@/lib/auth/module-access";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listHostelFeeStructures, listHostelFeeInvoices, listHostelBuildings } from "@/modules/hostel/service";
 import { listSchoolStudents, getSchoolAcademicSetup } from "@/modules/school/service";
@@ -30,6 +30,7 @@ const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "seco
 export default async function HostelFeesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; issued?: string; skipped?: string }> }) {
   const { saved, error, issued, skipped } = await searchParams;
   const tenant = await requireModuleAccess("hostel");
+  const orgMoney = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.HOSTEL_FEES_MANAGE);
   const [structures, invoices, buildings, students, [academicYears]] = await Promise.all([
     listHostelFeeStructures(tenant.organizationId),
@@ -100,7 +101,7 @@ export default async function HostelFeesPage({ searchParams }: { searchParams: P
                 <TableRow key={structure.id}>
                   <TableCell className="font-medium">{structure.name}</TableCell>
                   <TableCell className="text-muted-foreground">{structure.building?.name ?? "All buildings"} · {structure.academicYear.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{formatMoney(structure.amount, tenant.organization.currency)}</TableCell>
+                  <TableCell className="text-muted-foreground">{orgMoney(structure.amount, tenant.organization.currency)}</TableCell>
                   <TableCell className="text-muted-foreground">{structure._count.invoices}</TableCell>
                   {canManage ? (
                     <TableCell className="text-right">
@@ -166,7 +167,7 @@ export default async function HostelFeesPage({ searchParams }: { searchParams: P
                   <TableRow key={invoice.id}>
                     <TableCell className="font-mono text-xs">{invoice.invoiceNumber}</TableCell>
                     <TableCell className="font-medium">{invoice.student.firstName} {invoice.student.lastName}</TableCell>
-                    <TableCell className="text-muted-foreground">{formatMoney(invoice.amount, tenant.organization.currency)}{due > 0 ? <span className="block text-xs">Due {formatMoney(due, tenant.organization.currency)}</span> : null}</TableCell>
+                    <TableCell className="text-muted-foreground">{orgMoney(invoice.amount, tenant.organization.currency)}{due > 0 ? <span className="block text-xs">Due {orgMoney(due, tenant.organization.currency)}</span> : null}</TableCell>
                     <TableCell><Badge variant={STATUS_BADGE[invoice.status]}>{invoice.status}</Badge></TableCell>
                     {canManage ? (
                       <TableCell className="text-right">

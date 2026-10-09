@@ -1,54 +1,103 @@
 import Link from "next/link";
-import { Truck, Wallet, Building2 } from "lucide-react";
+import { Building2, Briefcase, GraduationCap, HeartPulse, Hotel, ShoppingBag, Truck, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { IconBadge } from "@/components/ui/icon-badge";
 import { createPublicMetadata } from "@/lib/seo";
+import { getModule } from "@/platform/modules/registry";
 import { PublicHero } from "@/components/marketing/public-hero";
 
 export const metadata = createPublicMetadata({
   title: "Business Software for Ghanaian Industries",
-  description: "Business management software for transport and logistics, retail, installment sales, consumer finance, and multi-department organizations in Ghana and Africa.",
+  description: "Business software for Ghanaian schools, hospitals, pharmacies, hotels, retailers, service firms, transport operators and installment sellers.",
   path: "/industries",
-  keywords: ["business software Ghana industries", "transport software Ghana", "retail management software Africa"],
+  keywords: ["business software Ghana industries", "school management software Ghana", "hospital management software Ghana", "retail management software Ghana", "hotel management software Ghana"],
 });
 
 const industries = [
   {
-    icon: Truck,
-    name: "Transportation & Logistics",
+    icon: GraduationCap,
+    name: "Education",
     description:
-      "Coordinate managers, drivers, vehicle owners and internal or external mechanics. Track remittances, targets, maintenance approvals, documents, expenses and verified financial activity.",
+      "Run admissions, students and guardians, attendance, fees, examinations, timetables, transport and library, with boarding hostels on the same platform.",
+    modules: ["school", "hostel", "accounting"],
+  },
+  {
+    icon: HeartPulse,
+    name: "Healthcare",
+    description:
+      "Manage patient records, appointments, admissions, laboratory, imaging and billing, alongside pharmacy stock, batches, expiry dates and dispensing.",
+    modules: ["hospital", "pharmacy", "accounting"],
+  },
+  {
+    icon: Hotel,
+    name: "Hospitality",
+    description:
+      "Handle rooms, reservations, guests, check-in, folios, housekeeping and restaurant charges, with settled folios reaching the ledger automatically.",
+    modules: ["hotel", "pos", "accounting"],
+  },
+  {
+    icon: ShoppingBag,
+    name: "Retail & Distribution",
+    description:
+      "Connect tills, stock, warehouses, suppliers, purchase approvals and customer relationships, with sales and payables flowing into Accounting.",
+    modules: ["pos", "inventory", "crm"],
+  },
+  {
+    icon: Briefcase,
+    name: "Professional Services",
+    description:
+      "Track clients and deals, plan projects and milestones, run payroll and keep the books, with each team seeing only the work it is responsible for.",
+    modules: ["crm", "projects", "hr"],
+  },
+  {
+    icon: Truck,
+    name: "Transport & Logistics",
+    description:
+      "Coordinate managers, drivers, vehicle owners and mechanics. Track remittances, work-and-pay contracts, maintenance approvals and documents.",
+    modules: ["fleet", "accounting"],
   },
   {
     icon: Wallet,
-    name: "Retail & Consumer Finance",
+    name: "Installment Sales",
     description:
-      "Connect POS, stock, procurement, installment accounts, collections and customer relationships, with verified activity flowing into the financial picture.",
+      "Manage customer accounts, installment plans, collections and field sales teams, with payment history recorded against each account.",
+    modules: ["installment", "crm"],
   },
   {
     icon: Building2,
     name: "Multi-department organizations",
     description:
       "Give departments and external stakeholders the access they need, preserve clear data boundaries and manage the organization from one shared source of truth.",
+    modules: ["accounting", "hr", "analytics"],
   },
 ];
 
 export default function IndustriesPage() {
   return (
     <>
-      <PublicHero eyebrow="Industries" title="Technology shaped around real operating environments." description="Our modular platform and bespoke engineering capability serve organizations whose workflows, teams, customers, and regulatory responsibilities demand more than generic software." />
+      <PublicHero eyebrow="Industries" title="Technology shaped around real operating environments." description="One modular platform serving schools, healthcare providers, hotels, retailers, service firms and transport operators across Ghana. Activate the modules your sector needs and connect them to Accounting." />
 
       <section className="public-section-tint">
         <div className="mx-auto max-w-6xl px-6 py-20">
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {industries.map((industry) => (
-              <Card key={industry.name}>
+              <Card key={industry.name} className="flex flex-col">
                 <CardHeader>
                   <IconBadge size="lg"><industry.icon className="size-5" /></IconBadge>
                   <CardTitle className="mt-3">{industry.name}</CardTitle>
                   <CardDescription>{industry.description}</CardDescription>
                 </CardHeader>
+                <CardContent className="mt-auto flex flex-wrap gap-x-3 gap-y-1">
+                  {industry.modules.map((key) => {
+                    const module_ = getModule(key);
+                    return module_ ? (
+                      <Link key={key} href={`/modules/${key}`} className="text-sm font-medium text-primary underline-offset-4 hover:underline">
+                        {module_.name}
+                      </Link>
+                    ) : null;
+                  })}
+                </CardContent>
               </Card>
             ))}
           </div>

@@ -12,7 +12,8 @@ import { sendEmail } from "@/lib/email";
 import { invitationEmail } from "@/lib/email-templates";
 import { getModulePriceMap, getPricingBundleMap, type PricingBundleKey } from "@/lib/pricing";
 import { createSelfServiceBundleSubscription, createSelfServiceSubscription } from "@/platform/subscriptions/service";
-import type { BusinessModuleKey } from "@/platform/modules/registry";
+import { isPubliclyListedModule, type BusinessModuleKey } from "@/platform/modules/registry";
+import { getCountryProfile } from "@/lib/localization";
 
 const schema = z.object({
   fullName: z.string().trim().min(2).max(150),
@@ -22,6 +23,7 @@ const schema = z.object({
   productType: z.enum(["MODULE", "BUNDLE"]),
   productKey: z.string().trim().min(1).max(80),
   billingCycle: z.enum(["MONTHLY", "ANNUAL"]),
+  country: z.string().trim().max(60).optional().default("GH"),
 });
 
 function slugify(value: string) {
@@ -48,7 +50,8 @@ export async function startPublicSubscription(formData: FormData): Promise<void>
   if (!parsed.success) redirect("/subscribe?error=invalid");
   const input = parsed.data;
   const [modulePriceMap, bundleMap] = await Promise.all([getModulePriceMap(), getPricingBundleMap()]);
-  const selectedModule = modulePriceMap.has(input.productKey as BusinessModuleKey);
+  // Self-service signup only sells publicly listed modules.
+  const selectedModule = modulePriceMap.has(input.productKey as BusinessModuleKey) && isPubliclyListedModule(input.productKey);
   const selectedBundle = bundleMap.has(input.productKey as PricingBundleKey);
   if (!selectedModule && !selectedBundle) redirect("/subscribe?error=product");
 
@@ -59,9 +62,11 @@ export async function startPublicSubscription(formData: FormData): Promise<void>
   const ownerRole = await db.role.findFirst({ where: { organizationId: null, isSystem: true, name: "Organization Owner" }, select: { id: true } });
   if (!ownerRole) redirect("/subscribe?error=unavailable");
 
+  const profile = getCountryProfile(input.country || "GH");
+  if (!profile.currency || !profile.timezone) redirect("/subscribe?error=invalid");
   const tenantCode = await uniqueTenantCode(input.organizationName);
   const created = await db.$transaction(async (tx) => {
-    const organization = await tx.organization.create({ data: { name: input.organizationName, tenantCode, status: "TRIAL", billingEmail: input.email, email: input.email, phone: input.phone || null, currency: "GHS", timezone: "Africa/Accra", country: "Ghana" } });
+    const organization = await tx.organization.create({ data: { name: input.organizationName, tenantCode, status: "TRIAL", billingEmail: input.email, email: input.email, phone: input.phone || null, currency: profile.currency, timezone: profile.timezone, country: profile.countryCode, jurisdictionCode: profile.jurisdictionCode, fiscalYearStartMonth: profile.fiscalYearStartMonth, legalName: input.organizationName } });
     const user = await tx.user.upsert({ where: { email: input.email }, update: {}, create: { email: input.email, name: input.fullName, phone: input.phone || null, status: "INVITED" } });
     const membership = await tx.organizationMember.create({ data: { organizationId: organization.id, userId: user.id, roleId: ownerRole.id, status: "INVITED" } });
     return { organization, user, membership };

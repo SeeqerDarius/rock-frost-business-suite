@@ -6,6 +6,12 @@ import { Prisma } from "@prisma/client";
 import { sendSms } from "@/lib/sms";
 import { payrollPayslipIssuedSms } from "@/lib/sms-templates";
 import { formatMoney } from "@/lib/currency";
+import { organizationNumberLocale } from "@/lib/org-format";
+import { claimSchoolPayrollInputsForRun, listSchoolPayrollInputsForRun } from "@/modules/school/payroll-integration";
+import { ruleInput, rulesForPayDate } from "./deduction-rules";
+import { calculateEmployeeDeductions, PayrollDeductionError, payPeriodsPerYear, type DeductionLine } from "./statutory";
+
+export { PayrollDeductionError } from "./statutory";
 
 /**
  * Fresh module (no reference implementation to migrate from). Every function
@@ -17,10 +23,9 @@ import { formatMoney } from "@/lib/currency";
  * every other module that references another module's core entity by id
  * (e.g. CRM referencing User for ownership).
  *
- * Deliberately NOT integrated with Accounting in this pass (no journal entry
- * posted when a run completes) — see docs/DECISIONS.md / OPERATOR_HANDOFF.md
- * for the reasoning, matching the same scope decision already made for
- * Procurement-to-Accounting.
+ * Completed runs accrue their gross salary expense and related liabilities in
+ * Accounting through the public integration contract. The source run remains
+ * authoritative if delivery is unavailable and exposes a retryable status.
  */
 
 // --- Compensation ---
@@ -45,6 +50,10 @@ interface CompensationInput {
   baseSalary: string;
   payFrequency?: string;
   effectiveDate: Date;
+  /** Withholding filing status for deduction rules scoped by status. */
+  filingStatus?: string | null;
+  /** Extra income tax withheld each pay period at the employee's request. */
+  additionalWithholding?: string | null;
 }
 
 /** Thrown when a caller-supplied id doesn't resolve inside the calling organization. */
@@ -57,13 +66,17 @@ export async function setCompensation(organizationId: string, data: Compensation
     throw new InvalidCompensationError("Base salary must be a positive number.");
   }
 
+  const additional = Number(data.additionalWithholding ?? 0);
+  if (!Number.isFinite(additional) || additional < 0) throw new InvalidCompensationError("Additional withholding must be zero or more.");
+
   const employee = await db.hrEmployee.findFirst({ where: { id: data.employeeId, organizationId } });
   if (!employee) throw new NotFoundError("Employee not found.");
 
+  const withholding = { filingStatus: data.filingStatus ?? null, additionalWithholding: data.additionalWithholding ?? "0" };
   return db.payrollCompensation.upsert({
     where: { employeeId: data.employeeId },
-    update: { baseSalary: data.baseSalary, payFrequency: data.payFrequency ?? "MONTHLY", effectiveDate: data.effectiveDate },
-    create: { organizationId, ...data, payFrequency: data.payFrequency ?? "MONTHLY" },
+    update: { baseSalary: data.baseSalary, payFrequency: data.payFrequency ?? "MONTHLY", effectiveDate: data.effectiveDate, ...withholding },
+    create: { organizationId, employeeId: data.employeeId, baseSalary: data.baseSalary, effectiveDate: data.effectiveDate, payFrequency: data.payFrequency ?? "MONTHLY", ...withholding },
   });
 }
 
@@ -103,6 +116,13 @@ export function listRuns(organizationId: string) {
   });
 }
 
+export function getPayrollRunForPostingRetry(organizationId: string, runId: string) {
+  return db.payrollRun.findFirst({
+    where: { id: runId, organizationId, status: "COMPLETED", postingStatus: { in: ["PENDING", "FAILED", "NOT_REQUIRED"] } },
+    include: { payslips: { include: { deductions: true } } },
+  });
+}
+
 interface RunInput {
   periodStart: Date;
   periodEnd: Date;
@@ -116,6 +136,22 @@ export function createRun(organizationId: string, data: RunInput) {
 
 export class RunStateError extends Error {}
 export class NoCompensationError extends Error {}
+export class SchoolPayrollInputError extends Error {
+  constructor(readonly reason: "unlinked" | "employee-ineligible" | "period-mismatch" | "deductions-exceed-net" | "changed") {
+    super(`School payroll inputs need attention: ${reason}`);
+  }
+}
+
+function monthKey(date: Date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function isFullCalendarMonth(periodStart: Date, periodEnd: Date) {
+  const start = new Date(Date.UTC(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(periodStart.getUTCFullYear(), periodStart.getUTCMonth() + 1, 0));
+  return periodStart.toISOString().slice(0, 10) === start.toISOString().slice(0, 10)
+    && periodEnd.toISOString().slice(0, 10) === end.toISOString().slice(0, 10);
+}
 
 /**
  * Claims the run (DRAFT -> COMPLETED) with a guarded updateMany as the
@@ -135,6 +171,7 @@ export async function processRun(organizationId: string, runId: string) {
     getSettings(organizationId),
     db.payrollCompensation.findMany({
       where: { organizationId, employee: { status: { in: ["ACTIVE", "ON_LEAVE", "REINSTATED"] }, payrollEligible: true } },
+      include: { employee: { select: { fullName: true } } },
     }),
   ]);
 
@@ -152,18 +189,60 @@ export async function processRun(organizationId: string, runId: string) {
     const claimed = await tx.payrollRun.updateMany({ where: { id: runId, status: "DRAFT" }, data: { status: "COMPLETED" } });
     if (claimed.count === 0) throw new RunStateError("Only draft runs can be processed.");
 
-    for (const comp of compensations) {
-      const grossPay = new Prisma.Decimal(comp.baseSalary);
-      const taxDeduction = grossPay.times(taxRate);
-      const netPay = grossPay.minus(taxDeduction);
+    const schoolInputs = await listSchoolPayrollInputsForRun(tx, organizationId, monthKey(existingRun.periodStart), monthKey(existingRun.periodEnd));
+    if (schoolInputs.length > 0 && !isFullCalendarMonth(existingRun.periodStart, existingRun.periodEnd)) {
+      throw new SchoolPayrollInputError("period-mismatch");
+    }
+
+    const compensatedEmployeeIds = new Set(compensations.map((compensation) => compensation.employeeId));
+    const adjustmentTotals = new Map<string, { earnings: Prisma.Decimal; deductions: Prisma.Decimal }>();
+    for (const input of schoolInputs) {
+      if (!input.employeeId || input.legacyEmployeeId) throw new SchoolPayrollInputError("unlinked");
+      if (!compensatedEmployeeIds.has(input.employeeId)) throw new SchoolPayrollInputError("employee-ineligible");
+      const totals = adjustmentTotals.get(input.employeeId) ?? { earnings: new Prisma.Decimal(0), deductions: new Prisma.Decimal(0) };
+      if (input.category === "DEDUCTION") totals.deductions = totals.deductions.plus(input.amount);
+      else totals.earnings = totals.earnings.plus(input.amount);
+      adjustmentTotals.set(input.employeeId, totals);
+    }
+
+    const statutory = settings.deductionMode === "RULES" ? await loadStatutoryContext(tx, organizationId, runId, existingRun.payDate, compensations.map((comp) => comp.employeeId)) : null;
+
+    const payslipAmounts = compensations.map((comp) => {
+      const adjustment = adjustmentTotals.get(comp.employeeId) ?? { earnings: new Prisma.Decimal(0), deductions: new Prisma.Decimal(0) };
+      const grossPay = new Prisma.Decimal(comp.baseSalary).plus(adjustment.earnings);
+      if (statutory) {
+        const result = statutoryDeductionsFor(statutory, comp, grossPay);
+        const otherDeductions = adjustment.deductions.plus(result.employeeContributions);
+        const netPay = grossPay.minus(result.withholding).minus(otherDeductions);
+        if (netPay.isNegative()) throw new PayrollDeductionError(`Deductions for ${comp.employee?.fullName ?? "an employee"} exceed gross pay.`);
+        return { employeeId: comp.employeeId, grossPay, taxDeduction: result.withholding, otherDeductions, netPay, employerContributions: result.employerContributions, lines: result.lines, taxYear: statutory.taxYear };
+      }
+      const taxDeduction = grossPay.times(taxRate).toDecimalPlaces(2);
+      const netPay = grossPay.minus(taxDeduction).minus(adjustment.deductions);
+      if (netPay.isNegative()) throw new SchoolPayrollInputError("deductions-exceed-net");
+      return { employeeId: comp.employeeId, grossPay, taxDeduction, otherDeductions: adjustment.deductions, netPay };
+    });
+
+    try {
+      await claimSchoolPayrollInputsForRun(tx, organizationId, schoolInputs.map((input) => input.id), runId);
+    } catch {
+      throw new SchoolPayrollInputError("changed");
+    }
+
+    for (const amounts of payslipAmounts) {
       await tx.payrollPayslip.create({
         data: {
           organizationId,
           payrollRunId: runId,
-          employeeId: comp.employeeId,
-          grossPay: grossPay.toFixed(2),
-          taxDeduction: taxDeduction.toFixed(2),
-          netPay: netPay.toFixed(2),
+          employeeId: amounts.employeeId,
+          grossPay: amounts.grossPay.toFixed(2),
+          taxDeduction: amounts.taxDeduction.toFixed(2),
+          otherDeductions: amounts.otherDeductions.toFixed(2),
+          netPay: amounts.netPay.toFixed(2),
+          ...(amounts.lines ? {
+            employerContributions: (amounts.employerContributions ?? new Prisma.Decimal(0)).toFixed(2),
+            deductions: { create: amounts.lines.map((line) => ({ organizationId, employeeId: amounts.employeeId, ruleId: line.ruleId, code: line.code, name: line.name, kind: line.kind, taxYear: statutory!.taxYear, subjectWages: line.subjectWages.toFixed(2), amount: line.amount.toFixed(2), liabilityAccountCode: line.liabilityAccountCode, expenseAccountCode: line.expenseAccountCode })) },
+          } : {}),
         },
       });
     }
@@ -176,14 +255,14 @@ export async function processRun(organizationId: string, runId: string) {
   if (settings.smsNotificationsEnabled) {
     const [payslips, organization] = await Promise.all([
       db.payrollPayslip.findMany({ where: { payrollRunId: runId }, include: { employee: true } }),
-      db.organization.findUnique({ where: { id: organizationId }, select: { currency: true } }),
+      db.organization.findUnique({ where: { id: organizationId }, select: { currency: true, locale: true, numberFormat: true } }),
     ]);
     await Promise.all(payslips.map((payslip) => {
       const phone = payslip.employee.mobilePhone || payslip.employee.phone;
       if (!phone) return undefined;
       return sendSms({
         to: phone,
-        ...payrollPayslipIssuedSms({ employeeName: payslip.employee.fullName, netPay: formatMoney(payslip.netPay, organization?.currency), payDate: run.payDate }),
+        ...payrollPayslipIssuedSms({ employeeName: payslip.employee.fullName, netPay: formatMoney(payslip.netPay, organization?.currency, organizationNumberLocale(organization)), payDate: run.payDate }),
         purpose: "PAYROLL_PAYSLIP_ISSUED",
         organizationId,
         moduleKey: "payroll",
@@ -194,6 +273,53 @@ export async function processRun(organizationId: string, runId: string) {
   }
 
   return run;
+}
+
+type Tx = Prisma.TransactionClient;
+type StatutoryContext = Awaited<ReturnType<typeof loadStatutoryContext>>;
+
+/**
+ * Confirmed deduction rules for the pay date's tax year plus each employee's
+ * year-to-date gross and subject wages per rule from earlier completed runs
+ * in that year, read inside the run's transaction.
+ */
+async function loadStatutoryContext(tx: Tx, organizationId: string, runId: string, payDate: Date, employeeIds: string[]) {
+  const { taxYear, rules } = await rulesForPayDate(organizationId, payDate, tx);
+  const yearStart = new Date(Date.UTC(taxYear, 0, 1));
+  const nextYear = new Date(Date.UTC(taxYear + 1, 0, 1));
+  const earlier = { status: "COMPLETED" as const, id: { not: runId }, payDate: { gte: yearStart, lt: nextYear } };
+  const [priorSlips, priorLines] = await Promise.all([
+    tx.payrollPayslip.findMany({ where: { organizationId, employeeId: { in: employeeIds }, payrollRun: earlier }, select: { employeeId: true, grossPay: true } }),
+    tx.payrollPayslipDeduction.findMany({ where: { organizationId, employeeId: { in: employeeIds }, taxYear, payslip: { payrollRun: earlier } }, select: { employeeId: true, code: true, subjectWages: true } }),
+  ]);
+  const ytdGross = new Map<string, Prisma.Decimal>();
+  for (const slip of priorSlips) ytdGross.set(slip.employeeId, (ytdGross.get(slip.employeeId) ?? new Prisma.Decimal(0)).plus(slip.grossPay));
+  const ytdSubject = new Map<string, Map<string, Prisma.Decimal>>();
+  for (const line of priorLines) {
+    const byCode = ytdSubject.get(line.employeeId) ?? new Map<string, Prisma.Decimal>();
+    byCode.set(line.code, (byCode.get(line.code) ?? new Prisma.Decimal(0)).plus(line.subjectWages));
+    ytdSubject.set(line.employeeId, byCode);
+  }
+  return { taxYear, rules: rules.map(ruleInput), ytdGross, ytdSubject };
+}
+
+function statutoryDeductionsFor(context: StatutoryContext, comp: { employeeId: string; payFrequency: string; filingStatus: string | null; additionalWithholding: Prisma.Decimal; employee?: { fullName: string } | null }, grossPay: Prisma.Decimal) {
+  const who = comp.employee?.fullName ?? "an employee";
+  const scopedWithholding = context.rules.filter((rule) => rule.kind === "EMPLOYEE_WITHHOLDING" && rule.filingStatus);
+  if (scopedWithholding.length && !scopedWithholding.some((rule) => rule.filingStatus === comp.filingStatus)) {
+    throw new PayrollDeductionError(`Set a filing status for ${who} in Payroll, Compensation: the withholding rules depend on it.`);
+  }
+  try {
+    payPeriodsPerYear(comp.payFrequency);
+  } catch {
+    throw new PayrollDeductionError(`${who} has a pay frequency deduction rules cannot annualize.`);
+  }
+  const result = calculateEmployeeDeductions(context.rules, {
+    grossPay, payFrequency: comp.payFrequency, filingStatus: comp.filingStatus, additionalWithholding: comp.additionalWithholding,
+    ytdGross: context.ytdGross.get(comp.employeeId) ?? 0, ytdSubjectByCode: context.ytdSubject.get(comp.employeeId) ?? new Map(),
+  });
+  if (result.unappliedAdditionalWithholding.greaterThan(0)) throw new PayrollDeductionError(`${who} has additional withholding but no withholding rule applies to them.`);
+  return result as typeof result & { lines: DeductionLine[] };
 }
 
 export async function cancelRun(organizationId: string, runId: string) {
@@ -209,7 +335,7 @@ export async function cancelRun(organizationId: string, runId: string) {
 export function listPayslips(organizationId: string, runId?: string) {
   return db.payrollPayslip.findMany({
     where: { organizationId, ...(runId ? { payrollRunId: runId } : {}) },
-    include: { employee: true, payrollRun: true },
+    include: { employee: true, payrollRun: true, deductions: { orderBy: { createdAt: "asc" } } },
     orderBy: { createdAt: "desc" },
   });
 }

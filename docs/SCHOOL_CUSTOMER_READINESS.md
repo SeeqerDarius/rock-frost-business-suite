@@ -40,6 +40,106 @@ School actions preserve stable rejection codes for customer-readable feedback,
 bulk issuance reports issued/skipped counts, and student status claims reject
 concurrent stale transitions.
 
+## Customer-readiness tranche 3 — fee-payment Accounting delivery
+
+School fee payments remain recorded and receipted even if optional Accounting
+posting fails. Each payment records `PENDING`, `POSTED`, `FAILED`, or
+`NOT_REQUIRED`; users with School fee-management permission can retry failed or
+previously unposted payments. The retry reloads the payment within the active
+organization and reuses the same idempotent Accounting source identity. When
+Accounting is inactive the payment is marked `NOT_REQUIRED` and can be retried
+after Accounting is enabled. The fee page shows posting status beside each
+receipt. Migration `20261001090000_school_fee_accounting_retry` adds the status
+and retry index; existing payments start as `PENDING` so they can be reconciled
+through the same retry path.
+
+## Customer-readiness tranche 4 — School inputs in Payroll runs
+
+School payroll adjustments are now linked to an active, payroll-eligible HR
+employee in the same organization. The School page shows each employee's name
+and number, lets authorized users assign or reassign a pending imported row,
+and labels each row as an earning or deduction. Existing IDs that cannot be
+matched during migration are retained as legacy values for recovery; they are
+not discarded or silently attached to another employee.
+
+Payroll consumes pending School inputs only when processing a full calendar
+month. Earnings increase gross pay before the organization's configured
+default tax rate is applied. Deductions are included in other deductions and
+reduce net pay. A matching input with an invalid employee, a non-monthly run,
+or deductions exceeding net pay blocks processing with a specific message.
+The Payroll run and adjustment claims commit in the same transaction, so a
+failed run leaves its inputs pending. The resulting Payroll accrual continues
+through the existing idempotent Accounting integration. Statutory deduction
+classification, employee disbursement, and partial-month proration remain
+separate work.
+
+Migration `20261001120000_school_payroll_run_integration` introduces the
+organization-scoped employee and PayrollRun relations and category enum.
+`src/modules/school/payroll-integration.ts` is the School-owned contract that
+Payroll calls within the run transaction; Payroll does not query School's
+Prisma model directly.
+
+## Customer-readiness tranche 5 — scalable student directory
+
+The Students table now searches by student name or admission number in the
+tenant-scoped database query and returns stable pages of 50 rows (maximum 100
+per page). Status and text filters are applied before counting and paging;
+page links preserve active filters and clamp stale page numbers to the last
+available page. The existing full student directory service remains available
+to forms and workflows that need organization-wide choices. The paged table
+selects only displayed identity, campus, active-enrollment, and guardian-contact
+fields; it does not fetch medical notes or photo data into the list response.
+Staff with student-management permission can edit a student's name, date of
+birth, gender, and admission date from this table. The update checks the row's
+version so concurrent edits cannot silently overwrite one another. Admission
+number, campus, lifecycle status, class history, and medical details stay out
+of this editor; changes to those records use their own workflows.
+
+## Customer-readiness tranche 6 — scalable operational lists
+
+Fee invoices, attendance history, and the library catalogue now use
+organization-scoped database search and stable pages of 50 rows, capped at
+100. Search terms and valid status filters are applied before counting and
+pagination; page links preserve current filters and stale page requests clamp
+to the last available page. Fee dashboard totals use database aggregates
+across the organization rather than summing only the visible invoice page.
+Invoice rows select only the fields rendered by the table and its receipt
+actions. Attendance rows omit unrelated student data. Library catalogue rows
+use a narrow select; book choices for issuing loans load only IDs, titles, and
+available-copy counts. Library loan history now has tenant-scoped search and
+stable pages of 50 rows capped at 100, separate search state from the
+catalogue, an open/all-loans toggle, and an organization-wide overdue count.
+Loan rows select only the book and student fields shown in the table.
+
+Student choices in enrollment, fee invoices, transport assignments, exam result
+entry, and library circulation now use tenant-scoped name/admission-number
+search and return at most 50 narrow rows per choice set (configurable up to
+100). Library book choices similarly search available titles, authors, or
+accession codes and return a bounded result. Dedicated GET search forms preserve
+the other active list and picker filters. The create/edit actions still perform
+their own organization and business-rule checks; the picker is only a way to
+find records efficiently.
+
+Recorded School fee payments now link to a printable receipt page. The route
+checks School access plus either fee-management or student-finance-view
+permission, and loads the payment by organization with a narrow selection of
+receipt, invoice, student, campus, and academic-period fields. Printing is
+browser-native; a refund does not rewrite or remove the original receipt.
+Fee managers can record partial or full refunds against a payment. Each refund
+retains its amount, method, reason, reference, actor, timestamp, and Accounting
+posting status as a separate event; the original receipt is preserved. Refunds
+reduce collected totals and reopen the invoice balance. Accounting receives a
+separate contra-revenue journal entry with retry support. Credits and a
+downloadable receipt PDF remain separate work. Refund settlement currently
+uses the Accounting module's default Cash account, consistent with existing
+School fee collection posting.
+
+The invoice status filter now matches the schema's `VOID` value rather than
+offering the nonexistent `CANCELLED` value. Remaining scaling work includes
+the portal-access student list and other full-record directory consumers,
+followed by the finance, student lifecycle, and academic workflows listed
+below.
+
 ## Customer-readiness tranche 2 — capacity, lifecycle controls, teacher scoping, and UX fixes
 
 Migration `20260818160000_add_school_class_teacher` adds `SchoolClassTeacher`,
@@ -88,17 +188,25 @@ schema change:
 
 ### Student administration
 
-- Complete admission application, document, emergency-contact, profile-edit,
-  transfer, promotion, and academic-year rollover workflows.
+- Post-admission family links now support a tenant-validated primary contact,
+  pickup authorization, relationship edits, removal, and audit history.
+- Academic-year enrollment rollover is in progress: review active learners,
+  map source classes to same-campus destination classes, check class capacity,
+  reject stale preview counts, skip existing destination placements, and move
+  the batch atomically while preserving completed source-year history.
+  Individual enrollment and rollover share academic-year/class locks so
+  concurrent enrollment cannot bypass capacity checks.
+- Still needed: admission applications and document workflows, student
+  transfer, and promotion decisions that calculate the next class from a
+  configured progression rule.
 - Add bulk import/export with preview, validation, and recoverable error reports.
 - Add printable student profiles and enrollment history.
 
 ### Fees and finance
 
-- Add fee-structure and bulk-issuance UI, scholarships, credits, refunds,
-  reversals, statements, receipt printing, cashier reconciliation, and arrears
-  aging.
-- Add Accounting posting through the Accounting module's public service.
+- Add scholarships, credits, reversals, statements, cashier reconciliation, and
+  arrears aging. Fee structures, bulk issuance, printable fee receipts,
+  auditable refunds, and Accounting delivery status and retry are implemented.
 
 ### Academics
 

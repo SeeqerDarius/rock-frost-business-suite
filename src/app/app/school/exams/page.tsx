@@ -11,15 +11,16 @@ import { FormFeedback, ReadOnlyNotice } from "@/components/school/form-feedback"
 import { FieldGrid, SelectField, TextField } from "@/components/school/form-fields";
 import { StudentClassFields } from "@/components/school/student-class-fields";
 import { PrerequisiteNotice, SectionCard } from "@/components/school/section-card";
+import { RecordSearch } from "@/components/school/record-search";
 import { StatusBadge } from "@/components/school/status-badge";
 import { formatDate } from "@/components/school/format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { getSchoolAcademicSetup, listSchoolExams, listSchoolStudents, resolveTeacherClassScope } from "@/modules/school/service";
+import { getSchoolAcademicSetup, listSchoolExams, listSchoolStudentChoices, resolveTeacherClassScope } from "@/modules/school/service";
 import { createExamAction, publishExamAction, recordExamResultAction, submitExamForModerationAction } from "../actions";
 import { schoolPlanGate } from "@/components/school/plan-gate";
 
-export default async function SchoolExamsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
+export default async function SchoolExamsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; studentQ?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
   // Plan gate. Navigation already hides this page when the plan does
   // not include it, but a hidden link is not a boundary.
@@ -29,7 +30,7 @@ export default async function SchoolExamsPage({ searchParams }: { searchParams: 
   const canPublish = hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_PUBLISH);
   const [[years, allClasses, subjects], students, exams, teacherClassScope] = await Promise.all([
     getSchoolAcademicSetup(tenant.organizationId),
-    listSchoolStudents(tenant.organizationId),
+    listSchoolStudentChoices(tenant.organizationId, { query: query.studentQ, activeOnly: true }),
     listSchoolExams(tenant.organizationId),
     resolveTeacherClassScope(tenant.organizationId, tenant.userId),
   ]);
@@ -42,11 +43,11 @@ export default async function SchoolExamsPage({ searchParams }: { searchParams: 
   const classes = teacherClassScope ? allClasses.filter((schoolClass) => teacherClassScope.has(schoolClass.id)) : allClasses;
 
   const termOptions = years.flatMap((year) => year.terms.map((term) => ({ value: term.id, label: `${year.name} · ${term.name}${term.current ? " (current)" : ""}` })));
-  const studentOptions = students.filter((student) => student.status === "ACTIVE").map((student) => ({ value: student.id, label: `${student.lastName}, ${student.firstName} (${student.admissionNumber})` }));
+  const studentOptions = students.rows.map((student) => ({ value: student.id, label: `${student.lastName}, ${student.firstName} (${student.admissionNumber})` }));
   const classOptions = classes.map((schoolClass) => ({ value: schoolClass.id, label: `${schoolClass.campus.name} · ${schoolClass.name}` }));
   const studentClassMap = Object.fromEntries(
-    students
-      .map((student) => [student.id, student.enrollments.find((enrollment) => enrollment.status === "ACTIVE")?.classId] as const)
+    students.rows
+      .map((student) => [student.id, student.enrollments[0]?.classId] as const)
       .filter((entry): entry is [string, string] => Boolean(entry[1])),
   );
 
@@ -92,6 +93,7 @@ export default async function SchoolExamsPage({ searchParams }: { searchParams: 
         savedMessage="The exam record is up to date."
         stateMessage="Check the workflow: marks must be within the exam total, only open exams with results can go to moderation, and only moderated exams can be published."
       />
+      <RecordSearch action="/app/school/exams" queryName="studentQ" label="Find a student for result entry" placeholder="Name or admission number" defaultValue={query.studentQ} resultSummary={`Showing ${students.rows.length} of ${students.total} active students`} />
       {!canManage && !canPublish ? <ReadOnlyNotice>Your role can review exams but cannot enter results or publish them.</ReadOnlyNotice> : null}
       {canManage && !canPublish ? <ReadOnlyNotice>You can enter results and submit them for moderation. Publishing requires the exam publishing permission.</ReadOnlyNotice> : null}
       <PrerequisiteNotice

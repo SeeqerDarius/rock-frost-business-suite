@@ -109,20 +109,20 @@ export function buildFleetOwnerReport(workspace: OwnerWorkspace): OwnerReport {
  * shows on-screen collapses to this one exportable ledger plus a summary
  * block, same shape every other module's report export already uses.
  */
-export function buildFleetOwnerReportExportInput(report: OwnerReport, currency: string, organizationName: string): ReportExportInput {
+export function buildFleetOwnerReportExportInput(report: OwnerReport, currency: string, organizationName: string, locale?: string | null): ReportExportInput {
   return {
     title: "Vehicle Owner Statement",
     subtitle: `${organizationName} - ${report.owner.name}`,
     generatedAt: report.generatedAt,
     summary: [
       { label: "Vehicles", value: report.totals.vehicleCount.toString() },
-      { label: "Verified collections", value: formatMoney(report.totals.verifiedCollections, currency) },
-      { label: "Verified expenses", value: formatMoney(report.totals.verifiedExpenses, currency) },
-      { label: "Operating position", value: formatMoney(report.totals.operatingPosition, currency) },
+      { label: "Verified collections", value: formatMoney(report.totals.verifiedCollections, currency, locale) },
+      { label: "Verified expenses", value: formatMoney(report.totals.verifiedExpenses, currency, locale) },
+      { label: "Operating position", value: formatMoney(report.totals.operatingPosition, currency, locale) },
       {
         label: "Settlement",
         value: report.settlement.settlementConfigured
-          ? `${formatMoney(report.settlement.totals.netSettlement, currency)} net (${formatMoney(report.settlement.totals.ownerRevenueShare, currency)} share, ${formatMoney(report.settlement.totals.managementFee, currency)} management fee)`
+          ? `${formatMoney(report.settlement.totals.netSettlement, currency, locale)} net (${formatMoney(report.settlement.totals.ownerRevenueShare, currency, locale)} share, ${formatMoney(report.settlement.totals.managementFee, currency, locale)} management fee)`
           : "Not configured - no approved owner agreement defines revenue share or fees",
       },
     ],
@@ -131,7 +131,7 @@ export function buildFleetOwnerReportExportInput(report: OwnerReport, currency: 
       { key: "vehiclePlate", header: "Vehicle", width: 1 },
       { key: "kind", header: "Type", width: 1, format: (value) => (value === "COLLECTION" ? "Collection" : "Expense") },
       { key: "description", header: "Description", width: 2 },
-      { key: "amount", header: "Amount", width: 1, align: "right", format: (value) => formatMoney(Number(value), currency) },
+      { key: "amount", header: "Amount", width: 1, align: "right", format: (value) => formatMoney(Number(value), currency, locale) },
     ],
     rows: report.ledger as unknown as Record<string, unknown>[],
   };

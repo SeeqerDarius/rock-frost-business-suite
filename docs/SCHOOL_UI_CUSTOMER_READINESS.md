@@ -191,23 +191,26 @@ customer-readable guidance while retaining a safe generic fallback.
 `issueFeeStructureAction` now preserves the service's issued/skipped counts in
 the redirect, and the Fees page reports both values after bulk issuance.
 
-**SC-3 — School payroll is not linked to HR.**
-`SchoolPayrollAdjustment.employeeId` is a plain `String` with **no relation**
-to `HrEmployee`, and no School service function lists employees. The field is
-therefore still a typed ID, labelled honestly as unverified and not linked to
-HR. A dropdown was deliberately not built, because it would imply a
-referential guarantee the schema does not make. Requested: a relation from
-`SchoolPayrollAdjustment.employeeId` to `HrEmployee`, a
-`listSchoolPayrollEmployees(organizationId)` service function, and employee
-name included in `listSchoolPayrollAdjustments` for display.
+**SC-3 — School payroll employee linking and Payroll processing (resolved in
+the School-to-Payroll integration tranche).** Adjustments now reference an HR
+employee within the same organization, display the employee name/number, and
+are consumed atomically by full-calendar-month Payroll runs. Legacy unmatched
+employee IDs remain recoverable and pending rows can be assigned or reassigned
+to a same-organization HR employee. Payroll input failures leave the run in
+Draft and the adjustments unprocessed. Responsive authenticated tenant-browser
+verification remains a release check when a tenant session is available.
 
-**SC-4 — No server-side filtering or pagination.**
-Every list function takes only `organizationId` and returns the full set
-(`listSchoolAttendance` alone caps at 250). All search and filtering added in
-this pass runs in the page over rows already fetched. This is honest but does
-not scale. Requested: filter/pagination parameters on
-`listSchoolStudents`, `listSchoolFeeInvoices`, `listSchoolAttendance`, and
-`listSchoolLibrary`.
+**SC-4 — Server-side filtering and pagination (partially resolved).**
+Students, fee invoices, attendance history, and the library catalogue now use
+tenant-scoped database search and stable 50-row pages (maximum 100). Their
+filter and search conditions are applied before counting and paging, and page
+links preserve filters and clamp stale page values. Student rows exclude
+medical notes and photo blobs; invoice and attendance rows select only the
+fields needed by the tables. Fee summary values are aggregated across the
+organization, not derived from the current page. Library loan history now has
+separate tenant-scoped search and pagination, and the overdue badge counts
+organization-wide overdue loans. Large organization-wide form pickers still
+load unpaged and remain open work.
 
 **SC-5 — RESOLVED.** `resolveGradeFromScale()` in `src/modules/school/service.ts`
 reads `SchoolSettings.gradingScale` back and auto-derives `grade` (and now
@@ -230,9 +233,9 @@ render and badges those rows "Overdue", but the stored status stays
 status. `LOST` and `DAMAGED` exist in the schema with no action to set them,
 and no fines are modelled despite the page previously advertising them.
 
-**SC-8 — No per-organization currency.** `formatMoney` is hard-coded to GHS,
-matching the previous Overview card. Hotel stores currency per property;
-School has no equivalent field.
+**SC-8: resolved 2026-10-08.** School amounts use the organization currency
+and number format through the organization formatter; the GHS-only School
+`formatMoney` helper was removed in the formatting sweep.
 
 **SC-9 — No edit or deactivate anywhere.** Campuses, classes, subjects,
 books, and routes can be created but never edited or deactivated, though

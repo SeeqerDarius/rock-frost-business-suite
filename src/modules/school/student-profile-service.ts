@@ -40,7 +40,7 @@ export async function getSchoolStudentProfile(organizationId: string, studentId:
   const [medical, attendance, feeInvoices, examResults, digitalIdCards, conductRecords] = await Promise.all([
     access.medical ? db.schoolStudent.findFirst({ where: { id: studentId, organizationId }, select: { medicalNotes: true, allergies: true, accessibilityNotes: true, bloodGroup: true } }) : null,
     access.attendance ? db.schoolAttendance.findMany({ where: { organizationId, studentId }, include: { term: true }, orderBy: { date: "desc" }, take: 400 }) : [],
-    access.finance ? db.schoolFeeInvoice.findMany({ where: { organizationId, studentId }, include: { payments: true, term: true, academicYear: true }, orderBy: { createdAt: "desc" } }) : [],
+    access.finance ? db.schoolFeeInvoice.findMany({ where: { organizationId, studentId }, include: { payments: { include: { refunds: { select: { amount: true } } } }, term: true, academicYear: true }, orderBy: { createdAt: "desc" } }) : [],
     access.academic ? db.schoolExamResult.findMany({ where: { organizationId, studentId }, include: { exam: { include: { term: true, academicYear: true } }, subject: true }, orderBy: { updatedAt: "desc" } }) : [],
     access.digitalId ? db.schoolDigitalIdCard.findMany({ where: { organizationId, studentId }, orderBy: { createdAt: "desc" } }) : [],
     access.conduct ? db.schoolConductRecord.findMany({ where: { organizationId, studentId }, orderBy: { occurredAt: "desc" } }) : [],

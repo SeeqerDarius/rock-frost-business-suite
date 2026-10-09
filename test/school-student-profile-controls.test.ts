@@ -32,7 +32,7 @@ describe("School student profile controls", () => {
   });
 
   it("uses organization currency and supports direct section links", () => {
-    expect(page).toContain("tenant.organization.currency");
+    expect(page).toContain("createOrganizationFormatter(tenant.organization)");
     expect(page).toContain("?section=${key}");
     expect(page).toContain("Download wallet-size ID PDF");
   });

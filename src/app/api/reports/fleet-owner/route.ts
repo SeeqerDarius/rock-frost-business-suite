@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentTenant } from "@/lib/tenant";
+import { organizationNumberLocale } from "@/lib/org-format";
 import { getServerAuthSession } from "@/lib/auth/session";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getFleetOwnerWorkspace } from "@/modules/fleet/owner-workspace";
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
 
   const report = buildFleetOwnerReport(workspace);
   const currency = tenant.organization.currency ?? "GHS";
-  const input = buildFleetOwnerReportExportInput(report, currency, tenant.organization.name);
+  const input = buildFleetOwnerReportExportInput(report, currency, tenant.organization.name, organizationNumberLocale(tenant.organization));
   const filenameBase = `fleet-owner-statement-${report.generatedAt.toISOString().slice(0, 10)}`;
 
   if (format === "xlsx") {

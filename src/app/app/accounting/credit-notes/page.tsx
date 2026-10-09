@@ -11,12 +11,17 @@ import { EntityDialog } from "@/components/forms/entity-dialog";
 import { LineItemsEditor } from "@/components/forms/line-items-editor";
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
-import { formatMoney } from "@/lib/currency";
+import { createOrganizationFormatter } from "@/lib/org-format";
+import { ContactSelect } from "@/components/forms/contact-select";
+import { CurrencyFields } from "@/components/forms/currency-fields";
 import { listAccounts, listCreditNotes, listInvoices, listContacts } from "@/modules/accounting/service";
+import { db } from "@/lib/db";
+import { listApplicableRules } from "@/modules/tax/service";
 import { listTaxCodes } from "@/modules/accounting/tax-service";
 import { createNewCreditNote, applyCreditNote, refundExistingCreditNote, voidExistingCreditNote } from "./actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
+  "tax-rule": "That tax rule could not be applied on the document date. Check its rates and effective dates in Tax and Compliance. Rules on individual lines also need a tax rule on the document.",
   forbidden: "You don't have permission to manage credit notes.",
   "missing-fields": "All required fields must be filled in.",
   "invalid-lines": "Every line needs a description, a quantity greater than zero, and a non-negative unit price.",
@@ -24,6 +29,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "invalid-payment": "Select an active cash, bank, or mobile-money account owned by this organization.",
   "not-found": "That credit note or invoice could not be found.",
   "period-closed": "The transaction date is in a closed accounting period.",
+  "fx-rate": "No exchange rate is recorded for that currency and date. Record one under Exchange Rates or enter a rate.",
 };
 
 const STATUS_BADGE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
@@ -41,8 +47,9 @@ export default async function AccountingCreditNotesPage({
   const { saved, error } = await searchParams;
   const tenant = await requireModuleAccess("accounting");
   const canManage = hasPermission(tenant, PERMISSIONS.ACCOUNTING_RECEIVABLES_MANAGE);
-  const currency = tenant.organization.currency ?? "GHS";
-  const money = (value: Parameters<typeof formatMoney>[0]) => formatMoney(value, currency);
+  const format = createOrganizationFormatter(tenant.organization);
+  const currency = format.presentation.currency;
+  const money = (value: Parameters<typeof format.money>[0], documentCurrency?: string | null) => format.money(value, documentCurrency ?? currency);
   const [creditNotes, invoices, accounts, taxCodes, contacts] = await Promise.all([
     listCreditNotes(tenant.organizationId),
     listInvoices(tenant.organizationId),
@@ -50,6 +57,8 @@ export default async function AccountingCreditNotesPage({
     listTaxCodes(tenant.organizationId),
     listContacts(tenant.organizationId),
   ]);
+  const [taxRules, pricing] = await Promise.all([listApplicableRules(tenant.organizationId), db.organization.findUnique({ where: { id: tenant.organizationId }, select: { pricesIncludeTax: true } })]);
+  const pricesIncludeTax = pricing?.pricesIncludeTax ?? false;
   const openInvoices = invoices.filter((invoice) => invoice.status === "SENT" || invoice.status === "OVERDUE");
   const refundAccounts = accounts.filter((account) => account.active && account.liquidityType !== "NONE");
   const customerContacts = contacts.filter((contact) => contact.type === "CUSTOMER" || contact.type === "BOTH");
@@ -64,10 +73,7 @@ export default async function AccountingCreditNotesPage({
             {customerContacts.length > 0 ? (
               <div className="space-y-2">
                 <Label htmlFor="contactId">Contact (optional)</Label>
-                <select id="contactId" name="contactId" className="h-10 w-full rounded-md border bg-background px-3">
-                  <option value="">Enter details manually</option>
-                  {customerContacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.name}</option>)}
-                </select>
+                <ContactSelect contacts={customerContacts.map((contact) => ({ id: contact.id, name: contact.name, currency: contact.currency }))} currencyFieldId="credit-note-currency" />
               </div>
             ) : null}
             <div className="space-y-2">
@@ -78,7 +84,8 @@ export default async function AccountingCreditNotesPage({
               <Label htmlFor="customerEmail">Customer email</Label>
               <Input id="customerEmail" name="customerEmail" type="email" />
             </div>
-            <LineItemsEditor currency={currency} />
+            <CurrencyFields baseCurrency={currency} idPrefix="credit-note" />
+            <LineItemsEditor currency={currency} taxRules={taxRules.map((rule) => ({ id: rule.id, label: `${rule.code}: ${rule.name}` }))} />
             <div className="space-y-2">
               <Label htmlFor="issueDate">Issue date</Label>
               <Input id="issueDate" name="issueDate" type="date" defaultValue={today} required />
@@ -87,8 +94,16 @@ export default async function AccountingCreditNotesPage({
               <Label htmlFor="taxCodeId">Tax treatment</Label>
               <select id="taxCodeId" name="taxCodeId" className="h-10 w-full rounded-md border bg-background px-3">
                 <option value="">No tax</option>
-                {taxCodes.filter((taxCode) => taxCode.active).map((taxCode) => <option key={taxCode.id} value={taxCode.id}>{taxCode.code}: {taxCode.name} ({Number(taxCode.vatRate) + Number(taxCode.nhilRate) + Number(taxCode.getfundRate)}%)</option>)}
+                {taxRules.length ? (
+                  <optgroup label="Tax rules">
+                    {taxRules.map((rule) => <option key={rule.id} value={`rule:${rule.id}`}>{rule.code}: {rule.name}</option>)}
+                  </optgroup>
+                ) : null}
+                <optgroup label="Tax codes">
+                  {taxCodes.filter((taxCode) => taxCode.active).map((taxCode) => <option key={taxCode.id} value={taxCode.id}>{taxCode.code}: {taxCode.name} ({Number(taxCode.vatRate) + Number(taxCode.nhilRate) + Number(taxCode.getfundRate)}%)</option>)}
+                </optgroup>
               </select>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="pricesIncludeTax" defaultChecked={pricesIncludeTax} className="size-4" />Line prices include tax (applies to tax rules)</label>
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
@@ -117,7 +132,7 @@ export default async function AccountingCreditNotesPage({
             <TableRow>
               <TableHead>Number</TableHead>
               <TableHead>Customer</TableHead>
-              <TableHead>Amount ({currency})</TableHead>
+              <TableHead>Amount</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Applied to</TableHead>
               {canManage ? <TableHead /> : null}
@@ -128,7 +143,7 @@ export default async function AccountingCreditNotesPage({
               <TableRow key={creditNote.id}>
                 <TableCell className="font-mono text-xs">{creditNote.creditNoteNumber}</TableCell>
                 <TableCell className="font-medium">{creditNote.customerName}</TableCell>
-                <TableCell className="text-muted-foreground">{money(creditNote.amount)}</TableCell>
+                <TableCell className="text-muted-foreground">{money(creditNote.amount, creditNote.currency)}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS_BADGE[creditNote.status]}>{creditNote.status}</Badge>
                 </TableCell>
@@ -148,7 +163,7 @@ export default async function AccountingCreditNotesPage({
                           <div className="space-y-2">
                             <Label htmlFor={`apply-invoice-${creditNote.id}`}>Invoice</Label>
                             <select id={`apply-invoice-${creditNote.id}`} name="invoiceId" className="h-10 w-full rounded-md border bg-background px-3" required>
-                              {openInvoices.map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.invoiceNumber} - {invoice.customerName} ({money(Number(invoice.amount) - Number(invoice.amountPaid) - Number(invoice.amountCredited))} outstanding)</option>)}
+                              {openInvoices.filter((invoice) => (invoice.currency ?? currency) === (creditNote.currency ?? currency)).map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.invoiceNumber} - {invoice.customerName} ({money(invoice.amount.minus(invoice.amountPaid).minus(invoice.amountCredited), invoice.currency)} outstanding)</option>)}
                             </select>
                           </div>
                         </EntityDialog>
@@ -163,7 +178,7 @@ export default async function AccountingCreditNotesPage({
                           <div className="space-y-2">
                             <Label htmlFor={`refund-account-${creditNote.id}`}>Refund from account</Label>
                             <select id={`refund-account-${creditNote.id}`} name="accountId" className="h-10 w-full rounded-md border bg-background px-3" required>
-                              {refundAccounts.map((account) => <option key={account.id} value={account.id}>{account.code} {account.name}</option>)}
+                              {refundAccounts.filter((account) => !account.currency || account.currency === currency || account.currency === creditNote.currency).map((account) => <option key={account.id} value={account.id}>{account.code} {account.name}</option>)}
                             </select>
                           </div>
                         </EntityDialog>

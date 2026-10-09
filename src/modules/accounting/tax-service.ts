@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma, type AccountingTaxTreatment } from "@prisma/client";
 import { db } from "@/lib/db";
+import { normalizeCountryCode } from "@/lib/localization";
 
 export class TaxConfigurationError extends Error {}
 export class TaxPeriodStateError extends Error {}
@@ -9,9 +10,12 @@ export class TaxPeriodStateError extends Error {}
 const GHANA_2026_EFFECTIVE = new Date("2026-01-01T00:00:00.000Z");
 
 export async function ensureJurisdictionTaxCodes(organizationId: string) {
-  const organization = await db.organization.findUnique({ where: { id: organizationId }, select: { country: true } });
+  const organization = await db.organization.findUnique({ where: { id: organizationId }, select: { country: true, jurisdictionCode: true } });
   if (!organization) throw new TaxConfigurationError("Organization not found.");
-  const jurisdiction = organization.country?.trim().toUpperCase() === "GH" || organization.country?.trim().toUpperCase() === "GHANA" ? "GH" : "GLOBAL";
+  // The saved jurisdiction selects the pack; legacy rows without one fall
+  // back to the country, preserving existing Ghana behavior.
+  const jurisdictionKey = organization.jurisdictionCode ?? normalizeCountryCode(organization.country);
+  const jurisdiction = jurisdictionKey === "GH" ? "GH" : "GLOBAL";
   const definitions = jurisdiction === "GH"
     ? [
         { code: "GH-STD-2026", name: "Ghana standard VAT 2026", treatment: "STANDARD" as const, vatRate: "15", nhilRate: "2.5", getfundRate: "2.5", effectiveFrom: GHANA_2026_EFFECTIVE },

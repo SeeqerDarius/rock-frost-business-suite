@@ -8,6 +8,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  */
 
 const mockDb = {
+  // Base currency lookup used by multi-currency posting; these suites cover base-currency documents.
+  organization: { findUnique: vi.fn(async () => ({ currency: "GHS" })) },
   hirePurchaseStaff: { findFirst: vi.fn() },
   hirePurchaseProduct: { findFirst: vi.fn() },
   hirePurchaseStaffSalaryPayment: { create: vi.fn() },
@@ -30,6 +32,7 @@ const mockDb = {
   payrollRun: { findFirst: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn() },
   payrollSettings: { upsert: vi.fn() },
   payrollPayslip: { create: vi.fn() },
+  schoolPayrollAdjustment: { findMany: vi.fn(), updateMany: vi.fn() },
 
   $transaction: vi.fn(),
   $queryRaw: vi.fn(),
@@ -55,6 +58,7 @@ beforeEach(() => {
   txPassthrough();
   mockDb.accountingPeriod.findFirst.mockResolvedValue(null);
   mockDb.accountingJournalEntry.count.mockResolvedValue(0);
+  mockDb.schoolPayrollAdjustment.findMany.mockResolvedValue([]);
 });
 
 describe("Installment — recordStaffSalaryPayment / adjustStaffInventory / updateInstallmentSettings validation", () => {
@@ -266,7 +270,7 @@ describe("Decimal-precision hygiene — exact arithmetic replacing JS Number/eps
   });
 
   it("payroll: processRun computes netPay exactly for a tax rate that isn't a clean binary fraction", async () => {
-    mockDb.payrollRun.findFirst.mockResolvedValue({ id: "run-1", organizationId: ORG, status: "DRAFT" });
+    mockDb.payrollRun.findFirst.mockResolvedValue({ id: "run-1", organizationId: ORG, status: "DRAFT", periodStart: new Date("2026-01-01T00:00:00.000Z"), periodEnd: new Date("2026-01-31T00:00:00.000Z") });
     mockDb.payrollSettings.upsert.mockResolvedValue({ defaultTaxRate: "0.15" });
     mockDb.payrollCompensation.findMany.mockResolvedValue([{ employeeId: "emp-1", baseSalary: "1000.10" }]);
     mockDb.payrollRun.updateMany.mockResolvedValue({ count: 1 });
@@ -281,10 +285,9 @@ describe("Decimal-precision hygiene — exact arithmetic replacing JS Number/eps
     await payroll.processRun(ORG, "run-1");
 
     expect(createdPayslip.grossPay).toBe("1000.10");
-    // 1000.10 * 0.15 = 150.015 exactly; taxDeduction rounds that to 150.02 for
-    // display, but netPay is computed from the unrounded 150.015, giving
-    // 850.085 -> 850.09 (not 1000.10 - 150.02 = 850.08).
+    // 1000.10 * 0.15 = 150.015 exactly; round tax to cents before deriving
+    // net pay so the persisted payslip components reconcile exactly.
     expect(createdPayslip.taxDeduction).toBe("150.02");
-    expect(createdPayslip.netPay).toBe("850.09");
+    expect(createdPayslip.netPay).toBe("850.08");
   });
 });

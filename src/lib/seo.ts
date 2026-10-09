@@ -4,13 +4,22 @@ export const SITE_URL = "https://www.rockfrostgroup.com";
 export const SITE_NAME = "Rock Frost Business Suite";
 export const COMPANY_NAME = "Rock Frost Technologies";
 export const DEFAULT_DESCRIPTION =
-  "Run finance, fleet, sales, people, stock and industry operations with secure, modular business management software built for Ghanaian organizations.";
+  "Modular business software for Ghana: accounting, HR and payroll, inventory, POS and CRM, plus school, hospital, pharmacy, hotel and fleet management.";
 
 type ModuleSeoContent = {
   audience: string;
   outcomes: readonly { title: string; description: string }[];
   workflows: readonly string[];
   faqs: readonly { question: string; answer: string }[];
+  /** Ghana-specific operational notes: currency, calendar, contract or
+   * regulatory context that make the workflow recognizable to a Ghanaian
+   * buyer. Keep these tied to confirmed product behavior, never aspirational. */
+  ghana?: readonly string[];
+  /** Only list an integration that a source file actually implements (see
+   * src/lib/accounting-integration.ts and each module's service code) - do
+   * not describe a connection the product does not have yet. */
+  integrations?: readonly { module: string; note: string }[];
+  security?: readonly string[];
 };
 
 type ModuleSeoEntry = {
@@ -82,6 +91,18 @@ export const MODULE_SEO = {
         { question: "Can fleet payments connect to accounting?", answer: "Yes. Confirmed fleet activity can connect to the Accounting module while permissions keep operational and financial responsibilities separated." },
         { question: "Does it support work-and-pay vehicles?", answer: "Yes. The module supports work-and-pay contracts, driver-linked activity, payment periods, and owner or stakeholder visibility." },
       ],
+      ghana: [
+        "Built around the work-and-pay and hire-purchase contract structures common among Ghanaian commercial vehicle operators.",
+        "Vehicle payments, work-and-pay balances, and payouts are recorded in Ghana cedis (GH₵).",
+        "Supports fleets that mix organization-owned vehicles with vehicles under owner arrangements in the same view.",
+      ],
+      integrations: [
+        { module: "accounting", note: "Fleet revenue and payments post directly into Accounting as Fleet Revenue, so vehicle income reaches the ledger without manual re-entry." },
+      ],
+      security: [
+        "Vehicle, driver, and contract records stay scoped to your organization only.",
+        "Maintenance approval and payout actions follow each user's assigned role and permissions.",
+      ],
     },
   },
   installment: {
@@ -92,7 +113,7 @@ export const MODULE_SEO = {
     features: ["Customer installment accounts", "Collection and payment tracking", "Staff inventory and performance", "Credits, refunds, and account lifecycle"],
   },
   crm: {
-    shortName: "CRM Software",
+    shortName: "CRM Software for Sales Teams in Ghana",
     description:
       "Organize leads, contacts, deals, activities, and customer communication with secure CRM software for growing organizations.",
     keywords: ["CRM software Ghana", "customer relationship management Africa", "sales pipeline software"],
@@ -117,14 +138,66 @@ export const MODULE_SEO = {
         { question: "Does the system include procurement approvals?", answer: "Yes. Teams can manage purchase requests, approvals, orders, suppliers, and receiving in a connected process." },
         { question: "Can inventory connect to other modules?", answer: "Yes. Inventory and Procurement can operate independently or connect with relevant sales, point-of-sale, pharmacy, and accounting workflows." },
       ],
+      ghana: [
+        "Built for organizations moving stock between locations in different regions, such as an Accra warehouse and a Kumasi warehouse.",
+        "Purchase and stock values are recorded in Ghana cedis (GH₵).",
+        "Keeps supplier and purchase records in one place even when suppliers operate on different lead times and payment terms.",
+      ],
+      integrations: [
+        { module: "accounting", note: "Inventory reads tax codes directly from Accounting, so purchases and stock movements use the same tax treatment as the rest of your books." },
+        { module: "pos", note: "Retail sales made through Point of Sale draw on the same stock records, keeping on-hand quantity accurate at the till and in the warehouse." },
+      ],
+      security: [
+        "Stock, supplier, and purchase data stays scoped to your organization and is never shared across tenants.",
+        "Purchase approval limits and warehouse access follow each user's assigned role.",
+      ],
     },
   },
   accounting: {
-    shortName: "Accounting Software",
+    shortName: "Accounting Software Ghana",
     description:
-      "Manage ledgers, invoices, expenses, journal entries, and financial statements with organization-scoped accounting software.",
-    keywords: ["accounting software Ghana", "business accounting system Africa", "invoice and expense software"],
-    features: ["Chart of accounts and ledgers", "Invoices and payment tracking", "Expense management", "Financial statements and reports"],
+      "Ghana VAT-ready accounting software: ledgers, invoices, bills, bank reconciliation, budgets, and financial statements connected to your operations.",
+    keywords: ["accounting software Ghana", "VAT accounting software Ghana", "bookkeeping software Ghana", "business accounting system Africa", "invoice and expense software"],
+    features: ["Chart of accounts, journals, and general ledger", "Invoices, bills, credit notes, and payment tracking", "Ghana VAT, NHIL, GETFund, and withholding tax codes", "Bank reconciliation, budgets, and financial statements"],
+    content: {
+      audience: "Built for Ghanaian businesses, schools, clinics, hotels, and multi-department organizations that want their books kept in Ghana cedis, with Ghana tax codes, and fed directly by the operations that earn the revenue.",
+      outcomes: [
+        { title: "Keep the books in one place", description: "Run the chart of accounts, journals, general ledger, customer invoices, supplier bills, and credit notes from one organization-scoped workspace." },
+        { title: "Handle Ghana tax properly", description: "Use effective-dated tax codes for standard-rated, zero-rated, and exempt supplies, with VAT, NHIL, and GETFund rates, plus withholding tax by goods, services, or rent." },
+        { title: "Stop re-entering operational revenue", description: "Confirmed activity from enabled modules posts into Accounting automatically, so sales, fees, and charges reach the ledger without a second data-entry step." },
+      ],
+      workflows: [
+        "Load the Ghana SME chart of accounts or build your own",
+        "Issue multi-line invoices, record supplier bills, and settle credit notes",
+        "Import a bank statement CSV and reconcile it against the ledger",
+        "Set up recurring journal entries, invoices, and bills",
+        "Route journal entries through approval before they post",
+        "Review the trial balance, general ledger, ageing, cash-flow statement, and budgets",
+      ],
+      faqs: [
+        { question: "Does Rock Frost Accounting support Ghana VAT?", answer: "Yes. Tax codes carry VAT, NHIL, and GETFund rates with effective dates, and cover standard-rated, zero-rated, and exempt supplies. Withholding tax can be configured by goods, services, or rent." },
+        { question: "Can I use Accounting on its own?", answer: "Yes. Accounting is a module you can subscribe to by itself. Other modules are optional, and when you add them their confirmed revenue posts into Accounting automatically." },
+        { question: "Can our existing accountant work in it?", answer: "Yes. Organization roles and module permissions let you give an internal or external accountant access to Accounting without exposing other departments' data." },
+      ],
+      ghana: [
+        "Amounts are recorded and reported in Ghana cedis (GH₵) by default.",
+        "A one-click Ghana SME chart of accounts gives a familiar starting structure.",
+        "VAT, NHIL, GETFund, and withholding tax are configured as dated tax codes, so a rate change does not rewrite historical entries.",
+      ],
+      integrations: [
+        { module: "pos", note: "Point of Sale sales post into Accounting as POS Revenue." },
+        { module: "school", note: "School fee payments post into Accounting as School Revenue." },
+        { module: "hotel", note: "Settled guest folios post into Accounting as Hotel Revenue." },
+        { module: "pharmacy", note: "Pharmacy sales post into Accounting as Pharmacy Revenue." },
+        { module: "inventory", note: "Approved supplier invoices from Inventory and Procurement create payables in Accounting." },
+        { module: "fleet", note: "Confirmed fleet payments post into Accounting as Fleet Revenue." },
+      ],
+      security: [
+        "Ledgers, invoices, and reports are scoped to your organization only.",
+        "Closed periods can be locked so posted history cannot be changed after the books are closed.",
+        "Permissions separate who can record transactions, approve journals, and view reports.",
+      ],
+    },
   },
   hr: {
     shortName: "HR and Payroll Software Ghana",
@@ -137,13 +210,25 @@ export const MODULE_SEO = {
       outcomes: [
         { title: "Create a reliable employee record", description: "Keep employment information, organizational assignments, skills, onboarding, and status history in one structured profile." },
         { title: "Standardize people workflows", description: "Manage leave, reviews, onboarding plans, and offboarding activities with visible ownership and status." },
-        { title: "Run payroll with clearer controls", description: "Maintain compensation, process salary runs, apply configured deductions, and produce payslips and payroll reports." },
+        { title: "Run payroll with clearer controls", description: "Maintain compensation, process salary runs against your organization's configured tax rate, and produce GHS payslips and payroll reports every period." },
       ],
       workflows: ["Onboard employees and maintain their profiles", "Configure departments, positions, leave types, and HR settings", "Submit and review leave requests", "Manage reviews, skills, and employee lifecycle activities", "Prepare payroll runs and issue payslips"],
       faqs: [
-        { question: "Are HR and payroll connected?", answer: "Yes. Rock Frost combines employee and compensation records with payroll processing so authorized teams work from consistent information." },
+        { question: "Does Rock Frost calculate PAYE tax bands or SSNIT contributions automatically?", answer: "Not yet. You set your organization's payroll tax rate and Rock Frost applies it consistently across every payroll run, generating GHS payslips automatically with SMS delivery to employees. Graduated PAYE bands and SSNIT contribution handling are on our roadmap; until then, your payroll officer or accountant applies GRA and SSNIT rates when reviewing each run." },
         { question: "Can employees receive payslips?", answer: "Yes. Authorized payroll users can process payroll and generate employee payslips from recorded compensation and payroll settings." },
         { question: "Does every user see payroll information?", answer: "No. Organization roles and module permissions control who can access employee, compensation, payroll, and reporting information." },
+      ],
+      ghana: [
+        "Payroll runs, compensation, and payslips are recorded in Ghana cedis (GH₵).",
+        "Payslips can be delivered to employees by SMS as well as viewed in the workspace.",
+        "A single organization-wide tax rate applies consistently to every payroll run, so results are predictable across pay periods.",
+      ],
+      integrations: [
+        { module: "analytics", note: "Payroll summaries feed directly into Analytics, so workforce cost sits alongside your other business reporting." },
+      ],
+      security: [
+        "Employee, compensation, and payroll records stay scoped to your organization only.",
+        "Organization roles and module permissions control who can view or process payroll and employee data.",
       ],
     },
   },
@@ -200,6 +285,18 @@ export const MODULE_SEO = {
         { question: "Does it include housekeeping?", answer: "Yes. Teams can manage room readiness and housekeeping activity alongside reservations and guest stays." },
         { question: "Can restaurant charges be connected to a guest stay?", answer: "Yes. Hotel restaurant activity and guest folios are part of the connected operational workflow." },
       ],
+      ghana: [
+        "Priced and billed in Ghana cedis (GH₵), matching how front desk and finance teams already work.",
+        "Built for properties that mix walk-in guests, corporate accounts, and travel-agent bookings on the same calendar.",
+        "Restaurant and bar activity runs inside the same property, so a guest's food and drink charges reach their room folio automatically.",
+      ],
+      integrations: [
+        { module: "accounting", note: "Settled folios post directly into Accounting as Hotel Revenue, so front-desk activity reaches the ledger without manual re-entry." },
+      ],
+      security: [
+        "Every room, reservation, and folio stays scoped to your organization, never visible to another property on the platform.",
+        "Front-desk, housekeeping, and management roles see only the screens and actions their job requires.",
+      ],
     },
   },
   school: {
@@ -219,6 +316,19 @@ export const MODULE_SEO = {
         { question: "Which schools can use Rock Frost School Management?", answer: "The module supports basic schools, senior high schools, and multi-campus education organizations that need controlled academic and administrative workflows." },
         { question: "Does it manage school fees and receipts?", answer: "Yes. Authorized staff can configure fees, create invoices, record payments, and issue receipts." },
         { question: "Can boarding operations be included?", answer: "Yes. Schools can add the Hostel Management module for buildings, rooms, beds, allocations, wardens, and hostel fee billing." },
+      ],
+      ghana: [
+        "Organized around a termly academic calendar, with fees, attendance, and results tracked per term.",
+        "Fees and collections are recorded in Ghana cedis (GH₵).",
+        "Guardian and family contact details are captured at admission, matching how Ghanaian schools already manage enrollment.",
+      ],
+      integrations: [
+        { module: "accounting", note: "Fee collections post directly into Accounting as School Revenue, so termly income reaches your books without manual entry." },
+        { module: "hostel", note: "Boarding schools can add the Hostel module to manage buildings, beds, and student allocations alongside the same student records." },
+      ],
+      security: [
+        "Student, guardian, and academic records stay scoped to your school only.",
+        "Examination results stay hidden from families and restricted staff until a staff member explicitly publishes them.",
       ],
     },
   },

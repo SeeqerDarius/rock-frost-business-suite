@@ -8,7 +8,7 @@ import { PublicHero } from "@/components/marketing/public-hero";
 
 export const metadata = createPublicMetadata({
   title: "Role-Based ERP Software Ghana",
-  description: "Connect fleet, sales, finance, people, inventory, projects and industry operations through secure role-based ERP workflows.",
+  description: "Connect finance, people, inventory, sales, projects and industry operations through secure role-based ERP workflows.",
   path: "/solutions",
   keywords: ["modular business software", "business operations platform Ghana", "multi-tenant business software"],
 });
