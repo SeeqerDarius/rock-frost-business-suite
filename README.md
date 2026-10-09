@@ -117,6 +117,7 @@ Start with `OPERATOR_HANDOFF.md` at the repo root for the current state and next
 - `docs/MODULE_BOUNDARIES.md` — the non-negotiable isolation rules between modules
 - `docs/DESIGN_SYSTEM.md` — UI foundation, tokens, component conventions
 - `docs/DEVELOPMENT_ROADMAP.md` — phased build history (all nineteen phases complete)
+- `docs/PLAN_TIERS.md` — the Basic/Pro/Platinum/Enterprise ladder, what each tier includes per module, how existing customers were grandfathered, and how to add a ladder to another module
 - `docs/DATABASE_STRATEGY.md` — Prisma/Neon setup and migration workflow
 - `docs/AUTHENTICATION_AND_AUTHORIZATION.md` - real, enforced auth/RBAC (162 permission keys across sixteen modules)
 - `docs/BACKUP_AND_RECOVERY.md` — tenant-isolated module exports, protected merge restore, and infrastructure recovery boundaries

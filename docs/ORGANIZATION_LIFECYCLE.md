@@ -35,6 +35,15 @@ Server Actions redirect back with only their own notice parameter (`?saved=1`, `
 maps each parameter to the section that produced it, so an operator lands where the change happened and every
 pre-existing redirect target and bookmarked notice URL stays valid.
 
+### Plan tiers
+
+Each module subscription carries a tier (Basic, Pro, Platinum, Enterprise) that decides
+which of that module's features and quantitative limits the organization gets. Operators
+change it from the Plan and billing section, which lists what each rung adds over the one
+below. A downgrade the organization's usage already exceeds is refused rather than
+applied. See `docs/PLAN_TIERS.md` for the ladder, the grandfathering rules, and how to
+add a ladder to another module.
+
 ### Feature add-ons
 
 `src/platform/organizations/feature-addons.ts` declares every operator-granted, per-organization add-on once: the

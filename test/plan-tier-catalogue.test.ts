@@ -20,6 +20,7 @@ import {
   tierRank,
 } from "@/platform/entitlements/tiers";
 import { catalogueModuleKeys } from "@/platform/modules/registry";
+import { MODULE_PRICING_SEED, MODULE_TIER_PRICING_SEED } from "../prisma/seed-data";
 
 describe("plan tier ladder", () => {
   it("is ordered, labelled, and comparable", () => {
@@ -159,5 +160,49 @@ describe("module tier catalogue", () => {
     const unknown = moduleTierCatalogue("not-a-module");
     expect(unknown.tieringPending).toBe(true);
     expect(unknown.features).toEqual([]);
+  });
+});
+
+describe("per-tier pricing", () => {
+  it("prices Pro at exactly the module's existing headline, so tiers never reprice an existing customer", () => {
+    // ModulePricingPlan is what every pre-tier quote, self-service checkout
+    // and public price already reads. If Pro drifted from it, shipping tiers
+    // would silently change what people are quoted.
+    const headlineByModule = new Map(MODULE_PRICING_SEED.map((price) => [price.moduleKey, price]));
+    const proRows = MODULE_TIER_PRICING_SEED.filter((price) => price.tier === "PRO");
+    expect(proRows.length).toBeGreaterThan(0);
+
+    for (const pro of proRows) {
+      const headline = headlineByModule.get(pro.moduleKey);
+      expect(headline, `${pro.moduleKey} has a tier ladder but no headline price`).toBeDefined();
+      expect({ ...pro, tier: undefined }).toEqual({ ...headline, tier: undefined });
+    }
+  });
+
+  it("never prices a higher tier below a lower one", () => {
+    const byModule = new Map<string, typeof MODULE_TIER_PRICING_SEED>();
+    for (const price of MODULE_TIER_PRICING_SEED) {
+      byModule.set(price.moduleKey, [...(byModule.get(price.moduleKey) ?? []), price]);
+    }
+    for (const [moduleKey, prices] of byModule) {
+      const ordered = (["BASIC", "PRO", "PLATINUM"] as const).flatMap((tier) =>
+        prices.filter((price) => price.tier === tier),
+      );
+      for (let i = 1; i < ordered.length; i += 1) {
+        expect(ordered[i].monthlyGhs, `${moduleKey} ${ordered[i].tier} monthly`).toBeGreaterThan(ordered[i - 1].monthlyGhs);
+        expect(ordered[i].annualGhs, `${moduleKey} ${ordered[i].tier} annual`).toBeGreaterThan(ordered[i - 1].annualGhs);
+        expect(ordered[i].includedSeats, `${moduleKey} ${ordered[i].tier} seats`).toBeGreaterThanOrEqual(ordered[i - 1].includedSeats);
+      }
+    }
+  });
+
+  it("never lists a price for Enterprise, which is quote-only", () => {
+    expect(MODULE_TIER_PRICING_SEED.some((price) => (price.tier as string) === "ENTERPRISE")).toBe(false);
+  });
+
+  it("only prices a module that actually has a tier ladder", () => {
+    for (const price of MODULE_TIER_PRICING_SEED) {
+      expect(moduleTierCatalogue(price.moduleKey).tieringPending, price.moduleKey).toBe(false);
+    }
   });
 });
