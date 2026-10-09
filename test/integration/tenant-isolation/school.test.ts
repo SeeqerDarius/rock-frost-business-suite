@@ -47,6 +47,40 @@ afterAll(async () => {
 });
 
 describe("School service — real tenant isolation and customer-readiness guards", () => {
+  it("groups portal-access students by current class, scopes each class query, and separates unassigned students", async () => {
+    const token = `PortalClass${Date.now()}`;
+    const previousYear = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} previous`, startDate: new Date("2033-01-01"), endDate: new Date("2033-12-31") });
+    const currentYear = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} current`, startDate: new Date("2034-01-01"), endDate: new Date("2034-12-31"), current: true });
+    const [classOne, classTwo] = await Promise.all([
+      school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}A`, name: `${token} Class A` }),
+      school.createSchoolClass(orgA.organizationId, { campusId: campusA.id, code: `${token}B`, name: `${token} Class B` }),
+    ]);
+    const [inClassA, inClassB, unassigned, previousYearOnly] = await Promise.all([
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Ama`, lastName: "A" }),
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Kojo`, lastName: "B" }),
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Abena`, lastName: "C" }),
+      school.createSchoolStudent(orgA.organizationId, { campusId: campusA.id, firstName: `${token} Kofi`, lastName: "D" }),
+    ]);
+    await Promise.all([
+      school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: currentYear.id, studentId: inClassA.id, classId: classOne.id }),
+      school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: currentYear.id, studentId: inClassB.id, classId: classTwo.id }),
+      school.enrollSchoolStudent(orgA.organizationId, { campusId: campusA.id, academicYearId: previousYear.id, studentId: previousYearOnly.id, classId: classOne.id }),
+    ]);
+
+    const overview = await school.getSchoolPortalAccessOverview(orgA.organizationId);
+    expect(overview.academicYear).toEqual({ id: currentYear.id, name: currentYear.name });
+    expect(overview.classes.map((class_) => [class_.id, class_._count.enrollments])).toEqual([[classOne.id, 1], [classTwo.id, 1]]);
+    expect(overview.unassignedCount).toBe(2);
+
+    const classAStudents = await school.listSchoolPortalAccessStudents(orgA.organizationId, currentYear.id, { classId: classOne.id, query: token });
+    expect(classAStudents.map((student) => student.id)).toEqual([inClassA.id]);
+    expect(classAStudents[0]).not.toHaveProperty("medicalNotes");
+    expect(classAStudents[0]).not.toHaveProperty("photoData");
+    const needsAssignment = await school.listSchoolPortalAccessStudents(orgA.organizationId, currentYear.id, { unassigned: true, query: token });
+    expect(new Set(needsAssignment.map((student) => student.id))).toEqual(new Set([unassigned.id, previousYearOnly.id]));
+    expect(needsAssignment.some((student) => student.id === studentB.id)).toBe(false);
+  });
+
   it("rolls active learners into a mapped next-year class atomically and preserves prior enrollment history", async () => {
     const token = `Rollover${Date.now()}`;
     const sourceYear = await school.createSchoolAcademicYear(orgA.organizationId, { name: `${token} source`, startDate: new Date("2031-01-01"), endDate: new Date("2031-12-31") });

@@ -139,6 +139,95 @@ export function listSchoolStudents(organizationId: string) {
   return db.schoolStudent.findMany({ where: { organizationId }, include: { campus: true, guardians: { include: { guardian: true } }, enrollments: { include: { class: true, academicYear: true } }, lifecycleEvents: { orderBy: { createdAt: "desc" }, take: 10 } }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] });
 }
 
+/** Small, class-oriented overview for portal account administration. The
+ * landing screen receives counts only; student records are fetched after a
+ * staff member chooses one class. */
+export async function getSchoolPortalAccessOverview(organizationId: string) {
+  const academicYear = await db.schoolAcademicYear.findFirst({
+    where: { organizationId, current: true },
+    select: { id: true, name: true },
+    orderBy: { startDate: "desc" },
+  });
+  if (!academicYear) return { academicYear: null, classes: [], unassignedCount: 0 };
+
+  const [classes, unassignedCount] = await Promise.all([
+    db.schoolClass.findMany({
+      where: { organizationId },
+      select: {
+        id: true,
+        name: true,
+        active: true,
+        campus: { select: { id: true, name: true } },
+        _count: {
+          select: {
+            enrollments: {
+              where: {
+                organizationId,
+                academicYearId: academicYear.id,
+                status: "ACTIVE",
+                student: { status: "ACTIVE" },
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ campus: { name: "asc" } }, { name: "asc" }],
+    }),
+    db.schoolStudent.count({
+      where: {
+        organizationId,
+        status: "ACTIVE",
+        enrollments: { none: { organizationId, academicYearId: academicYear.id, status: "ACTIVE" } },
+      },
+    }),
+  ]);
+
+  return { academicYear, classes: classes.filter((class_) => class_._count.enrollments > 0), unassignedCount };
+}
+
+/** Fetches only active students in the selected current-year class, or only
+ * active students who have no current-year active enrollment. */
+export function listSchoolPortalAccessStudents(organizationId: string, academicYearId: string, selection: { classId?: string; unassigned?: boolean; query?: string }) {
+  const enrollmentScope = { organizationId, academicYearId, status: "ACTIVE" as const };
+  const terms = selection.query?.trim().slice(0, 100).split(/\s+/).filter(Boolean) ?? [];
+  const where: Prisma.SchoolStudentWhereInput = {
+    organizationId,
+    status: "ACTIVE",
+    enrollments: selection.unassigned
+      ? { none: enrollmentScope }
+      : { some: { ...enrollmentScope, classId: selection.classId } },
+    ...(terms.length ? { AND: terms.map((term) => ({ OR: [
+      { firstName: { contains: term, mode: "insensitive" as const } },
+      { lastName: { contains: term, mode: "insensitive" as const } },
+      { admissionNumber: { contains: term, mode: "insensitive" as const } },
+    ] })) } : {}),
+  };
+  return db.schoolStudent.findMany({
+    where,
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      admissionNumber: true,
+      userId: true,
+      campus: { select: { id: true, name: true } },
+      guardians: {
+        select: {
+          guardianId: true,
+          relationship: true,
+          guardian: { select: { id: true, firstName: true, lastName: true, email: true, userId: true } },
+        },
+      },
+      enrollments: {
+        where: enrollmentScope,
+        select: { classId: true, class: { select: { name: true } } },
+        take: 1,
+      },
+    },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+  });
+}
+
 /**
  * Small tenant-scoped student choice set for operational forms. The cap
  * prevents large organizations from transferring every student into a
