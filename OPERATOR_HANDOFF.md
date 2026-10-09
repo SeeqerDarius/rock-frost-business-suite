@@ -27,6 +27,7 @@
   - `countForLimit()` still knows only School's two limit keys, so a new limit elsewhere needs a counter added there or a downgrade will not be checked against it.
   - The tenant Billing plan picker was verified by typecheck, lint and the UI assertions, not in a signed-in browser session.
   - **Not yet merged or deployed.** See the entry below for PR #32's state.
+- **Merged `main` again at 17:28Z** (`ec29ddf`: compact portal cards plus its release record). Clean, no conflicts. `main` touched `src/app/app/school/portal-access/page.tsx` for the second time, which is the file to watch on every merge because this branch's Platinum gate lives there: verified the `isSchoolPortalGranted()` check survived on all three portal pages, that `assertWithinModuleLimit()` is still called in School's service, and that all eight `schoolPlanGate()` pages are intact. Re-validated after the merge: tsc clean, lint 0 errors (same two pre-existing warnings), 200 files / 1,562 unit tests, 73 files / 428 integration tests, build clean.
 ## 2026-10-09: Grouped School portal access by class
 
 - **Scope**: Portal Access now opens on a campus and current academic-year class directory. Student records load only after staff choose a class; active students without a current-year enrollment are listed separately. Search is scoped to the chosen group. Membership and invitation status are clearer, pending invitations can be resent, and revocation invalidates pending tokens while clearing the portal link in one transaction. No schema or environment changes.
