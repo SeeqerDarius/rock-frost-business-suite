@@ -138,6 +138,15 @@ of guardians.
   the portal, or revoke an existing link. Invitation reuses the same
   `createInvitation`/`sendEmail` primitives as School Staff invites
   (`src/app/app/school/staff/actions.ts`), just without the seat check.
+- Portal Access opens on a compact class directory grouped by campus for the
+  current academic year. It shows class and active-enrollment counts without
+  rendering student names school-wide. Staff open a class to manage only that
+  class's currently enrolled active students; a separate group contains active
+  students without a current-year enrollment. Search stays inside the selected
+  class. Account state distinguishes active access, pending invitations,
+  suspended access, and a record that needs review. Pending invitations can be
+  resent, and revoking a pending invitation invalidates its token in the same
+  database transaction as removing the portal link.
 
 ### What the portal shows
 
@@ -202,7 +211,9 @@ roles already get.
 - `test/integration/tenant-isolation/school.test.ts` — real-Postgres proof
   that `resolveSchoolPortalScope()` is organization-scoped, not just
   keyed by the globally-unique `userId` (a user linked in one organization
-  never resolves under another organization's id).
+  never resolves under another organization's id), plus current-year class
+  grouping, per-class filtering, unassigned students, search, and tenant scope
+  for Portal Access data.
 
 ## Known follow-ups (not built in this pass)
 
