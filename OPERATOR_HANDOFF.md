@@ -1,5 +1,12 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-09: Grouped School portal access by class
+
+- **Scope**: replaced the school-wide student-card list on Portal Access with a campus/class directory for the current academic year. The landing view shows class counts only; choosing a class loads only its active current-year students, and a separate group shows active students without a current-year enrollment. Search remains within the selected group. Account state now distinguishes active memberships from pending invitations and delivery failures. Staff can resend a pending portal invitation. Revoking a pending invitation invalidates its token, removes its membership, and clears the student/guardian link in one transaction.
+- **Important files**: `src/app/app/school/portal-access/{page.tsx,actions.ts}`, `src/modules/school/service.ts`, `test/integration/tenant-isolation/school.test.ts`, and `docs/SCHOOL_PARENT_STUDENT_PORTAL.md`.
+- **Schema and environment**: no migration or new environment variable.
+- **Validation**: `npm.cmd ci` completed; `npx.cmd tsc --noEmit --incremental false` passed; `npm.cmd test` passed 198 files / 1,523 tests; `npm.cmd run lint` passed with zero errors and the two existing PWA hook warnings; `npm.cmd run build` compiled and generated all 280 routes; `git diff --check` passed. The new real-PostgreSQL tenant-isolation test was added but could not run locally because `TEST_DATABASE_URL` is not configured. CI integration is a required release gate.
+- **Release status**: implementation is on `codex/school-portal-class-access`; CI, PR review, production deployment, migration status, health, and runtime-log checks are still pending.
 ## 2026-10-09: Web push keys configured in production
 
 - **Scope**: at the owner's request, generated a new VAPID key pair locally (`npx web-push generate-vapid-keys`) and added `VAPID_PUBLIC_KEY` (encrypted), `VAPID_PRIVATE_KEY` (sensitive, not readable after saving), and `VAPID_SUBJECT` (`mailto:support@rockfrostgroup.com`) to the Vercel production environment only. None existed before. The local key file was deleted, so the private key lives only in Vercel. Rotating the keys invalidates every existing push subscription (people would need to turn notifications on again).
