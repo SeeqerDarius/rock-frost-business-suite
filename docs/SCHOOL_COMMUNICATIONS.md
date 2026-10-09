@@ -42,7 +42,7 @@ Enforced on the server in `src/modules/school/chat-service.ts` for every read an
 ## Notifications
 
 - **In-app bell**: each new message creates or updates one unread `Notification` (type `SCHOOL_CHAT_MESSAGE`, `metadata.chatId`) per recipient per chat, so a busy chat does not flood the bell. Opening the chat marks it read. Muted members get no notification. The bell links to the chat.
-- **Web push** (`src/lib/web-push.ts`, `public/sw.js`): a person opts in per device from the chat list ("Get notified of new messages"). Subscriptions are stored in `WebPushSubscription`; pushes are sent after the response (`after()`), never block sending, and subscriptions the push service reports gone are deleted. The notification shows the chat or sender name and a short preview, and opens the chat. **Push needs `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT`** (generate the keys once with `npx web-push generate-vapid-keys`); without them the opt-in control is hidden and only the in-app bell works.
+- **Web push** (`src/lib/web-push.ts`, `public/sw.js`): a person opts in per device from the chat list ("Get notified of new messages"). Subscriptions are stored in `WebPushSubscription`; pushes are sent after the response (`after()`), never block sending, and subscriptions the push service reports gone are deleted. The notification shows the chat or sender name and a short preview, and opens the chat. **Push needs `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT`** (generate the keys once with `npx web-push generate-vapid-keys`); without them the opt-in control is hidden and only the in-app bell works. Production has them configured since 2026-10-09; preview deployments do not.
 
 ## Data model
 
