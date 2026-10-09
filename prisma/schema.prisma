@@ -1546,12 +1546,18 @@ model Subscription {
   contactSubmissionId        String?                 @unique
   mode                       SubscriptionMode
   status                     SubscriptionStatus      @default(PENDING_PAYMENT)
-  /// Which plan tier this agreement buys. Defaults to BASIC so a new
-  /// agreement created without an explicit choice is the least, never the
-  /// most: over-granting silently is worse than an operator having to pick.
-  /// The migration that added this column backfilled every pre-existing row
-  /// to PLATINUM instead, because those customers already have unrestricted
-  /// access and a new column must not take it away. See docs/PLAN_TIERS.md.
+  /// Which plan tier this agreement buys.
+  ///
+  /// Every code path that creates a Subscription sets this explicitly, and
+  /// test/subscription-tier-assignment.test.ts fails if one stops doing so.
+  /// That matters because the column default is the restrictive end of the
+  /// ladder: a path that forgot would charge the full headline price and
+  /// hand back the Basic subset. Self-service checkout stores the rung the
+  /// customer picked; suite, cart, and operator-entered agreements store
+  /// PLATINUM, because their prices were all quoted when a module meant the
+  /// whole module. The migration that added this column backfilled every
+  /// pre-existing row to PLATINUM for the same reason. See
+  /// docs/PLAN_TIERS.md.
   tier                       PlanTier                @default(BASIC)
   durationMonths             Int
   amount                     Decimal                 @db.Decimal(18, 2)

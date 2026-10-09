@@ -19,6 +19,10 @@ const createSchema = z.object({
   seatLimit: positiveInt.optional(),
   amount: moneyAmountNonNegative,
   currency: z.string().trim().length(3),
+  // Optional so an existing integration posting this form keeps working;
+  // createSubscription() then stores full access rather than the restricted
+  // end of the ladder. See its `tier` comment.
+  tier: z.enum(PLAN_TIERS).optional(),
   notes: longText.optional(),
 });
 

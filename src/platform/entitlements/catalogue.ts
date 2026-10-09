@@ -226,6 +226,31 @@ export function moduleTierCatalogue(moduleKey: string): ModuleTierCatalogue {
   return BY_MODULE_KEY.get(moduleKey) ?? { moduleKey, tieringPending: true, features: [], limits: [] };
 }
 
+/**
+ * Whether this module's ladder is real and enforced, so a price list may
+ * advertise tiers for it.
+ *
+ * A module with `tieringPending` resolves to full access at every tier, so
+ * showing it a ladder would be selling a Basic plan that behaves exactly
+ * like Platinum. The pricing page and the checkout validator both read this
+ * rather than inspecting `tieringPending` directly, so "has a ladder" means
+ * the same thing in both places.
+ */
+export function moduleHasPublishedLadder(moduleKey: string): boolean {
+  const catalogue = moduleTierCatalogue(moduleKey);
+  return !catalogue.tieringPending && catalogue.features.length > 0;
+}
+
+/**
+ * The features a tier adds that the tier below it did not already include,
+ * in declaration order. This is what makes a price column readable: a
+ * customer wants to know what the next rung buys, not re-read everything
+ * they already have.
+ */
+export function featuresAddedAt(moduleKey: string, tier: PlanTier): ModuleFeatureDefinition[] {
+  return moduleTierCatalogue(moduleKey).features.filter((feature) => feature.minTier === tier);
+}
+
 /** Feature keys included at `tier` for `moduleKey`. */
 export function featuresIncludedAt(moduleKey: string, tier: PlanTier): string[] {
   const catalogue = moduleTierCatalogue(moduleKey);

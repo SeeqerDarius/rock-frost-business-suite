@@ -41,6 +41,15 @@ export function isQuoteOnlyTier(tier: PlanTier): boolean {
   return QUOTE_ONLY_TIERS.includes(tier);
 }
 
+/**
+ * The tiers a customer can actually buy at checkout, in ladder order.
+ *
+ * Quote-only tiers are excluded, so a price list, a tier `<select>`, and the
+ * checkout validator all derive "can this be purchased" from one place
+ * instead of each remembering to special-case Enterprise.
+ */
+export const SELF_SERVICE_TIERS: readonly PlanTier[] = PLAN_TIERS.filter((tier) => !QUOTE_ONLY_TIERS.includes(tier));
+
 export function isPlanTier(value: unknown): value is PlanTier {
   return typeof value === "string" && (PLAN_TIERS as readonly string[]).includes(value);
 }

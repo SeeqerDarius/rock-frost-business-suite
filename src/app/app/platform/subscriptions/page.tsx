@@ -14,6 +14,7 @@ import { getOrganizationSeatUsage } from "@/platform/subscriptions/seats";
 import { listModulePrices, listPricingBundles } from "@/lib/pricing";
 import { SubscriptionQuoteFields } from "./subscription-quote-fields";
 import { catalogueModuleKeys, getModule } from "@/platform/modules/registry";
+import { PLAN_TIERS, PLAN_TIER_LABELS } from "@/platform/entitlements/tiers";
 
 const ERROR_MESSAGES: Record<string, string> = {
   invalid: "Enter a valid subscription and seat limit.",
@@ -60,6 +61,7 @@ export default async function PlatformSubscriptionsPage({ searchParams }: { sear
               return price ? [{ id: module.id, name: module.name, moduleKey: module.code, monthlyGhs: price.monthlyGhs, annualGhs: price.annualGhs, includedSeats: price.includedSeats }] : [];
             })} />
             <FieldSelect name="mode" label="Billing mode" items={[["MANUAL_OFFLINE", "Manual / offline agreement"], ["PLATFORM_MANAGED", "Platform-managed billing"]]} />
+            <div><Label htmlFor="tier">Plan</Label><select id="tier" name="tier" defaultValue="PLATINUM" className="h-9 w-full rounded-md border bg-transparent px-3 text-sm">{PLAN_TIERS.map((tier) => <option key={tier} value={tier}>{PLAN_TIER_LABELS[tier]}</option>)}</select><p className="mt-1 text-xs text-muted-foreground">Platinum by default, because a negotiated amount is quoted for the whole module. Pick a lower plan only when the agreement really is for that subset.</p></div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="unlimitedSeats" value="true" /> Unlimited seats</label>
             <div><Label htmlFor="currency">Currency</Label><Input id="currency" name="currency" defaultValue="GHS" maxLength={3} required /></div>
             <div className="md:col-span-3"><Label htmlFor="moduleRequestId">Related request</Label><select id="moduleRequestId" name="moduleRequestId" defaultValue="" className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"><option value="">No linked request</option>{requests.map((r) => <option key={r.id} value={r.id}>{r.organization.name} · {r.module?.name ?? r.title}</option>)}</select></div>
