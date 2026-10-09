@@ -5,7 +5,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { EntityDialog } from "@/components/forms/entity-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { ReadOnlyNotice } from "@/components/school/form-feedback";
 import { TextField } from "@/components/school/form-fields";
 import { requireModuleAccess } from "@/lib/auth/module-access";
@@ -79,7 +79,7 @@ function AccountActions({ kind, recordId, userId, member, canManage, classId, un
       {classId ? <input type="hidden" name="returnClassId" value={classId} /> : null}
       {unassigned ? <input type="hidden" name="returnGroup" value="unassigned" /> : null}
       {query ? <input type="hidden" name="returnQuery" value={query} /> : null}
-      <Button type="submit" size="sm" variant="outline">Resend invite</Button>
+      <Button type="submit" size="sm" variant="outline" className="min-h-11 sm:min-h-9">Resend invite</Button>
     </form> : null}
     <form action={revokePortalAccessAction}>
       <input type="hidden" name="kind" value={kind} />
@@ -87,7 +87,7 @@ function AccountActions({ kind, recordId, userId, member, canManage, classId, un
       {classId ? <input type="hidden" name="returnClassId" value={classId} /> : null}
       {unassigned ? <input type="hidden" name="returnGroup" value="unassigned" /> : null}
       {query ? <input type="hidden" name="returnQuery" value={query} /> : null}
-      <Button type="submit" size="sm" variant="outline">Revoke access</Button>
+      <Button type="submit" size="sm" variant="outline" className="min-h-11 sm:min-h-9">Revoke access</Button>
     </form>
   </div>;
 }
@@ -184,13 +184,20 @@ export default async function SchoolPortalAccessPage({ searchParams }: { searchP
           {students.map((student: PortalAccessStudent) => {
             const studentMember = student.userId ? memberByUserId.get(student.userId) : undefined;
             return <Card key={student.id}>
-              <CardHeader className="border-b pb-4"><CardTitle className="text-base">{student.firstName} {student.lastName}</CardTitle><CardDescription>Admission {student.admissionNumber} · {student.campus.name}</CardDescription></CardHeader>
-              <CardContent className="space-y-5 pt-4">
-                <section className="space-y-3"><h3 className="text-sm font-semibold">Student account</h3><div className="flex flex-col justify-between gap-3 rounded-lg border p-3 sm:flex-row sm:items-center"><div><p className="text-sm font-medium">Student sign-in</p><AccountState userId={student.userId} member={studentMember} /></div><AccountActions kind="student" recordId={student.id} userId={student.userId} member={studentMember} canManage={canManage} classId={selectedClass?.id} unassigned={isUnassigned} query={cleanQuery}>{student.userId ? null : <EntityDialog trigger={<Button type="button" size="sm">Invite student</Button>} title={`Invite ${student.firstName} to the student portal`} description="They will receive a secure email link to set their password." action={inviteStudentToPortalAction} submitLabel="Send invitation"><input type="hidden" name="studentId" value={student.id} />{selectedClass ? <input type="hidden" name="returnClassId" value={selectedClass.id} /> : <input type="hidden" name="returnGroup" value="unassigned" />}{cleanQuery ? <input type="hidden" name="returnQuery" value={cleanQuery} /> : null}<TextField id={`student-portal-email-${student.id}`} name="email" label="Student email" type="email" required /></EntityDialog>}</AccountActions></div></section>
-                <section className="space-y-3"><div><h3 className="text-sm font-semibold">Guardian accounts</h3><p className="text-xs text-muted-foreground">Guardians linked to this student can sign in to see the children connected to their guardian record.</p></div>
-                  {student.guardians.length === 0 ? <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No guardians are linked to this student yet.</p> : <div className="space-y-2">{student.guardians.map((link) => {
+              <CardContent className="space-y-3 p-3 sm:p-4">
+                <div className="border-b pb-3">
+                  <CardTitle className="text-base">{student.firstName} {student.lastName}</CardTitle>
+                  <CardDescription>Admission {student.admissionNumber} · {student.campus.name}</CardDescription>
+                </div>
+                <section aria-label={`Student portal account for ${student.firstName} ${student.lastName}`} className="flex flex-col justify-between gap-2 rounded-lg border px-3 py-2 sm:flex-row sm:items-center">
+                  <div className="min-w-0"><p className="text-sm font-medium">Student sign-in</p><AccountState userId={student.userId} member={studentMember} /></div>
+                  <AccountActions kind="student" recordId={student.id} userId={student.userId} member={studentMember} canManage={canManage} classId={selectedClass?.id} unassigned={isUnassigned} query={cleanQuery}>{student.userId ? null : <EntityDialog trigger={<Button type="button" size="sm" className="min-h-11 sm:min-h-9">Invite student</Button>} title={`Invite ${student.firstName} to the student portal`} description="They will receive a secure email link to set their password." action={inviteStudentToPortalAction} submitLabel="Send invitation"><input type="hidden" name="studentId" value={student.id} />{selectedClass ? <input type="hidden" name="returnClassId" value={selectedClass.id} /> : <input type="hidden" name="returnGroup" value="unassigned" />}{cleanQuery ? <input type="hidden" name="returnQuery" value={cleanQuery} /> : null}<TextField id={`student-portal-email-${student.id}`} name="email" label="Student email" type="email" required /></EntityDialog>}</AccountActions>
+                </section>
+                <section className="space-y-2">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1"><h3 className="text-sm font-semibold">Guardian accounts</h3><p className="text-xs text-muted-foreground">Linked guardians can sign in to see their children.</p></div>
+                  {student.guardians.length === 0 ? <p className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">No guardians are linked to this student yet.</p> : <div className="space-y-2">{student.guardians.map((link) => {
                     const guardianMember = link.guardian.userId ? memberByUserId.get(link.guardian.userId) : undefined;
-                    return <div key={link.guardianId} className="flex flex-col justify-between gap-3 rounded-lg border p-3 sm:flex-row sm:items-center"><div className="min-w-0"><p className="text-sm font-medium">{link.guardian.firstName} {link.guardian.lastName} <span className="font-normal text-muted-foreground">({link.relationship})</span></p><AccountState userId={link.guardian.userId} member={guardianMember} />{!link.guardian.userId && !link.guardian.email ? <p className="mt-1 text-xs text-amber-700">Add an email address to this guardian record before inviting them.</p> : null}</div><AccountActions kind="guardian" recordId={link.guardian.id} userId={link.guardian.userId} member={guardianMember} canManage={canManage} classId={selectedClass?.id} unassigned={isUnassigned} query={cleanQuery}>{link.guardian.userId || !link.guardian.email ? null : <form action={inviteGuardianToPortalAction}><input type="hidden" name="guardianId" value={link.guardian.id} />{selectedClass ? <input type="hidden" name="returnClassId" value={selectedClass.id} /> : <input type="hidden" name="returnGroup" value="unassigned" />}{cleanQuery ? <input type="hidden" name="returnQuery" value={cleanQuery} /> : null}<Button type="submit" size="sm">Invite guardian</Button></form>}</AccountActions></div>;
+                    return <div key={link.guardianId} className="flex flex-col justify-between gap-2 rounded-lg border px-3 py-2 sm:flex-row sm:items-center"><div className="min-w-0"><p className="text-sm font-medium">{link.guardian.firstName} {link.guardian.lastName} <span className="font-normal text-muted-foreground">({link.relationship})</span></p><AccountState userId={link.guardian.userId} member={guardianMember} />{!link.guardian.userId && !link.guardian.email ? <p className="mt-1 text-xs text-amber-700">Add an email address to this guardian record before inviting them.</p> : null}</div><AccountActions kind="guardian" recordId={link.guardian.id} userId={link.guardian.userId} member={guardianMember} canManage={canManage} classId={selectedClass?.id} unassigned={isUnassigned} query={cleanQuery}>{link.guardian.userId || !link.guardian.email ? null : <form action={inviteGuardianToPortalAction}><input type="hidden" name="guardianId" value={link.guardian.id} />{selectedClass ? <input type="hidden" name="returnClassId" value={selectedClass.id} /> : <input type="hidden" name="returnGroup" value="unassigned" />}{cleanQuery ? <input type="hidden" name="returnQuery" value={cleanQuery} /> : null}<Button type="submit" size="sm" className="min-h-11 sm:min-h-9">Invite guardian</Button></form>}</AccountActions></div>;
                   })}</div>}
                 </section>
               </CardContent>

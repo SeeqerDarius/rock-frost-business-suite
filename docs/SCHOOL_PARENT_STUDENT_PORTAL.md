@@ -147,6 +147,9 @@ of guardians.
   suspended access, and a record that needs review. Pending invitations can be
   resent, and revoking a pending invitation invalidates its token in the same
   database transaction as removing the portal link.
+- Within a selected class, each student's name and admission details stay
+  prominent, with compact account summaries and tighter guardian spacing. Status
+  and invitation actions remain visible.
 
 ### What the portal shows
 
