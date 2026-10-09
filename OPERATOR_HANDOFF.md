@@ -11,7 +11,8 @@
 
 - **Scope**: Reduced selected-class student-card height by tightening card padding and vertical gaps, making the student account summary compact, and reducing repeated guardian-row spacing. Names, admission details, account status, emails, and invitation actions remain visible. No schema or environment changes.
 - **Important files**: `src/app/app/school/portal-access/page.tsx` and `docs/SCHOOL_PARENT_STUDENT_PORTAL.md`.
-- **Validation**: targeted ESLint, TypeScript, all 1,523 tests across 198 files, repository lint (0 errors, 2 existing PWA hook warnings), Next.js 16.3.8 production build (280 routes), and `git diff --check` passed. Production release details will be recorded after CI and deployment.
+- **Validation**: targeted ESLint, TypeScript, all 1,523 tests across 198 files, repository lint (0 errors, 2 existing PWA hook warnings), Next.js 16.3.8 production build (280 routes), and `git diff --check` passed. CI validate, disposable-Postgres integration, security, Vercel, and Vercel Preview Comments checks passed.
+- **Production release**: PR #84 merged as `d7c70a0`. Vercel production deployment `dpl_7bpkXbj8Yg9Y5f8dfQyHGqBtcCrp` reached READY and received the `app.rockfrostgroup.com` alias. `/api/health` returned `ok: true` with the database reachable; the protected Portal Access route redirected signed-out requests to `/login` (307). No schema, migration, or environment changes. The compact layout was not exercised with a signed-in production staff account.
 
 ## 2026-10-09: Web push keys configured in production
 
