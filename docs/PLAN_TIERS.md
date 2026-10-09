@@ -139,8 +139,66 @@ uncached, features unlock on the next request.
 `ModulePricingPlan` keeps each module's single headline price, which every pre-tier
 quote, checkout and public price already reads. `ModuleTierPrice` adds the other rungs
 beside it. **A module's Pro row must equal its headline**, so adding tiers reprices
-nothing a customer is already on; a unit test asserts it. A module with no
-`ModuleTierPrice` rows is simply not sold by tier yet.
+nothing a customer is already on; a unit test asserts it.
+
+A module is sold by plan only when its ladder is both **published** (a real
+`catalogue.ts` entry, not `tieringPending`) and **priced** (`ModuleTierPrice` rows
+exist). `moduleHasPublishedLadder()` and `listModuleLadders()` require both, and the
+two really can disagree: a price row for a module with no ladder would advertise a
+Basic plan that behaves exactly like Platinum, and a ladder with no rows would let
+checkout invent a price. When either is missing the module shows its single headline
+price and sells exactly as it did before tiers.
+
+## Which tier a purchase stores
+
+`Subscription.tier` is set explicitly by **every** path that creates a subscription.
+This matters more than it looks: the column default is `BASIC`, the restrictive end of
+the ladder, while the amount charged comes from the price catalogue. A path that left
+the tier implicit would charge a school the full GHS 599 headline and then withhold
+fees, exams, timetables, transport, library, SMS and reports, with a 200-student and
+single-campus ceiling on top, and nothing would fail loudly. All four creation paths
+did exactly that when tiers first landed.
+
+`test/subscription-tier-assignment.test.ts` pins the invariant, including a case that
+walks `service.ts` for a `subscription.create` with no `tier:`, so a fifth path added
+later cannot quietly skip it.
+
+| Path | Tier stored | Why |
+| --- | --- | --- |
+| Self-service module checkout | The rung the customer picked | Priced from `ModuleTierPrice`. A module with a ladder and no chosen plan is **refused**, never defaulted: every fallback is either charging for access the customer will not get or granting access they have not paid for. |
+| Self-service suite checkout | `PLATINUM` | A suite price was set when each module in it meant the whole module, and a suite has no per-module plan choice. |
+| Self-service cart checkout | `PLATINUM` | Same reasoning. The cart is priced on the plain sum of each module's headline. |
+| Operator-entered agreement | The tier on the form, default `PLATINUM` | A negotiated amount was quoted in a conversation about the whole module. Falling through to `BASIC` would restrict a customer who paid for more. |
+
+Modules with a ladder are **not sold through the cart**. The cart carries one price per
+module and has nowhere to make a plan decision, so including one would hand over full
+access at whatever the single headline price happens to be and undercut the ladder it
+exists to sell. They get their own card with a plan picker on the tenant Billing page,
+and `startCartCheckout()` refuses them even if a crafted post puts one back.
+
+Both checkouts settle the plan **before anything is written**. The service layer refuses
+an unsellable tier on its own, but by then the rows exist: public signup creates the
+organization, user and membership before the subscription, so a late refusal would
+strand a workspace nobody can pay for, and the tenant path would leave a
+`PENDING_PAYMENT` subscription with no way to pay it.
+
+## The public price list
+
+`/pricing` renders a plan ladder per module from `PlanLadder`
+(`src/components/marketing/plan-ladder.tsx`), generated from the catalogue rather than
+hand-written. Nothing on that page is a maintained list of what each plan includes:
+each column shows the features whose `minTier` is that rung, framed as "Everything in
+Pro, plus", with the limits read through `limitsAt()`. A price list that drifts from
+the gate is a refund request, so the page and the gate read the same declaration.
+
+Quote-only tiers are derived from `QUOTE_ONLY_TIERS`, so Enterprise shows no amount and
+routes to sales, and a tier that stops being quote-only gains a price column and a
+checkout button with nothing to remember. Modules whose ladders are still pending keep
+their single-price card.
+
+One rough edge: an Enterprise enquiry arrives as the existing `MODULE` enquiry intent.
+A dedicated `ENTERPRISE` value would need an `EnquiryIntent` enum migration, so sales
+cannot currently filter Enterprise enquiries apart from module enquiries.
 
 ## Adding a ladder to another module
 
@@ -150,7 +208,12 @@ nothing a customer is already on; a unit test asserts it. A module with no
    (`src/platform/subscriptions/service.ts`) so downgrades can be checked, and call
    `assertWithinModuleLimit()` in the creating service.
 3. Guard each newly gated page server-side, and declare its routes on the feature.
-4. Add `MODULE_TIER_PRICING_SEED` rows with Pro equal to the headline.
-5. **Check who is currently using what before you ship it.** Every organization already
+4. Add `MODULE_TIER_PRICING_SEED` rows with Pro equal to the headline, one per
+   purchasable rung. Until they exist the module keeps its single price, so the
+   catalogue entry and the rows should land together.
+5. Nothing else is needed to sell it. The public ladder, the tenant plan picker, the
+   subscribe form's plan select and the cart exclusion all derive from
+   `moduleHasPublishedLadder()` and appear on their own.
+6. **Check who is currently using what before you ship it.** Every organization already
    resolves at Platinum, so the ladder only bites for new agreements, but an operator
    downgrading someone afterwards is a real decision with real consequences.
