@@ -301,9 +301,9 @@ export const MODULE_SEO = {
   },
   school: {
     shortName: "School Management Software Ghana",
-    description: "Manage admissions, students, guardians, attendance, fees, examinations, timetables, transport, library and school operations securely.",
-    keywords: ["school management software Ghana", "student information system Africa", "school fees attendance examination software"],
-    features: ["Student, guardian, and enrollment records", "Attendance, fees, and payments", "Examinations, grading, and timetables", "Transport, library, and payroll inputs"],
+    description: "Manage admissions, students, guardians, attendance, fees, examinations, timetables, transport and library, with an optional add-on for online class assignments.",
+    keywords: ["school management software Ghana", "student information system Africa", "school fees attendance examination software", "online school assignments Ghana"],
+    features: ["Student, guardian, and enrollment records", "Attendance, fees, and payments", "Examinations, grading, broadsheets, and timetables", "Transport, library, and payroll inputs", "Optional Assignments & Assessments add-on with automatic marking of objective questions"],
     content: {
       audience: "Built for Ghanaian basic schools, senior high schools, and education groups that need connected academic, financial, administrative, and campus-service records.",
       outcomes: [
@@ -311,11 +311,12 @@ export const MODULE_SEO = {
         { title: "Bring academics and attendance together", description: "Record attendance, examinations, grading, subjects, and timetables within the same school workspace." },
         { title: "Improve fee visibility", description: "Create fee structures, invoices, payments, and receipts while retaining the records needed for follow-up and reporting." },
       ],
-      workflows: ["Configure campuses, academic years, terms, classes, and subjects", "Register applicants, students, guardians, and enrollments", "Take attendance and maintain timetables", "Record examinations and calculate results", "Create school fees, receive payments, and issue receipts", "Manage transport, library, and connected hostel operations"],
+      workflows: ["Configure campuses, academic years, terms, classes, and subjects", "Register applicants, students, guardians, and enrollments", "Take attendance and maintain timetables", "Record examinations and calculate results", "With the optional Assignments & Assessments add-on, set class work online and choose whether each result counts towards an exam", "Create school fees, receive payments, and issue receipts", "Manage transport, library, and connected hostel operations"],
       faqs: [
         { question: "Which schools can use Rock Frost School Management?", answer: "The module supports basic schools, senior high schools, and multi-campus education organizations that need controlled academic and administrative workflows." },
         { question: "Does it manage school fees and receipts?", answer: "Yes. Authorized staff can configure fees, create invoices, record payments, and issue receipts." },
         { question: "Can boarding operations be included?", answer: "Yes. Schools can add the Hostel Management module for buildings, rooms, beds, allocations, wardens, and hostel fee billing." },
+        { question: "Can teachers set and mark assignments online?", answer: "Yes, with the optional Assignments & Assessments add-on. Teachers set work for the classes they teach and students submit through the Parent and Student portal. Single choice, true or false, multiple select, and numeric answers are marked automatically, and written answers are marked by the teacher. A result only counts towards the term record when the teacher links the assignment to one of the subject's existing exams." },
       ],
       ghana: [
         "Organized around a termly academic calendar, with fees, attendance, and results tracked per term.",
@@ -329,6 +330,7 @@ export const MODULE_SEO = {
       security: [
         "Student, guardian, and academic records stay scoped to your school only.",
         "Examination results stay hidden from families and restricted staff until a staff member explicitly publishes them.",
+        "With the Assignments & Assessments add-on, students only see work set for their own class and only their own answers, marks, and feedback.",
       ],
     },
   },

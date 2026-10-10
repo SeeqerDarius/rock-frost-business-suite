@@ -186,7 +186,8 @@ describe("module authorization source coverage", () => {
     // 156, up from 155: the Payroll Deductions page, requireModuleAccess("payroll").
     // 162, up from 156: School communications adds six guarded pages (Messages, a conversation, Announcements, and the portal's Messages, conversation, and Announcements), requireModuleAccess("school").
     // 164, up from 162: School chat replaces the four conversation pages (staff and portal list and detail) with six (chat list, a chat, group info, new chat, broadcast, archived), requireModuleAccess("school").
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(164);
+    // 170, up from 164: School Assignments & Assessments adds six guarded pages (staff list, detail, preview, submission review, and the portal list and detail), requireModuleAccess("school").
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("page.tsx"))).toHaveLength(170);
     // 52, up from 51: src/app/app/accounting/petty-cash/actions.ts is a new
     // 53, up from 52: src/app/app/hostel/actions.ts (one shared file for
     // all Hostel Server Actions, same shape as School's) joins the sweep
@@ -214,7 +215,8 @@ describe("module authorization source coverage", () => {
     // 74, up from 73: the Payroll Deductions actions.ts, requireModuleAccess("payroll").
     // 77, up from 74: School communications adds three guarded actions files (messages, announcements, portal messages), requireModuleAccess("school").
     // 76, down from 77: one School chat actions file replaces the staff and portal conversation actions files.
-    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(76);
+    // 77, up from 76: src/app/app/school/assignments/actions.ts, requireModuleAccess("school") for staff and student actions.
+    expect(guardedFiles.filter(({ filePath }) => filePath.endsWith("actions.ts"))).toHaveLength(77);
 
     for (const { moduleKey, filePath } of guardedFiles) {
       const source = readFileSync(filePath, "utf8");

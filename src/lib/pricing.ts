@@ -1,13 +1,13 @@
 import "server-only";
 
 import { db } from "@/lib/db";
-import { computeRecommendedQuote, type ModuleLadder, type ModulePrice, type ModuleTierPrice, type PricingBundle } from "@/lib/pricing-shared";
+import { computeRecommendedQuote, type AddonPrice, type ModuleLadder, type ModulePrice, type ModuleTierPrice, type PricingBundle } from "@/lib/pricing-shared";
 import { moduleHasPublishedLadder } from "@/platform/entitlements/catalogue";
 import { PLAN_TIERS, isPlanTier, type PlanTier } from "@/platform/entitlements/tiers";
 import { getModule, type BusinessModuleKey } from "@/platform/modules/registry";
 
-export type { ModuleLadder, ModulePrice, ModuleTierPrice, PricingBundle, PricingBundleKey } from "@/lib/pricing-shared";
-export { computeRecommendedQuote, formatGhs } from "@/lib/pricing-shared";
+export type { AddonPrice, ModuleLadder, ModulePrice, ModuleTierPrice, PricingBundle, PricingBundleKey, PublicAddon } from "@/lib/pricing-shared";
+export { computeRecommendedQuote, formatGhs, PUBLIC_ADDONS } from "@/lib/pricing-shared";
 
 /**
  * Deliberately NOT wrapped in unstable_cache: this catalogue is also read
@@ -122,4 +122,10 @@ export async function getModuleTierPrice(moduleKey: string, tier: PlanTier): Pro
 
 export async function recommendedSubscriptionQuote(moduleKey: string, durationMonths: number) {
   return computeRecommendedQuote(await getModulePriceMap(), moduleKey, durationMonths);
+}
+
+/** Confirmed add-on prices. An add-on with no row has no published price yet. */
+export async function listAddonPrices(): Promise<AddonPrice[]> {
+  const rows = await db.addonPricingPlan.findMany({ orderBy: { addonKey: "asc" } });
+  return rows.map((row) => ({ addonKey: row.addonKey as AddonPrice["addonKey"], monthlyGhs: Number(row.monthlyGhs), annualGhs: Number(row.annualGhs) }));
 }

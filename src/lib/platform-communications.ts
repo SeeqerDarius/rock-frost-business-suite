@@ -80,3 +80,19 @@ export async function isSchoolGuardianMessagingGranted(organizationId: string): 
   });
   return organization?.schoolGuardianMessagingGranted ?? false;
 }
+
+/**
+ * Assignments & Assessments is another paid, per-organization School add-on
+ * (`Organization.schoolAssignmentsGranted`, default off). The assignment
+ * service re-checks this grant itself on every call, so this helper is only
+ * for navigation and page-level messaging. Students reach assignments
+ * through My Portal, so they also need the portal grant above. See
+ * docs/SCHOOL_ASSIGNMENTS.md.
+ */
+export async function isSchoolAssignmentsGranted(organizationId: string): Promise<boolean> {
+  const organization = await db.organization.findUnique({
+    where: { id: organizationId },
+    select: { schoolAssignmentsGranted: true },
+  });
+  return organization?.schoolAssignmentsGranted ?? false;
+}

@@ -9,9 +9,9 @@ import { requirePlatformOperator } from "@/lib/auth/module-access";
 import { db } from "@/lib/db";
 import { getPlatformAnchorOrganizationIds } from "@/lib/platform-organizations";
 import { activateSubscriptionAction, cancelSubscriptionAction, createSubscriptionAction, updateSubscriptionSeatLimitAction } from "./actions";
-import { updateModulePricePlan, updatePricingBundlePrice } from "./pricing-actions";
+import { clearAddonPrice, updateAddonPrice, updateModulePricePlan, updatePricingBundlePrice } from "./pricing-actions";
 import { getOrganizationSeatUsage } from "@/platform/subscriptions/seats";
-import { listModulePrices, listPricingBundles } from "@/lib/pricing";
+import { listAddonPrices, listModulePrices, listPricingBundles, PUBLIC_ADDONS } from "@/lib/pricing";
 import { SubscriptionQuoteFields } from "./subscription-quote-fields";
 import { catalogueModuleKeys, getModule } from "@/platform/modules/registry";
 import { PLAN_TIERS, PLAN_TIER_LABELS } from "@/platform/entitlements/tiers";
@@ -29,20 +29,22 @@ const ERROR_MESSAGES: Record<string, string> = {
   cancel: "The subscription could not be cancelled.",
   "cancel-paystack-unregistered": "Automatic renewal isn't fully registered with Paystack yet. Cancel it directly from Paystack's dashboard first, then cancel local access.",
 };
-const SAVED_MESSAGES: Record<string, string> = { price: "Module price updated.", bundle: "Suite price updated." };
+const SAVED_MESSAGES: Record<string, string> = { price: "Module price updated.", bundle: "Suite price updated.", addon: "Add-on price updated." };
 
 export default async function PlatformSubscriptionsPage({ searchParams }: { searchParams: Promise<{ error?: string; seats?: string; saved?: string }> }) {
   await requirePlatformOperator();
   const { error, seats, saved } = await searchParams;
   const platformAnchorIds = await getPlatformAnchorOrganizationIds();
-  const [organizations, modules, requests, subscriptions, modulePrices, pricingBundles] = await Promise.all([
+  const [organizations, modules, requests, subscriptions, modulePrices, pricingBundles, addonPrices] = await Promise.all([
     db.organization.findMany({ where: { id: { notIn: platformAnchorIds }, status: { in: ["ACTIVE", "TRIAL"] } }, orderBy: { name: "asc" } }),
     db.module.findMany({ where: { status: "ACTIVE", code: { in: [...catalogueModuleKeys] } }, orderBy: { name: "asc" } }),
     db.moduleRequest.findMany({ where: { status: { in: ["SUBMITTED", "UNDER_REVIEW", "QUOTED", "APPROVED"] } }, include: { organization: true, module: true, contactSubmission: true }, orderBy: { createdAt: "desc" } }),
     db.subscription.findMany({ include: { organization: true, module: true }, orderBy: { createdAt: "desc" } }),
     listModulePrices(),
     listPricingBundles(),
+    listAddonPrices(),
   ]);
+  const addonPriceMap = new Map(addonPrices.map((price) => [price.addonKey, price]));
   const modulePriceMap = new Map(modulePrices.map((price) => [price.moduleKey, price]));
   const usageByOrganization = new Map((await Promise.all(organizations.map(async (organization) => [organization.id, await getOrganizationSeatUsage(organization.id)] as const))));
   return (
@@ -137,6 +139,36 @@ export default async function PlatformSubscriptionsPage({ searchParams }: { sear
               </CardContent>
             </Card>
           ))}
+        </div>
+        <div id="addon-pricing" className="scroll-mt-24 space-y-3">
+          <div>
+            <h3 className="text-lg font-semibold">Optional add-ons</h3>
+            <p className="text-sm text-muted-foreground">No add-on price is published until you set one here. Until then the public pricing page says the add-on is priced on request. Granting an add-on to a customer is still done per organization under Modules and features.</p>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {PUBLIC_ADDONS.map((addon) => {
+              const price = addonPriceMap.get(addon.key);
+              return (
+                <Card key={addon.key}>
+                  <CardHeader><CardTitle>{addon.name}</CardTitle><CardDescription>{price ? "Published on the pricing page." : "No confirmed price. Shown as priced on request."}</CardDescription></CardHeader>
+                  <CardContent className="space-y-3">
+                    <form action={updateAddonPrice} className="grid grid-cols-2 gap-3">
+                      <input type="hidden" name="addonKey" value={addon.key} />
+                      <div><Label htmlFor={`${addon.key}-monthly`}>Monthly (GHS)</Label><Input id={`${addon.key}-monthly`} name="monthlyGhs" type="number" min="1" step="0.01" defaultValue={price?.monthlyGhs} required /></div>
+                      <div><Label htmlFor={`${addon.key}-annual`}>Annual (GHS)</Label><Input id={`${addon.key}-annual`} name="annualGhs" type="number" min="1" step="0.01" defaultValue={price?.annualGhs} required /></div>
+                      <div className="col-span-2"><Button type="submit" size="sm" variant="outline">{price ? "Save price" : "Publish confirmed price"}</Button></div>
+                    </form>
+                    {price ? (
+                      <form action={clearAddonPrice}>
+                        <input type="hidden" name="addonKey" value={addon.key} />
+                        <Button type="submit" size="sm" variant="ghost">Withdraw price (show priced on request)</Button>
+                      </form>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
         </div>
       </section>
     </div>

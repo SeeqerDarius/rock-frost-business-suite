@@ -1329,6 +1329,11 @@ export async function recordSchoolExamResult(organizationId: string, actingUserI
     include: { student: { include: { campus: { include: { settings: true } } } } },
   });
   if (!exam || !enrollment) throw new SchoolNotFoundError("Exam or active enrollment not found.");
+  // An exam that an Assignments & Assessments assignment feeds has exactly
+  // one source of marks: the assignment. Typing over one here would be
+  // silently replaced on the next sync. See docs/SCHOOL_ASSIGNMENTS.md.
+  const linkedAssignment = await db.schoolAssignment.findFirst({ where: { organizationId, gradebookExamId: exam.id, includeInGradebook: true }, select: { title: true } });
+  if (linkedAssignment) throw new SchoolStateError(`This exam takes its results from the assignment "${linkedAssignment.title}". Change the mark on the assignment instead.`, "assignment-linked");
   const marks = decimal(data.marks);
   if (marks.lt(0) || marks.gt(exam.totalMarks)) throw new SchoolStateError("Marks must be within the exam total.", "marks-out-of-range");
 

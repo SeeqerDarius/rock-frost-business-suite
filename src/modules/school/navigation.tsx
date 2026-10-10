@@ -1,9 +1,10 @@
 import { AnimatedSettingsIcon } from "@/components/icons/animated-settings-icon";
-import { LayoutDashboard, School, Users, CalendarRange, Shapes, ClipboardCheck, Receipt, GraduationCap, CalendarClock, Bus, Library, Banknote, BarChart3, UserRoundCog, KeyRound, HeartHandshake, Repeat2, MessagesSquare, Megaphone } from "lucide-react";
+import { LayoutDashboard, School, Users, CalendarRange, Shapes, ClipboardCheck, Receipt, GraduationCap, CalendarClock, Bus, Library, Banknote, BarChart3, UserRoundCog, KeyRound, HeartHandshake, Repeat2, MessagesSquare, Megaphone, NotebookPen } from "lucide-react";
 import type { ModuleNavItem } from "@/types/module";
 
 export const schoolNavigation: ModuleNavItem[] = [
   { label: "My Portal", group: "Overview", href: "/app/school/portal", icon: <HeartHandshake className="size-4" />, description: "See your own or your child's attendance, results, fees, and digital ID." },
+  { label: "My Assignments", shortLabel: "Assignments", group: "Overview", href: "/app/school/portal/assignments", icon: <NotebookPen className="size-4" />, description: "See work set for your class, submit answers before the due date, and read your marks and feedback once released." },
   { label: "Portal Announcements", shortLabel: "Announcements", group: "Overview", href: "/app/school/portal/announcements", icon: <Megaphone className="size-4" />, description: "Read notices from your child's school." },
   { label: "School Overview", shortLabel: "Overview", group: "Overview", href: "/app/school", icon: <LayoutDashboard className="size-4" />, description: "See enrollment, attendance, fee, and library snapshots and jump into attendance, exams, or timetable workflows." },
   { label: "Chats", group: "Communication", href: "/app/school/chats", icon: <MessagesSquare className="size-4" />, description: "Chat one to one or in groups with staff and guardians, share photos and documents, and send broadcasts, all inside the app." },
@@ -14,6 +15,7 @@ export const schoolNavigation: ModuleNavItem[] = [
   { label: "Year Rollover", group: "Academics", href: "/app/school/rollover", icon: <Repeat2 className="size-4" />, description: "Review active learner cohorts, map classes, and move enrollments forward as one audited batch." },
   { label: "Attendance", group: "Academics", href: "/app/school/attendance", icon: <ClipboardCheck className="size-4" />, description: "Pick a term, class, and date to mark each student present, absent, late, or excused, and review recorded attendance." },
   { label: "Exams & Grading", shortLabel: "Exams", group: "Academics", href: "/app/school/exams", icon: <GraduationCap className="size-4" />, description: "Create exams, enter student results, and move them through moderation to publishing." },
+  { label: "Assignments", group: "Academics", href: "/app/school/assignments", icon: <NotebookPen className="size-4" />, description: "Set class assignments with objective and written questions, review submissions, and choose whether results count towards an exam." },
   { label: "Timetables", group: "Academics", href: "/app/school/timetables", icon: <CalendarClock className="size-4" />, description: "Add weekly class periods with teacher and room, with automatic clash checking, and view the schedule by day." },
   { label: "Fees & Payments", shortLabel: "Fees", group: "Finance", href: "/app/school/fees", icon: <Receipt className="size-4" />, description: "Set up fee structures, issue invoices to students, and record payments against outstanding balances." },
   { label: "School Payroll", shortLabel: "Payroll", group: "Finance", href: "/app/school/payroll", icon: <Banknote className="size-4" />, description: "Record teaching allowances, overtime, and other payroll inputs by pay period for the Payroll module to process." },

@@ -628,6 +628,12 @@ model Organization {
   schoolGuardianMessagingGranted     Boolean             @default(false)
   schoolGuardianMessagingGrantedAt   DateTime?
   schoolGuardianMessagingGrantedById String?
+  /// Paid, operator-granted School add-on: Assignments & Assessments (default
+  /// off). Gates every assignment page, Server Action, and service function,
+  /// not just navigation. See docs/SCHOOL_ASSIGNMENTS.md.
+  schoolAssignmentsGranted           Boolean             @default(false)
+  schoolAssignmentsGrantedAt         DateTime?
+  schoolAssignmentsGrantedById       String?
   /// Global localization (2026-10-06). `country` stores an ISO 3166-1
   /// alpha-2 code for new writes; legacy rows may hold a country name and are
   /// normalized through src/lib/localization.ts. `currency` above is the
@@ -821,6 +827,11 @@ model Organization {
   schoolStudentLifecycleEvents    SchoolStudentLifecycleEvent[]
   schoolExams                     SchoolExam[]
   schoolExamResults               SchoolExamResult[]
+  schoolAssignments               SchoolAssignment[]
+  schoolAssignmentQuestions       SchoolAssignmentQuestion[]
+  schoolAssignmentVersions        SchoolAssignmentVersion[]
+  schoolAssignmentSubmissions     SchoolAssignmentSubmission[]
+  schoolAssignmentEvents          SchoolAssignmentEvent[]
   schoolTimetableEntries          SchoolTimetableEntry[]
   schoolTransportRoutes           SchoolTransportRoute[]
   schoolTransportAssignments      SchoolTransportAssignment[]
@@ -1112,6 +1123,19 @@ model ModulePricingPlan {
   additionalSeatGhs Decimal  @db.Decimal(18, 2)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+}
+
+/// Operator-editable add-on prices (2026-10-16). A row exists only once
+/// Rock Frost has confirmed a price; until then public surfaces say the
+/// add-on is priced on request instead of publishing a number. Same
+/// operator-owned convention as ModulePricingPlan; nothing seeds it.
+model AddonPricingPlan {
+  id         String   @id @default(cuid())
+  addonKey   String   @unique
+  monthlyGhs Decimal  @db.Decimal(18, 2)
+  annualGhs  Decimal  @db.Decimal(18, 2)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 /// Operator-editable combined-suite prices. moduleKeys stores un-expanded
@@ -5959,6 +5983,7 @@ model SchoolAcademicYear {
   feeInvoices         SchoolFeeInvoice[]
   feeStructures       SchoolFeeStructure[]
   exams               SchoolExam[]
+  assignments         SchoolAssignment[]
   hostelAllocations   HostelAllocation[]
   hostelFeeInvoices   HostelFeeInvoice[]
   hostelFeeStructures HostelFeeStructure[]
@@ -5983,6 +6008,7 @@ model SchoolTerm {
   feeInvoices         SchoolFeeInvoice[]
   feeStructures       SchoolFeeStructure[]
   exams               SchoolExam[]
+  assignments         SchoolAssignment[]
   timetable           SchoolTimetableEntry[]
   hostelFeeInvoices   HostelFeeInvoice[]
   hostelFeeStructures HostelFeeStructure[]
@@ -6050,24 +6076,25 @@ model SchoolStudent {
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 
-  organization      Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  campus            SchoolCampus                  @relation(fields: [campusId], references: [id], onDelete: Restrict)
-  portalUser        User?                         @relation("SchoolStudentPortalUser", fields: [userId], references: [id], onDelete: SetNull)
-  guardians         SchoolStudentGuardian[]
-  enrollments       SchoolEnrollment[]
-  attendance        SchoolAttendance[]
-  feeInvoices       SchoolFeeInvoice[]
-  feePayments       SchoolFeePayment[]
-  examResults       SchoolExamResult[]
-  transport         SchoolTransportAssignment[]
-  libraryLoans      SchoolLibraryLoan[]
-  lifecycleEvents   SchoolStudentLifecycleEvent[]
-  hostelAllocations HostelAllocation[]
-  hostelFeeInvoices HostelFeeInvoice[]
-  hostelFeePayments HostelFeePayment[]
-  digitalIdCards    SchoolDigitalIdCard[]
-  conductRecords    SchoolConductRecord[]
-  documents         SchoolStudentDocument[]
+  organization          Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campus                SchoolCampus                  @relation(fields: [campusId], references: [id], onDelete: Restrict)
+  portalUser            User?                         @relation("SchoolStudentPortalUser", fields: [userId], references: [id], onDelete: SetNull)
+  guardians             SchoolStudentGuardian[]
+  enrollments           SchoolEnrollment[]
+  attendance            SchoolAttendance[]
+  feeInvoices           SchoolFeeInvoice[]
+  feePayments           SchoolFeePayment[]
+  examResults           SchoolExamResult[]
+  transport             SchoolTransportAssignment[]
+  libraryLoans          SchoolLibraryLoan[]
+  lifecycleEvents       SchoolStudentLifecycleEvent[]
+  hostelAllocations     HostelAllocation[]
+  hostelFeeInvoices     HostelFeeInvoice[]
+  hostelFeePayments     HostelFeePayment[]
+  digitalIdCards        SchoolDigitalIdCard[]
+  conductRecords        SchoolConductRecord[]
+  documents             SchoolStudentDocument[]
+  assignmentSubmissions SchoolAssignmentSubmission[]
 
   conversations SchoolConversation[]
   chats         SchoolChat[]
@@ -6114,6 +6141,7 @@ model SchoolClass {
   timetable     SchoolTimetableEntry[]
   feeStructures SchoolFeeStructure[]
   teachers      SchoolClassTeacher[]
+  assignments   SchoolAssignment[]
 
   announcements  SchoolAnnouncement[]
   chats          SchoolChat[]
@@ -6159,6 +6187,7 @@ model SchoolSubject {
   exams        SchoolExam[]
   results      SchoolExamResult[]
   timetable    SchoolTimetableEntry[]
+  assignments  SchoolAssignment[]
 
   @@unique([organizationId, code])
   @@index([organizationId, active])
@@ -6427,6 +6456,9 @@ model SchoolExam {
   term         SchoolTerm         @relation(fields: [termId], references: [id], onDelete: Restrict)
   subject      SchoolSubject      @relation(fields: [subjectId], references: [id], onDelete: Restrict)
   results      SchoolExamResult[]
+  /// Set when an Assignments & Assessments assignment feeds this exam's
+  /// results (cumulative-record opt-in). At most one assignment per exam.
+  assignment   SchoolAssignment?
 
   @@index([organizationId, status])
   @@index([termId, subjectId])
@@ -6579,6 +6611,204 @@ model SchoolPayrollAdjustment {
   @@index([employeeId])
   @@index([legacyEmployeeId])
   @@index([payrollRunId])
+}
+
+// --- School: Assignments & Assessments (paid add-on) ---
+// Teachers set class work, students submit from My Portal, deterministic
+// question types are marked on the server, and a teacher may opt an
+// assignment into the existing gradebook by linking it to one unpublished
+// SchoolExam. There is deliberately no second gradebook: an included
+// assignment writes ordinary SchoolExamResult rows, and the broadsheet's
+// existing per-exam weighting decides how much it counts.
+// See docs/SCHOOL_ASSIGNMENTS.md.
+
+enum SchoolAssignmentStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  GRADED
+}
+
+enum SchoolAssignmentQuestionType {
+  SINGLE_CHOICE
+  MULTI_SELECT
+  TRUE_FALSE
+  NUMERIC
+  SHORT_TEXT
+  ESSAY
+}
+
+enum SchoolAssignmentAttemptScoring {
+  HIGHEST
+  LATEST
+}
+
+enum SchoolAssignmentFeedbackRelease {
+  IMMEDIATE
+  AFTER_DUE
+  ON_RELEASE
+}
+
+enum SchoolAssignmentGradingStatus {
+  PENDING_REVIEW
+  AUTO_GRADED
+  REVIEWED
+}
+
+model SchoolAssignment {
+  id                   String                          @id @default(cuid())
+  organizationId       String
+  classId              String
+  subjectId            String
+  academicYearId       String
+  termId               String
+  title                String
+  instructions         String?                         @db.Text
+  status               SchoolAssignmentStatus          @default(DRAFT)
+  availableFrom        DateTime
+  dueAt                DateTime
+  allowLateSubmissions Boolean                         @default(false)
+  maxAttempts          Int                             @default(1)
+  attemptScoring       SchoolAssignmentAttemptScoring  @default(HIGHEST)
+  feedbackRelease      SchoolAssignmentFeedbackRelease @default(ON_RELEASE)
+  showCorrectAnswers   Boolean                         @default(false)
+  /// Cumulative-record opt-in. Off by default; turning it on requires
+  /// gradebookExamId. Only changed through the audited inclusion service.
+  includeInGradebook   Boolean                         @default(false)
+  gradebookExamId      String?                         @unique
+  currentVersionId     String?                         @unique
+  createdById          String?
+  publishedAt          DateTime?
+  closedAt             DateTime?
+  gradedAt             DateTime?
+  createdAt            DateTime                        @default(now())
+  updatedAt            DateTime                        @updatedAt
+
+  organization   Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  class          SchoolClass                  @relation(fields: [classId], references: [id], onDelete: Restrict)
+  subject        SchoolSubject                @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  academicYear   SchoolAcademicYear           @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  term           SchoolTerm                   @relation(fields: [termId], references: [id], onDelete: Restrict)
+  gradebookExam  SchoolExam?                  @relation(fields: [gradebookExamId], references: [id], onDelete: Restrict)
+  currentVersion SchoolAssignmentVersion?     @relation("SchoolAssignmentCurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+  questions      SchoolAssignmentQuestion[]
+  versions       SchoolAssignmentVersion[]    @relation("SchoolAssignmentVersions")
+  submissions    SchoolAssignmentSubmission[]
+  events         SchoolAssignmentEvent[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId, classId, status])
+  @@index([organizationId, termId, subjectId])
+}
+
+/// The teacher's editable working copy of the questions. Publishing
+/// snapshots these into an immutable SchoolAssignmentVersion; students are
+/// only ever served, and graded against, a version snapshot.
+model SchoolAssignmentQuestion {
+  id               String                       @id @default(cuid())
+  organizationId   String
+  assignmentId     String
+  position         Int
+  type             SchoolAssignmentQuestionType
+  prompt           String                       @db.Text
+  points           Decimal                      @db.Decimal(6, 2)
+  /// [{ id, label }] for SINGLE_CHOICE / MULTI_SELECT. TRUE_FALSE uses the
+  /// fixed ids "true" and "false".
+  options          Json?
+  correctOptionIds String[]                     @default([])
+  numericAnswer    Decimal?                     @db.Decimal(18, 6)
+  numericTolerance Decimal?                     @db.Decimal(18, 6)
+  /// Marking guidance for subjective questions. Never shown to students.
+  markingGuide     String?                      @db.Text
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignment   SchoolAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, assignmentId, position])
+}
+
+/// Immutable published snapshot. Never updated after creation.
+model SchoolAssignmentVersion {
+  id             String   @id @default(cuid())
+  organizationId String
+  assignmentId   String
+  version        Int
+  /// Full question snapshot including answer keys (server-only).
+  questions      Json
+  maxScore       Decimal  @db.Decimal(8, 2)
+  publishedById  String?
+  publishedAt    DateTime @default(now())
+
+  organization        Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignment          SchoolAssignment             @relation("SchoolAssignmentVersions", fields: [assignmentId], references: [id], onDelete: Cascade)
+  currentOfAssignment SchoolAssignment?            @relation("SchoolAssignmentCurrentVersion")
+  submissions         SchoolAssignmentSubmission[]
+
+  @@unique([assignmentId, version])
+  @@index([organizationId])
+}
+
+model SchoolAssignmentSubmission {
+  id              String                        @id @default(cuid())
+  organizationId  String
+  assignmentId    String
+  versionId       String
+  studentId       String
+  attemptNumber   Int
+  /// Generated once per rendered form, so a retried POST of the same
+  /// attempt resolves to this row instead of creating a second attempt.
+  idempotencyKey  String
+  answers         Json
+  submittedAt     DateTime                      @default(now())
+  late            Boolean                       @default(false)
+  gradingStatus   SchoolAssignmentGradingStatus
+  /// Points awarded by deterministic auto-marking only.
+  autoScore       Decimal                       @db.Decimal(8, 2)
+  /// Total once every question is marked; null while review is pending.
+  score           Decimal?                      @db.Decimal(8, 2)
+  maxScore        Decimal                       @db.Decimal(8, 2)
+  /// Per-question marking: { [questionId]: { awarded, correct, auto, feedback? } }.
+  questionResults Json
+  feedback        String?                       @db.Text
+  reviewedById    String?
+  reviewedAt      DateTime?
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignment   SchoolAssignment        @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  version      SchoolAssignmentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  student      SchoolStudent           @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  events       SchoolAssignmentEvent[]
+
+  @@unique([assignmentId, studentId, attemptNumber])
+  @@unique([assignmentId, studentId, idempotencyKey])
+  @@index([organizationId, studentId])
+  @@index([assignmentId, gradingStatus])
+}
+
+/// Append-only grading and inclusion history, shown to teachers on the
+/// assignment and mirrored into the organization AuditLog.
+model SchoolAssignmentEvent {
+  id             String   @id @default(cuid())
+  organizationId String
+  assignmentId   String
+  submissionId   String?
+  actorId        String?
+  action         String
+  previousValue  String?
+  newValue       String?
+  note           String?  @db.Text
+  createdAt      DateTime @default(now())
+
+  organization Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignment   SchoolAssignment            @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  submission   SchoolAssignmentSubmission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, assignmentId, createdAt])
+  @@index([submissionId])
 }
 
 model SchoolSettings {

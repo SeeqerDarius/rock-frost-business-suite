@@ -52,7 +52,9 @@ describe("public SEO", () => {
       expect(seo.shortName).toContain("Ghana");
       expect(seo.content.outcomes).toHaveLength(3);
       expect(seo.content.workflows.length).toBeGreaterThanOrEqual(5);
-      expect(seo.content.faqs).toHaveLength(3);
+      // School carries a fourth FAQ for its optional Assignments & Assessments add-on.
+      expect(seo.content.faqs.length).toBeGreaterThanOrEqual(3);
+      expect(seo.content.faqs.length).toBeLessThanOrEqual(4);
       expect(seo.content.ghana?.length).toBeGreaterThan(0);
       expect(seo.content.security?.length).toBeGreaterThan(0);
       for (const integration of seo.content.integrations ?? []) {

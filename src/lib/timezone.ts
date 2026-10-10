@@ -32,3 +32,25 @@ export function zonedDateRange(from: string, to: string, timeZone: string): { st
   if (end <= start) throw new Error("The period end must be on or after its start.");
   return { start, end };
 }
+
+/**
+ * UTC instant for a `datetime-local` value ("YYYY-MM-DDTHH:mm") read as wall
+ * clock time in `timeZone`. Used where a person types a deadline, so "17:00"
+ * means 17:00 at the school, not on the server.
+ */
+export function zonedDateTime(local: string, timeZone: string): Date {
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(local);
+  if (!match) throw new Error("Expected a YYYY-MM-DDTHH:mm date and time.");
+  const [, ymd, hours, minutes] = match;
+  const [year, month, day] = ymd.split("-").map(Number);
+  const guess = Date.UTC(year, month - 1, day, Number(hours), Number(minutes));
+  let instant = new Date(guess - offsetMinutes(new Date(guess), timeZone) * 60_000);
+  instant = new Date(guess - offsetMinutes(instant, timeZone) * 60_000);
+  return instant;
+}
+
+/** The `datetime-local` value that shows `instant` as wall clock time in `timeZone`. */
+export function toZonedDateTimeInput(instant: Date, timeZone: string): string {
+  const shifted = new Date(instant.getTime() + offsetMinutes(instant, timeZone) * 60_000);
+  return shifted.toISOString().slice(0, 16);
+}

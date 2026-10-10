@@ -143,7 +143,7 @@ const SCHOOL: ModuleTierCatalogue = {
       name: "Parent and Student portal",
       summary: "Guardians and students sign in to see results, fees, attendance, and digital ID.",
       minTier: "PLATINUM",
-      routes: ["/app/school/portal", "/app/school/portal-access", "/app/school/portal/announcements"],
+      routes: ["/app/school/portal", "/app/school/portal-access", "/app/school/portal/announcements", "/app/school/portal/assignments"],
     },
     {
       key: "school.guardianMessaging",
