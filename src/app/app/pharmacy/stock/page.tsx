@@ -152,7 +152,7 @@ export default async function Page({
                         </SelectContent>
                       </Select>
                       <Input name="reason" required placeholder="Reason" className="w-44" />
-                      <Button size="sm" variant="outline">Update</Button>
+                      <Button type="submit" size="sm" variant="outline">Update</Button>
                     </form>
                     {canReconcile && (
                       <details className="text-xs">

@@ -117,7 +117,7 @@ export default async function ContractSettingsPage({ searchParams }: { searchPar
               <li key={rule.id} className={`rounded-lg border p-3 text-sm ${rule.active ? "" : "opacity-60"}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div><span className="font-medium">{rule.name}</span> <span className="text-muted-foreground">· priority {rule.priority}</span>{rule.active ? null : <Badge variant="outline" className="ml-2">Inactive</Badge>}</div>
-                  <form action={setApprovalRuleActiveAction}><input type="hidden" name="ruleId" value={rule.id} /><input type="hidden" name="active" value={rule.active ? "false" : "true"} /><Button size="sm" variant="ghost">{rule.active ? "Deactivate" : "Activate"}</Button></form>
+                  <form action={setApprovalRuleActiveAction}><input type="hidden" name="ruleId" value={rule.id} /><input type="hidden" name="active" value={rule.active ? "false" : "true"} /><Button type="submit" size="sm" variant="ghost">{rule.active ? "Deactivate" : "Activate"}</Button></form>
                 </div>
                 <p className="mt-1 text-muted-foreground">Applies to {ruleConditions(rule)}.</p>
                 <ol className="mt-2 flex flex-wrap gap-2">{rule.steps.map((step) => <li key={step.id}><Badge variant="secondary">{step.stepOrder}. {step.name}: {approverName(step)}</Badge></li>)}</ol>

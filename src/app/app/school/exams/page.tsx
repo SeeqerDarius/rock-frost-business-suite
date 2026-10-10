@@ -93,7 +93,7 @@ export default async function SchoolExamsPage({ searchParams }: { searchParams: 
         savedMessage="The exam record is up to date."
         stateMessage="Check the workflow: marks must be within the exam total, only open exams with results can go to moderation, and only moderated exams can be published."
       />
-      <RecordSearch action="/app/school/exams" queryName="studentQ" label="Find a student for result entry" placeholder="Name or admission number" defaultValue={query.studentQ} resultSummary={`Showing ${students.rows.length} of ${students.total} active students`} />
+      <RecordSearch action="/app/school/exams" queryName="studentQ" label="Find a student for result entry" placeholder="Name or admission number" defaultValue={query.studentQ} resultSummary={`Showing ${students.rows.length} of ${students.total} active students`} datasetSize={students.totalWithoutQuery} />
       {!canManage && !canPublish ? <ReadOnlyNotice>Your role can review exams but cannot enter results or publish them.</ReadOnlyNotice> : null}
       {canManage && !canPublish ? <ReadOnlyNotice>You can enter results and submit them for moderation. Publishing requires the exam publishing permission.</ReadOnlyNotice> : null}
       <PrerequisiteNotice

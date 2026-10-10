@@ -202,7 +202,7 @@ const CLOSED = ["TERMINATED", "CANCELLED", "ARCHIVED"];
 export function ObligationActions({ obligation, back, canUpdate }: { obligation: { id: string; status: string; ownerId: string | null; title: string }; back: string; canUpdate: boolean }) {
   if (!canUpdate) return null;
   const simple = (action: string, label: string) => (
-    <form action={updateObligationAction}><input type="hidden" name="obligationId" value={obligation.id} /><input type="hidden" name="action" value={action} /><input type="hidden" name="back" value={back} /><Button size="sm" variant="ghost">{label}</Button></form>
+    <form action={updateObligationAction}><input type="hidden" name="obligationId" value={obligation.id} /><input type="hidden" name="action" value={action} /><input type="hidden" name="back" value={back} /><Button type="submit" size="sm" variant="ghost">{label}</Button></form>
   );
   const withNote = (action: string, label: string, required: boolean) => (
     <EntityDialog trigger={<Button size="sm" variant="ghost">{label}</Button>} title={`${label}: ${obligation.title}`} action={updateObligationAction} submitLabel={label}>
@@ -293,7 +293,7 @@ export function ObligationsTab({ contract, lifecycle, options, permissions, user
                   <TableCell>
                     {canUpdate && milestone.status === "PLANNED" ? (
                       <div className="flex justify-end gap-1">
-                        <form action={setMilestoneStatusAction}><input type="hidden" name="contractId" value={contract.id} /><input type="hidden" name="milestoneId" value={milestone.id} /><input type="hidden" name="status" value="ACHIEVED" /><Button size="sm" variant="ghost">Achieved</Button></form>
+                        <form action={setMilestoneStatusAction}><input type="hidden" name="contractId" value={contract.id} /><input type="hidden" name="milestoneId" value={milestone.id} /><input type="hidden" name="status" value="ACHIEVED" /><Button type="submit" size="sm" variant="ghost">Achieved</Button></form>
                         {(["MISSED", "CANCELLED"] as const).map((status) => (
                           <EntityDialog key={status} trigger={<Button size="sm" variant="ghost">{humanize(status)}</Button>} title={`Mark ${milestone.title} ${status.toLowerCase()}`} action={setMilestoneStatusAction} submitLabel="Save">
                             <input type="hidden" name="contractId" value={contract.id} />
@@ -370,7 +370,7 @@ export function AmendmentsTab({ contract, lifecycle, permissions, userId, canVie
                         <input type="hidden" name="amendmentId" value={amendment.id} />
                       </EntityDialog>
                     ) : null}
-                    {can(PERMISSIONS.CONTRACTS_UPDATE) ? <form action={cancelAmendmentAction}><input type="hidden" name="contractId" value={contract.id} /><input type="hidden" name="amendmentId" value={amendment.id} /><Button size="sm" variant="ghost">Cancel draft</Button></form> : null}
+                    {can(PERMISSIONS.CONTRACTS_UPDATE) ? <form action={cancelAmendmentAction}><input type="hidden" name="contractId" value={contract.id} /><input type="hidden" name="amendmentId" value={amendment.id} /><Button type="submit" size="sm" variant="ghost">Cancel draft</Button></form> : null}
                   </div>
                 ) : null}
               </li>
@@ -529,7 +529,7 @@ export function SignaturesTab({ contract, lifecycle, options, permissions, userI
                     {signature.status === "PENDING" ? (
                       <div className="flex justify-end gap-1">
                         {signature.signerUserId === userId ? <AcknowledgementButtons signatureId={signature.id} back={back} /> : null}
-                        {canUpdate ? <form action={cancelSignatureAction}><input type="hidden" name="contractId" value={contract.id} /><input type="hidden" name="signatureId" value={signature.id} /><Button size="sm" variant="ghost">Cancel</Button></form> : null}
+                        {canUpdate ? <form action={cancelSignatureAction}><input type="hidden" name="contractId" value={contract.id} /><input type="hidden" name="signatureId" value={signature.id} /><Button type="submit" size="sm" variant="ghost">Cancel</Button></form> : null}
                       </div>
                     ) : null}
                   </TableCell>

@@ -99,7 +99,7 @@ export default async function TaxCompliancePage({ searchParams }: { searchParams
                     <p className="text-sm text-muted-foreground">{pack.description}</p>
                   </div>
                   {provisionedPacks.has(pack.key) ? <Badge variant="outline">Applied</Badge> : canManage ? (
-                    <form action={provisionPackAction}><input type="hidden" name="packKey" value={pack.key} /><Button size="sm" variant="outline">Apply pack</Button></form>
+                    <form action={provisionPackAction}><input type="hidden" name="packKey" value={pack.key} /><Button type="submit" size="sm" variant="outline">Apply pack</Button></form>
                   ) : null}
                 </div>
               ))}
@@ -268,7 +268,7 @@ export default async function TaxCompliancePage({ searchParams }: { searchParams
                       <TableCell className="text-xs">{rule.rateCodes.join(", ")}</TableCell>
                       <TableCell className="text-sm">{dateOf(rule.effectiveFrom)} to {dateOf(rule.effectiveTo)}</TableCell>
                       <TableCell><Badge variant={rule.active ? "secondary" : "outline"}>{rule.active ? "Active" : "Inactive"}</Badge></TableCell>
-                      {canManage ? <TableCell className="text-right"><form action={toggleRuleAction}><input type="hidden" name="ruleId" value={rule.id} /><input type="hidden" name="active" value={rule.active ? "false" : "true"} /><Button size="sm" variant="ghost">{rule.active ? "Deactivate" : "Activate"}</Button></form></TableCell> : null}
+                      {canManage ? <TableCell className="text-right"><form action={toggleRuleAction}><input type="hidden" name="ruleId" value={rule.id} /><input type="hidden" name="active" value={rule.active ? "false" : "true"} /><Button type="submit" size="sm" variant="ghost">{rule.active ? "Deactivate" : "Activate"}</Button></form></TableCell> : null}
                     </TableRow>
                   ))}
                 </TableBody>

@@ -107,7 +107,7 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
       <PageHeader
         title="Library"
         description="Catalogue, copy availability, and circulation."
-        actions={canManage ? <>{newBookDialog}{availableBooks.total > 0 && students.total > 0 ? issueDialog : null}</> : undefined}
+        actions={canManage ? <>{newBookDialog}{availableBooks.totalWithoutQuery > 0 && students.totalWithoutQuery > 0 ? issueDialog : null}</> : undefined}
       />
 
       <FormFeedback
@@ -117,8 +117,8 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
         stateMessage="No copy of that book is available, or the loan is already closed."
       />
       <div className="space-y-3">
-        <RecordSearch action={PATH} queryName="studentQ" label="Find a student for a library loan" placeholder="Name or admission number" defaultValue={query.studentQ} hiddenFilters={{ q: query.q, loansQ: query.loansQ, bookQ: query.bookQ, view: showReturned ? "all" : undefined }} resultSummary={`Showing ${students.rows.length} of ${students.total} active students`} />
-        <RecordSearch action={PATH} queryName="bookQ" label="Find a book to issue" placeholder="Title, author, or accession code" defaultValue={query.bookQ} hiddenFilters={{ q: query.q, loansQ: query.loansQ, studentQ: query.studentQ, view: showReturned ? "all" : undefined }} resultSummary={`Showing ${availableBooks.rows.length} of ${availableBooks.total} books with available copies`} />
+        <RecordSearch action={PATH} queryName="studentQ" label="Find a student for a library loan" placeholder="Name or admission number" defaultValue={query.studentQ} hiddenFilters={{ q: query.q, loansQ: query.loansQ, bookQ: query.bookQ, view: showReturned ? "all" : undefined }} resultSummary={`Showing ${students.rows.length} of ${students.total} active students`} datasetSize={students.totalWithoutQuery} />
+        <RecordSearch action={PATH} queryName="bookQ" label="Find a book to issue" placeholder="Title, author, or accession code" defaultValue={query.bookQ} hiddenFilters={{ q: query.q, loansQ: query.loansQ, studentQ: query.studentQ, view: showReturned ? "all" : undefined }} resultSummary={`Showing ${availableBooks.rows.length} of ${availableBooks.total} books with available copies`} datasetSize={availableBooks.totalWithoutQuery} />
       </div>
       {!canManage ? <ReadOnlyNotice>Your role can review the library but cannot add books or manage loans.</ReadOnlyNotice> : null}
 
