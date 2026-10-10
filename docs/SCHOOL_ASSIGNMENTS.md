@@ -147,12 +147,12 @@ Students: `/app/school/portal/assignments`,
 
 ## Pricing
 
-The add-on is presented on `/pricing` under "Optional add-ons" and on
-`/modules/school`. Its price lives only in `AddonPricingPlan` (operator
+The add-on is advertised on `/modules/school`, where its call to action opens a
+School demo enquiry. Its price lives only in `AddonPricingPlan` (operator
 editable at `/app/platform/subscriptions#addon-pricing`, audited). No row is
-seeded: as of 2026-10-10 the owner chose to ship without a price, so the
-public page says "Priced on request" until an operator publishes a confirmed
-amount. Suite prices and contents are unchanged and do not include the add-on.
+seeded: as of 2026-10-10 the owner chose to ship without a price. The add-on's
+price is not shown on `/pricing`. Suite prices and contents are unchanged and
+do not include the add-on.
 
 ## Data and retention
 
@@ -167,8 +167,8 @@ not supported in this release, so no new storage path exists.
   boundaries, multi-select exact match, teacher mark boundaries, attempt policy,
   scaling, release and availability windows, answer-key stripping.
 - `test/school-assignments-access.test.ts`: navigation gating, add-on catalogue,
-  service and action guard coverage, pricing copy ("Starting from", "Priced on
-  request", no seeded add-on price), no AI claims, robots/sitemap, em dash rule.
+  service and action guard coverage, module and pricing page copy, no seeded
+  add-on price, no AI claims, robots/sitemap, em dash rule.
 - `test/integration/tenant-isolation/school-assignments.test.ts` (real
   Postgres): grant and School-module enforcement, cross-tenant isolation for
   assignments, questions, submissions, and inclusion, teacher class scope,
