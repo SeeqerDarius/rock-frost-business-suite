@@ -159,3 +159,14 @@ describe("assignment grading rules", () => {
     for (const bad of ["", "1,000", "0x10", "Infinity", "1e3", "12.", "abc"]) expect(parseStrictNumber(bad)).toBeNull();
   });
 });
+
+describe("published version comparison", () => {
+  it("treats a JSONB round-trip (reordered keys) as unchanged and a real edit as changed", async () => {
+    const { sameQuestionSnapshot } = await import("@/modules/school/assignment-grading");
+    const original = q({});
+    const reordered = Object.fromEntries(Object.entries(original).reverse()) as unknown as VersionQuestion;
+    expect(sameQuestionSnapshot([original], [reordered])).toBe(true);
+    expect(sameQuestionSnapshot([original], [{ ...original, correctOptionIds: ["a"] }])).toBe(false);
+    expect(sameQuestionSnapshot([original], [{ ...original, position: 7 }])).toBe(true);
+  });
+});

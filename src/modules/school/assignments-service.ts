@@ -14,6 +14,7 @@ import {
   isResultReleased,
   normalizeAnswers,
   resolveCountingAttempt,
+  sameQuestionSnapshot,
   scaleToExamMarks,
   studentAvailability,
   toStudentQuestions,
@@ -141,10 +142,6 @@ function questionRowToVersionQuestion(row: {
 
 export function readVersionQuestions(value: Prisma.JsonValue): VersionQuestion[] {
   return Array.isArray(value) ? (value as unknown as VersionQuestion[]) : [];
-}
-
-function snapshotKey(questions: VersionQuestion[]) {
-  return JSON.stringify([...questions].sort((a, b) => a.position - b.position).map((question) => ({ ...question, position: undefined })));
 }
 
 // ---------------------------------------------------------------------------
@@ -370,7 +367,7 @@ export async function hasUnpublishedChanges(organizationId: string, assignmentId
   if (!assignment) return false;
   const questions = await workingCopy(organizationId, assignmentId);
   if (!assignment.currentVersion) return questions.length > 0;
-  return snapshotKey(questions) !== snapshotKey(readVersionQuestions(assignment.currentVersion.questions));
+  return !sameQuestionSnapshot(questions, readVersionQuestions(assignment.currentVersion.questions));
 }
 
 /**
@@ -390,7 +387,7 @@ export async function publishSchoolAssignment(organizationId: string, actorUserI
     if (questions.length === 0) throw new SchoolStateError("Add at least one question before publishing.", "no-questions");
     wrapDefinitionError(() => questions.forEach((question) => validateQuestionDefinition(question)));
     const current = assignment.currentVersionId ? await tx.schoolAssignmentVersion.findUnique({ where: { id: assignment.currentVersionId } }) : null;
-    if (current && snapshotKey(readVersionQuestions(current.questions)) === snapshotKey(questions) && assignment.status === "PUBLISHED") {
+    if (current && sameQuestionSnapshot(readVersionQuestions(current.questions), questions) && assignment.status === "PUBLISHED") {
       throw new SchoolStateError("There are no question changes to publish.", "no-changes");
     }
     const latest = await tx.schoolAssignmentVersion.findFirst({ where: { assignmentId: assignment.id }, orderBy: { version: "desc" } });

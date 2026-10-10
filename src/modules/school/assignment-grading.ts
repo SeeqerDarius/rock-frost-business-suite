@@ -380,3 +380,19 @@ export function teacherDisplayState(params: { status: string; availableFrom: Dat
   if (params.now.getTime() <= params.dueAt.getTime()) return "Open";
   return "Past due";
 }
+
+/** JSON with object keys sorted, so a snapshot read back from Postgres JSONB (which reorders keys) compares equal to the same questions built in memory. */
+export function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).filter((key) => record[key] !== undefined).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/** Whether two question sets are the same content in the same order, ignoring key order and stored position numbers. */
+export function sameQuestionSnapshot(a: VersionQuestion[], b: VersionQuestion[]): boolean {
+  const key = (questions: VersionQuestion[]) => canonicalJson([...questions].sort((x, y) => x.position - y.position).map((question) => ({ ...question, position: undefined })));
+  return key(a) === key(b);
+}
