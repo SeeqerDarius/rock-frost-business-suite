@@ -121,10 +121,17 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
 
   return (
     <div className="mx-auto max-w-screen-2xl space-y-6">
+      {/*
+        New invoice takes the same gate the empty state below already applies
+        to this very dialog, and that its sibling already applies to itself.
+        Without it the header offered "New invoice" directly above a notice
+        saying setup was not finished, and the dialog opened on a student
+        select and a year select with nothing in either.
+      */}
       <PageHeader
         title="Fees & Payments"
         description="Student invoices, discounts, receipts, and arrears."
-        actions={<>{newInvoiceDialog}{campuses.length > 0 && years.length > 0 ? newStructureDialog : null}</>}
+        actions={<>{students.totalWithoutQuery > 0 && years.length > 0 ? newInvoiceDialog : null}{campuses.length > 0 && years.length > 0 ? newStructureDialog : null}</>}
       />
 
       <FormFeedback
@@ -133,14 +140,17 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
         savedMessage={query.issued !== undefined ? `${query.issued} invoice${query.issued === "1" ? " was" : "s were"} issued${query.skipped && query.skipped !== "0" ? `; ${query.skipped} already-billed student${query.skipped === "1" ? " was" : "s were"} skipped` : ""}.` : "The fee record is up to date."}
         stateMessage="Check the amounts: a discount cannot exceed the invoice amount, and a payment cannot exceed the outstanding balance."
       />
-      <RecordSearch action={PATH} queryName="studentQ" label="Find a student for an invoice" placeholder="Name or admission number" defaultValue={query.studentQ} hiddenFilters={{ q: query.q, status: statusFilter, page: query.page }} resultSummary={`Showing ${students.rows.length} of ${students.total} students`} />
+      <RecordSearch action={PATH} queryName="studentQ" label="Find a student for an invoice" placeholder="Name or admission number" defaultValue={query.studentQ} hiddenFilters={{ q: query.q, status: statusFilter, page: query.page }} resultSummary={`Showing ${students.rows.length} of ${students.total} students`} datasetSize={students.totalWithoutQuery} />
       {query.posting === "failed" ? <div role="status" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">The fee payment or refund was recorded, but its Accounting entry did not post. Use the retry action beside that item.</div> : null}
       {query.posting === "complete" ? <div role="status" className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">Accounting posting is up to date.</div> : null}
       {query.error === "posting-not-retryable" ? <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">That payment is unavailable for posting. Refresh the fee list and check its current status.</div> : null}
       {query.error === "refund-posting-not-retryable" ? <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">That refund is unavailable for posting. Refresh the fee list and check its current status.</div> : null}
       <PrerequisiteNotice
         items={[
-          { satisfied: students.total > 0, label: "Admit a student", href: "/app/school/students" },
+          // Not students.total: that counts what the search matched, so a
+          // search for a name nobody has used to claim the school had no
+          // students at all and demand they admit one.
+          { satisfied: students.totalWithoutQuery > 0, label: "Admit a student", href: "/app/school/students" },
           { satisfied: years.length > 0, label: "Create an academic year", href: "/app/school/academic-periods" },
         ]}
       />
@@ -217,7 +227,7 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
           icon={Receipt}
           title="No fee invoices yet"
           description="Issue an invoice to a single student, or create a fee structure to bill a whole class or campus at once."
-          action={students.total > 0 && years.length > 0 ? newInvoiceDialog : undefined}
+          action={students.totalWithoutQuery > 0 && years.length > 0 ? newInvoiceDialog : undefined}
         />
       ) : (
         <SectionCard title="Invoices" description={`${invoicePage.total} invoice${invoicePage.total === 1 ? "" : "s"}, newest first.`}>

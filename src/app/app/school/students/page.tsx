@@ -56,6 +56,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENTS_MANAGE);
   const statusFilter = STATUS_FILTERS.find((status) => status === query.status);
+  const studentsFiltered = Boolean(query.q?.trim() || statusFilter);
   const requestedPage = query.page && /^\d{1,6}$/.test(query.page) ? Number(query.page) : 1;
   const [studentPage, guardians, campuses, guardianPhotoIds] = await Promise.all([
     listSchoolStudentPage(tenant.organizationId, { query: query.q, status: statusFilter, page: requestedPage }),
@@ -130,7 +131,16 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
           empty state sits inside the tab so the panel is never blank.
         */}
         <TabsContent value="students" className="space-y-6">
-          {studentPage.total === 0 ? (
+          {/*
+            Not a bare `total === 0`: that total is the count AFTER the search
+            and status filter, so a search for a name nobody has claimed the
+            school had no students at all, replaced the list with "No students
+            yet", and took the search box away with it. The only way back was
+            to edit the URL. The empty state is for a school with no students;
+            a filter that matched nothing keeps the card, which already says
+            "No students match this search" and still offers Clear.
+          */}
+          {studentPage.total === 0 && !studentsFiltered ? (
             <EmptyState
               icon={Users}
               title="No students yet"
@@ -138,14 +148,14 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
               action={canManage && campuses.length > 0 ? newStudentDialog : undefined}
             />
           ) : (
-          <SectionCard title="Students" description={`${studentPage.total} student${studentPage.total === 1 ? "" : "s"} on record.`}>
+          <SectionCard title="Students" description={studentsFiltered ? `${studentPage.total} matching student${studentPage.total === 1 ? "" : "s"}.` : `${studentPage.total} student${studentPage.total === 1 ? "" : "s"} on record.`}>
             <div className="space-y-4">
               <RecordSearch
                 action={PATH}
                 label="Search students"
                 placeholder="Name or admission number"
                 defaultValue={query.q}
-                isFiltered={Boolean(query.q || statusFilter)}
+                isFiltered={studentsFiltered}
                 resultSummary={`Showing ${students.length} of ${studentPage.total}`}
                 filters={
                   <div className="w-40 space-y-1.5">

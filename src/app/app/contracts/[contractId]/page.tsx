@@ -206,7 +206,7 @@ export default async function ContractDetailPage({ params, searchParams }: { par
                     <TableCell className="text-sm">{party.email ?? "-"}{party.phone ? <div className="text-xs text-muted-foreground">{party.phone}</div> : null}</TableCell>
                     <TableCell className="text-xs">{[party.taxId && `Tax ${party.taxId}`, party.registrationNumber && `Reg ${party.registrationNumber}`].filter(Boolean).join(" · ") || "-"}</TableCell>
                     <TableCell className="text-sm">{party.signatoryName ? `${party.signatoryName}${party.signatoryTitle ? `, ${party.signatoryTitle}` : ""}` : "-"}</TableCell>
-                    {canEdit ? <TableCell className="text-right"><form action={removePartyAction}><input type="hidden" name="contractId" value={contract.id} /><input type="hidden" name="partyId" value={party.id} /><Button size="sm" variant="ghost" aria-label={`Remove ${party.name}`}><Trash2 /></Button></form></TableCell> : null}
+                    {canEdit ? <TableCell className="text-right"><form action={removePartyAction}><input type="hidden" name="contractId" value={contract.id} /><input type="hidden" name="partyId" value={party.id} /><Button type="submit" size="sm" variant="ghost" aria-label={`Remove ${party.name}`}><Trash2 /></Button></form></TableCell> : null}
                   </TableRow>
                 ))}</TableBody>
               </Table>
@@ -274,7 +274,7 @@ export default async function ContractDetailPage({ params, searchParams }: { par
               <details key={link.id} className="rounded-lg border p-3">
                 <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2"><span className="font-medium">{link.clause.name}</span><span className="flex items-center gap-2 text-xs text-muted-foreground">{link.clause.code} v{link.clause.version} · {link.clause.category}<Badge variant="outline">{humanize(link.clause.usage)}</Badge></span></summary>
                 <p className="mt-3 whitespace-pre-wrap text-sm">{link.clause.body}</p>
-                {canEdit ? <form action={detachClauseAction} className="mt-2"><input type="hidden" name="contractId" value={contract.id} /><input type="hidden" name="linkId" value={link.id} /><Button size="sm" variant="ghost">Remove from contract</Button></form> : null}
+                {canEdit ? <form action={detachClauseAction} className="mt-2"><input type="hidden" name="contractId" value={contract.id} /><input type="hidden" name="linkId" value={link.id} /><Button type="submit" size="sm" variant="ghost">Remove from contract</Button></form> : null}
               </details>
             ))}
           </CardContent>
@@ -365,7 +365,7 @@ export default async function ContractDetailPage({ params, searchParams }: { par
                   <TableRow key={grant.id}>
                     <TableCell>{grant.userId ? `Person: ${memberName(grant.userId)}` : grant.roleId ? `Role: ${roleName(grant.roleId)}` : `Department: ${grant.department}`}</TableCell>
                     <TableCell className="text-sm">{format.dateTime(grant.createdAt)}</TableCell>
-                    {canManageAccess ? <TableCell className="text-right"><form action={removeAccessGrantAction}><input type="hidden" name="contractId" value={contract.id} /><input type="hidden" name="grantId" value={grant.id} /><Button size="sm" variant="ghost">Revoke</Button></form></TableCell> : null}
+                    {canManageAccess ? <TableCell className="text-right"><form action={removeAccessGrantAction}><input type="hidden" name="contractId" value={contract.id} /><input type="hidden" name="grantId" value={grant.id} /><Button type="submit" size="sm" variant="ghost">Revoke</Button></form></TableCell> : null}
                   </TableRow>
                 ))}</TableBody>
               </Table>

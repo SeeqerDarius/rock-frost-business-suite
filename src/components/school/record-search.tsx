@@ -9,7 +9,19 @@ import { Label } from "@/components/ui/label";
  * makes the result URL shareable. The page applies search in its tenant-scoped
  * server query.
  */
-export function RecordSearch({ action, placeholder, label, defaultValue, resultSummary, filters, isFiltered, queryName = "q", hiddenFilters = {} }: { action: string; placeholder: string; label: string; defaultValue?: string; resultSummary: string; filters?: React.ReactNode; isFiltered?: boolean; queryName?: string; hiddenFilters?: Record<string, string | undefined> }) {
+export function RecordSearch({ action, placeholder, label, defaultValue, resultSummary, filters, isFiltered, queryName = "q", hiddenFilters = {}, datasetSize }: { action: string; placeholder: string; label: string; defaultValue?: string; resultSummary: string; filters?: React.ReactNode; isFiltered?: boolean; queryName?: string; hiddenFilters?: Record<string, string | undefined>; datasetSize?: number }) {
+  const searchIsActive = isFiltered ?? Boolean(defaultValue?.trim());
+  /**
+   * A search over nothing is noise, and worse than noise next to an empty
+   * state: School pages were offering "Find a student" with "Showing 0 of 0
+   * students" directly above the notice telling you to go and admit one.
+   *
+   * Pass `datasetSize` as the count BEFORE the search is applied, never the
+   * matched count. The matched count is zero exactly when a search found
+   * nothing, which is the one time the search must stay on screen so it can
+   * be corrected or cleared.
+   */
+  if (datasetSize === 0 && !searchIsActive) return null;
   const clearParams = new URLSearchParams();
   for (const [key, value] of Object.entries(hiddenFilters)) if (value) clearParams.set(key, value);
   const clearHref = clearParams.size ? `${action}?${clearParams.toString()}` : action;
@@ -26,7 +38,7 @@ export function RecordSearch({ action, placeholder, label, defaultValue, resultS
           <Search />
           Search
         </Button>
-        {isFiltered ?? defaultValue ? (
+        {searchIsActive ? (
           <Button size="sm" variant="ghost" nativeButton={false} render={<Link href={clearHref} />}>
             <X />
             Clear

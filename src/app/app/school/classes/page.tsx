@@ -133,7 +133,7 @@ export default async function SchoolClassesPage({ searchParams }: { searchParams
         savedMessage="The class, subject, or enrollment is saved."
         stateMessage="The class is full, or the student, class, and academic year do not belong to the campus you selected."
       />
-      <RecordSearch action="/app/school/classes" queryName="studentQ" label="Find a student for enrollment" placeholder="Name or admission number" defaultValue={query.studentQ} resultSummary={`Showing ${students.rows.length} of ${students.total} active students`} />
+      <RecordSearch action="/app/school/classes" queryName="studentQ" label="Find a student for enrollment" placeholder="Name or admission number" defaultValue={query.studentQ} resultSummary={`Showing ${students.rows.length} of ${students.total} active students`} datasetSize={students.totalWithoutQuery} />
       {!canDoAnything ? <ReadOnlyNotice>Your role can review classes and subjects but cannot change them or enroll students.</ReadOnlyNotice> : null}
       <PrerequisiteNotice
         items={[

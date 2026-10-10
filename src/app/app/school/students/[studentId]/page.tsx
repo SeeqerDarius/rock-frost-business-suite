@@ -355,7 +355,7 @@ export default async function StudentProfilePage({
                         name="reason"
                         value="Revoked by authorized user"
                       />
-                      <Button size="sm" variant="destructive">
+                      <Button type="submit" size="sm" variant="destructive">
                         Revoke
                       </Button>
                     </form>
@@ -364,7 +364,7 @@ export default async function StudentProfilePage({
               ))}
               {canId ? (
                 <form action={issueStudentIdAction.bind(null, student.id)}>
-                  <Button>
+                  <Button type="submit">
                     <IdCard />
                     Issue new digital ID
                   </Button>

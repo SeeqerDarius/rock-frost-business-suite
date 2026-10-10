@@ -260,7 +260,17 @@ export async function listSchoolStudentChoices(organizationId: string, input: { 
       take,
     }),
   ]);
-  return { rows, total, take };
+  /**
+   * `total` counts what the query matched, which is not the same question as
+   * "does this school have any students". Callers need both, and conflating
+   * them tells a bursar whose search found nothing that they must "admit a
+   * student" first. Costs nothing when no query is active, since the two
+   * counts are then the same.
+   */
+  const totalWithoutQuery = terms.length
+    ? await db.schoolStudent.count({ where: { organizationId, ...(input.activeOnly ? { status: "ACTIVE" } : {}) } })
+    : total;
+  return { rows, total, totalWithoutQuery, take };
 }
 
 export async function listSchoolStudentPage(organizationId: string, input: { query?: string; status?: SchoolStudentStatus; page?: number; pageSize?: number } = {}) {
@@ -1461,7 +1471,17 @@ export async function listSchoolLibraryBookChoices(organizationId: string, input
     db.schoolLibraryBook.count({ where }),
     db.schoolLibraryBook.findMany({ where, select: { id: true, title: true, availableCopies: true }, orderBy: [{ title: "asc" }, { id: "asc" }], take }),
   ]);
-  return { rows, total, take };
+  /**
+   * As with student choices: `total` is what the search matched, which
+   * answers a different question from "is there any lendable copy in this
+   * library at all". The Library page needs the second one to decide whether
+   * issuing a loan is possible, or a search for a title nobody owns removes
+   * the Issue loan action entirely.
+   */
+  const totalWithoutQuery = query
+    ? await db.schoolLibraryBook.count({ where: { organizationId, availableCopies: { gt: 0 } } })
+    : total;
+  return { rows, total, totalWithoutQuery, take };
 }
 export async function listSchoolLibraryBookPage(organizationId: string, input: { query?: string; page?: number; pageSize?: number } = {}) {
   const pageSize = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.pageSize) ? input.pageSize! : 50)));
