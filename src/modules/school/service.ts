@@ -514,6 +514,13 @@ export async function recordSchoolFeePayment(organizationId: string, invoiceId: 
   });
 }
 
+export function getSchoolFeePaymentForPostingRetry(organizationId: string, paymentId: string) {
+  return db.schoolFeePayment.findFirst({
+    where: { id: paymentId, organizationId, refundedAt: null, postingStatus: { in: ["PENDING", "FAILED", "NOT_REQUIRED"] } },
+    select: { id: true, amount: true, receivedAt: true, receiptNumber: true },
+  });
+}
+
 export function listSchoolFeeStructures(organizationId: string) {
   return db.schoolFeeStructure.findMany({
     where: { organizationId },

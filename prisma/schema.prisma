@@ -289,6 +289,13 @@ enum FleetPaymentPostingStatus {
   FAILED
 }
 
+enum SchoolFeePaymentPostingStatus {
+  PENDING
+  POSTED
+  FAILED
+  NOT_REQUIRED
+}
+
 enum FleetSalesTargetPeriod {
   DAILY
   WEEKLY
@@ -574,6 +581,7 @@ model Organization {
   branches                        Branch[]
   roles                           Role[]
   organizationModules             OrganizationModule[]
+  moduleBrandings                 OrganizationModuleBranding[]
   auditLogs                       AuditLog[]
   notifications                   Notification[]
   smsMessages                     SmsMessage[]
@@ -1012,6 +1020,26 @@ model OrganizationModule {
 
   @@unique([organizationId, moduleId])
   @@index([moduleId])
+}
+
+/// Tenant-owned presentation overrides for a subscribed business module.
+/// Omitted fields inherit the organization's existing branding and theme.
+model OrganizationModuleBranding {
+  id             String   @id @default(cuid())
+  organizationId String
+  moduleKey      String
+  displayName    String?
+  logoUrl        String?  @db.Text
+  primaryColor   String?  @db.VarChar(7)
+  accentColor    String?  @db.VarChar(7)
+  surfaceColor   String?  @db.VarChar(7)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, moduleKey])
+  @@index([organizationId])
 }
 
 model ModuleRequest {
@@ -4353,6 +4381,13 @@ enum PayrollRunStatus {
   CANCELLED
 }
 
+enum PayrollRunPostingStatus {
+  PENDING
+  POSTED
+  FAILED
+  NOT_REQUIRED
+}
+
 model PayrollCompensation {
   id             String   @id @default(cuid())
   organizationId String
@@ -4370,21 +4405,23 @@ model PayrollCompensation {
 }
 
 model PayrollRun {
-  id             String           @id @default(cuid())
+  id             String                  @id @default(cuid())
   organizationId String
   periodStart    DateTime
   periodEnd      DateTime
   payDate        DateTime
-  status         PayrollRunStatus @default(DRAFT)
+  status         PayrollRunStatus        @default(DRAFT)
+  postingStatus  PayrollRunPostingStatus @default(PENDING)
   createdById    String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdBy    User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
   payslips     PayrollPayslip[]
 
   @@index([organizationId, status])
+  @@index([organizationId, postingStatus])
 }
 
 model PayrollPayslip {
@@ -5617,16 +5654,17 @@ model SchoolStudentDocument {
 }
 
 model SchoolFeePayment {
-  id             String             @id @default(cuid())
+  id             String                        @id @default(cuid())
   organizationId String
   invoiceId      String
   studentId      String
   receiptNumber  String
-  amount         Decimal            @db.Decimal(12, 2)
+  amount         Decimal                       @db.Decimal(12, 2)
   method         HotelPaymentMethod
   reference      String?
-  receivedAt     DateTime           @default(now())
+  receivedAt     DateTime                      @default(now())
   refundedAt     DateTime?
+  postingStatus  SchoolFeePaymentPostingStatus @default(PENDING)
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoice      SchoolFeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
@@ -5635,6 +5673,7 @@ model SchoolFeePayment {
   @@unique([organizationId, receiptNumber])
   @@index([organizationId, receivedAt])
   @@index([invoiceId])
+  @@index([organizationId, postingStatus])
 }
 
 model SchoolExam {

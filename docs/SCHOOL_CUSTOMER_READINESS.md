@@ -13,6 +13,18 @@ exams and publication, timetables, library loans, transport assignments,
 education-specific payroll adjustments, settings, reports, RBAC, and
 tenant-isolation coverage.
 
+School staff access is managed from the School staff directory. Administrators
+can invite staff into the organization using roles that carry School
+permissions, see active, pending, and suspended counts, resend or revoke
+pending invitations, and change roles or suspend active accounts. This is a
+staff workflow. A separate student or guardian self-service portal and its
+class-grouped account-access management are not implemented in this module.
+
+Authorized School staff can edit a student's name, date of birth, gender, and
+admission date from the student list. The edit uses the displayed record
+version to reject stale changes and leaves admission number, campus, status,
+enrollment, and medical details untouched.
+
 ## Customer-readiness tranche 1 — lifecycle and repeatable billing
 
 Migration `20260810103000_school_customer_readiness_foundation` adds:
@@ -39,6 +51,25 @@ transaction advisory locks for bulk issuance and payment receipt creation.
 School actions preserve stable rejection codes for customer-readable feedback,
 bulk issuance reports issued/skipped counts, and student status claims reject
 concurrent stale transitions.
+
+## Customer-readiness tranche 3 — fee-payment Accounting delivery
+
+School fee payments remain recorded and receipted even if the optional
+Accounting posting fails. Each payment now carries an Accounting delivery
+status (`PENDING`, `POSTED`, `FAILED`, or `NOT_REQUIRED`). Failed or previously
+unposted payments can be retried by a user with School fee-management access;
+the retry reloads the payment within the active organization and uses the same
+idempotent Accounting source identity as the original attempt. When Accounting
+is not active, the status is `NOT_REQUIRED` and can be retried after Accounting
+is enabled. The fee page shows the status beside its receipt and explains a
+failed posting without implying that the payment itself was lost.
+
+The service posting contract remains source-owned: School records the payment
+first, then calls Accounting's public revenue helper. Accounting failure does
+not roll back a real school collection. Migration
+`20261001090000_school_fee_accounting_retry` adds the status and retry index;
+existing payments start as `PENDING` so their state can be reconciled through
+the same idempotent retry path.
 
 ## Customer-readiness tranche 2 — capacity, lifecycle controls, teacher scoping, and UX fixes
 
@@ -88,8 +119,8 @@ schema change:
 
 ### Student administration
 
-- Complete admission application, document, emergency-contact, profile-edit,
-  transfer, promotion, and academic-year rollover workflows.
+- Complete admission application, document, emergency-contact, transfer,
+  promotion, and academic-year rollover workflows.
 - Add bulk import/export with preview, validation, and recoverable error reports.
 - Add printable student profiles and enrollment history.
 
@@ -97,8 +128,9 @@ schema change:
 
 - Add fee-structure and bulk-issuance UI, scholarships, credits, refunds,
   reversals, statements, receipt printing, cashier reconciliation, and arrears
-  aging.
-- Add Accounting posting through the Accounting module's public service.
+  aging. Basic fee-structure issuance, receipt numbers, and Accounting posting
+  with visible retry state are delivered; the listed finance workflows remain
+  open.
 
 ### Academics
 
@@ -114,7 +146,11 @@ schema change:
 - Add separately permissioned health/clinic workflows before storing structured
   health records.
 - Design guardian/student self-service as a separate authenticated surface with
-  its own threat model.
+  its own threat model. Student and guardian records do not currently link to
+  login accounts; define that identity and consent model before adding portal
+  access management. When implemented, organize access records by campus and
+  active class enrollment so staff do not have to scan a school-wide student
+  list.
 
 ## Release gates
 

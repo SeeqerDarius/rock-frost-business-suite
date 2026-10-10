@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { requireCurrentTenant } from "@/lib/tenant";
 import { isPlatformOperator } from "@/lib/auth/permissions";
@@ -9,6 +9,7 @@ import { cuid, longText, parseWithSchema } from "@/lib/validation";
 import { moderateCustomerFeedback } from "@/lib/customer-feedback";
 import { db } from "@/lib/db";
 import { logAuditEvent } from "@/lib/audit";
+import { PUBLIC_MARKETING_CACHE_TAG } from "@/lib/platform-marketing";
 
 const schema = z.object({
   feedbackId: cuid,
@@ -43,6 +44,7 @@ export async function moderateFeedbackAction(formData: FormData): Promise<void> 
   } catch {
     redirect("/app/platform/feedback?error=publication");
   }
+  updateTag(PUBLIC_MARKETING_CACHE_TAG);
   revalidatePath("/app/platform/feedback");
   revalidatePath("/app/feedback");
   revalidatePath("/");

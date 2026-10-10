@@ -16,6 +16,8 @@ import { db } from "@/lib/db";
 import { updateOfflineAccessSettings, uploadCompanyLogo, updateWorkspaceSettings } from "./actions";
 import { getSettlementProfile, settlementStatusLabel } from "@/lib/payments/operational";
 import { OFFLINE_SUPPORTED_MODULES } from "@/lib/pwa/policy";
+import { ModuleBrandingEditor } from "@/components/theme/module-branding-editor";
+import { getModule } from "@/platform/modules/registry";
 
 const ERROR_MESSAGES: Record<string, string> = {
   image: "Choose a JPG, PNG, or WebP logo no larger than 1 MB.",
@@ -44,6 +46,8 @@ export default async function OrganizationSettingsPage({ searchParams }: {
     where: { id: tenant.organizationId },
     select: { name: true, metadata: true, logoUrl: true },
   });
+  const moduleBrandings = await db.organizationModuleBranding.findMany({ where: { organizationId: tenant.organizationId, moduleKey: { in: tenant.enabledModuleKeys } } });
+  const moduleBrandingMap = new Map(moduleBrandings.map((branding) => [branding.moduleKey, branding]));
   const metadata = organization.metadata;
   const settings = (metadata && typeof metadata === "object" && !Array.isArray(metadata)
     ? (metadata as Record<string, unknown>).workspaceSettings
@@ -78,6 +82,21 @@ export default async function OrganizationSettingsPage({ searchParams }: {
           <AlertDescription>{ERROR_MESSAGES[error]}</AlertDescription>
         </Alert>
       ) : null}
+      {error === "module-branding" || error === "module" ? <Alert variant="destructive"><TriangleAlert /><AlertTitle>Module branding was not saved</AlertTitle><AlertDescription>Check the display name, color value, logo format, and 1 MB file limit, then try again.</AlertDescription></Alert> : null}
+      {saved === "module-branding" ? <Alert><CheckCircle2 /><AlertTitle>Module branding saved</AlertTitle><AlertDescription>Your module identity now appears in its workspace and module switcher.</AlertDescription></Alert> : null}
+
+      <Card>
+        <CardHeader><div className="flex items-center gap-2"><Palette className="size-5 text-muted-foreground" /><CardTitle>Module identities</CardTitle></div><CardDescription>Give each subscribed module its own display name, logo, and primary color. These settings do not change your organization’s account name or another module’s identity.</CardDescription></CardHeader>
+        <CardContent className="space-y-5">
+          {tenant.enabledModuleKeys.map((moduleKey) => {
+            const moduleConfig = getModule(moduleKey);
+            if (!moduleConfig) return null;
+            const moduleBrand = moduleBrandingMap.get(moduleKey);
+            return <section key={moduleKey} className="rounded-xl border p-4"><h3 className="mb-4 text-base font-semibold">{moduleConfig.name}</h3><ModuleBrandingEditor moduleKey={moduleKey} moduleName={moduleConfig.name} displayName={moduleBrand?.displayName ?? ""} logoUrl={moduleBrand?.logoUrl ?? null} primaryColor={moduleBrand?.primaryColor ?? ""} accentColor={moduleBrand?.accentColor ?? ""} surfaceColor={moduleBrand?.surfaceColor ?? ""} organizationName={organization.name} /></section>;
+          })}
+          {tenant.enabledModuleKeys.length === 0 ? <p className="text-sm text-muted-foreground">There are no active modules to customize.</p> : null}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader><div className="flex items-center gap-2"><CreditCard className="size-5 text-muted-foreground" /><CardTitle>Payments and online collections</CardTitle></div><CardDescription>Connect the organization bank account that should receive operational payments. Rock Frost uses its secure Paystack integration to route collections. Your Paystack credentials are never required.</CardDescription></CardHeader>
@@ -152,7 +171,7 @@ export default async function OrganizationSettingsPage({ searchParams }: {
             <Palette className="size-5 text-muted-foreground" />
             <CardTitle>Interface theme</CardTitle>
           </div>
-          <CardDescription>Applies to every member&apos;s session in this workspace the next time they load the app.</CardDescription>
+          <CardDescription>Default appearance for members who have not chosen their own theme. Anyone can switch light or dark mode from the header button; that choice stays on their device.</CardDescription>
         </CardHeader>
         <CardContent>
           <form action={updateWorkspaceSettings} className="space-y-4">

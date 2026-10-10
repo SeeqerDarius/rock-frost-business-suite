@@ -6,6 +6,7 @@ export interface OrganizationBranding {
   logoUrl: string | null;
   name: string | null;
   workspaceStatusLabel: string | null;
+  modules?: Record<string, { displayName: string | null; logoUrl: string | null; primaryColor: string | null; accentColor: string | null; surfaceColor: string | null }>;
 }
 
 const OrganizationBrandingContext = createContext<OrganizationBranding>({ logoUrl: null, name: null, workspaceStatusLabel: null });

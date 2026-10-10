@@ -53,8 +53,11 @@ const DEFAULT_ACCOUNTS: { code: string; name: string; type: AccountingAccountTyp
   { code: "2110", name: "NHIL Payable", type: "LIABILITY" },
   { code: "2120", name: "GETFund Levy Payable", type: "LIABILITY" },
   { code: "2130", name: "Withholding Tax Payable", type: "LIABILITY" },
+  { code: "2220", name: "Payroll Deductions Payable", type: "LIABILITY" },
+  { code: "2230", name: "Payroll Net Payable", type: "LIABILITY" },
   { code: "4000", name: "Revenue", type: "REVENUE" },
   { code: "5000", name: "General Expenses", type: "EXPENSE" },
+  { code: "5190", name: "Payroll Salaries and Wages", type: "EXPENSE" },
 ];
 
 export async function ensureDefaultAccounts(organizationId: string) {

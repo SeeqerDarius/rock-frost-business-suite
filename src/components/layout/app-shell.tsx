@@ -10,6 +10,7 @@ import { useOrganizationBranding } from "@/components/theme/organization-brandin
 import { SidebarNav } from "@/components/navigation/sidebar-nav";
 import { ModuleLauncher } from "@/components/navigation/module-launcher";
 import { UserMenu } from "@/components/navigation/user-menu";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { OrganizationSwitcher } from "@/components/navigation/organization-switcher";
 import { getActiveNavigationHref } from "@/components/navigation/active-navigation";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { TourRunner } from "@/components/onboarding/tour-runner";
 import { cn } from "@/lib/utils";
 import { getModule } from "@/platform/modules/registry";
+import { getContrastingForeground } from "@/lib/module-branding";
 import type { ModuleNavItem } from "@/types/module";
 
 interface AppShellProps {
@@ -46,19 +48,18 @@ interface AppShellProps {
  * platform operators always see the Rock Frost brand). Falls back to the
  * standard `Logo` when the organization hasn't uploaded one.
  */
-function WorkspaceLogo({ homeHref, compact, hasOrganization }: { homeHref: string; compact?: boolean; hasOrganization: boolean }) {
-  const branding = useOrganizationBranding();
-  if (!hasOrganization || !branding.logoUrl) {
+function WorkspaceLogo({ homeHref, compact, hasOrganization, logoUrl, name }: { homeHref: string; compact?: boolean; hasOrganization: boolean; logoUrl: string | null; name: string | null }) {
+  if (!hasOrganization || !logoUrl) {
     return <Logo href={homeHref} compact={compact} />;
   }
   return (
     <Link
       href={homeHref as never}
-      aria-label={compact ? (branding.name ? `${branding.name} home` : "Workspace home") : undefined}
+      aria-label={compact ? (name ? `${name} home` : "Workspace home") : undefined}
       className="flex min-w-0 items-center gap-2 font-semibold tracking-tight"
     >
-      <Image src={branding.logoUrl} alt="" width={30} height={30} unoptimized className="size-[30px] shrink-0 rounded-lg object-contain" />
-      {!compact ? <span className="truncate">{branding.name ?? "Workspace"}</span> : null}
+      <Image src={logoUrl} alt="" width={30} height={30} unoptimized className="size-[30px] shrink-0 rounded-lg object-contain" />
+      {!compact ? <span className="truncate">{name ?? "Workspace"}</span> : null}
     </Link>
   );
 }
@@ -95,6 +96,36 @@ export function AppShell({
   );
   const pathname = usePathname();
   const branding = useOrganizationBranding();
+  const moduleBrand = moduleKey ? branding.modules?.[moduleKey] : undefined;
+  const activeName = moduleBrand?.displayName || branding.name;
+  const activeLogo = moduleBrand?.logoUrl || branding.logoUrl;
+  const primaryForeground = moduleBrand?.primaryColor ? getContrastingForeground(moduleBrand.primaryColor) : undefined;
+  const accentForeground = moduleBrand?.accentColor ? getContrastingForeground(moduleBrand.accentColor) : undefined;
+  const surfaceForeground = moduleBrand?.surfaceColor ? getContrastingForeground(moduleBrand.surfaceColor) : undefined;
+  const themeStyle = moduleBrand?.primaryColor ? {
+    "--primary": moduleBrand.primaryColor,
+    "--primary-foreground": primaryForeground,
+    "--ring": moduleBrand.primaryColor,
+    "--sidebar-primary": moduleBrand.primaryColor,
+    "--sidebar-primary-foreground": primaryForeground,
+  } as React.CSSProperties : {};
+  if (moduleBrand?.accentColor) Object.assign(themeStyle, {
+    "--accent": moduleBrand.accentColor,
+    "--accent-foreground": accentForeground,
+    "--secondary": moduleBrand.accentColor,
+    "--secondary-foreground": accentForeground,
+  });
+  if (moduleBrand?.surfaceColor) Object.assign(themeStyle, {
+    "--background": moduleBrand.surfaceColor,
+    "--card": moduleBrand.surfaceColor,
+    "--popover": moduleBrand.surfaceColor,
+    "--sidebar": moduleBrand.surfaceColor,
+    "--foreground": surfaceForeground,
+    "--muted-foreground": surfaceForeground,
+    "--card-foreground": surfaceForeground,
+    "--popover-foreground": surfaceForeground,
+    "--sidebar-foreground": surfaceForeground,
+  });
   const activeHref = getActiveNavigationHref(pathname, navigation);
   const currentItem = navigation.find((item) => item.href === activeHref);
 
@@ -104,7 +135,7 @@ export function AppShell({
   }
 
   return (
-    <div className="flex min-h-dvh bg-muted/20">
+    <div style={themeStyle} data-module-branding={moduleKey} className="flex min-h-dvh bg-muted/20">
       <aside
         aria-label={`${sectionLabel} sidebar`}
         data-collapsed={sidebarCollapsed}
@@ -114,12 +145,12 @@ export function AppShell({
         )}
       >
         <div data-tour="home-logo" className={cn("flex h-16 items-center border-b px-4", sidebarCollapsed && "justify-center px-2")}>
-          <WorkspaceLogo homeHref={homeHref} compact={sidebarCollapsed} hasOrganization={Boolean(organization)} />
+          <WorkspaceLogo homeHref={homeHref} compact={sidebarCollapsed} hasOrganization={Boolean(organization)} logoUrl={activeLogo} name={activeName} />
         </div>
         {organization && !sidebarCollapsed ? (
           <OrganizationSwitcher currentOrganizationId={organization.organizationId} memberships={organization.memberships} />
         ) : null}
-        {!sidebarCollapsed ? <p className="px-5 pb-2 pt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">{sectionLabel}</p> : null}
+        {!sidebarCollapsed ? <p className="px-5 pb-2 pt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">{moduleBrand?.displayName || sectionLabel}</p> : null}
         <div data-tour="sidebar-nav" className="min-h-0 flex-1 overflow-y-auto py-1">
           <SidebarNav items={navigation} collapsed={sidebarCollapsed} tourTargets />
         </div>
@@ -148,7 +179,7 @@ export function AppShell({
         <SheetContent side="left" className="flex h-dvh w-72 flex-col p-0">
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           <div className="flex h-16 shrink-0 items-center border-b px-4">
-            <WorkspaceLogo homeHref={homeHref} hasOrganization={Boolean(organization)} />
+            <WorkspaceLogo homeHref={homeHref} hasOrganization={Boolean(organization)} logoUrl={activeLogo} name={activeName} />
           </div>
           {organization ? (
             <OrganizationSwitcher currentOrganizationId={organization.organizationId} memberships={organization.memberships} />
@@ -171,8 +202,8 @@ export function AppShell({
             <Menu className="size-4" />
           </Button>
           <div data-tour="module-title" className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">{currentItem?.shortLabel ?? currentItem?.label ?? sectionLabel}</p>
-            <p className="hidden truncate text-xs text-muted-foreground sm:block">{sectionLabel}</p>
+            <p className="truncate text-sm font-semibold">{currentItem?.shortLabel ?? currentItem?.label ?? (moduleBrand?.displayName || sectionLabel)}</p>
+            <p className="hidden truncate text-xs text-muted-foreground sm:block">{moduleBrand?.displayName || sectionLabel}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             {branding.workspaceStatusLabel ? (
@@ -181,6 +212,7 @@ export function AppShell({
               </span>
             ) : null}
             {showModuleLauncher ? <ModuleLauncher enabledModuleKeys={enabledModuleKeys} /> : null}
+            <ThemeToggle />
             <UserMenu />
           </div>
         </header>

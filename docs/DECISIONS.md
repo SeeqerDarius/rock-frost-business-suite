@@ -286,3 +286,11 @@ All three are safe for unrestricted commercial, closed-source use.
 - Approved brand assets (`public/RFG.png`, favicon, apple-touch-icon, OG image, manifest, robots.txt, sitemap.xml).
 
 **What was NOT preserved:** the previous `app/`, `components/`, and `lib/` implementation code, and the previous roadmap/architecture docs (archived under `docs/archive/previous-implementation/`, marked obsolete, not authoritative).
+
+# 2026-10-01 - Payroll accrual posting and School posting retries
+
+**Decision:** Completed Payroll runs create an Accounting accrual only when Accounting is active: Debit `5190 Payroll Salaries and Wages` for gross pay, Credit `2230 Payroll Net Payable` for net pay, and Credit `2220 Payroll Deductions Payable` for recorded deductions. The journal is keyed by organization, `PAYROLL_RUN`, run id, and `COMPLETED_ACCRUAL`, so retries are idempotent. PayrollRun records `PENDING`, `POSTED`, `FAILED`, or `NOT_REQUIRED`; the run page shows the state and lets a user with Payroll run-management permission retry a completed run.
+
+**Boundary:** Payroll completion creates payslips but does not disburse funds. The generic deduction amount is not classified as PAYE, pension, or another statutory category; this accrual must not be presented as a filing calculation. If Accounting is inactive, the source run completes and is marked `NOT_REQUIRED`. Enabling Accounting later makes that run available for an explicit posting retry. Procurement supplier accruals and payments were already integrated before this change; earlier notes saying otherwise describe historical scope, not current behavior.
+
+School fee payments now also persist `PENDING`, `POSTED`, `FAILED`, or `NOT_REQUIRED` Accounting delivery status. Failed and pending records remain valid, receipted School collections; their fee-page retry posts through the same idempotent source identity as the initial attempt. This closes a visibility/recovery gap without coupling School payment capture to Accounting availability.

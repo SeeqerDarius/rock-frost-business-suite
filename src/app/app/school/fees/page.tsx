@@ -18,13 +18,13 @@ import { formatDate, formatMoney, humanizeStatus } from "@/components/school/for
 import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getSchoolAcademicSetup, listSchoolCampuses, listSchoolFeeInvoices, listSchoolFeeStructures, listSchoolStudents } from "@/modules/school/service";
-import { createFeeInvoiceAction, createFeeStructureAction, issueFeeStructureAction, recordFeePaymentAction } from "../actions";
+import { createFeeInvoiceAction, createFeeStructureAction, issueFeeStructureAction, recordFeePaymentAction, retrySchoolFeePostingAction } from "../actions";
 
 const PATH = "/app/school/fees";
 const PAYMENT_METHODS = ["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "ONLINE", "OTHER"] as const;
 const INVOICE_STATUSES = ["ISSUED", "PART_PAID", "PAID", "CANCELLED"] as const;
 
-export default async function SchoolFeesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; status?: string; issued?: string; skipped?: string }> }) {
+export default async function SchoolFeesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; status?: string; issued?: string; skipped?: string; posting?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
 
   if (!hasPermission(tenant, PERMISSIONS.SCHOOL_FEES_MANAGE)) {
@@ -135,6 +135,9 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
         savedMessage={query.issued !== undefined ? `${query.issued} invoice${query.issued === "1" ? " was" : "s were"} issued${query.skipped && query.skipped !== "0" ? `; ${query.skipped} already-billed student${query.skipped === "1" ? " was" : "s were"} skipped` : ""}.` : "The fee record is up to date."}
         stateMessage="Check the amounts: a discount cannot exceed the invoice amount, and a payment cannot exceed the outstanding balance."
       />
+      {query.posting === "failed" ? <div role="status" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">The fee payment was recorded and receipted, but its Accounting entry did not post. Use Retry posting beside that payment below.</div> : null}
+      {query.posting === "complete" ? <div role="status" className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">Accounting posting is up to date.</div> : null}
+      {query.error === "posting-not-retryable" ? <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">That payment is unavailable for posting. Refresh the fee list and check its current status.</div> : null}
       <PrerequisiteNotice
         items={[
           { satisfied: students.length > 0, label: "Admit a student", href: "/app/school/students" },
@@ -268,6 +271,20 @@ export default async function SchoolFeesPage({ searchParams }: { searchParams: P
                         <TableCell>
                           <span className="font-mono text-xs">{invoice.invoiceNumber}</span>
                           <span className="block text-xs text-muted-foreground">{invoice.description}</span>
+                          {invoice.payments.map((payment) => (
+                            <span key={payment.id} className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                              <span className="text-muted-foreground">Receipt {payment.receiptNumber}: {formatMoney(payment.amount)}</span>
+                              <Badge variant={payment.postingStatus === "FAILED" ? "destructive" : payment.postingStatus === "POSTED" ? "default" : "outline"}>
+                                {payment.postingStatus === "NOT_REQUIRED" ? "Accounting inactive" : `Accounting ${humanizeStatus(payment.postingStatus)}`}
+                              </Badge>
+                              {!payment.refundedAt && payment.postingStatus !== "POSTED" ? (
+                                <form action={retrySchoolFeePostingAction}>
+                                  <input type="hidden" name="paymentId" value={payment.id} />
+                                  <Button type="submit" size="xs" variant="outline">Retry posting</Button>
+                                </form>
+                              ) : null}
+                            </span>
+                          ))}
                         </TableCell>
                         <TableCell>
                           <span className="font-medium">{invoice.student.firstName} {invoice.student.lastName}</span>

@@ -102,8 +102,8 @@ integration - don't assume the older API from general knowledge.
 
 Theming reads CSS custom properties directly (`var(--primary)`,
 `var(--card)`, `var(--card-foreground)`) rather than hardcoded colors, so
-the tour automatically matches the organization's light/dark theme setting
-(`OrganizationThemeSync`) without separate light/dark logic.
+the tour automatically matches the active light/dark theme
+(`OrganizationThemeSync` or a personal `ThemeToggle` choice) without separate light/dark logic.
 
 ## Mobile behavior
 

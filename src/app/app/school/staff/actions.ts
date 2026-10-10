@@ -9,7 +9,7 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { email as emailSchema, parseWithSchema, shortText } from "@/lib/validation";
 import { isPlatformUser } from "@/lib/auth/platform-identity";
 import { assertRoleHasAvailableSeats, SeatLimitExceededError } from "@/platform/subscriptions/seats";
-import { createInvitation, markInvitationDeliveryFailed } from "@/lib/auth/invitations";
+import { createInvitation, markInvitationDeliveryFailed, resendInvitation, revokeInvitation, InvitationError } from "@/lib/auth/invitations";
 import { buildTenantAppUrl } from "@/lib/app-url";
 import { invitationEmail } from "@/lib/email-templates";
 import { sendEmail } from "@/lib/email";
@@ -27,9 +27,61 @@ async function authorize() {
 
 async function schoolRole(organizationId: string, roleId: string) {
   return db.role.findFirst({
-    where: { id: roleId, name: { in: [...SCHOOL_STAFF_ROLE_NAMES] }, OR: [{ organizationId }, { isSystem: true }] },
+    where: {
+      id: roleId,
+      name: { in: [...SCHOOL_STAFF_ROLE_NAMES] },
+      OR: [{ organizationId }, { isSystem: true }],
+      rolePermissions: { some: { permission: { key: { startsWith: "school." } } } },
+    },
     include: { rolePermissions: { include: { permission: true } } },
   });
+}
+
+export async function resendSchoolStaffInvitationAction(formData: FormData) {
+  const tenant = await authorize();
+  const membershipId = z.string().cuid().safeParse(formData.get("membershipId"));
+  if (!membershipId.success) redirect(`${PATH}?error=not-found`);
+  const member = await db.organizationMember.findFirst({
+    where: { id: membershipId.data, organizationId: tenant.organizationId, status: "INVITED", role: { name: { in: [...SCHOOL_STAFF_ROLE_NAMES] } } },
+    include: { user: true, role: true },
+  });
+  if (!member) redirect(`${PATH}?error=not-found`);
+  let token: string;
+  try {
+    token = await resendInvitation(tenant.organizationId, member.id);
+  } catch (error) {
+    if (error instanceof InvitationError) redirect(`${PATH}?error=resend-unavailable`);
+    throw error;
+  }
+  await logAuditEvent({ organizationId: tenant.organizationId, userId: tenant.userId, membershipId: member.id, module: "school", action: "staff.invitation_resent", entityName: "OrganizationMember", entityId: member.id });
+  const inviteUrl = buildTenantAppUrl("/invite", { token });
+  const delivery = await sendEmail({ to: member.user.email, ...invitationEmail({ organizationName: tenant.organization.name, roleName: member.role?.name ?? "School staff", inviteUrl, reminder: true }) });
+  if (!delivery.ok) {
+    await markInvitationDeliveryFailed(member.id);
+    redirect(`${PATH}?error=delivery-failed`);
+  }
+  revalidatePath(PATH);
+  redirect(`${PATH}?invited=1`);
+}
+
+export async function revokeSchoolStaffInvitationAction(formData: FormData) {
+  const tenant = await authorize();
+  const membershipId = z.string().cuid().safeParse(formData.get("membershipId"));
+  if (!membershipId.success) redirect(`${PATH}?error=not-found`);
+  const member = await db.organizationMember.findFirst({
+    where: { id: membershipId.data, organizationId: tenant.organizationId, status: "INVITED", role: { name: { in: [...SCHOOL_STAFF_ROLE_NAMES] } } },
+    select: { id: true },
+  });
+  if (!member) redirect(`${PATH}?error=not-found`);
+  try {
+    await revokeInvitation(tenant.organizationId, member.id);
+  } catch (error) {
+    if (error instanceof InvitationError) redirect(`${PATH}?error=revoke-unavailable`);
+    throw error;
+  }
+  await logAuditEvent({ organizationId: tenant.organizationId, userId: tenant.userId, membershipId: member.id, module: "school", action: "staff.invitation_revoked", entityName: "OrganizationMember", entityId: member.id });
+  revalidatePath(PATH);
+  redirect(`${PATH}?saved=1`);
 }
 
 export async function addSchoolStaffAction(formData: FormData) {
