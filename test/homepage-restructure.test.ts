@@ -40,4 +40,16 @@ describe("homepage restructure", () => {
     expect(faq).toContain("Trial workspaces are limited to three customer-facing products");
     expect(faq).toContain("JSON system backups");
   });
+
+  it("shows an illustrative workspace without fabricated performance figures and curates the homepage product list", () => {
+    const preview = readFileSync(resolve("src/components/marketing/homepage-workspace-preview.tsx"), "utf8");
+    expect(homepage).toContain("<HomepageWorkspacePreview />");
+    expect(homepage).toContain('const FEATURED_MODULE_KEYS = new Set(["accounting", "fleet", "inventory", "hr", "pharmacy", "school"])');
+    expect(homepage).toContain("featuredModules.map");
+    expect(preview).toContain("Illustrative workspace preview");
+    expect(preview).toContain("WORKSPACE_MODULES");
+    for (const fabricatedMetric of ["GH₵86,300", "12 invoices", "7 pending expenses", "GH₵24,150"]) {
+      expect(preview).not.toContain(fabricatedMetric);
+    }
+  });
 });

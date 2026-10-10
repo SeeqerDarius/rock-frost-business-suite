@@ -12,6 +12,7 @@ import { PUBLIC_SHOWCASE_FILTER, readPublicShowcase } from "@/lib/public-showcas
 import { CustomerShowcase } from "@/components/marketing/customer-showcase";
 import { findPlatformOrganizationMetadata, readPlatformMarketing, PUBLIC_MARKETING_CACHE_TAG } from "@/lib/platform-marketing";
 import { PublicHero } from "@/components/marketing/public-hero";
+import { HomepageWorkspacePreview } from "@/components/marketing/homepage-workspace-preview";
 import { ModuleBlocksIllustration } from "@/components/marketing/module-blocks-illustration";
 import { AccountingModuleShowcase } from "@/components/marketing/module-showcases/accounting";
 import { FleetModuleShowcase } from "@/components/marketing/module-showcases/fleet";
@@ -19,6 +20,8 @@ import { PharmacyModuleShowcase } from "@/components/marketing/module-showcases/
 import { WhyRockFrost } from "@/components/marketing/why-rock-frost";
 import { HomepageFaq } from "@/components/marketing/homepage-faq";
 import { listPublishedTestimonials } from "@/lib/customer-feedback";
+
+const FEATURED_MODULE_KEYS = new Set(["accounting", "fleet", "inventory", "hr", "pharmacy", "school"]);
 
 /** Tenant-side showcase opt-ins change rarely: cached for 5 minutes (Next's
  * Data Cache) rather than re-queried on every homepage view and crawl. See
@@ -51,6 +54,7 @@ export default async function HomePage() {
     listPublishedTestimonials(),
   ]);
   const marketing = readPlatformMarketing(platformOrganization?.metadata);
+  const featuredModules = catalogueModuleRegistry.filter((module_) => FEATURED_MODULE_KEYS.has(module_.key));
   const tenantCustomers = showcaseOrganizations.flatMap((organization) => {
     const showcase = readPublicShowcase(organization.metadata);
     if (!showcase.quote || !showcase.attribution) return [];
@@ -99,27 +103,33 @@ export default async function HomePage() {
         description: DEFAULT_DESCRIPTION,
         provider: { "@id": `${SITE_URL}/#organization` },
       }} />
-      <PublicHero eyebrow="A role-based ERP built for Ghana" title="Run the work. See the money. Stay in control." description="Connect finance, fleet, sales, people, stock and industry operations in one secure platform. Every person gets the workspace, approvals and information their role requires." actions={<>
+      <PublicHero eyebrow="Business management software built for Ghana" title="Run the work. See the money. Stay in control." description="Bring accounting, fleet, people, stock and industry operations into one role-based workspace. Start with the systems your team needs, then connect more as you grow." actions={<>
             <Button size="lg" nativeButton={false} render={<Link href="/subscribe" />}>Start your subscription</Button>
             <Button size="lg" variant="outline" nativeButton={false} render={<Link href="/pricing" />}>See pricing</Button>
           </>}>
-        <ModuleBlocksIllustration className="mx-auto h-auto w-full max-w-sm" />
+        <div className="relative">
+          <ModuleBlocksIllustration className="pointer-events-none absolute -right-3 -top-5 z-0 h-auto w-24 opacity-60" />
+          <div className="relative z-10">
+            <HomepageWorkspacePreview />
+          </div>
+        </div>
       </PublicHero>
       <section className="public-section-tint">
         <div className="mx-auto max-w-6xl px-6 py-20">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div className="max-w-2xl space-y-2">
-              <h2 className="text-2xl font-semibold tracking-tight">Build the ERP your organization needs</h2>
+              <p className="public-eyebrow">A connected business platform</p>
+              <h2 className="text-2xl font-semibold tracking-tight">Start with the systems your team needs</h2>
               <p className="text-muted-foreground">
-                Start with one operational system or connect several. Confirmed business activity can flow into Accounting without giving every user access to everything.
+                Choose focused tools for finance, people, stock, and industry operations. Add more when your workflows call for them, with access shaped around each role.
               </p>
             </div>
-            <Link href="/modules" className="text-sm font-medium underline underline-offset-4">
-              View all modules
+            <Link href="/modules" className="inline-flex items-center gap-2 text-sm font-semibold text-primary underline underline-offset-4">
+              Explore all {catalogueModuleRegistry.length} products
             </Link>
           </div>
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {catalogueModuleRegistry.map((mod) => (
+            {featuredModules.map((mod) => (
               <Card key={mod.key}>
                 <CardHeader>
                   <IconBadge size="lg"><mod.icon className="size-5" /></IconBadge>
