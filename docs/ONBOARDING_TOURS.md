@@ -44,6 +44,23 @@ order - general first, then the module's own intro - as two back-to-back
 Joyride instances (remounted by `key`, not a single controlled multi-tour
 instance) rather than one merged run.
 
+## The tour yields to the cookie banner
+
+A tour and a consent dialog both wanted the screen the moment a workspace
+was first opened, and neither knew about the other. The result on a new
+customer's very first screen was a spotlight popover sitting over the page
+heading with the privacy dialog on top of it: two interruptions competing
+before they had read anything.
+
+The banner cannot wait, because nothing optional may run until the choice
+is made, so `TourRunner` yields to it. It reads `readCookieConsent`
+(`src/lib/cookie-consent.ts`) and, while that is `null`, queues nothing;
+it subscribes to `COOKIE_CONSENT_CHANGED_EVENT` and builds its queue once
+the choice is made, in the same page view. An explicit replay is never
+gated this way, because that is the person asking for it directly.
+
+Both pieces already existed; nothing new was invented to coordinate them.
+
 ## Why gated on `organization`, not a separate flag
 
 `AppShell` only renders `TourRunner` when its `organization` prop is

@@ -114,22 +114,30 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
       {!canManage ? <ReadOnlyNotice>Your role can review students and guardians but cannot admit or change them.</ReadOnlyNotice> : null}
       <PrerequisiteNotice items={[{ satisfied: campuses.length > 0, label: "Create a campus", href: "/app/school/campuses" }]} />
 
-      {studentPage.total === 0 ? (
-        <EmptyState
-          icon={Users}
-          title="No students yet"
-          description="Admitted students appear here with their campus, status, and guardian contacts."
-          action={canManage && campuses.length > 0 ? newStudentDialog : undefined}
-        />
-      ) : null}
-
       <Tabs defaultValue="students" className="space-y-4">
         <TabsList className="w-full justify-start overflow-x-auto">
           <TabsTrigger value="students">Students</TabsTrigger>
           <TabsTrigger value="guardians">Guardians</TabsTrigger>
         </TabsList>
 
+        {/*
+          With no students on record at all, one empty state inside this tab
+          is the whole answer. This page used to say nothing is here three
+          times over: an empty state above the tabs, then "0 students on
+          record", then "No students match this search", with a search box
+          and a status filter over an empty set in between. The search and
+          the table belong here once there is something to search, and the
+          empty state sits inside the tab so the panel is never blank.
+        */}
         <TabsContent value="students" className="space-y-6">
+          {studentPage.total === 0 ? (
+            <EmptyState
+              icon={Users}
+              title="No students yet"
+              description="Admitted students appear here with their campus, status, and guardian contacts."
+              action={canManage && campuses.length > 0 ? newStudentDialog : undefined}
+            />
+          ) : (
           <SectionCard title="Students" description={`${studentPage.total} student${studentPage.total === 1 ? "" : "s"} on record.`}>
             <div className="space-y-4">
               <RecordSearch
@@ -324,6 +332,7 @@ export default async function SchoolStudentsPage({ searchParams }: { searchParam
               <RecordPagination path={PATH} page={studentPage.page} pageCount={studentPage.pageCount} filters={{ q: query.q, status: statusFilter }} label="Student list" />
             </div>
           </SectionCard>
+          )}
         </TabsContent>
 
         <TabsContent value="guardians" className="space-y-6">

@@ -102,6 +102,13 @@ async function main() {
         organizationId: tenant.id,
         moduleId: schoolModule.id,
         mode: "MANUAL_OFFLINE",
+        // Explicit, because Subscription.tier defaults to BASIC: without this
+        // the preview school would come up on the most restricted plan, with
+        // no fees, exams, timetables, transport, library, SMS or reports and a
+        // 200-student ceiling, which is not what this fixture is for. PLATINUM
+        // matches what createSubscription() stores for a hand-entered
+        // agreement, and what a fully-provisioned tenant should look like.
+        tier: "PLATINUM",
         status: "ACTIVE",
         durationMonths: 12,
         amount: 7200,
