@@ -93,7 +93,7 @@ describe("Assignments & Assessments entitlement and navigation", () => {
 describe("Assignments & Assessments public pricing and SEO", () => {
   it("shows individual modules with a 'Starting from' price from the catalogue", () => {
     const pricing = read("src/app/(public)/pricing/page.tsx");
-    expect(pricing).toContain("Starting from <span");
+    expect(pricing).toContain("Starting from</p>");
     expect(pricing).toContain("formatGhs(price.monthlyGhs)");
     expect(pricing).not.toMatch(/>From </);
   });
@@ -102,6 +102,8 @@ describe("Assignments & Assessments public pricing and SEO", () => {
     const pricing = read("src/app/(public)/pricing/page.tsx");
     expect(pricing).toContain("Priced on request");
     expect(pricing).toContain("listAddonPrices()");
+    expect(pricing).toContain("PUBLIC_ADDONS.filter((addon) => addon.moduleKey === price.moduleKey)");
+    expect(pricing).not.toContain('<section id="add-ons"');
     const seed = read("prisma/seed-data.ts");
     expect(seed).not.toContain("addonPricingPlan");
     expect(PUBLIC_ADDONS.map((addon) => addon.key)).toEqual(["schoolAssignments"]);

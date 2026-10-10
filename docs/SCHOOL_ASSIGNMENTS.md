@@ -147,8 +147,8 @@ Students: `/app/school/portal/assignments`,
 
 ## Pricing
 
-The add-on is presented on `/pricing` under "Optional add-ons" and on
-`/modules/school`. Its price lives only in `AddonPricingPlan` (operator
+The add-on is advertised inside the School Management card on `/pricing` and
+on `/modules/school`. Its price lives only in `AddonPricingPlan` (operator
 editable at `/app/platform/subscriptions#addon-pricing`, audited). No row is
 seeded: as of 2026-10-10 the owner chose to ship without a price, so the
 public page says "Priced on request" until an operator publishes a confirmed
