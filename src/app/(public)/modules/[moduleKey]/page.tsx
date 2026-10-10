@@ -9,6 +9,7 @@ import { createPublicMetadata, MODULE_SEO, SITE_URL } from "@/lib/seo";
 import { PublicHero } from "@/components/marketing/public-hero";
 import { ModuleShowcase } from "@/components/marketing/module-showcase";
 import { ConversionButtonLink } from "@/components/marketing/conversion-link";
+import { PUBLIC_ADDONS } from "@/lib/pricing-shared";
 
 type ModuleKey = keyof typeof MODULE_SEO;
 
@@ -43,6 +44,7 @@ export default async function ModuleLandingPage({
   if (!seo || !module_ || !isPubliclyListedModule(moduleKey)) notFound();
 
   const related = publicCatalogueModuleRegistry.filter((item) => item.key !== moduleKey).slice(0, 3);
+  const addons = PUBLIC_ADDONS.filter((addon) => addon.moduleKey === moduleKey);
   const content = "content" in seo ? seo.content : undefined;
   const faqSchema = content
     ? {
@@ -237,6 +239,26 @@ export default async function ModuleLandingPage({
           </div>
         </section>
       ) : null}
+
+      {addons.map((addon) => (
+        <section key={addon.key} id={`${addon.key}-addon`} className="mx-auto max-w-6xl scroll-mt-24 px-6 pb-4">
+          <Card>
+            <CardContent className="grid gap-6 p-6 sm:p-8 lg:grid-cols-[1fr_1fr]">
+              <div>
+                <p className="public-eyebrow">Optional add-on</p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-tight">{addon.name}</h2>
+                <p className="mt-3 leading-7 text-muted-foreground">{addon.summary} It is priced separately and enabled only for schools that choose it.</p>
+                <Link href={`/pricing#${addon.key}-pricing`} className="mt-4 inline-block font-medium text-primary underline-offset-4 hover:underline">See add-on pricing</Link>
+              </div>
+              <ul className="space-y-3">
+                {addon.features.map((feature) => (
+                  <li key={feature} className="flex gap-3 text-sm leading-6 text-muted-foreground"><CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />{feature}</li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </section>
+      ))}
 
       <section className="mx-auto max-w-6xl px-6 py-20">
         <div className="grid gap-10 lg:grid-cols-[1.3fr_1fr]">

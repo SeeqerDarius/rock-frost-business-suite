@@ -37,3 +37,42 @@ export function computeRecommendedQuote(priceMap: Map<string, ModulePriceLike>, 
 export function formatGhs(amount: number) {
   return new Intl.NumberFormat("en-GH", { style: "currency", currency: "GHS", maximumFractionDigits: 0 }).format(amount);
 }
+
+/**
+ * Optional, separately priced add-ons that extend one module. The public
+ * description lives here; the price lives only in the operator-editable
+ * AddonPricingPlan table and is absent until Rock Frost confirms it, in
+ * which case public pages say "priced on request" instead of a number.
+ */
+export type PublicAddonKey = "schoolAssignments";
+
+export type PublicAddon = {
+  key: PublicAddonKey;
+  name: string;
+  /** The module the add-on extends; it is never sold on its own. */
+  moduleKey: BusinessModuleKey;
+  summary: string;
+  features: readonly string[];
+};
+
+export const PUBLIC_ADDONS: readonly PublicAddon[] = [
+  {
+    key: "schoolAssignments",
+    name: "Assignments & Assessments",
+    moduleKey: "school",
+    summary: "An optional School Management add-on for setting class work online, collecting student answers, and marking objective questions automatically.",
+    features: [
+      "Teachers set assignments for the classes they teach, with due dates and attempt limits",
+      "Students submit from the Parent and Student portal",
+      "Single choice, true or false, multiple select, and numeric answers are marked automatically",
+      "Short answers and essays are marked by the teacher, never by AI",
+      "Teachers choose whether a result counts towards an existing exam in the cumulative record",
+    ],
+  },
+];
+
+export type AddonPrice = {
+  addonKey: PublicAddonKey;
+  monthlyGhs: number;
+  annualGhs: number;
+};

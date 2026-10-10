@@ -1,5 +1,5 @@
 import type { TenantContext } from "@/lib/tenant";
-import { hasPermission, isSchoolParentRole, PERMISSIONS } from "@/lib/auth/permissions";
+import { hasPermission, isSchoolParentRole, isSchoolStudentRole, PERMISSIONS } from "@/lib/auth/permissions";
 import type { ModuleNavItem } from "@/types/module";
 import { schoolNavigation } from "@/modules/school/navigation";
 
@@ -15,7 +15,7 @@ import { schoolNavigation } from "@/modules/school/navigation";
  * re-enforces this independently, so this filter is a UX convenience, not
  * the actual security boundary.
  */
-export function getSchoolNavigationForTenant(tenant: TenantContext, schoolPortalGranted: boolean, guardianMessagingGranted = false): ModuleNavItem[] {
+export function getSchoolNavigationForTenant(tenant: TenantContext, schoolPortalGranted: boolean, guardianMessagingGranted = false, assignmentsGranted = false): ModuleNavItem[] {
   // Direct messaging needs both paid add-ons (guardians reply from the portal).
   const messagingAvailable = schoolPortalGranted && guardianMessagingGranted;
   const routeAccess: Array<[string, boolean]> = [
@@ -26,6 +26,8 @@ export function getSchoolNavigationForTenant(tenant: TenantContext, schoolPortal
     ["/app/school/rollover", hasPermission(tenant, PERMISSIONS.SCHOOL_ENROLLMENT_MANAGE)],
     ["/app/school/attendance", hasPermission(tenant, PERMISSIONS.SCHOOL_ATTENDANCE_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_ATTENDANCE_VIEW)],
     ["/app/school/exams", hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_PUBLISH) || hasPermission(tenant, PERMISSIONS.SCHOOL_ACADEMIC_PERFORMANCE_VIEW)],
+    // Assignments & Assessments is its own paid add-on; the service layer re-checks the grant on every call.
+    ["/app/school/assignments", assignmentsGranted && hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_MANAGE)],
     ["/app/school/timetables", hasPermission(tenant, PERMISSIONS.SCHOOL_TIMETABLES_MANAGE)],
     ["/app/school/fees", hasPermission(tenant, PERMISSIONS.SCHOOL_FEES_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENT_FINANCE_VIEW)],
     ["/app/school/payroll", hasPermission(tenant, PERMISSIONS.SCHOOL_PAYROLL_MANAGE)],
@@ -37,6 +39,7 @@ export function getSchoolNavigationForTenant(tenant: TenantContext, schoolPortal
     ["/app/school/reports", hasPermission(tenant, PERMISSIONS.SCHOOL_REPORTS_VIEW)],
     ["/app/school/settings", hasPermission(tenant, PERMISSIONS.SCHOOL_SETTINGS_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_VIEW)],
     ["/app/school/portal", schoolPortalGranted && hasPermission(tenant, PERMISSIONS.SCHOOL_PORTAL_VIEW)],
+    ["/app/school/portal/assignments", schoolPortalGranted && assignmentsGranted && hasPermission(tenant, PERMISSIONS.SCHOOL_PORTAL_VIEW) && isSchoolStudentRole(tenant)],
     ["/app/school/portal/announcements", schoolPortalGranted && hasPermission(tenant, PERMISSIONS.SCHOOL_PORTAL_VIEW) && isSchoolParentRole(tenant)],
     // Staff chat with staff on School alone; chats with guardians (and a guardian's own Chats link) need both add-ons.
     ["/app/school/chats", hasPermission(tenant, PERMISSIONS.SCHOOL_MESSAGES_MANAGE) || (messagingAvailable && hasPermission(tenant, PERMISSIONS.SCHOOL_PORTAL_VIEW) && isSchoolParentRole(tenant))],
