@@ -3,11 +3,11 @@
 ## 2026-10-10: Refined public pricing presentation
 
 - **Scope**: refreshed `/pricing` so each standalone module shows a prominent "Starting from" monthly catalogue price, implemented product capabilities, included staff seats, annual pricing, and additional-seat pricing. Moved each optional add-on into its parent module card with its own capability summary and confirmed-price or request-pricing state. Removed the standalone add-ons section and generic separately-quoted services note. Connected suite and enterprise prices are unchanged.
-- **Important files**: `src/app/(public)/pricing/page.tsx`, `test/school-assignments-access.test.ts`, `docs/{BILLING_AND_SUBSCRIPTIONS.md,SEO.md,SCHOOL_ASSIGNMENTS.md}`, and `README.md`.
+- **Important files**: `src/app/(public)/pricing/page.tsx`, `test/{school-assignments-access.test.ts,public-subscription-ui.test.ts}`, `docs/{BILLING_AND_SUBSCRIPTIONS.md,SEO.md,SCHOOL_ASSIGNMENTS.md}`, and `README.md`.
 - **Schema and environment**: no migration or environment-variable change. Pricing remains read from the platform-owned module, add-on, and suite catalogues.
-- **Validation**: Prisma Client generation, focused ESLint, `npx tsc --noEmit`, `npm run build` (Next.js 16.3.8, 282 routes), `git diff --check`, and the website-copy em-dash scan passed. Automated tests and an authenticated browser session were not run in this pass.
+- **Validation**: Prisma Client generation, focused ESLint, `npx tsc --noEmit`, `npm run build` (Next.js 16.3.8, 282 routes), `git diff --check`, and the website-copy em-dash scan passed. The two directly affected Vitest files passed (14 tests). Initial PR CI found and exposed one stale module-subscription copy assertion; it was updated to the current module choice CTA. The follow-up PR CI run is the release gate.
 - **Remaining risks**: add-ons remain assisted sales and are not included in a connected suite or self-service subscription. A live rendered-page check is needed after deployment.
-- **Release status**: not committed, pushed, or deployed yet.
+- **Release status**: commit `777840a` is pushed and PR #88 is open. Preview deployment and disposable-Postgres integration passed. Follow-up CI and production verification remain pending.
 
 ## 2026-10-10: School Assignments & Assessments add-on and "Starting from" module pricing
 
