@@ -21,6 +21,16 @@ performance figures and is explicitly labelled as illustrative. The full
 product catalogue remains available from `/modules`; do not expand the
 homepage grid to every product by default.
 
+The `/industries` page presents five product pathways (transport and logistics,
+retail and installment sales, schools and boarding, healthcare, and hotels and
+hospitality). Each path names relevant modules and links directly to their
+public product pages. Describe cross-module behavior narrowly: only call a
+workflow connected when the relevant integration is implemented, and direct
+visitors to product details or contact when fit needs discussion. Public trust
+copy must stay within the evidence in `docs/COMPLIANCE_AND_ASSURANCE.md`; do not
+imply certification, regulatory approval, guaranteed integration, or security
+properties beyond documented controls.
+
 ## Homepage hero illustration
 
 `ModuleBlocksIllustration` (`src/components/marketing/module-blocks-illustration.tsx`), rendered into `PublicHero`'s own `children` slot on the homepage (`src/app/(public)/page.tsx`), is five independent isometric-block outlines loosely clustered together - original artwork illustrating this hero's own headline ("One platform. Every business system your organization runs on."), not generic clip art. Built after inspecting a competitor's DevTools and finding an unrelated empty-state illustration animated via `stroke-dasharray`/`stroke-dashoffset` - the *technique* was worth adopting, the *subject* (their cube) deliberately was not, so this is original geometry on an original, business-relevant theme. Each block's outline and three internal spokes loop continuously - draw in, hold fully drawn, erase back out, brief pause, repeat (the `module-block-draw` CSS animation, `src/app/globals.css`) - rather than a one-time reveal, matching the reference site's own looping behavior; it plays automatically on page load rather than on hover like the icon system, since a hero is already the first thing a visitor sees. Because the component fully controls its own geometry (every hexagon edge and internal spoke is exactly `r` long by construction), each element exposes its own full length as the `--dash-length` custom property rather than a hardcoded value, so one shared keyframe animates every differently-sized block correctly - and each block's `animation-delay` staggers its phase within the loop, not just its first appearance, so the cascading "modules assembling" wave keeps repeating every cycle. `prefers-reduced-motion` gets an explicit override pinning it to the fully-drawn static state (`animation: none; stroke-dashoffset: 0;`) rather than relying on the site-wide reduced-motion rule, which would otherwise freeze this specific loop on its erased/hidden keyframe instead. One block is accented in the primary brand color as a single "keystone" touch; the rest stay neutral (`text-muted-foreground`) so the accent still reads as semantic emphasis, not decoration.

@@ -1,34 +1,31 @@
-import { ShieldCheck, KeyRound, Building2, Landmark } from "lucide-react";
+import { ShieldCheck, Layers, Building2, Wallet } from "lucide-react";
 import { IconBadge } from "@/components/ui/icon-badge";
 
 /**
- * Real, currently-implemented product claims only. See
- * docs/COMPLIANCE_AND_ASSURANCE.md, which distinguishes implemented controls
- * from any third-party audit or regulatory sign-off. Never state that an
- * external authority has audited, certified, or approved the platform, and
- * never state an adoption metric, unless a current document from that exact
- * authority supports the exact statement.
+ * Keep public trust claims within the evidence in docs/COMPLIANCE_AND_ASSURANCE.md.
+ * Do not imply independent certification, regulatory approval, or universal
+ * integration behavior.
  */
 const REASONS = [
   {
     icon: ShieldCheck,
-    title: "Tenant isolation, enforced server-side",
-    description: "Every query is scoped to your organization at the server layer, not just hidden in the interface, with role-based permissions down to individual actions.",
+    title: "Organization-scoped access",
+    description: "Server-side permissions and organization-scoped data boundaries help keep each team's records within its authorized workspace.",
   },
   {
-    icon: KeyRound,
-    title: "Real account security",
-    description: "Bcrypt-hashed passwords, signed host-only sessions, login lockout after repeated failures, and two-factor authentication via an authenticator app or SMS.",
+    icon: Layers,
+    title: "Focused tools for specialist work",
+    description: "Modules keep their own workflows, navigation, and permissions, so teams can work in the parts of the platform relevant to their role.",
   },
   {
     icon: Building2,
-    title: "Sixteen systems, one workspace",
-    description: "Fleet, Accounting, HR & Payroll, Pharmacy, Hospital, and more, each with its own data and workflows, without switching platforms or re-entering records.",
+    title: "Connect the modules your operation needs",
+    description: "Start with products such as Fleet, Accounting, HR, Pharmacy, Hospital, or School, then review documented connections for the workflows you want to join.",
   },
   {
-    icon: Landmark,
-    title: "Built for Ghana",
-    description: "GHS pricing and reporting by default, Ghana Data Protection Act readiness work already under way, and every financial event recorded in a tenant-scoped audit trail.",
+    icon: Wallet,
+    title: "A Ghana-first business context",
+    description: "The public product catalogue is priced in GHS, and Accounting includes local tax workflows. Compliance readiness is a continuing process, not a certification claim.",
   },
 ] as const;
 
