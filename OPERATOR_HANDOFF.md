@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-10: Restore the October 6 public pricing presentation
+
+- **Scope**: restored `/pricing` to the presentation recorded at commit `1326104` from October 6. Module cards again use the previous audience descriptions and "From" price layout, retain the included seats, annual price, additional-seat price, and original walkthrough and subscription actions. Connected suite prices remain unchanged. Removed the new embedded add-on and capability blocks from the pricing cards. The Assignments & Assessments add-on remains managed and granted through the platform, and stays advertised on the School module page. Its action now opens a School demo enquiry instead of linking to a pricing anchor that no longer exists.
+- **Important files**: `src/app/(public)/pricing/page.tsx`, `src/app/(public)/modules/[moduleKey]/page.tsx`, `test/public-subscription-ui.test.ts`, `test/school-assignments-access.test.ts`, `README.md`, `docs/BILLING_AND_SUBSCRIPTIONS.md`, `docs/SEO.md`, and `docs/SCHOOL_ASSIGNMENTS.md`.
+- **Schema and environment**: no migration or environment-variable changes.
+- **Validation**: `npm.cmd ci --ignore-scripts --offline` completed; `npm.cmd exec -- prisma generate` and `npm.cmd exec -- tsc --noEmit` passed; focused tests passed (2 files, 14 tests); full test suite passed (200 files, 1,549 tests) with `--testTimeout=60000`; `npm.cmd run lint` passed with two existing hook dependency warnings in offline sync center and PWA provider; `npm.cmd run build` passed and generated 282 routes; focused ESLint and `git diff --check` passed; changed public pages contained no em dash. The first full-suite run during concurrent lint/build exceeded the editorial punctuation test's 30-second timeout; the serial rerun passed.
+- **Release status**: local rollback is ready for review. No commit, push, preview CI, production deployment, or post-deploy check has been completed yet.
+
 ## 2026-10-10: Refined public pricing presentation
 
 - **Scope**: refreshed `/pricing` so each standalone module shows a prominent "Starting from" monthly catalogue price, implemented product capabilities, included staff seats, annual pricing, and additional-seat pricing. Moved each optional add-on into its parent module card with its own capability summary and confirmed-price or request-pricing state. Removed the standalone add-ons section and generic separately-quoted services note. Connected suite and enterprise prices are unchanged.
