@@ -16,6 +16,7 @@ import { OfflineAccessToggle } from "../../offline-access-toggle";
 import { SmsNotificationsToggle } from "../../sms-notifications-toggle";
 import { SchoolPortalToggle } from "../../school-portal-toggle";
 import { SchoolGuardianMessagingToggle } from "../../school-guardian-messaging-toggle";
+import { SchoolAssignmentsToggle } from "../../school-assignments-toggle";
 import type { CatalogueModuleRow, OrganizationDetail } from "./data";
 import { SettingRow } from "./shared";
 
@@ -195,6 +196,7 @@ function AddonToggle({
   if (addonKey === "offlineAccess") return <OfflineAccessToggle organizationId={organizationId} granted={granted} />;
   if (addonKey === "smsNotifications") return <SmsNotificationsToggle organizationId={organizationId} granted={granted} />;
   if (addonKey === "schoolGuardianMessaging") return <SchoolGuardianMessagingToggle organizationId={organizationId} granted={granted} />;
+  if (addonKey === "schoolAssignments") return <SchoolAssignmentsToggle organizationId={organizationId} granted={granted} />;
   return <SchoolPortalToggle organizationId={organizationId} granted={granted} />;
 }
 

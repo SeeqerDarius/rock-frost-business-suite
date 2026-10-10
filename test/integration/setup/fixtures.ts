@@ -58,6 +58,7 @@ export async function createTestOrg(label: string): Promise<TestOrg> {
       // (src/app/app/platform/actions.ts) for the real operator-facing gate.
       smsNotificationsGranted: true,
       schoolPortalGranted: true,
+      schoolAssignmentsGranted: true,
     },
   });
 
