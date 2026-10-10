@@ -214,6 +214,7 @@ export async function sendDueAppointmentReminders(now = new Date()): Promise<{ c
       }),
       purpose: "HOSPITAL_APPT_REMINDER",
       organizationId: appointment.organizationId,
+      moduleKey: "hospital",
       relatedType: "HospitalAppointment",
       relatedId: appointment.id,
     });

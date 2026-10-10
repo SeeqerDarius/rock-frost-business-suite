@@ -22,6 +22,7 @@ import { getSchoolAcademicSetup, getSchoolFeeInvoiceSummary, listSchoolCampuses,
 import { RecordPagination } from "@/components/school/record-pagination";
 import Link from "next/link";
 import { createFeeInvoiceAction, createFeeStructureAction, issueFeeStructureAction, recordFeePaymentAction, retrySchoolFeePostingAction, recordSchoolFeeRefundAction, retrySchoolFeeRefundPostingAction } from "../actions";
+import { schoolPlanGate } from "@/components/school/plan-gate";
 
 const PATH = "/app/school/fees";
 const PAYMENT_METHODS = ["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "ONLINE", "OTHER"] as const;
@@ -29,6 +30,10 @@ const INVOICE_STATUSES = ["DRAFT", "ISSUED", "PART_PAID", "PAID", "VOID"] as con
 
 export default async function SchoolFeesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; status?: string; page?: string; issued?: string; skipped?: string; posting?: string; studentQ?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
+  // Plan gate. Navigation already hides this page when the plan does
+  // not include it, but a hidden link is not a boundary.
+  const gate = await schoolPlanGate(tenant.organizationId, "school.fees", "Fees & Payments", "Student invoices, discounts, receipts, and arrears.");
+  if (gate) return gate;
   const orgMoney = createOrganizationFormatter(tenant.organization).money;
 
   if (!hasPermission(tenant, PERMISSIONS.SCHOOL_FEES_MANAGE)) {

@@ -1,10 +1,12 @@
 import "server-only";
 
 import { db } from "@/lib/db";
-import { computeRecommendedQuote, type AddonPrice, type ModulePrice, type PricingBundle } from "@/lib/pricing-shared";
+import { computeRecommendedQuote, type AddonPrice, type ModuleLadder, type ModulePrice, type ModuleTierPrice, type PricingBundle } from "@/lib/pricing-shared";
+import { moduleHasPublishedLadder } from "@/platform/entitlements/catalogue";
+import { PLAN_TIERS, isPlanTier, type PlanTier } from "@/platform/entitlements/tiers";
 import { getModule, type BusinessModuleKey } from "@/platform/modules/registry";
 
-export type { AddonPrice, ModulePrice, PricingBundle, PricingBundleKey, PublicAddon } from "@/lib/pricing-shared";
+export type { AddonPrice, ModuleLadder, ModulePrice, ModuleTierPrice, PricingBundle, PricingBundleKey, PublicAddon } from "@/lib/pricing-shared";
 export { computeRecommendedQuote, formatGhs, PUBLIC_ADDONS } from "@/lib/pricing-shared";
 
 /**
@@ -55,6 +57,67 @@ export async function getModulePriceMap(): Promise<Map<BusinessModuleKey, Module
 
 export async function getPricingBundleMap(): Promise<Map<string, PricingBundle>> {
   return new Map((await listPricingBundles()).map((bundle) => [bundle.key, bundle]));
+}
+
+/**
+ * Every module's price ladder, lowest rung first, for the modules that have
+ * one. Uncached for the same reason as getPricingCatalogue() above.
+ *
+ * A module only appears here when its ladder is both priced (rows exist) and
+ * enforced (`moduleHasPublishedLadder`). Those two can disagree: a seeded
+ * price row for a module whose ladder was never written would otherwise let
+ * the pricing page advertise a Basic plan that behaves like Platinum, and an
+ * enforced ladder with no rows would let checkout invent a price. Requiring
+ * both means a half-finished ladder shows the module's single headline
+ * price, which is what it did before tiers.
+ */
+export async function listModuleLadders(): Promise<ModuleLadder[]> {
+  const rows = await db.moduleTierPrice.findMany({ orderBy: [{ moduleKey: "asc" }, { tier: "asc" }] });
+  const byModule = new Map<string, ModuleTierPrice[]>();
+  for (const row of rows) {
+    if (!isPlanTier(row.tier) || !moduleHasPublishedLadder(row.moduleKey)) continue;
+    const rungs = byModule.get(row.moduleKey) ?? [];
+    rungs.push({
+      moduleKey: row.moduleKey,
+      tier: row.tier,
+      monthlyGhs: Number(row.monthlyGhs),
+      annualGhs: Number(row.annualGhs),
+      includedSeats: row.includedSeats,
+      additionalSeatGhs: Number(row.additionalSeatGhs),
+    });
+    byModule.set(row.moduleKey, rungs);
+  }
+  // Postgres sorts an enum by declaration order, which happens to match the
+  // ladder today. Sorting explicitly means reordering the enum, or adding a
+  // tier in the middle of it, cannot silently reorder a price list.
+  return [...byModule.entries()].map(([moduleKey, rungs]) => ({
+    moduleKey,
+    rungs: rungs.sort((a, b) => PLAN_TIERS.indexOf(a.tier) - PLAN_TIERS.indexOf(b.tier)),
+  }));
+}
+
+export async function getModuleLadderMap(): Promise<Map<string, ModuleLadder>> {
+  return new Map((await listModuleLadders()).map((ladder) => [ladder.moduleKey, ladder]));
+}
+
+/**
+ * The price of one rung, or null when this module/tier pair is not sold.
+ * Checkout treats null as "refuse", never as "fall back to the headline
+ * price": charging a Basic customer the Pro price because a row is missing
+ * is the one outcome worth failing a checkout over.
+ */
+export async function getModuleTierPrice(moduleKey: string, tier: PlanTier): Promise<ModuleTierPrice | null> {
+  if (!moduleHasPublishedLadder(moduleKey)) return null;
+  const row = await db.moduleTierPrice.findUnique({ where: { moduleKey_tier: { moduleKey, tier } } });
+  if (!row) return null;
+  return {
+    moduleKey: row.moduleKey,
+    tier,
+    monthlyGhs: Number(row.monthlyGhs),
+    annualGhs: Number(row.annualGhs),
+    includedSeats: row.includedSeats,
+    additionalSeatGhs: Number(row.additionalSeatGhs),
+  };
 }
 
 export async function recommendedSubscriptionQuote(moduleKey: string, durationMonths: number) {

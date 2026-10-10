@@ -16,11 +16,16 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listSchoolLibraryBookChoices, listSchoolLibraryBookPage, listSchoolLibraryLoanPage, listSchoolStudentChoices } from "@/modules/school/service";
 import { RecordPagination } from "@/components/school/record-pagination";
 import { borrowBookAction, createLibraryBookAction, returnBookAction } from "../actions";
+import { schoolPlanGate } from "@/components/school/plan-gate";
 
 const PATH = "/app/school/library";
 
 export default async function SchoolLibraryPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; loansQ?: string; view?: string; page?: string; loansPage?: string; studentQ?: string; bookQ?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
+  // Plan gate. Navigation already hides this page when the plan does
+  // not include it, but a hidden link is not a boundary.
+  const gate = await schoolPlanGate(tenant.organizationId, "school.services", "Library", "Catalogue, copy availability, and circulation.");
+  if (gate) return gate;
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_LIBRARY_MANAGE);
   const requestedPage = query.page && /^\d{1,6}$/.test(query.page) ? Number(query.page) : 1;
   const requestedLoanPage = query.loansPage && /^\d{1,6}$/.test(query.loansPage) ? Number(query.loansPage) : 1;

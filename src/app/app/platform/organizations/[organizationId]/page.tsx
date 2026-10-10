@@ -55,6 +55,8 @@ const ERRORS: Record<string, string> = {
   delivery: "The invitation was refreshed, but email delivery failed.",
   "showcase-invalid": "Add an approved customer quote and attribution before publishing this organization.",
   "showcase-logo": "Upload the organization's approved logo before publishing it on the home page.",
+  "tier-downgrade": "That plan is smaller than this organization's current usage. Reduce the usage first, then downgrade, so nothing stops working for them mid-term.",
+  tier: "The plan tier could not be changed.",
 };
 
 /**
@@ -65,6 +67,10 @@ const ERRORS: Record<string, string> = {
  * redirect target valid and every bookmarked notice URL working.
  */
 const NOTICE_SECTIONS: Record<string, SectionKey> = {
+  // Only a fallback: every ?saved value that reaches here without its own
+  // ?section= came from a profile form. The tier selector redirects to a URL
+  // that already names ?section=plan, and an explicit section always wins
+  // over this map, so ?saved=tier never lands on Profile.
   saved: "profile",
   showcase: "profile",
   invitation: "members",
@@ -73,6 +79,8 @@ const NOTICE_SECTIONS: Record<string, SectionKey> = {
 };
 
 const ERROR_SECTIONS: Record<string, SectionKey> = {
+  "tier-downgrade": "plan",
+  tier: "plan",
   "tenant-code": "profile",
   "currency-locked": "profile",
   "showcase-invalid": "profile",

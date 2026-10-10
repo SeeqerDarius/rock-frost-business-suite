@@ -10,11 +10,16 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getSchoolAcademicSetup } from "@/modules/school/service";
 import { getSchoolBroadsheet } from "@/modules/school/broadsheet-service";
+import { schoolPlanGate } from "@/components/school/plan-gate";
 
 const INPUT_CLASS = "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 export default async function SchoolBroadsheetPage({ searchParams }: { searchParams: Promise<{ classId?: string; termId?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
+  // Plan gate. Navigation already hides this page when the plan does
+  // not include it, but a hidden link is not a boundary.
+  const gate = await schoolPlanGate(tenant.organizationId, "school.exams", "Exam broadsheet", "A class's subjects across the top, every student ranked by average performance down the side.");
+  if (gate) return gate;
   const canView = hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_PUBLISH) || hasPermission(tenant, PERMISSIONS.SCHOOL_ACADEMIC_PERFORMANCE_VIEW) || hasPermission(tenant, PERMISSIONS.SCHOOL_REPORTS_VIEW);
 
   if (!canView) {

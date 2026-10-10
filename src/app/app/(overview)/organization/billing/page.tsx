@@ -12,7 +12,8 @@ import { configuredGatewayProviders } from "@/lib/payments";
 import { cancelPaystackRenewal, managePaystackSubscription, startGatewayPayment, startSelfServiceCheckout } from "./actions";
 import { ModuleCart } from "./module-cart";
 import { getOrganizationSeatUsage } from "@/platform/subscriptions/seats";
-import { formatGhs, listModulePrices, listPricingBundles } from "@/lib/pricing";
+import { formatGhs, getModuleLadderMap, listModulePrices, listPricingBundles } from "@/lib/pricing";
+import { PLAN_TIER_LABELS, PLAN_TIER_TAGLINES } from "@/platform/entitlements/tiers";
 import { getModule } from "@/platform/modules/registry";
 import { primaryProductKey } from "@/platform/modules/product-groups";
 
@@ -23,6 +24,8 @@ const ERRORS: Record<string, string> = {
   "cancel-failed": "We couldn't cancel automatic renewal. No billing change was made.",
   "invalid-selection": "Choose a valid module and billing period.",
   "already-subscribed": "One or more selected products already have an active or pending subscription. Refresh the page and try again.",
+  "plan-unavailable": "Choose a plan that is available for that module.",
+  "plan-required": "That module is sold by plan. Choose a plan on its own card below.",
 };
 
 const PROVIDER_LABELS: Record<string, string> = { PAYSTACK: "Paystack", FLUTTERWAVE: "Flutterwave" };
@@ -61,6 +64,18 @@ export default async function OrganizationBillingPage({
   const availableProviders = configuredGatewayProviders();
   const subscribedProducts = new Set(subscriptions.flatMap((subscription) => subscription.entitledModuleKeys.length ? subscription.entitledModuleKeys.map(primaryProductKey) : [primaryProductKey(subscription.module.code)]));
   const selfServiceProducts = modulePrices.filter((price) => !subscribedProducts.has(price.moduleKey));
+  // A module sold by plan is bought from its own card, not the cart: the cart
+  // charges one price per module and has nowhere to choose a plan, so putting
+  // a ladder module in it would hand over full access at the lowest rung's
+  // price. The other modules have one price and no decision to make, so the
+  // single-payment cart is still the better way to buy several at once.
+  const ladderMap = await getModuleLadderMap();
+  const cartProducts = selfServiceProducts.filter((price) => !ladderMap.has(price.moduleKey));
+  const planProducts = selfServiceProducts.flatMap((price) => {
+    const ladder = ladderMap.get(price.moduleKey);
+    const module_ = getModule(price.moduleKey);
+    return ladder && module_ ? [{ ladder, name: module_.name, description: module_.description }] : [];
+  });
   const paystackAvailable = availableProviders.includes("PAYSTACK");
 
   return (
@@ -79,23 +94,55 @@ export default async function OrganizationBillingPage({
         </Alert>
       ) : null}
 
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-lg font-semibold">Add modules</h2>
-          <p className="text-sm text-muted-foreground">Check as many products as you need, then pay for all of them in a single payment. Access activates automatically after Paystack confirms payment.</p>
-        </div>
-        {selfServiceProducts.length ? (
+      {cartProducts.length ? (
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold">Add modules</h2>
+            <p className="text-sm text-muted-foreground">Check as many products as you need, then pay for all of them in a single payment. Access activates automatically after Paystack confirms payment.</p>
+          </div>
           <ModuleCart
-            products={selfServiceProducts.flatMap((price) => {
+            products={cartProducts.flatMap((price) => {
               const module_ = getModule(price.moduleKey);
               return module_ ? [{ ...price, name: module_.name, description: module_.description }] : [];
             })}
             paystackAvailable={paystackAvailable}
           />
-        ) : (
+        </section>
+      ) : null}
+
+      {selfServiceProducts.length ? null : (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">Add modules</h2>
           <p className="rounded-md border p-4 text-sm text-muted-foreground">Every available product already has an active or pending subscription.</p>
-        )}
-      </section>
+        </section>
+      )}
+
+      {planProducts.length ? (
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold">Choose a plan</h2>
+            <p className="text-sm text-muted-foreground">These modules are sold by plan, so pick the one that matches how you work. You can move up a plan later and keep everything you have recorded.</p>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {planProducts.map(({ ladder, name, description }) => (
+              <Card key={ladder.moduleKey}>
+                <CardHeader><CardTitle>{name}</CardTitle><CardDescription>{description}</CardDescription></CardHeader>
+                <CardContent>
+                  <form action={startSelfServiceCheckout} className="space-y-3">
+                    <input type="hidden" name="productKey" value={ladder.moduleKey} />
+                    <input type="hidden" name="productType" value="MODULE" />
+                    <label className="block space-y-1 text-sm"><span className="font-medium">Plan</span><select name="tier" defaultValue={ladder.rungs.some((rung) => rung.tier === "PRO") ? "PRO" : ladder.rungs[0]?.tier} className="h-10 w-full rounded-md border bg-background px-3">{ladder.rungs.map((rung) => <option key={rung.tier} value={rung.tier}>{PLAN_TIER_LABELS[rung.tier]}, {formatGhs(rung.monthlyGhs)} monthly or {formatGhs(rung.annualGhs)} annually, {rung.includedSeats} seats</option>)}</select></label>
+                    <ul className="space-y-1 text-xs text-muted-foreground">{ladder.rungs.map((rung) => <li key={rung.tier}><span className="font-medium text-foreground">{PLAN_TIER_LABELS[rung.tier]}:</span> {PLAN_TIER_TAGLINES[rung.tier]}</li>)}</ul>
+                    <label className="block space-y-1 text-sm"><span className="font-medium">Billing period</span><select name="billingCycle" className="h-10 w-full rounded-md border bg-background px-3" defaultValue="ANNUAL"><option value="MONTHLY">Monthly</option><option value="ANNUAL">Annual, about two months saved</option></select></label>
+                    <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="autoRenew" value="true" defaultChecked className="mt-1 size-4" /><span>Renew automatically using the card authorized at checkout.</span></label>
+                    <Button type="submit" disabled={!paystackAvailable}>Continue to secure payment</Button>
+                  </form>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="space-y-3">
         <div>

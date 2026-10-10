@@ -2,7 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import { normalizeGhanaPhone } from "@/lib/phone";
-import { isOrganizationSmsNotificationsGranted } from "@/lib/platform-communications";
+import { canSendModuleSms } from "@/lib/platform-communications";
 
 /**
  * mNotify's Quick Bulk SMS endpoint (confirmed against the current API docs
@@ -36,6 +36,15 @@ export interface SendSmsArgs {
   /** A short machine-readable purpose code, e.g. "PHARMACY_PICKUP_READY", "2FA_LOGIN" - stored on the SmsMessage log and used by callers like the appointment-reminder cron to dedup ("has a reminder already gone out for this record"). */
   purpose: string;
   organizationId: string;
+  /**
+   * Which module is sending. Required, because entitlement is per module:
+   * an organization on School Pro may text guardians while the same
+   * organization's Hotel may not. Without this the gate could only ask "may
+   * this customer send SMS at all", which is exactly the coarseness that made
+   * one boolean silently cover five modules. Omitted only for `isOtp` sends,
+   * which belong to authentication rather than any module.
+   */
+  moduleKey?: string;
   /** Pairs with relatedId to let a caller look up "was an SMS with this purpose already sent for this record" via the SmsMessage log, without adding a column to that record's own model. */
   relatedType?: string;
   relatedId?: string;
@@ -63,12 +72,22 @@ export async function sendSms(args: SendSmsArgs): Promise<SendSmsResult> {
     return { ok: false, error: "SMS delivery is not configured yet." };
   }
 
-  // The per-organization entitlement (a platform operator's grant, see
-  // platform-communications.ts) never applies to 2FA OTP codes - only a
-  // module's own notification toggle gates those.
-  if (!args.isOtp && !(await isOrganizationSmsNotificationsGranted(args.organizationId))) {
-    console.warn(`[sms] Organization ${args.organizationId} is not entitled to SMS notifications, would have sent "${args.purpose}" to ${args.to}`);
-    return { ok: false, error: "SMS notifications are not enabled for this organization." };
+  // Entitlement is per module and per organization (see canSendModuleSms in
+  // platform-communications.ts for the override-then-tier order). It never
+  // applies to 2FA OTP codes: login must keep working for an organization
+  // that has not bought SMS notifications for anything.
+  if (!args.isOtp) {
+    if (!args.moduleKey) {
+      // Fail closed rather than fall back to an organization-wide check. A
+      // caller that forgot its module key is a bug, and guessing would
+      // reintroduce exactly the cross-module leak this replaced.
+      console.error(`[sms] Refusing to send "${args.purpose}" for organization ${args.organizationId}: no moduleKey supplied.`);
+      return { ok: false, error: "SMS notifications are not enabled for this organization." };
+    }
+    if (!(await canSendModuleSms(args.organizationId, args.moduleKey))) {
+      console.warn(`[sms] Organization ${args.organizationId} is not entitled to SMS notifications for the ${args.moduleKey} module, would have sent "${args.purpose}" to ${args.to}`);
+      return { ok: false, error: "SMS notifications are not enabled for this organization." };
+    }
   }
 
   if (!to) {

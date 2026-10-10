@@ -12,9 +12,14 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getSchoolAcademicSetup, listSchoolCampuses, listSchoolTimetable } from "@/modules/school/service";
 import { createTimetableAction } from "../actions";
+import { schoolPlanGate } from "@/components/school/plan-gate";
 
 export default async function SchoolTimetablesPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
+  // Plan gate. Navigation already hides this page when the plan does
+  // not include it, but a hidden link is not a boundary.
+  const gate = await schoolPlanGate(tenant.organizationId, "school.timetables", "Timetables", "Weekly class schedules. A class, teacher, or room can only be booked once in any time slot.");
+  if (gate) return gate;
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_TIMETABLES_MANAGE);
   const [[years, classes, subjects], campuses, entries] = await Promise.all([
     getSchoolAcademicSetup(tenant.organizationId),

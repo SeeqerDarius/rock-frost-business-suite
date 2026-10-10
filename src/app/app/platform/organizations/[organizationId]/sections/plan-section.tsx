@@ -3,8 +3,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/school/section-card";
 import type { ModuleSeatUsage } from "@/platform/subscriptions/seats";
+import { PLAN_TIER_LABELS, isPlanTier, UNTIERED_LEGACY_TIER } from "@/platform/entitlements/tiers";
 import type { OrganizationDetail } from "./data";
 import { SettingRow } from "./shared";
+import { TierSelector } from "./tier-selector";
 
 const STATUS_TONE: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   ACTIVE: "default",
@@ -82,7 +84,14 @@ export function PlanSection({
                 <SettingRow
                   key={latest.moduleId}
                   title={latest.module.name}
-                  status={<Badge variant={STATUS_TONE[latest.status] ?? "outline"}>{humanize(latest.status)}</Badge>}
+                  status={
+                    <>
+                      <Badge variant={STATUS_TONE[latest.status] ?? "outline"}>{humanize(latest.status)}</Badge>
+                      <Badge variant="outline">
+                        {PLAN_TIER_LABELS[isPlanTier(latest.tier) ? latest.tier : UNTIERED_LEGACY_TIER]}
+                      </Badge>
+                    </>
+                  }
                   help={[
                     humanize(latest.mode),
                     `${latest.durationMonths} ${latest.durationMonths === 1 ? "month" : "months"}`,
@@ -100,7 +109,14 @@ export function PlanSection({
                     </div>
                   }
                 >
-                  <div className="space-y-1 text-xs text-muted-foreground">
+                  <div className="space-y-3">
+                    <TierSelector
+                      subscriptionId={latest.id}
+                      moduleKey={latest.module.code}
+                      currentTier={isPlanTier(latest.tier) ? latest.tier : UNTIERED_LEGACY_TIER}
+                      returnTo={`/app/platform/organizations/${organization.id}?section=plan`}
+                    />
+                    <div className="space-y-1 text-xs text-muted-foreground">
                     <p>
                       {latest.startsAt ? latest.startsAt.toLocaleDateString() : "No start date"} to{" "}
                       {latest.endsAt ? latest.endsAt.toLocaleDateString() : "No end date"}
@@ -117,6 +133,7 @@ export function PlanSection({
                         {history.map((subscription) => `${humanize(subscription.status)} (${subscription.createdAt.toLocaleDateString()})`).join(", ")}
                       </p>
                     ) : null}
+                    </div>
                   </div>
                 </SettingRow>
               );

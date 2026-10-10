@@ -128,6 +128,18 @@ enum SubscriptionStatus {
   CANCELLED
 }
 
+/// The plan ladder a module subscription sits on. Ordered and cumulative:
+/// anything a lower tier includes, every higher tier also includes. ENTERPRISE
+/// is quote-only and never sold through self-service checkout. What each tier
+/// actually unlocks lives in src/platform/entitlements/catalogue.ts, not here,
+/// because it changes far more often than the database shape does.
+enum PlanTier {
+  BASIC
+  PRO
+  PLATINUM
+  ENTERPRISE
+}
+
 enum SubscriptionPaymentStatus {
   SUCCESS
   FAILED
@@ -1130,6 +1142,27 @@ model AddonPricingPlan {
 /// product keys (e.g. "hr", not "hr"+"payroll") — the same convention as
 /// Subscription.entitledModuleKeys; display names are derived from the
 /// module registry at read time rather than stored redundantly here.
+/// Per-tier pricing for one module. ModulePricingPlan stays as that module's
+/// single headline price (the Pro row, which every existing quote, checkout,
+/// and public price already reads) so nothing that predates tiers has to
+/// change; this table adds the other rungs beside it. A module with no rows
+/// here is simply not sold by tier yet, and the pricing page shows its
+/// headline price alone rather than an incomplete ladder.
+model ModuleTierPrice {
+  id                String   @id @default(cuid())
+  moduleKey         String
+  tier              PlanTier
+  monthlyGhs        Decimal  @db.Decimal(18, 2)
+  annualGhs         Decimal  @db.Decimal(18, 2)
+  includedSeats     Int
+  additionalSeatGhs Decimal  @db.Decimal(18, 2)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([moduleKey, tier])
+  @@index([moduleKey])
+}
+
 model PricingBundle {
   id         String   @id @default(cuid())
   key        String   @unique
@@ -1537,6 +1570,19 @@ model Subscription {
   contactSubmissionId        String?                 @unique
   mode                       SubscriptionMode
   status                     SubscriptionStatus      @default(PENDING_PAYMENT)
+  /// Which plan tier this agreement buys.
+  ///
+  /// Every code path that creates a Subscription sets this explicitly, and
+  /// test/subscription-tier-assignment.test.ts fails if one stops doing so.
+  /// That matters because the column default is the restrictive end of the
+  /// ladder: a path that forgot would charge the full headline price and
+  /// hand back the Basic subset. Self-service checkout stores the rung the
+  /// customer picked; suite, cart, and operator-entered agreements store
+  /// PLATINUM, because their prices were all quoted when a module meant the
+  /// whole module. The migration that added this column backfilled every
+  /// pre-existing row to PLATINUM for the same reason. See
+  /// docs/PLAN_TIERS.md.
+  tier                       PlanTier                @default(BASIC)
   durationMonths             Int
   amount                     Decimal                 @db.Decimal(18, 2)
   currency                   String                  @default("GHS")

@@ -14,6 +14,7 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listSchoolCampuses, listSchoolStudentChoices, listSchoolTransport } from "@/modules/school/service";
 import { assignTransportAction, createTransportRouteAction } from "../actions";
+import { schoolPlanGate } from "@/components/school/plan-gate";
 
 /** `stops` is a Json column written as a string array by createTransportRouteAction. */
 function readStops(value: unknown): string[] {
@@ -22,6 +23,10 @@ function readStops(value: unknown): string[] {
 
 export default async function SchoolTransportPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; studentQ?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
+  // Plan gate. Navigation already hides this page when the plan does
+  // not include it, but a hidden link is not a boundary.
+  const gate = await schoolPlanGate(tenant.organizationId, "school.services", "Transport", "Routes, vehicles, drivers, stops, and student assignments.");
+  if (gate) return gate;
   const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE);
   const [campuses, students, routes] = await Promise.all([
