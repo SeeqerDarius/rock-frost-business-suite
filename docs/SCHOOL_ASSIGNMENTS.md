@@ -8,10 +8,11 @@ record. There is no second gradebook and no AI marking.
 ## Entitlement and access
 
 - **Add-on grant**: `Organization.schoolAssignmentsGranted` (default off),
-  granted per organization by a platform operator under Modules and features
-  on the organization's Configuration pane (`toggleSchoolAssignments()` in
-  `src/app/app/platform/actions.ts`, audited as
-  `school_assignments.platform_granted` / `_revoked`). Declared
+  granted per organization by a platform operator on the School module's
+  configuration page (Modules and features, then School), through
+  `setOrganizationFeature()` and audited as `organization_feature.updated`
+  with old and new values (see `docs/MODULE_FEATURE_CONFIGURATION.md`). The
+  original `toggleSchoolAssignments()` action remains. Declared
   `scope: "module"` in `src/platform/organizations/feature-addons.ts`, so it is
   nested under School.
 - **Server-side gate**: every exported function in

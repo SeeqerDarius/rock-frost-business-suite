@@ -5,11 +5,12 @@ import { getSchoolNavigationForTenant } from "@/modules/school/navigation-access
 import { requireCurrentTenant } from "@/lib/tenant";
 import { canAccessModule, isNarrowSchoolPortalRole } from "@/lib/auth/permissions";
 import { isSchoolAssignmentsGranted, isSchoolGuardianMessagingGranted, isSchoolPortalGranted } from "@/lib/platform-communications";
+import { isOrganizationFeatureEnabled } from "@/platform/organizations/feature-config-service";
 
 export default async function SchoolLayout({ children }: { children: React.ReactNode }) {
   const tenant = await requireCurrentTenant();
   if (!canAccessModule(tenant, "school")) return <div className="flex min-h-screen items-center justify-center px-6"><EmptyState icon={Lock} title="School Management isn't available to you" description="Your organization must enable School Management and your role must include School permissions." /></div>;
-  const [schoolPortalGranted, guardianMessagingGranted, assignmentsGranted] = await Promise.all([isSchoolPortalGranted(tenant.organizationId), isSchoolGuardianMessagingGranted(tenant.organizationId), isSchoolAssignmentsGranted(tenant.organizationId)]);
-  const navigation = getSchoolNavigationForTenant(tenant, schoolPortalGranted, guardianMessagingGranted, assignmentsGranted);
+  const [schoolPortalGranted, guardianMessagingGranted, assignmentsGranted, transport, library] = await Promise.all([isSchoolPortalGranted(tenant.organizationId), isSchoolGuardianMessagingGranted(tenant.organizationId), isSchoolAssignmentsGranted(tenant.organizationId), isOrganizationFeatureEnabled(tenant.organizationId, "school.transport"), isOrganizationFeatureEnabled(tenant.organizationId, "school.library")]);
+  const navigation = getSchoolNavigationForTenant(tenant, schoolPortalGranted, guardianMessagingGranted, assignmentsGranted, { transport, library });
   return <AppShell sectionLabel="School Management" moduleKey="school" navigation={navigation} enabledModuleKeys={tenant.accessibleModuleKeys} organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }} showModuleLauncher={!isNarrowSchoolPortalRole(tenant)}>{children}</AppShell>;
 }

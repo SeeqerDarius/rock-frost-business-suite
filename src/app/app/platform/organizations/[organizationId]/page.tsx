@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
 import { isPlatformAnchorOrganization } from "@/lib/platform-organizations";
-import { catalogueModuleKeys } from "@/platform/modules/registry";
 import { resolveOfflinePolicy } from "@/lib/pwa/policy";
 import { getOrganizationHealthSnapshot } from "@/platform/organizations/health";
 import { getOrganizationSeatUsage } from "@/platform/subscriptions/seats";
@@ -15,6 +14,7 @@ import { organizationDetailInclude } from "./sections/data";
 import { OverviewSection } from "./sections/overview-section";
 import { PlanSection } from "./sections/plan-section";
 import { FeaturesSection } from "./sections/features-section";
+import { listOrganizationModuleRows } from "@/platform/organizations/module-configuration-view";
 import { MembersSection } from "./sections/members-section";
 import { ProfileSection } from "./sections/profile-section";
 import { LifecycleSection } from "./sections/lifecycle-section";
@@ -106,17 +106,13 @@ export default async function OrganizationDetailPage({
   const { organizationId } = await params;
   if (await isPlatformAnchorOrganization(organizationId)) notFound();
   const notices = await searchParams;
-  const [organization, modules, health, seatUsage] = await Promise.all([
+  const [organization, health, seatUsage] = await Promise.all([
     db.organization.findUnique({ where: { id: organizationId }, include: organizationDetailInclude }),
-    db.module.findMany({
-      where: { status: "ACTIVE", code: { in: [...catalogueModuleKeys] } },
-      orderBy: { name: "asc" },
-      select: { id: true, code: true, name: true },
-    }),
     getOrganizationHealthSnapshot(organizationId),
     getOrganizationSeatUsage(organizationId),
   ]);
   if (!organization) notFound();
+  const moduleRows = await listOrganizationModuleRows(organization.id);
 
   // An explicit ?section= wins; otherwise a notice takes the operator back to
   // the section that produced it.
@@ -238,7 +234,7 @@ export default async function OrganizationDetailPage({
       {section === "features" ? (
         <FeaturesSection
           organization={organization}
-          modules={modules}
+          moduleRows={moduleRows}
           enabledModuleKeys={enabledModuleKeys}
           offlinePolicy={offlinePolicy}
         />

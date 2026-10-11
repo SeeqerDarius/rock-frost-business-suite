@@ -8,6 +8,7 @@ import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@
 import { sendSms } from "@/lib/sms";
 import { schoolAttendanceAbsentSms, schoolExamResultsPublishedSms, schoolFeePaymentReceivedSms } from "@/lib/sms-templates";
 import { getSchoolPayrollEligibleEmployee, getSchoolPayrollLinkCandidate, listSchoolPayrollLinkCandidates } from "@/modules/hr/service";
+import { isOrganizationFeatureEnabled } from "@/platform/organizations/feature-config-service";
 
 export class SchoolStateError extends Error {
   constructor(message: string, readonly code = "blocked") {
@@ -16,6 +17,19 @@ export class SchoolStateError extends Error {
   }
 }
 export class SchoolNotFoundError extends Error {}
+
+/**
+ * Transport and Library are included School capabilities that a platform
+ * operator can switch off for one organization (Platform > organization >
+ * School > Features). Enforced here, before every read and write, so a
+ * direct request cannot reach a switched-off area. Records are never deleted.
+ * See docs/MODULE_FEATURE_CONFIGURATION.md.
+ */
+export async function assertSchoolFeature(organizationId: string, key: "school.transport" | "school.library") {
+  if (!(await isOrganizationFeatureEnabled(organizationId, key))) {
+    throw new SchoolStateError(key === "school.transport" ? "Transport is switched off for this school." : "The library is switched off for this school.", "feature-off");
+  }
+}
 
 const decimal = (value: Prisma.Decimal.Value) => new Prisma.Decimal(value);
 
@@ -1370,6 +1384,7 @@ export async function submitSchoolExamForModeration(organizationId: string, exam
 }
 
 export async function borrowSchoolLibraryBook(organizationId: string, bookId: string, studentId: string, dueAt: Date) {
+  await assertSchoolFeature(organizationId, "school.library");
   return db.$transaction(async (tx) => {
     const student = await tx.schoolStudent.findFirst({ where: { id: studentId, organizationId, status: "ACTIVE" } });
     if (!student) throw new SchoolNotFoundError("Active student not found.");
@@ -1380,6 +1395,7 @@ export async function borrowSchoolLibraryBook(organizationId: string, bookId: st
 }
 
 export async function returnSchoolLibraryBook(organizationId: string, loanId: string) {
+  await assertSchoolFeature(organizationId, "school.library");
   return db.$transaction(async (tx) => {
     const loan = await tx.schoolLibraryLoan.findFirst({ where: { id: loanId, organizationId, status: { in: ["BORROWED", "OVERDUE"] } } });
     if (!loan) throw new SchoolNotFoundError("Open loan not found.");
@@ -1388,10 +1404,11 @@ export async function returnSchoolLibraryBook(organizationId: string, loanId: st
   });
 }
 
-export function listSchoolLibrary(organizationId: string) { return Promise.all([db.schoolLibraryBook.findMany({ where: { organizationId }, orderBy: { title: "asc" } }), db.schoolLibraryLoan.findMany({ where: { organizationId }, include: { book: true, student: true }, orderBy: { borrowedAt: "desc" } })]); }
-export function listSchoolLibraryLoans(organizationId: string) { return db.schoolLibraryLoan.findMany({ where: { organizationId }, include: { book: { select: { title: true } }, student: { select: { firstName: true, lastName: true, admissionNumber: true } } }, orderBy: [{ borrowedAt: "desc" }, { id: "desc" }] }); }
+export async function listSchoolLibrary(organizationId: string) { await assertSchoolFeature(organizationId, "school.library"); return Promise.all([db.schoolLibraryBook.findMany({ where: { organizationId }, orderBy: { title: "asc" } }), db.schoolLibraryLoan.findMany({ where: { organizationId }, include: { book: true, student: true }, orderBy: { borrowedAt: "desc" } })]); }
+export async function listSchoolLibraryLoans(organizationId: string) { await assertSchoolFeature(organizationId, "school.library"); return db.schoolLibraryLoan.findMany({ where: { organizationId }, include: { book: { select: { title: true } }, student: { select: { firstName: true, lastName: true, admissionNumber: true } } }, orderBy: [{ borrowedAt: "desc" }, { id: "desc" }] }); }
 
 export async function listSchoolLibraryLoanPage(organizationId: string, input: { query?: string; status?: SchoolLibraryLoanStatus; showAll?: boolean; page?: number; pageSize?: number } = {}) {
+  await assertSchoolFeature(organizationId, "school.library");
   const pageSize = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.pageSize) ? input.pageSize! : 50)));
   const requestedPage = Math.max(1, Math.floor(Number.isFinite(input.page) ? input.page! : 1));
   const terms = input.query?.trim().split(/\s+/).filter(Boolean) ?? [];
@@ -1426,6 +1443,7 @@ export async function listSchoolLibraryLoanPage(organizationId: string, input: {
   return { rows, total, overdueCount, page, pageSize, pageCount };
 }
 export async function listSchoolLibraryBookChoices(organizationId: string, input: { query?: string; take?: number } = {}) {
+  await assertSchoolFeature(organizationId, "school.library");
   const take = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.take) ? input.take! : 50)));
   const query = input.query?.trim();
   const where: Prisma.SchoolLibraryBookWhereInput = {
@@ -1444,6 +1462,7 @@ export async function listSchoolLibraryBookChoices(organizationId: string, input
   return { rows, total, take };
 }
 export async function listSchoolLibraryBookPage(organizationId: string, input: { query?: string; page?: number; pageSize?: number } = {}) {
+  await assertSchoolFeature(organizationId, "school.library");
   const pageSize = Math.min(100, Math.max(1, Math.floor(Number.isFinite(input.pageSize) ? input.pageSize! : 50)));
   const requestedPage = Math.max(1, Math.floor(Number.isFinite(input.page) ? input.page! : 1));
   const terms = input.query?.trim().split(/\s+/).filter(Boolean) ?? [];
@@ -1466,11 +1485,11 @@ export async function listSchoolLibraryBookPage(organizationId: string, input: {
   }, orderBy: [{ title: "asc" }, { id: "asc" }], skip: (page - 1) * pageSize, take: pageSize });
   return { rows, total, page, pageSize, pageCount };
 }
-export function createSchoolLibraryBook(organizationId: string, data: { accessionCode: string; isbn?: string | null; title: string; author?: string | null; category?: string | null; totalCopies: number }) { if(data.totalCopies<1) throw new SchoolStateError("At least one copy is required."); return db.schoolLibraryBook.create({ data: { organizationId, ...data, availableCopies: data.totalCopies } }); }
+export async function createSchoolLibraryBook(organizationId: string, data: { accessionCode: string; isbn?: string | null; title: string; author?: string | null; category?: string | null; totalCopies: number }) { await assertSchoolFeature(organizationId, "school.library"); if(data.totalCopies<1) throw new SchoolStateError("At least one copy is required."); return db.schoolLibraryBook.create({ data: { organizationId, ...data, availableCopies: data.totalCopies } }); }
 
-export function listSchoolTransport(organizationId: string) { return db.schoolTransportRoute.findMany({ where: { organizationId }, include: { campus: true, assignments: { include: { student: true } } }, orderBy: { name: "asc" } }); }
-export async function createSchoolTransportRoute(organizationId: string, data: { campusId: string; code: string; name: string; vehicle?: string | null; driverName?: string | null; stops?: string[]; fee: Prisma.Decimal.Value }) { if(!(await db.schoolCampus.findFirst({where:{id:data.campusId,organizationId}}))) throw new SchoolNotFoundError("Campus not found."); return db.schoolTransportRoute.create({data:{organizationId,...data,stops:data.stops ?? Prisma.JsonNull,fee:decimal(data.fee)}}); }
-export async function assignSchoolTransport(organizationId:string,routeId:string,studentId:string,stopName?:string|null){const [route,student]=await Promise.all([db.schoolTransportRoute.findFirst({where:{id:routeId,organizationId,active:true}}),db.schoolStudent.findFirst({where:{id:studentId,organizationId,status:"ACTIVE"}})]);if(!route||!student)throw new SchoolNotFoundError("Route or student not found.");return db.schoolTransportAssignment.upsert({where:{routeId_studentId:{routeId,studentId}},update:{stopName,active:true},create:{organizationId,routeId,studentId,stopName}});}
+export async function listSchoolTransport(organizationId: string) { await assertSchoolFeature(organizationId, "school.transport"); return db.schoolTransportRoute.findMany({ where: { organizationId }, include: { campus: true, assignments: { include: { student: true } } }, orderBy: { name: "asc" } }); }
+export async function createSchoolTransportRoute(organizationId: string, data: { campusId: string; code: string; name: string; vehicle?: string | null; driverName?: string | null; stops?: string[]; fee: Prisma.Decimal.Value }) { await assertSchoolFeature(organizationId, "school.transport"); if(!(await db.schoolCampus.findFirst({where:{id:data.campusId,organizationId}}))) throw new SchoolNotFoundError("Campus not found."); return db.schoolTransportRoute.create({data:{organizationId,...data,stops:data.stops ?? Prisma.JsonNull,fee:decimal(data.fee)}}); }
+export async function assignSchoolTransport(organizationId:string,routeId:string,studentId:string,stopName?:string|null){await assertSchoolFeature(organizationId, "school.transport");const [route,student]=await Promise.all([db.schoolTransportRoute.findFirst({where:{id:routeId,organizationId,active:true}}),db.schoolStudent.findFirst({where:{id:studentId,organizationId,status:"ACTIVE"}})]);if(!route||!student)throw new SchoolNotFoundError("Route or student not found.");return db.schoolTransportAssignment.upsert({where:{routeId_studentId:{routeId,studentId}},update:{stopName,active:true},create:{organizationId,routeId,studentId,stopName}});}
 
 export async function listSchoolPayrollAdjustments(organizationId: string) {
   const adjustments = await db.schoolPayrollAdjustment.findMany({ where: { organizationId }, orderBy: [{ period: "desc" }, { createdAt: "desc" }] });

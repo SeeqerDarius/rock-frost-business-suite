@@ -5,13 +5,7 @@ import { expandProductModuleKeys, primaryProductKey } from "@/platform/modules/p
 
 export const ACTIVE_ORGANIZATION_STATUSES = new Set(["ACTIVE", "TRIAL"]);
 
-/**
- * Module keys an organization is currently entitled to: operator-enabled
- * modules, except those governed by a subscription that is not paid and
- * current. Shared by the session tenant and by scheduled jobs that act for
- * an organization without a signed-in user.
- */
-export async function entitledModuleKeysForOrganization(organizationId: string): Promise<string[]> {
+async function loadEntitlementInputs(organizationId: string) {
   const [enabledModules, subscriptionModules, activeSubscriptions] = await Promise.all([
     db.organizationModule.findMany({
       where: { organizationId, enabled: true, module: { status: "ACTIVE" } },
@@ -46,10 +40,52 @@ export async function entitledModuleKeysForOrganization(organizationId: string):
     item.entitledModuleKeys?.length ? item.entitledModuleKeys.map(primaryProductKey) : [subscriptionProductKey(item)]));
   const paidAndCurrent = new Set(activeSubscriptions.flatMap((item) =>
     item.entitledModuleKeys?.length ? item.entitledModuleKeys.map(primaryProductKey) : [subscriptionProductKey(item)]));
-  return expandProductModuleKeys(enabledModules
+  const entitledCodes = expandProductModuleKeys(enabledModules
     .filter((om) => {
       const productKey = primaryProductKey(om.module.code);
       return !subscriptionControlled.has(productKey) || paidAndCurrent.has(productKey);
     })
     .map((om) => om.module.code));
+  return { enabledModules, subscriptionControlled, paidAndCurrent, entitledCodes };
+}
+
+/**
+ * Module keys an organization is currently entitled to: operator-enabled
+ * modules, except those governed by a subscription that is not paid and
+ * current. Shared by the session tenant and by scheduled jobs that act for
+ * an organization without a signed-in user.
+ */
+export async function entitledModuleKeysForOrganization(organizationId: string): Promise<string[]> {
+  return (await loadEntitlementInputs(organizationId)).entitledCodes;
+}
+
+export interface ModuleEntitlementState {
+  /** OrganizationModule.enabled for a platform-ACTIVE module (or its product group). */
+  enabled: boolean;
+  /** A non-cancelled subscription governs this product. */
+  subscriptionControlled: boolean;
+  /** That subscription is ACTIVE and inside its dates. */
+  paidAndCurrent: boolean;
+  /** What the tenant actually gets. Same rule as entitledModuleKeysForOrganization. */
+  entitled: boolean;
+}
+
+/**
+ * Explains entitlement per module for the platform configuration view, from
+ * exactly the same inputs and rule as entitledModuleKeysForOrganization, so
+ * the view can never disagree with real access. Read-only.
+ */
+export async function moduleEntitlementState(organizationId: string): Promise<(moduleCode: string) => ModuleEntitlementState> {
+  const { enabledModules, subscriptionControlled, paidAndCurrent, entitledCodes } = await loadEntitlementInputs(organizationId);
+  const enabledCodes = new Set(expandProductModuleKeys(enabledModules.map((om) => om.module.code)));
+  const entitled = new Set(entitledCodes);
+  return (moduleCode: string) => {
+    const productKey = primaryProductKey(moduleCode);
+    return {
+      enabled: enabledCodes.has(moduleCode),
+      subscriptionControlled: subscriptionControlled.has(productKey),
+      paidAndCurrent: paidAndCurrent.has(productKey),
+      entitled: entitled.has(moduleCode),
+    };
+  };
 }

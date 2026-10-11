@@ -11,6 +11,8 @@ import { PrerequisiteNotice, SectionCard } from "@/components/school/section-car
 import { RecordSearch } from "@/components/school/record-search";
 import { createOrganizationFormatter } from "@/lib/org-format";
 import { requireModuleAccess } from "@/lib/auth/module-access";
+import { isOrganizationFeatureEnabled } from "@/platform/organizations/feature-config-service";
+import { SwitchedOffNotice } from "@/components/school/switched-off-notice";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listSchoolCampuses, listSchoolStudentChoices, listSchoolTransport } from "@/modules/school/service";
 import { assignTransportAction, createTransportRouteAction } from "../actions";
@@ -22,6 +24,7 @@ function readStops(value: unknown): string[] {
 
 export default async function SchoolTransportPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; studentQ?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
+  if (!(await isOrganizationFeatureEnabled(tenant.organizationId, "school.transport"))) return <SwitchedOffNotice title="Transport" />;
   const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE);
   const [campuses, students, routes] = await Promise.all([

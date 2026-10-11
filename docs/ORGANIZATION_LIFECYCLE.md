@@ -26,7 +26,7 @@ in `sections/data.ts`.
 | --- | --- |
 | Overview | Read-only. Member/branch/module/open-request counts, plan at a glance, usage and health, active modules, recent requests. Nothing here changes the tenant. |
 | Plan and billing | Module subscriptions grouped per module (mode, status, window, amount, seats, payment reference, suite entitlements, earlier agreements), seat usage per module, and the billing contact. Creating, activating, and cancelling subscriptions stays on `/app/platform/subscriptions`, which works across every tenant. |
-| Modules and features | Module activation split into what is on for this organization and what is available, with each paid feature add-on rendered beside the modules it affects. |
+| Modules and features | Every catalogue module with one status (enabled, on but waiting for payment, disabled, available as an add-on, unavailable). Each row opens the module configuration page, where the module and its add-ons and optional capabilities are switched with confirmation, dependency checks, and audit (see `docs/MODULE_FEATURE_CONFIGURATION.md`). Organization-wide add-ons (offline, SMS) stay under Shared capabilities. |
 | Members and access | Pending invitations (the only rows with an action) separated from settled memberships. |
 | Profile and showcase | Identity, contact, location, and localization as four labelled groups, plus the public customer showcase. |
 | Lifecycle and deletion | Account state changes, each stating its effect on the tenant's users, and the delayed-deletion flow. Both destructive surfaces are here and nowhere else. |

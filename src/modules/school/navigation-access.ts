@@ -15,7 +15,7 @@ import { schoolNavigation } from "@/modules/school/navigation";
  * re-enforces this independently, so this filter is a UX convenience, not
  * the actual security boundary.
  */
-export function getSchoolNavigationForTenant(tenant: TenantContext, schoolPortalGranted: boolean, guardianMessagingGranted = false, assignmentsGranted = false): ModuleNavItem[] {
+export function getSchoolNavigationForTenant(tenant: TenantContext, schoolPortalGranted: boolean, guardianMessagingGranted = false, assignmentsGranted = false, optionalFeatures: { transport: boolean; library: boolean } = { transport: true, library: true }): ModuleNavItem[] {
   // Direct messaging needs both paid add-ons (guardians reply from the portal).
   const messagingAvailable = schoolPortalGranted && guardianMessagingGranted;
   const routeAccess: Array<[string, boolean]> = [
@@ -31,8 +31,9 @@ export function getSchoolNavigationForTenant(tenant: TenantContext, schoolPortal
     ["/app/school/timetables", hasPermission(tenant, PERMISSIONS.SCHOOL_TIMETABLES_MANAGE)],
     ["/app/school/fees", hasPermission(tenant, PERMISSIONS.SCHOOL_FEES_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENT_FINANCE_VIEW)],
     ["/app/school/payroll", hasPermission(tenant, PERMISSIONS.SCHOOL_PAYROLL_MANAGE)],
-    ["/app/school/transport", hasPermission(tenant, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE)],
-    ["/app/school/library", hasPermission(tenant, PERMISSIONS.SCHOOL_LIBRARY_MANAGE)],
+    // Optional included capabilities a platform operator can switch off; the service layer enforces it.
+    ["/app/school/transport", optionalFeatures.transport && hasPermission(tenant, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE)],
+    ["/app/school/library", optionalFeatures.library && hasPermission(tenant, PERMISSIONS.SCHOOL_LIBRARY_MANAGE)],
     ["/app/school/campuses", hasPermission(tenant, PERMISSIONS.SCHOOL_CAMPUSES_MANAGE)],
     ["/app/school/staff", hasPermission(tenant, PERMISSIONS.SCHOOL_STAFF_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_VIEW)],
     ["/app/school/portal-access", schoolPortalGranted && (hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENTS_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENT_PROFILE_VIEW))],
