@@ -25,6 +25,17 @@ import { PLAN_TIER_LABELS, PLAN_TIER_TAGLINES, QUOTE_ONLY_TIERS, type PlanTier }
 /** The recommended rung, highlighted so the page gives an actual answer. */
 const RECOMMENDED_TIER: PlanTier = "PRO";
 
+/*
+ * Every card shares one vertical rhythm: title row, a two-line tagline slot,
+ * a fixed price block, then the inclusions directly underneath. Only the
+ * button is pushed to the bottom, so a row of cards lines up without leaving
+ * an empty gap under the price of the shorter plans.
+ */
+const CARD = "h-full";
+const TAGLINE = "md:min-h-10";
+const PRICE_BLOCK = "pt-3";
+const CONTENT = "flex flex-1 flex-col gap-5";
+
 function limitLine(moduleKey: string, tier: PlanTier) {
   const catalogue = moduleTierCatalogue(moduleKey);
   const ceilings = limitsAt(moduleKey, tier);
@@ -60,21 +71,21 @@ export function PlanLadder({ ladder, moduleName }: { ladder: ModuleLadder; modul
           const below = index > 0 ? ladder.rungs[index - 1] : null;
           const recommended = rung.tier === RECOMMENDED_TIER;
           return (
-            <Card key={rung.tier} className={recommended ? "flex flex-col border-primary shadow-sm" : "flex flex-col"}>
+            <Card key={rung.tier} className={recommended ? `${CARD} shadow-md ring-2 ring-primary` : CARD}>
               <CardHeader>
-                <div className="flex items-center justify-between gap-2">
-                  <CardTitle>{PLAN_TIER_LABELS[rung.tier]}</CardTitle>
+                <div className="flex min-h-6 items-center justify-between gap-2">
+                  <CardTitle className="text-lg font-semibold">{PLAN_TIER_LABELS[rung.tier]}</CardTitle>
                   {recommended ? <Badge>Most chosen</Badge> : null}
                 </div>
-                <CardDescription className="space-y-2">
-                  <span className="block">{PLAN_TIER_TAGLINES[rung.tier]}</span>
-                  <span className="block">
-                    <span className="text-2xl font-semibold text-foreground">{formatGhs(rung.monthlyGhs)}</span> / month
-                  </span>
-                  <span className="block text-xs">{formatGhs(rung.annualGhs)} billed annually</span>
-                </CardDescription>
+                <CardDescription className={TAGLINE}>{PLAN_TIER_TAGLINES[rung.tier]}</CardDescription>
+                <div className={PRICE_BLOCK}>
+                  <p className="text-muted-foreground">
+                    <span className="text-3xl font-semibold tracking-tight text-foreground">{formatGhs(rung.monthlyGhs)}</span> / month
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">{formatGhs(rung.annualGhs)} billed annually</p>
+                </div>
               </CardHeader>
-              <CardContent className="mt-auto space-y-4">
+              <CardContent className={CONTENT}>
                 <div className="space-y-2 text-sm">
                   <p className="flex items-center gap-2">
                     <Users className="size-4 shrink-0 text-primary" />
@@ -105,7 +116,7 @@ export function PlanLadder({ ladder, moduleName }: { ladder: ModuleLadder; modul
                   </ul>
                 </div>
                 <Button
-                  className="w-full"
+                  className="mt-auto w-full"
                   variant={recommended ? "default" : "outline"}
                   nativeButton={false}
                   render={<Link href={`/subscribe?type=module&product=${ladder.moduleKey}&tier=${rung.tier}`} />}
@@ -119,22 +130,35 @@ export function PlanLadder({ ladder, moduleName }: { ladder: ModuleLadder; modul
         {quoteOnlyTiers.map((tier) => {
           const top = ladder.rungs[ladder.rungs.length - 1];
           return (
-            <Card key={tier} className="flex flex-col border-primary/30 bg-primary/5">
+            <Card key={tier} className={`${CARD} bg-primary/5`}>
               <CardHeader>
-                <CardTitle>{PLAN_TIER_LABELS[tier]}</CardTitle>
-                <CardDescription className="space-y-2">
-                  <span className="block">{PLAN_TIER_TAGLINES[tier]}</span>
-                  <span className="block text-2xl font-semibold text-foreground">Priced to your agreement</span>
-                </CardDescription>
+                <div className="flex min-h-6 items-center">
+                  <CardTitle className="text-lg font-semibold">{PLAN_TIER_LABELS[tier]}</CardTitle>
+                </div>
+                <CardDescription className={TAGLINE}>{PLAN_TIER_TAGLINES[tier]}</CardDescription>
+                <div className={PRICE_BLOCK}>
+                  <p className="text-3xl font-semibold tracking-tight text-foreground">Custom</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Priced to your agreement</p>
+                </div>
               </CardHeader>
-              <CardContent className="mt-auto space-y-4">
+              <CardContent className={CONTENT}>
+                <div className="space-y-2 text-sm">
+                  <p className="flex items-center gap-2">
+                    <Users className="size-4 shrink-0 text-primary" />
+                    Staff seats set in your contract
+                  </p>
+                  <p className="flex items-center gap-2">
+                    <Check className="size-4 shrink-0 text-primary" />
+                    Ceilings sized to your organization
+                  </p>
+                </div>
                 <div className="space-y-2 border-t pt-4 text-sm">
                   <p className="font-medium">
                     {top ? `Everything in ${PLAN_TIER_LABELS[top.tier]}, plus:` : "Includes:"}
                   </p>
                   <ul className="space-y-2">
                     {[
-                      "Seats, campuses and data volumes written into your contract.",
+                      "Campuses, branches and data volumes written into your contract.",
                       "Onboarding, data migration from your current records, and staff training.",
                       "Named support contact, agreed response times, and a documented escalation path.",
                       "Integrations with the systems you already run, scoped with our team.",
@@ -147,7 +171,7 @@ export function PlanLadder({ ladder, moduleName }: { ladder: ModuleLadder; modul
                   </ul>
                 </div>
                 <Button
-                  className="w-full"
+                  className="mt-auto w-full"
                   nativeButton={false}
                   render={<Link href={`/contact?intent=module&module=${ladder.moduleKey}`} />}
                 >

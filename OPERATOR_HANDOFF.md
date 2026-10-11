@@ -1,5 +1,13 @@
 # Rock Frost Business Suite — Operator Handoff
 
+## 2026-10-11: Pricing page plan cards no longer leave empty gaps under the price
+
+- **Scope**: the owner reported (with a screenshot) large blank areas under the price on the Basic, Platinum and Enterprise cards of the School plan ladder on `/pricing`. Cause: `CardContent` carried `mt-auto`, so in a row of equal-height cards every feature list was pushed to the bottom of its card, and every card shorter than Pro showed a gap the height of the difference.
+- **Fix** (`src/components/marketing/plan-ladder.tsx`): the content now flows directly under the price block and only the button carries `mt-auto`, so the buttons still line up across the row. Every card shares one rhythm: title row, a two-line tagline slot (`md:min-h-10`), a price block, then the limits and features. Enterprise's price slot now reads "Custom" with "Priced to your agreement" beneath, matching the paid cards' price-and-billing structure, and it gained a seats/ceilings block so its feature divider aligns with the others. The duplicate "Seats ... written into your contract" bullet became "Campuses, branches and data volumes written into your contract." Pro is highlighted with a ring instead of a border. No em dashes. Docs: `docs/PLAN_TIERS.md` records the layout rule.
+- **Schema and environment**: none.
+- **Validation**: `npx tsc --noEmit` clean; `npx eslint` on the changed file clean; **204 files / 1,605 unit tests** passed; `npm run lint` + `npm run build` clean. Note: local `node_modules` was stale against `main` (missing `web-push`), so `npm install` was run; the lockfile churn it produced was reverted and is not in this change. In a browser against a local production build (`next start`, the dev server is blocked by the CSP's no-`eval` rule) at 1440px: all four School cards measured a 16 px gap between price block and content (previously hundreds of px on the short cards), identical button tops, and identical header heights; the stacked single-column layout was also checked. No integration tests were run: this is a presentational change with no data or service code touched.
+- **Remaining risks**: other modules gaining ladders reuse the same component, so they inherit the fix; none was checked individually because School is the only published ladder today.
+
 ## 2026-10-10: Client UX, controls stop appearing over data that does not exist
 
 - **Scope**: the two follow-ups the previous entry left open, both found by signing in and using the app rather than by reading code. Form buttons that never showed their pending spinner, and controls rendered over empty datasets. The second turned out to be a real behavioural bug, not a cosmetic one.

@@ -193,7 +193,14 @@ the gate is a refund request, so the page and the gate read the same declaration
 
 Quote-only tiers are derived from `QUOTE_ONLY_TIERS`, so Enterprise shows no amount and
 routes to sales, and a tier that stops being quote-only gains a price column and a
-checkout button with nothing to remember. Modules whose ladders are still pending keep
+checkout button with nothing to remember.
+
+Every card in a ladder shares one vertical rhythm: title row, a two-line tagline slot,
+a price block (Enterprise shows "Custom" in the same slot), then the seats and limits
+and the feature list directly underneath. Only the call-to-action button is pushed to
+the bottom of the card. Do not move `mt-auto` back onto the card content: that pushed
+every feature list to the bottom of its card and left a large empty gap under the price
+of the shorter plans (Basic, Platinum, Enterprise) whenever Pro ran tallest. Modules whose ladders are still pending keep
 their single-price card.
 
 One rough edge: an Enterprise enquiry arrives as the existing `MODULE` enquiry intent.
