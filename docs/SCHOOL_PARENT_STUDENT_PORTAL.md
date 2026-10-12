@@ -96,11 +96,12 @@ never blocks or fails the underlying attendance/payment/publish action.
 
 The portal is also a **paid, per-organization add-on**
 (`Organization.schoolPortalGranted`, default **off**), independent of the
-SMS entitlement above. A platform operator grants or revokes it from
-inside the School Management row itself, in the Modules and features
-section of that organization's Configuration pane
-(`/app/platform/organizations/[organizationId]?section=features`), via
-`toggleSchoolPortalAccess()` (`src/app/app/platform/actions.ts`). It is
+SMS entitlement above. A platform operator grants or revokes it on the
+School module's configuration page (open School from Modules and features
+on the organization's Configuration pane), via `setOrganizationFeature()`,
+which refuses to revoke it while Guardian messaging is on (see
+`docs/MODULE_FEATURE_CONFIGURATION.md`). The original
+`toggleSchoolPortalAccess()` (`src/app/app/platform/actions.ts`) remains. It is
 declared `scope: "module"` in
 `src/platform/organizations/feature-addons.ts`, which is what nests it
 under School rather than listing it as a sibling of organization-wide

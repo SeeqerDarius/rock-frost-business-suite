@@ -828,6 +828,7 @@ model Organization {
   schoolExams                     SchoolExam[]
   schoolExamResults               SchoolExamResult[]
   schoolAssignments               SchoolAssignment[]
+  featureSettings                 OrganizationFeatureSetting[]
   schoolAssignmentQuestions       SchoolAssignmentQuestion[]
   schoolAssignmentVersions        SchoolAssignmentVersion[]
   schoolAssignmentSubmissions     SchoolAssignmentSubmission[]
@@ -1188,6 +1189,30 @@ model OrganizationModule {
 
   @@unique([organizationId, moduleId])
   @@index([moduleId])
+}
+
+/// Per-organization switch for an included module capability that a
+/// platform operator may turn off (2026-10-10). Only keys declared as
+/// "optional" in src/platform/modules/feature-catalogue.ts are valid, and each
+/// one is enforced on the server where the capability lives. No row means the
+/// catalogue default, so organizations created before this table keep their
+/// existing behavior without a backfill. Paid add-ons keep their existing
+/// Organization grant columns; this table never stores billing state.
+/// See docs/MODULE_FEATURE_CONFIGURATION.md.
+model OrganizationFeatureSetting {
+  id             String   @id @default(cuid())
+  organizationId String
+  moduleKey      String
+  featureKey     String
+  enabled        Boolean
+  updatedById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, featureKey])
+  @@index([organizationId, moduleKey])
 }
 
 /// Tenant-owned presentation overrides for a subscribed business module.

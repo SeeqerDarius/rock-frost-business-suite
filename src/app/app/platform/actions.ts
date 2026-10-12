@@ -12,6 +12,11 @@ import { productGroupKeys } from "@/platform/modules/product-groups";
 import { syncActiveOrganizationMembersToHr } from "@/modules/hr/service";
 import { ensureRevenueAccountsForOrg } from "@/lib/accounting-integration";
 import { assertTrialProductLimit, TrialProductLimitError } from "@/platform/trials/service";
+import { moduleChangeBlocker } from "@/platform/modules/feature-catalogue";
+import { getModule } from "@/platform/modules/registry";
+import { isPlatformAnchorOrganization } from "@/lib/platform-organizations";
+
+class ModuleDependencyError extends Error {}
 
 const toggleSchema = z.object({
   organizationId: cuid,
@@ -33,6 +38,14 @@ export async function toggleOrganizationModule(formData: FormData): Promise<{ ok
   }
   const { organizationId, moduleId } = parsed.data;
   const enabled = formData.get("enabled") === "true";
+  // Optional: the value the operator saw. When present, a change made by
+  // someone else in the meantime is reported instead of silently overwritten.
+  const expectedRaw = formData.get("expected");
+  const expected = expectedRaw === null ? null : expectedRaw === "true";
+
+  if (await isPlatformAnchorOrganization(organizationId)) {
+    return { ok: false, error: "This is the protected platform organization. Its modules are not configured here." };
+  }
 
   const [organization, module_, session] = await Promise.all([
     db.organization.findUnique({ where: { id: organizationId } }),
@@ -44,8 +57,18 @@ export async function toggleOrganizationModule(formData: FormData): Promise<{ ok
     return { ok: false, error: "The organization or module was not found." };
   }
 
+  let previous = false;
   try {
     await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`organization-modules:${organizationId}`}))`;
+      const assignments = await tx.organizationModule.findMany({ where: { organizationId, enabled: true }, select: { module: { select: { code: true } } } });
+      const enabledCodes = assignments.map((assignment) => assignment.module.code);
+      previous = enabledCodes.includes(module_.code);
+      if (expected !== null && expected !== previous) {
+        throw new ModuleDependencyError(`${module_.name} was changed by someone else since this page loaded. It is now ${previous ? "on" : "off"}. Reload and try again.`);
+      }
+      const blocker = moduleChangeBlocker(module_.code, enabled, enabledCodes, (code) => getModule(code)?.name ?? code);
+      if (blocker) throw new ModuleDependencyError(blocker);
       const groupedModules = await tx.module.findMany({
         where: { code: { in: [...productGroupKeys(module_.code)] } },
         select: { id: true, code: true },
@@ -73,16 +96,18 @@ export async function toggleOrganizationModule(formData: FormData): Promise<{ ok
         action: enabled ? "module.enabled" : "module.disabled",
         entityName: "OrganizationModule",
         entityId: moduleId,
-        metadata: { module: module_.code, organization: organization.name },
+        metadata: { module: module_.code, organization: organization.name, oldValue: previous, newValue: enabled },
       },
       tx,
     );
     });
   } catch (error) {
     if (error instanceof TrialProductLimitError) return { ok: false, error: error.message };
+    if (error instanceof ModuleDependencyError) return { ok: false, error: error.message };
     throw error;
   }
 
+  revalidatePath(`/app/platform/organizations/${organizationId}`);
   revalidatePath("/app/platform/organizations");
   revalidatePath("/app/platform/modules");
   revalidatePath("/app/modules");

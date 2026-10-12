@@ -65,6 +65,7 @@ const STATE_REASONS: Record<string, string> = {
   "version-changed": "Your teacher updated this assignment while you were working. Your answers were not submitted. Reload it to see the latest questions.",
   "no-attempts": "You have used every attempt for this assignment.",
   "invalid-key": "This form has expired. Reload the page and try again.",
+  "feature-off": "This part of School is switched off for your organization. Contact Rock Frost if you need it.",
 };
 
 const GENERIC: Record<SchoolErrorCode, { title: string; description: string }> = {

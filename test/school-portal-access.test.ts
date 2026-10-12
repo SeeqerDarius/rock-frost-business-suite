@@ -154,4 +154,15 @@ describe("getSchoolNavigationForTenant", () => {
     expect(isRouteIncludedInPlan("/app/school/campuses", new Set())).toBe(true);
     expect(hrefs(tenant, new Set())).toEqual(["/app/school/campuses"]);
   });
+
+  it("lets the operator switch hide Transport and Library but never show them beyond the plan", () => {
+    const tenant = buildTenant({ role: "School Administrator", permissions: [PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE, PERMISSIONS.SCHOOL_LIBRARY_MANAGE] });
+    const services = (features: Set<string>, switches: { transport: boolean; library: boolean }) =>
+      getSchoolNavigationForTenant(tenant, features, false, switches).map((item) => item.href).filter((href) => href === "/app/school/transport" || href === "/app/school/library");
+    expect(services(PRO, { transport: true, library: true })).toEqual(["/app/school/transport", "/app/school/library"]);
+    expect(services(PLATINUM, { transport: false, library: true })).toEqual(["/app/school/library"]);
+    expect(services(PLATINUM, { transport: false, library: false })).toEqual([]);
+    // A switch left on cannot widen a plan that does not include the services.
+    expect(services(BASIC, { transport: true, library: true })).toEqual([]);
+  });
 });

@@ -6,6 +6,7 @@ import { requireCurrentTenant } from "@/lib/tenant";
 import { canAccessModule, isNarrowSchoolPortalRole } from "@/lib/auth/permissions";
 import { resolveModuleTier } from "@/platform/entitlements/resolve";
 import { isSchoolAssignmentsGranted } from "@/lib/platform-communications";
+import { isOrganizationFeatureEnabled } from "@/platform/organizations/feature-config-service";
 
 export default async function SchoolLayout({ children }: { children: React.ReactNode }) {
   const tenant = await requireCurrentTenant();
@@ -14,12 +15,16 @@ export default async function SchoolLayout({ children }: { children: React.React
   // includes. One resolve call answers for the portal, guardian messaging
   // and every other feature a tier decides, replacing the separate boolean
   // reads. Assignments & Assessments is read on its own because it is a
-  // priced add-on rather than a rung on the ladder. Each page still
-  // re-checks server-side, so a hidden link is never the boundary.
-  const [entitlement, assignmentsGranted] = await Promise.all([
+  // priced add-on rather than a rung on the ladder. Transport and Library
+  // are also optional capabilities a platform operator can switch off per
+  // organization, on top of the plan. Each page still re-checks
+  // server-side, so a hidden link is never the boundary.
+  const [entitlement, assignmentsGranted, transport, library] = await Promise.all([
     resolveModuleTier(tenant.organizationId, "school"),
     isSchoolAssignmentsGranted(tenant.organizationId),
+    isOrganizationFeatureEnabled(tenant.organizationId, "school.transport"),
+    isOrganizationFeatureEnabled(tenant.organizationId, "school.library"),
   ]);
-  const navigation = getSchoolNavigationForTenant(tenant, entitlement?.features ?? new Set(), assignmentsGranted);
+  const navigation = getSchoolNavigationForTenant(tenant, entitlement?.features ?? new Set(), assignmentsGranted, { transport, library });
   return <AppShell sectionLabel="School Management" moduleKey="school" navigation={navigation} enabledModuleKeys={tenant.accessibleModuleKeys} organization={{ organizationId: tenant.organizationId, memberships: tenant.memberships }} showModuleLauncher={!isNarrowSchoolPortalRole(tenant)}>{children}</AppShell>;
 }

@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { isOrganizationFeatureEnabled } from "@/platform/organizations/feature-config-service";
 
 export async function getSchoolOperationalDashboard(organizationId: string, options: { financial: boolean; analytics: boolean }) {
   const today = new Date();
@@ -11,6 +12,8 @@ export async function getSchoolOperationalDashboard(organizationId: string, opti
   const term = currentYear?.terms[0] ?? null;
   const periodStart = term?.startDate ?? currentYear?.startDate ?? null;
   const termFilter = term ? { termId: term.id } : { termId: "__no_current_term__" };
+  // Switched-off capabilities report nothing, so their reminders do not appear.
+  const [transportOn, libraryOn] = await Promise.all([isOrganizationFeatureEnabled(organizationId, "school.transport"), isOrganizationFeatureEnabled(organizationId, "school.library")]);
   const [activeStudents, newAdmissions, withdrawals, missingProfiles, activeClasses, todayAttendance, termAttendance, classesMarkedToday, overdueLoans, transportGaps, uncoveredClasses, invoiceTotals, paymentTotals, refundTotals, overdueTotals] = await Promise.all([
     db.schoolStudent.count({ where: { organizationId, status: "ACTIVE" } }),
     periodStart ? db.schoolStudent.count({ where: { organizationId, admissionDate: { gte: periodStart }, status: { in: ["ACTIVE", "GRADUATED", "WITHDRAWN"] } } }) : 0,
@@ -20,8 +23,8 @@ export async function getSchoolOperationalDashboard(organizationId: string, opti
     db.schoolAttendance.groupBy({ by: ["status"], where: { organizationId, date: { gte: dayStart, lt: dayEnd } }, _count: true }),
     db.schoolAttendance.groupBy({ by: ["status"], where: { organizationId, ...termFilter }, _count: true }),
     db.schoolAttendance.groupBy({ by: ["classId"], where: { organizationId, date: { gte: dayStart, lt: dayEnd } }, _count: true }),
-    db.schoolLibraryLoan.count({ where: { organizationId, status: { in: ["BORROWED", "OVERDUE"] }, dueAt: { lt: today } } }),
-    db.schoolStudent.count({ where: { organizationId, status: "ACTIVE", transport: { none: {} } } }),
+    libraryOn ? db.schoolLibraryLoan.count({ where: { organizationId, status: { in: ["BORROWED", "OVERDUE"] }, dueAt: { lt: today } } }) : 0,
+    transportOn ? db.schoolStudent.count({ where: { organizationId, status: "ACTIVE", transport: { none: {} } } }) : 0,
     db.schoolClass.count({ where: { organizationId, active: true, teachers: { none: {} } } }),
     options.financial && term ? db.schoolFeeInvoice.aggregate({ where: { organizationId, termId: term.id, status: { in: ["ISSUED", "PART_PAID", "PAID"] } }, _sum: { amount: true, discount: true } }) : null,
     options.financial && term ? db.schoolFeePayment.aggregate({ where: { organizationId, refundedAt: null, invoice: { termId: term.id, status: { in: ["ISSUED", "PART_PAID", "PAID"] } } }, _sum: { amount: true } }) : null,

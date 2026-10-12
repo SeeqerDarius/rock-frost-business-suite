@@ -1,120 +1,95 @@
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/school/section-card";
 import { getModule } from "@/platform/modules/registry";
-import { productGroupKeys } from "@/platform/modules/product-groups";
 import {
   addonModulesInUse,
-  moduleScopedAddons,
   organizationScopedAddons,
   type OrganizationAddonDefinition,
 } from "@/platform/organizations/feature-addons";
+import { MODULE_STATUS_LABELS, type ModuleRow, type ModuleStatus } from "@/platform/organizations/module-configuration-view";
 import { OFFLINE_SUPPORTED_MODULES, type OfflinePolicy } from "@/lib/pwa/policy";
-import { ModuleToggle } from "../../module-toggle";
 import { OfflineAccessToggle } from "../../offline-access-toggle";
 import { SmsNotificationsToggle } from "../../sms-notifications-toggle";
 import { SchoolPortalToggle } from "../../school-portal-toggle";
 import { SchoolGuardianMessagingToggle } from "../../school-guardian-messaging-toggle";
 import { SchoolAssignmentsToggle } from "../../school-assignments-toggle";
-import type { CatalogueModuleRow, OrganizationDetail } from "./data";
+import type { OrganizationDetail } from "./data";
 import { SettingRow } from "./shared";
 
+const STATUS_VARIANT: Record<ModuleStatus, "default" | "secondary" | "destructive" | "outline"> = {
+  enabled: "default",
+  "enabled-unpaid": "destructive",
+  disabled: "outline",
+  addon: "secondary",
+  unavailable: "outline",
+};
+
 /**
- * Module activation and the paid feature add-ons that sit on top of it, in
- * one section instead of scattered across four sibling cards at four
- * different scroll depths.
- *
- * The grouping is the point. An add-on that can only affect one module
- * (the School portal) is nested inside that module's own row, so its
- * module-specificity is visible rather than inferred from a card title. An
- * add-on whose single grant spans several modules is in its own group that
- * names the modules it currently reaches for this organization, so the
- * operator sees the blast radius instead of discovering it later.
+ * Every catalogue module for this organization, with one plain status
+ * (enabled, on but waiting for payment, disabled, available as an add-on, or
+ * unavailable) derived from the same entitlement rule tenant access uses.
+ * Each row opens that module's configuration page, which is where it is
+ * switched on or off (with confirmation and dependency checks) and where its
+ * add-ons and optional capabilities are configured. Organization-wide
+ * add-ons stay below, since one grant reaches several modules.
  */
 export function FeaturesSection({
   organization,
-  modules,
+  moduleRows,
   enabledModuleKeys,
   offlinePolicy,
 }: {
   organization: OrganizationDetail;
-  modules: CatalogueModuleRow[];
+  moduleRows: ModuleRow[];
   enabledModuleKeys: string[];
   offlinePolicy: OfflinePolicy;
 }) {
-  const enabledByModuleCode = new Map(
-    organization.organizationModules.map((assignment) => [assignment.module.code, assignment.enabled]),
-  );
-  const isEnabled = (moduleCode: string) =>
-    productGroupKeys(moduleCode).some((key) => enabledByModuleCode.get(key) === true);
-  // What the customer already has comes first. Alphabetical order across all
-  // sixteen modules buried this organization's three live ones among thirteen
-  // it has never bought.
-  const active = modules.filter((module_) => isEnabled(module_.code));
-  const available = modules.filter((module_) => !isEnabled(module_.code));
+  // What the customer already has comes first.
+  const inUse = moduleRows.filter((row) => row.status === "enabled" || row.status === "enabled-unpaid");
+  const other = moduleRows.filter((row) => !inUse.includes(row));
 
-  const moduleRow = (module_: CatalogueModuleRow, enabled: boolean) => {
-    const ownAddons = moduleScopedAddons(module_.code);
-    return (
-      <SettingRow
-        key={module_.id}
-        title={module_.name}
-        status={enabled ? <Badge variant="secondary">On</Badge> : <Badge variant="outline">Off</Badge>}
-        help={getModule(module_.code)?.description}
-        control={
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              nativeButton={false}
-              render={<Link href={`/app/platform/organizations/${organization.id}/modules/${module_.id}`} />}
-            >
-              Configure
-            </Button>
-            <ModuleToggle organizationId={organization.id} moduleId={module_.id} enabled={enabled} />
-          </div>
-        }
+  const moduleLink = (row: ModuleRow) => (
+    <li key={row.moduleId}>
+      <Link
+        href={`/app/platform/organizations/${organization.id}/modules/${row.moduleId}`}
+        className="flex items-start justify-between gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       >
-        {enabled && ownAddons.length > 0 ? (
-          <div className="space-y-2 border-l-2 border-muted pl-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {module_.name} add-ons
-            </p>
-            {ownAddons.map((addon) => (
-              <AddonRow
-                key={addon.key}
-                addon={addon}
-                organization={organization}
-                enabledModuleKeys={enabledModuleKeys}
-              />
-            ))}
-          </div>
-        ) : null}
-      </SettingRow>
-    );
-  };
+        <span className="min-w-0 space-y-1">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">{row.name}</span>
+            <Badge variant={STATUS_VARIANT[row.status]}>{MODULE_STATUS_LABELS[row.status].label}</Badge>
+            {row.addonFeatureCount > 0 ? <Badge variant="outline">Add-ons {row.addonFeaturesOn} of {row.addonFeatureCount} on</Badge> : null}
+          </span>
+          <span className="block text-sm text-muted-foreground">{row.status === "enabled" ? row.description : MODULE_STATUS_LABELS[row.status].help}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-1 pt-0.5 text-sm text-muted-foreground">
+          <span className="hidden sm:inline">Configure</span>
+          <ChevronRight className="size-4" aria-hidden="true" />
+        </span>
+      </Link>
+    </li>
+  );
 
   return (
     <div className="space-y-6">
       <SectionCard
-        title={`Modules on for this organization (${active.length})`}
-        description="Switching a module on is what puts it in this organization's launcher. Each module's own configuration and any add-on that only affects that module are here with it."
+        title={`Modules in use (${inUse.length})`}
+        description="Open a module to see its access, subscription facts, features, and dependencies, and to switch it or its features on or off for this organization."
       >
-        {active.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Nothing is switched on yet, so this organization has an empty launcher. Switch a module on below.
-          </p>
+        {inUse.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nothing is switched on yet, so this organization has an empty launcher. Open a module below to switch it on.</p>
         ) : (
-          <div className="space-y-3">{active.map((module_) => moduleRow(module_, true))}</div>
+          <ul className="space-y-2">{inUse.map(moduleLink)}</ul>
         )}
       </SectionCard>
 
       <SectionCard
-        title={`Available to switch on (${available.length})`}
-        description="Modules this organization is not using. Switching one on grants access immediately, whether or not a subscription covers it."
+        title={`Other modules (${other.length})`}
+        description="Not in use by this organization. Switching one on grants access immediately, whether or not a subscription covers it."
       >
-        <div className="space-y-3">{available.map((module_) => moduleRow(module_, false))}</div>
+        <ul className="space-y-2">{other.map(moduleLink)}</ul>
       </SectionCard>
 
       <SectionCard

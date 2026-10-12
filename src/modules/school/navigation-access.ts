@@ -32,6 +32,12 @@ import { moduleTierCatalogue } from "@/platform/entitlements/catalogue";
  * only gate. Folding it into the feature set would quietly turn a product
  * decision made elsewhere into a tier decision.
  *
+ * `optionalFeatures` adds a third gate for Transport and Library only: they
+ * are optional included capabilities a platform operator can switch off per
+ * organization (src/platform/modules/feature-catalogue.ts). The switch narrows
+ * what the plan includes and never widens it, so a plan without
+ * `school.services` hides both pages whatever the switch says.
+ *
  * Both gates are UX conveniences, not the security boundary: every page
  * re-enforces its own permission, and every plan-gated page re-checks its
  * feature server-side. Hiding a link the user could still reach by typing
@@ -41,6 +47,7 @@ export function getSchoolNavigationForTenant(
   tenant: TenantContext,
   entitledFeatures: Set<string>,
   assignmentsGranted = false,
+  optionalFeatures: { transport: boolean; library: boolean } = { transport: true, library: true },
 ): ModuleNavItem[] {
   const portalGranted = entitledFeatures.has("school.portal");
   // Direct messaging needs both paid capabilities (guardians reply from the
@@ -60,8 +67,9 @@ export function getSchoolNavigationForTenant(
     ["/app/school/timetables", hasPermission(tenant, PERMISSIONS.SCHOOL_TIMETABLES_MANAGE)],
     ["/app/school/fees", hasPermission(tenant, PERMISSIONS.SCHOOL_FEES_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENT_FINANCE_VIEW)],
     ["/app/school/payroll", hasPermission(tenant, PERMISSIONS.SCHOOL_PAYROLL_MANAGE)],
-    ["/app/school/transport", hasPermission(tenant, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE)],
-    ["/app/school/library", hasPermission(tenant, PERMISSIONS.SCHOOL_LIBRARY_MANAGE)],
+    // Optional included capabilities a platform operator can switch off; the service layer enforces it.
+    ["/app/school/transport", optionalFeatures.transport && hasPermission(tenant, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE)],
+    ["/app/school/library", optionalFeatures.library && hasPermission(tenant, PERMISSIONS.SCHOOL_LIBRARY_MANAGE)],
     ["/app/school/campuses", hasPermission(tenant, PERMISSIONS.SCHOOL_CAMPUSES_MANAGE)],
     ["/app/school/staff", hasPermission(tenant, PERMISSIONS.SCHOOL_STAFF_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_VIEW)],
     ["/app/school/portal-access", hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENTS_MANAGE) || hasPermission(tenant, PERMISSIONS.SCHOOL_STUDENT_PROFILE_VIEW)],
