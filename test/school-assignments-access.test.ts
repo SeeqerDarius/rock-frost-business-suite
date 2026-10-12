@@ -99,7 +99,7 @@ describe("Assignments & Assessments public visibility and SEO", () => {
   it("keeps optional add-on promotion on the School module page, outside the pricing cards", () => {
     const pricing = read("src/app/(public)/pricing/page.tsx");
     const school = read("src/app/(public)/modules/[moduleKey]/page.tsx");
-    expect(pricing).toContain(">From <span");
+    expect(pricing).toContain("From <span");
     // The module card now reads the lowest rung of a module's plan ladder
     // where one exists, so that its headline cannot contradict the ladder
     // rendered below it, and falls back to the single module price where

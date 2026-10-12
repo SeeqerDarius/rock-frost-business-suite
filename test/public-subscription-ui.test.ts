@@ -8,6 +8,9 @@ describe("public subscription and support entry points", () => {
     expect(pricing).toContain("Subscribe to this module");
     expect(pricing).toContain("modulePrices.filter((price) => isPubliclyListedModule(price.moduleKey))");
     expect(pricing).toContain("Subscribe to this suite");
+    expect(pricing).toContain("Compare the plans");
+    expect(pricing).not.toContain('CardContent className="mt-auto');
+    expect(pricing).toContain("flex flex-1 flex-col gap-4");
     expect(pricing).toContain("ERP pricing in Ghana cedis");
     expect(pricing).toContain("For fleet teams, drivers, vehicle owners and maintenance workflows");
     expect(pricing).toContain("Connected ERP suites");

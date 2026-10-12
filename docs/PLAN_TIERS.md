@@ -195,13 +195,19 @@ Quote-only tiers are derived from `QUOTE_ONLY_TIERS`, so Enterprise shows no amo
 routes to sales, and a tier that stops being quote-only gains a price column and a
 checkout button with nothing to remember.
 
-Every card in a ladder shares one vertical rhythm: title row, a two-line tagline slot,
-a price block (Enterprise shows "Custom" in the same slot), then the seats and limits
-and the feature list directly underneath. Only the call-to-action button is pushed to
-the bottom of the card. Do not move `mt-auto` back onto the card content: that pushed
-every feature list to the bottom of its card and left a large empty gap under the price
-of the shorter plans (Basic, Platinum, Enterprise) whenever Pro ran tallest. Modules whose ladders are still pending keep
-their single-price card.
+Every card in a ladder shares one vertical rhythm: title row, a three-line tagline slot
+(`md:min-h-16`, tall enough for the Enterprise line), a price block (Enterprise shows
+"Custom" in the same slot), then the seats and limits and the feature list directly
+underneath. Only the call-to-action button is pushed to the bottom of the card. Do not
+move `mt-auto` back onto the card content: that pushed every feature list to the bottom
+of its card and left a large empty gap under the price of the shorter plans (Basic,
+Platinum, Enterprise) whenever Pro ran tallest. Highlighted cards use `overflow-visible`
+so the recommended ring is not clipped by the shared Card overflow. Modules whose
+ladders are still pending keep their single-price card. Those cards, and the connected
+suite cards, use the same rhythm: audience or module list under the title, price next,
+inclusions directly underneath, and only the action stack pinned to the bottom of an
+equal-height card. The primary action on a module card is subscribe, or compare plans
+when a ladder exists; the walkthrough is the secondary action.
 
 One rough edge: an Enterprise enquiry arrives as the existing `MODULE` enquiry intent.
 A dedicated `ENTERPRISE` value would need an `EnquiryIntent` enum migration, so sales

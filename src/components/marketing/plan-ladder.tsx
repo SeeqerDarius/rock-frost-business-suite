@@ -26,13 +26,13 @@ import { PLAN_TIER_LABELS, PLAN_TIER_TAGLINES, QUOTE_ONLY_TIERS, type PlanTier }
 const RECOMMENDED_TIER: PlanTier = "PRO";
 
 /*
- * Every card shares one vertical rhythm: title row, a two-line tagline slot,
+ * Every card shares one vertical rhythm: title row, a three-line tagline slot,
  * a fixed price block, then the inclusions directly underneath. Only the
  * button is pushed to the bottom, so a row of cards lines up without leaving
  * an empty gap under the price of the shorter plans.
  */
-const CARD = "h-full";
-const TAGLINE = "md:min-h-10";
+const CARD = "h-full overflow-visible";
+const TAGLINE = "md:min-h-16";
 const PRICE_BLOCK = "pt-3";
 const CONTENT = "flex flex-1 flex-col gap-5";
 

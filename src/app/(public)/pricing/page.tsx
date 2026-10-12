@@ -50,10 +50,65 @@ export default async function PricingPage() {
     <PublicHero centered eyebrow="ERP pricing in Ghana cedis" title="Start with what you need. Add more as you grow." description="Every plan includes secure cloud hosting, updates, backups, role-based workspaces and the listed user seats. Choose one module or save with a connected suite. A 14-day trial can include up to three products." actions={<><Button nativeButton={false} render={<Link href="/subscribe" />}>Choose your plan</Button><Button variant="outline" nativeButton={false} render={<Link href="/contact?intent=demo" />}>Start a 14-day trial</Button></>} />
     <section className="public-section-tint"><div className="mx-auto max-w-6xl px-6 py-16">
       <div className="mb-8"><h2 className="text-2xl font-semibold">Individual modules</h2><p className="mt-2 text-muted-foreground">Start with one module and add more whenever your operation grows. Annual billing provides approximately two months of savings.</p></div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{modulePrices.filter((price) => isPubliclyListedModule(price.moduleKey)).sort((a, b) => publicModuleRank(a.moduleKey) - publicModuleRank(b.moduleKey)).map((price) => <Card id={`${price.moduleKey}-pricing`} key={price.moduleKey} className="flex scroll-mt-24 flex-col"><CardHeader><CardTitle>{names.get(price.moduleKey)}</CardTitle><CardDescription className="space-y-2"><span className="block">{moduleValue[price.moduleKey] ?? "A focused operating workspace for your organization"}</span><span className="block">From <span className="text-2xl font-semibold text-foreground">{formatGhs(ladderMap.get(price.moduleKey)?.rungs[0]?.monthlyGhs ?? price.monthlyGhs)}</span> / month</span></CardDescription></CardHeader><CardContent className="mt-auto space-y-4"><div className="space-y-2 text-sm"><p className="flex items-center gap-2"><Users className="size-4 text-primary" />{(ladderMap.get(price.moduleKey)?.rungs[0] ?? price).includedSeats} user seats included</p><p className="flex items-center gap-2"><Check className="size-4 text-primary" />{formatGhs((ladderMap.get(price.moduleKey)?.rungs[0] ?? price).annualGhs)} when paid annually</p><p className="flex items-center gap-2"><Check className="size-4 text-primary" />Extra seats: {formatGhs((ladderMap.get(price.moduleKey)?.rungs[0] ?? price).additionalSeatGhs)} / month</p>{ladderMap.has(price.moduleKey) ? <p className="flex items-center gap-2"><Layers className="size-4 shrink-0 text-primary" />{ladderMap.get(price.moduleKey)?.rungs.length} plans, up to unlimited</p> : null}</div><Button className="w-full" nativeButton={false} render={<Link href={`/contact?intent=demo&module=${price.moduleKey}`} />}>Book a walkthrough</Button>{ladderMap.has(price.moduleKey) ? <Button className="w-full" variant="outline" nativeButton={false} render={<Link href={`#${price.moduleKey}-plans`} />}>Compare the plans</Button> : <Button className="w-full" variant="outline" nativeButton={false} render={<Link href={`/subscribe?type=module&product=${price.moduleKey}`} />}>Subscribe to this module</Button>}</CardContent></Card>)}</div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {modulePrices.filter((price) => isPubliclyListedModule(price.moduleKey)).sort((a, b) => publicModuleRank(a.moduleKey) - publicModuleRank(b.moduleKey)).map((price) => {
+          const ladder = ladderMap.get(price.moduleKey);
+          const starter = ladder?.rungs[0] ?? price;
+          return (
+            <Card id={`${price.moduleKey}-pricing`} key={price.moduleKey} className="h-full scroll-mt-24">
+              <CardHeader>
+                <CardTitle>{names.get(price.moduleKey)}</CardTitle>
+                <CardDescription className="md:min-h-10">{moduleValue[price.moduleKey] ?? "A focused operating workspace for your organization"}</CardDescription>
+                <div className="pt-3">
+                  <p className="text-muted-foreground">
+                    From <span className="text-3xl font-semibold tracking-tight text-foreground">{formatGhs(ladder?.rungs[0]?.monthlyGhs ?? price.monthlyGhs)}</span> / month
+                  </p>
+                </div>
+              </CardHeader>
+              <CardContent className="flex flex-1 flex-col gap-4">
+                <div className="space-y-2 text-sm">
+                  <p className="flex items-center gap-2"><Users className="size-4 shrink-0 text-primary" />{starter.includedSeats} user seats included</p>
+                  <p className="flex items-center gap-2"><Check className="size-4 shrink-0 text-primary" />{formatGhs(starter.annualGhs)} when paid annually</p>
+                  <p className="flex items-center gap-2"><Check className="size-4 shrink-0 text-primary" />Extra seats: {formatGhs(starter.additionalSeatGhs)} / month</p>
+                  {ladder ? <p className="flex items-center gap-2"><Layers className="size-4 shrink-0 text-primary" />{ladder.rungs.length} plans, up to unlimited</p> : null}
+                </div>
+                <div className="mt-auto space-y-2">
+                  {ladder ? (
+                    <>
+                      <Button className="w-full" nativeButton={false} render={<Link href={`#${price.moduleKey}-plans`} />}>Compare the plans</Button>
+                      <Button className="w-full" variant="outline" nativeButton={false} render={<Link href={`/contact?intent=demo&module=${price.moduleKey}`} />}>Book a walkthrough</Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button className="w-full" nativeButton={false} render={<Link href={`/subscribe?type=module&product=${price.moduleKey}`} />}>Subscribe to this module</Button>
+                      <Button className="w-full" variant="outline" nativeButton={false} render={<Link href={`/contact?intent=demo&module=${price.moduleKey}`} />}>Book a walkthrough</Button>
+                    </>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
     </div></section>
     {ladders.map((ladder) => <section key={ladder.moduleKey} className="mx-auto max-w-6xl px-6 py-16"><PlanLadder ladder={ladder} moduleName={names.get(ladder.moduleKey) ?? ladder.moduleKey} /></section>)}
-    <section className="mx-auto max-w-6xl px-6 py-16"><div className="mb-8"><h2 className="text-2xl font-semibold">Connected ERP suites</h2><p className="mt-2 text-muted-foreground">Bring related operations and Accounting together at a lower price than subscribing to every module separately.</p></div><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{pricingBundles.map((bundle) => <Card key={bundle.name}><CardHeader><CardTitle>{bundle.name}</CardTitle><CardDescription><span className="text-2xl font-semibold text-foreground">{formatGhs(bundle.monthlyGhs)}</span> / month</CardDescription></CardHeader><CardContent><ul className="mb-5 space-y-2 text-sm">{bundle.modules.map((module) => <li key={module} className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-primary" />{module}</li>)}</ul><Button className="w-full" nativeButton={false} render={<Link href={`/subscribe?type=bundle&product=${bundle.key}`} />}>Subscribe to this suite</Button></CardContent></Card>)}</div>
+    <section className="mx-auto max-w-6xl px-6 py-16"><div className="mb-8"><h2 className="text-2xl font-semibold">Connected ERP suites</h2><p className="mt-2 text-muted-foreground">Bring related operations and Accounting together at a lower price than subscribing to every module separately.</p></div>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {pricingBundles.map((bundle) => (
+          <Card key={bundle.name} className="h-full">
+            <CardHeader>
+              <CardTitle>{bundle.name}</CardTitle>
+              <CardDescription>
+                <span className="text-3xl font-semibold tracking-tight text-foreground">{formatGhs(bundle.monthlyGhs)}</span> / month
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-1 flex-col gap-4">
+              <ul className="space-y-2 text-sm">{bundle.modules.map((module) => <li key={module} className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-primary" />{module}</li>)}</ul>
+              <Button className="mt-auto w-full" nativeButton={false} render={<Link href={`/subscribe?type=bundle&product=${bundle.key}`} />}>Subscribe to this suite</Button>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
       <Card className="mt-6 border-primary/30 bg-primary/5"><CardHeader><CardTitle>Enterprise and multi-module deployments</CardTitle><CardDescription>From {formatGhs(4999)} per month for a tailored deployment across several modules with 50 user seats. This is also where the Enterprise plan on a single module is arranged. Branches, migrations, onboarding, priority support, and custom workflows are quoted to scope.</CardDescription></CardHeader><CardContent><Button nativeButton={false} render={<Link href="/contact?intent=demo" />}>Talk to Rock Frost</Button></CardContent></Card>
       <p className="mt-6 text-sm text-muted-foreground">Students, guardians, patients, and customer records do not consume staff user seats. Transactional messaging, on-site training, large data migration, custom development, and payment-gateway charges may be quoted separately.</p>
     </section>
