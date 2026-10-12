@@ -11,6 +11,7 @@ import { PERMISSIONS } from "@/lib/auth/permissions";
 import { actorFromTenant, getContractFormOptions } from "@/modules/contracts/service";
 import { createContractAction } from "../actions";
 import { ContractFormFields } from "../_components/contract-form-fields";
+import { ContractPdfField } from "../_components/contract-pdf-field";
 import { ContractsFlash, humanize, SELECT_CLASS } from "../_components/shared";
 
 export const metadata = { title: "New contract" };
@@ -43,6 +44,11 @@ export default async function NewContractPage({ searchParams }: { searchParams: 
           </CardContent>
         </Card>
       ) : null}
+
+      <Card>
+        <CardHeader><CardTitle>Contract document (optional)</CardTitle><CardDescription>Attach the contract as a PDF, for example the signed copy. More files and new versions can be added later on the Documents tab.</CardDescription></CardHeader>
+        <CardContent><ContractPdfField /></CardContent>
+      </Card>
 
       <ContractFormFields values={{}} options={options} baseCurrency={tenant.organization.currency ?? "GHS"} canViewFinancials={actor.permissions.includes(PERMISSIONS.CONTRACTS_VIEW_FINANCIALS)} currentUserId={tenant.userId} />
 

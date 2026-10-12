@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Download, FileUp, History, Lock, Pencil, Plus, ShieldCheck, TriangleAlert, Trash2 } from "lucide-react";
+import { Download, Eye, FileText, FileUp, History, Lock, Pencil, Plus, ShieldCheck, TriangleAlert, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { EntityDialog } from "@/components/forms/entity-dialog";
@@ -87,6 +87,11 @@ export default async function ContractDetailPage({ params, searchParams }: { par
   const activeDocuments = contract.documents.filter((document) => !document.removedAt);
   const latestByKey = new Map<string, string>();
   for (const document of activeDocuments) if (!latestByKey.has(`${document.documentType}|${document.title}`)) latestByKey.set(`${document.documentType}|${document.title}`, document.id);
+  // The contract itself: the most recently uploaded current Primary document.
+  const primaryDocument = activeDocuments
+    .filter((document) => document.documentType === "PRIMARY" && latestByKey.get(`PRIMARY|${document.title}`) === document.id)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
+  const documentTypeOptions = DOCUMENT_TYPES.map((type) => ({ value: type, label: humanize(type) }));
   const memberName = (id: string | null) => options?.members.find((member) => member.id === id)?.name ?? options?.members.find((member) => member.id === id)?.email ?? id;
   const roleName = (id: string | null) => options?.roles.find((role) => role.id === id)?.name ?? id;
 
@@ -165,6 +170,29 @@ export default async function ContractDetailPage({ params, searchParams }: { par
               ) : <p className="text-sm text-muted-foreground">Requires contract financial access.</p>}
             </CardContent>
           </Card>
+          <Card className="lg:col-span-3">
+            <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
+              <div><CardTitle>Contract document</CardTitle><CardDescription>{primaryDocument ? "The current primary document. Earlier versions are on the Documents tab." : "No contract PDF has been uploaded yet."}</CardDescription></div>
+              {can(PERMISSIONS.CONTRACTS_UPDATE) ? (
+                <UploadDocumentDialog contractId={contract.id} documentTypes={documentTypeOptions} defaultType="PRIMARY" defaultTitle={primaryDocument?.title ?? "Contract document"} triggerLabel={primaryDocument ? "Upload new version" : "Upload contract PDF"} />
+              ) : null}
+            </CardHeader>
+            {primaryDocument ? (
+              <CardContent className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <FileText className="size-8 shrink-0 text-muted-foreground" aria-hidden />
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{primaryDocument.title} <span className="font-normal text-muted-foreground">v{primaryDocument.version}</span></div>
+                    <div className="truncate text-xs text-muted-foreground">{primaryDocument.fileAsset.fileName} · {Math.max(1, Math.round(primaryDocument.fileAsset.size / 1024))} KB · {format.dateTime(primaryDocument.createdAt)}</div>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {primaryDocument.fileAsset.mimeType === "application/pdf" ? <Button size="sm" variant="outline" nativeButton={false} render={<a href={`/api/contracts/documents/${primaryDocument.id}?view=1`} target="_blank" rel="noopener" />}><Eye />View PDF</Button> : null}
+                  <Button size="sm" variant="ghost" nativeButton={false} render={<a href={`/api/contracts/documents/${primaryDocument.id}`} />}><Download />Download</Button>
+                </div>
+              </CardContent>
+            ) : null}
+          </Card>
           {risk ? <div className="lg:col-span-3"><RiskCard risk={risk} assigned={contract.riskLevel} /></div> : null}
           {contract.body ? <Card className="lg:col-span-3"><CardHeader><CardTitle>Contract text</CardTitle></CardHeader><CardContent><pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 p-4 text-sm">{contract.body}</pre></CardContent></Card> : null}
           {contract.notes ? <Card className="lg:col-span-3"><CardHeader><CardTitle>Internal notes</CardTitle></CardHeader><CardContent><p className="whitespace-pre-wrap text-sm">{contract.notes}</p></CardContent></Card> : null}
@@ -220,7 +248,7 @@ export default async function ContractDetailPage({ params, searchParams }: { par
           <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
             <div><CardTitle>Documents</CardTitle><CardDescription>Private files, available only to people who can see this contract. Uploading a file with the same type and title creates a new version; earlier versions are kept. Up to 4 MB per file.</CardDescription></div>
             {can(PERMISSIONS.CONTRACTS_UPDATE) ? (
-              <UploadDocumentDialog contractId={contract.id} documentTypes={DOCUMENT_TYPES.map((type) => ({ value: type, label: humanize(type) }))} defaultType={activeDocuments.length ? "SUPPORTING" : "PRIMARY"} />
+              <UploadDocumentDialog contractId={contract.id} documentTypes={documentTypeOptions} defaultType={activeDocuments.length ? "SUPPORTING" : "PRIMARY"} />
             ) : null}
           </CardHeader>
           <CardContent>
@@ -238,6 +266,7 @@ export default async function ContractDetailPage({ params, searchParams }: { par
                       <TableCell className="font-mono text-xs" title={document.checksumSha256}>{document.checksumSha256.slice(0, 12)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
+                          {document.fileAsset.mimeType === "application/pdf" ? <Button size="sm" variant="ghost" nativeButton={false} render={<a href={`/api/contracts/documents/${document.id}?view=1`} target="_blank" rel="noopener" />}><Eye />View</Button> : null}
                           <Button size="sm" variant="ghost" nativeButton={false} render={<a href={`/api/contracts/documents/${document.id}`} />}><Download />Download</Button>
                           {can(PERMISSIONS.CONTRACTS_UPDATE) && !document.removedAt ? (
                             <EntityDialog trigger={<Button size="sm" variant="ghost">Remove</Button>} title={`Remove ${document.title} v${document.version}?`} description="The file is kept for audit; it is marked removed and hidden from current documents." action={removeDocumentAction} submitLabel="Remove">

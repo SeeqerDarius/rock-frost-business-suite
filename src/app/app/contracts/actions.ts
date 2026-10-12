@@ -159,7 +159,10 @@ export async function createContractAction(formData: FormData) {
   const current = await actor();
   await run("/app/contracts/new", async () => {
     const counterpartyParty = str(formData, "party_name") ? [partyInput(formData, "party_")] : [];
-    const contract = await createContract(current, { ...contractInput(formData), templateId: opt(formData, "templateId"), parties: counterpartyParty });
+    // An empty file input still submits a nameless, zero-byte File.
+    const file = formData.get("contractPdf");
+    const document = file instanceof File && (file.size > 0 || file.name) ? { fileName: file.name, mimeType: file.type, bytes: new Uint8Array(await file.arrayBuffer()) } : null;
+    const contract = await createContract(current, { ...contractInput(formData), templateId: opt(formData, "templateId"), parties: counterpartyParty, document });
     return `/app/contracts/${contract.id}`;
   });
 }
