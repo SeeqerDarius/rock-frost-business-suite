@@ -7,13 +7,14 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import type { TenantContext } from "@/lib/tenant";
 import { isValidCurrencyCode } from "@/lib/localization";
 import { zonedDateParts } from "@/lib/org-format";
-import { readPrivateFile, sha256, storePrivateFile } from "@/lib/storage/private-files";
+import { PrivateFileError, readPrivateFile, sha256, storePrivateFile, validatePrivateFile } from "@/lib/storage/private-files";
 import {
   canViewContract,
   ContractRuleError,
   diffContract,
   formatContractNumber,
   formatUsesYear,
+  normalizeContractPdf,
   renderTemplate,
   selectApprovalRule,
   validateNumberFormat,
@@ -258,9 +259,27 @@ export function auditChanges(changes: Record<string, { from: unknown; to: unknow
   return safe;
 }
 
-export async function createContract(actor: ContractActor, input: ContractInput & { templateId?: string | null; parties?: PartyInput[] }) {
+/** The title given to the PDF attached while creating a contract. */
+export const CONTRACT_PDF_TITLE = "Contract document";
+
+export type ContractPdfInput = { fileName: string; mimeType: string; bytes: Uint8Array };
+
+/** Validates the contract PDF before anything is written, so a bad file is reported without creating the contract. */
+function prepareContractPdf(input: ContractPdfInput) {
+  try {
+    const pdf = normalizeContractPdf(input);
+    const { fileName } = validatePrivateFile({ ...pdf, bytes: input.bytes });
+    return { fileName, mimeType: pdf.mimeType, bytes: input.bytes };
+  } catch (error) {
+    if (error instanceof ContractRuleError || error instanceof PrivateFileError) throw new ContractError(error.message);
+    throw error;
+  }
+}
+
+export async function createContract(actor: ContractActor, input: ContractInput & { templateId?: string | null; parties?: PartyInput[]; document?: ContractPdfInput | null }) {
   requirePermission(actor, PERMISSIONS.CONTRACTS_CREATE);
   const data = await validateInput(actor, input);
+  const pdf = input.document ? prepareContractPdf(input.document) : null;
   let template: { id: string; version: number; body: string } | null = null;
   if (input.templateId) {
     template = await db.contractTemplate.findFirst({ where: { id: input.templateId, organizationId: actor.organizationId, status: "ACTIVE" }, select: { id: true, version: true, body: true } });
@@ -276,8 +295,14 @@ export async function createContract(actor: ContractActor, input: ContractInput 
     for (const [index, party] of (input.parties ?? []).entries()) await createParty(tx, actor, contract.id, party, index);
     await tx.contractVersion.create({ data: { organizationId: actor.organizationId, contractId: contract.id, version: 1, snapshot: snapshotOf(contract), changedFields: [], reason: "Created", changedById: actor.userId } });
     await logAuditEvent({ organizationId: actor.organizationId, userId: actor.userId, module: "contracts", action: "contract.created", entityName: "Contract", entityId: contract.id, metadata: { contractNumber, title: contract.title, confidentiality: contract.confidentiality, templateId: template?.id ?? null } }, tx);
+    if (pdf) {
+      // Stored in the same transaction: the contract and its PDF exist together or not at all.
+      const { asset, checksum } = await storePrivateFile(tx, { organizationId: actor.organizationId, uploadedById: actor.userId, ...pdf, purpose: "contract-document", branchId: contract.branchId });
+      const document = await tx.contractDocument.create({ data: { organizationId: actor.organizationId, contractId: contract.id, documentType: "PRIMARY", title: CONTRACT_PDF_TITLE, version: 1, fileAssetId: asset.id, checksumSha256: checksum, uploadedById: actor.userId } });
+      await logAuditEvent({ organizationId: actor.organizationId, userId: actor.userId, module: "contracts", action: "contract.document_uploaded", entityName: "Contract", entityId: contract.id, metadata: { documentId: document.id, documentType: "PRIMARY", title: CONTRACT_PDF_TITLE, version: 1, checksumSha256: checksum, size: pdf.bytes.byteLength } }, tx);
+    }
     return contract;
-  }, { timeout: 20_000 });
+  }, { timeout: pdf ? 30_000 : 20_000 });
 }
 
 /** Statuses whose terms can still change. A contract under approval is locked until the request is decided or withdrawn. */
@@ -467,14 +492,14 @@ export async function removeContractDocument(actor: ContractActor, documentId: s
 }
 
 /** Authorized download. Verifies the stored checksum and audits the access. */
-export async function getContractDocumentForDownload(actor: ContractActor, documentId: string) {
+export async function getContractDocumentForDownload(actor: ContractActor, documentId: string, opts: { view?: boolean } = {}) {
   const document = await db.contractDocument.findFirst({ where: { id: documentId, organizationId: actor.organizationId } });
   if (!document) throw new ContractNotFoundError("Document not found.");
   await loadAccessibleContract(actor, document.contractId);
   const file = await readPrivateFile(actor.organizationId, document.fileAssetId);
   if (!file) throw new ContractNotFoundError("Document not found.");
   if (sha256(file.bytes) !== document.checksumSha256) throw new ContractError("The stored document failed its integrity check.");
-  await logAuditEvent({ organizationId: actor.organizationId, userId: actor.userId, module: "contracts", action: "contract.document_downloaded", entityName: "Contract", entityId: document.contractId, metadata: { documentId, title: document.title, version: document.version } });
+  await logAuditEvent({ organizationId: actor.organizationId, userId: actor.userId, module: "contracts", action: "contract.document_downloaded", entityName: "Contract", entityId: document.contractId, metadata: { documentId, title: document.title, version: document.version, viewedInline: !!opts.view } });
   return { ...file, document };
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Prisma } from "@prisma/client";
-import { canViewContract, ContractRuleError, daysUntil, diffContract, formatContractNumber, formatUsesYear, listTemplateVariables, redactFinancials, renderTemplate, validateNumberFormat, type AccessSubject } from "@/modules/contracts/rules";
+import { canViewContract, contentDisposition, ContractRuleError, daysUntil, diffContract, formatContractNumber, formatUsesYear, listTemplateVariables, normalizeContractPdf, redactFinancials, renderTemplate, validateNumberFormat, type AccessSubject } from "@/modules/contracts/rules";
 
 describe("contract numbering", () => {
   it("formats the default pattern with a padded sequence", () => {
@@ -76,5 +76,27 @@ describe("change tracking", () => {
     expect(daysUntil(new Date("2026-10-17T12:00:00Z"), now)).toBe(10);
     expect(daysUntil(new Date("2026-10-01T12:00:00Z"), now)).toBe(-6);
     expect(daysUntil(null, now)).toBeNull();
+  });
+});
+
+describe("contract PDF", () => {
+  it("accepts PDFs reported under common alternative types when the name ends in .pdf", () => {
+    for (const mimeType of ["application/pdf", "application/x-pdf", "application/octet-stream", ""]) {
+      expect(normalizeContractPdf({ fileName: "Signed.PDF", mimeType })).toEqual({ fileName: "Signed.PDF", mimeType: "application/pdf" });
+    }
+    expect(normalizeContractPdf({ fileName: "", mimeType: "application/pdf" }).fileName).toBe("contract.pdf");
+  });
+
+  it("refuses anything that is not a PDF", () => {
+    expect(() => normalizeContractPdf({ fileName: "terms.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" })).toThrow(ContractRuleError);
+    expect(() => normalizeContractPdf({ fileName: "scan.png", mimeType: "image/png" })).toThrow(ContractRuleError);
+    expect(() => normalizeContractPdf({ fileName: "notes.txt", mimeType: "application/octet-stream" })).toThrow(ContractRuleError);
+  });
+
+  it("shows only PDFs inline and always downloads other types", () => {
+    expect(contentDisposition("lease.pdf", "application/pdf", true)).toMatch(/^inline; filename="lease.pdf"/);
+    expect(contentDisposition("lease.pdf", "application/pdf", false)).toMatch(/^attachment;/);
+    expect(contentDisposition("terms.docx", "application/msword", true)).toMatch(/^attachment;/);
+    expect(contentDisposition("Ünïcode \"x\".pdf", "application/pdf", true)).toBe(`inline; filename="_n_code _x_.pdf"; filename*=UTF-8''${encodeURIComponent("Ünïcode \"x\".pdf")}`);
   });
 });

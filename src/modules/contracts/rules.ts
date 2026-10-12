@@ -462,3 +462,29 @@ export function planBillingDates(firstDueDate: Date, months: number, until: Date
   }
   return dates;
 }
+
+// --- Contract PDF -------------------------------------------------------------------
+
+const PDF_ALIASES = new Set(["", "application/pdf", "application/x-pdf", "application/acrobat", "application/octet-stream"]);
+
+/**
+ * The contract PDF attached when a contract is created. Browsers and some
+ * Windows setups report PDFs as x-pdf, octet-stream, or no type at all; any
+ * of those with a .pdf name is treated as application/pdf so the stored file
+ * signature check (%PDF) decides. Anything else is refused.
+ */
+export function normalizeContractPdf(input: { fileName: string; mimeType: string }): { fileName: string; mimeType: "application/pdf" } {
+  const fileName = input.fileName.trim();
+  const mimeType = input.mimeType.trim().toLowerCase();
+  if (mimeType !== "application/pdf" && !(PDF_ALIASES.has(mimeType) && /\.pdf$/i.test(fileName))) {
+    throw new ContractRuleError("The contract document must be a PDF file.");
+  }
+  return { fileName: fileName || "contract.pdf", mimeType: "application/pdf" };
+}
+
+/** Only PDFs are shown inline; every other type is always downloaded. */
+export function contentDisposition(fileName: string, mimeType: string, view: boolean): string {
+  const safeName = fileName.replace(/[^\w.\- ]/g, "_");
+  const type = view && mimeType === "application/pdf" ? "inline" : "attachment";
+  return `${type}; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+}

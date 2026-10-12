@@ -5,6 +5,7 @@ import {
   addContractParty,
   attachContractClause,
   changeContractStatus,
+  CONTRACT_PDF_TITLE,
   CONTRACT_PERMISSION_KEYS,
   compareContractVersions,
   ContractForbiddenError,
@@ -161,6 +162,27 @@ describe("documents (real Postgres)", () => {
     expect(await testDb.fileContent.count({ where: { fileAssetId: v1.fileAssetId } })).toBe(1);
     const audit = await testDb.auditLog.findMany({ where: { organizationId: orgA.organizationId, entityId: contract.id }, select: { action: true } });
     expect(audit.map((row) => row.action)).toEqual(expect.arrayContaining(["contract.document_uploaded", "contract.document_downloaded", "contract.document_removed"]));
+  }, 60_000);
+
+  it("stores a contract PDF attached at creation as primary v1, and later uploads version it", async () => {
+    const contract = await createContract(ownerA, { ...input({ title: "Created with PDF" }), document: { fileName: "signed.pdf", mimeType: "application/x-pdf", bytes: PDF } });
+    const [document] = await testDb.contractDocument.findMany({ where: { contractId: contract.id } });
+    expect(document).toMatchObject({ organizationId: orgA.organizationId, documentType: "PRIMARY", title: CONTRACT_PDF_TITLE, version: 1, uploadedById: ownerA.userId });
+    const asset = await testDb.fileAsset.findUniqueOrThrow({ where: { id: document.fileAssetId } });
+    expect(asset).toMatchObject({ mimeType: "application/pdf", fileName: "signed.pdf", url: null });
+    const viewed = await getContractDocumentForDownload(ownerA, document.id, { view: true });
+    expect(Buffer.from(viewed.bytes).equals(Buffer.from(PDF))).toBe(true);
+    const v2 = await uploadContractDocument(ownerA, contract.id, { documentType: "PRIMARY", title: CONTRACT_PDF_TITLE, fileName: "signed-v2.pdf", mimeType: "application/pdf", bytes: PDF });
+    expect([v2.version, v2.supersedesId]).toEqual([2, document.id]);
+    const audit = await testDb.auditLog.findMany({ where: { organizationId: orgA.organizationId, entityId: contract.id, action: "contract.document_downloaded" }, select: { changes: true } });
+    expect(audit[0]?.changes).toMatchObject({ viewedInline: true });
+  }, 60_000);
+
+  it("refuses a non-PDF or fake PDF at creation without creating the contract", async () => {
+    const before = await testDb.contract.count({ where: { organizationId: orgA.organizationId } });
+    await expect(createContract(ownerA, { ...input({ title: "Word file" }), document: { fileName: "terms.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", bytes: new Uint8Array([0x50, 0x4b, 0x03, 0x04]) } })).rejects.toThrow(/must be a PDF/);
+    await expect(createContract(ownerA, { ...input({ title: "Fake PDF" }), document: { fileName: "fake.pdf", mimeType: "application/pdf", bytes: new Uint8Array([1, 2, 3, 4, 5]) } })).rejects.toThrow(/does not match/);
+    expect(await testDb.contract.count({ where: { organizationId: orgA.organizationId } })).toBe(before);
   }, 60_000);
 
   it("rejects a file whose content does not match its declared type", async () => {
