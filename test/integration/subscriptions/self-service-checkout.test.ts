@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { cleanupTestOrg, createTestOrg, type TestOrg } from "../setup/fixtures";
 import { testDb } from "../setup/db";
-import { activateSubscription, createSelfServiceBundleSubscription, createSelfServiceCartSubscription, createSelfServiceSubscription, SelfServiceSubscriptionExistsError } from "@/platform/subscriptions/service";
+import { activateSubscription, createSelfServiceBundleSubscription, createSelfServiceCartSubscription, createSelfServiceSubscription, SelfServiceSubscriptionExistsError, UnavailablePlanTierError } from "@/platform/subscriptions/service";
+import { UNTIERED_LEGACY_TIER } from "@/platform/entitlements/tiers";
 
 let org: TestOrg;
 let bundleOrg: TestOrg;
@@ -36,9 +37,14 @@ describe("self-service subscription checkout (real PostgreSQL)", () => {
   });
 
   it("uses the annual catalogue price and included seats", async () => {
+    // School has a published ladder, so this names its rung. Pro is priced at
+    // the module's long-standing headline, so these are the same numbers the
+    // test asserted before tiers existed: proof the ladder did not quietly
+    // reprice the deal every existing customer is on.
     const subscription = await createSelfServiceSubscription({
       organizationId: org.organizationId,
       moduleKey: "school",
+      tier: "PRO",
       billingCycle: "ANNUAL",
       autoRenew: false,
       actorId: org.userId,
@@ -46,6 +52,64 @@ describe("self-service subscription checkout (real PostgreSQL)", () => {
     expect(subscription.durationMonths).toBe(12);
     expect(subscription.amount.toFixed(2)).toBe("5990.00");
     expect(subscription.seatLimit).toBe(20);
+    expect(subscription.tier).toBe("PRO");
+  });
+
+  it("prices a School Basic purchase from its own rung, not the headline price", async () => {
+    // The regression that made this suite necessary: before the checkout read
+    // ModuleTierPrice, every new subscription stored the BASIC column default
+    // while charging the full headline, so a school paid GHS 5,990 and lost
+    // fees, exams, timetables, transport, library, SMS and reports.
+    const basicOrg = await createTestOrg("self-service-school-basic");
+    try {
+      const subscription = await createSelfServiceSubscription({
+        organizationId: basicOrg.organizationId,
+        moduleKey: "school",
+        tier: "BASIC",
+        billingCycle: "ANNUAL",
+        autoRenew: false,
+        actorId: basicOrg.userId,
+      });
+      expect(subscription.tier).toBe("BASIC");
+      expect(subscription.amount.toFixed(2)).toBe("2990.00");
+      expect(subscription.seatLimit).toBe(10);
+    } finally {
+      await cleanupTestOrg(basicOrg);
+    }
+  });
+
+  it("refuses a School checkout with no plan, and the quote-only plan, writing nothing", async () => {
+    const refusedOrg = await createTestOrg("self-service-school-refused");
+    try {
+      const base = {
+        organizationId: refusedOrg.organizationId,
+        moduleKey: "school" as const,
+        billingCycle: "MONTHLY" as const,
+        autoRenew: false,
+        actorId: refusedOrg.userId,
+      };
+      await expect(createSelfServiceSubscription(base)).rejects.toBeInstanceOf(UnavailablePlanTierError);
+      await expect(createSelfServiceSubscription({ ...base, tier: "ENTERPRISE" })).rejects.toBeInstanceOf(UnavailablePlanTierError);
+      expect(await testDb.subscription.count({ where: { organizationId: refusedOrg.organizationId } })).toBe(0);
+    } finally {
+      await cleanupTestOrg(refusedOrg);
+    }
+  });
+
+  it("sells a module whose ladder is still pending at full access, so its price still buys all of it", async () => {
+    const pendingOrg = await createTestOrg("self-service-pending-ladder");
+    try {
+      const subscription = await createSelfServiceSubscription({
+        organizationId: pendingOrg.organizationId,
+        moduleKey: "hotel",
+        billingCycle: "MONTHLY",
+        autoRenew: false,
+        actorId: pendingOrg.userId,
+      });
+      expect(subscription.tier).toBe(UNTIERED_LEGACY_TIER);
+    } finally {
+      await cleanupTestOrg(pendingOrg);
+    }
   });
 
   it("serializes concurrent clicks so only one pending product subscription is created", async () => {
@@ -77,7 +141,7 @@ describe("self-service subscription checkout (real PostgreSQL)", () => {
       autoRenew: true,
       actorId: bundleOrg.userId,
     });
-    expect(subscription).toMatchObject({ bundleKey: "business-starter", durationMonths: 12, status: "PENDING_PAYMENT" });
+    expect(subscription).toMatchObject({ bundleKey: "business-starter", durationMonths: 12, status: "PENDING_PAYMENT", tier: UNTIERED_LEGACY_TIER });
     expect(subscription.amount.toFixed(2)).toBe("16990.00");
     expect(subscription.entitledModuleKeys).toEqual(expect.arrayContaining(["crm", "inventory", "procurement", "accounting"]));
 
@@ -101,6 +165,7 @@ describe("self-service subscription checkout (real PostgreSQL)", () => {
     // crm 2490 + hr 5490 + analytics 1990 = 9970 (plain sum, no bundle discount)
     expect(subscription.amount.toFixed(2)).toBe("9970.00");
     expect(subscription.bundleKey).toBeNull();
+    expect(subscription.tier).toBe(UNTIERED_LEGACY_TIER);
     expect(subscription.entitledModuleKeys).toEqual(expect.arrayContaining(["crm", "hr", "payroll", "analytics"]));
     expect(subscription.seatLimit).toBe(15); // max(5, 15, 5) across the three selected modules' included seats
 

@@ -20,10 +20,17 @@ non-OTP `sendSms()` call requires
 `isOrganizationSmsNotificationsGranted(organizationId)`
 (`src/lib/platform-communications.ts`) to be true for that specific
 organization, reading `Organization.smsNotificationsGranted` (default
-**off** for every organization). A platform operator grants or revokes it
-per organization under Shared capabilities in the Modules and features
-section of that organization's Configuration pane
-(`/app/platform/organizations/[organizationId]?section=features`, see
+**off** for every organization). Since plan tiers shipped this column is an
+**operator override, not the primary gate**: a module's own tier normally
+decides whether it may text (School's `school.sms`, Pro and up), and setting
+this lets every module send regardless of tier. It exists so the tier
+rollout never withdrew SMS from an organization already granted it, and it
+remains the only gate for the four modules whose ladders are still pending
+(Hotel, Pharmacy, Payroll, Hospital). `sendSms()` now requires a `moduleKey`
+for every non-OTP send and asks `canSendModuleSms()`; see
+`docs/PLAN_TIERS.md`. A platform operator sets it under Shared capabilities
+in the Modules and features section of that organization's Configuration
+pane (`/app/platform/organizations/[organizationId]?section=features`, see
 `docs/ORGANIZATION_LIFECYCLE.md`), via
 `toggleOrganizationSmsNotifications()`
 (`src/app/app/platform/actions.ts`) - the same shape and the same

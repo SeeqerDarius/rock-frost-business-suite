@@ -18,11 +18,16 @@ import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listSchoolLibraryBookChoices, listSchoolLibraryBookPage, listSchoolLibraryLoanPage, listSchoolStudentChoices } from "@/modules/school/service";
 import { RecordPagination } from "@/components/school/record-pagination";
 import { borrowBookAction, createLibraryBookAction, returnBookAction } from "../actions";
+import { schoolPlanGate } from "@/components/school/plan-gate";
 
 const PATH = "/app/school/library";
 
 export default async function SchoolLibraryPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; q?: string; loansQ?: string; view?: string; page?: string; loansPage?: string; studentQ?: string; bookQ?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
+  // Plan gate. Navigation already hides this page when the plan does
+  // not include it, but a hidden link is not a boundary.
+  const gate = await schoolPlanGate(tenant.organizationId, "school.services", "Library", "Catalogue, copy availability, and circulation.");
+  if (gate) return gate;
   if (!(await isOrganizationFeatureEnabled(tenant.organizationId, "school.library"))) return <SwitchedOffNotice title="Library" />;
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_LIBRARY_MANAGE);
   const requestedPage = query.page && /^\d{1,6}$/.test(query.page) ? Number(query.page) : 1;
@@ -105,7 +110,7 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
       <PageHeader
         title="Library"
         description="Catalogue, copy availability, and circulation."
-        actions={canManage ? <>{newBookDialog}{availableBooks.total > 0 && students.total > 0 ? issueDialog : null}</> : undefined}
+        actions={canManage ? <>{newBookDialog}{availableBooks.totalWithoutQuery > 0 && students.totalWithoutQuery > 0 ? issueDialog : null}</> : undefined}
       />
 
       <FormFeedback
@@ -115,8 +120,8 @@ export default async function SchoolLibraryPage({ searchParams }: { searchParams
         stateMessage="No copy of that book is available, or the loan is already closed."
       />
       <div className="space-y-3">
-        <RecordSearch action={PATH} queryName="studentQ" label="Find a student for a library loan" placeholder="Name or admission number" defaultValue={query.studentQ} hiddenFilters={{ q: query.q, loansQ: query.loansQ, bookQ: query.bookQ, view: showReturned ? "all" : undefined }} resultSummary={`Showing ${students.rows.length} of ${students.total} active students`} />
-        <RecordSearch action={PATH} queryName="bookQ" label="Find a book to issue" placeholder="Title, author, or accession code" defaultValue={query.bookQ} hiddenFilters={{ q: query.q, loansQ: query.loansQ, studentQ: query.studentQ, view: showReturned ? "all" : undefined }} resultSummary={`Showing ${availableBooks.rows.length} of ${availableBooks.total} books with available copies`} />
+        <RecordSearch action={PATH} queryName="studentQ" label="Find a student for a library loan" placeholder="Name or admission number" defaultValue={query.studentQ} hiddenFilters={{ q: query.q, loansQ: query.loansQ, bookQ: query.bookQ, view: showReturned ? "all" : undefined }} resultSummary={`Showing ${students.rows.length} of ${students.total} active students`} datasetSize={students.totalWithoutQuery} />
+        <RecordSearch action={PATH} queryName="bookQ" label="Find a book to issue" placeholder="Title, author, or accession code" defaultValue={query.bookQ} hiddenFilters={{ q: query.q, loansQ: query.loansQ, studentQ: query.studentQ, view: showReturned ? "all" : undefined }} resultSummary={`Showing ${availableBooks.rows.length} of ${availableBooks.total} books with available copies`} datasetSize={availableBooks.totalWithoutQuery} />
       </div>
       {!canManage ? <ReadOnlyNotice>Your role can review the library but cannot add books or manage loans.</ReadOnlyNotice> : null}
 

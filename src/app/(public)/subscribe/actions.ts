@@ -10,8 +10,10 @@ import { isBotProtectionConfigured, verifyBotProtection } from "@/lib/bot-protec
 import { isContactHoneypotClear, verifyContactFormProof } from "@/lib/contact-form-protection";
 import { sendEmail } from "@/lib/email";
 import { invitationEmail } from "@/lib/email-templates";
-import { getModulePriceMap, getPricingBundleMap, type PricingBundleKey } from "@/lib/pricing";
-import { createSelfServiceBundleSubscription, createSelfServiceSubscription } from "@/platform/subscriptions/service";
+import { getModulePriceMap, getModuleTierPrice, getPricingBundleMap, type PricingBundleKey } from "@/lib/pricing";
+import { moduleHasPublishedLadder } from "@/platform/entitlements/catalogue";
+import { isPlanTier, isQuoteOnlyTier, type PlanTier } from "@/platform/entitlements/tiers";
+import { createSelfServiceBundleSubscription, createSelfServiceSubscription, UnavailablePlanTierError } from "@/platform/subscriptions/service";
 import { isPubliclyListedModule, type BusinessModuleKey } from "@/platform/modules/registry";
 import { getCountryProfile } from "@/lib/localization";
 
@@ -22,6 +24,11 @@ const schema = z.object({
   phone: z.string().trim().max(40),
   productType: z.enum(["MODULE", "BUNDLE"]),
   productKey: z.string().trim().min(1).max(80),
+  // Optional here because a suite has no per-module tier, and because the
+  // modules whose ladders are still pending are sold at one price. The
+  // service layer refuses a module that does need one, rather than this
+  // schema guessing which modules those are.
+  tier: z.string().trim().max(20).optional(),
   billingCycle: z.enum(["MONTHLY", "ANNUAL"]),
   country: z.string().trim().max(60).optional().default("GH"),
 });
@@ -55,6 +62,19 @@ export async function startPublicSubscription(formData: FormData): Promise<void>
   const selectedBundle = bundleMap.has(input.productKey as PricingBundleKey);
   if (!selectedModule && !selectedBundle) redirect("/subscribe?error=product");
 
+  // The plan is settled before anything is written. createSelfServiceSubscription()
+  // refuses an unsellable tier on its own, but by the time it runs the
+  // organization, user, and membership rows already exist, so a refusal
+  // there would strand a half-built workspace nobody can pay for. The same
+  // rules are applied here, early, where the only cost of a refusal is a
+  // message on the form.
+  const requestedTier: PlanTier | undefined = input.tier && isPlanTier(input.tier) ? input.tier : undefined;
+  if (input.tier && (!requestedTier || isQuoteOnlyTier(requestedTier))) redirect("/subscribe?error=tier");
+  if (selectedModule && moduleHasPublishedLadder(input.productKey)) {
+    if (!requestedTier) redirect("/subscribe?error=tier");
+    if (!await getModuleTierPrice(input.productKey, requestedTier)) redirect("/subscribe?error=tier");
+  }
+
   const existingUser = await db.user.findUnique({ where: { email: input.email }, select: { id: true } });
   if (existingUser && await isPlatformUser(existingUser.id)) redirect("/subscribe?error=platform-account");
   const recent = await db.organization.findFirst({ where: { billingEmail: input.email, createdAt: { gte: new Date(Date.now() - 60_000) } }, select: { id: true } });
@@ -76,9 +96,13 @@ export async function startPublicSubscription(formData: FormData): Promise<void>
     if (selectedBundle) {
       await createSelfServiceBundleSubscription({ organizationId: created.organization.id, bundleKey: input.productKey as PricingBundleKey, billingCycle: input.billingCycle, autoRenew: true, actorId: created.user.id });
     } else {
-      await createSelfServiceSubscription({ organizationId: created.organization.id, moduleKey: input.productKey as BusinessModuleKey, billingCycle: input.billingCycle, autoRenew: true, actorId: created.user.id });
+      await createSelfServiceSubscription({ organizationId: created.organization.id, moduleKey: input.productKey as BusinessModuleKey, tier: requestedTier, billingCycle: input.billingCycle, autoRenew: true, actorId: created.user.id });
     }
   } catch (error) {
+    if (error instanceof UnavailablePlanTierError) {
+      console.error("[public-subscribe] Plan unavailable for the selected product:", error.message);
+      redirect("/subscribe?error=tier");
+    }
     console.error("[public-subscribe] Failed to prepare subscription:", error);
     redirect("/subscribe?error=unavailable");
   }

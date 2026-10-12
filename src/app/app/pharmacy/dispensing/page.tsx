@@ -142,7 +142,7 @@ export default async function Page({
                     <form action={reverseCompletedDispensing} className="mt-2 flex gap-2">
                       <input type="hidden" name="dispensingId" value={x.id} />
                       <Input name="reason" required placeholder="Reversal reason" className="w-44" />
-                      <Button size="sm" variant="destructive">Reverse</Button>
+                      <Button type="submit" size="sm" variant="destructive">Reverse</Button>
                     </form>
                   )}
                   {x.reversalReason && <p className="mt-1 text-xs text-muted-foreground">{x.reversalReason}</p>}

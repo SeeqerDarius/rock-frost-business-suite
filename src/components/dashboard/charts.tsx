@@ -5,12 +5,14 @@ import { Area, AreaChart, Bar, BarChart, Cell, ComposedChart, Legend, Line, Line
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/currency";
 import type { TrendGranularity } from "@/lib/trend-buckets";
+import { hasNonZeroValues } from "@/lib/chart-data";
 
 const PERIOD_LABELS: Record<TrendGranularity, string> = {
   days: "Last 6 days",
   weeks: "Last 6 weeks",
   months: "Last 6 months",
 };
+const GRANULARITIES = Object.keys(PERIOD_LABELS) as TrendGranularity[];
 
 /** The same five chart tokens declared in globals.css for both themes - never a hardcoded hex here, so charts stay in sync with the active theme automatically. */
 const CHART_COLORS = ["var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-4)", "var(--color-chart-5)"];
@@ -111,7 +113,10 @@ export function TrendChart({
   target?: { amount: number; label: string; actualKey: string };
 }) {
   const [style, setStyle] = useTrendChartStyle();
-  const hasData = data.length > 0 && data.some((row) => series.some((s) => row[s.key] !== undefined && row[s.key] !== null && Number.isFinite(Number(row[s.key]))));
+  // A target is the one case where an all-zero series is still worth drawing:
+  // the reference line and the achievement summary say how far short of it
+  // you are, which is real information about a real target.
+  const hasData = target !== undefined || hasNonZeroValues(data, series.map((s) => s.key));
   if (!hasData) return <NoData label="No activity yet for this period." />;
   const formatValue = (value: number) => valueFormat === "money" ? formatMoney(value, currency, locale) : valueFormat === "percentage" ? `${value}%` : new Intl.NumberFormat(locale ?? "en-US").format(value);
   const compactMoney = (value: number) => `${currency ?? "GHS"} ${Intl.NumberFormat(locale ?? "en", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
@@ -162,6 +167,18 @@ export function PeriodicTrendChart({
   defaultPeriod?: TrendGranularity;
 }) {
   const [period, setPeriod] = useState<TrendGranularity>(defaultPeriod);
+
+  /**
+   * The switcher offers to re-cut the same data by day, week or month. When
+   * none of the three has any activity in it there is nothing to re-cut, and
+   * the buttons only invite a customer to click through three identical empty
+   * charts. The inner chart's own message covers it. Each granularity is
+   * still checked separately below, so a period that happens to be empty
+   * while another has data keeps the switcher that reveals it.
+   */
+  if (!GRANULARITIES.some((granularity) => hasNonZeroValues(data[granularity], series.map((s) => s.key)))) {
+    return <NoData label="No activity recorded yet." />;
+  }
 
   return (
     <div className="space-y-3">
@@ -326,7 +343,7 @@ export function ComposedTrendChart({
   /** The organization's number locale (organizationNumberLocale). */
   locale?: string | null;
 }) {
-  const hasData = data.length > 0 && data.some((row) => [...bars.map((b) => b.key), line.key].some((key) => row[key] !== undefined && row[key] !== null && Number.isFinite(Number(row[key]))));
+  const hasData = hasNonZeroValues(data, [...bars.map((b) => b.key), line.key]);
   if (!hasData) return <NoData label="No activity yet for this period." />;
   const compactMoney = (value: number) => `${currency ?? "GHS"} ${Intl.NumberFormat(locale ?? "en", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
 
@@ -371,6 +388,18 @@ export function PeriodicComposedTrendChart({
   defaultPeriod?: TrendGranularity;
 }) {
   const [period, setPeriod] = useState<TrendGranularity>(defaultPeriod);
+
+  /**
+   * The switcher offers to re-cut the same data by day, week or month. When
+   * none of the three has any activity in it there is nothing to re-cut, and
+   * the buttons only invite a customer to click through three identical empty
+   * charts. The inner chart's own message covers it. Each granularity is
+   * still checked separately below, so a period that happens to be empty
+   * while another has data keeps the switcher that reveals it.
+   */
+  if (!GRANULARITIES.some((granularity) => hasNonZeroValues(data[granularity], [...bars.map((b) => b.key), line.key]))) {
+    return <NoData label="No activity recorded yet." />;
+  }
 
   return (
     <div className="space-y-3">

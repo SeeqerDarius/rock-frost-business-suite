@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requirePlatformOperator } from "@/lib/auth/module-access";
 import { cuid, dateInput, longText, moneyAmountNonNegative, parseWithSchema, positiveInt, shortText } from "@/lib/validation";
-import { activateSubscription, cancelSubscription, createSubscription, PaystackRenewalNotRegisteredError } from "@/platform/subscriptions/service";
+import { activateSubscription, cancelSubscription, createSubscription, PaystackRenewalNotRegisteredError, TierDowngradeBlockedError, updateSubscriptionTier } from "@/platform/subscriptions/service";
+import { PLAN_TIERS } from "@/platform/entitlements/tiers";
 import { SeatLimitExceededError, updateSubscriptionSeatLimit } from "@/platform/subscriptions/seats";
 
 const createSchema = z.object({
@@ -18,6 +19,10 @@ const createSchema = z.object({
   seatLimit: positiveInt.optional(),
   amount: moneyAmountNonNegative,
   currency: z.string().trim().length(3),
+  // Optional so an existing integration posting this form keeps working;
+  // createSubscription() then stores full access rather than the restricted
+  // end of the ladder. See its `tier` comment.
+  tier: z.enum(PLAN_TIERS).optional(),
   notes: longText.optional(),
 });
 
@@ -101,4 +106,38 @@ export async function cancelSubscriptionAction(formData: FormData): Promise<void
   revalidatePath("/app/platform/subscriptions");
   revalidatePath("/app/modules");
   redirect("/app/platform/subscriptions?cancelled=1");
+}
+
+const tierSchema = z.object({
+  subscriptionId: cuid,
+  tier: z.enum(PLAN_TIERS),
+  /** Where to send the operator back to: the pane, or the subscriptions workspace. */
+  returnTo: z.string().trim().max(300).optional(),
+});
+
+/**
+ * Changes one subscription's plan tier. Operator-only, and a downgrade the
+ * organization's current usage already exceeds is refused rather than
+ * applied: see updateSubscriptionTier() for why that order matters.
+ */
+export async function updateSubscriptionTierAction(formData: FormData): Promise<void> {
+  const tenant = await requirePlatformOperator();
+  const parsed = parseWithSchema(tierSchema, Object.fromEntries(formData));
+  const fallback = "/app/platform/subscriptions";
+  // Only ever an in-app path, never an absolute URL, so a crafted form value
+  // cannot turn this redirect into an open redirect off-site.
+  const rawReturn = parsed.success ? parsed.data.returnTo : undefined;
+  const returnTo = rawReturn && rawReturn.startsWith("/app/") && !rawReturn.startsWith("//") ? rawReturn : fallback;
+  const separator = returnTo.includes("?") ? "&" : "?";
+
+  if (!parsed.success) redirect(`${returnTo}${separator}error=invalid`);
+  try {
+    await updateSubscriptionTier({ subscriptionId: parsed.data.subscriptionId, tier: parsed.data.tier, actorId: tenant.userId });
+  } catch (error) {
+    if (error instanceof TierDowngradeBlockedError) redirect(`${returnTo}${separator}error=tier-downgrade`);
+    redirect(`${returnTo}${separator}error=tier`);
+  }
+  revalidatePath("/app/platform/subscriptions");
+  revalidatePath(returnTo);
+  redirect(`${returnTo}${separator}saved=tier`);
 }

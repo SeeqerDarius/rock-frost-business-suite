@@ -18,9 +18,14 @@ import { requireModuleAccess } from "@/lib/auth/module-access";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { getSchoolAcademicSetup, listSchoolExams, listSchoolStudentChoices, resolveTeacherClassScope } from "@/modules/school/service";
 import { createExamAction, publishExamAction, recordExamResultAction, submitExamForModerationAction } from "../actions";
+import { schoolPlanGate } from "@/components/school/plan-gate";
 
 export default async function SchoolExamsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; studentQ?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
+  // Plan gate. Navigation already hides this page when the plan does
+  // not include it, but a hidden link is not a boundary.
+  const gate = await schoolPlanGate(tenant.organizationId, "school.exams", "Exams & Grading", "Assessments move through result entry, moderation, and publishing. Results become visible to families only once published.");
+  if (gate) return gate;
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_MANAGE);
   const canPublish = hasPermission(tenant, PERMISSIONS.SCHOOL_EXAMS_PUBLISH);
   const [[years, allClasses, subjects], students, exams, teacherClassScope] = await Promise.all([
@@ -88,7 +93,7 @@ export default async function SchoolExamsPage({ searchParams }: { searchParams: 
         savedMessage="The exam record is up to date."
         stateMessage="Check the workflow: marks must be within the exam total, only open exams with results can go to moderation, and only moderated exams can be published."
       />
-      <RecordSearch action="/app/school/exams" queryName="studentQ" label="Find a student for result entry" placeholder="Name or admission number" defaultValue={query.studentQ} resultSummary={`Showing ${students.rows.length} of ${students.total} active students`} />
+      <RecordSearch action="/app/school/exams" queryName="studentQ" label="Find a student for result entry" placeholder="Name or admission number" defaultValue={query.studentQ} resultSummary={`Showing ${students.rows.length} of ${students.total} active students`} datasetSize={students.totalWithoutQuery} />
       {!canManage && !canPublish ? <ReadOnlyNotice>Your role can review exams but cannot enter results or publish them.</ReadOnlyNotice> : null}
       {canManage && !canPublish ? <ReadOnlyNotice>You can enter results and submit them for moderation. Publishing requires the exam publishing permission.</ReadOnlyNotice> : null}
       <PrerequisiteNotice

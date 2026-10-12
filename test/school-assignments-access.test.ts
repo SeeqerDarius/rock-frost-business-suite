@@ -35,7 +35,12 @@ describe("Assignments & Assessments entitlement and navigation", () => {
   const teacher = tenant({ role: "Teacher", permissions: [PERMISSIONS.SCHOOL_VIEW, PERMISSIONS.SCHOOL_EXAMS_MANAGE] });
   const student = tenant({ role: "Student", permissions: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.SCHOOL_PORTAL_VIEW] });
   const parent = tenant({ role: "Parent", permissions: [PERMISSIONS.DASHBOARD_VIEW, PERMISSIONS.SCHOOL_PORTAL_VIEW] });
-  const hrefs = (t: TenantContext, portal: boolean, assignments: boolean) => getSchoolNavigationForTenant(t, portal, false, assignments).map((item) => item.href);
+  // getSchoolNavigationForTenant takes the resolved entitlement feature set
+  // rather than a portal boolean (see navigation-access.ts). The assignments
+  // add-on is still its own argument because it is priced separately and is
+  // not a rung on the plan ladder. Every assertion below is unchanged.
+  const hrefs = (t: TenantContext, portal: boolean, assignments: boolean) =>
+    getSchoolNavigationForTenant(t, new Set(portal ? ["school.portal"] : []), assignments).map((item) => item.href);
 
   it("shows teachers Assignments only when the add-on is granted", () => {
     expect(hrefs(teacher, false, true)).toContain("/app/school/assignments");
@@ -90,18 +95,27 @@ describe("Assignments & Assessments entitlement and navigation", () => {
   });
 });
 
-describe("Assignments & Assessments public pricing and SEO", () => {
-  it("shows individual modules with a 'Starting from' price from the catalogue", () => {
+describe("Assignments & Assessments public visibility and SEO", () => {
+  it("keeps optional add-on promotion on the School module page, outside the pricing cards", () => {
     const pricing = read("src/app/(public)/pricing/page.tsx");
-    expect(pricing).toContain("Starting from <span");
-    expect(pricing).toContain("formatGhs(price.monthlyGhs)");
-    expect(pricing).not.toMatch(/>From </);
+    const school = read("src/app/(public)/modules/[moduleKey]/page.tsx");
+    expect(pricing).toContain(">From <span");
+    // The module card now reads the lowest rung of a module's plan ladder
+    // where one exists, so that its headline cannot contradict the ladder
+    // rendered below it, and falls back to the single module price where
+    // there is no ladder. That fallback is what this assertion pins: the
+    // card still quotes the module's own price and never an add-on's.
+    expect(pricing).toContain("?? price.monthlyGhs");
+    expect(pricing).not.toContain("listAddonPrices()");
+    expect(pricing).not.toContain("PUBLIC_ADDONS.filter");
+    expect(school).toContain("Optional add-on");
+    expect(school).toContain("Ask about this add-on");
   });
 
-  it("never publishes an unconfirmed add-on price", () => {
+  it("keeps unconfirmed add-on pricing out of the public pricing page", () => {
     const pricing = read("src/app/(public)/pricing/page.tsx");
-    expect(pricing).toContain("Priced on request");
-    expect(pricing).toContain("listAddonPrices()");
+    expect(pricing).not.toContain("listAddonPrices()");
+    expect(pricing).not.toContain("Priced on request");
     const seed = read("prisma/seed-data.ts");
     expect(seed).not.toContain("addonPricingPlan");
     expect(PUBLIC_ADDONS.map((addon) => addon.key)).toEqual(["schoolAssignments"]);

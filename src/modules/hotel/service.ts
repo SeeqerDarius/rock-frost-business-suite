@@ -78,6 +78,7 @@ export async function createHotelReservation(organizationId: string, data: { pro
       }),
       purpose: "HOTEL_BOOKING_CONFIRMED",
       organizationId,
+      moduleKey: "hotel",
       relatedType: "HotelReservation",
       relatedId: reservation.id,
     });

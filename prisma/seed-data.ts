@@ -557,6 +557,35 @@ export const MODULE_PRICING_SEED: ModulePricingSeed[] = [
   { moduleKey: "contracts", monthlyGhs: 449, annualGhs: 4490, includedSeats: 8, additionalSeatGhs: 25 },
 ];
 
+/**
+ * Per-tier pricing, for modules that have a tier ladder in
+ * src/platform/entitlements/catalogue.ts. ENTERPRISE is deliberately absent:
+ * it is quote-only, so it has no list price to seed.
+ *
+ * Each module's PRO row must match its MODULE_PRICING_SEED headline above.
+ * That headline is what every pre-tier quote, self-service checkout, and
+ * public price already reads, so making Pro the same number means tiers add
+ * rungs without repricing anything a customer is already on. A module with
+ * no rows here simply is not sold by tier yet.
+ */
+export type ModuleTierPricingSeed = {
+  moduleKey: string;
+  tier: "BASIC" | "PRO" | "PLATINUM";
+  monthlyGhs: number;
+  annualGhs: number;
+  includedSeats: number;
+  additionalSeatGhs: number;
+};
+
+export const MODULE_TIER_PRICING_SEED: ModuleTierPricingSeed[] = [
+  // School: Basic is roll-keeping only (students, classes, attendance),
+  // Pro adds the money and assessment workflows, Platinum removes the
+  // ceilings and opens the parent/student portal.
+  { moduleKey: "school", tier: "BASIC", monthlyGhs: 299, annualGhs: 2990, includedSeats: 10, additionalSeatGhs: 25 },
+  { moduleKey: "school", tier: "PRO", monthlyGhs: 599, annualGhs: 5990, includedSeats: 20, additionalSeatGhs: 30 },
+  { moduleKey: "school", tier: "PLATINUM", monthlyGhs: 1099, annualGhs: 10990, includedSeats: 50, additionalSeatGhs: 30 },
+];
+
 export type PricingBundleSeed = {
   key: string;
   name: string;
@@ -682,6 +711,14 @@ export async function seedPlatform(db: PrismaClient, options: { log?: boolean } 
     create: price,
   })));
   if (log) console.log(`Seeded ${MODULE_PRICING_SEED.length} module pricing plans (existing rows left untouched).`);
+
+  // Create-only for the same reason as the headline prices above.
+  await Promise.all(MODULE_TIER_PRICING_SEED.map((price) => db.moduleTierPrice.upsert({
+    where: { moduleKey_tier: { moduleKey: price.moduleKey, tier: price.tier } },
+    update: {},
+    create: price,
+  })));
+  if (log) console.log(`Seeded ${MODULE_TIER_PRICING_SEED.length} module tier prices (existing rows left untouched).`);
 
   await Promise.all(PRICING_BUNDLE_SEED.map((bundle) => db.pricingBundle.upsert({
     where: { key: bundle.key },

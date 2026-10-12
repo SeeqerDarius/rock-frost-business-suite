@@ -46,6 +46,7 @@ describe("SmsMessage (real Postgres)", () => {
       body: "Your prescription is ready for pickup.",
       purpose: "PHARMACY_PICKUP_READY",
       organizationId: orgA.organizationId,
+      moduleKey: "pharmacy",
       relatedType: "PharmacyDispensing",
       relatedId: "disp-123",
     });
@@ -64,7 +65,7 @@ describe("SmsMessage (real Postgres)", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: "error", message: "Insufficient credit" }) }));
     const { sendSms } = await import("@/lib/sms");
 
-    const result = await sendSms({ to: "0201234567", body: "test", purpose: "TEST_INTEGRATION", organizationId: orgA.organizationId });
+    const result = await sendSms({ to: "0201234567", body: "test", purpose: "TEST_INTEGRATION", organizationId: orgA.organizationId, moduleKey: "pharmacy" });
     expect(result).toEqual({ ok: false, error: "Insufficient credit" });
 
     const row = await testDb.smsMessage.findFirst({ where: { organizationId: orgA.organizationId, purpose: "TEST_INTEGRATION" } });
@@ -75,7 +76,7 @@ describe("SmsMessage (real Postgres)", () => {
     const throwaway = await createTestOrg("orgC-sms-cascade");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: "success" }) }));
     const { sendSms } = await import("@/lib/sms");
-    await sendSms({ to: "0241234567", body: "test", purpose: "TEST_CASCADE", organizationId: throwaway.organizationId });
+    await sendSms({ to: "0241234567", body: "test", purpose: "TEST_CASCADE", organizationId: throwaway.organizationId, moduleKey: "pharmacy" });
 
     expect(await testDb.smsMessage.count({ where: { organizationId: throwaway.organizationId } })).toBe(1);
     await cleanupTestOrg(throwaway);

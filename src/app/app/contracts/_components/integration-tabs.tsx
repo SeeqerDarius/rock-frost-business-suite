@@ -50,7 +50,7 @@ export function LinksTab({ contractId, links, options, canUpdate, formatDate, fo
                   {link.financial ? <div className="text-xs text-muted-foreground">{formatMoney(link.financial.amount, link.financial.currency ?? "")} · paid {formatMoney(link.financial.paid, link.financial.currency ?? "")} · {humanize(link.financial.status)}</div> : null}
                 </TableCell>
                 <TableCell className="text-sm">{formatDate(link.createdAt)}</TableCell>
-                {canUpdate ? <TableCell className="text-right"><form action={removeLinkAction}><input type="hidden" name="contractId" value={contractId} /><input type="hidden" name="linkId" value={link.id} /><Button size="sm" variant="ghost" aria-label={`Remove link to ${link.label}`}><Trash2 /></Button></form></TableCell> : null}
+                {canUpdate ? <TableCell className="text-right"><form action={removeLinkAction}><input type="hidden" name="contractId" value={contractId} /><input type="hidden" name="linkId" value={link.id} /><Button type="submit" size="sm" variant="ghost" aria-label={`Remove link to ${link.label}`}><Trash2 /></Button></form></TableCell> : null}
               </TableRow>
             ))}</TableBody>
           </Table>

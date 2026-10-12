@@ -92,8 +92,8 @@ export default async function ContractTemplatesPage({ searchParams }: { searchPa
                       {listTemplateVariables(version.body).length ? <p className="mt-2 text-xs text-muted-foreground">Uses: {listTemplateVariables(version.body).join(", ")}</p> : null}
                       {canManage ? (
                         <div className="mt-2 flex gap-2">
-                          {version.status !== "ACTIVE" ? <form action={setTemplateStatusAction}><input type="hidden" name="templateId" value={version.id} /><input type="hidden" name="status" value="ACTIVE" /><Button size="sm" variant="outline">Activate this version</Button></form> : null}
-                          {version.status === "ACTIVE" ? <form action={setTemplateStatusAction}><input type="hidden" name="templateId" value={version.id} /><input type="hidden" name="status" value="RETIRED" /><Button size="sm" variant="ghost">Retire</Button></form> : null}
+                          {version.status !== "ACTIVE" ? <form action={setTemplateStatusAction}><input type="hidden" name="templateId" value={version.id} /><input type="hidden" name="status" value="ACTIVE" /><Button type="submit" size="sm" variant="outline">Activate this version</Button></form> : null}
+                          {version.status === "ACTIVE" ? <form action={setTemplateStatusAction}><input type="hidden" name="templateId" value={version.id} /><input type="hidden" name="status" value="RETIRED" /><Button type="submit" size="sm" variant="ghost">Retire</Button></form> : null}
                         </div>
                       ) : null}
                     </details>

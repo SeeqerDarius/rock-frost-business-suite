@@ -6,6 +6,7 @@
  * re-exports everything here for server-side consumers.
  */
 import type { BusinessModuleKey } from "@/platform/modules/registry";
+import type { PlanTier } from "@/platform/entitlements/tiers";
 
 export type ModulePrice = {
   moduleKey: BusinessModuleKey;
@@ -13,6 +14,30 @@ export type ModulePrice = {
   annualGhs: number;
   includedSeats: number;
   additionalSeatGhs: number;
+};
+
+/**
+ * One rung of one module's price ladder, read from `ModuleTierPrice`.
+ *
+ * Separate from `ModulePrice` on purpose. `ModulePrice` is the module's
+ * single pre-tier headline, still the only price for the modules whose
+ * ladders are pending, and still what the suite and cart prices are built
+ * from. This is the per-tier price, and only modules with a published
+ * ladder have rows.
+ */
+export type ModuleTierPrice = {
+  moduleKey: string;
+  tier: PlanTier;
+  monthlyGhs: number;
+  annualGhs: number;
+  includedSeats: number;
+  additionalSeatGhs: number;
+};
+
+/** A module's ladder, lowest rung first. Empty when the module has none. */
+export type ModuleLadder = {
+  moduleKey: string;
+  rungs: ModuleTierPrice[];
 };
 
 export type PricingBundleKey = string;

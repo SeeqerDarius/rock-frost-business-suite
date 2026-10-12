@@ -76,6 +76,18 @@ export default async function OrganizationDashboardPage({ searchParams }: { sear
     getServerAuthSession(),
   ]);
   const greeting = workspaceGreeting(new Date(), tenant.organization.timezone, null, session?.user?.name);
+  /**
+   * An organization that has activated Accounting but not yet posted an entry
+   * has no revenue to show. The card used to render anyway: two tabs, a
+   * period switcher and a style toggle, all over a flat zero line. Nothing on
+   * screen said why it was flat, so the only reading available was that the
+   * numbers were wrong. One sentence saying where revenue comes from is more
+   * use than a chart of nothing.
+   */
+  const hasRevenueActivity = revenueInsights !== null && (
+    revenueInsights.byModule.length > 0
+    || Object.values(revenueInsights.trends).some((series) => series.some((bucket) => bucket.revenue !== 0))
+  );
 
   return (
     <div className="space-y-6">
@@ -87,6 +99,11 @@ export default async function OrganizationDashboardPage({ searchParams }: { sear
         <Card>
           <CardHeader><CardTitle>Revenue insights</CardTitle></CardHeader>
           <CardContent>
+            {!hasRevenueActivity ? (
+              <p className="text-sm text-muted-foreground">
+                No revenue has been posted yet. Once journal entries are posted in Accounting, this card shows the trend across every module and the lifetime split between them.
+              </p>
+            ) : (
             <Tabs defaultValue="trend">
               <TabsList variant="line">
                 <TabsTrigger value="trend">Revenue trend</TabsTrigger>
@@ -101,6 +118,7 @@ export default async function OrganizationDashboardPage({ searchParams }: { sear
                 <BreakdownDonutChart data={revenueInsights.byModule} currency={tenant.organization.currency} locale={organizationNumberLocale(tenant.organization)} />
               </TabsContent>
             </Tabs>
+            )}
           </CardContent>
         </Card>
       ) : null}

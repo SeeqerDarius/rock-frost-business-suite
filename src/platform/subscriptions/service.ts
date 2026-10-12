@@ -7,9 +7,11 @@ import { logAuditEvent } from "@/lib/audit";
 import { initializeTransaction, type GatewayProvider } from "@/lib/payments";
 import { createPlan as createPaystackPlan, disableSubscription as disablePaystackSubscription, getSubscriptionManagementLink } from "@/lib/payments/paystack";
 import { ensureRevenueAccountsForOrg } from "@/lib/accounting-integration";
-import { getModulePriceMap, getPricingBundleMap, type PricingBundleKey } from "@/lib/pricing";
+import { getModulePriceMap, getModuleTierPrice, getPricingBundleMap, type PricingBundleKey } from "@/lib/pricing";
 import { getModule, type BusinessModuleKey } from "@/platform/modules/registry";
 import { expandProductModuleKeys, productGroupKeys } from "@/platform/modules/product-groups";
+import { moduleHasPublishedLadder, moduleTierCatalogue } from "@/platform/entitlements/catalogue";
+import { UNTIERED_LEGACY_TIER, isQuoteOnlyTier, tierRank, type PlanTier } from "@/platform/entitlements/tiers";
 
 const AWAITING_ACTIVATION_STATUSES = ["DRAFT", "PENDING_PAYMENT", "PAST_DUE"] as const;
 
@@ -41,9 +43,62 @@ async function subscriptionModuleIds(tx: Tx, subscription: Pick<SubscriptionRow,
 export class SelfServiceSubscriptionExistsError extends Error {}
 export class PaystackRenewalNotRegisteredError extends Error {}
 
+/**
+ * Thrown when a checkout names a tier this module is not sold at: a module
+ * with a ladder and no tier chosen, a quote-only tier, or a rung with no
+ * price row. Deliberately a refusal rather than a fallback, because every
+ * fallback here is either charging for access the customer will not get or
+ * granting access they have not paid for.
+ */
+export class UnavailablePlanTierError extends Error {}
+
+/**
+ * What one self-service module purchase costs and what tier it buys.
+ *
+ * The two branches are the whole transition. A module with a published
+ * ladder is priced per rung from `ModuleTierPrice` and stores the tier the
+ * customer picked. A module whose ladder is still pending has exactly one
+ * price, and that price has always bought the complete module, so it stores
+ * UNTIERED_LEGACY_TIER: the same tier an organization that predates the
+ * column is grandfathered to, for the same reason. Storing BASIC there
+ * would be a silent price rise, charging the full headline for whatever
+ * subset a future Basic ladder happens to define.
+ */
+async function resolveSelfServicePlan(input: {
+  moduleKey: BusinessModuleKey;
+  tier?: PlanTier;
+  billingCycle: "MONTHLY" | "ANNUAL";
+}): Promise<{ tier: PlanTier; amount: number; includedSeats: number }> {
+  if (moduleHasPublishedLadder(input.moduleKey)) {
+    if (!input.tier) throw new UnavailablePlanTierError("Choose a plan for this module.");
+    if (isQuoteOnlyTier(input.tier)) throw new UnavailablePlanTierError("This plan is priced per agreement. Contact Rock Frost.");
+    const rung = await getModuleTierPrice(input.moduleKey, input.tier);
+    if (!rung) throw new UnavailablePlanTierError("This plan is not available for this module.");
+    return {
+      tier: input.tier,
+      amount: input.billingCycle === "ANNUAL" ? rung.annualGhs : rung.monthlyGhs,
+      includedSeats: rung.includedSeats,
+    };
+  }
+
+  const price = (await getModulePriceMap()).get(input.moduleKey);
+  if (!price) throw new UnavailablePlanTierError("This module is not available for self-service purchase.");
+  return {
+    tier: UNTIERED_LEGACY_TIER,
+    amount: input.billingCycle === "ANNUAL" ? price.annualGhs : price.monthlyGhs,
+    includedSeats: price.includedSeats,
+  };
+}
+
 export async function createSelfServiceSubscription(input: {
   organizationId: string;
   moduleKey: BusinessModuleKey;
+  /**
+   * Required for a module with a published ladder, ignored for one without.
+   * Not defaulted: see resolveSelfServicePlan() on why a missing tier is a
+   * refusal rather than a guess at what the customer meant to buy.
+   */
+  tier?: PlanTier;
   billingCycle: "MONTHLY" | "ANNUAL";
   autoRenew: boolean;
   actorId: string;
@@ -55,7 +110,8 @@ export async function createSelfServiceSubscription(input: {
   }
 
   const durationMonths = input.billingCycle === "ANNUAL" ? 12 : 1;
-  const amount = input.billingCycle === "ANNUAL" ? price.annualGhs : price.monthlyGhs;
+  const plan = await resolveSelfServicePlan(input);
+  const { amount } = plan;
 
   return db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`self-service-subscription:${input.organizationId}:${input.moduleKey}`}))`;
@@ -90,7 +146,8 @@ export async function createSelfServiceSubscription(input: {
         amount: new Prisma.Decimal(amount),
         currency: "GHS",
         autoRenew: input.autoRenew,
-        seatLimit: price.includedSeats,
+        tier: plan.tier,
+        seatLimit: plan.includedSeats,
         notes: "Self-service catalogue checkout",
         createdById: input.actorId,
         status: "PENDING_PAYMENT",
@@ -103,7 +160,7 @@ export async function createSelfServiceSubscription(input: {
       action: "subscription.self_service_created",
       entityName: "Subscription",
       entityId: subscription.id,
-      metadata: { moduleKey: input.moduleKey, billingCycle: input.billingCycle, amount, currency: "GHS", seatLimit: price.includedSeats },
+      metadata: { moduleKey: input.moduleKey, tier: plan.tier, billingCycle: input.billingCycle, amount, currency: "GHS", seatLimit: plan.includedSeats },
     }, tx);
     return subscription;
   });
@@ -154,6 +211,12 @@ export async function createSelfServiceBundleSubscription(input: {
         amount: new Prisma.Decimal(amount),
         currency: "GHS",
         autoRenew: input.autoRenew,
+        // A suite price was set when every module in it meant full access,
+        // and there is no per-module tier choice in a suite, so the only
+        // honest reading is the tier a pre-tier customer is grandfathered
+        // to. Storing BASIC would silently cut each module in the suite
+        // down to its Basic subset at the full suite price.
+        tier: UNTIERED_LEGACY_TIER,
         seatLimit: includedSeats,
         bundleKey: bundle.key,
         entitledModuleKeys,
@@ -244,6 +307,9 @@ export async function createSelfServiceCartSubscription(input: {
         amount: new Prisma.Decimal(amount),
         currency: "GHS",
         autoRenew: input.autoRenew,
+        // Same reasoning as the suite path above: a cart is priced from the
+        // single pre-tier headline of each module, which bought all of it.
+        tier: UNTIERED_LEGACY_TIER,
         seatLimit: includedSeats,
         entitledModuleKeys,
         notes: `Self-service cart checkout: ${uniqueKeys.join(", ")}`,
@@ -360,6 +426,15 @@ export async function createSubscription(input: {
   amount: string;
   currency: string;
   autoRenew: boolean;
+  /**
+   * The tier this negotiated agreement buys. Defaults to
+   * UNTIERED_LEGACY_TIER rather than the column default, because the amount
+   * on an operator-entered agreement was quoted in a conversation about the
+   * whole module. Letting it fall through to BASIC would restrict a customer
+   * who negotiated and paid for more, which is the one direction this
+   * rollout must never move. The operator form offers every tier.
+   */
+  tier?: PlanTier;
   seatLimit: number | null;
   notes?: string | null;
   actorId: string;
@@ -415,6 +490,7 @@ export async function createSubscription(input: {
         amount,
         currency: input.currency.toUpperCase(),
         autoRenew: input.autoRenew,
+        tier: input.tier ?? UNTIERED_LEGACY_TIER,
         seatLimit: input.seatLimit,
         notes: input.notes || null,
         createdById: input.actorId,
@@ -428,7 +504,7 @@ export async function createSubscription(input: {
       action: "subscription.created",
       entityName: "Subscription",
       entityId: subscription.id,
-      metadata: { moduleId: input.moduleId, mode: input.mode, durationMonths: input.durationMonths, seatLimit: input.seatLimit },
+      metadata: { moduleId: input.moduleId, mode: input.mode, tier: input.tier ?? UNTIERED_LEGACY_TIER, durationMonths: input.durationMonths, seatLimit: input.seatLimit },
     }, tx);
     return subscription;
   });
@@ -853,4 +929,87 @@ export async function cancelSubscription(input: { subscriptionId: string; actorI
     }, tx);
     return subscription;
   });
+}
+
+/**
+ * Changes the plan tier on one subscription.
+ *
+ * A downgrade can take features and headroom away from a customer who is
+ * using them, so this refuses one that the organization's current usage
+ * already exceeds and names every breach. An operator who genuinely intends
+ * it (a customer who agreed to shed campuses, say) has to bring the usage
+ * down first, which is the honest order of operations: the alternative is a
+ * school that silently cannot admit a student the next morning.
+ *
+ * Upgrades are never blocked. Features unlock on the next request, since
+ * `resolveOrganizationEntitlements()` is deliberately uncached.
+ */
+export class TierDowngradeBlockedError extends Error {
+  constructor(public readonly breaches: Array<{ name: string; used: number; ceiling: number }>) {
+    super(
+      `This organization exceeds that plan: ${breaches
+        .map((breach) => `${breach.name} ${breach.used} of ${breach.ceiling}`)
+        .join(", ")}. Reduce usage before downgrading.`,
+    );
+    this.name = "TierDowngradeBlockedError";
+  }
+}
+
+export async function updateSubscriptionTier(input: { subscriptionId: string; tier: PlanTier; actorId: string }) {
+  const subscription = await db.subscription.findUnique({
+    where: { id: input.subscriptionId },
+    include: { module: true },
+  });
+  if (!subscription) throw new Error("Subscription not found.");
+  if (subscription.tier === input.tier) return subscription;
+
+  if (tierRank(input.tier) < tierRank(subscription.tier)) {
+    const breaches = await findTierLimitBreaches(subscription.organizationId, subscription.module.code, input.tier);
+    if (breaches.length > 0) throw new TierDowngradeBlockedError(breaches);
+  }
+
+  return db.$transaction(async (tx) => {
+    const updated = await tx.subscription.update({ where: { id: subscription.id }, data: { tier: input.tier } });
+    await logAuditEvent({
+      organizationId: subscription.organizationId,
+      userId: input.actorId,
+      module: "platform",
+      action: "subscription.tier_updated",
+      entityName: "Subscription",
+      entityId: subscription.id,
+      metadata: { previousTier: subscription.tier, tier: input.tier, moduleId: subscription.moduleId },
+    }, tx);
+    return updated;
+  });
+}
+
+/**
+ * Which of a tier's ceilings the organization's live usage already exceeds.
+ * Counted the same way the creating services count, so the answer here and
+ * the error a user would hit cannot disagree.
+ */
+async function findTierLimitBreaches(organizationId: string, moduleCode: string, tier: PlanTier) {
+  const breaches: Array<{ name: string; used: number; ceiling: number }> = [];
+  for (const limit of moduleTierCatalogue(moduleCode).limits) {
+    const ceiling = limit.byTier[tier];
+    if (ceiling === null) continue;
+    const used = await countForLimit(organizationId, limit.key);
+    if (used === null || used <= ceiling) continue;
+    breaches.push({ name: limit.name, used, ceiling });
+  }
+  return breaches;
+}
+
+/**
+ * Usage for one limit key. Returns null for a key with no counter yet, so an
+ * unknown key never blocks a tier change on a number nobody computed.
+ */
+async function countForLimit(organizationId: string, limitKey: string): Promise<number | null> {
+  if (limitKey === "school.students") {
+    return db.schoolStudent.count({ where: { organizationId, status: { in: ["ACTIVE", "APPLICANT", "SUSPENDED"] } } });
+  }
+  if (limitKey === "school.campuses") {
+    return db.schoolCampus.count({ where: { organizationId, active: true } });
+  }
+  return null;
 }

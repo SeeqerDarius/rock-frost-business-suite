@@ -8,6 +8,7 @@ import { buildTrendBuckets, widestTrendLookback, type TrendGranularity } from "@
 import { sendSms } from "@/lib/sms";
 import { schoolAttendanceAbsentSms, schoolExamResultsPublishedSms, schoolFeePaymentReceivedSms } from "@/lib/sms-templates";
 import { getSchoolPayrollEligibleEmployee, getSchoolPayrollLinkCandidate, listSchoolPayrollLinkCandidates } from "@/modules/hr/service";
+import { assertWithinModuleLimit } from "@/platform/entitlements/resolve";
 import { isOrganizationFeatureEnabled } from "@/platform/organizations/feature-config-service";
 
 export class SchoolStateError extends Error {
@@ -49,8 +50,10 @@ async function nextCode(organizationId: string, prefix: string, count: () => Pro
  * Texts every guardian linked to a student who has a phone number, gated
  * by that student's campus's own `SchoolSettings.smsNotificationsEnabled`
  * (off by default - same convention as Hotel/Pharmacy/Payroll/Hospital).
- * `sendSms()` separately enforces the platform-wide kill switch, so this
- * never needs to check that itself. Always called after its triggering
+ * `sendSms()` separately enforces the entitlement for this organization's
+ * School plan (`school.sms`, Pro and up, or the operator's override - see
+ * canSendModuleSms in src/lib/platform-communications.ts), so this never
+ * needs to check that itself. Always called after its triggering
  * write has already committed, and never awaited in a way that would
  * block or fail that write - a slow or failed text is fire-and-forget.
  */
@@ -72,6 +75,7 @@ async function notifySchoolGuardians(params: {
       body: params.body(link.guardian.firstName),
       purpose: params.purpose,
       organizationId: params.organizationId,
+      moduleKey: "school",
       relatedType: params.relatedType,
       relatedId: params.relatedId,
     });
@@ -82,7 +86,15 @@ export function listSchoolCampuses(organizationId: string) {
   return db.schoolCampus.findMany({ where: { organizationId }, include: { _count: { select: { students: true, classes: true } } }, orderBy: { name: "asc" } });
 }
 
-export function createSchoolCampus(organizationId: string, data: { code: string; name: string; address?: string | null; phone?: string | null; email?: string | null }) {
+export async function createSchoolCampus(organizationId: string, data: { code: string; name: string; address?: string | null; phone?: string | null; email?: string | null }) {
+  // Enforced here rather than in the action layer so every caller is covered,
+  // including the admission flow and any future import. Counts only active
+  // campuses: a deactivated site is not consuming the plan.
+  await assertWithinModuleLimit(
+    organizationId,
+    "school.campuses",
+    await db.schoolCampus.count({ where: { organizationId, active: true } }),
+  );
   return db.schoolCampus.create({ data: { organizationId, ...data } });
 }
 
@@ -262,7 +274,17 @@ export async function listSchoolStudentChoices(organizationId: string, input: { 
       take,
     }),
   ]);
-  return { rows, total, take };
+  /**
+   * `total` counts what the query matched, which is not the same question as
+   * "does this school have any students". Callers need both, and conflating
+   * them tells a bursar whose search found nothing that they must "admit a
+   * student" first. Costs nothing when no query is active, since the two
+   * counts are then the same.
+   */
+  const totalWithoutQuery = terms.length
+    ? await db.schoolStudent.count({ where: { organizationId, ...(input.activeOnly ? { status: "ACTIVE" } : {}) } })
+    : total;
+  return { rows, total, totalWithoutQuery, take };
 }
 
 export async function listSchoolStudentPage(organizationId: string, input: { query?: string; status?: SchoolStudentStatus; page?: number; pageSize?: number } = {}) {
@@ -315,6 +337,14 @@ export function createSchoolStudent(organizationId: string, data: { campusId: st
   return createWithUniqueRetry(async () => {
     const campus = await db.schoolCampus.findFirst({ where: { id: data.campusId, organizationId, active: true } });
     if (!campus) throw new SchoolNotFoundError("Campus not found.");
+    // Counts enrolled students only. A withdrawn or graduated record is
+    // history the school must keep, and charging a plan for it would push
+    // schools towards deleting records they are required to retain.
+    await assertWithinModuleLimit(
+      organizationId,
+      "school.students",
+      await db.schoolStudent.count({ where: { organizationId, status: { in: ["ACTIVE", "APPLICANT", "SUSPENDED"] } } }),
+    );
     return db.schoolStudent.create({ data: { organizationId, admissionNumber: await nextCode(organizationId, "STU", () => db.schoolStudent.count({ where: { organizationId } })), status: "ACTIVE", ...data } });
   });
 }
@@ -1459,7 +1489,17 @@ export async function listSchoolLibraryBookChoices(organizationId: string, input
     db.schoolLibraryBook.count({ where }),
     db.schoolLibraryBook.findMany({ where, select: { id: true, title: true, availableCopies: true }, orderBy: [{ title: "asc" }, { id: "asc" }], take }),
   ]);
-  return { rows, total, take };
+  /**
+   * As with student choices: `total` is what the search matched, which
+   * answers a different question from "is there any lendable copy in this
+   * library at all". The Library page needs the second one to decide whether
+   * issuing a loan is possible, or a search for a title nobody owns removes
+   * the Issue loan action entirely.
+   */
+  const totalWithoutQuery = query
+    ? await db.schoolLibraryBook.count({ where: { organizationId, availableCopies: { gt: 0 } } })
+    : total;
+  return { rows, total, totalWithoutQuery, take };
 }
 export async function listSchoolLibraryBookPage(organizationId: string, input: { query?: string; page?: number; pageSize?: number } = {}) {
   await assertSchoolFeature(organizationId, "school.library");

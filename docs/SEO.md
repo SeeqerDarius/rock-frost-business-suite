@@ -76,16 +76,16 @@ is confirmed.
 **Optional add-ons (2026-10-10).** `PUBLIC_ADDONS` in
 `src/lib/pricing-shared.ts` is the single public description of separately
 priced add-ons. The School module page renders an "Optional add-on" section
-for Assignments & Assessments (linking to `/pricing#schoolAssignments-pricing`),
-its `featureList`, workflow, and a fourth FAQ mention the add-on, and
-`/pricing` lists it under "Optional add-ons". Copy claims only implemented
-behavior: automatic marking of single choice, true or false, multiple select,
-and numeric answers, teacher marking of written answers, and explicit
-cumulative-record opt-in. It must never claim AI marking. The pricing page
-shows "Starting from" with the live catalogue amount for each individual
-module and "Priced on request" for an add-on until an operator publishes a
-confirmed `AddonPricingPlan` row. Assignment pages live under `/app/` and are
-never indexed. See `docs/SCHOOL_ASSIGNMENTS.md`.
+for Assignments & Assessments, including its features and workflow, and a
+related FAQ. Its call to action opens a School demo enquiry. Copy claims only
+implemented behavior: automatic marking of single choice, true or false,
+multiple select, and numeric answers, teacher marking of written answers, and
+explicit cumulative-record opt-in. It must never claim AI marking. Add-on
+prices are managed in the platform but are not displayed on the public
+`/pricing` page. Individual module prices there use the live catalogue value
+as a monthly starting price, and connected suite prices remain exact. Assignment
+pages live under `/app/` and are never indexed. See
+`docs/SCHOOL_ASSIGNMENTS.md`.
 
 ## Search visibility baseline and priority pages
 

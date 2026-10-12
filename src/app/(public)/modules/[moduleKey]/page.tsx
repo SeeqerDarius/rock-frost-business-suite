@@ -248,7 +248,7 @@ export default async function ModuleLandingPage({
                 <p className="public-eyebrow">Optional add-on</p>
                 <h2 className="mt-2 text-2xl font-semibold tracking-tight">{addon.name}</h2>
                 <p className="mt-3 leading-7 text-muted-foreground">{addon.summary} It is priced separately and enabled only for schools that choose it.</p>
-                <Link href={`/pricing#${addon.key}-pricing`} className="mt-4 inline-block font-medium text-primary underline-offset-4 hover:underline">See add-on pricing</Link>
+                <Link href={`/contact?intent=demo&module=${moduleKey}`} className="mt-4 inline-block font-medium text-primary underline-offset-4 hover:underline">Ask about this add-on</Link>
               </div>
               <ul className="space-y-3">
                 {addon.features.map((feature) => (

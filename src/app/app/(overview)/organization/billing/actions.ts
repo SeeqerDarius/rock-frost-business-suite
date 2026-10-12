@@ -6,8 +6,10 @@ import { requireCurrentTenant } from "@/lib/tenant";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { cuid, parseWithSchema } from "@/lib/validation";
 import { buildTenantAppUrl } from "@/lib/app-url";
-import { cancelPaystackAutomaticRenewal, createSelfServiceBundleSubscription, createSelfServiceCartSubscription, createSelfServiceSubscription, getPaystackManagementLinkForOrganization, initiateGatewayPayment, SelfServiceSubscriptionExistsError } from "@/platform/subscriptions/service";
-import { getModulePriceMap, getPricingBundleMap, type PricingBundleKey } from "@/lib/pricing";
+import { cancelPaystackAutomaticRenewal, createSelfServiceBundleSubscription, createSelfServiceCartSubscription, createSelfServiceSubscription, getPaystackManagementLinkForOrganization, initiateGatewayPayment, SelfServiceSubscriptionExistsError, UnavailablePlanTierError } from "@/platform/subscriptions/service";
+import { getModulePriceMap, getModuleTierPrice, getPricingBundleMap, type PricingBundleKey } from "@/lib/pricing";
+import { moduleHasPublishedLadder } from "@/platform/entitlements/catalogue";
+import { PLAN_TIERS, isQuoteOnlyTier } from "@/platform/entitlements/tiers";
 import type { BusinessModuleKey } from "@/platform/modules/registry";
 
 const startSchema = z.object({
@@ -51,6 +53,8 @@ export async function startGatewayPayment(formData: FormData): Promise<void> {
 const selfServiceSchema = z.object({
   productKey: z.string().trim().min(1),
   productType: z.enum(["MODULE", "BUNDLE"]),
+  // Only a module with a published ladder needs one, and a suite never does.
+  tier: z.enum(PLAN_TIERS).optional(),
   billingCycle: z.enum(["MONTHLY", "ANNUAL"]),
 });
 
@@ -60,6 +64,7 @@ export async function startSelfServiceCheckout(formData: FormData): Promise<void
   const parsed = parseWithSchema(selfServiceSchema, {
     productKey: String(formData.get("productKey") ?? formData.get("moduleKey") ?? ""),
     productType: String(formData.get("productType") ?? "MODULE"),
+    ...(formData.get("tier") ? { tier: String(formData.get("tier")) } : {}),
     billingCycle: String(formData.get("billingCycle") ?? ""),
   });
   if (!parsed.success) redirect("/app/organization/billing?error=invalid-selection");
@@ -68,12 +73,20 @@ export async function startSelfServiceCheckout(formData: FormData): Promise<void
     : (await getPricingBundleMap()).has(parsed.data.productKey as PricingBundleKey);
   if (!validProduct) redirect("/app/organization/billing?error=invalid-selection");
 
+  // Settled before the subscription row is written, so a bad plan choice is a
+  // message rather than a pending subscription nobody can pay for.
+  if (parsed.data.productType === "MODULE" && moduleHasPublishedLadder(parsed.data.productKey)) {
+    const tier = parsed.data.tier;
+    if (!tier || isQuoteOnlyTier(tier)) redirect("/app/organization/billing?error=plan-unavailable");
+    if (!await getModuleTierPrice(parsed.data.productKey, tier)) redirect("/app/organization/billing?error=plan-unavailable");
+  }
+
   let checkoutUrl: string;
   try {
     const common = { organizationId: tenant.organizationId, billingCycle: parsed.data.billingCycle, autoRenew: formData.get("autoRenew") === "true", actorId: tenant.userId };
     const subscription = parsed.data.productType === "BUNDLE"
       ? await createSelfServiceBundleSubscription({ ...common, bundleKey: parsed.data.productKey as PricingBundleKey })
-      : await createSelfServiceSubscription({ ...common, moduleKey: parsed.data.productKey as BusinessModuleKey });
+      : await createSelfServiceSubscription({ ...common, moduleKey: parsed.data.productKey as BusinessModuleKey, tier: parsed.data.tier });
     const result = await initiateGatewayPayment({
       subscriptionId: subscription.id,
       organizationId: tenant.organizationId,
@@ -86,6 +99,9 @@ export async function startSelfServiceCheckout(formData: FormData): Promise<void
     console.error("[billing] Failed to start self-service checkout:", error);
     if (error instanceof SelfServiceSubscriptionExistsError) {
       redirect("/app/organization/billing?error=already-subscribed");
+    }
+    if (error instanceof UnavailablePlanTierError) {
+      redirect("/app/organization/billing?error=plan-unavailable");
     }
     redirect("/app/organization/billing?error=payment-failed");
   }
@@ -110,6 +126,13 @@ export async function startCartCheckout(formData: FormData): Promise<void> {
   const modulePriceMap = await getModulePriceMap();
   if (parsed.data.moduleKeys.some((key) => !modulePriceMap.has(key as BusinessModuleKey))) {
     redirect("/app/organization/billing?error=invalid-selection");
+  }
+  // The cart has one price per module and no way to choose a plan, so a
+  // module with a ladder is bought from its own card instead. Without this,
+  // a cart would grant full access at the single headline price and quietly
+  // undercut the ladder it is meant to sell.
+  if (parsed.data.moduleKeys.some((key) => moduleHasPublishedLadder(key))) {
+    redirect("/app/organization/billing?error=plan-required");
   }
 
   let checkoutUrl: string;

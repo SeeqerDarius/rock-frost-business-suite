@@ -16,6 +16,7 @@ import { SwitchedOffNotice } from "@/components/school/switched-off-notice";
 import { hasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { listSchoolCampuses, listSchoolStudentChoices, listSchoolTransport } from "@/modules/school/service";
 import { assignTransportAction, createTransportRouteAction } from "../actions";
+import { schoolPlanGate } from "@/components/school/plan-gate";
 
 /** `stops` is a Json column written as a string array by createTransportRouteAction. */
 function readStops(value: unknown): string[] {
@@ -24,6 +25,10 @@ function readStops(value: unknown): string[] {
 
 export default async function SchoolTransportPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; studentQ?: string }> }) {
   const [tenant, query] = await Promise.all([requireModuleAccess("school"), searchParams]);
+  // Plan gate. Navigation already hides this page when the plan does
+  // not include it, but a hidden link is not a boundary.
+  const gate = await schoolPlanGate(tenant.organizationId, "school.services", "Transport", "Routes, vehicles, drivers, stops, and student assignments.");
+  if (gate) return gate;
   if (!(await isOrganizationFeatureEnabled(tenant.organizationId, "school.transport"))) return <SwitchedOffNotice title="Transport" />;
   const money = createOrganizationFormatter(tenant.organization).money;
   const canManage = hasPermission(tenant, PERMISSIONS.SCHOOL_TRANSPORT_MANAGE);
@@ -82,7 +87,7 @@ export default async function SchoolTransportPage({ searchParams }: { searchPara
       <PageHeader
         title="Transport"
         description="Routes, vehicles, drivers, stops, and student assignments."
-        actions={canManage ? <>{campuses.length > 0 ? newRouteDialog : null}{routes.length > 0 && students.total > 0 ? assignDialog : null}</> : undefined}
+        actions={canManage ? <>{campuses.length > 0 ? newRouteDialog : null}{routes.length > 0 && students.totalWithoutQuery > 0 ? assignDialog : null}</> : undefined}
       />
 
       <FormFeedback
@@ -91,7 +96,7 @@ export default async function SchoolTransportPage({ searchParams }: { searchPara
         savedMessage="The transport record is up to date."
         stateMessage="The route or student could not be used: the route must be active and the student must be active."
       />
-      <RecordSearch action="/app/school/transport" queryName="studentQ" label="Find a student for a route" placeholder="Name or admission number" defaultValue={query.studentQ} resultSummary={`Showing ${students.rows.length} of ${students.total} active students`} />
+      <RecordSearch action="/app/school/transport" queryName="studentQ" label="Find a student for a route" placeholder="Name or admission number" defaultValue={query.studentQ} resultSummary={`Showing ${students.rows.length} of ${students.total} active students`} datasetSize={students.totalWithoutQuery} />
       {!canManage ? <ReadOnlyNotice>Your role can review transport routes but cannot change them or assign students.</ReadOnlyNotice> : null}
       <PrerequisiteNotice items={[{ satisfied: campuses.length > 0, label: "Create a campus", href: "/app/school/campuses" }]} />
 
